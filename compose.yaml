@@ -1,0 +1,31 @@
+services:
+  reelscarey:
+    build:
+      context: .
+      args:
+        VERSION: 0.1.0-dev
+    image: reelscarey:local
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${REELSCAREY_PORT:-8787}:8787"
+    environment:
+      REELSCAREY_LISTEN_ADDR: 0.0.0.0:8787
+      REELSCAREY_CONFIG_DIR: /config
+      REELSCAREY_MEDIA_DIR: /media
+      REELSCAREY_DOWNLOADS_DIR: /downloads
+      REELSCAREY_LOG_LEVEL: ${REELSCAREY_LOG_LEVEL:-info}
+    volumes:
+      - reelscarey_config:/config
+      - ${MEDIA_PATH:-./media}:/media:ro
+      - ${DOWNLOADS_PATH:-./downloads}:/downloads:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+
+volumes:
+  reelscarey_config:

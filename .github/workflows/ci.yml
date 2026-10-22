@@ -1,0 +1,52 @@
+name: Foundation checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: npm ci && npm run format:check && npm run check && npm test && npm run build
+        working-directory: web
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: go build -o bin/reelscarey ./cmd/reelscarey
+      - run: node scripts/smoke.mjs
+      - name: Build and smoke-test the container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose config --quiet
+          docker build -t reelscarey:ci .
+          docker run -d --name reelscarey-ci -p 127.0.0.1:8787:8787 reelscarey:ci
+          trap 'docker logs reelscarey-ci; docker rm -fv reelscarey-ci' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8787/readyz; then break; fi
+            sleep 1
+          done
+          curl --fail http://127.0.0.1:8787/readyz
+          curl --fail http://127.0.0.1:8787/ | grep -q 'ReelScarey'
+          curl --fail http://127.0.0.1:8787/api/v1/system
+          curl --fail -X PUT -H 'Content-Type: application/json' \
+            --data '{"library_name":"CI cinema","movie_folder":"Movies","series_folder":"TV","revision":1}' \
+            http://127.0.0.1:8787/api/v1/settings
+          docker restart reelscarey-ci
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8787/readyz; then break; fi
+            sleep 1
+          done
+          curl --fail http://127.0.0.1:8787/api/v1/settings | grep -q 'CI cinema'
+          docker exec reelscarey-ci reelscarey healthcheck
+          docker exec reelscarey-ci ffprobe -version

@@ -1,0 +1,16 @@
+.git
+.env
+.tools
+bin
+data
+config
+media
+downloads
+web/node_modules
+web/dist
+web/coverage
+web/test-results
+web/playwright-report
+*.db*
+*.log
+*.exe
