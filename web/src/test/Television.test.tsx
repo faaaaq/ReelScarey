@@ -1,0 +1,233 @@
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { Theme } from "@radix-ui/themes";
+import { MemoryRouter } from "react-router-dom";
+import { describe, it, expect, vi } from "vitest";
+import App from "../App";
+import type { TVSeries } from "../api";
+
+const show: TVSeries = {
+  id: 7,
+  kind: "series",
+  tmdb_id: 42,
+  title: "Test TV series",
+  year: 2025,
+  monitored: true,
+  status: "missing",
+  overview: "A television synopsis.",
+  poster_url: "",
+  poster_path: "",
+  release_date: "2025-01-02",
+  runtime_minutes: null,
+  series_status: "Returning Series",
+  revision: 1,
+  updated_at: "",
+  seasons: [
+    {
+      id: 8,
+      tmdb_id: 44,
+      number: 1,
+      title: "Season 1",
+      overview: "Season synopsis.",
+      air_date: "2025-01-02",
+      episode_count: 1,
+      monitored: true,
+      loaded_at: "",
+      known_episodes: 0,
+      selected_episodes: 0,
+    },
+  ],
+};
+function mount(path: string) {
+  render(
+    <Theme>
+      <MemoryRouter initialEntries={[path]}>
+        <App />
+      </MemoryRouter>
+    </Theme>,
+  );
+}
+function setup(
+  extra: (url: string, options?: RequestInit) => Response | undefined,
+) {
+  const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+    const custom = extra(url, options);
+    if (custom) return custom;
+    if (url.endsWith("/auth/session"))
+      return Response.json({
+        authenticated: true,
+        setup_required: false,
+        session: {
+          username: "testadmin",
+          csrf_token: "test-csrf",
+          expires_at: 9999999999,
+        },
+      });
+    if (url.endsWith("/providers/tmdb"))
+      return Response.json({ configured: true });
+    return Response.json(
+      { error: { message: "Unexpected test request" } },
+      { status: 404 },
+    );
+  });
+  vi.stubGlobal("fetch", fetch);
+  return fetch;
+}
+
+describe("TV catalog and monitoring", () => {
+  it("searches TV separately and saves a show with the chosen monitoring preference", async () => {
+    const fetch = setup((url, options) => {
+      if (url.includes("/metadata/series?"))
+        return Response.json({
+          items: [{ ...show, in_library: false }],
+          page: 1,
+          total_pages: 1,
+          total_results: 1,
+        });
+      if (url.endsWith("/metadata/series/42")) return Response.json(show);
+      if (url.endsWith("/library/series") && options?.method === "POST")
+        return Response.json({ item: show, created: true }, { status: 201 });
+    });
+    mount("/search?kind=series&query=Test");
+    await screen.findByRole("heading", { name: "Test TV series" });
+    expect(
+      screen.getByRole("heading", { name: "Search TV shows" }),
+    ).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "View details" }));
+    await screen.findByText("TV show details from TMDb.");
+    await userEvent.click(
+      screen.getByRole("switch", { name: "Monitor this show" }),
+    );
+    const dialog = screen.getByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Add show" }),
+    );
+    await within(dialog).findByText("In library");
+    expect(
+      within(dialog).getByRole("link", { name: "Open library" }),
+    ).toHaveAttribute("href", "/series");
+    const call = fetch.mock.calls.find(
+      ([url, options]) =>
+        url.endsWith("/library/series") && options?.method === "POST",
+    );
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+      tmdb_id: 42,
+      monitored: false,
+    });
+    expect(call?.[1]?.headers).toMatchObject({ "X-CSRF-Token": "test-csrf" });
+    expect(
+      fetch.mock.calls.some(([url]) => url.includes("/metadata/movies")),
+    ).toBe(false);
+  });
+  it("loads episodes, preserves selections while paused, and keeps cached data on refresh failure", async () => {
+    let current = structuredClone(show);
+    let selected = true;
+    let failRefresh = false;
+    const fetch = setup((url, options) => {
+      if (url.endsWith("/library/series/7")) return Response.json(current);
+      if (url.endsWith("/seasons/1"))
+        return Response.json({
+          season: current.seasons[0],
+          episodes: current.seasons[0].loaded_at
+            ? [
+                {
+                  id: 9,
+                  tmdb_id: 45,
+                  number: 1,
+                  title: "Pilot",
+                  overview: "Episode synopsis.",
+                  air_date: "2025-01-02",
+                  runtime_minutes: 45,
+                  monitored: selected,
+                  effective_monitored: current.monitored && selected,
+                },
+              ]
+            : [],
+          revision: current.revision,
+          series_monitored: current.monitored,
+        });
+      if (url.endsWith("/refresh")) {
+        if (failRefresh)
+          return Response.json(
+            { error: { message: "TMDb is temporarily unavailable." } },
+            { status: 502 },
+          );
+        current = {
+          ...current,
+          revision: current.revision + 1,
+          seasons: [
+            {
+              ...current.seasons[0],
+              loaded_at: "2026-10-22",
+              known_episodes: 1,
+              selected_episodes: 1,
+            },
+          ],
+        };
+        return Response.json(current);
+      }
+      if (url.endsWith("/monitor") && options?.method === "PUT") {
+        const body = JSON.parse(String(options.body));
+        expect(body.revision).toBe(current.revision);
+        if (url.includes("/episodes/1/")) selected = body.monitored;
+        else current = { ...current, monitored: body.monitored };
+        current = {
+          ...current,
+          revision: current.revision + 1,
+          seasons: [
+            { ...current.seasons[0], selected_episodes: selected ? 1 : 0 },
+          ],
+        };
+        return Response.json(current);
+      }
+    });
+    mount("/series/7");
+    await screen.findByRole("heading", { name: "Test TV series" });
+    await userEvent.click(
+      screen.getByRole("button", { name: "View episodes" }),
+    );
+    await screen.findByRole("button", { name: "Load episodes from TMDb" });
+    expect(
+      fetch.mock.calls.some(
+        ([url, options]) =>
+          url.endsWith("/refresh") && options?.method === "POST",
+      ),
+    ).toBe(false);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Load episodes from TMDb" }),
+    );
+    await screen.findByRole("switch", { name: "Monitor episode 1: Pilot" });
+    await userEvent.click(
+      screen.getByRole("switch", { name: "Monitor episode 1: Pilot" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("switch", { name: "Monitor episode 1: Pilot" }),
+      ).not.toBeChecked(),
+    );
+    await userEvent.click(
+      screen.getByRole("switch", { name: "Monitor this show" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("switch", { name: "Monitor episode 1: Pilot" }),
+      ).toBeDisabled(),
+    );
+    expect(
+      screen.getByRole("switch", { name: "Monitor episode 1: Pilot" }),
+    ).not.toBeChecked();
+    failRefresh = true;
+    await userEvent.click(
+      screen.getByRole("button", { name: "Refresh episodes" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "TMDb is temporarily unavailable.",
+    );
+    expect(
+      screen.getByRole("heading", { name: "S01E01 · Pilot" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Download" }),
+    ).not.toBeInTheDocument();
+  });
+});

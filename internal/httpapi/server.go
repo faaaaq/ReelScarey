@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -63,6 +64,16 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/metadata/movies/{id}", method(http.MethodGet, s.movieDetails))
 	mux.HandleFunc("/api/v1/library/movies", method(http.MethodPost, s.addMovie))
 	mux.HandleFunc("/api/v1/library/movies/{id}", method(http.MethodGet, s.catalogMovie))
+	mux.HandleFunc("/api/v1/metadata/series", method(http.MethodGet, s.searchSeries))
+	mux.HandleFunc("/api/v1/metadata/series/{id}", method(http.MethodGet, s.seriesDetails))
+	mux.HandleFunc("/api/v1/library/series", method(http.MethodPost, s.addSeries))
+	mux.HandleFunc("/api/v1/library/series/{id}", method(http.MethodGet, s.catalogSeries))
+	mux.HandleFunc("/api/v1/library/series/{id}/refresh", method(http.MethodPost, s.refreshTV))
+	mux.HandleFunc("/api/v1/library/series/{id}/monitor", method(http.MethodPut, s.monitorTV))
+	mux.HandleFunc("/api/v1/library/series/{id}/seasons/{number}", method(http.MethodGet, s.catalogSeason))
+	mux.HandleFunc("/api/v1/library/series/{id}/seasons/{number}/refresh", method(http.MethodPost, s.refreshTV))
+	mux.HandleFunc("/api/v1/library/series/{id}/seasons/{number}/monitor", method(http.MethodPut, s.monitorTV))
+	mux.HandleFunc("/api/v1/library/series/{id}/seasons/{number}/episodes/{episode}/monitor", method(http.MethodPut, s.monitorTV))
 	mux.HandleFunc("/api/v1/integrations/{name}", s.integrationSettings)
 	mux.HandleFunc("/api/v1/integrations/{name}/test", method(http.MethodPost, s.integrationTest))
 	mux.HandleFunc("/api/v1/releases", method(http.MethodGet, s.searchReleases))
@@ -127,10 +138,10 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, map[string]any{
-		"name": "ReelScarey", "version": s.version, "milestone": "movie-workflow",
+		"name": "ReelScarey", "version": s.version, "milestone": "television-catalog",
 		"database": "connected", "schema_version": version, "uptime_seconds": int(time.Since(s.started).Seconds()),
 		"paths":        map[string]string{"config": s.config.ConfigDir, "media": s.config.MediaDir, "downloads": s.config.DownloadsDir},
-		"capabilities": map[string]bool{"authentication": true, "library_settings": true, "metadata_search": true, "movie_add": true, "torznab_search": s.transfer != nil, "downloads": s.transfer != nil, "import": s.transfer != nil, "persistent_jobs": s.transfer != nil, "subtitles": false, "automation": false},
+		"capabilities": map[string]bool{"authentication": true, "library_settings": true, "metadata_search": true, "movie_add": true, "series_catalog": s.metadata != nil && s.metadata.SupportsSeries(), "episode_monitoring": true, "tv_downloads": false, "torznab_search": s.transfer != nil, "downloads": s.transfer != nil, "import": s.transfer != nil, "persistent_jobs": s.transfer != nil, "subtitles": false, "automation": false},
 	})
 }
 
@@ -258,7 +269,8 @@ func frontend(assets fs.FS) http.HandlerFunc {
 			return
 		}
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
-		if routes[r.URL.Path] {
+		seriesID, seriesErr := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/series/"), 10, 64)
+		if routes[r.URL.Path] || (strings.HasPrefix(r.URL.Path, "/series/") && seriesErr == nil && seriesID > 0) {
 			body, err := fs.ReadFile(assets, "index.html")
 			if err != nil {
 				fail(w, 503, "frontend_unavailable", "Build the frontend before starting the application.")

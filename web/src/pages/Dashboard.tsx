@@ -51,7 +51,7 @@ export function Dashboard() {
               </h2>
               <p>
                 Find your next feature on TMDb, explore its details, and keep
-                your growing movie collection together.
+                your growing movie and TV collection together.
               </p>
               <Button size="3" asChild>
                 <Link to="/search">
@@ -110,7 +110,7 @@ export function Dashboard() {
             <section className="panel checklist">
               <div className="section-title">
                 <h2>Your opening checklist</h2>
-                <Badge color="gray">Movie workflow</Badge>
+                <Badge color="gray">Movies & TV</Badge>
               </div>
               <div className="checklist-row">
                 <span className="check-circle">

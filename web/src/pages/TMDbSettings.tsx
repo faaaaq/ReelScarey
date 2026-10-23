@@ -35,7 +35,7 @@ export function TMDbSettings() {
         setToken("");
         resource.reload();
         setSuccess(
-          "TMDb disconnected. Your saved movies are still in the library.",
+          "TMDb disconnected. Your saved movies and shows are still in the library.",
         );
       }
     } catch (error) {
@@ -69,8 +69,8 @@ export function TMDbSettings() {
       {resource.data && !resource.error && (
         <>
           <p>
-            Connect The Movie Database to search for movies, see their details,
-            and add them to your library.
+            Connect The Movie Database to search for movies and TV shows, see
+            their details, and add them to your library.
           </p>
           <form onSubmit={submit}>
             <label htmlFor="tmdb-token">API Read Access Token</label>

@@ -25,7 +25,7 @@ type Error struct {
 
 func (e *Error) Error() string { return e.Message }
 
-var ErrNotConfigured = &Error{Code: "tmdb_not_configured", Message: "Connect TMDb in Settings before searching for movies."}
+var ErrNotConfigured = &Error{Code: "tmdb_not_configured", Message: "Connect TMDb in Settings before searching for movies or TV shows."}
 
 type Movie struct {
 	TMDbID         int64  `json:"tmdb_id"`
@@ -121,7 +121,7 @@ func (c *Client) request(ctx context.Context, token, endpoint string, query url.
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "ReelScarey/0.2")
+	req.Header.Set("User-Agent", "ReelScarey/0.4")
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return &Error{Code: "tmdb_unavailable", Message: "TMDb could not be reached. Check your network and try again."}

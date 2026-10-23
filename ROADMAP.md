@@ -13,7 +13,7 @@ Status is evidence-based: checked items are implemented, not planned adapters.
 - [x] Automated tests and native launch/API/frontend verification
 - [x] Docker build and runtime smoke test executed successfully
 
-## 2 — Movie workflow (current)
+## 2 — Movie workflow
 - [x] Authenticate administration: code-protected setup, login/logout, persistent
   sessions, CSRF/Host checks, password hashing, throttling and local recovery.
 - [x] Implement encrypted, write-only TMDb credentials with real test/replace/
@@ -35,16 +35,22 @@ Status is evidence-based: checked items are implemented, not planned adapters.
 - [x] Journal imports, update library availability and display actionable failures.
 - [ ] Complete owner-service acceptance after a Torznab service and shared download
   mount are connected. Disposable real-client CI validation is recorded separately.
+  Owner explicitly deferred Torznab setup on 2026-10-22 and authorized continuing
+  the project; this acceptance item remains deferred rather than blocking TV work.
 
 Acceptance: a real movie moves from TMDb search through a real indexer and
 download client to a verified library file. Restart during download/import must
 recover; collision and cross-filesystem tests must pass. Disposable services and
 temporary libraries only. Never use unauthorized content as test material.
 
-## 3 — Television
-- Series/seasons/episodes, monitoring and availability
-- Episode and season searches, multi-episode release mapping
-- Reuse download/import services; configurable, validated episode naming
+## 3 — Television (current)
+- [x] Real TMDb TV search/details using the existing encrypted provider connection.
+- [x] Canonical, idempotent show adds; paginated TV library and saved season summaries.
+- [x] Load/refresh season episodes on demand and retain metadata for offline browsing.
+- [x] Persist show/season/episode monitoring with revision conflicts and parent pauses
+  that preserve individual selections. Specials start unselected.
+- [ ] Episode and season release searches, multi-episode mapping and availability.
+- [ ] Reuse download/import services; configurable, validated episode naming.
 
 ## 4 — Automation
 - Scheduled searches and monitoring, quality/language profiles

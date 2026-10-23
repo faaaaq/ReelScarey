@@ -1,8 +1,8 @@
 import { Badge, Button } from "@radix-ui/themes";
-import { MonitorPlay, Plus, Film } from "lucide-react";
+import { Plus, Film } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { type LibraryPage } from "../api";
-import { FuturePage, PageHeading, RequestState } from "../components";
+import { PageHeading, RequestState } from "../components";
 import { MovieCard, Pagination } from "../movieComponents";
 import { useResource } from "../useResource";
 
@@ -24,13 +24,13 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
             : "Every season, all in one place."
         }
       >
-        {movies && (
+        {
           <Button asChild>
-            <Link to="/search">
-              <Plus size={17} /> Add movies
+            <Link to={movies ? "/search" : "/search?kind=series"}>
+              <Plus size={17} /> {movies ? "Add movies" : "Add shows"}
             </Link>
           </Button>
-        )}
+        }
       </PageHeading>
       <RequestState
         loading={resource.loading}
@@ -47,16 +47,27 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                     <Badge
                       color={item.status === "available" ? "green" : "gray"}
                     >
-                      {item.status === "missing"
-                        ? "Not downloaded"
-                        : item.status === "available"
-                          ? "Available"
-                          : "Downloading"}
+                      {!movies
+                        ? "Catalogued"
+                        : item.status === "missing"
+                          ? "Not downloaded"
+                          : item.status === "available"
+                            ? "Available"
+                            : "Downloading"}
                     </Badge>
                     <span>
                       {item.monitored ? "Monitored" : "Not monitored"}
                     </span>
                   </div>
+                  {!movies && (
+                    <div className="movie-card-actions">
+                      <Button asChild variant="soft">
+                        <Link to={`/series/${item.id}`}>
+                          Seasons & episodes
+                        </Link>
+                      </Button>
+                    </div>
+                  )}
                   {movies && item.status !== "available" && (
                     <div className="movie-card-actions">
                       <Button asChild variant="soft">
@@ -77,20 +88,22 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                 </MovieCard>
               ))}
             </div>
-          ) : movies ? (
+          ) : (
             <section className="panel empty-state">
               <span className="empty-icon">
                 <Film size={32} strokeWidth={1.4} />
               </span>
               <h2>
                 {page > 1
-                  ? "No movies on this page."
-                  : "Your next feature starts here."}
+                  ? `No ${movies ? "movies" : "shows"} on this page.`
+                  : movies
+                    ? "Your next feature starts here."
+                    : "Your next series starts here."}
               </h2>
               <p>
                 {page > 1
                   ? "Return to the first page to browse your library."
-                  : "Search TMDb for a movie and add it to your collection. Metadata and artwork stay in your library across restarts."}
+                  : `Search TMDb for a ${movies ? "movie" : "show"} and add it to your collection. Metadata and artwork stay in your library across restarts.`}
               </p>
               {page > 1 ? (
                 <Button onClick={() => setParams({ page: "1" })}>
@@ -98,17 +111,12 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                 </Button>
               ) : (
                 <Button asChild>
-                  <Link to="/search">Find a movie</Link>
+                  <Link to={movies ? "/search" : "/search?kind=series"}>
+                    {movies ? "Find a movie" : "Find a show"}
+                  </Link>
                 </Button>
               )}
             </section>
-          ) : (
-            <FuturePage
-              icon={MonitorPlay}
-              title="The next season starts here."
-              description="Show monitoring and episode tracking follow the complete movie workflow."
-              phase="Planned · Phase 3"
-            />
           )}
           <Pagination
             page={resource.data.page}

@@ -24,7 +24,7 @@ func (s *Server) providerError(w http.ResponseWriter, err error) {
 		switch provider.Code {
 		case "tmdb_not_configured":
 			status = 409
-		case "movie_not_found":
+		case "movie_not_found", "series_not_found":
 			status = 404
 		case "tmdb_invalid_token":
 			status = 400

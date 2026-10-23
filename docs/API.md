@@ -1,4 +1,4 @@
-# REST API — movie catalog
+# REST API — media catalog and movie downloads
 
 All routes are same-origin. JSON uses snake_case. All `/api/v1` routes require
 an administrator session except the three public auth routes below. Mutations
@@ -16,7 +16,7 @@ explicitly documented as breaking before the first stable release.
 | GET | `/api/v1/settings` | Current library preferences and revision |
 | PUT | `/api/v1/settings` | Validate and atomically update preferences if revision matches |
 | GET | `/api/v1/library?kind=movie&page=1` | Paginated movies and saved metadata |
-| GET | `/api/v1/library?kind=series&page=1` | Paginated series read model; adding shows is upcoming |
+| GET | `/api/v1/library?kind=series&page=1` | Paginated TV catalog |
 | GET | `/api/v1/auth/session` | Public setup/auth status; authenticated response includes username, csrf_token, expires_at |
 | POST | `/api/v1/auth/setup` | Public, rate-limited first admin creation; username, password, setup_token; returns 201 + cookie |
 | POST | `/api/v1/auth/login` | Public, rate-limited username/password login; returns 200 + cookie |
@@ -29,6 +29,16 @@ explicitly documented as breaking before the first stable release.
 | GET | `/api/v1/metadata/movies/{tmdb_id}` | Canonical movie details from TMDb |
 | POST | `/api/v1/library/movies` | Add canonical metadata by TMDb ID; 201 created or 200 existing |
 | GET | `/api/v1/library/movies/{id}` | Saved movie by catalog ID, without a TMDb request |
+| GET | `/api/v1/metadata/series?query=title&page=1` | TMDb TV search with per-result in_library |
+| GET | `/api/v1/metadata/series/{tmdb_id}` | Canonical show details and season summaries |
+| POST | `/api/v1/library/series` | Canonical show add by tmdb_id and optional monitored; 201 new/200 existing |
+| GET | `/api/v1/library/series/{id}` | Saved show, revision, status and season summaries |
+| POST | `/api/v1/library/series/{id}/refresh` | `{ "revision": 1 }`; refresh show metadata/seasons, preserve selections |
+| GET | `/api/v1/library/series/{id}/seasons/{number}` | Saved season and episodes; no provider request |
+| POST | `/api/v1/library/series/{id}/seasons/{number}/refresh` | `{ "revision": 1 }`; load/refresh canonical episodes |
+| PUT | `/api/v1/library/series/{id}/monitor` | `{ "monitored": false, "revision": 1 }`; pause/resume show |
+| PUT | `/api/v1/library/series/{id}/seasons/{number}/monitor` | Same body; season selection |
+| PUT | `/api/v1/library/series/{id}/seasons/{number}/episodes/{episode}/monitor` | Same body; episode selection |
 | GET/PUT/DELETE | `/api/v1/integrations/torznab` | Safe status; test/encrypt configuration; disconnect |
 | GET/PUT/DELETE | `/api/v1/integrations/qbittorrent` | Safe status; test/encrypt configuration; disconnect when no active jobs |
 | POST | `/api/v1/integrations/{name}/test` | Test saved Torznab/qBittorrent connection |
@@ -52,6 +62,20 @@ The `(kind,tmdb_id)` uniqueness constraint prevents duplicate rows. Existing add
 return the original item without calling TMDb or changing monitoring preferences.
 New movie adds save status `missing`; selecting a release is a separate action.
 Queueing sets `downloading`; a verified import transaction sets `available`.
+
+TV adds use the same canonical/idempotent add contract and store `kind: series`.
+TV metadata shares title/year/artwork fields, using first_air_date as release_date,
+and adds series_status/seasons. Saved TV details add revision/updated_at. Seasons
+have local id, tmdb_id, number (0 means specials), title, overview, air_date,
+episode_count, monitored, loaded_at, known_episodes and selected_episodes.
+Season GET returns `{ "season": {...}, "episodes": [...], "revision": 1,
+"series_monitored": true }`. Episodes include id, tmdb_id, number, title,
+overview, air_date, runtime_minutes, monitored and effective_monitored.
+Effective monitoring requires all three show/season/episode switches to be on.
+Every TV change/refresh compares the show revision transactionally and increments
+it; stale edits return 409 revision_conflict. Invalid child targets roll back the
+revision. Refresh preserves selections and retains previously stored episodes
+absent from a later provider response. TV download/import routes do not exist yet.
 
 Torznab PUT body is `{ "url": "https://indexer.example/api", "api_key": "..." }`.
 qBittorrent PUT body is `{ "url": "https://qbt.example", "username": "admin",

@@ -38,7 +38,8 @@ docs/                API and operational documentation
 
 Implemented tables: `schema_migrations`, singleton `settings`, `media_items`,
 singleton `admin_account`, `sessions`, `provider_secrets`, `integration_configs`,
-`release_candidates`, `downloads`, `import_operations`, and `media_files`.
+`release_candidates`, `downloads`, `import_operations`, `media_files`,
+`series_details`, `seasons` and `episodes`.
 The migration ledger stores version, filename, checksum, and applied time.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored
@@ -52,12 +53,19 @@ Movie adds do not change files. A separately selected release creates a durable
 download job. Verified import registers a media file and marks the movie available.
 Migration 003 adds this without altering prior migrations or account/provider state.
 
+Migration 004 adds TV details, season summaries and episodes. TV uses the same
+catalog item and encrypted TMDb connection. Adding a show fetches canonical series
+metadata once and transactionally inserts its summaries; season episodes load on
+explicit request. Show-level revision checks serialize all metadata refreshes and
+monitoring changes. Parent monitoring switches gate effective episode monitoring
+without changing child selections. Refresh upserts metadata by season/episode
+number while retaining selections and rows absent from later provider responses.
+TV file registration/download mapping is not implemented yet.
+
 Planned entities (design, **not implemented schema**):
 
 | Entity | Relationships and invariants |
 | --- | --- |
-| seasons | Belongs to a series media item; unique series + season number |
-| episodes | Belongs to season; unique season + episode number; optional air date |
 | episode_files | Join future episode records to imported files; multi-episode mapping |
 | indexers/download_clients | Future multi-provider CRUD; one encrypted configuration per integration exists now |
 | quality_profiles | Ordered qualities, languages, cutoff and scoring rules |
@@ -70,11 +78,13 @@ an imported file can survive removal of download-client history.
 
 ## Module boundaries and planned interfaces
 
-TMDb MovieProvider implements Validate/Search/Movie; the library implements
-Counts/List/Movie/ByID/AddMovie. Transfer's Indexer and Client interfaces implement
+TMDb MovieProvider implements Validate/Search/Movie; SeriesProvider implements
+SearchSeries/Series/Season using the same bounded HTTP client, rate-limit cooldown
+and encrypted credential. The library owns catalog adds, reads and TV monitoring.
+Transfer's Indexer and Client interfaces implement
 capability tests, search/metainfo retrieval and authenticated add/info/files.
 The broader contracts below include future scope. Interfaces accompany tested
-tested consumer. Every operation receives a context and returns typed results/errors.
+consumers. Every operation receives a context and returns typed results/errors.
 
 | Module | Responsibility | Primary service contract |
 | --- | --- | --- |

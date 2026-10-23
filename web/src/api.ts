@@ -52,6 +52,42 @@ export type LibraryPage = {
   total: number;
   limit: number;
 };
+export type TVSeason = {
+  id: number;
+  tmdb_id: number;
+  number: number;
+  title: string;
+  overview: string;
+  air_date: string;
+  episode_count: number;
+  monitored: boolean;
+  loaded_at: string;
+  known_episodes: number;
+  selected_episodes: number;
+};
+export type TVEpisode = {
+  id: number;
+  tmdb_id: number;
+  number: number;
+  title: string;
+  overview: string;
+  air_date: string;
+  runtime_minutes: number | null;
+  monitored: boolean;
+  effective_monitored: boolean;
+};
+export type TVSeries = MediaItem & {
+  series_status: string;
+  revision: number;
+  updated_at: string;
+  seasons: TVSeason[];
+};
+export type TVSeasonDetails = {
+  season: TVSeason;
+  episodes: TVEpisode[];
+  revision: number;
+  series_monitored: boolean;
+};
 export type Session = {
   username: string;
   csrf_token: string;

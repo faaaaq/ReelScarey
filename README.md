@@ -2,17 +2,19 @@
 
 **Media management, without the horror.**
 
-A unified, self-hosted media application in Go and React. This is the first
-movie workflow milestone, not yet a complete replacement for Sonarr/Radarr/Prowlarr/Bazarr.
+A unified, self-hosted media application in Go and React. Movie downloads/imports
+and the TV catalog are implemented; the wider automation roadmap is still in progress.
 
 Working now: administrator setup/login/logout, persistent sessions, encrypted
 TMDb connection settings with real connection tests, TMDb movie search/details,
 idempotent movie adds, paginated poster browsing, persisted library settings,
 live dashboard counts, Torznab release search, qBittorrent downloads, persistent
-download tracking and verified imports. One server owns the UI, REST API,
+download tracking and verified imports, plus TV search, canonical show adds,
+season/episode lists, metadata refresh and persistent monitoring choices.
+One server owns the UI, REST API,
 worker and SQLite database.
 
-Not implemented: adding TV shows, scheduled searches, quality/upgrade policies,
+Not implemented: TV release matching/downloads/imports, scheduled searches, quality/upgrade policies,
 subtitles, or full production hardening. Monitoring is a saved preference;
 downloads start only when you select a release. No existing media is scanned.
 FFprobe verifies completed video files before import. Sources remain in place
@@ -40,6 +42,12 @@ volumes upgrade automatically; the first login upgrade requires account setup.
 Connect a Torznab API endpoint and qBittorrent in Settings. In Movies, choose
 Find releases, search, then select Download. Activity tracks download/import
 progress and offers recovery actions. See [movie workflow setup](docs/MOVIE_WORKFLOW.md).
+
+For TV, choose TV shows in Search, add a show, then open Seasons & episodes in
+the TV library. Load each season's episodes from TMDb as needed and choose which
+ones to monitor. Pausing a show or season preserves individual selections.
+TV catalog features do not require Torznab or access to media files. See
+[TV catalog operations](docs/TELEVISION.md). Existing movie integrations are retained.
 
 The named `reelscarey_config` volume persists the database under `/config`.
 Change `MEDIA_PATH` and `DOWNLOADS_PATH` in `.env` for your host folders; they map

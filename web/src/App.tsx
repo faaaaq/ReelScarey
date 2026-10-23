@@ -29,6 +29,7 @@ import { Search as MovieSearch } from "./pages/Search";
 import { AuthGate, useAuth } from "./auth";
 import { Activity as DownloadActivity } from "./pages/Activity";
 import { Releases } from "./pages/Releases";
+import { Series } from "./pages/Series";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -66,7 +67,7 @@ function AppShell() {
   const location = useLocation();
   useEffect(() => {
     setMenuOpen(false);
-    document.title = `${location.pathname === "/settings" ? "Settings" : location.pathname === "/releases" ? "Releases" : (navigation.find((item) => item.path === location.pathname)?.name ?? "Page")} · ReelScarey`;
+    document.title = `${location.pathname.startsWith("/series/") ? "TV show" : location.pathname === "/settings" ? "Settings" : location.pathname === "/releases" ? "Releases" : (navigation.find((item) => item.path === location.pathname)?.name ?? "Page")} · ReelScarey`;
   }, [location.pathname]);
   useEffect(() => {
     function close(event: KeyboardEvent) {
@@ -124,9 +125,9 @@ function AppShell() {
           </nav>
           <div className="foundation-label">
             <span className="status-dot" />
-            <span>Movie workflow</span>
+            <span>Movies & TV</span>
             <Badge color="gray" size="1">
-              0.3
+              0.4
             </Badge>
           </div>
           <div className="account-control">
@@ -157,6 +158,7 @@ function AppShell() {
               element={<Library key="series" kind="series" />}
             />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/series/:id" element={<Series />} />
             <Route path="/search" element={<MovieSearch />} />
             <Route path="/releases" element={<Releases />} />
             <Route path="/activity" element={<DownloadActivity />} />

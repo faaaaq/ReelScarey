@@ -1,0 +1,262 @@
+package library
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+
+	"github.com/faaaaq/ReelScarey/internal/metadata"
+)
+
+var ErrRevision = errors.New("This show changed. Refresh it before saving your choice.")
+
+type TVSeason struct {
+	ID int64 `json:"id"`
+	metadata.SeasonSummary
+	Monitored        bool   `json:"monitored"`
+	LoadedAt         string `json:"loaded_at"`
+	KnownEpisodes    int    `json:"known_episodes"`
+	SelectedEpisodes int    `json:"selected_episodes"`
+}
+type TVEpisode struct {
+	ID int64 `json:"id"`
+	metadata.Episode
+	Monitored          bool `json:"monitored"`
+	EffectiveMonitored bool `json:"effective_monitored"`
+}
+type TVSeries struct {
+	Item
+	SeriesStatus string     `json:"series_status"`
+	Revision     int64      `json:"revision"`
+	UpdatedAt    string     `json:"updated_at"`
+	Seasons      []TVSeason `json:"seasons"`
+}
+type TVSeasonDetails struct {
+	Season          TVSeason    `json:"season"`
+	Episodes        []TVEpisode `json:"episodes"`
+	Revision        int64       `json:"revision"`
+	SeriesMonitored bool        `json:"series_monitored"`
+}
+
+func (s *Store) Series(ctx context.Context, tmdbID int64) (Item, error) {
+	return scan(s.db.QueryRowContext(ctx, "SELECT "+columns+" FROM media_items WHERE kind='series' AND tmdb_id=?", tmdbID))
+}
+
+const seasonColumns = `s.id,s.tmdb_id,s.number,s.title,s.overview,s.air_date,s.episode_count,s.monitored,s.loaded_at,(SELECT COUNT(*) FROM episodes e WHERE e.season_id=s.id),(SELECT COUNT(*) FROM episodes e WHERE e.season_id=s.id AND e.monitored=1)`
+
+func scanSeason(row scanner) (TVSeason, error) {
+	var v TVSeason
+	e := row.Scan(&v.ID, &v.TMDbID, &v.Number, &v.Title, &v.Overview, &v.AirDate, &v.EpisodeCount, &v.Monitored, &v.LoadedAt, &v.KnownEpisodes, &v.SelectedEpisodes)
+	return v, e
+}
+func (s *Store) TVShow(ctx context.Context, id int64) (TVSeries, error) {
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return TVSeries{}, e
+	}
+	defer tx.Rollback()
+	item, e := scan(tx.QueryRowContext(ctx, "SELECT "+columns+" FROM media_items WHERE kind='series' AND id=?", id))
+	if e != nil {
+		return TVSeries{}, e
+	}
+	out := TVSeries{Item: item, Seasons: []TVSeason{}}
+	if e = tx.QueryRowContext(ctx, `SELECT series_status,revision,updated_at FROM series_details WHERE media_id=?`, id).Scan(&out.SeriesStatus, &out.Revision, &out.UpdatedAt); e != nil {
+		return TVSeries{}, e
+	}
+	rows, e := tx.QueryContext(ctx, `SELECT `+seasonColumns+` FROM seasons s WHERE s.series_id=? ORDER BY s.number`, id)
+	if e != nil {
+		return TVSeries{}, e
+	}
+	for rows.Next() {
+		v, e := scanSeason(rows)
+		if e != nil {
+			rows.Close()
+			return TVSeries{}, e
+		}
+		out.Seasons = append(out.Seasons, v)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return TVSeries{}, e
+	}
+	return out, tx.Commit()
+}
+func (s *Store) TVSeason(ctx context.Context, id int64, number int) (TVSeasonDetails, error) {
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return TVSeasonDetails{}, e
+	}
+	defer tx.Rollback()
+	out := TVSeasonDetails{Episodes: []TVEpisode{}}
+	if e = tx.QueryRowContext(ctx, `SELECT d.revision,m.monitored FROM series_details d JOIN media_items m ON m.id=d.media_id WHERE d.media_id=? AND m.kind='series'`, id).Scan(&out.Revision, &out.SeriesMonitored); e != nil {
+		return out, e
+	}
+	out.Season, e = scanSeason(tx.QueryRowContext(ctx, `SELECT `+seasonColumns+` FROM seasons s WHERE s.series_id=? AND s.number=?`, id, number))
+	if e != nil {
+		return out, e
+	}
+	rows, e := tx.QueryContext(ctx, `SELECT id,tmdb_id,number,title,overview,air_date,runtime_minutes,monitored FROM episodes WHERE season_id=? ORDER BY number`, out.Season.ID)
+	if e != nil {
+		return out, e
+	}
+	for rows.Next() {
+		var v TVEpisode
+		if e = rows.Scan(&v.ID, &v.TMDbID, &v.Number, &v.Title, &v.Overview, &v.AirDate, &v.RuntimeMinutes, &v.Monitored); e != nil {
+			rows.Close()
+			return out, e
+		}
+		v.EffectiveMonitored = out.SeriesMonitored && out.Season.Monitored && v.Monitored
+		out.Episodes = append(out.Episodes, v)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return out, e
+	}
+	return out, tx.Commit()
+}
+func putSeasons(ctx context.Context, tx *sql.Tx, id int64, seasons []metadata.SeasonSummary) error {
+	for _, v := range seasons {
+		if _, e := tx.ExecContext(ctx, `INSERT INTO seasons(series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(series_id,number) DO UPDATE SET tmdb_id=excluded.tmdb_id,title=excluded.title,overview=excluded.overview,air_date=excluded.air_date,episode_count=excluded.episode_count`, id, v.TMDbID, v.Number, v.Title, v.Overview, v.AirDate, v.EpisodeCount, v.Number != 0); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+func (s *Store) AddSeries(ctx context.Context, show metadata.Series, monitored bool) (Item, bool, error) {
+	if show.TMDbID < 1 || show.Title == "" {
+		return Item{}, false, errors.New("invalid series metadata")
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return Item{}, false, e
+	}
+	defer tx.Rollback()
+	result, e := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date) VALUES('series',?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, show.TMDbID, show.Title, show.Year, monitored, show.Overview, show.PosterPath, show.ReleaseDate)
+	if e != nil {
+		return Item{}, false, e
+	}
+	n, e := result.RowsAffected()
+	if e != nil {
+		return Item{}, false, e
+	}
+	item, e := scan(tx.QueryRowContext(ctx, "SELECT "+columns+" FROM media_items WHERE kind='series' AND tmdb_id=?", show.TMDbID))
+	if e != nil {
+		return Item{}, false, e
+	}
+	if n == 1 {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO series_details(media_id,series_status) VALUES(?,?)`, item.ID, show.SeriesStatus); e != nil {
+			return Item{}, false, e
+		}
+		if e = putSeasons(ctx, tx, item.ID, show.Seasons); e != nil {
+			return Item{}, false, e
+		}
+	}
+	return item, n == 1, tx.Commit()
+}
+func bumpSeries(ctx context.Context, tx *sql.Tx, id, revision int64) error {
+	r, e := tx.ExecContext(ctx, `UPDATE series_details SET revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE media_id=? AND revision=?`, id, revision)
+	if e != nil {
+		return e
+	}
+	n, e := r.RowsAffected()
+	if e != nil {
+		return e
+	}
+	if n != 1 {
+		var exists int
+		if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM series_details WHERE media_id=?`, id).Scan(&exists); e != nil {
+			return e
+		}
+		if exists == 0 {
+			return sql.ErrNoRows
+		}
+		return ErrRevision
+	}
+	return nil
+}
+func (s *Store) RefreshSeries(ctx context.Context, id int64, show metadata.Series, revision int64) error {
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	var tmdbID int64
+	if e = tx.QueryRowContext(ctx, `SELECT tmdb_id FROM media_items WHERE id=? AND kind='series'`, id).Scan(&tmdbID); e != nil {
+		return e
+	}
+	if tmdbID != show.TMDbID {
+		return errors.New("series identity mismatch")
+	}
+	if e = bumpSeries(ctx, tx, id, revision); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET title=?,year=?,overview=?,poster_path=?,release_date=? WHERE id=?`, show.Title, show.Year, show.Overview, show.PosterPath, show.ReleaseDate, id); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE series_details SET series_status=? WHERE media_id=?`, show.SeriesStatus, id); e != nil {
+		return e
+	}
+	if e = putSeasons(ctx, tx, id, show.Seasons); e != nil {
+		return e
+	}
+	return tx.Commit()
+}
+func (s *Store) SaveSeason(ctx context.Context, id int64, season metadata.Season, revision int64) error {
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	var seasonID, tmdbID int64
+	if e = tx.QueryRowContext(ctx, `SELECT id,tmdb_id FROM seasons WHERE series_id=? AND number=?`, id, season.Number).Scan(&seasonID, &tmdbID); e != nil {
+		return e
+	}
+	if tmdbID != season.TMDbID {
+		return &metadata.Error{Code: "tmdb_invalid_response", Message: "This season's identity changed. Refresh the show before loading its episodes."}
+	}
+	if e = bumpSeries(ctx, tx, id, revision); e != nil {
+		return e
+	}
+	for _, v := range season.Episodes {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO episodes(season_id,tmdb_id,number,title,overview,air_date,runtime_minutes) VALUES(?,?,?,?,?,?,?) ON CONFLICT(season_id,number) DO UPDATE SET tmdb_id=excluded.tmdb_id,title=excluded.title,overview=excluded.overview,air_date=excluded.air_date,runtime_minutes=excluded.runtime_minutes`, seasonID, v.TMDbID, v.Number, v.Title, v.Overview, v.AirDate, v.RuntimeMinutes); e != nil {
+			return e
+		}
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE seasons SET title=?,overview=?,air_date=?,episode_count=?,loaded_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`, season.Title, season.Overview, season.AirDate, len(season.Episodes), seasonID); e != nil {
+		return e
+	}
+	return tx.Commit()
+}
+
+// Parent switches pause monitoring; they never overwrite individual selections.
+func (s *Store) MonitorTV(ctx context.Context, id, revision int64, season *int, episode *int, monitored bool) error {
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	if e = bumpSeries(ctx, tx, id, revision); e != nil {
+		return e
+	}
+	var result sql.Result
+	if season == nil {
+		result, e = tx.ExecContext(ctx, `UPDATE media_items SET monitored=? WHERE id=? AND kind='series'`, monitored, id)
+	} else if episode == nil {
+		result, e = tx.ExecContext(ctx, `UPDATE seasons SET monitored=? WHERE series_id=? AND number=?`, monitored, id, *season)
+	} else {
+		result, e = tx.ExecContext(ctx, `UPDATE episodes SET monitored=? WHERE number=? AND season_id=(SELECT id FROM seasons WHERE series_id=? AND number=?)`, monitored, *episode, id, *season)
+	}
+	if e != nil {
+		return e
+	}
+	n, e := result.RowsAffected()
+	if e != nil {
+		return e
+	}
+	if n != 1 {
+		return sql.ErrNoRows
+	}
+	return tx.Commit()
+}

@@ -1161,6 +1161,110 @@ dd {
   flex-wrap: wrap;
   margin-top: 25px;
 }
+.search-kind {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.series-summary {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 28px;
+  padding: 28px;
+  margin: 24px 0;
+}
+.series-summary .movie-poster {
+  border-radius: 8px;
+}
+.series-summary p {
+  line-height: 1.8;
+}
+.series-heading {
+  margin: 30px 0 18px;
+  font-size: 21px;
+}
+.season-list {
+  display: grid;
+  gap: 16px;
+}
+.season-card {
+  padding: 24px;
+}
+.season-header {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+.season-header > div {
+  flex: 1;
+  min-width: 160px;
+}
+.season-header h3 {
+  margin: 0 0 7px;
+  font-size: 17px;
+}
+.season-header p {
+  margin: 0;
+  font-size: 12px;
+  color: #a1a5b0;
+  line-height: 1.7;
+}
+.season-header .monitor-choice {
+  margin: 0;
+}
+.season-episodes {
+  margin-top: 24px;
+  border-top: 1px solid #30323b;
+  padding-top: 20px;
+}
+.season-episodes > p {
+  line-height: 1.8;
+  margin-bottom: 18px;
+}
+.episode-list {
+  padding: 0;
+  list-style: none;
+  margin: 24px 0 0;
+}
+.episode-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 0;
+  border-top: 1px solid #30323b;
+}
+.episode-list li > div {
+  min-width: 0;
+}
+.episode-list h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.episode-list p {
+  line-height: 1.8;
+  font-size: 12px;
+  margin: 8px 0;
+}
+.episode-list .monitor-choice {
+  align-self: start;
+  margin: 0;
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .series-summary {
+    grid-template-columns: 85px minmax(0, 1fr);
+    gap: 18px;
+    padding: 20px;
+  }
+  .season-card {
+    padding: 20px;
+  }
+  .episode-list li {
+    flex-direction: column;
+    gap: 14px;
+  }
+}
 @media (max-width: 700px) {
   .auth-card {
     padding: 28px 24px;

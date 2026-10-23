@@ -1,5 +1,35 @@
 # Validation record — 2026-10-22
 
+## Television catalog milestone
+
+The owner deferred Torznab setup and authorized continuing to television. This
+milestone implements TMDb TV search/details, canonical idempotent show adds,
+season summaries, on-demand episode loading/refresh and revision-checked
+show/season/episode monitoring. TV release/download/import work remains pending.
+
+- The TV provider contract checks search encoding, language/adult/page parameters,
+  series/season identity, specials, unknown dates, nullable runtimes and invalid
+  or duplicate episodes. Existing bounded HTTP, TLS, redirect and rate-limit
+  behavior is shared with the movie adapter.
+- Library/API checks cover distinct movie/TV identities, canonical adds, duplicate
+  retry during a provider outage, selections across refresh/pause/reopen, stale
+  revision rejection, missing-child rollback, authenticated/CSRF-protected routes,
+  offline episode reads and direct TV browser links.
+- Migration 004 upgrades from 003 with existing movies/series and encrypted
+  integration data, preserving the catalog and opaque credential bytes. Earlier
+  migrations remain unchanged. A stopped-config backup precedes preview upgrade.
+- Frontend clean installation, formatting, TypeScript, production build and all
+  19 interaction tests pass, including TV search/add and episode monitoring.
+  A restricted npm cache failed locally; reinstalling from the locked registry
+  outside that cache succeeded with zero reported vulnerabilities at install time.
+- The full Go test suite, go vet, Windows executable build and isolated native
+  startup/authentication/restart/password-recovery smoke pass. An initial Go
+  package scan overlapped a dependency reinstall and failed while node_modules
+  was being replaced; the required sequential run after the frontend build passed.
+- Live preview and Linux CI results are recorded after execution.
+
+See [television operations](TELEVISION.md) for monitoring semantics and limits.
+
 ## Movie download/import milestone
 
 Implemented Torznab capability tests/search, authenticated qBittorrent submission,

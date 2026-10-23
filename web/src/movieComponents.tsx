@@ -60,11 +60,13 @@ export function AddMovieButton({
   added,
   onAdded,
   monitored = true,
+  kind = "movie",
 }: {
   id: number;
   added: boolean;
   onAdded: (id: number) => void;
   monitored?: boolean;
+  kind?: "movie" | "series";
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -73,7 +75,7 @@ export function AddMovieButton({
     setPending(true);
     setError("");
     try {
-      await api("/library/movies", {
+      await api(kind === "series" ? "/library/series" : "/library/movies", {
         method: "POST",
         body: JSON.stringify({ tmdb_id: id, monitored }),
       });
@@ -94,7 +96,7 @@ export function AddMovieButton({
     <div>
       <Button disabled={pending} onClick={() => void add()}>
         <Plus size={16} />
-        {pending ? "Adding…" : "Add movie"}
+        {pending ? "Adding…" : kind === "series" ? "Add show" : "Add movie"}
       </Button>
       {error && (
         <p role="alert" className="movie-error">
@@ -110,14 +112,18 @@ export function MovieDetails({
   added,
   onAdded,
   close,
+  kind = "movie",
 }: {
   id: number;
   title: string;
   added: boolean;
   onAdded: (id: number) => void;
   close: () => void;
+  kind?: "movie" | "series";
 }) {
-  const details = useResource<Movie>(`/metadata/movies/${id}`);
+  const details = useResource<Movie>(
+    `/metadata/${kind === "series" ? "series" : "movies"}/${id}`,
+  );
   const [monitored, setMonitored] = useState(true);
   return (
     <Dialog.Root
@@ -129,7 +135,7 @@ export function MovieDetails({
       <Dialog.Content maxWidth="650px">
         <Dialog.Title>{details.data?.title ?? title}</Dialog.Title>
         <Dialog.Description size="2">
-          Movie details from TMDb.
+          {kind === "series" ? "TV show" : "Movie"} details from TMDb.
         </Dialog.Description>
         <RequestState
           loading={details.loading}
@@ -152,7 +158,7 @@ export function MovieDetails({
                 </p>
                 <a
                   className="text-link"
-                  href={`https://www.themoviedb.org/movie/${id}`}
+                  href={`https://www.themoviedb.org/${kind === "series" ? "tv" : "movie"}/${id}`}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -164,16 +170,18 @@ export function MovieDetails({
               <>
                 <label className="monitor-choice">
                   <Switch checked={monitored} onCheckedChange={setMonitored} />{" "}
-                  Monitor this movie
+                  Monitor this {kind === "series" ? "show" : "movie"}
                 </label>
                 <p className="field-help">
-                  Saves your monitoring preference. Find and select releases
-                  from your movie library; scheduled searching is upcoming.
+                  {kind === "series"
+                    ? "Regular seasons start selected; specials start unselected. Choose individual seasons and episodes in your library. Monitoring saves your choices; TV downloading is upcoming."
+                    : "Saves your monitoring preference. Find and select releases from your movie library; scheduled searching is upcoming."}
                 </p>
               </>
             )}
             <div className="movie-dialog-actions">
               <AddMovieButton
+                kind={kind}
                 id={id}
                 added={added}
                 onAdded={onAdded}
@@ -181,7 +189,10 @@ export function MovieDetails({
               />
               {added && (
                 <Button asChild variant="soft">
-                  <Link to="/movies" onClick={close}>
+                  <Link
+                    to={kind === "series" ? "/series" : "/movies"}
+                    onClick={close}
+                  >
                     Open library
                   </Link>
                 </Button>
