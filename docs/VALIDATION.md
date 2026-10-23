@@ -60,8 +60,12 @@ real adapter is OpenSubtitles.com; owner-account acceptance awaits private setup
   from the hosted runner's Azure mirror. The prior successful run downloaded
   74.4 MB at only 63.9 kB/s and narrowly finished under the 20-minute limit.
   CI now selects Ubuntu's primary HTTPS archive in the runner's mirror list,
-  retaining package signatures and the existing timeout. That infrastructure and
-  packaging follow-up is being checked separately; no feature code changed.
+  retaining package signatures and the existing timeout.
+- The [final successful Linux run](https://github.com/faaaaq/ReelScarey/actions/runs/40014778675)
+  at code/packaging commit f669038 passed all 31 interface tests, full Go race/vet,
+  real qBittorrent movie/TV imports, generated subtitle-media acceptance, native
+  restart smoke and Docker build/container restart smoke. The corrected container
+  reports 0.7.0-dev. No owner provider credentials or media were used by CI.
 
 See SUBTITLES.md for exact format/matching/cache/recovery limits.
 
