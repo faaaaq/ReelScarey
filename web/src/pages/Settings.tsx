@@ -24,9 +24,20 @@ export function Settings() {
 
   useEffect(() => {
     if (settings.data) {
-      const { library_name, movie_folder, series_folder, revision } =
-        settings.data;
-      const value = { library_name, movie_folder, series_folder, revision };
+      const {
+        library_name,
+        movie_folder,
+        series_folder,
+        episode_naming,
+        revision,
+      } = settings.data;
+      const value = {
+        library_name,
+        movie_folder,
+        series_folder,
+        episode_naming,
+        revision,
+      };
       setForm(value);
       setSaved(value);
       setError("");
@@ -57,6 +68,7 @@ export function Settings() {
         library_name: result.library_name,
         movie_folder: result.movie_folder,
         series_folder: result.series_folder,
+        episode_naming: result.episode_naming,
         revision: result.revision,
       };
       setForm(value);
@@ -141,9 +153,24 @@ export function Settings() {
                 />
                 <p className="field-help" id="folder-help">
                   Separate folder names under your media root. Use letters,
-                  numbers, spaces, hyphens, or underscores. New movie imports
-                  use this movie folder; saving preferences alone creates no
-                  folders.
+                  numbers, spaces, hyphens, or underscores. Saving preferences
+                  alone creates no folders.
+                </p>
+                <label htmlFor="episode-naming">TV episode names</label>
+                <select
+                  id="episode-naming"
+                  value={form.episode_naming ?? "standard"}
+                  onChange={(e) => update("episode_naming", e.target.value)}
+                >
+                  <option value="standard">Show - S01E01</option>
+                  <option value="with-title">
+                    Show - S01E01 - Episode title
+                  </option>
+                </select>
+                <p className="field-help">
+                  New TV downloads use this naming choice and TV folder.
+                  Multi-episode files use S01E01-E02. Existing files and import
+                  plans keep their names.
                 </p>
               </fieldset>
               {error && (

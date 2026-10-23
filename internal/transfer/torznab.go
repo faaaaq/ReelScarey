@@ -156,7 +156,11 @@ func (t *Torznab) Search(ctx context.Context, c IndexerConfig, query string) ([]
 	}
 	q := u.Query()
 	q.Set("q", query)
-	q.Set("cat", "2000")
+	category := c.Category
+	if category == "" {
+		category = "2000"
+	}
+	q.Set("cat", category)
 	q.Set("extended", "1")
 	q.Set("limit", strconv.Itoa(limit))
 	u.RawQuery = q.Encode()

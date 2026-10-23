@@ -1,4 +1,34 @@
-# Validation record — 2026-10-22
+# Validation record — 2026-10-23
+
+## Television downloads and imports
+
+Torznab owner setup remains explicitly deferred. This milestone extends the
+existing provider/client/leased worker and anchored importer for episode and
+season releases, reservations, confirmed file mappings, multi-episode files,
+per-file crash journals, naming preferences and registered episode availability.
+
+- Backend checks pass for reviewed mappings, disjoint/overlapping reservations,
+  cancellation/resume conflicts, explicit skips, lost submission responses,
+  multi-episode registration, copy/hardlink preference, source retention,
+  collision refusal and partial-season restart while the client API is offline.
+- The schema upgrade check preserves completed movie registrations, staged movie
+  journals, file IDs and opaque encrypted payload bytes with foreign keys enabled.
+- TV search/mapping API checks cover authentication/CSRF, TV category 5000,
+  canonical episode scope, strict bodies and refusal of client-supplied paths.
+- Clean locked frontend install, formatting, TypeScript, build and all 22
+  interface tests pass. Mapping tests require review, group episode IDs, preserve
+  failed choices and verify episode-scoped release requests. No known dependency
+  vulnerabilities were reported during that install.
+- Full Go tests, go vet, Windows executable build and isolated native
+  startup/authentication/restart/password-recovery smoke pass.
+- The Linux opt-in real-client check now includes a generated multi-file TV pack
+  with three episodes across two videos, plus the existing movie regression.
+  It reopens state during download and after mapping confirmation. Execution
+  results, native checks and preview checks are recorded after completion.
+
+Media tests use disposable roots and owned generated data. The owner's existing
+torrents/library are not used for acceptance. See TV_DOWNLOADS.md for behavior,
+filesystem guarantees and bounded pack/mapping limits.
 
 ## Television catalog milestone
 

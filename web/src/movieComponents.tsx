@@ -174,7 +174,7 @@ export function MovieDetails({
                 </label>
                 <p className="field-help">
                   {kind === "series"
-                    ? "Regular seasons start selected; specials start unselected. Choose individual seasons and episodes in your library. Monitoring saves your choices; TV downloading is upcoming."
+                    ? "Regular seasons start selected; specials start unselected. Choose seasons and episodes in your library, then find releases. Completed TV files need your mapping confirmation before import."
                     : "Saves your monitoring preference. Find and select releases from your movie library; scheduled searching is upcoming."}
                 </p>
               </>

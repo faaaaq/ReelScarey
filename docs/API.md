@@ -1,4 +1,4 @@
-# REST API — media catalog and movie downloads
+# REST API — media catalog, downloads and imports
 
 All routes are same-origin. JSON uses snake_case. All `/api/v1` routes require
 an administrator session except the three public auth routes below. Mutations
@@ -49,6 +49,8 @@ explicitly documented as breaking before the first stable release.
 | POST | `/api/v1/downloads/{id}/retry` | `{}`; retry/resume blocked, failed or stopped tracking |
 | POST | `/api/v1/downloads/{id}/stop` | `{}`; stop blocked/failed local tracking, leaving client/files untouched |
 | POST | `/api/v1/downloads/{id}/file` | `{ "index": 3 }`; select a file from a choose_file job |
+| GET | `/api/v1/library/series/{id}/seasons/{number}/releases?episode=1&query=title` | Search TV category 5000 for one missing episode; omit episode for selected missing episodes in a monitored season |
+| POST | `/api/v1/downloads/{id}/mapping` | Confirm a TV job's completed file/episode mapping and explicit skips |
 
 Library responses contain `items`, `page`, `total`, and `limit: 24`. Page bounds
 are 1–100000; ordering is case-insensitive title then ID. Search responses contain
@@ -67,15 +69,44 @@ TV adds use the same canonical/idempotent add contract and store `kind: series`.
 TV metadata shares title/year/artwork fields, using first_air_date as release_date,
 and adds series_status/seasons. Saved TV details add revision/updated_at. Seasons
 have local id, tmdb_id, number (0 means specials), title, overview, air_date,
-episode_count, monitored, loaded_at, known_episodes and selected_episodes.
+episode_count, monitored, loaded_at, known_episodes, selected_episodes and
+available_episodes.
 Season GET returns `{ "season": {...}, "episodes": [...], "revision": 1,
 "series_monitored": true }`. Episodes include id, tmdb_id, number, title,
-overview, air_date, runtime_minutes, monitored and effective_monitored.
+overview, air_date, runtime_minutes, monitored, effective_monitored, available
+and file_path (registered relative media path; empty when not imported).
 Effective monitoring requires all three show/season/episode switches to be on.
 Every TV change/refresh compares the show revision transactionally and increments
 it; stale edits return 409 revision_conflict. Invalid child targets roll back the
 revision. Refresh preserves selections and retains previously stored episodes
-absent from a later provider response. TV download/import routes do not exist yet.
+absent from a later provider response. Provider identity changes at existing
+season/episode numbers are refused to preserve download/file associations.
+
+TV search requires a loaded season, accepts 0–10000 for season and 1–100000 for an
+optional episode. Season search snapshots up to 100 monitored missing episodes;
+individual episode searches are manual and can ignore monitoring. Queue uses the
+same opaque release_id contract and reserves episode targets transactionally.
+Overlapping jobs or imported targets return 409 episode_busy. Disjoint TV jobs
+can share a series. One info hash can belong to only one target set.
+
+Activity adds kind (movie/series) and TV targets with episode_id, tmdb_id,
+season, number, title, skipped and imported. Legacy movie_id/movie_title fields
+identify the parent catalog item/title for both kinds. TV choices include optional
+suggestions (episode IDs). Completed TV jobs block with map_episodes before any
+import. Confirm with, for example:
+
+```json
+{"files":[{"file_index":0,"episode_ids":[11,12]},{"file_index":3,"episode_ids":[13]}],"skip_episode_ids":[14]}
+```
+
+Every target must be assigned exactly once or skipped; unknown indexes/IDs,
+duplicates and nonconsecutive/shared groups over 20 episodes are rejected with
+400 invalid_mapping. At least one file must be mapped. The server uses stored
+file names, sizes and contained source paths; callers cannot supply paths.
+Confirmation locks the mapping and starts importing. Later retries preserve it;
+completed per-file plans are not imported twice. A parent job completes after all
+mapped files commit. Stop tracking releases episode reservations while retaining
+all torrents and files. See TV_DOWNLOADS.md for naming/recovery/filesystem limits.
 
 Torznab PUT body is `{ "url": "https://indexer.example/api", "api_key": "..." }`.
 qBittorrent PUT body is `{ "url": "https://qbt.example", "username": "admin",
@@ -97,6 +128,10 @@ Movie DTOs include tmdb_id, title, overview, year (nullable), release_date,
 poster_path, poster_url, and runtime_minutes (nullable). Saved library items
 add id, kind, status and monitored. Poster URLs are restricted to TMDb's official
 image host; no upstream credential is sent to the browser.
+
+Settings additionally returns episode_naming: standard or with-title. PUT accepts
+this enum; omission retains the saved value for existing clients. New TV jobs
+snapshot the TV folder and naming choice. Renaming existing files is not implied.
 
 Authentication bodies and credential PUTs use the same bounded, strict JSON
 decoder as settings. Passwords require 12+ Unicode characters and at most 256

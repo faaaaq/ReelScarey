@@ -20,10 +20,27 @@ export function bytes(size: number) {
 }
 export function Releases() {
   const [params] = useSearchParams();
-  const movieID = Number(params.get("movie"));
-  const valid = Number.isSafeInteger(movieID) && movieID > 0;
+  return <ReleaseBrowser key={params.toString()} />;
+}
+function ReleaseBrowser() {
+  const [params] = useSearchParams();
+  const tv = params.has("series");
+  const movieID = Number(params.get(tv ? "series" : "movie"));
+  const season = Number(params.get("season"));
+  const episode = params.has("episode") ? Number(params.get("episode")) : 0;
+  const valid =
+    Number.isSafeInteger(movieID) &&
+    movieID > 0 &&
+    (!tv ||
+      (params.has("season") &&
+        Number.isInteger(season) &&
+        season >= 0 &&
+        season <= 10000 &&
+        Number.isInteger(episode) &&
+        episode >= 0 &&
+        episode <= 100000));
   const movie = useResource<MediaItem>(
-    valid ? `/library/movies/${movieID}` : null,
+    valid ? `/library/${tv ? "series" : "movies"}/${movieID}` : null,
   );
   const indexer = useResource<IntegrationStatus>("/integrations/torznab");
   const client = useResource<IntegrationStatus>("/integrations/qbittorrent");
@@ -33,8 +50,13 @@ export function Releases() {
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const targetLabel = tv
+    ? `S${String(season).padStart(2, "0")}${episode ? `E${String(episode).padStart(2, "0")}` : " · selected missing episodes"}`
+    : "";
   const suggested = movie.data
-    ? `${movie.data.title}${movie.data.year ? ` ${movie.data.year}` : ""}`
+    ? tv
+      ? `${movie.data.title} S${String(season).padStart(2, "0")}${episode ? `E${String(episode).padStart(2, "0")}` : ""}`
+      : `${movie.data.title}${movie.data.year ? ` ${movie.data.year}` : ""}`
     : "";
   async function search(e: FormEvent) {
     e.preventDefault();
@@ -44,7 +66,9 @@ export function Releases() {
     setItems(undefined);
     try {
       const out = await api<{ items: Release[] }>(
-        `/releases?movie_id=${movieID}&query=${encodeURIComponent(input.trim() || suggested)}`,
+        tv
+          ? `/library/series/${movieID}/seasons/${season}/releases?${episode ? `episode=${episode}&` : ""}query=${encodeURIComponent(input.trim() || suggested)}`
+          : `/releases?movie_id=${movieID}&query=${encodeURIComponent(input.trim() || suggested)}`,
       );
       setItems(out.items);
     } catch (e) {
@@ -76,18 +100,29 @@ export function Releases() {
       <PageHeading
         eyebrow="FIND A RELEASE"
         title={
-          movie.data ? `Releases for ${movie.data.title}` : "Movie releases"
+          movie.data
+            ? `Releases for ${movie.data.title}`
+            : tv
+              ? "TV releases"
+              : "Movie releases"
         }
         description={
-          movie.data?.year
-            ? `For your ${movie.data.year} movie. Review the release title before downloading.`
-            : "Choose a release from your connected indexer."
+          tv
+            ? `${targetLabel}. Review the release, then confirm episode files in Activity before importing.`
+            : movie.data?.year
+              ? `For your ${movie.data.year} movie. Review the release title before downloading.`
+              : "Choose a release from your connected indexer."
         }
       />
-      <Link className="text-link" to="/movies">
-        Back to movies
+      <Link className="text-link" to={tv ? `/series/${movieID}` : "/movies"}>
+        {tv ? "Back to show" : "Back to movies"}
       </Link>
-      {!valid && <p role="alert">Choose a movie from your library first.</p>}
+      {!valid && (
+        <p role="alert">
+          Choose a valid {tv ? "episode or season" : "movie"} from your library
+          first.
+        </p>
+      )}
       <RequestState
         loading={movie.loading || indexer.loading || client.loading}
         error={movie.error || indexer.error || client.error}
@@ -99,10 +134,10 @@ export function Releases() {
       />
       {indexer.data && !indexer.data.configured && (
         <section className="panel connect-prompt">
-          <h2>Connect an indexer to find releases.</h2>
+          <h2>Release search is ready when you connect an indexer.</h2>
           <p>
-            Add a Torznab endpoint from Prowlarr, Jackett, or another compatible
-            service.
+            You can set up Torznab later. Your library and monitoring choices
+            remain available.
           </p>
           <Button asChild>
             <Link to="/settings">Connect indexer</Link>
@@ -144,9 +179,9 @@ export function Releases() {
                 <section className="panel search-intro">
                   <h2>No supported torrent releases found.</h2>
                   <p>
-                    Try another title or check the indexer’s movie categories.
-                    Releases need a v1 or hybrid magnet, or a torrent URL served
-                    by your indexer.
+                    Try another title or check the indexer’s{" "}
+                    {tv ? "TV" : "movie"} categories. Releases need a v1 or
+                    hybrid magnet, or a torrent URL served by your indexer.
                   </p>
                 </section>
               ) : (
@@ -179,9 +214,12 @@ export function Releases() {
           )}
           <p className="search-disclaimer">
             Selected releases download into a dedicated qBittorrent folder.
-            Completed movie files are verified before importing. Torrent sources
-            stay in place for seeding; existing library files are never
-            replaced.
+            Completed video files are verified before importing.{" "}
+            {tv
+              ? "TV files require your episode mapping confirmation in Activity. "
+              : ""}
+            Torrent sources stay in place for seeding; existing library files
+            are never replaced.
           </p>
         </>
       )}

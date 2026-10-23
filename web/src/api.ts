@@ -2,6 +2,7 @@ export type Settings = {
   library_name: string;
   movie_folder: string;
   series_folder: string;
+  episode_naming?: "standard" | "with-title";
   revision: number;
   updated_at: string;
 };
@@ -53,6 +54,7 @@ export type LibraryPage = {
   limit: number;
 };
 export type TVSeason = {
+  available_episodes?: number;
   id: number;
   tmdb_id: number;
   number: number;
@@ -66,6 +68,8 @@ export type TVSeason = {
   selected_episodes: number;
 };
 export type TVEpisode = {
+  available?: boolean;
+  file_path?: string;
   id: number;
   tmdb_id: number;
   number: number;
@@ -115,6 +119,16 @@ export type Release = {
   published_at: string;
 };
 export type DownloadJob = {
+  kind?: "movie" | "series";
+  targets?: {
+    episode_id: number;
+    tmdb_id: number;
+    season: number;
+    number: number;
+    title: string;
+    skipped: boolean;
+    imported: boolean;
+  }[];
   id: string;
   movie_id: number;
   movie_title: string;
@@ -126,7 +140,12 @@ export type DownloadJob = {
   downloaded_bytes: number;
   client_state: string;
   selected_file: number | null;
-  choices: { index: number; name: string; size_bytes: number }[];
+  choices: {
+    index: number;
+    name: string;
+    size_bytes: number;
+    suggestions?: number[];
+  }[];
   attempts: number;
   error_code: string;
   error_message: string;

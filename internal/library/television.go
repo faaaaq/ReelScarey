@@ -13,16 +13,19 @@ var ErrRevision = errors.New("This show changed. Refresh it before saving your c
 type TVSeason struct {
 	ID int64 `json:"id"`
 	metadata.SeasonSummary
-	Monitored        bool   `json:"monitored"`
-	LoadedAt         string `json:"loaded_at"`
-	KnownEpisodes    int    `json:"known_episodes"`
-	SelectedEpisodes int    `json:"selected_episodes"`
+	Monitored         bool   `json:"monitored"`
+	LoadedAt          string `json:"loaded_at"`
+	KnownEpisodes     int    `json:"known_episodes"`
+	SelectedEpisodes  int    `json:"selected_episodes"`
+	AvailableEpisodes int    `json:"available_episodes"`
 }
 type TVEpisode struct {
 	ID int64 `json:"id"`
 	metadata.Episode
-	Monitored          bool `json:"monitored"`
-	EffectiveMonitored bool `json:"effective_monitored"`
+	Monitored          bool   `json:"monitored"`
+	EffectiveMonitored bool   `json:"effective_monitored"`
+	Available          bool   `json:"available"`
+	FilePath           string `json:"file_path"`
 }
 type TVSeries struct {
 	Item
@@ -42,11 +45,11 @@ func (s *Store) Series(ctx context.Context, tmdbID int64) (Item, error) {
 	return scan(s.db.QueryRowContext(ctx, "SELECT "+columns+" FROM media_items WHERE kind='series' AND tmdb_id=?", tmdbID))
 }
 
-const seasonColumns = `s.id,s.tmdb_id,s.number,s.title,s.overview,s.air_date,s.episode_count,s.monitored,s.loaded_at,(SELECT COUNT(*) FROM episodes e WHERE e.season_id=s.id),(SELECT COUNT(*) FROM episodes e WHERE e.season_id=s.id AND e.monitored=1)`
+const seasonColumns = `s.id,s.tmdb_id,s.number,s.title,s.overview,s.air_date,s.episode_count,s.monitored,s.loaded_at,(SELECT COUNT(*) FROM episodes e WHERE e.season_id=s.id),(SELECT COUNT(*) FROM episodes e WHERE e.season_id=s.id AND e.monitored=1),(SELECT COUNT(*) FROM episodes e JOIN episode_files ef ON ef.episode_id=e.id WHERE e.season_id=s.id)`
 
 func scanSeason(row scanner) (TVSeason, error) {
 	var v TVSeason
-	e := row.Scan(&v.ID, &v.TMDbID, &v.Number, &v.Title, &v.Overview, &v.AirDate, &v.EpisodeCount, &v.Monitored, &v.LoadedAt, &v.KnownEpisodes, &v.SelectedEpisodes)
+	e := row.Scan(&v.ID, &v.TMDbID, &v.Number, &v.Title, &v.Overview, &v.AirDate, &v.EpisodeCount, &v.Monitored, &v.LoadedAt, &v.KnownEpisodes, &v.SelectedEpisodes, &v.AvailableEpisodes)
 	return v, e
 }
 func (s *Store) TVShow(ctx context.Context, id int64) (TVSeries, error) {
@@ -96,13 +99,13 @@ func (s *Store) TVSeason(ctx context.Context, id int64, number int) (TVSeasonDet
 	if e != nil {
 		return out, e
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT id,tmdb_id,number,title,overview,air_date,runtime_minutes,monitored FROM episodes WHERE season_id=? ORDER BY number`, out.Season.ID)
+	rows, e := tx.QueryContext(ctx, `SELECT e.id,e.tmdb_id,e.number,e.title,e.overview,e.air_date,e.runtime_minutes,e.monitored,ef.media_file_id IS NOT NULL,COALESCE(mf.relative_path,'') FROM episodes e LEFT JOIN episode_files ef ON ef.episode_id=e.id LEFT JOIN media_files mf ON mf.id=ef.media_file_id WHERE e.season_id=? ORDER BY e.number`, out.Season.ID)
 	if e != nil {
 		return out, e
 	}
 	for rows.Next() {
 		var v TVEpisode
-		if e = rows.Scan(&v.ID, &v.TMDbID, &v.Number, &v.Title, &v.Overview, &v.AirDate, &v.RuntimeMinutes, &v.Monitored); e != nil {
+		if e = rows.Scan(&v.ID, &v.TMDbID, &v.Number, &v.Title, &v.Overview, &v.AirDate, &v.RuntimeMinutes, &v.Monitored, &v.Available, &v.FilePath); e != nil {
 			rows.Close()
 			return out, e
 		}
@@ -118,6 +121,14 @@ func (s *Store) TVSeason(ctx context.Context, id int64, number int) (TVSeasonDet
 }
 func putSeasons(ctx context.Context, tx *sql.Tx, id int64, seasons []metadata.SeasonSummary) error {
 	for _, v := range seasons {
+		var prior int64
+		err := tx.QueryRowContext(ctx, `SELECT tmdb_id FROM seasons WHERE series_id=? AND number=?`, id, v.Number).Scan(&prior)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil && prior != v.TMDbID {
+			return &metadata.Error{Code: "tmdb_invalid_response", Message: "Season identity changed. Saved seasons were retained for review."}
+		}
 		if _, e := tx.ExecContext(ctx, `INSERT INTO seasons(series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(series_id,number) DO UPDATE SET tmdb_id=excluded.tmdb_id,title=excluded.title,overview=excluded.overview,air_date=excluded.air_date,episode_count=excluded.episode_count`, id, v.TMDbID, v.Number, v.Title, v.Overview, v.AirDate, v.EpisodeCount, v.Number != 0); e != nil {
 			return e
 		}
@@ -220,6 +231,14 @@ func (s *Store) SaveSeason(ctx context.Context, id int64, season metadata.Season
 		return e
 	}
 	for _, v := range season.Episodes {
+		var prior int64
+		err := tx.QueryRowContext(ctx, `SELECT tmdb_id FROM episodes WHERE season_id=? AND number=?`, seasonID, v.Number).Scan(&prior)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil && prior != v.TMDbID {
+			return &metadata.Error{Code: "tmdb_invalid_response", Message: "Episode identity changed. Saved episodes and file associations were retained for review."}
+		}
 		if _, e = tx.ExecContext(ctx, `INSERT INTO episodes(season_id,tmdb_id,number,title,overview,air_date,runtime_minutes) VALUES(?,?,?,?,?,?,?) ON CONFLICT(season_id,number) DO UPDATE SET tmdb_id=excluded.tmdb_id,title=excluded.title,overview=excluded.overview,air_date=excluded.air_date,runtime_minutes=excluded.runtime_minutes`, seasonID, v.TMDbID, v.Number, v.Title, v.Overview, v.AirDate, v.RuntimeMinutes); e != nil {
 			return e
 		}

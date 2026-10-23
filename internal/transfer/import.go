@@ -181,7 +181,7 @@ var extraVideo = regexp.MustCompile(`(?i)(^|[\s._\-/])(sample|trailer)([\s._\-/]
 func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, src *os.File) (importPlan, error) {
 	var p importPlan
 	s := i.service
-	e := s.db.QueryRowContext(ctx, `SELECT source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,probe_json,mode,phase FROM import_operations WHERE download_id=?`, j.ID).Scan(&p.Source, &p.Destination, &p.Stage, &p.Size, &p.Mtime, &p.Hash, &p.Probe, &p.Mode, &p.Phase)
+	e := s.db.QueryRowContext(ctx, `SELECT source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,probe_json,mode,phase FROM import_operations WHERE download_id=? AND file_index=?`, j.ID, j.importIndex()).Scan(&p.Source, &p.Destination, &p.Stage, &p.Size, &p.Mtime, &p.Hash, &p.Probe, &p.Mode, &p.Phase)
 	if e == nil {
 		if p.Source != source || p.Size != size {
 			return p, problem("source_changed", "The completed torrent's file changed after its import was planned.")
@@ -213,16 +213,25 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 	if after.Size() != before.Size() || after.ModTime() != before.ModTime() {
 		return p, problem("source_changed", "The source changed while it was being verified. Wait for the client and retry.")
 	}
-	movie, e := s.MovieByID(ctx, j.MovieID)
+	var destination string
+	if j.Kind == "series" {
+		destination, e = s.tvDestination(ctx, j, source)
+	} else {
+		var name string
+		movie, err := s.MovieByID(ctx, j.MovieID)
+		if err != nil {
+			return p, err
+		}
+		prefs, err := settings.New(s.db).Get(ctx)
+		if err != nil {
+			return p, err
+		}
+		name = movieName(movie.Title, movie.Year, movie.TMDbID)
+		destination = path.Join(prefs.MovieFolder, name, name+strings.ToLower(path.Ext(source)))
+	}
 	if e != nil {
 		return p, e
 	}
-	prefs, e := settings.New(s.db).Get(ctx)
-	if e != nil {
-		return p, e
-	}
-	name := movieName(movie.Title, movie.Year, movie.TMDbID)
-	destination := path.Join(prefs.MovieFolder, name, name+strings.ToLower(path.Ext(source)))
 	if _, e = safeRelative(destination); e != nil {
 		return p, e
 	}
@@ -230,8 +239,8 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 	if e != nil {
 		return p, e
 	}
-	p = importPlan{Source: source, Destination: destination, Stage: ".reelscarey-" + j.ID + ".part", Size: size, Mtime: before.ModTime().UnixNano(), Hash: hash, Probe: string(b), Mode: "pending", Phase: "planned"}
-	result, e := s.db.ExecContext(ctx, `INSERT INTO import_operations(download_id,source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,probe_json,phase,updated_at) SELECT ?,?,?,?,?,?,?,?,'planned',unixepoch() WHERE EXISTS(SELECT 1 FROM downloads WHERE id=? AND lease_owner=? AND lease_until>=unixepoch())`, j.ID, p.Source, p.Destination, p.Stage, p.Size, p.Mtime, p.Hash, p.Probe, j.ID, j.owner)
+	p = importPlan{Source: source, Destination: destination, Stage: ".reelscarey-" + j.stageID() + ".part", Size: size, Mtime: before.ModTime().UnixNano(), Hash: hash, Probe: string(b), Mode: "pending", Phase: "planned"}
+	result, e := s.db.ExecContext(ctx, `INSERT INTO import_operations(download_id,file_index,source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,probe_json,phase,updated_at) SELECT ?,?,?,?,?,?,?,?,?,'planned',unixepoch() WHERE EXISTS(SELECT 1 FROM downloads WHERE id=? AND lease_owner=? AND lease_until>=unixepoch())`, j.ID, j.importIndex(), p.Source, p.Destination, p.Stage, p.Size, p.Mtime, p.Hash, p.Probe, j.ID, j.owner)
 	if e != nil {
 		return p, e
 	}
@@ -242,7 +251,7 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 	return p, nil
 }
 func (i *Importer) phase(ctx context.Context, j Job, p *importPlan, phase, mode string) error {
-	result, e := i.service.db.ExecContext(ctx, `UPDATE import_operations SET phase=?,mode=?,updated_at=unixepoch() WHERE download_id=? AND EXISTS(SELECT 1 FROM downloads WHERE id=? AND lease_owner=? AND lease_until>=unixepoch())`, phase, mode, j.ID, j.ID, j.owner)
+	result, e := i.service.db.ExecContext(ctx, `UPDATE import_operations SET phase=?,mode=?,updated_at=unixepoch() WHERE download_id=? AND file_index=? AND EXISTS(SELECT 1 FROM downloads WHERE id=? AND lease_owner=? AND lease_until>=unixepoch())`, phase, mode, j.ID, j.importIndex(), j.ID, j.owner)
 	if e != nil {
 		return e
 	}
@@ -529,17 +538,21 @@ func (i *Importer) commitPublished(ctx context.Context, j Job, p importPlan, fol
 	if e = tx.QueryRowContext(ctx, `SELECT lease_owner FROM downloads WHERE id=? AND lease_until>=unixepoch()`, j.ID).Scan(&owner); e != nil || owner != j.owner {
 		return ErrLease
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO media_files(movie_id,download_id,relative_path,size_bytes,sha256,probe_json,imported_at) VALUES(?,?,?,?,?,?,unixepoch()) ON CONFLICT(download_id) DO NOTHING`, j.MovieID, j.ID, p.Destination, p.Size, p.Hash, p.Probe); e != nil {
+	if e = s.registerImport(ctx, tx, j, p); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET status='available' WHERE id=?`, j.MovieID); e != nil {
+	if j.Kind != "series" {
+		if _, e = tx.ExecContext(ctx, `UPDATE media_items SET status='available' WHERE id=?`, j.MovieID); e != nil {
+			return e
+		}
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE import_operations SET phase='committed',updated_at=unixepoch() WHERE download_id=? AND file_index=?`, j.ID, j.importIndex()); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE import_operations SET phase='committed',updated_at=unixepoch() WHERE download_id=?`, j.ID); e != nil {
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `UPDATE downloads SET state='completed',progress=1,error_code='',error_message='',updated_at=unixepoch() WHERE id=?`, j.ID); e != nil {
-		return e
+	if j.Kind != "series" {
+		if _, e = tx.ExecContext(ctx, `UPDATE downloads SET state='completed',progress=1,error_code='',error_message='',updated_at=unixepoch() WHERE id=?`, j.ID); e != nil {
+			return e
+		}
 	}
 	if e = tx.Commit(); e != nil {
 		return e

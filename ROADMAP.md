@@ -49,8 +49,10 @@ temporary libraries only. Never use unauthorized content as test material.
 - [x] Load/refresh season episodes on demand and retain metadata for offline browsing.
 - [x] Persist show/season/episode monitoring with revision conflicts and parent pauses
   that preserve individual selections. Specials start unselected.
-- [ ] Episode and season release searches, multi-episode mapping and availability.
-- [ ] Reuse download/import services; configurable, validated episode naming.
+- [x] Episode and season release searches, reviewed multi-episode mapping and availability.
+- [x] Reuse download/import services; configurable, validated episode naming.
+- [x] Reserve episode targets, retain per-file journals and resume partial season imports.
+- [ ] Owner-service acceptance remains deferred with Torznab and the shared mount setup.
 
 ## 4 — Automation
 - Scheduled searches and monitoring, quality/language profiles

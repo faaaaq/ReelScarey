@@ -9,11 +9,16 @@ import (
 )
 
 type FileChoice struct {
-	Index int    `json:"index"`
-	Name  string `json:"name"`
-	Size  int64  `json:"size_bytes"`
+	Suggestions []int64 `json:"suggestions,omitempty"`
+	Index       int     `json:"index"`
+	Name        string  `json:"name"`
+	Size        int64   `json:"size_bytes"`
 }
 type Job struct {
+	Kind                string     `json:"kind"`
+	Targets             []TVTarget `json:"targets,omitempty"`
+	fileIndex           *int
+	fileTargets         []TVTarget
 	ID                  string       `json:"id"`
 	MovieID             int64        `json:"movie_id"`
 	MovieTitle          string       `json:"movie_title"`
@@ -38,14 +43,14 @@ type Job struct {
 	submittedAt         int64
 }
 
-const jobColumns = `d.id,d.movie_id,m.title,d.title,d.info_hash,d.state,d.progress,d.total_bytes,d.downloaded_bytes,d.client_state,d.selected_file,d.choices,d.attempts,d.error_code,d.error_message,d.created_at,d.updated_at,d.lease_owner,d.payload,d.client_url,d.save_path,d.submission_attempted,d.submitted_at`
+const jobColumns = `d.kind,d.id,d.movie_id,m.title,d.title,d.info_hash,d.state,d.progress,d.total_bytes,d.downloaded_bytes,d.client_state,d.selected_file,d.choices,d.attempts,d.error_code,d.error_message,d.created_at,d.updated_at,d.lease_owner,d.payload,d.client_url,d.save_path,d.submission_attempted,d.submitted_at`
 
 type scanner interface{ Scan(...any) error }
 
 func scanJob(row scanner) (Job, error) {
 	var j Job
 	var choices string
-	e := row.Scan(&j.ID, &j.MovieID, &j.MovieTitle, &j.Title, &j.Hash, &j.State, &j.Progress, &j.Total, &j.Downloaded, &j.ClientState, &j.Selected, &choices, &j.Attempts, &j.ErrorCode, &j.ErrorMessage, &j.Created, &j.Updated, &j.owner, &j.payload, &j.clientURL, &j.savePath, &j.attempted, &j.submittedAt)
+	e := row.Scan(&j.Kind, &j.ID, &j.MovieID, &j.MovieTitle, &j.Title, &j.Hash, &j.State, &j.Progress, &j.Total, &j.Downloaded, &j.ClientState, &j.Selected, &choices, &j.Attempts, &j.ErrorCode, &j.ErrorMessage, &j.Created, &j.Updated, &j.owner, &j.payload, &j.clientURL, &j.savePath, &j.attempted, &j.submittedAt)
 	if e == nil {
 		e = json.Unmarshal([]byte(choices), &j.Choices)
 	}
@@ -55,7 +60,11 @@ func scanJob(row scanner) (Job, error) {
 	return j, e
 }
 func (s *Service) jobBy(ctx context.Context, column string, value any) (Job, error) {
-	return scanJob(s.db.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM downloads d JOIN media_items m ON m.id=d.movie_id WHERE `+column+`=?`, value))
+	j, e := scanJob(s.db.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM downloads d JOIN media_items m ON m.id=d.movie_id WHERE `+column+`=?`, value))
+	if e == nil && j.Kind == "series" {
+		j.Targets, e = s.targets(ctx, j.ID)
+	}
+	return j, e
 }
 func (s *Service) Job(ctx context.Context, id string) (Job, error) { return s.jobBy(ctx, "d.id", id) }
 
@@ -83,7 +92,20 @@ func (s *Service) List(ctx context.Context, page int) (JobPage, error) {
 		}
 		out.Items = append(out.Items, j)
 	}
-	return out, rows.Err()
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return out, e
+	}
+	for n := range out.Items {
+		if out.Items[n].Kind == "series" {
+			out.Items[n].Targets, e = s.targets(ctx, out.Items[n].ID)
+			if e != nil {
+				return out, e
+			}
+		}
+	}
+	return out, nil
 }
 func (s *Service) owned(ctx context.Context, j Job, query string, args ...any) error {
 	args = append(args, j.ID, j.owner)
@@ -118,10 +140,10 @@ func (s *Service) Retry(ctx context.Context, id string) error {
 		return problem("download_busy", "Only downloads needing attention or stopped tracking can be retried.")
 	}
 	var other int
-	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE movie_id=? AND id<>? AND state NOT IN ('completed','cancelled')`, j.MovieID, id).Scan(&other); e != nil {
+	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE movie_id=? AND id<>? AND kind='movie' AND state NOT IN ('completed','cancelled')`, j.MovieID, id).Scan(&other); e != nil {
 		return e
 	}
-	if other > 0 {
+	if j.Kind != "series" && other > 0 {
 		return problem("movie_busy", "This movie has another active download.")
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
@@ -129,7 +151,12 @@ func (s *Service) Retry(ctx context.Context, id string) error {
 		return e
 	}
 	defer tx.Rollback()
-	result, e := tx.ExecContext(ctx, `UPDATE downloads SET state=CASE WHEN EXISTS(SELECT 1 FROM import_operations WHERE download_id=downloads.id) THEN 'importing' ELSE 'queued' END,submission_attempted=CASE WHEN error_code IN ('submission_unknown','client_add_rejected') THEN 0 ELSE submission_attempted END,attempts=0,next_run=0,lease_owner='',lease_until=0,error_code='',error_message='',updated_at=unixepoch() WHERE id=? AND state IN ('blocked','failed','cancelled') AND lease_until<unixepoch()`, id)
+	if j.Kind == "series" {
+		if e = reserveTV(ctx, tx, id, j.MovieID, j.Targets); e != nil {
+			return e
+		}
+	}
+	result, e := tx.ExecContext(ctx, `UPDATE downloads SET state=CASE WHEN EXISTS(SELECT 1 FROM import_operations WHERE download_id=downloads.id) OR EXISTS(SELECT 1 FROM download_tv WHERE download_id=downloads.id AND mapping_confirmed=1) THEN 'importing' ELSE 'queued' END,submission_attempted=CASE WHEN error_code IN ('submission_unknown','client_add_rejected') THEN 0 ELSE submission_attempted END,attempts=0,next_run=0,lease_owner='',lease_until=0,error_code='',error_message='',updated_at=unixepoch() WHERE id=? AND state IN ('blocked','failed','cancelled') AND lease_until<unixepoch()`, id)
 	if e != nil {
 		return e
 	}
@@ -139,6 +166,11 @@ func (s *Service) Retry(ctx context.Context, id string) error {
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET status='downloading' WHERE id=? AND status<>'available'`, j.MovieID); e != nil {
 		return e
+	}
+	if j.Kind == "series" {
+		if e = refreshTVStatus(ctx, tx, j.MovieID); e != nil {
+			return e
+		}
 	}
 	return tx.Commit()
 }
@@ -191,6 +223,15 @@ func (s *Service) Cancel(ctx context.Context, id string) error {
 	n, _ := result.RowsAffected()
 	if n != 1 {
 		return problem("download_busy", "The download is still finishing a step. Try again shortly.")
+	}
+	if j.Kind == "series" {
+		if _, e = tx.ExecContext(ctx, `DELETE FROM episode_downloads WHERE download_id=?`, j.ID); e != nil {
+			return e
+		}
+		if e = refreshTVStatus(ctx, tx, j.MovieID); e != nil {
+			return e
+		}
+		return tx.Commit()
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET status='missing' WHERE id=? AND NOT EXISTS(SELECT 1 FROM media_files WHERE movie_id=?) AND NOT EXISTS(SELECT 1 FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))`, j.MovieID, j.MovieID, j.MovieID); e != nil {
 		return e

@@ -34,6 +34,13 @@ func TestAuthenticatedReleaseDownloadAPI(t *testing.T) {
 			if r.URL.Query().Get("t") == "caps" {
 				fmt.Fprint(w, `<caps><searching><search available="yes" supportedParams="q"/></searching></caps>`)
 			} else {
+				if r.URL.Query().Get("cat") == "5000" {
+					if r.URL.Query().Get("q") != "TV fixture S01E01" {
+						t.Error("wrong TV search target")
+					}
+					fmt.Fprint(w, `<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><item><title>TV.S01E01</title><guid>tv-one</guid><torznab:attr name="magneturl" value="magnet:?xt=urn:btih:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"/></item></channel></rss>`)
+					return
+				}
 				fmt.Fprint(w, `<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><item><title>Test.Movie.2026</title><guid>one</guid><torznab:attr name="magneturl" value="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"/></item></channel></rss>`)
 			}
 		case "/api/v2/auth/login":
@@ -135,5 +142,46 @@ func TestAuthenticatedReleaseDownloadAPI(t *testing.T) {
 	}
 	if out = request(handler, "GET", "/api/v1/downloads?page=-1", "", &session, false); out.Code != 400 {
 		t.Fatal("invalid pagination accepted")
+	}
+	show := metadata.Series{Movie: metadata.Movie{TMDbID: 456, Title: "TV fixture"}, Seasons: []metadata.SeasonSummary{{TMDbID: 457, Number: 1, Title: "Season 1", EpisodeCount: 1}}}
+	item, _, e := library.New(db).AddSeries(ctx, show, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = library.New(db).SaveSeason(ctx, item.ID, metadata.Season{SeasonSummary: show.Seasons[0], Episodes: []metadata.Episode{{TMDbID: 458, Number: 1, Title: "Pilot"}}}, 1); e != nil {
+		t.Fatal(e)
+	}
+	tvURL := fmt.Sprintf("/api/v1/library/series/%d/seasons/1/releases?episode=1", item.ID)
+	if out = request(handler, "GET", tvURL, "", nil, false); out.Code != 401 {
+		t.Fatal("TV search unprotected")
+	}
+	out = request(handler, "GET", tvURL, "", &session, false)
+	if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &results) != nil || len(results.Items) != 1 {
+		t.Fatal(out.Code, out.Body)
+	}
+	out = request(handler, "POST", "/api/v1/downloads", fmt.Sprintf(`{"release_id":%q}`, results.Items[0].ID), &session, true)
+	var queued struct {
+		Item transfer.Job `json:"item"`
+	}
+	if out.Code != 202 || json.Unmarshal(out.Body.Bytes(), &queued) != nil || queued.Item.Kind != "series" {
+		t.Fatal(out.Code, out.Body)
+	}
+	j := queued.Item
+	mappingURL := "/api/v1/downloads/" + j.ID + "/mapping"
+	if _, e = db.Exec(`INSERT INTO download_tv_files(download_id,file_index,name,source_path,size_bytes) VALUES(?,0,'TV.S01E01.mp4',?,20)`, j.ID, "ReelScarey/"+j.ID+"/TV.S01E01.mp4"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`UPDATE downloads SET state='blocked',error_code='map_episodes' WHERE id=?`, j.ID); e != nil {
+		t.Fatal(e)
+	}
+	body = fmt.Sprintf(`{"files":[{"file_index":0,"episode_ids":[%d]}],"skip_episode_ids":[]}`, j.Targets[0].EpisodeID)
+	if out = request(handler, "POST", mappingURL, body, &session, false); out.Code != 403 {
+		t.Fatal("mapping CSRF missing")
+	}
+	if out = request(handler, "POST", mappingURL, `{"files":[],"source_path":"/arbitrary"}`, &session, true); out.Code != 400 {
+		t.Fatal("mapping accepted supplied path")
+	}
+	if out = request(handler, "POST", mappingURL, body, &session, true); out.Code != 200 || !strings.Contains(out.Body.String(), `"state":"importing"`) {
+		t.Fatal(out.Code, out.Body)
 	}
 }

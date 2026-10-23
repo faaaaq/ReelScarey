@@ -39,7 +39,8 @@ docs/                API and operational documentation
 Implemented tables: `schema_migrations`, singleton `settings`, `media_items`,
 singleton `admin_account`, `sessions`, `provider_secrets`, `integration_configs`,
 `release_candidates`, `downloads`, `import_operations`, `media_files`,
-`series_details`, `seasons` and `episodes`.
+`series_details`, `seasons`, `episodes`, `download_tv`, `download_targets`,
+`episode_downloads`, `download_tv_files`, `download_mappings` and `episode_files`.
 The migration ledger stores version, filename, checksum, and applied time.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored
@@ -60,13 +61,22 @@ explicit request. Show-level revision checks serialize all metadata refreshes an
 monitoring changes. Parent monitoring switches gate effective episode monitoring
 without changing child selections. Refresh upserts metadata by season/episode
 number while retaining selections and rows absent from later provider responses.
-TV file registration/download mapping is not implemented yet.
+Migration 005 generalizes the shared download/import pipeline for TV. The existing
+downloads.movie_id column remains the parent catalog ID for compatibility; kind
+distinguishes movies from series. TV jobs snapshot canonical episode targets and
+naming preferences, reserve episode IDs, and require a confirmed mapping from
+completed client file indexes to a complete partition of imported/skipped targets.
+One file can map to consecutive episodes. Each file has a journal keyed by parent
+download and file index; existing movie journals retain default index -1. Existing
+movie file IDs, encrypted payloads, leases and journal phases are migrated intact.
+Each file registration commits with its episode associations and journal phase;
+the parent completes after all files commit. A later failure retains previous
+imports and resumes the remaining files. Availability derives from episode_files.
 
 Planned entities (design, **not implemented schema**):
 
 | Entity | Relationships and invariants |
 | --- | --- |
-| episode_files | Join future episode records to imported files; multi-episode mapping |
 | indexers/download_clients | Future multi-provider CRUD; one encrypted configuration per integration exists now |
 | quality_profiles | Ordered qualities, languages, cutoff and scoring rules |
 | subtitles | Media file, language, provider identity, path and hearing-impaired flag |
@@ -116,6 +126,14 @@ and import. A single worker now reconciles downloads using random owners,
 60-second leases renewed every 15 seconds and fenced state changes. Temporary
 failures back off; ambiguous submissions reconcile by expected hash/tag.
 Scheduled searches, generic scheduling and upgrade policies remain unimplemented.
+
+TV shares the same client adapter, submission deduplication, leases, filesystem
+importer and startup staging cleanup. It adds episode reservations, file snapshots
+and reviewed mappings, rather than creating a separate queue or importer. Imports
+resume from confirmed snapshots without requiring an available client API. Stopped
+tracking releases reservations; retries reacquire them and reject conflicts with
+newer jobs/files. TV metadata refresh rejects changed provider identities at known
+numbers instead of silently redirecting existing associations.
 
 Import plans journal the anchored source, deterministic destination, size,
 mtime, SHA-256 and FFprobe data before writes. Linux prefers anchored hardlinks;

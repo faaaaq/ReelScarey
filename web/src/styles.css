@@ -1166,6 +1166,57 @@ dd {
   gap: 10px;
   margin-bottom: 24px;
 }
+.tv-mapping {
+  margin: 24px 0;
+  border-top: 1px solid #343640;
+  padding-top: 18px;
+}
+.tv-mapping p {
+  color: #b4b8c2;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.tv-mapping fieldset {
+  border: 0;
+  padding: 0;
+  margin: 18px 0;
+  min-width: 0;
+}
+.mapping-row {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.mapping-row label {
+  font-size: 13px;
+}
+.mapping-row select,
+.settings-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid #42454f;
+  border-radius: 6px;
+  background: #16171c;
+  color: #e1e2e7;
+  font: inherit;
+}
+.mapping-review {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+  margin: 20px 0;
+}
+.mapping-review input {
+  accent-color: #f5bc5a;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+.episode-path {
+  overflow-wrap: anywhere;
+}
 .series-summary {
   display: grid;
   grid-template-columns: 140px minmax(0, 1fr);

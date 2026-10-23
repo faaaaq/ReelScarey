@@ -5,6 +5,7 @@ import { api, messageFor, type DownloadJob, type DownloadPage } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { Pagination } from "../movieComponents";
 import { bytes } from "./Releases";
+import { TVMapping } from "./TVMapping";
 
 const labels: Record<string, string> = {
   queued: "Queued",
@@ -64,7 +65,7 @@ export function Activity() {
       <PageHeading
         eyebrow="BEHIND THE SCENES"
         title="Activity"
-        description="Follow your movies from download to library."
+        description="Follow your movies and episodes from download to library."
       >
         <Button variant="soft" onClick={reload}>
           Refresh
@@ -185,12 +186,32 @@ function JobCard({ job, reload }: { job: DownloadJob; reload: () => void }) {
           </Button>
         </div>
       )}
-      <div className="provider-actions">
-        {attention && job.error_code !== "choose_file" && (
-          <Button disabled={pending} onClick={() => void action("retry")}>
-            Retry this download
-          </Button>
+      {job.kind === "series" &&
+        job.error_code === "map_episodes" &&
+        attention && (
+          <TVMapping
+            key={`${job.id}-${job.updated_at}`}
+            job={job}
+            reload={reload}
+          />
         )}
+      {job.kind === "series" &&
+        !!job.targets?.length &&
+        job.error_code !== "map_episodes" && (
+          <p className="field-help">
+            {job.targets.filter((t) => t.imported && !t.skipped).length}{" "}
+            imported · {job.targets.filter((t) => t.skipped).length} skipped ·{" "}
+            {job.targets.length} target episodes
+          </p>
+        )}
+      <div className="provider-actions">
+        {attention &&
+          job.error_code !== "choose_file" &&
+          job.error_code !== "map_episodes" && (
+            <Button disabled={pending} onClick={() => void action("retry")}>
+              Retry this download
+            </Button>
+          )}
         {attention && (
           <Button
             variant="soft"
@@ -212,7 +233,11 @@ function JobCard({ job, reload }: { job: DownloadJob; reload: () => void }) {
         )}
         {job.state === "completed" && (
           <Button asChild variant="soft">
-            <Link to="/movies">Open library</Link>
+            <Link
+              to={job.kind === "series" ? `/series/${job.movie_id}` : "/movies"}
+            >
+              Open library
+            </Link>
           </Button>
         )}
       </div>

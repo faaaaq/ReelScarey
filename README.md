@@ -2,19 +2,20 @@
 
 **Media management, without the horror.**
 
-A unified, self-hosted media application in Go and React. Movie downloads/imports
-and the TV catalog are implemented; the wider automation roadmap is still in progress.
+A unified, self-hosted media application in Go and React. Movie and TV downloads
+and verified imports are implemented; the wider automation roadmap is in progress.
 
 Working now: administrator setup/login/logout, persistent sessions, encrypted
 TMDb connection settings with real connection tests, TMDb movie search/details,
 idempotent movie adds, paginated poster browsing, persisted library settings,
 live dashboard counts, Torznab release search, qBittorrent downloads, persistent
 download tracking and verified imports, plus TV search, canonical show adds,
-season/episode lists, metadata refresh and persistent monitoring choices.
+season/episode lists, metadata refresh, persistent monitoring choices, episode and
+season release searches, reviewed multi-episode file mapping and episode availability.
 One server owns the UI, REST API,
 worker and SQLite database.
 
-Not implemented: TV release matching/downloads/imports, scheduled searches, quality/upgrade policies,
+Not implemented: scheduled searches, automatic release selection, quality/upgrade policies,
 subtitles, or full production hardening. Monitoring is a saved preference;
 downloads start only when you select a release. No existing media is scanned.
 FFprobe verifies completed video files before import. Sources remain in place
@@ -46,8 +47,11 @@ progress and offers recovery actions. See [movie workflow setup](docs/MOVIE_WORK
 For TV, choose TV shows in Search, add a show, then open Seasons & episodes in
 the TV library. Load each season's episodes from TMDb as needed and choose which
 ones to monitor. Pausing a show or season preserves individual selections.
-TV catalog features do not require Torznab or access to media files. See
-[TV catalog operations](docs/TELEVISION.md). Existing movie integrations are retained.
+TV catalog features do not require Torznab or access to media files. Once an
+indexer is connected, find episode/season releases, then review the completed
+files in Activity before confirming their import. The original torrent sources
+remain for seeding. See [TV operations](docs/TELEVISION.md) and
+[TV downloads/imports](docs/TV_DOWNLOADS.md). Existing movie integrations are retained.
 
 The named `reelscarey_config` volume persists the database under `/config`.
 Change `MEDIA_PATH` and `DOWNLOADS_PATH` in `.env` for your host folders; they map

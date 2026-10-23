@@ -48,7 +48,11 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                       color={item.status === "available" ? "green" : "gray"}
                     >
                       {!movies
-                        ? "Catalogued"
+                        ? item.status === "downloading"
+                          ? "Downloading"
+                          : item.status === "available"
+                            ? "Episode files available"
+                            : "Catalogued"
                         : item.status === "missing"
                           ? "Not downloaded"
                           : item.status === "available"

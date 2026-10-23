@@ -14,18 +14,20 @@ import (
 var ErrConflict = errors.New("settings changed; reload and try again")
 
 type Settings struct {
-	LibraryName  string `json:"library_name"`
-	MovieFolder  string `json:"movie_folder"`
-	SeriesFolder string `json:"series_folder"`
-	Revision     int    `json:"revision"`
-	UpdatedAt    string `json:"updated_at"`
+	LibraryName   string `json:"library_name"`
+	MovieFolder   string `json:"movie_folder"`
+	SeriesFolder  string `json:"series_folder"`
+	EpisodeNaming string `json:"episode_naming"`
+	Revision      int    `json:"revision"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 type Update struct {
-	LibraryName  string `json:"library_name"`
-	MovieFolder  string `json:"movie_folder"`
-	SeriesFolder string `json:"series_folder"`
-	Revision     int    `json:"revision"`
+	LibraryName   string `json:"library_name"`
+	MovieFolder   string `json:"movie_folder"`
+	SeriesFolder  string `json:"series_folder"`
+	EpisodeNaming string `json:"episode_naming"`
+	Revision      int    `json:"revision"`
 }
 
 type ValidationError struct{ Message string }
@@ -53,6 +55,9 @@ func (u *Update) Validate() error {
 	if u.Revision < 1 {
 		return &ValidationError{"A valid settings revision is required. Reload and try again."}
 	}
+	if u.EpisodeNaming != "" && u.EpisodeNaming != "standard" && u.EpisodeNaming != "with-title" {
+		return &ValidationError{"Choose standard episode names or names with episode titles."}
+	}
 	return nil
 }
 
@@ -62,7 +67,7 @@ func New(db *sql.DB) *Store { return &Store{db: db} }
 
 func (s *Store) Get(ctx context.Context) (Settings, error) {
 	var out Settings
-	err := s.db.QueryRowContext(ctx, "SELECT library_name, movie_folder, series_folder, revision, updated_at FROM settings WHERE id = 1").Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.Revision, &out.UpdatedAt)
+	err := s.db.QueryRowContext(ctx, "SELECT library_name, movie_folder, series_folder, episode_naming,revision, updated_at FROM settings WHERE id = 1").Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.Revision, &out.UpdatedAt)
 	return out, err
 }
 
@@ -71,7 +76,7 @@ func (s *Store) Update(ctx context.Context, in Update) (Settings, error) {
 		return Settings{}, err
 	}
 	var out Settings
-	err := s.db.QueryRowContext(ctx, `UPDATE settings SET library_name = ?, movie_folder = ?, series_folder = ?, revision = revision + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = 1 AND revision = ? RETURNING library_name, movie_folder, series_folder, revision, updated_at`, in.LibraryName, in.MovieFolder, in.SeriesFolder, in.Revision).Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.Revision, &out.UpdatedAt)
+	err := s.db.QueryRowContext(ctx, `UPDATE settings SET library_name=?,movie_folder=?,series_folder=?,episode_naming=CASE WHEN ?='' THEN episode_naming ELSE ? END,revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND revision=? RETURNING library_name,movie_folder,series_folder,episode_naming,revision,updated_at`, in.LibraryName, in.MovieFolder, in.SeriesFolder, in.EpisodeNaming, in.EpisodeNaming, in.Revision).Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.Revision, &out.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Settings{}, ErrConflict
 	}

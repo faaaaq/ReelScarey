@@ -69,6 +69,7 @@ func remoteRoot(s string) (string, error) {
 }
 
 type IndexerConfig struct {
+	Category   string `json:"category,omitempty"`
 	URL        string `json:"url"`
 	APIKey     string `json:"api_key"`
 	Generation string `json:"generation"`
@@ -90,6 +91,8 @@ type Release struct {
 }
 type Candidate struct {
 	Release
+	Kind                          string     `json:"kind,omitempty"`
+	Targets                       []TVTarget `json:"targets,omitempty"`
 	URL, Magnet, Hash, Generation string
 }
 type Payload struct {

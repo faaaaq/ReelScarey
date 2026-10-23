@@ -25,9 +25,9 @@ func (s *Server) transferError(w http.ResponseWriter, err error) {
 	if errors.As(err, &e) {
 		status := 502
 		switch e.Code {
-		case "invalid_settings", "invalid_search", "invalid_file", "invalid_release", "unsupported_torrent", "unsafe_path":
+		case "invalid_settings", "invalid_search", "invalid_file", "invalid_release", "unsupported_torrent", "unsafe_path", "invalid_mapping", "too_many_episodes":
 			status = 400
-		case "indexer_not_configured", "client_not_configured", "active_downloads", "release_expired", "movie_busy", "download_busy", "duplicate_hash":
+		case "indexer_not_configured", "client_not_configured", "active_downloads", "release_expired", "movie_busy", "download_busy", "duplicate_hash", "episode_busy", "episode_changed", "episodes_not_loaded", "no_episode_targets", "mapping_locked":
 			status = 409
 		case "movie_not_found":
 			status = 404
@@ -220,6 +220,12 @@ func (s *Server) downloadAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.transfer.SelectFile(r.Context(), r.PathValue("id"), *body.Index)
+	case "mapping":
+		var body transfer.TVMappingUpdate
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		err = s.transfer.ConfirmTVMapping(r.Context(), r.PathValue("id"), body)
 	default:
 		fail(w, 404, "not_found", "This download action does not exist.")
 		return

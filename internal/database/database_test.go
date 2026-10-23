@@ -42,7 +42,7 @@ func TestMigrationsPersistAndConfigureSQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if name != "Persistent cinema" || journal != "wal" || foreignKeys != 1 || timeout != 5000 || count != 4 {
+	if name != "Persistent cinema" || journal != "wal" || foreignKeys != 1 || timeout != 5000 || count != 5 {
 		t.Fatalf("persistence/pragmas failed: %s %s %d %d %d", name, journal, foreignKeys, timeout, count)
 	}
 }
@@ -117,7 +117,7 @@ func TestMigrationRollbackAndDrift(t *testing.T) {
 		}
 		files[name] = &fstest.MapFile{Data: body}
 	}
-	files["migrations/005_broken.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE rollback_probe (id INTEGER); INSERT INTO nonexistent VALUES (1);")}
+	files["migrations/006_broken.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE rollback_probe (id INTEGER); INSERT INTO nonexistent VALUES (1);")}
 	if err := migrate(ctx, db, files); err == nil {
 		t.Fatal("broken migration succeeded")
 	}
@@ -126,7 +126,7 @@ func TestMigrationRollbackAndDrift(t *testing.T) {
 		t.Fatalf("DDL not rolled back: %v, %d", err, count)
 	}
 	version, err := Version(ctx, db)
-	if err != nil || version != 4 {
+	if err != nil || version != 5 {
 		t.Fatalf("broken migration recorded: %d %v", version, err)
 	}
 	files["migrations/001_foundation.sql"] = &fstest.MapFile{Data: []byte("SELECT 1;")}
@@ -138,5 +138,71 @@ func TestMigrationRollbackAndDrift(t *testing.T) {
 	}
 	if err := Migrate(ctx, db); err == nil {
 		t.Fatal("newer database accepted")
+	}
+}
+
+func TestTVDownloadMigrationPreservesMovieImportJournals(t *testing.T) {
+	ctx := context.Background()
+	db, e := sql.Open("sqlite", ":memory:")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, e = db.Exec(`PRAGMA foreign_keys=ON`); e != nil {
+		t.Fatal(e)
+	}
+	old := fstest.MapFS{}
+	names, e := fs.Glob(migrationFiles, "migrations/*.sql")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, name := range names {
+		if filepath.Base(name) >= "005_" {
+			continue
+		}
+		b, e := fs.ReadFile(migrationFiles, name)
+		if e != nil {
+			t.Fatal(e)
+		}
+		old[name] = &fstest.MapFile{Data: b}
+	}
+	if e = migrate(ctx, db, old); e != nil {
+		t.Fatal(e)
+	}
+	for _, q := range []string{
+		`INSERT INTO media_items(id,kind,tmdb_id,title) VALUES(1,'movie',1,'Completed'),(2,'movie',2,'In progress')`,
+		`INSERT INTO release_candidates(id,movie_id,title,size_bytes,published_at,payload,expires_at) VALUES('r1',1,'one',10,'',X'0102',10),('r2',2,'two',10,'',X'0304',10)`,
+		`INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at) VALUES('j1',1,'r1','one','hash1',X'010203','http://test','/test','completed',1,2),('j2',2,'r2','two','hash2',X'040506','http://test','/test','importing',3,4)`,
+		`INSERT INTO import_operations(download_id,source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,probe_json,phase,mode,updated_at) VALUES('j1','source-one','Movies/one.mkv','.reelscarey-j1.part',10,50,'first-hash','{}','committed','copy',2),('j2','source-two','Movies/two.mkv','.reelscarey-j2.part',10,60,'second-hash','{}','staged','hardlink',4)`,
+		`INSERT INTO media_files(id,movie_id,download_id,relative_path,size_bytes,sha256,probe_json,imported_at) VALUES(55,1,'j1','Movies/one.mkv',10,'first-hash','{}',2)`,
+	} {
+		if _, e = db.Exec(q); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if e = Migrate(ctx, db); e != nil {
+		t.Fatal(e)
+	}
+	var index int
+	var mode, phase, source string
+	if e = db.QueryRow(`SELECT file_index,mode,phase,source_path FROM import_operations WHERE download_id='j2'`).Scan(&index, &mode, &phase, &source); e != nil || index != -1 || mode != "hardlink" || phase != "staged" || source != "source-two" {
+		t.Fatal(index, mode, phase, source, e)
+	}
+	var fileID int64
+	if e = db.QueryRow(`SELECT id FROM media_files WHERE movie_id=1 AND download_id='j1' AND file_index=-1 AND relative_path='Movies/one.mkv' AND sha256='first-hash'`).Scan(&fileID); e != nil || fileID != 55 {
+		t.Fatal("movie registration changed", e)
+	}
+	var payload []byte
+	if e = db.QueryRow(`SELECT payload FROM downloads WHERE id='j2'`).Scan(&payload); e != nil || len(payload) != 3 || payload[0] != 4 {
+		t.Fatal("ciphertext changed", e)
+	}
+	rows, e := db.Query(`PRAGMA foreign_key_check`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer rows.Close()
+	if rows.Next() {
+		t.Fatal("foreign key consistency lost")
 	}
 }

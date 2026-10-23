@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/database"
+	"github.com/faaaaq/ReelScarey/internal/library"
+	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"golang.org/x/crypto/pbkdf2"
 )
@@ -30,6 +32,12 @@ import (
 // Opt-in only: starts its own authenticated localhost qBittorrent with an
 // isolated profile. It never connects to an owner's existing client/indexer.
 func TestRealQBittorrentDownloadAndImport(t *testing.T) {
+	runRealQBittorrent(t, false)
+}
+func TestRealQBittorrentTVDownloadAndImport(t *testing.T) {
+	runRealQBittorrent(t, true)
+}
+func runRealQBittorrent(t *testing.T, tv bool) {
 	if os.Getenv("REELSCAREY_LIVE_QBT") != "1" {
 		t.Skip("set REELSCAREY_LIVE_QBT=1 with qbittorrent-nox and FFmpeg installed")
 	}
@@ -111,6 +119,12 @@ func TestRealQBittorrentDownloadAndImport(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	videoNames := []string{"fixture.mp4"}
+	allData := data
+	if tv {
+		videoNames = []string{"Owned.S01E01-E02.mp4", "Owned.S01E03.mp4"}
+		allData = append(append([]byte{}, data...), data...)
+	}
 	var metainfo []byte
 	initialized := make(chan struct{})
 	var server *httptest.Server
@@ -129,17 +143,24 @@ func TestRealQBittorrentDownloadAndImport(t *testing.T) {
 			case "caps":
 				fmt.Fprint(w, `<caps><limits max="10"/><searching><search available="yes" supportedParams="q"/></searching></caps>`)
 			case "search":
+				category := "2000"
+				if tv {
+					category = "5000"
+				}
+				if r.URL.Query().Get("cat") != category {
+					t.Error("wrong media category")
+				}
 				if r.URL.Query().Get("limit") != "10" {
 					t.Error("indexer limit was ignored")
 				}
-				fmt.Fprintf(w, `<rss><channel><item><title>Owned.Test.Video.2026</title><guid>owned-video</guid><enclosure url="%s/torrent" length="%d" type="application/x-bittorrent"/></item></channel></rss>`, server.URL, len(data))
+				fmt.Fprintf(w, `<rss><channel><item><title>Owned.Test.Video.2026</title><guid>owned-video</guid><enclosure url="%s/torrent" length="%d" type="application/x-bittorrent"/></item></channel></rss>`, server.URL, len(allData))
 			}
 		case "/torrent":
 			w.Header().Set("Content-Type", "application/x-bittorrent")
 			_, _ = w.Write(metainfo)
 		case "/announce":
 			_, _ = w.Write(bencode(map[string]any{"interval": int64(60), "peers": ""}))
-		case "/fixture.mp4":
+		case "/fixture.mp4", "/tv-fixture/Owned.S01E01-E02.mp4", "/tv-fixture/Owned.S01E03.mp4":
 			first.Do(func() { close(started) })
 			select {
 			case <-releaseBody:
@@ -160,15 +181,22 @@ func TestRealQBittorrentDownloadAndImport(t *testing.T) {
 		}
 	}()
 	var pieces []byte
-	for start := 0; start < len(data); start += 16384 {
+	for start := 0; start < len(allData); start += 16384 {
 		end := start + 16384
-		if end > len(data) {
-			end = len(data)
+		if end > len(allData) {
+			end = len(allData)
 		}
-		sum := sha1.Sum(data[start:end])
+		sum := sha1.Sum(allData[start:end])
 		pieces = append(pieces, sum[:]...)
 	}
 	metainfo = bencode(map[string]any{"announce": server.URL + "/announce", "url-list": server.URL + "/fixture.mp4", "info": map[string]any{"length": int64(len(data)), "name": "fixture.mp4", "piece length": int64(16384), "pieces": string(pieces), "private": int64(1)}})
+	if tv {
+		files := []any{}
+		for _, name := range videoNames {
+			files = append(files, map[string]any{"length": int64(len(data)), "path": []any{name}})
+		}
+		metainfo = bencode(map[string]any{"announce": server.URL + "/announce", "url-list": server.URL + "/", "info": map[string]any{"files": files, "name": "tv-fixture", "piece length": int64(16384), "pieces": string(pieces), "private": int64(1)}})
+	}
 	close(initialized)
 	secrets, e := securestore.New(ctx, f.db, f.cfg.ConfigDir)
 	if e != nil {
@@ -182,7 +210,20 @@ func TestRealQBittorrentDownloadAndImport(t *testing.T) {
 	if e = f.s.ConfigureClient(ctx, ClientUpdate{URL: client.URL, Username: client.Username, Password: &password, DownloadPath: client.DownloadPath}); e != nil {
 		t.Fatal(e)
 	}
-	results, e := f.s.Search(ctx, f.movie.ID, "")
+	var results []Release
+	if tv {
+		show := metadata.Series{Movie: metadata.Movie{TMDbID: 456, Title: "Owned Test Series"}, Seasons: []metadata.SeasonSummary{{TMDbID: 457, Number: 1, Title: "Season 1", EpisodeCount: 3}}}
+		item, _, err := library.New(f.db).AddSeries(ctx, show, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = library.New(f.db).SaveSeason(ctx, item.ID, metadata.Season{SeasonSummary: show.Seasons[0], Episodes: []metadata.Episode{{TMDbID: 458, Number: 1, Title: "One"}, {TMDbID: 459, Number: 2, Title: "Two"}, {TMDbID: 460, Number: 3, Title: "Three"}}}, 1); err != nil {
+			t.Fatal(err)
+		}
+		results, e = f.s.SearchTV(ctx, item.ID, 1, 0, "")
+	} else {
+		results, e = f.s.Search(ctx, f.movie.ID, "")
+	}
 	if e != nil || len(results) != 1 {
 		t.Fatal("real Torznab HTTP search failed", e)
 	}
@@ -206,7 +247,7 @@ func TestRealQBittorrentDownloadAndImport(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer db.Close()
+	defer func() { db.Close() }()
 	f.db = db
 	secrets, e = securestore.New(ctx, db, f.cfg.ConfigDir)
 	if e != nil {
@@ -226,6 +267,35 @@ func TestRealQBittorrentDownloadAndImport(t *testing.T) {
 		if current.State == "completed" {
 			break
 		}
+		if tv && current.State == "blocked" && current.ErrorCode == "map_episodes" {
+			var count int
+			if e = db.QueryRow(`SELECT COUNT(*) FROM media_files WHERE download_id=?`, job.ID).Scan(&count); e != nil || count != 0 {
+				t.Fatal("TV imported before confirmation", e)
+			}
+			mapping := TVMappingUpdate{Files: []TVMapping{}, SkipEpisodeIDs: []int64{}}
+			for _, choice := range current.Choices {
+				if len(choice.Suggestions) == 0 {
+					t.Fatal("TV fixture filename mapping absent")
+				}
+				mapping.Files = append(mapping.Files, TVMapping{FileIndex: choice.Index, EpisodeIDs: choice.Suggestions})
+			}
+			if e = f.s.ConfirmTVMapping(ctx, job.ID, mapping); e != nil {
+				t.Fatal(e)
+			}
+			// Reopen after confirmation as well as during the real download.
+			db.Close()
+			db, e = database.Open(ctx, f.cfg.ConfigDir)
+			if e != nil {
+				t.Fatal(e)
+			}
+			f.db = db
+			secrets, e = securestore.New(ctx, db, f.cfg.ConfigDir)
+			if e != nil {
+				t.Fatal(e)
+			}
+			f.s = New(db, secrets, f.cfg, NewQBittorrent(), NewTorznab())
+			continue
+		}
 		if current.State == "blocked" || current.State == "failed" {
 			t.Fatal("live workflow needs attention", current.ErrorCode, current.ErrorMessage)
 		}
@@ -242,23 +312,58 @@ func TestRealQBittorrentDownloadAndImport(t *testing.T) {
 	if e != nil || torrent == nil || torrent.Progress < 1 {
 		t.Fatal("seeding torrent was removed or changed", e)
 	}
-	var dest string
-	if e = db.QueryRow(`SELECT relative_path FROM media_files WHERE download_id=?`, job.ID).Scan(&dest); e != nil {
+	rows, e := db.Query(`SELECT relative_path FROM media_files WHERE download_id=? ORDER BY file_index`, job.ID)
+	if e != nil {
 		t.Fatal(e)
 	}
-	saved, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(dest)))
-	if e != nil || !bytes.Equal(saved, data) {
-		t.Fatal("live import differs from generated source", e)
+	destinations := []string{}
+	for rows.Next() {
+		var dest string
+		if e = rows.Scan(&dest); e != nil {
+			t.Fatal(e)
+		}
+		destinations = append(destinations, dest)
 	}
-	source := filepath.Join(f.cfg.DownloadsDir, "ReelScarey", job.ID, "fixture.mp4")
-	original, e := os.ReadFile(source)
-	if e != nil || !bytes.Equal(original, data) {
-		t.Fatal("seeding source changed", e)
+	rows.Close()
+	if len(destinations) != len(videoNames) {
+		t.Fatal("wrong imported file count", len(destinations))
+	}
+	for _, dest := range destinations {
+		saved, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(dest)))
+		if e != nil || !bytes.Equal(saved, data) {
+			t.Fatal("live import differs from generated source", e)
+		}
+	}
+	for _, name := range videoNames {
+		source := filepath.Join(f.cfg.DownloadsDir, "ReelScarey", job.ID)
+		if tv {
+			source = filepath.Join(source, "tv-fixture")
+		}
+		original, e := os.ReadFile(filepath.Join(source, name))
+		if e != nil || !bytes.Equal(original, data) {
+			t.Fatal("seeding source changed", e)
+		}
+	}
+	if tv {
+		season, e := library.New(db).TVSeason(ctx, job.MovieID, 1)
+		if e != nil || season.Season.AvailableEpisodes != 3 || season.Episodes[0].FilePath != season.Episodes[1].FilePath || season.Episodes[1].FilePath == season.Episodes[2].FilePath {
+			t.Fatal("live episode registration incorrect", e)
+		}
+		t.Log("PASS: real authenticated qBittorrent downloaded a generated season pack; review confirmation survived reopen; two FFprobe-verified files registered three episodes and preserved seeding sources")
+		return
 	}
 	t.Log("PASS: real authenticated qBittorrent downloaded owned video via localhost web seed; app restart reconciled it and FFprobe-verified import preserved the source")
 }
 func bencode(v any) []byte {
 	switch x := v.(type) {
+	case []any:
+		var out bytes.Buffer
+		out.WriteByte('l')
+		for _, v := range x {
+			out.Write(bencode(v))
+		}
+		out.WriteByte('e')
+		return out.Bytes()
 	case string:
 		return append([]byte(strconv.Itoa(len(x))+":"), []byte(x)...)
 	case int64:

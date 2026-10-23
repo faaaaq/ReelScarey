@@ -21,7 +21,8 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   internal/securestore owns encrypted credentials and local key files.
 - internal/metadata owns TMDb normalization and its MovieProvider/SeriesProvider boundaries.
 - internal/transfer owns Torznab/qBittorrent adapters, encrypted integration
-  settings, release selections, leased download jobs and journaled imports.
+  settings, release selections, leased download jobs, TV episode reservations/
+  reviewed file mappings and per-file journaled imports. TV shares the importer.
 - internal/library owns the shared catalog, TV seasons/episodes and revision-checked monitoring. Future providers live in
   their feature modules behind narrow, consumer-owned interfaces.
 - web contains React, TypeScript, Vite, Tailwind, and Radix Themes. Use maintained
@@ -56,7 +57,8 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   lockfile; regenerate locks without an existing node_modules directory.
 - Linux CI installs qBittorrent-nox and FFmpeg from Ubuntu packages and runs the
   opt-in REELSCAREY_LIVE_QBT=1 test with its own localhost client, protocol
-  fixture, private torrent and generated web-seeded video.
+  fixtures, private movie/TV torrents and generated web-seeded videos. TV mapping
+  must be confirmed explicitly before import, including in integration tests.
 - Test input boundaries, persistence across reopen, migration rollback, API
   contracts, and meaningful user behavior. Use temporary directories only.
 - Run gofmt on Go changes and `npm run format` for the frontend. Keep dependencies locked and explain additions.

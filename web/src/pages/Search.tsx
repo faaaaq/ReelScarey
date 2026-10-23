@@ -184,7 +184,7 @@ function MediaSearch({ kind }: { kind: "movie" | "series" }) {
           )}
           <p className="search-disclaimer">
             {tv
-              ? "Adding a show saves its seasons and monitoring choices. Open the show to load episodes. TV downloads and automatic searching are upcoming."
+              ? "Adding a show saves its seasons and monitoring choices. Open the show to load episodes and find releases. Automatic searching is upcoming."
               : "Adding a movie saves its metadata and monitoring preference. Open Movies to find a release and download it through qBittorrent."}
           </p>
         </>

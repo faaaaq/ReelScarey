@@ -115,8 +115,9 @@ function SeriesView({ initial }: { initial: TVSeries }) {
             start selected; specials start unselected.
           </p>
           <p className="field-help">
-            Monitoring saves your preferences. TV downloads, importing and
-            scheduled searches are upcoming.
+            Find releases for an episode or selected missing episodes in a
+            season. Completed TV files wait for your mapping review in Activity.
+            Scheduled searches are upcoming.
           </p>
           <a
             className="text-link"
@@ -162,6 +163,9 @@ function SeriesView({ initial }: { initial: TVSeries }) {
                     {season.loaded_at
                       ? ` · ${season.selected_episodes} of ${season.known_episodes} loaded episodes selected`
                       : ""}
+                    {season.available_episodes
+                      ? ` · ${season.available_episodes} available`
+                      : ""}
                   </p>
                 </div>
                 <label className="monitor-choice">
@@ -189,6 +193,18 @@ function SeriesView({ initial }: { initial: TVSeries }) {
                     ? "Hide episodes"
                     : "View episodes"}
                 </Button>
+                {season.loaded_at &&
+                  show.monitored &&
+                  season.monitored &&
+                  season.selected_episodes > 0 && (
+                    <Button asChild variant="soft">
+                      <Link
+                        to={`/releases?series=${show.id}&season=${season.number}`}
+                      >
+                        Find season releases
+                      </Link>
+                    </Button>
+                  )}
               </div>
               {selected === season.number && (
                 <div id={`season-${season.id}`}>
@@ -271,12 +287,27 @@ function SeasonEpisodes({
                       {e.runtime_minutes ? ` · ${e.runtime_minutes} min` : ""}
                     </p>
                     {e.overview && <p>{e.overview}</p>}
-                    <Badge color="gray">
-                      {e.air_date &&
-                      e.air_date > new Date().toLocaleDateString("en-CA")
-                        ? "Upcoming"
-                        : "File not tracked"}
+                    <Badge color={e.available ? "green" : "gray"}>
+                      {e.available
+                        ? "Available"
+                        : e.air_date &&
+                            e.air_date > new Date().toLocaleDateString("en-CA")
+                          ? "Upcoming"
+                          : "Not imported"}
                     </Badge>
+                    {e.file_path && (
+                      <p className="field-help episode-path">{e.file_path}</p>
+                    )}
+                    {!e.available && (
+                      <p>
+                        <Link
+                          className="text-link"
+                          to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}`}
+                        >
+                          Find episode releases
+                        </Link>
+                      </p>
+                    )}
                   </div>
                   <label className="monitor-choice">
                     <Switch

@@ -102,9 +102,12 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 }
 func (s *Service) process(ctx context.Context, j Job) error {
 	if j.State == "importing" {
+		if j.Kind == "series" {
+			return s.processTVImports(ctx, j)
+		}
 		var source string
 		var size int64
-		err := s.db.QueryRowContext(ctx, `SELECT source_path,size_bytes FROM import_operations WHERE download_id=?`, j.ID).Scan(&source, &size)
+		err := s.db.QueryRowContext(ctx, `SELECT source_path,size_bytes FROM import_operations WHERE download_id=? AND file_index=-1`, j.ID).Scan(&source, &size)
 		if err == nil {
 			return s.importer.Execute(ctx, j, source, size)
 		}
@@ -191,19 +194,22 @@ func (s *Service) process(ctx context.Context, j Job) error {
 			return problem("client_response", "qBittorrent returned duplicate or invalid file indexes.")
 		}
 		seen[f.Index] = true
-		if !video(f.Name) || extraVideo.MatchString(f.Name) || f.Priority == 0 {
+		if !video(f.Name) || extraVideo.MatchString(f.Name) || f.Priority <= 0 {
 			continue
 		}
 		if _, err := safeRelative(f.Name); err != nil {
 			return err
 		}
-		if f.Size <= 0 || math.IsNaN(f.Progress) || f.Progress < 1 {
+		if f.Size <= 0 || math.IsNaN(f.Progress) || math.IsInf(f.Progress, 0) || f.Progress != 1 {
 			continue
 		}
 		choices = append(choices, FileChoice{Index: f.Index, Name: f.Name, Size: f.Size})
 		if j.Selected != nil && f.Index == *j.Selected {
 			chosen = f
 		}
+	}
+	if j.Kind == "series" {
+		return s.prepareTVMapping(ctx, j, choices, torrent.SavePath, c.DownloadPath)
 	}
 	if j.Selected == nil && len(choices) == 1 {
 		for n := range files {

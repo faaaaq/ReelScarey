@@ -305,8 +305,8 @@ func (s *Service) Queue(ctx context.Context, releaseID string) (Job, bool, error
 		return Job{}, false, e
 	}
 	if existing, e := s.jobBy(ctx, "d.info_hash", hash); e == nil {
-		if existing.MovieID != v.MovieID {
-			return Job{}, false, problem("duplicate_hash", "This torrent is already attached to a different movie. Choose another release.")
+		if existing.MovieID != v.MovieID || (v.Kind == "series" && (existing.Kind != "series" || !sameTargets(existing.Targets, v.Targets))) {
+			return Job{}, false, problem("duplicate_hash", "This torrent is already attached to a different target selection. Open its existing Activity job or choose another release.")
 		}
 		return existing, false, nil
 	} else if !errors.Is(e, sql.ErrNoRows) {
@@ -318,6 +318,12 @@ func (s *Service) Queue(ctx context.Context, releaseID string) (Job, bool, error
 	}
 	sealed, e = s.secrets.Seal("download", b)
 	if e != nil {
+		return Job{}, false, e
+	}
+	if v.Kind == "series" {
+		return s.queueTV(ctx, v, releaseID, sealed, hash, client)
+	}
+	if _, e = s.MovieByID(ctx, v.MovieID); e != nil {
 		return Job{}, false, e
 	}
 	id := ID()

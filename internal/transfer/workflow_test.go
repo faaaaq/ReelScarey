@@ -19,14 +19,18 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 )
 
-type fixtureIndexer struct{ query string }
+type fixtureIndexer struct{ query, category, hash string }
 
 func (*fixtureIndexer) Test(context.Context, IndexerConfig) error { return nil }
 func (f *fixtureIndexer) Search(_ context.Context, c IndexerConfig, q string) ([]Candidate, error) {
 	f.query = q
+	f.category = c.Category
 	return []Candidate{{Release: Release{Title: "Test.Movie.2026.1080p", Size: 12345}, Magnet: testMagnet, Generation: c.Generation}}, nil
 }
-func (*fixtureIndexer) Fetch(_ context.Context, _ IndexerConfig, v Candidate) (Payload, string, error) {
+func (f *fixtureIndexer) Fetch(_ context.Context, _ IndexerConfig, v Candidate) (Payload, string, error) {
+	if f.hash != "" {
+		return Payload{Magnet: "magnet:?xt=urn:btih:" + f.hash}, f.hash, nil
+	}
 	return Payload{Magnet: v.Magnet}, testHash, nil
 }
 

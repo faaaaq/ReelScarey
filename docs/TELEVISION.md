@@ -28,14 +28,19 @@ revision without calling TMDb. Failed refreshes preserve existing local data.
 Saved metadata and choices remain usable after restart and without a TMDb
 connection. Dates are provider calendar dates, not a broadcast-time schedule.
 Missing episode dates are displayed as unknown. Catalog adds do not inspect media
-folders, claim that a file exists, or modify qBittorrent. TV release searches,
-season packs, multi-episode file mapping, imports and availability tracking remain
-the next television work. Movie release/download/import behavior remains available.
+folders, claim that a file exists, or modify qBittorrent. Explicitly selected TV
+releases use qBittorrent and require a file/episode review in Activity before
+import. Imported episode availability comes from registered files, with season
+counts and relative paths. This is not an existing-library scan. See
+[TV downloads and imports](TV_DOWNLOADS.md) for the complete workflow and limits.
 
 Migration 004 adds series_details, seasons and episodes without changing earlier
 migrations, accounts, sessions, encrypted integrations or movie download jobs.
 Existing series rows receive a details record; refresh their show details to load
 season summaries. Back up the stopped config directory before upgrading.
+Migration 005 adds TV downloads, episode/file associations and per-file import
+journals. Metadata refresh now refuses changed season/episode provider identities
+at existing numbers, preserving existing file and download associations for review.
 
 Contracts: official TMDb [TV search](https://developer.themoviedb.org/reference/search-tv),
 [series details](https://developer.themoviedb.org/reference/tv-series-details) and
