@@ -24,6 +24,16 @@ with the same config environment as the running service. On Windows use
 `.\bin\reelscarey.exe setup-token`. Keep codes and provider tokens out of chats,
 issue reports, screenshots and source control.
 
+### If a setup code is rejected
+
+The code belongs to one config directory. Run the setup-token command with the
+same REELSCAREY_CONFIG_DIR as the server, or read that directory's setup-token
+file directly. A code from the default data/config folder will not match a
+server using another config directory. For the development preview created in
+this project, the directory is data/preview/config. Copy the file's single line,
+not its filename or surrounding quotes. If repeated attempts are throttled,
+wait one minute before trying again.
+
 ## Sessions
 
 Login creates a random cookie with HttpOnly, SameSite=Strict, Path=/ and a fixed

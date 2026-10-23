@@ -20,7 +20,7 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
         title={movies ? "Movies" : "TV shows"}
         description={
           movies
-            ? `${resource.data?.total ?? 0} movies · One place for every feature.`
+            ? `${resource.data?.total ?? 0} ${resource.data?.total === 1 ? "movie" : "movies"} · One place for every feature.`
             : "Every season, all in one place."
         }
       >

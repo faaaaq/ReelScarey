@@ -11,7 +11,7 @@ Status is evidence-based: checked items are implemented, not planned adapters.
 - [x] Multi-stage Dockerfile, Compose mounts and healthcheck configuration
 - [x] Architecture, API, contributor and operational documentation
 - [x] Automated tests and native launch/API/frontend verification
-- [ ] Docker build and runtime smoke test executed successfully
+- [x] Docker build and runtime smoke test executed successfully
 
 ## 2 — Movie workflow (current)
 - [x] Authenticate administration: code-protected setup, login/logout, persistent
@@ -24,8 +24,8 @@ Status is evidence-based: checked items are implemented, not planned adapters.
   references and monitoring state, show paginated library collections.
 - [x] Test authentication, search/add API behavior, duplicate/restart cases,
   provider failures and frontend interaction with isolated fixtures.
-- [ ] Verify authenticated search/add against live TMDb with the owner's token
-  entered directly in Settings. No real token has been supplied to this run.
+- [x] Verify authenticated search/details/add against live TMDb with the owner's
+  token entered directly in Settings: Mutiny (2026), TMDb 1288445.
 - [ ] Configure/test a Torznab indexer; return normalized, real release results.
 - [ ] Configure/test qBittorrent and enqueue the selected release once.
 - [ ] Introduce persistent jobs, leases and restart-safe download reconciliation.
@@ -65,7 +65,9 @@ temporary libraries only. Never use unauthorized content as test material.
 2026-10-22: Foundation native checks passed. Its first GitHub run failed because
 the npm lock omitted cross-platform dependencies. The lock was regenerated in a
 clean directory; a clean Windows install and Linux resolution check now pass.
-The movie catalog backend suite and 11 frontend tests pass. Native process smoke
+The movie catalog backend suite and 12 frontend tests pass. Native process smoke
 checks include setup, login, persistent sessions/settings, logout and password
-recovery/revocation. Full details and remaining live-provider/container checks
-are in [validation evidence](docs/VALIDATION.md).
+recovery/revocation. Linux race/static checks and authenticated Docker restart
+checks passed in GitHub Actions. Live TMDb search/details/add saved Mutiny (2026)
+with artwork and monitoring state. Full details are in
+[validation evidence](docs/VALIDATION.md).

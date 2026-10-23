@@ -88,10 +88,7 @@ describe("authentication and movies", () => {
     expect(
       screen.queryByRole("link", { name: "Movies" }),
     ).not.toBeInTheDocument();
-    await userEvent.type(
-      screen.getByLabelText("Setup code"),
-      "test-only-bootstrap-code",
-    );
+    await userEvent.type(screen.getByLabelText("Setup code"), "x".repeat(43));
     await userEvent.type(screen.getByLabelText("Username"), "testadmin");
     await userEvent.type(
       screen.getByLabelText("Password"),
@@ -107,8 +104,33 @@ describe("authentication and movies", () => {
     expect(JSON.parse(String(sent?.[1]?.body))).toEqual({
       username: "testadmin",
       password: "test-only-password",
-      setup_token: "test-only-bootstrap-code",
+      setup_token: "x".repeat(43),
     });
+  });
+  it("explains a truncated setup code before sending an authentication attempt", async () => {
+    const fetch = setup((url) =>
+      url.endsWith("/auth/session")
+        ? Response.json({ authenticated: false, setup_required: true })
+        : undefined,
+    );
+    mount();
+    await screen.findByLabelText("Setup code");
+    await userEvent.type(screen.getByLabelText("Setup code"), "x".repeat(40));
+    await userEvent.type(screen.getByLabelText("Username"), "testadmin");
+    await userEvent.type(
+      screen.getByLabelText("Password"),
+      "test-only-password",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create administrator" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "all 43 characters",
+    );
+    expect(fetch.mock.calls.some(([url]) => url.endsWith("/auth/setup"))).toBe(
+      false,
+    );
+    expect(screen.getByLabelText("Password")).toHaveValue("test-only-password");
   });
   it("shows failed login without fetching private data", async () => {
     const fetch = setup((url) =>

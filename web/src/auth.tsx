@@ -114,6 +114,12 @@ function AuthForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (pending) return;
+    if (setup && code.trim().length !== 43) {
+      setError(
+        "The setup code must contain all 43 characters. Copy the entire line from setup-token.",
+      );
+      return;
+    }
     setPending(true);
     setError("");
     try {
@@ -163,8 +169,13 @@ function AuthForm({
                   id="setup-code"
                   type="password"
                   value={code}
-                  onChange={(e) => setCode(e.target.value)}
+                  onChange={(e) => {
+                    setCode(e.target.value);
+                    setError("");
+                  }}
                   required
+                  maxLength={128}
+                  aria-describedby="setup-code-help"
                   autoComplete="off"
                   size="3"
                 >
@@ -172,9 +183,10 @@ function AuthForm({
                     <KeyRound size={16} />
                   </TextField.Slot>
                 </TextField.Root>
-                <p className="field-help">
-                  Read the one-time <code>setup-token</code> file in your config
-                  folder. This confirms you own this installation.
+                <p className="field-help" id="setup-code-help">
+                  Copy all 43 characters from the one-time{" "}
+                  <code>setup-token</code> file in your config folder. This
+                  confirms you own this installation.
                 </p>
                 <details className="setup-help">
                   <summary>Using Docker?</summary>
