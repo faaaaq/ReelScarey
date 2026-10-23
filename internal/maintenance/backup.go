@@ -419,6 +419,10 @@ func Restore(ctx context.Context, cfg config.Config, backup, destination string)
 	if e != nil {
 		return m, e
 	}
+	sourcePath, e = filepath.Abs(sourcePath)
+	if e != nil {
+		return m, e
+	}
 	if overlap(sourcePath, dest) || overlap(dest, sourcePath) {
 		return m, errors.New("restore destination must be separate from its backup")
 	}

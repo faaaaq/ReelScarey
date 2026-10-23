@@ -138,6 +138,7 @@ func (s *Service) Run(ctx context.Context) (Report, error) {
 	for _, p := range paths {
 		value, e := filepath.EvalSymlinks(p.path)
 		if e != nil {
+			separated = false
 			canonical = append(canonical, "")
 		} else {
 			value, _ = filepath.Abs(value)
@@ -157,7 +158,7 @@ func (s *Service) Run(ctx context.Context) (Report, error) {
 	}
 	message = "Config, media and download roots are separate."
 	if !separated {
-		message = "Config, media and download roots overlap. Choose separate folders before importing."
+		message = "Storage roots overlap or could not all be resolved. Make all three folders available and choose separate roots before importing."
 	}
 	add("paths", "Separate storage roots", message, pathError)
 	for _, p := range paths {

@@ -87,6 +87,18 @@ func TestRecoveryRequiresReviewValidMarkerAndKeepsSchedulesPaused(t *testing.T) 
 	if instance.RecoveryPending(cfg.ConfigDir) {
 		t.Fatal("reviewed recovery stayed held")
 	}
+	if e := os.WriteFile(marker, []byte(`{"format":1}`), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.Remove(cfg.DownloadsDir); e != nil {
+		t.Fatal(e)
+	}
+	if s.Resume(ctx, true) == nil || !instance.RecoveryPending(cfg.ConfigDir) {
+		t.Fatal("unresolved storage allowed recovery")
+	}
+	if e := os.Mkdir(cfg.DownloadsDir, 0700); e != nil {
+		t.Fatal(e)
+	}
 	var enabled bool
 	for _, table := range []string{"search_schedule", "subtitle_preferences"} {
 		if e := db.QueryRow("SELECT enabled FROM " + table).Scan(&enabled); e != nil || enabled {

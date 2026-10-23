@@ -64,6 +64,20 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	if _, e = Verify(ctx, backup); e != nil {
 		t.Fatal(e)
 	}
+	cwd, e := os.Getwd()
+	if e != nil {
+		t.Fatal(e)
+	}
+	relative, e := filepath.Rel(cwd, backup)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = Restore(ctx, cfg, relative, filepath.Join(backup, "nested-restore")); e == nil {
+		t.Fatal("relative backup allowed a restore inside itself")
+	}
+	if _, e = Verify(ctx, backup); e != nil {
+		t.Fatal("rejected nested restore modified the backup", e)
+	}
 	dest := filepath.Join(root, "recovered")
 	if _, e = Restore(ctx, cfg, backup, dest); e != nil {
 		t.Fatal(e)
