@@ -1,4 +1,4 @@
-# REST API — media catalog, downloads, imports and automation
+# REST API — media catalog, downloads, imports, automation and subtitles
 
 All routes are same-origin. JSON uses snake_case. All `/api/v1` routes require
 an administrator session except the three public auth routes below. Mutations
@@ -59,6 +59,14 @@ explicitly documented as breaking before the first stable release.
 | PUT | `/api/v1/automation/items/{id}` | Revision-checked profile assignment and optional movie monitoring |
 | GET/POST | `/api/v1/quality-profiles` | `{items}` list or validated profile creation (201) |
 | PUT | `/api/v1/quality-profiles/{id}` | Revision-checked profile edit |
+| GET/PUT | `/api/v1/subtitles/preferences` | `{preferences,languages}`; revision-checked subtitle rules |
+| GET/PUT/DELETE | `/api/v1/providers/opensubtitles` | Safe status; test/encrypt credentials; disconnect |
+| POST | `/api/v1/providers/opensubtitles/test` | `{}`; test saved account without downloading a subtitle |
+| GET | `/api/v1/subtitles/files?page=1` | Registered files, detected tracks and last/current jobs; items/page/total/limit 24 |
+| GET | `/api/v1/subtitles/files/{id}` | One registered file, tracks/job and cached subtitle candidates |
+| POST | `/api/v1/subtitles/files/{id}/search` | `{}`; 202 queued search for manual review, no automatic download |
+| POST | `/api/v1/subtitles/files/{id}/retry` | `{}`; 202 retry preserving job intent/selection |
+| POST | `/api/v1/subtitles/candidates/{id}/download` | `{ "reviewed": true }`; 202 queue an opaque, unexpired subtitle choice |
 
 Library responses contain `items`, `page`, `total`, and `limit: 24`. Page bounds
 are 1–100000; ordering is case-insensitive title then ID. Search responses contain
@@ -194,9 +202,35 @@ Missing TMDb configuration returns 409 `tmdb_not_configured`; stale settings use
 text, credentials, request headers or URLs containing secrets.
 
 Planned route groups (not registered): broader library editing,
-multi-indexer/client CRUD, generic `/jobs` and `/subtitles`.
+multi-indexer/client CRUD and generic `/jobs`.
 Design each group's concrete request/response types with its
 first complete vertical slice; do not expose placeholder 200 responses.
+
+Subtitle PUT preferences accepts enabled, tracks (`[{language:"en",variant:"full"}]`),
+hearing_impaired (any/exclude/prefer), match_policy (hash/hash_or_release),
+interval_minutes (60–10080), only_monitored and revision. Choose 1–9 unique tracks,
+at most three languages from GET's supported languages list, and full/signs/forced
+variants. Defaults are paused, all three English variants, any SDH, hash_or_release,
+360 minutes and monitored items only. A stale revision returns 409; saving fences
+running work. Manual searches/downloads work while automatic work is paused.
+
+OpenSubtitles PUT accepts username, user_agent (registered application name and
+version), api_key and password. The secret fields are required on first connect;
+omitting them retains saved values. Changing username requires a password.
+The account is tested before replacing any configuration. GET returns configured,
+username, user_agent, state, message, cooldown_until (Unix seconds) and remaining
+(nullable last reported allowance), never passwords, API keys, JWTs or signed URLs.
+Provider rejection uses 502 rather than the application's login-required 401.
+Quota/cooldown errors use 429 with safe messages; the status exposes the reset.
+
+Files and candidates use server-owned IDs; request bodies cannot supply paths,
+provider file IDs, URLs or timing assertions. Candidate responses include language,
+variant, release/file_name, hash_match, hearing_impaired, trusted, score, automatic,
+can_download and reasons. A choice lasts 30 minutes and is bound to file SHA,
+provider generation and preferences revision; stale choices return 409
+candidate_expired. reviewed=false returns 400 review_required. Duplicate active
+requests return 409 subtitle_busy. No matching tracks is a real no_match state.
+See SUBTITLES.md for detection, matching, automatic work and filesystem limits.
 
 Automation PUT accepts only `enabled`, `mode` (search/download),
 `interval_minutes` (15–10080), `batch_size` (1–25), `default_profile_id` and

@@ -54,7 +54,7 @@ temporary libraries only. Never use unauthorized content as test material.
 - [x] Reserve episode targets, retain per-file journals and resume partial season imports.
 - [ ] Owner-service acceptance remains deferred with Torznab and the shared mount setup.
 
-## 4 — Automation (current)
+## 4 — Automation
 - [x] Persistent opt-in scheduled monitoring/search and one-off requests.
 - [x] Editable quality/language profiles and per-movie/show assignments.
 - [x] Conservative identity filtering, ranked decisions and rejection explanations.
@@ -66,10 +66,19 @@ temporary libraries only. Never use unauthorized content as test material.
 - [ ] Versioned replacement imports, audio-language verification and richer source/
   codec scoring remain future extensions; they are not represented as working.
 
-## 5 — Subtitles
-- Provider interface and first real provider
-- Language preferences, existing subtitle detection and release-aware matching
-- Automatic searches and safe subtitle storage
+## 5 — Subtitles (current)
+- [x] Provider interface and real OpenSubtitles.com REST integration; encrypted,
+  write-only credentials, connection tests, quota/cooldown handling.
+- [x] Revision-checked language, full/signs/forced and hearing-impaired preferences;
+  default English full, signs/songs and forced tracks, automatic work paused.
+- [x] Embedded and existing SRT/VTT/ASS/SSA detection for registered movie/TV files.
+- [x] Hash/exact-release automatic matching, catalog identity checks, explicit
+  review for uncertain timing, expiring opaque selections.
+- [x] Leased automatic searches/downloads, bounded retries, persistent allowance
+  state and journaled SRT publication with collision refusal and restart recovery.
+- [ ] Owner-account OpenSubtitles acceptance awaits private credential setup.
+- [ ] Additional providers, arbitrary-library scanning, ASS-style downloads,
+  subtitle replacement/resynchronization and per-show language overrides remain future scope.
 
 ## 6 — Production hardening
 - Setup wizard, broader integration tests and error recovery exercises

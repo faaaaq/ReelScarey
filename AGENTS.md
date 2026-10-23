@@ -26,6 +26,11 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - internal/library owns the shared catalog, TV seasons/episodes and revision-checked monitoring. Future providers live in
   their feature modules behind narrow, consumer-owned interfaces.
 - internal/quality owns editable profiles, conservative release identity and ranking.
+- internal/subtitle owns registered-media inspections, OpenSubtitles credentials/
+  protocol, language/track preferences, leased jobs and journaled sidecar storage.
+  Providers receive canonical metadata/hash only, never local paths. Existing
+  video/sidecars must not be replaced; automatic selections require provider
+  identity and hash/exact original-release evidence. Uncertain timing needs review.
   internal/automation owns interval scheduling, leased searches and bounded audit
   history. It delegates downloads/imports to transfer; automatic queueing must be
   fenced inside the reservation transaction against changed policy and monitoring.
@@ -71,6 +76,11 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - Automation checks must cover pause/lease/profile/monitoring changes during
   metainfo fetch, bounded retries/cursor rotation, duplicate prevention, TV review
   gating and preservation of registered files during upgrade detection.
+- Subtitle checks cover quota/auth cooldowns, private download URL allowlists,
+  missing/embedded/existing track detection, stale choices, policy fences and
+  partial/published journal recovery without consuming download quota again.
+  Generated FFmpeg/FFprobe acceptance uses REELSCAREY_LIVE_SUBTITLES=1; never
+  an owner account or existing video. Preserve unrecognized staging files.
 - Run gofmt on Go changes and `npm run format` for the frontend. Keep dependencies locked and explain additions.
 - Record validation failures and environment limits; never mark an unrun check
   as passed. Use local Git commits for stable milestones.

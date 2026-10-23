@@ -23,11 +23,12 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/httpapi"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
+	"github.com/faaaaq/ReelScarey/internal/subtitle"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.6.0-dev"
+var version = "0.7.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -107,11 +108,12 @@ func run(logger *slog.Logger) error {
 	metadataService := metadata.New(secretStore, metadata.NewTMDb())
 	transferService := transfer.New(db, secretStore, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
 	automationService := automation.New(db, transferService)
+	subtitleService := subtitle.New(db, secretStore, cfg, subtitle.NewOpenSubtitles())
 	assets, err := web.Assets()
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
@@ -121,6 +123,9 @@ func run(logger *slog.Logger) error {
 	go func() { defer close(workerDone); transferService.Run(workerCtx, logger) }()
 	automationDone := make(chan struct{})
 	go func() { defer close(automationDone); automationService.Run(workerCtx, logger) }()
+	subtitleDone := make(chan struct{})
+	go func() { defer close(subtitleDone); subtitleService.Run(workerCtx, logger) }()
+	defer func() { workerCancel(); <-subtitleDone }()
 	defer func() { workerCancel(); <-automationDone }()
 	defer func() { workerCancel(); <-workerDone }()
 	failed := make(chan error, 1)

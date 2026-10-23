@@ -1,5 +1,45 @@
 # Validation record — 2026-10-23
 
+## Subtitle providers, language preferences and automatic downloads
+
+English full dialogue, signs/songs and forced tracks are independent defaults;
+automatic work starts paused. Torznab owner setup remains deferred. The first
+real adapter is OpenSubtitles.com; owner-account acceptance awaits private setup.
+
+- Real-adapter protocol tests pass for login/VIP hosts, canonical sorted movie/TV
+  requests, identity/language/type normalization, signed-download credential
+  isolation, hostile locations/redirects, bounded responses, quota/rate cooldowns
+  and bounded authentication retries. No external account is used by these tests.
+- Workflow tests pass for three distinct tracks, embedded/sidecar detection,
+  invalid/unlabeled sidecar preservation, explicit review, shared episode files,
+  stale choices/revisions, lease reclamation, connection/pause/monitoring fences,
+  encrypted credentials, quota preservation and no duplicate downloads after reopen.
+- Partial/staged/linked/published journal recovery tests reopen the database and
+  complete from saved bytes without another provider call. Collision checks retain
+  existing destinations and partial files; cleanup removes only proven committed
+  staging links. Generated videos remain byte-for-byte unchanged.
+- Migration checks preserve prior encrypted integration bytes/timestamps and
+  enabled automation settings, while adding paused subtitle defaults. Broken
+  migration rollback/checksum/newer-version checks pass with schema version 7.
+- Clean locked frontend install reported zero known vulnerabilities. Formatting,
+  TypeScript, all 31 interface tests and production build pass. Initial new UI
+  assertions used an outdated label and did not await the independently loaded
+  file list; both assertions were corrected before the passing full run.
+- Full Windows Go tests, vet, executable build and disposable native restart smoke
+  pass. The native check retains all English track variants, an added language,
+  enabled/hash-only preferences and authenticated sessions across restart with
+  OpenSubtitles/Torznab unconfigured. Local Windows race/container checks require
+  Linux CI; no local Docker/C compiler is available.
+- Opt-in FFmpeg/FFprobe acceptance passed locally for a generated video with
+  embedded English full/signs/forced streams (zero provider calls), and a second
+  generated video receiving three distinct SRT sidecars. Video bytes are preserved.
+- Browser QA caught a new imported file returning an error before its first
+  subtitle job existed. File/list handling now accepts an absent job; a backend
+  regression test confirms visibility while automatic work is paused.
+
+Browser acceptance, owner preview upgrade and Linux CI results will be recorded
+after verification. See SUBTITLES.md for exact format/matching/cache/recovery limits.
+
 ## Scheduled searches and quality profiles
 
 Owner Torznab setup/shared-mount acceptance remains explicitly deferred. This

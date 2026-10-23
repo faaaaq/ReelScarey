@@ -29,6 +29,7 @@ internal/metadata/   real TMDb adapter and normalized movie service
 internal/transfer/   Torznab/qBittorrent, durable downloads and safe imports
 internal/quality/    conservative identity, profile persistence and release ranking
 internal/automation/ persistent scheduled searches, audit history and policy fences
+internal/subtitle/   provider, track preferences, registered-media jobs and sidecars
 internal/httpapi/    REST handlers, middleware, frontend serving
 web/src/             application, pages, reusable UI, API client
 web/dist/            generated frontend (ignored, embedded at build time)
@@ -44,7 +45,9 @@ singleton `admin_account`, `sessions`, `provider_secrets`, `integration_configs`
 `series_details`, `seasons`, `episodes`, `download_tv`, `download_targets`,
 `episode_downloads`, `download_tv_files`, `download_mappings`, `episode_files`,
 `quality_profiles`, `item_automation`, `search_schedule`, `automation_runs` and
-`automation_results`.
+`automation_results`, `subtitle_preferences`, `subtitle_provider_state`,
+`subtitle_jobs`, `subtitle_candidates`, `subtitle_inspections`, `subtitles` and
+`subtitle_imports`.
 The migration ledger stores version, filename, checksum, and applied time.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored
@@ -82,7 +85,6 @@ Planned entities (design, **not implemented schema**):
 | Entity | Relationships and invariants |
 | --- | --- |
 | indexers/download_clients | Future multi-provider CRUD; one encrypted configuration per integration exists now |
-| subtitles | Media file, language, provider identity, path and hearing-impaired flag |
 | jobs | Future arbitrary job types; searches and downloads already have durable leases/retries |
 
 Media file paths are never derived from untrusted release names without
@@ -167,6 +169,38 @@ resume after prefix validation. Exclusive hardlink publication cannot overwrite
 an existing file, so the media filesystem must support this operation. Sources
 stay untouched. File registration, available catalog state and job completion
 commit together. See docs/MOVIE_WORKFLOW.md for guarantees/platform limitations.
+
+## Subtitles
+
+Migration 007 adds subtitle preferences, per-file leased work, expiring selections,
+inspection fingerprints, detected/downloaded tracks and per-track import journals.
+The encrypted integration table is extended without changing existing ciphertext.
+One subtitle worker discovers registered movie/episode files in batches of 50;
+it never recursively scans arbitrary library contents. Global language/variant
+preferences start paused with English full, signs/songs and forced tracks.
+
+The first provider is OpenSubtitles.com. Requests use fixed official HTTPS API
+hosts, serialized one-second spacing, bounded bodies, safe errors and no API
+redirects. Temporary subtitle links and redirects use an explicit HTTPS CDN
+allowlist without API/account headers. Account/API credentials are encrypted by
+securestore; login tokens remain in memory, signed URLs are not persisted.
+Quota/rate cooldowns and rejected-account states persist across restarts.
+
+FFprobe identifies embedded subtitle language/title/disposition. Anchored reads
+detect existing sidecars before network requests. A first inspection verifies the
+registered video SHA-256; unchanged size/mtime and registered SHA reuse that cached
+inspection. Automatic selection requires provider catalog identity and a file-hash
+or exact original-download release match; shared episode files require a hash.
+Uncertain timing is manually reviewed through a 30-minute opaque selection bound
+to the preferences revision, provider generation and registered video SHA.
+
+New downloads are bounded UTF-8 SRT. Verified bytes are journaled before staging,
+published by exclusive same-folder hardlink and registered transactionally.
+The video is never written. Existing destinations, invalid sidecars and unknown
+stages remain untouched. Partial stages allocate a fresh journaled stage rather
+than truncating existing data; published journals recover without provider calls.
+Only proven committed stage/destination links are cleaned. See docs/SUBTITLES.md
+for exact format, matching, filesystem and recovery limits.
 
 ## Configuration and security
 

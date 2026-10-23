@@ -42,7 +42,7 @@ func TestMigrationsPersistAndConfigureSQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if name != "Persistent cinema" || journal != "wal" || foreignKeys != 1 || timeout != 5000 || count != 6 {
+	if name != "Persistent cinema" || journal != "wal" || foreignKeys != 1 || timeout != 5000 || count != 7 {
 		t.Fatalf("persistence/pragmas failed: %s %s %d %d %d", name, journal, foreignKeys, timeout, count)
 	}
 	var enabled, profiles int
@@ -121,7 +121,7 @@ func TestMigrationRollbackAndDrift(t *testing.T) {
 		}
 		files[name] = &fstest.MapFile{Data: body}
 	}
-	files["migrations/007_broken.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE rollback_probe (id INTEGER); INSERT INTO nonexistent VALUES (1);")}
+	files["migrations/008_broken.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE rollback_probe (id INTEGER); INSERT INTO nonexistent VALUES (1);")}
 	if err := migrate(ctx, db, files); err == nil {
 		t.Fatal("broken migration succeeded")
 	}
@@ -130,7 +130,7 @@ func TestMigrationRollbackAndDrift(t *testing.T) {
 		t.Fatalf("DDL not rolled back: %v, %d", err, count)
 	}
 	version, err := Version(ctx, db)
-	if err != nil || version != 6 {
+	if err != nil || version != 7 {
 		t.Fatalf("broken migration recorded: %d %v", version, err)
 	}
 	files["migrations/001_foundation.sql"] = &fstest.MapFile{Data: []byte("SELECT 1;")}
@@ -142,6 +142,63 @@ func TestMigrationRollbackAndDrift(t *testing.T) {
 	}
 	if err := Migrate(ctx, db); err == nil {
 		t.Fatal("newer database accepted")
+	}
+}
+
+func TestSubtitleUpgradeRetainsEncryptedIntegrationsAndAutomation(t *testing.T) {
+	ctx := context.Background()
+	db, e := sql.Open("sqlite", ":memory:")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, e = db.Exec(`PRAGMA foreign_keys=ON`); e != nil {
+		t.Fatal(e)
+	}
+	old := fstest.MapFS{}
+	names, e := fs.Glob(migrationFiles, "migrations/*.sql")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, name := range names {
+		if filepath.Base(name) >= "007_" {
+			continue
+		}
+		body, e := fs.ReadFile(migrationFiles, name)
+		if e != nil {
+			t.Fatal(e)
+		}
+		old[name] = &fstest.MapFile{Data: body}
+	}
+	if e = migrate(ctx, db, old); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`INSERT INTO integration_configs(name,ciphertext,updated_at) VALUES('torznab',X'010203','original-time'),('qbittorrent',X'040506','original-time')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`UPDATE search_schedule SET enabled=1,interval_minutes=120,revision=8`); e != nil {
+		t.Fatal(e)
+	}
+	if e = Migrate(ctx, db); e != nil {
+		t.Fatal(e)
+	}
+	var ciphertext, timestamp, tracks string
+	var enabled, revision, interval, subtitleEnabled int
+	if e = db.QueryRow(`SELECT hex(ciphertext),updated_at FROM integration_configs WHERE name='torznab'`).Scan(&ciphertext, &timestamp); e != nil || ciphertext != "010203" || timestamp != "original-time" {
+		t.Fatal(ciphertext, timestamp, e)
+	}
+	if e = db.QueryRow(`SELECT enabled,revision,interval_minutes FROM search_schedule`).Scan(&enabled, &revision, &interval); e != nil || enabled != 1 || revision != 8 || interval != 120 {
+		t.Fatal(enabled, revision, interval, e)
+	}
+	if e = db.QueryRow(`SELECT enabled,tracks FROM subtitle_preferences`).Scan(&subtitleEnabled, &tracks); e != nil || subtitleEnabled != 0 || tracks != `[{"language":"en","variant":"full"},{"language":"en","variant":"signs"},{"language":"en","variant":"forced"}]` {
+		t.Fatal(subtitleEnabled, tracks, e)
+	}
+	if _, e = db.Exec(`INSERT INTO integration_configs(name,ciphertext) VALUES('opensubtitles',X'070809')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`INSERT INTO integration_configs(name,ciphertext) VALUES('unimplemented',X'070809')`); e == nil {
+		t.Fatal("provider constraint lost")
 	}
 }
 

@@ -34,6 +34,10 @@ jobs:
         run: go test -race ./internal/transfer -run TestRealQBittorrent -count=1 -v -timeout=8m
         env:
           REELSCAREY_LIVE_QBT: '1'
+      - name: Generated subtitle media and embedded track detection
+        run: go test -race ./internal/subtitle -run TestRealSubtitleMedia -count=1 -v -timeout=2m
+        env:
+          REELSCAREY_LIVE_SUBTITLES: '1'
       - run: go build -o bin/reelscarey ./cmd/reelscarey
       - run: node scripts/smoke.mjs
       - name: Build and smoke-test the container

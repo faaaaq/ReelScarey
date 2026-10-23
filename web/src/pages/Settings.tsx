@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
+import { Link } from "react-router-dom";
 import { CheckCircle2, FolderOpen, Save, Server } from "lucide-react";
 import {
   api,
@@ -238,6 +239,16 @@ export function Settings() {
               <TMDbSettings />
               <IntegrationSettings kind="torznab" />
               <IntegrationSettings kind="qbittorrent" />
+              <section className="panel settings-info">
+                <h2>Subtitle providers</h2>
+                <p>
+                  Manage OpenSubtitles, language preferences and automatic
+                  downloads for imported movies and episodes.
+                </p>
+                <Link className="text-link" to="/subtitles">
+                  Open subtitle settings
+                </Link>
+              </section>
             </div>
           </div>
         )}

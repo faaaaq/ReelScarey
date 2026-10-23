@@ -66,6 +66,8 @@ try {
   assert.equal((await fetch(`${base}${asset}`)).status, 200)
   assert.equal((await fetch(`${base}/assets/missing.js`)).status, 404)
   assert.equal((await fetch(`${base}/api/v1/settings`)).status, 401)
+  assert.equal((await fetch(`${base}/subtitles`)).status, 200)
+  assert.equal((await fetch(`${base}/api/v1/subtitles/preferences`)).status, 401)
   const status = await (await fetch(`${base}/api/v1/auth/session`)).json()
   assert.equal(status.setup_required, true)
   const setupCode = (await readFile(path.join(directory, 'config', 'setup-token'), 'utf8')).trim()
@@ -82,6 +84,13 @@ try {
   assert.equal(system.database, 'connected')
   assert.equal(system.capabilities.metadata_search, true)
   assert.equal(system.capabilities.automation, true)
+  assert.equal(system.capabilities.subtitles, true)
+  const subtitles = await (await authenticated('/api/v1/subtitles/preferences')).json()
+  assert.equal(subtitles.preferences.enabled, false)
+  assert.deepEqual(subtitles.preferences.tracks, [{ language: 'en', variant: 'full' }, { language: 'en', variant: 'signs' }, { language: 'en', variant: 'forced' }])
+  const subtitlePreferences = { ...subtitles.preferences, enabled: true, match_policy: 'hash', tracks: [...subtitles.preferences.tracks, { language: 'ja', variant: 'full' }] }
+  assert.equal((await authenticated('/api/v1/subtitles/preferences', { method: 'PUT', body: JSON.stringify(subtitlePreferences) })).status, 200)
+  assert.equal((await (await authenticated('/api/v1/providers/opensubtitles')).json()).configured, false)
   const schedule = await (await authenticated('/api/v1/automation')).json()
   assert.equal(schedule.enabled, false)
   assert.equal(schedule.indexer_connected, false)
@@ -101,6 +110,11 @@ try {
   const after = await (await authenticated('/api/v1/settings')).json()
   assert.equal(after.library_name, 'Restart verification')
   assert.equal(after.revision, before.revision + 1)
+  const subtitlesAfter = await (await authenticated('/api/v1/subtitles/preferences')).json()
+  assert.equal(subtitlesAfter.preferences.enabled, true)
+  assert.equal(subtitlesAfter.preferences.match_policy, 'hash')
+  assert.deepEqual(subtitlesAfter.preferences.tracks, subtitlePreferences.tracks)
+  assert.equal((await (await authenticated('/api/v1/providers/opensubtitles')).json()).configured, false)
   const automationAfter = await (await authenticated('/api/v1/automation')).json()
   assert.equal(automationAfter.enabled, true)
   assert.equal(automationAfter.interval_minutes, 60)
@@ -120,7 +134,7 @@ try {
   cookie = login.headers.get('set-cookie').split(';')[0]; csrf = (await login.json()).csrf_token
   assert.equal((await authenticated('/api/v1/auth/logout', { method: 'POST', body: '{}' })).status, 200)
   assert.equal((await authenticated('/api/v1/settings')).status, 401)
-  console.log('PASS: native startup, embedded UI/API, admin setup, session/settings/profile/schedule persistence, deferred indexer, CLI healthcheck/password reset, session revocation and logout.')
+  console.log('PASS: native startup, embedded UI/API, admin setup, session/settings/profile/schedule/subtitle preference persistence, deferred providers, CLI healthcheck/password reset, session revocation and logout.')
 } catch (error) {
   console.error(logs)
   throw error

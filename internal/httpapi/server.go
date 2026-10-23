@@ -24,6 +24,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/settings"
+	"github.com/faaaaq/ReelScarey/internal/subtitle"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
 )
 
@@ -39,6 +40,7 @@ type Server struct {
 	metadata   *metadata.Service
 	transfer   *transfer.Service
 	automation *automation.Service
+	subtitle   *subtitle.Service
 }
 
 type Dependencies struct {
@@ -46,10 +48,11 @@ type Dependencies struct {
 	Metadata   *metadata.Service
 	Transfer   *transfer.Service
 	Automation *automation.Service
+	Subtitle   *subtitle.Service
 }
 
 func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string, deps Dependencies) http.Handler {
-	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation}
+	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", method(http.MethodGet, s.health))
 	mux.HandleFunc("/readyz", method(http.MethodGet, s.ready))
@@ -57,6 +60,13 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/dashboard", method(http.MethodGet, s.dashboard))
 	mux.HandleFunc("/api/v1/library", method(http.MethodGet, s.listLibrary))
 	mux.HandleFunc("/api/v1/settings", s.handleSettings)
+	mux.HandleFunc("/api/v1/subtitles/preferences", s.subtitlePreferences)
+	mux.HandleFunc("/api/v1/providers/opensubtitles", s.subtitleProvider)
+	mux.HandleFunc("/api/v1/providers/opensubtitles/test", method(http.MethodPost, s.subtitleProviderTest))
+	mux.HandleFunc("/api/v1/subtitles/files", method(http.MethodGet, s.subtitleFiles))
+	mux.HandleFunc("/api/v1/subtitles/files/{id}", method(http.MethodGet, s.subtitleFile))
+	mux.HandleFunc("/api/v1/subtitles/files/{id}/{action}", method(http.MethodPost, s.subtitleFileAction))
+	mux.HandleFunc("/api/v1/subtitles/candidates/{id}/download", method(http.MethodPost, s.subtitleDownload))
 	mux.HandleFunc("/api/v1/automation", s.automationSettings)
 	mux.HandleFunc("/api/v1/automation/run", method(http.MethodPost, s.automationRequest))
 	mux.HandleFunc("/api/v1/automation/runs", method(http.MethodGet, s.automationRuns))
@@ -150,10 +160,10 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, map[string]any{
-		"name": "ReelScarey", "version": s.version, "milestone": "automation",
+		"name": "ReelScarey", "version": s.version, "milestone": "subtitles",
 		"database": "connected", "schema_version": version, "uptime_seconds": int(time.Since(s.started).Seconds()),
 		"paths":        map[string]string{"config": s.config.ConfigDir, "media": s.config.MediaDir, "downloads": s.config.DownloadsDir},
-		"capabilities": map[string]bool{"authentication": true, "library_settings": true, "metadata_search": true, "movie_add": true, "series_catalog": s.metadata != nil && s.metadata.SupportsSeries(), "episode_monitoring": true, "tv_downloads": s.transfer != nil, "torznab_search": s.transfer != nil, "downloads": s.transfer != nil, "import": s.transfer != nil, "persistent_jobs": s.transfer != nil, "subtitles": false, "automation": s.automation != nil, "quality_profiles": true},
+		"capabilities": map[string]bool{"authentication": true, "library_settings": true, "metadata_search": true, "movie_add": true, "series_catalog": s.metadata != nil && s.metadata.SupportsSeries(), "episode_monitoring": true, "tv_downloads": s.transfer != nil, "torznab_search": s.transfer != nil, "downloads": s.transfer != nil, "import": s.transfer != nil, "persistent_jobs": s.transfer != nil, "subtitles": s.subtitle != nil, "automation": s.automation != nil, "quality_profiles": true},
 	})
 }
 

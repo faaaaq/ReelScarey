@@ -22,7 +22,7 @@ import {
   Routes,
   useLocation,
 } from "react-router-dom";
-import { FuturePage, PageHeading } from "./components";
+import { PageHeading } from "./components";
 import { Dashboard } from "./pages/Dashboard";
 import { Library } from "./pages/Library";
 import { Settings } from "./pages/Settings";
@@ -32,6 +32,7 @@ import { Activity as DownloadActivity } from "./pages/Activity";
 import { Releases } from "./pages/Releases";
 import { Series } from "./pages/Series";
 import { Automation } from "./pages/Automation";
+import { Subtitles } from "./pages/Subtitles";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -130,7 +131,7 @@ function AppShell() {
             <span className="status-dot" />
             <span>Movies & TV</span>
             <Badge color="gray" size="1">
-              0.6
+              0.7
             </Badge>
           </div>
           <div className="account-control">
@@ -166,24 +167,7 @@ function AppShell() {
             <Route path="/releases" element={<Releases />} />
             <Route path="/activity" element={<DownloadActivity />} />
             <Route path="/automation" element={<Automation />} />
-            <Route
-              path="/subtitles"
-              element={
-                <>
-                  <PageHeading
-                    eyebrow="DON’T MISS A WORD"
-                    title="Subtitles"
-                    description="The right words for every scene."
-                  />
-                  <FuturePage
-                    icon={Captions}
-                    title="Subtitles have a place here."
-                    description="Provider connections, language preferences, and automatic subtitle matching will follow the core movie and TV workflows."
-                    phase="Planned · Phase 5"
-                  />
-                </>
-              }
-            />
+            <Route path="/subtitles" element={<Subtitles />} />
             <Route
               path="*"
               element={

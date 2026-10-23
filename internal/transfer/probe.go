@@ -13,10 +13,17 @@ import (
 )
 
 type Probe struct {
-	Codec    string  `json:"codec"`
-	Width    int     `json:"width"`
-	Height   int     `json:"height"`
-	Duration float64 `json:"duration_seconds"`
+	Subtitles []SubtitleStream `json:"subtitle_streams"`
+	Codec     string           `json:"codec"`
+	Width     int              `json:"width"`
+	Height    int              `json:"height"`
+	Duration  float64          `json:"duration_seconds"`
+}
+type SubtitleStream struct {
+	Language        string `json:"language"`
+	Title           string `json:"title"`
+	Forced          bool   `json:"forced"`
+	HearingImpaired bool   `json:"hearing_impaired"`
 }
 type Prober interface {
 	Probe(context.Context, *os.File) (Probe, error)
@@ -40,7 +47,7 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 	defer file.Seek(0, 0)
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", "pipe", "-probesize", "16777216", "-analyzeduration", "10000000", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height:stream_disposition=attached_pic", "-of", "json", "-i", "pipe:0")
+	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", "pipe", "-probesize", "16777216", "-analyzeduration", "10000000", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags=language,title", "-of", "json", "-i", "pipe:0")
 	hideProbeWindow(cmd)
 	var output limitedBuffer
 	output.max = 64 << 10
@@ -64,7 +71,13 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 			Height      int    `json:"height"`
 			Disposition struct {
 				Attached int `json:"attached_pic"`
+				Forced   int `json:"forced"`
+				Hearing  int `json:"hearing_impaired"`
 			} `json:"disposition"`
+			Tags struct {
+				Language string `json:"language"`
+				Title    string `json:"title"`
+			} `json:"tags"`
 		} `json:"streams"`
 	}
 	if json.Unmarshal(output.Bytes(), &raw) != nil {
@@ -74,9 +87,15 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 	if e != nil || math.IsNaN(duration) || math.IsInf(duration, 0) || duration <= 0 {
 		return Probe{}, problem("invalid_media", "The movie's duration could not be verified.")
 	}
+	subtitles := []SubtitleStream{}
+	for _, stream := range raw.Streams {
+		if stream.Type == "subtitle" && len(subtitles) < 100 {
+			subtitles = append(subtitles, SubtitleStream{Language: stream.Tags.Language, Title: stream.Tags.Title, Forced: stream.Disposition.Forced != 0, HearingImpaired: stream.Disposition.Hearing != 0})
+		}
+	}
 	for _, stream := range raw.Streams {
 		if stream.Type == "video" && stream.Codec != "" && stream.Codec != "unknown" && stream.Width > 0 && stream.Height > 0 && stream.Width <= 32768 && stream.Height <= 32768 && stream.Disposition.Attached == 0 {
-			return Probe{Codec: stream.Codec, Width: stream.Width, Height: stream.Height, Duration: duration}, nil
+			return Probe{Codec: stream.Codec, Width: stream.Width, Height: stream.Height, Duration: duration, Subtitles: subtitles}, nil
 		}
 	}
 	return Probe{}, problem("invalid_media", "The selected file has no usable video stream.")

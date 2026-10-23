@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { Pagination } from "../movieComponents";
 import { useResource } from "../useResource";
+import { useLiveResource } from "../useLiveResource";
 
 export type Profile = {
   id: number;
@@ -88,49 +89,6 @@ function readable(value: string) {
 function date(value: number) {
   return value ? new Date(value * 1000).toLocaleString() : "Not scheduled";
 }
-// Background refreshes retain drafts and the last useful response on outages.
-function useLiveResource<T>(path: string, interval = 0) {
-  const [data, setData] = useState<T>();
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [attempt, setAttempt] = useState(0);
-  const reload = useCallback(() => setAttempt((n) => n + 1), []);
-  useEffect(() => {
-    const controller = new AbortController();
-    let busy = false;
-    async function read() {
-      if (busy) return;
-      busy = true;
-      try {
-        const value = await api<T>(path, {
-          signal: AbortSignal.any([
-            controller.signal,
-            AbortSignal.timeout(15000),
-          ]),
-        });
-        if (!controller.signal.aborted) {
-          setData(value);
-          setError("");
-        }
-      } catch (e) {
-        if (!controller.signal.aborted) setError(messageFor(e));
-      } finally {
-        busy = false;
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    }
-    void read();
-    const timer = interval
-      ? window.setInterval(() => void read(), interval)
-      : undefined;
-    return () => {
-      controller.abort();
-      if (timer) window.clearInterval(timer);
-    };
-  }, [path, interval, attempt]);
-  return { data, error, loading, reload };
-}
-
 export function Automation() {
   const schedule = useLiveResource<Schedule>("/automation", 10000);
   const profiles = useLiveResource<{ items: Profile[] }>("/quality-profiles");
