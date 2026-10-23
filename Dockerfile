@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 reelscarey \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin reelscarey \
-    && mkdir /config /media /downloads \
+    && mkdir -p /config /media /downloads \
     && chown 10001:10001 /config /media /downloads
 COPY --from=backend /out/reelscarey /usr/local/bin/reelscarey
 ENV REELSCAREY_LISTEN_ADDR=0.0.0.0:8787 \
