@@ -25,6 +25,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   reviewed file mappings and per-file journaled imports. TV shares the importer.
 - internal/library owns the shared catalog, TV seasons/episodes and revision-checked monitoring. Future providers live in
   their feature modules behind narrow, consumer-owned interfaces.
+- internal/quality owns editable profiles, conservative release identity and ranking.
+  internal/automation owns interval scheduling, leased searches and bounded audit
+  history. It delegates downloads/imports to transfer; automatic queueing must be
+  fenced inside the reservation transaction against changed policy and monitoring.
 - web contains React, TypeScript, Vite, Tailwind, and Radix Themes. Use maintained
   accessible components. Go serves the built web/dist directory via embed.
 - Do not import HTTP handlers into domain packages or create separate daemons.
@@ -47,6 +51,9 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   real-client tests start a separate authenticated client.
 - Durable jobs will use database leases and idempotent handlers. Do not promise
   exactly-once delivery or use an in-memory queue as the source of truth.
+- New schedules must start paused and in search-only mode. Missing Torznab is a
+  waiting state, not an error that prevents library/profile management. Existing
+  files may produce upgrade suggestions but cannot be replaced by this milestone.
 
 ## Validation
 - Frontend: `cd web && npm ci && npm run format:check && npm run check && npm test && npm run build`.
@@ -61,6 +68,9 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   must be confirmed explicitly before import, including in integration tests.
 - Test input boundaries, persistence across reopen, migration rollback, API
   contracts, and meaningful user behavior. Use temporary directories only.
+- Automation checks must cover pause/lease/profile/monitoring changes during
+  metainfo fetch, bounded retries/cursor rotation, duplicate prevention, TV review
+  gating and preservation of registered files during upgrade detection.
 - Run gofmt on Go changes and `npm run format` for the frontend. Keep dependencies locked and explain additions.
 - Record validation failures and environment limits; never mark an unrun check
   as passed. Use local Git commits for stable milestones.

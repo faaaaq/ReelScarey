@@ -1,4 +1,4 @@
-# REST API — media catalog, downloads and imports
+# REST API — media catalog, downloads, imports and automation
 
 All routes are same-origin. JSON uses snake_case. All `/api/v1` routes require
 an administrator session except the three public auth routes below. Mutations
@@ -51,6 +51,14 @@ explicitly documented as breaking before the first stable release.
 | POST | `/api/v1/downloads/{id}/file` | `{ "index": 3 }`; select a file from a choose_file job |
 | GET | `/api/v1/library/series/{id}/seasons/{number}/releases?episode=1&query=title` | Search TV category 5000 for one missing episode; omit episode for selected missing episodes in a monitored season |
 | POST | `/api/v1/downloads/{id}/mapping` | Confirm a TV job's completed file/episode mapping and explicit skips |
+| GET/PUT | `/api/v1/automation` | Saved interval schedule, revision, next run, safe integration presence and state |
+| POST | `/api/v1/automation/run` | `{}`; request one durable run using saved mode, 202 or 409 already requested/running |
+| GET | `/api/v1/automation/runs` | `{items}`; latest 30 search runs with state, message, timestamps, mode, checked and queued counts |
+| GET | `/api/v1/automation/runs/{id}` | `{items}`; up to 25 target results, outcomes, download IDs and ranked decisions |
+| GET | `/api/v1/automation/items?page=1` | Profile assignments/monitoring, items/page/total/limit 24 |
+| PUT | `/api/v1/automation/items/{id}` | Revision-checked profile assignment and optional movie monitoring |
+| GET/POST | `/api/v1/quality-profiles` | `{items}` list or validated profile creation (201) |
+| PUT | `/api/v1/quality-profiles/{id}` | Revision-checked profile edit |
 
 Library responses contain `items`, `page`, `total`, and `limit: 24`. Page bounds
 are 1–100000; ordering is case-insensitive title then ID. Search responses contain
@@ -185,7 +193,40 @@ Missing TMDb configuration returns 409 `tmdb_not_configured`; stale settings use
 409 `revision_conflict`. Provider errors are safe summaries, never upstream body
 text, credentials, request headers or URLs containing secrets.
 
-Planned route groups (not registered): television/library editing,
-multi-indexer/client CRUD, generic `/jobs`, `/subtitles`,
-and `/profiles`. Design each group's concrete request/response types with its
+Planned route groups (not registered): broader library editing,
+multi-indexer/client CRUD, generic `/jobs` and `/subtitles`.
+Design each group's concrete request/response types with its
 first complete vertical slice; do not expose placeholder 200 responses.
+
+Automation PUT accepts only `enabled`, `mode` (search/download),
+`interval_minutes` (15–10080), `batch_size` (1–25), `default_profile_id` and
+`revision`. New schedules are paused/search-only. GET additionally returns
+next_run (Unix seconds), requested, state, message, indexer_connected and
+client_connected. Missing Torznab is waiting_indexer; saving a schedule never
+connects an integration. Search now uses saved mode and never changes enabled.
+Saving preferences invalidates in-progress policy guards; existing queued
+downloads continue. State/message describe the last/current run, while enabled
+controls recurring intent. Run retention is 100; UI/API lists the latest 30.
+
+Profile bodies contain name (1–60 bytes), qualities (unique ascending subset of
+480/720/1080/2160), cutoff (one allowed value), language (any/english/french/
+german/spanish/italian/japanese/korean/chinese), min_seeders (0–10000), max_size_gib
+(1–500), required_terms and rejected_terms (comma-separated, at most 200 bytes
+each), plus revision for edits. id may be omitted or match the route. Create
+uses no ID and returns a generated ID/revision 1. Names are unique ignoring
+ASCII case; at most 20 profiles are supported. No profile deletion is exposed.
+
+Assignments contain media_id, title, kind, monitored, profile_id (null follows
+schedule default) and revision (0 until first assignment). PUT accepts profile_id,
+revision and optional monitored for movies. TV monitoring uses the existing
+show-revision routes to preserve season/episode semantics. Invalid profile IDs,
+unknown fields and stale revisions are rejected without partial writes.
+
+Results contain media_id, episode_id (nullable), kind, season/episode numbers,
+target, outcome, message, download_id (nullable) and decisions. Each decision
+includes opaque release_id, title, quality, language, score, eligible and reasons.
+IDs in history are audit records and may expire; request fresh releases before
+manual queueing. Upgrade suggestions cannot queue replacement downloads.
+Automation uses the shared transfer service and a transaction-bound policy check;
+there is no public bypass for automatic submissions. See AUTOMATION.md for
+identity/ranking rules, date eligibility, retries and filesystem guarantees.

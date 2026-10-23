@@ -70,8 +70,10 @@ metadata refresh for review rather than silently changing associations.
 Limits: at most 100 missing targets per job, 500 eligible videos per torrent and
 20 consecutive episodes per shared file. Season catalogs still support up to
 2,000 episodes, subject to provider response bounds. Multi-season packs, arbitrary
-template expressions, quality upgrades, existing-file scans, automatic downloads,
-archive extraction and playback are outside this milestone. Split large or
+template expressions, replacement imports, existing-file scans,
+archive extraction and playback are outside this milestone. Opt-in automation
+can queue individual missing episodes and suggest resolution upgrades, while
+retaining mandatory mapping review; see AUTOMATION.md. Split large or
 multi-season releases into separate, explicitly chosen downloads.
 
 Migration 005 preserves prior movie jobs, encrypted payloads, file IDs and import

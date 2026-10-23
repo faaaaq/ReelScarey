@@ -42,8 +42,12 @@ func TestMigrationsPersistAndConfigureSQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if name != "Persistent cinema" || journal != "wal" || foreignKeys != 1 || timeout != 5000 || count != 5 {
+	if name != "Persistent cinema" || journal != "wal" || foreignKeys != 1 || timeout != 5000 || count != 6 {
 		t.Fatalf("persistence/pragmas failed: %s %s %d %d %d", name, journal, foreignKeys, timeout, count)
+	}
+	var enabled, profiles int
+	if err = db.QueryRow(`SELECT enabled,(SELECT COUNT(*) FROM quality_profiles) FROM search_schedule WHERE id=1`).Scan(&enabled, &profiles); err != nil || enabled != 0 || profiles != 2 {
+		t.Fatal("automation must start paused with usable profiles", enabled, profiles, err)
 	}
 }
 
@@ -117,7 +121,7 @@ func TestMigrationRollbackAndDrift(t *testing.T) {
 		}
 		files[name] = &fstest.MapFile{Data: body}
 	}
-	files["migrations/006_broken.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE rollback_probe (id INTEGER); INSERT INTO nonexistent VALUES (1);")}
+	files["migrations/007_broken.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE rollback_probe (id INTEGER); INSERT INTO nonexistent VALUES (1);")}
 	if err := migrate(ctx, db, files); err == nil {
 		t.Fatal("broken migration succeeded")
 	}
@@ -126,7 +130,7 @@ func TestMigrationRollbackAndDrift(t *testing.T) {
 		t.Fatalf("DDL not rolled back: %v, %d", err, count)
 	}
 	version, err := Version(ctx, db)
-	if err != nil || version != 5 {
+	if err != nil || version != 6 {
 		t.Fatalf("broken migration recorded: %d %v", version, err)
 	}
 	files["migrations/001_foundation.sql"] = &fstest.MapFile{Data: []byte("SELECT 1;")}

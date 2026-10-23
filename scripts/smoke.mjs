@@ -81,6 +81,14 @@ try {
   const system = await (await authenticated('/api/v1/system')).json()
   assert.equal(system.database, 'connected')
   assert.equal(system.capabilities.metadata_search, true)
+  assert.equal(system.capabilities.automation, true)
+  const schedule = await (await authenticated('/api/v1/automation')).json()
+  assert.equal(schedule.enabled, false)
+  assert.equal(schedule.indexer_connected, false)
+  const profiles = await (await authenticated('/api/v1/quality-profiles')).json()
+  const profile = { ...profiles.items[0], name: 'Persistent smoke profile', language: 'english' }
+  assert.equal((await authenticated(`/api/v1/quality-profiles/${profile.id}`, { method: 'PUT', body: JSON.stringify(profile) })).status, 200)
+  assert.equal((await authenticated('/api/v1/automation', { method: 'PUT', body: JSON.stringify({ enabled: true, mode: 'search', interval_minutes: 60, batch_size: 5, default_profile_id: profile.id, revision: schedule.revision }) })).status, 200)
   assert.equal((await authenticated('/api/v1/metadata/movies?query=Test')).status, 409)
   const before = await (await authenticated('/api/v1/settings')).json()
   const saved = await authenticated('/api/v1/settings', {
@@ -93,6 +101,11 @@ try {
   const after = await (await authenticated('/api/v1/settings')).json()
   assert.equal(after.library_name, 'Restart verification')
   assert.equal(after.revision, before.revision + 1)
+  const automationAfter = await (await authenticated('/api/v1/automation')).json()
+  assert.equal(automationAfter.enabled, true)
+  assert.equal(automationAfter.interval_minutes, 60)
+  assert.equal(automationAfter.state, 'waiting_indexer')
+  assert.equal((await (await authenticated('/api/v1/quality-profiles')).json()).items[0].name, 'Persistent smoke profile')
   const dashboard = await (await authenticated('/api/v1/dashboard')).json()
   assert.equal(dashboard.library_name, 'Restart verification')
   assert.deepEqual(dashboard.counts, { movies: 0, series: 0 })
@@ -107,7 +120,7 @@ try {
   cookie = login.headers.get('set-cookie').split(';')[0]; csrf = (await login.json()).csrf_token
   assert.equal((await authenticated('/api/v1/auth/logout', { method: 'POST', body: '{}' })).status, 200)
   assert.equal((await authenticated('/api/v1/settings')).status, 401)
-  console.log('PASS: native startup, embedded UI/API, admin setup, session and settings persistence, CLI healthcheck/password reset, session revocation and logout.')
+  console.log('PASS: native startup, embedded UI/API, admin setup, session/settings/profile/schedule persistence, deferred indexer, CLI healthcheck/password reset, session revocation and logout.')
 } catch (error) {
   console.error(logs)
   throw error

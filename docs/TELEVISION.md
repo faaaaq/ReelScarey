@@ -15,7 +15,9 @@ Regular seasons and newly loaded episodes start selected. Specials (season 0)
 start unselected. The show switch is a master pause; season switches pause that
 season. Neither parent switch overwrites individual episode selections. Effective
 monitoring requires the show, season and episode selections together. These are
-preferences for future automation; no TV download starts from monitoring changes.
+preferences used by opt-in automation. Monitoring changes alone do not start a
+download; an enabled download schedule or one-off run can select matching missing
+episodes. See [automation operations](AUTOMATION.md).
 
 Refresh show details updates show metadata and season summaries. Refresh episodes
 updates that season and adds new episodes. Both retain existing selections and

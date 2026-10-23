@@ -43,7 +43,7 @@ download client to a verified library file. Restart during download/import must
 recover; collision and cross-filesystem tests must pass. Disposable services and
 temporary libraries only. Never use unauthorized content as test material.
 
-## 3 — Television (current)
+## 3 — Television
 - [x] Real TMDb TV search/details using the existing encrypted provider connection.
 - [x] Canonical, idempotent show adds; paginated TV library and saved season summaries.
 - [x] Load/refresh season episodes on demand and retain metadata for offline browsing.
@@ -54,10 +54,17 @@ temporary libraries only. Never use unauthorized content as test material.
 - [x] Reserve episode targets, retain per-file journals and resume partial season imports.
 - [ ] Owner-service acceptance remains deferred with Torznab and the shared mount setup.
 
-## 4 — Automation
-- Scheduled searches and monitoring, quality/language profiles
-- Filtering/scoring, cutoff/upgrade detection and duplicate prevention
-- Failed download recovery, retry controls and useful job visibility
+## 4 — Automation (current)
+- [x] Persistent opt-in scheduled monitoring/search and one-off requests.
+- [x] Editable quality/language profiles and per-movie/show assignments.
+- [x] Conservative identity filtering, ranked decisions and rejection explanations.
+- [x] Resolution cutoff/upgrade suggestions that preserve existing files.
+- [x] Automatic missing-item downloads through shared reservations and safe imports.
+- [x] Renewed leases, bounded provider retries, cursor rotation and restart recovery.
+- [x] Failed download visibility/manual retry and duplicate prevention through transfer.
+- [ ] Owner-service acceptance remains deferred with Torznab/shared mount setup.
+- [ ] Versioned replacement imports, audio-language verification and richer source/
+  codec scoring remain future extensions; they are not represented as working.
 
 ## 5 — Subtitles
 - Provider interface and first real provider

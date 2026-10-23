@@ -27,6 +27,8 @@ internal/auth/       administrator, Argon2id passwords and persistent sessions
 internal/securestore/ encrypted provider credentials and local key lifecycle
 internal/metadata/   real TMDb adapter and normalized movie service
 internal/transfer/   Torznab/qBittorrent, durable downloads and safe imports
+internal/quality/    conservative identity, profile persistence and release ranking
+internal/automation/ persistent scheduled searches, audit history and policy fences
 internal/httpapi/    REST handlers, middleware, frontend serving
 web/src/             application, pages, reusable UI, API client
 web/dist/            generated frontend (ignored, embedded at build time)
@@ -40,7 +42,9 @@ Implemented tables: `schema_migrations`, singleton `settings`, `media_items`,
 singleton `admin_account`, `sessions`, `provider_secrets`, `integration_configs`,
 `release_candidates`, `downloads`, `import_operations`, `media_files`,
 `series_details`, `seasons`, `episodes`, `download_tv`, `download_targets`,
-`episode_downloads`, `download_tv_files`, `download_mappings` and `episode_files`.
+`episode_downloads`, `download_tv_files`, `download_mappings`, `episode_files`,
+`quality_profiles`, `item_automation`, `search_schedule`, `automation_runs` and
+`automation_results`.
 The migration ledger stores version, filename, checksum, and applied time.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored
@@ -78,9 +82,8 @@ Planned entities (design, **not implemented schema**):
 | Entity | Relationships and invariants |
 | --- | --- |
 | indexers/download_clients | Future multi-provider CRUD; one encrypted configuration per integration exists now |
-| quality_profiles | Ordered qualities, languages, cutoff and scoring rules |
 | subtitles | Media file, language, provider identity, path and hearing-impaired flag |
-| jobs | Future generic scheduler; downloads already persist their own leases/retries |
+| jobs | Future arbitrary job types; searches and downloads already have durable leases/retries |
 
 Media file paths are never derived from untrusted release names without
 normalization and root containment checks. Downloads remain separate from files:
@@ -114,7 +117,7 @@ release/download types belong to their consuming modules, not a giant shared
 utility package. Future music/books can extend media kinds through a migration
 without adding empty feature packages now.
 
-## Persistent automation design (next phases)
+## Persistent automation
 
 Jobs live in SQLite and use atomic claims with expiring leases. Restarted workers
 reclaim expired work; retries use capped exponential backoff and bounded attempts.
@@ -125,7 +128,29 @@ The movie slice introduces the first actual worker for download reconciliation
 and import. A single worker now reconciles downloads using random owners,
 60-second leases renewed every 15 seconds and fenced state changes. Temporary
 failures back off; ambiguous submissions reconcile by expected hash/tag.
-Scheduled searches, generic scheduling and upgrade policies remain unimplemented.
+Migration 006 adds a singleton interval schedule, editable resolution/language
+profiles, item assignments and bounded run/result history. Searches have a separate
+leased task lifecycle in the same process/database and delegate all download work
+to transfer. An atomic claim captures settings revision, issues a 60-second lease
+renewed every 15 seconds, and records an auditable run. Cursor rotation bounds each
+run to 1–25 known released targets. UTC calendar dates gate monitoring; missing
+dates and unloaded TV metadata are not inferred. Failed requests back off for up
+to five attempts; interrupted runs are reclaimed. History retains 100 runs.
+
+Search mode only records ranked decisions. Download mode selects conservative
+exact title/year or individual-episode matches; ambiguous identities, packs,
+unknown quality/size/seed count and disallowed profile attributes are rejected.
+Transfer executes an automation-supplied policy guard inside the download target
+reservation transaction after metainfo fetch, fencing expired leases, paused/
+changed schedules, monitoring changes and profile/assignment revisions. Existing
+hash/target reservations and client-tag reconciliation prevent duplicate effects.
+TV downloads retain the mandatory reviewed mapping before any import.
+
+Resolution upgrades compare stored FFprobe dimensions to the current profile
+cutoff. Below-cutoff files can generate suggestions; no replacement download or
+file mutation is performed. Labels establish selection evidence only, never
+verified audio language. Generic arbitrary jobs, replacement imports and advanced
+source/codec scoring remain future scope. See docs/AUTOMATION.md for exact limits.
 
 TV shares the same client adapter, submission deduplication, leases, filesystem
 importer and startup staging cleanup. It adds episode reservations, file snapshots

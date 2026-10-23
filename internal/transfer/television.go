@@ -24,6 +24,12 @@ type TVTarget struct {
 }
 
 func (s *Service) SearchTV(ctx context.Context, seriesID int64, season, episode int, query string) ([]Release, error) {
+	return s.searchTV(ctx, seriesID, season, episode, query, false)
+}
+func (s *Service) SearchTVUpgrade(ctx context.Context, seriesID int64, season, episode int) ([]Release, error) {
+	return s.searchTV(ctx, seriesID, season, episode, "", true)
+}
+func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode int, query string, includeAvailable bool) ([]Release, error) {
 	show, e := library.New(s.db).TVShow(ctx, seriesID)
 	if e != nil {
 		return nil, e
@@ -35,7 +41,7 @@ func (s *Service) SearchTV(ctx context.Context, seriesID int64, season, episode 
 	if loaded == "" {
 		return nil, problem("episodes_not_loaded", "Load this season's episodes before searching for releases.")
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT e.id,e.tmdb_id,s.number,e.number,e.title FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id WHERE s.series_id=? AND s.number=? AND (?=0 OR e.number=?) AND (?<>0 OR (m.monitored=1 AND s.monitored=1 AND e.monitored=1)) AND NOT EXISTS(SELECT 1 FROM episode_files f WHERE f.episode_id=e.id) ORDER BY e.number LIMIT 101`, seriesID, season, episode, episode, episode)
+	rows, e := s.db.QueryContext(ctx, `SELECT e.id,e.tmdb_id,s.number,e.number,e.title FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id WHERE s.series_id=? AND s.number=? AND (?=0 OR e.number=?) AND (?<>0 OR (m.monitored=1 AND s.monitored=1 AND e.monitored=1)) AND (? OR NOT EXISTS(SELECT 1 FROM episode_files f WHERE f.episode_id=e.id)) ORDER BY e.number LIMIT 101`, seriesID, season, episode, episode, episode, includeAvailable)
 	if e != nil {
 		return nil, e
 	}
@@ -179,7 +185,7 @@ func refreshTVStatus(ctx context.Context, tx *sql.Tx, id int64) error {
 	_, e := tx.ExecContext(ctx, `UPDATE media_items SET status=CASE WHEN EXISTS(SELECT 1 FROM downloads WHERE movie_id=? AND kind='series' AND state NOT IN ('completed','cancelled')) THEN 'downloading' WHEN EXISTS(SELECT 1 FROM media_files WHERE series_id=?) THEN 'available' ELSE 'missing' END WHERE id=? AND kind='series'`, id, id, id)
 	return e
 }
-func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, sealed []byte, hash string, client ClientConfig) (Job, bool, error) {
+func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, sealed []byte, hash string, client ClientConfig, guard QueueGuard) (Job, bool, error) {
 	if len(v.Targets) == 0 || len(v.Targets) > 100 {
 		return Job{}, false, problem("invalid_release", "This TV selection has invalid episode targets. Search again.")
 	}
@@ -198,6 +204,11 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 		return Job{}, false, e
 	}
 	defer tx.Rollback()
+	if guard != nil {
+		if e = guard(ctx, tx, v); e != nil {
+			return Job{}, false, e
+		}
+	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,kind) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,'series')`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, path.Join(client.DownloadPath, "ReelScarey", id), now, now); e != nil {
 		return Job{}, false, e
 	}

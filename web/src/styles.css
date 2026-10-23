@@ -1334,3 +1334,147 @@ dd {
     gap: 16px;
   }
 }
+
+.automation-panel {
+  padding: 28px;
+  margin-bottom: 24px;
+}
+.automation-panel h2 {
+  font-size: 19px;
+}
+.automation-panel h3 {
+  font-size: 15px;
+}
+.automation-panel > .muted {
+  margin: 12px 0 22px;
+  line-height: 1.7;
+}
+.automation-fields {
+  border: 0;
+  padding: 0;
+  margin: 18px 0;
+  min-width: 0;
+}
+.automation-panel label,
+.automation-panel .form-label {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+.automation-panel select,
+.automation-panel input[type="number"] {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: #161c1c;
+  color: #e7eeea;
+  border: 1px solid #394440;
+  border-radius: 7px;
+  font: inherit;
+}
+.automation-panel select:focus,
+.automation-panel input:focus {
+  outline: 2px solid #7ad4a3;
+  outline-offset: 2px;
+}
+.automation-panel .rt-TextFieldRoot {
+  margin-top: 8px;
+}
+.automation-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  margin: 24px 0 16px;
+}
+.automation-panel .check-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.automation-panel input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: #75d49b;
+}
+.automation-notice {
+  padding: 16px 18px;
+  margin: 18px 0;
+  border: 1px solid #39523f;
+  background: #19251f;
+  border-radius: 9px;
+  line-height: 1.65;
+  color: #bbd0c1;
+  font-size: 13px;
+}
+.automation-notice p {
+  margin: 6px 0 0;
+}
+.quality-options {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin: 12px 0 20px;
+}
+.automation-result {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #303c36;
+}
+.automation-result p {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #b5c5bc;
+}
+.automation-result summary {
+  cursor: pointer;
+  padding: 12px 0;
+  font-size: 13px;
+  color: #8fe0ab;
+}
+.release-decision {
+  border-left: 2px solid #435c4b;
+  margin: 12px 0;
+  padding: 4px 16px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.release-decision ul {
+  padding-left: 18px;
+  line-height: 1.8;
+  color: #b5c5bc;
+}
+.automation-assignment {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  border-top: 1px solid #303c36;
+  padding: 20px 0;
+}
+.automation-assignment > div:first-child {
+  flex: 1;
+  min-width: 180px;
+}
+.automation-assignment > label {
+  min-width: 160px;
+}
+.automation-assignment .check-label {
+  min-width: 90px;
+}
+.automation-assignment .field-help {
+  margin: 6px 0 0;
+}
+@media (max-width: 700px) {
+  .automation-panel {
+    padding: 20px;
+  }
+  .automation-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .automation-assignment > label {
+    flex: 1;
+  }
+}

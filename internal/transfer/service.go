@@ -260,6 +260,20 @@ func (s *Service) Search(ctx context.Context, movieID int64, query string) ([]Re
 	return out, nil
 }
 func (s *Service) Queue(ctx context.Context, releaseID string) (Job, bool, error) {
+	return s.queue(ctx, releaseID, nil)
+}
+
+// QueueGuard runs inside the reservation transaction, after fetching metainfo.
+// Automation uses it to fence a paused/expired run and changed target policy.
+type QueueGuard func(context.Context, *sql.Tx, Candidate) error
+
+func (s *Service) QueueAutomatic(ctx context.Context, releaseID string, guard QueueGuard) (Job, bool, error) {
+	if guard == nil {
+		return Job{}, false, problem("invalid_release", "Automatic downloads require a current search policy.")
+	}
+	return s.queue(ctx, releaseID, guard)
+}
+func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard) (Job, bool, error) {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
 	if existing, e := s.jobBy(ctx, "d.release_id", releaseID); e == nil {
@@ -321,7 +335,7 @@ func (s *Service) Queue(ctx context.Context, releaseID string) (Job, bool, error
 		return Job{}, false, e
 	}
 	if v.Kind == "series" {
-		return s.queueTV(ctx, v, releaseID, sealed, hash, client)
+		return s.queueTV(ctx, v, releaseID, sealed, hash, client, guard)
 	}
 	if _, e = s.MovieByID(ctx, v.MovieID); e != nil {
 		return Job{}, false, e
@@ -334,6 +348,11 @@ func (s *Service) Queue(ctx context.Context, releaseID string) (Job, bool, error
 		return Job{}, false, e
 	}
 	defer tx.Rollback()
+	if guard != nil {
+		if e = guard(ctx, tx, v); e != nil {
+			return Job{}, false, e
+		}
+	}
 	var active int
 	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM media_files WHERE movie_id=?)`, v.MovieID, v.MovieID).Scan(&active); e != nil {
 		return Job{}, false, e

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/auth"
+	"github.com/faaaaq/ReelScarey/internal/automation"
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/library"
@@ -27,26 +28,28 @@ import (
 )
 
 type Server struct {
-	db       *sql.DB
-	config   config.Config
-	logger   *slog.Logger
-	settings *settings.Store
-	library  *library.Store
-	version  string
-	started  time.Time
-	auth     *auth.Service
-	metadata *metadata.Service
-	transfer *transfer.Service
+	db         *sql.DB
+	config     config.Config
+	logger     *slog.Logger
+	settings   *settings.Store
+	library    *library.Store
+	version    string
+	started    time.Time
+	auth       *auth.Service
+	metadata   *metadata.Service
+	transfer   *transfer.Service
+	automation *automation.Service
 }
 
 type Dependencies struct {
-	Auth     *auth.Service
-	Metadata *metadata.Service
-	Transfer *transfer.Service
+	Auth       *auth.Service
+	Metadata   *metadata.Service
+	Transfer   *transfer.Service
+	Automation *automation.Service
 }
 
 func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string, deps Dependencies) http.Handler {
-	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer}
+	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", method(http.MethodGet, s.health))
 	mux.HandleFunc("/readyz", method(http.MethodGet, s.ready))
@@ -54,6 +57,14 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/dashboard", method(http.MethodGet, s.dashboard))
 	mux.HandleFunc("/api/v1/library", method(http.MethodGet, s.listLibrary))
 	mux.HandleFunc("/api/v1/settings", s.handleSettings)
+	mux.HandleFunc("/api/v1/automation", s.automationSettings)
+	mux.HandleFunc("/api/v1/automation/run", method(http.MethodPost, s.automationRequest))
+	mux.HandleFunc("/api/v1/automation/runs", method(http.MethodGet, s.automationRuns))
+	mux.HandleFunc("/api/v1/automation/runs/{id}", method(http.MethodGet, s.automationResults))
+	mux.HandleFunc("/api/v1/automation/items", method(http.MethodGet, s.automationItems))
+	mux.HandleFunc("/api/v1/automation/items/{id}", method(http.MethodPut, s.automationAssign))
+	mux.HandleFunc("/api/v1/quality-profiles", s.qualityProfiles)
+	mux.HandleFunc("/api/v1/quality-profiles/{id}", method(http.MethodPut, s.qualityProfileUpdate))
 	mux.HandleFunc("/api/v1/auth/session", method(http.MethodGet, s.authSession))
 	mux.HandleFunc("/api/v1/auth/setup", method(http.MethodPost, s.authSetup))
 	mux.HandleFunc("/api/v1/auth/login", method(http.MethodPost, s.authLogin))
@@ -139,10 +150,10 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, map[string]any{
-		"name": "ReelScarey", "version": s.version, "milestone": "television-downloads",
+		"name": "ReelScarey", "version": s.version, "milestone": "automation",
 		"database": "connected", "schema_version": version, "uptime_seconds": int(time.Since(s.started).Seconds()),
 		"paths":        map[string]string{"config": s.config.ConfigDir, "media": s.config.MediaDir, "downloads": s.config.DownloadsDir},
-		"capabilities": map[string]bool{"authentication": true, "library_settings": true, "metadata_search": true, "movie_add": true, "series_catalog": s.metadata != nil && s.metadata.SupportsSeries(), "episode_monitoring": true, "tv_downloads": s.transfer != nil, "torznab_search": s.transfer != nil, "downloads": s.transfer != nil, "import": s.transfer != nil, "persistent_jobs": s.transfer != nil, "subtitles": false, "automation": false},
+		"capabilities": map[string]bool{"authentication": true, "library_settings": true, "metadata_search": true, "movie_add": true, "series_catalog": s.metadata != nil && s.metadata.SupportsSeries(), "episode_monitoring": true, "tv_downloads": s.transfer != nil, "torznab_search": s.transfer != nil, "downloads": s.transfer != nil, "import": s.transfer != nil, "persistent_jobs": s.transfer != nil, "subtitles": false, "automation": s.automation != nil, "quality_profiles": true},
 	})
 }
 

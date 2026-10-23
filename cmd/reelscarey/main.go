@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/auth"
+	"github.com/faaaaq/ReelScarey/internal/automation"
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/httpapi"
@@ -26,7 +27,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.5.0-dev"
+var version = "0.6.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -105,11 +106,12 @@ func run(logger *slog.Logger) error {
 	}
 	metadataService := metadata.New(secretStore, metadata.NewTMDb())
 	transferService := transfer.New(db, secretStore, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
+	automationService := automation.New(db, transferService)
 	assets, err := web.Assets()
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
@@ -117,6 +119,9 @@ func run(logger *slog.Logger) error {
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); transferService.Run(workerCtx, logger) }()
+	automationDone := make(chan struct{})
+	go func() { defer close(automationDone); automationService.Run(workerCtx, logger) }()
+	defer func() { workerCancel(); <-automationDone }()
 	defer func() { workerCancel(); <-workerDone }()
 	failed := make(chan error, 1)
 	go func() { failed <- server.Serve(listener) }()

@@ -4,6 +4,7 @@ import {
   Activity,
   Captions,
   Clapperboard,
+  Clock3,
   Film,
   LayoutDashboard,
   LogOut,
@@ -30,6 +31,7 @@ import { AuthGate, useAuth } from "./auth";
 import { Activity as DownloadActivity } from "./pages/Activity";
 import { Releases } from "./pages/Releases";
 import { Series } from "./pages/Series";
+import { Automation } from "./pages/Automation";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -37,6 +39,7 @@ const navigation = [
   { path: "/series", name: "TV shows", icon: MonitorPlay },
   { path: "/search", name: "Search", icon: Search },
   { path: "/activity", name: "Activity", icon: Activity },
+  { path: "/automation", name: "Automation", icon: Clock3 },
   { path: "/subtitles", name: "Subtitles", icon: Captions },
 ];
 
@@ -127,7 +130,7 @@ function AppShell() {
             <span className="status-dot" />
             <span>Movies & TV</span>
             <Badge color="gray" size="1">
-              0.5
+              0.6
             </Badge>
           </div>
           <div className="account-control">
@@ -162,6 +165,7 @@ function AppShell() {
             <Route path="/search" element={<MovieSearch />} />
             <Route path="/releases" element={<Releases />} />
             <Route path="/activity" element={<DownloadActivity />} />
+            <Route path="/automation" element={<Automation />} />
             <Route
               path="/subtitles"
               element={

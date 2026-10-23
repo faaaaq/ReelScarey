@@ -113,9 +113,11 @@ in place. Resume tracking reuses the original hash/journal. Client URL/root
 changes and disconnection are refused while active jobs exist; stop tracking
 those jobs first. Password rotation on the same endpoint is supported.
 
-Existing-library scans, playback, movie/file removal, automatic release ranking,
-upgrades, scheduled searching, TV, subtitles, multiple clients/indexers and
-automatic torrent deletion/seeding limits remain outside this milestone.
+Existing-library scans, playback, movie/file removal, replacement imports,
+subtitles, multiple clients/indexers and automatic torrent deletion/seeding limits
+remain future work. TV shares this pipeline (TV_DOWNLOADS.md). Scheduled searches,
+ranked profile decisions, opt-in missing-item downloads and resolution upgrade
+suggestions are described in AUTOMATION.md.
 
 ## Checks and references
 

@@ -1,5 +1,38 @@
 # Validation record — 2026-10-23
 
+## Scheduled searches and quality profiles
+
+Owner Torznab setup/shared-mount acceptance remains explicitly deferred. This
+milestone adds opt-in interval searches, editable resolution/language profiles,
+per-item assignments, ranked/rejected release history, automatic missing-item
+queues and non-destructive resolution upgrade suggestions. All new schedules
+start paused/search-only. Media/download tests use disposable data exclusively.
+
+- Backend/API checks cover paused and one-off intent, persisted schedules and
+  profiles, cursor rotation, release dates, parent/episode monitoring, automatic
+  queue deduplication across reopen, five-attempt backoff, lease reclaim and
+  pause/profile/assignment/monitoring changes during metainfo retrieval.
+- Movie and TV upgrade checks preserve existing registrations and refuse
+  replacement queues; at-cutoff files make no indexer request. Automatic TV
+  downloads use existing reservations and still stop for mapping review before
+  import. Interrupted one-off requests retain intent for restart.
+- Profile checks cover exact title/year/episode matching, pack/range rejection,
+  explicit languages, unknown/conflicting labels, seed/size limits, term rules,
+  stable ranking, cropped-video dimensions and stale/duplicate profile edits.
+- All 26 frontend interaction tests pass, including deferred Torznab, opt-in
+  download mode, strict saved schedule bodies/CSRF, profile conflict recovery,
+  rejection explanations and movie monitoring/profile assignment.
+- Clean locked frontend install reported zero known dependency vulnerabilities;
+  formatting, TypeScript and production build pass. Full Go tests, go vet and
+  Windows build pass outside the sandbox needed by localhost/link tests.
+- Native smoke passes with profile/schedule/session/settings persistence after
+  restart and waiting-indexer behavior. An initial smoke invocation used the old
+  default executable and correctly failed the automation capability assertion;
+  rerunning against the newly built executable passed.
+
+Preview/browser checks and Linux race/real-client/container results are recorded
+after completion. See AUTOMATION.md for precise selection and safety limits.
+
 ## Television downloads and imports
 
 Torznab owner setup remains explicitly deferred. This milestone extends the

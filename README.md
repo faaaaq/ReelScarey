@@ -3,7 +3,7 @@
 **Media management, without the horror.**
 
 A unified, self-hosted media application in Go and React. Movie and TV downloads
-and verified imports are implemented; the wider automation roadmap is in progress.
+and verified imports share durable scheduled searches and quality profiles.
 
 Working now: administrator setup/login/logout, persistent sessions, encrypted
 TMDb connection settings with real connection tests, TMDb movie search/details,
@@ -11,13 +11,16 @@ idempotent movie adds, paginated poster browsing, persisted library settings,
 live dashboard counts, Torznab release search, qBittorrent downloads, persistent
 download tracking and verified imports, plus TV search, canonical show adds,
 season/episode lists, metadata refresh, persistent monitoring choices, episode and
-season release searches, reviewed multi-episode file mapping and episode availability.
+season release searches, reviewed multi-episode file mapping and episode availability,
+scheduled monitored searches, quality/language profiles, ranked release decisions,
+opt-in automatic missing-item downloads and resolution upgrade suggestions.
 One server owns the UI, REST API,
 worker and SQLite database.
 
-Not implemented: scheduled searches, automatic release selection, quality/upgrade policies,
-subtitles, or full production hardening. Monitoring is a saved preference;
-downloads start only when you select a release. No existing media is scanned.
+Not implemented: replacement/upgrade imports, audio-language verification,
+subtitles, or full production hardening. Automation starts paused and defaults to
+search results for review; automatic downloads require explicit selection of that
+mode. No existing media is scanned.
 FFprobe verifies completed video files before import. Sources remain in place
 for seeding; existing library files are never overwritten.
 
@@ -52,6 +55,14 @@ indexer is connected, find episode/season releases, then review the completed
 files in Activity before confirming their import. The original torrent sources
 remain for seeding. See [TV operations](docs/TELEVISION.md) and
 [TV downloads/imports](docs/TV_DOWNLOADS.md). Existing movie integrations are retained.
+
+Open Automation to choose the search interval, quality profiles and per-library
+item preferences. Search-only mode saves ranked matches and rejection reasons;
+download mode queues missing items using the existing safe download/import pipeline.
+TV files still require mapping review. Existing media below the resolution cutoff
+can produce upgrade suggestions, but is never replaced. Torznab can be connected
+later: profiles and schedule preferences work now, and scheduled searches wait
+without making upstream requests. See [automation operations](docs/AUTOMATION.md).
 
 The named `reelscarey_config` volume persists the database under `/config`.
 Change `MEDIA_PATH` and `DOWNLOADS_PATH` in `.env` for your host folders; they map
