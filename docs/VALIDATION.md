@@ -49,8 +49,21 @@ real adapter is OpenSubtitles.com; owner-account acceptance awaits private setup
   returned 200. The owner can complete OpenSubtitles setup privately; a successful
   live owner-account connection has not yet been confirmed.
 
-Linux CI results will be recorded after verification. See SUBTITLES.md for exact
-format/matching/cache/recovery limits.
+- The [complete Linux run](https://github.com/faaaaq/ReelScarey/actions/runs/39992048520)
+  at feature commit 1c5ec65 passed all 31 interface tests, full Go race/vet checks,
+  real disposable qBittorrent movie/TV imports, generated FFmpeg/FFprobe subtitle
+  acceptance, native restart smoke and Docker build/container restart smoke.
+  GitHub's test-tool installation was unusually slow but completed successfully.
+- Packaging review found stale 0.3 version arguments in Docker/Compose. Both now
+  identify the subtitle milestone as 0.7. Its first follow-up run (39995833837)
+  passed UI/race/static checks but timed out while downloading Ubuntu test tools
+  from the hosted runner's Azure mirror. The prior successful run downloaded
+  74.4 MB at only 63.9 kB/s and narrowly finished under the 20-minute limit.
+  CI now selects Ubuntu's primary HTTPS archive in the runner's mirror list,
+  retaining package signatures and the existing timeout. That infrastructure and
+  packaging follow-up is being checked separately; no feature code changed.
+
+See SUBTITLES.md for exact format/matching/cache/recovery limits.
 
 ## Scheduled searches and quality profiles
 
