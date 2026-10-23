@@ -98,6 +98,18 @@ temporary libraries only. Never use unauthorized content as test material.
 
 ## Validation record
 
+2026-10-23 production hardening: setup guidance, explicit local diagnostics,
+config ownership locks, verified offline backups and new-folder restores with
+session revocation/worker review are implemented. The
+[final Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40028358946)
+passed all 35 UI tests, race/static/vulnerability checks, real disposable client
+and generated-media regressions, native/extracted-package recovery drills,
+checksummed cross-builds and the memory-limited container restart test. The
+extracted Windows package also passes locally. The owner preview was backed up
+and upgraded; Torznab stays deferred. NAS/arm64 runtime, independent security
+review, release provenance and license choice remain release gates. Detailed
+evidence and limits are in [validation](docs/VALIDATION.md).
+
 2026-10-22: Foundation native checks passed. Its first GitHub run failed because
 the npm lock omitted cross-platform dependencies. The lock was regenerated in a
 clean directory; a clean Windows install and Linux resolution check now pass.

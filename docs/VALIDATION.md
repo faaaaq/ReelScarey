@@ -37,9 +37,29 @@ overflow, both corrected before the preview upgrade. The preview reports
 0.8.0-dev and readiness 200 after a stopped, verified config backup; the old
 executable and original settings remain available. No owner secrets were shown.
 
-Final Linux/package evidence will be recorded after completion.
-NAS/arm64 runtime validation, sustained budgets,
-independent security review, release provenance and license choice remain gates.
+The [final Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40028358946)
+passed at code commit a954a1c: all 35 UI tests, race/static checks, the patched
+Go vulnerability scan and npm audit, actual disposable movie/TV qBittorrent
+imports, generated subtitle/embedded-track acceptance, native recovery drills,
+all three cross-builds/checksums and the extracted Linux amd64 recovery drill.
+The authenticated container restart/persistence/health/FFprobe check passed
+under 512 MiB, one CPU and 256 PIDs. Its final idle snapshot was 8.484 MiB and
+7 PIDs; that is neither a peak nor a sustained workload budget. govulncheck
+reported zero reachable vulnerabilities, plus one advisory in a required module
+whose vulnerable code is not called; no exclusions were added.
+
+The private artifact `reelscarey-private-0.8.0` (12533833547, 18,165,985 bytes)
+contains the three archives and SHA256SUMS and is retained for 14 days. Locally,
+all final archive hashes were verified and the extracted Windows amd64 package
+passed the same full recovery drill. Final native build metadata identifies
+Go 1.27.3 and a954a1c. The owner preview was backed up and upgraded to that build;
+readiness is 200, with existing account/settings retained. The disposable browser
+installation and fixture helper were removed; its recovery-success screenshot
+is retained at `data/preview/hardening-qa.png` (ignored, not uploaded).
+
+NAS/arm64 runtime validation, sustained budgets, independent security review,
+release provenance and license choice remain gates. Owner Torznab/shared-mount
+and actual owner-media subtitle download acceptance remain deferred.
 
 ## Subtitle providers, language preferences and automatic downloads
 
