@@ -14,10 +14,20 @@ roots and generated data; no existing user library or torrents are modified.
 - Real local FFmpeg/FFprobe generated a video, verified it, and rejected garbage.
 - Frontend formatting, TypeScript, production build and 17 behavior tests pass.
 - Windows executable build and isolated native startup/auth/restart smoke pass.
-- Linux CI includes an opt-in real authenticated qBittorrent-nox test with a
-  private generated video downloaded from a localhost web seed. Its Torznab
-  service is a protocol fixture, not a public indexer. CI results are recorded
-  after execution.
+- The [Linux workflow run](https://github.com/faaaaq/ReelScarey/actions/runs/39889570064)
+  at code commit 7e8a909 passed the frontend suite, Go race/static checks, native
+  authenticated restart smoke, Docker build/container restart smoke, and the
+  opt-in real authenticated qBittorrent-nox download/import test. The private
+  generated video came from a localhost web
+  seed; the Torznab service was a protocol fixture, not a public indexer. The
+  application database was reopened during the download, and the completed
+  FFprobe-verified import retained the original seeding file. The container check
+  verified embedded frontend, protected APIs, health/FFprobe and persistent
+  authentication/settings across restart. The workflow completed successfully.
+- The first workflow attempt passed the frontend/race/static checks but exposed
+  a test-client startup flag unsupported by Ubuntu's qBittorrent 4.6.3. Removing
+  that flag and accepting the notice in the disposable profile fixed the real
+  client test. Client startup now detects early process exit immediately.
 - The owner's hosted qBittorrent connection was verified and saved through
   Settings after supporting its newer HTTP 204 login and session-cookie format.
   Credentials were entered privately and remain encrypted. No owner torrents

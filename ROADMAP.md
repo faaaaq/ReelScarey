@@ -28,6 +28,7 @@ Status is evidence-based: checked items are implemented, not planned adapters.
   token entered directly in Settings: Mutiny (2026), TMDb 1288445.
 - [x] Configure/test Torznab; normalize real API release responses.
 - [x] Configure/test qBittorrent; deduplicate releases and reconcile lost responses.
+- [x] Verify the owner's saved qBittorrent connection in Settings after a restart.
 - [x] Introduce persistent jobs, leases and restart-safe download reconciliation.
 - [x] Detect completion, map paths, probe files and plan safe imports.
 - [x] Preserve seeding sources; prefer Linux hardlinks and safely stage copies.
@@ -77,6 +78,12 @@ with artwork and monitoring state. Full details are in
 2026-10-22 movie workflow: local backend/API/static checks and 17 UI tests pass.
 Generated-video FFprobe validation, partial-copy and publication restart,
 destination collisions and source retention pass in temporary roots. CI adds a
-disposable real qBittorrent/web-seed test and actual cross-filesystem copy.
+disposable real qBittorrent/web-seed test and actual cross-filesystem copy. The
+[workflow run](https://github.com/faaaaq/ReelScarey/actions/runs/39889570064)
+passed the real client download, application-state reopen, verified import and
+source-retention check, plus race/static/native checks, the frontend suite and
+Docker build/container restart checks. The workflow completed successfully.
+The owner's hosted qBittorrent connection also verifies after an app restart;
+owner-service acceptance still requires an indexer and shared download mount.
 Owner supplied a qBittorrent URL but does not currently use Torznab; existing
 user torrents/library files are not used for testing.
