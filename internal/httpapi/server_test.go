@@ -150,6 +150,7 @@ func TestFrontendRoutingAndReadinessFailure(t *testing.T) {
 		contains     string
 	}{
 		{"GET", "/", 200, "ReelScarey"}, {"GET", "/settings", 200, "ReelScarey"},
+		{"GET", "/automation", 200, "ReelScarey"},
 		{"HEAD", "/movies", 200, ""}, {"GET", "/assets/app.js", 200, "asset"},
 		{"GET", "/assets/missing.js", 404, "404"}, {"GET", "/unknown", 404, "404"},
 		{"GET", "/assets/", 404, "404"}, {"POST", "/settings", 405, "method_not_allowed"},

@@ -13,6 +13,7 @@ async function ready() {
 }
 await ready()
 assert.match(await (await fetch(base)).text(), /ReelScarey/)
+assert.equal((await fetch(`${base}/automation`)).status, 200)
 assert.equal((await fetch(`${base}/api/v1/settings`)).status, 401)
 const code = execFileSync('docker', ['exec', container, 'reelscarey', 'setup-token'], { encoding: 'utf8' }).trim()
 const setup = await fetch(`${base}/api/v1/auth/setup`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify({ username: 'ciadmin', password: 'ci-only-test-password', setup_token: code }) })

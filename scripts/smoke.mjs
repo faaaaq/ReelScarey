@@ -57,7 +57,7 @@ try {
   await start()
   const health = await fetch(`${base}/healthz`)
   assert.equal(health.status, 200)
-  const page = await fetch(`${base}/settings`)
+  const page = await fetch(`${base}/automation`)
   assert.equal(page.status, 200)
   const html = await page.text()
   assert.match(html, /ReelScarey/)
