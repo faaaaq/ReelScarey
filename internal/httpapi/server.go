@@ -16,9 +16,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/faaaaq/ReelScarey/internal/auth"
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/library"
+	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/settings"
 )
 
@@ -30,10 +32,17 @@ type Server struct {
 	library  *library.Store
 	version  string
 	started  time.Time
+	auth     *auth.Service
+	metadata *metadata.Service
 }
 
-func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string) http.Handler {
-	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now()}
+type Dependencies struct {
+	Auth     *auth.Service
+	Metadata *metadata.Service
+}
+
+func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string, deps Dependencies) http.Handler {
+	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", method(http.MethodGet, s.health))
 	mux.HandleFunc("/readyz", method(http.MethodGet, s.ready))
@@ -41,6 +50,15 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/dashboard", method(http.MethodGet, s.dashboard))
 	mux.HandleFunc("/api/v1/library", method(http.MethodGet, s.listLibrary))
 	mux.HandleFunc("/api/v1/settings", s.handleSettings)
+	mux.HandleFunc("/api/v1/auth/session", method(http.MethodGet, s.authSession))
+	mux.HandleFunc("/api/v1/auth/setup", method(http.MethodPost, s.authSetup))
+	mux.HandleFunc("/api/v1/auth/login", method(http.MethodPost, s.authLogin))
+	mux.HandleFunc("/api/v1/auth/logout", method(http.MethodPost, s.authLogout))
+	mux.HandleFunc("/api/v1/providers/tmdb", s.tmdbSettings)
+	mux.HandleFunc("/api/v1/providers/tmdb/test", method(http.MethodPost, s.tmdbTest))
+	mux.HandleFunc("/api/v1/metadata/movies", method(http.MethodGet, s.searchMovies))
+	mux.HandleFunc("/api/v1/metadata/movies/{id}", method(http.MethodGet, s.movieDetails))
+	mux.HandleFunc("/api/v1/library/movies", method(http.MethodPost, s.addMovie))
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "not_found", "This API endpoint does not exist.")
 	})
@@ -48,7 +66,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 		fail(w, 404, "not_found", "This API endpoint does not exist.")
 	})
 	mux.HandleFunc("/", frontend(assets))
-	return s.middleware(mux)
+	return s.middleware(s.security(mux))
 }
 
 func method(verb string, next http.HandlerFunc) http.HandlerFunc {
@@ -99,10 +117,10 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, map[string]any{
-		"name": "ReelScarey", "version": s.version, "milestone": "foundation",
+		"name": "ReelScarey", "version": s.version, "milestone": "movie-catalog",
 		"database": "connected", "schema_version": version, "uptime_seconds": int(time.Since(s.started).Seconds()),
 		"paths":        map[string]string{"config": s.config.ConfigDir, "media": s.config.MediaDir, "downloads": s.config.DownloadsDir},
-		"capabilities": map[string]bool{"library_settings": true, "metadata_search": false, "downloads": false, "import": false, "subtitles": false, "automation": false},
+		"capabilities": map[string]bool{"authentication": true, "library_settings": true, "metadata_search": true, "movie_add": true, "downloads": false, "import": false, "subtitles": false, "automation": false},
 	})
 }
 
@@ -126,12 +144,17 @@ func (s *Server) listLibrary(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid_kind", "Choose kind=movie or kind=series.")
 		return
 	}
-	items, err := s.library.List(r.Context(), kind)
+	page, valid := pageNumber(r, 100000)
+	if !valid {
+		fail(w, 400, "invalid_page", "Choose a page between 1 and 100000.")
+		return
+	}
+	items, err := s.library.List(r.Context(), kind, page)
 	if err != nil {
 		s.internal(w, "library_list", err)
 		return
 	}
-	send(w, 200, map[string]any{"items": items, "limit": 100})
+	send(w, 200, items)
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
@@ -144,7 +167,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		send(w, 200, prefs)
 	case http.MethodPut:
-		if !sameOrigin(r) {
+		if !s.sameOrigin(r) {
 			fail(w, 403, "cross_origin", "Settings must be saved from the ReelScarey application origin.")
 			return
 		}
@@ -196,7 +219,7 @@ func invalidJSON(w http.ResponseWriter, err error) {
 	fail(w, 400, "invalid_json", "Send one valid JSON object with only the documented fields.")
 }
 
-func sameOrigin(r *http.Request) bool {
+func (s *Server) sameOrigin(r *http.Request) bool {
 	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 		return false
 	}
@@ -204,6 +227,9 @@ func sameOrigin(r *http.Request) bool {
 	if origin == "" {
 		return true
 	} // Non-browser clients still require JSON.
+	if s.config.PublicURL != "" {
+		return strings.EqualFold(origin, s.config.PublicURL)
+	}
 	u, err := url.Parse(origin)
 	scheme := "http"
 	if r.TLS != nil {
@@ -214,7 +240,7 @@ func sameOrigin(r *http.Request) bool {
 
 func frontend(assets fs.FS) http.HandlerFunc {
 	files := http.FileServer(http.FS(assets))
-	routes := map[string]bool{"/": true, "/movies": true, "/series": true, "/search": true, "/activity": true, "/subtitles": true, "/settings": true}
+	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/search": true, "/activity": true, "/subtitles": true, "/settings": true}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
@@ -273,7 +299,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://image.tmdb.org; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				s.logger.Error("request panic", "method", r.Method, "path", r.URL.Path)

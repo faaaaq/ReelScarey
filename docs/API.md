@@ -1,7 +1,9 @@
-# REST API — foundation
+# REST API — movie catalog
 
-All routes are same-origin. JSON uses snake_case. No authentication is present
-yet; bind to loopback only. No API accepts provider credentials in this milestone.
+All routes are same-origin. JSON uses snake_case. All `/api/v1` routes require
+an administrator session except the three public auth routes below. Mutations
+also require `X-CSRF-Token` from session status and an allowed browser Origin.
+Cookies are HttpOnly/SameSite=Strict; there is no Bearer app API token yet.
 The API is versioned under `/api/v1`. Changes within v1 should be additive unless
 explicitly documented as breaking before the first stable release.
 
@@ -13,12 +15,42 @@ explicitly documented as breaking before the first stable release.
 | GET | `/api/v1/dashboard` | Library name, real SQL movie/series counts, settings revision/time |
 | GET | `/api/v1/settings` | Current library preferences and revision |
 | PUT | `/api/v1/settings` | Validate and atomically update preferences if revision matches |
-| GET | `/api/v1/library?kind=movie` | Movies in the database; initially `items: []` |
-| GET | `/api/v1/library?kind=series` | Series in the database; initially `items: []` |
+| GET | `/api/v1/library?kind=movie&page=1` | Paginated movies and saved metadata |
+| GET | `/api/v1/library?kind=series&page=1` | Paginated series read model; adding shows is upcoming |
+| GET | `/api/v1/auth/session` | Public setup/auth status; authenticated response includes username, csrf_token, expires_at |
+| POST | `/api/v1/auth/setup` | Public, rate-limited first admin creation; username, password, setup_token; returns 201 + cookie |
+| POST | `/api/v1/auth/login` | Public, rate-limited username/password login; returns 200 + cookie |
+| POST | `/api/v1/auth/logout` | Revoke current session and clear cookie; requires CSRF |
+| GET | `/api/v1/providers/tmdb` | configured + updated_at; never the token |
+| PUT | `/api/v1/providers/tmdb` | `{ "token": "..." }`; validate remotely, encrypt and save; failure preserves previous token |
+| DELETE | `/api/v1/providers/tmdb` | Remove saved credential; retain all library metadata |
+| POST | `/api/v1/providers/tmdb/test` | Test the saved credential against real TMDb |
+| GET | `/api/v1/metadata/movies?query=title&page=1` | Real TMDb movie search; per-result in_library flag |
+| GET | `/api/v1/metadata/movies/{tmdb_id}` | Canonical movie details from TMDb |
+| POST | `/api/v1/library/movies` | Add canonical metadata by TMDb ID; 201 created or 200 existing |
 
-Library results are sorted by title/id and limited to 100; response includes
-`limit: 100`. No add/delete API or metadata enrichment exists yet. Pagination
-must precede general library ingestion.
+Library responses contain `items`, `page`, `total`, and `limit: 24`. Page bounds
+are 1–100000; ordering is case-insensitive title then ID. Search responses contain
+`items`, `page`, `total_pages` (capped at 500), and `total_results`. Queries accept
+1–200 characters without control characters; search pages accept 1–500.
+
+Add movie body: `{ "tmdb_id": 11, "monitored": true }` (`monitored` defaults
+true). The server fetches metadata; caller-supplied titles, artwork or paths are
+rejected as unknown fields. Response is `{ "created": true, "item": {...} }`.
+The `(kind,tmdb_id)` uniqueness constraint prevents duplicate rows. Existing adds
+return the original item without calling TMDb or changing monitoring preferences.
+New adds save status `missing`; no download or media-file mutation is triggered.
+
+Movie DTOs include tmdb_id, title, overview, year (nullable), release_date,
+poster_path, poster_url, and runtime_minutes (nullable). Saved library items
+add id, kind, status and monitored. Poster URLs are restricted to TMDb's official
+image host; no upstream credential is sent to the browser.
+
+Authentication bodies and credential PUTs use the same bounded, strict JSON
+decoder as settings. Passwords require 12+ Unicode characters and at most 256
+bytes. Usernames require 3–40 ASCII letters, digits, underscores or hyphens.
+Sessions last 24 hours and survive restart. See AUTHENTICATION.md for recovery,
+setup-code handling, deployment origin and key backup requirements.
 
 Example settings response:
 
@@ -36,8 +68,8 @@ PUT sends the first four fields; `updated_at` is read-only. Requires
 `Content-Type: application/json`, at most 16 KiB, exactly one JSON object, and no
 unknown fields. A supplied browser Origin must match scheme and host exactly;
 cross-site Fetch Metadata is rejected. No permissive CORS headers are sent.
-The Vite development proxy preserves origin/host; reverse-proxy support needs
-explicit trusted-proxy configuration before any remote deployment.
+The Vite development proxy preserves origin/host. For a reverse proxy, configure
+REELSCAREY_PUBLIC_URL and preserve the original Host; forwarded headers are ignored.
 
 Library names accept 1–80 Unicode characters without controls. Folder names
 accept 1–80 ASCII letters, digits, spaces, underscores, and hyphens, start with a
@@ -48,16 +80,24 @@ process settings configured through environment variables.
 
 Errors use `{"error":{"code":"...","message":"..."}}`:
 - 400 invalid input, kind, or JSON
+- 401 application login required or invalid login credentials
 - 403 cross-origin mutation
 - 404 unknown API endpoint (never the frontend HTML)
 - 405 unsupported method, with `Allow`
 - 409 stale settings revision; reload before retrying
 - 413 body too large
 - 415 unsupported content type
+- 429 authentication throttled or TMDb rate-limited; Retry-After accompanies it
 - 500 unexpected server failure; details in local logs
+- 502 upstream authorization, response, connectivity or availability failure;
+  TMDb's own 401 does not log the administrator out
 - 503 readiness or frontend unavailable
 
-Planned route groups (not registered): `/metadata`, library mutations,
+Missing TMDb configuration returns 409 `tmdb_not_configured`; stale settings use
+409 `revision_conflict`. Provider errors are safe summaries, never upstream body
+text, credentials, request headers or URLs containing secrets.
+
+Planned route groups (not registered): television/library editing,
 `/indexers`, `/releases`, `/download-clients`, `/downloads`, `/jobs`, `/subtitles`,
 and `/profiles`. Design each group's concrete request/response types with its
 first complete vertical slice; do not expose placeholder 200 responses.

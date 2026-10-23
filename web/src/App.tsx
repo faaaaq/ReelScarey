@@ -6,17 +6,27 @@ import {
   Clapperboard,
   Film,
   LayoutDashboard,
+  LogOut,
   Menu,
   MonitorPlay,
   Search,
   Settings2,
   X,
 } from "lucide-react";
-import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import {
+  Link,
+  NavLink,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
 import { FuturePage, PageHeading } from "./components";
 import { Dashboard } from "./pages/Dashboard";
 import { Library } from "./pages/Library";
 import { Settings } from "./pages/Settings";
+import { Search as MovieSearch } from "./pages/Search";
+import { AuthGate, useAuth } from "./auth";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -28,6 +38,28 @@ const navigation = [
 ];
 
 export default function App() {
+  return (
+    <AuthGate>
+      <AppShell />
+    </AuthGate>
+  );
+}
+
+function AppShell() {
+  const { session, signOut } = useAuth();
+  const [signOutError, setSignOutError] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
+  async function logout() {
+    setSigningOut(true);
+    setSignOutError("");
+    try {
+      await signOut();
+    } catch {
+      setSignOutError("Could not sign out. Try again.");
+    } finally {
+      setSigningOut(false);
+    }
+  }
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   useEffect(() => {
@@ -90,10 +122,18 @@ export default function App() {
           </nav>
           <div className="foundation-label">
             <span className="status-dot" />
-            <span>Foundation release</span>
+            <span>Movie catalog</span>
             <Badge color="gray" size="1">
-              0.1
+              0.2
             </Badge>
+          </div>
+          <div className="account-control">
+            <span>Signed in as {session.username}</span>
+            <button onClick={() => void logout()} disabled={signingOut}>
+              <LogOut size={15} />
+              {signingOut ? "Signing out…" : "Sign out"}
+            </button>
+            {signOutError && <p role="alert">{signOutError}</p>}
           </div>
         </div>
       </aside>
@@ -104,6 +144,7 @@ export default function App() {
         </div>
         <div className="page-content">
           <Routes>
+            <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="/" element={<Dashboard />} />
             <Route
               path="/movies"
@@ -114,24 +155,7 @@ export default function App() {
               element={<Library key="series" kind="series" />}
             />
             <Route path="/settings" element={<Settings />} />
-            <Route
-              path="/search"
-              element={
-                <>
-                  <PageHeading
-                    eyebrow="FIND YOUR NEXT FEATURE"
-                    title="Search"
-                    description="Metadata and releases, together."
-                  />
-                  <FuturePage
-                    icon={Search}
-                    title="Discovery is up next."
-                    description="Real TMDb movie search and Torznab release results arrive in the movie workflow. There are no connected search providers in this release."
-                    phase="Planned · Phase 2"
-                  />
-                </>
-              }
-            />
+            <Route path="/search" element={<MovieSearch />} />
             <Route
               path="/activity"
               element={

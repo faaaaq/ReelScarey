@@ -1,0 +1,33 @@
+// Run against the disposable container created by CI, never an existing install.
+import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { setTimeout as delay } from 'node:timers/promises'
+const base = 'http://127.0.0.1:8787'
+const container = 'reelscarey-ci'
+async function ready() {
+  for (let i = 0; i < 100; i++) {
+    try { if ((await fetch(`${base}/readyz`, { signal: AbortSignal.timeout(1000) })).ok) return } catch { /* Wait for startup. */ }
+    await delay(200)
+  }
+  throw new Error('Container readiness timed out')
+}
+await ready()
+assert.match(await (await fetch(base)).text(), /ReelScarey/)
+assert.equal((await fetch(`${base}/api/v1/settings`)).status, 401)
+const code = execFileSync('docker', ['exec', container, 'reelscarey', 'setup-token'], { encoding: 'utf8' }).trim()
+const setup = await fetch(`${base}/api/v1/auth/setup`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify({ username: 'ciadmin', password: 'ci-only-test-password', setup_token: code }) })
+assert.equal(setup.status, 201)
+const cookie = setup.headers.get('set-cookie').split(';')[0]
+const session = await setup.json()
+const headers = { Cookie: cookie, 'X-CSRF-Token': session.csrf_token, 'Content-Type': 'application/json', Origin: base }
+const saved = await fetch(`${base}/api/v1/settings`, { method: 'PUT', headers, body: JSON.stringify({ library_name: 'CI cinema', movie_folder: 'Movies', series_folder: 'TV', revision: 1 }) })
+assert.equal(saved.status, 200)
+execFileSync('docker', ['restart', container])
+await ready()
+const after = await fetch(`${base}/api/v1/settings`, { headers })
+assert.equal(after.status, 200)
+assert.equal((await after.json()).library_name, 'CI cinema')
+assert.equal((await fetch(`${base}/api/v1/metadata/movies?query=Test`, { headers })).status, 409)
+execFileSync('docker', ['exec', container, 'reelscarey', 'healthcheck'])
+execFileSync('docker', ['exec', container, 'ffprobe', '-version'])
+console.log('PASS: container frontend, authentication, health, FFprobe, session and settings persistence across restart.')

@@ -2,23 +2,30 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/faaaaq/ReelScarey/internal/auth"
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/httpapi"
+	"github.com/faaaaq/ReelScarey/internal/metadata"
+	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.1.0-dev"
+var version = "0.2.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -37,7 +44,9 @@ func run(logger *slog.Logger) error {
 		if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
 			return healthcheck(cfg.ListenAddr)
 		}
-		return fmt.Errorf("usage: reelscarey [healthcheck]")
+		if len(os.Args) != 2 || (os.Args[1] != "setup-token" && os.Args[1] != "reset-password") {
+			return fmt.Errorf("usage: reelscarey [healthcheck|setup-token|reset-password]")
+		}
 	}
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(cfg.LogLevel)); err != nil {
@@ -53,11 +62,52 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer db.Close()
+	authService, err := auth.New(ctx, db, cfg.ConfigDir)
+	if err != nil {
+		return err
+	}
+	if len(os.Args) == 2 {
+		switch os.Args[1] {
+		case "setup-token":
+			configured, err := authService.Configured(ctx)
+			if err != nil {
+				return err
+			}
+			if configured {
+				return fmt.Errorf("the administrator is already configured")
+			}
+			secret, err := securestore.SecretFile(filepath.Join(cfg.ConfigDir, "setup-token"), 32, false)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(os.Stdout, base64.RawURLEncoding.EncodeToString(secret))
+			return err
+		case "reset-password":
+			body, err := io.ReadAll(io.LimitReader(os.Stdin, 259))
+			if err != nil {
+				return fmt.Errorf("read the new password from standard input")
+			}
+			if len(body) > 258 {
+				return auth.ErrPassword
+			}
+			password := strings.TrimSuffix(strings.TrimSuffix(string(body), "\n"), "\r")
+			if err := authService.ResetPassword(ctx, password); err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(os.Stdout, "Password updated. All sessions have been revoked.")
+			return err
+		}
+	}
+	secretStore, err := securestore.New(ctx, db, cfg.ConfigDir)
+	if err != nil {
+		return err
+	}
+	metadataService := metadata.New(secretStore, metadata.NewTMDb())
 	assets, err := web.Assets()
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)

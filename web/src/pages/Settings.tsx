@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
+import { TMDbSettings } from "./TMDbSettings";
 
 export function Settings() {
   const settings = useResource<LibrarySettings>("/settings");
@@ -205,20 +206,7 @@ export function Settings() {
                   <Badge color="green">Database connected</Badge>
                 </div>
               </section>
-              <section className="panel settings-info">
-                <Badge color="gray">Coming in the movie workflow</Badge>
-                <h2 className="mt-4">Connect the rest of your library</h2>
-                <p>
-                  Metadata, indexers, and download clients will get real
-                  connection tests and clear status here as their integrations
-                  are built.
-                </p>
-                <div className="provider-labels">
-                  <span>TMDb</span>
-                  <span>Torznab</span>
-                  <span>qBittorrent</span>
-                </div>
-              </section>
+              <TMDbSettings />
             </div>
           </div>
         )}

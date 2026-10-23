@@ -7,7 +7,7 @@ import {
   Film,
   FolderOpen,
   MonitorPlay,
-  Settings2,
+  Search,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { type Dashboard as DashboardData, type System } from "../api";
@@ -50,17 +50,16 @@ export function Dashboard() {
                 <span>Make room for movie night.</span>
               </h2>
               <p>
-                Your library starts here. Give it a name and choose how your
-                movie and TV folders will be organized.
+                Find your next feature on TMDb, explore its details, and keep
+                your growing movie collection together.
               </p>
               <Button size="3" asChild>
-                <Link to="/settings">
-                  <Settings2 size={17} /> Set up your library{" "}
-                  <ArrowRight size={17} />
+                <Link to="/search">
+                  <Search size={17} /> Find a movie <ArrowRight size={17} />
                 </Link>
               </Button>
               <p className="foundation-note">
-                Foundation release · Media integrations are up next.
+                Movie catalog · Downloads and imports are up next.
               </p>
             </div>
             <div className="cinema-art" aria-hidden="true">
@@ -111,15 +110,17 @@ export function Dashboard() {
             <section className="panel checklist">
               <div className="section-title">
                 <h2>Your opening checklist</h2>
-                <Badge color="gray">Foundation</Badge>
+                <Badge color="gray">Movie catalog</Badge>
               </div>
               <div className="checklist-row">
                 <span className="check-circle">
                   <Check size={15} />
                 </span>
                 <div>
-                  <h3>Application is ready</h3>
-                  <p>Your server and database are connected.</p>
+                  <h3>Your library is protected</h3>
+                  <p>
+                    You’re signed in. Your server and database are connected.
+                  </p>
                 </div>
               </div>
               <div className="checklist-row">
@@ -155,13 +156,12 @@ export function Dashboard() {
               <div className="checklist-row upcoming-row">
                 <span className="step-circle">3</span>
                 <div>
-                  <h3>Connect your media services</h3>
-                  <p>
-                    TMDb, an indexer, and qBittorrent arrive in the movie
-                    workflow.
-                  </p>
+                  <h3>Add your first movies</h3>
+                  <p>Connect TMDb in Settings, then search for a title.</p>
                 </div>
-                <Badge color="gray">Upcoming</Badge>
+                <Link to="/search" className="text-link">
+                  Search <ArrowRight size={14} />
+                </Link>
               </div>
             </section>
             <section className="panel storage-panel">

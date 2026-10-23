@@ -31,7 +31,42 @@ export type MediaItem = {
   year: number | null;
   monitored: boolean;
   status: string;
+  overview: string;
+  poster_url: string;
+  poster_path: string;
+  release_date: string;
+  runtime_minutes: number | null;
 };
+
+export type Movie = Omit<MediaItem, "id" | "kind" | "monitored" | "status">;
+export type SearchResult = Movie & { in_library: boolean };
+export type SearchResults = {
+  items: SearchResult[];
+  page: number;
+  total_pages: number;
+  total_results: number;
+};
+export type LibraryPage = {
+  items: MediaItem[];
+  page: number;
+  total: number;
+  limit: number;
+};
+export type Session = {
+  username: string;
+  csrf_token: string;
+  expires_at: number;
+};
+export type AuthStatus = {
+  setup_required: boolean;
+  authenticated: boolean;
+  session?: Session;
+};
+export type ProviderStatus = { configured: boolean; updated_at: string };
+let csrfToken = "";
+export function setCSRFToken(value: string) {
+  csrfToken = value;
+}
 
 export class APIError extends Error {
   constructor(
@@ -51,15 +86,26 @@ export async function api<T>(
     headers: {
       ...(options.body ? { "Content-Type": "application/json" } : {}),
       ...options.headers,
+      ...(options.method && options.method !== "GET" && csrfToken
+        ? { "X-CSRF-Token": csrfToken }
+        : {}),
     },
+    credentials: "same-origin",
     signal: options.signal ?? AbortSignal.timeout(15000),
   });
   const body = await response.json();
-  if (!response.ok)
+  if (!response.ok) {
+    if (
+      response.status === 401 &&
+      path !== "/auth/login" &&
+      path !== "/auth/setup"
+    )
+      window.dispatchEvent(new Event("reelscarey:unauthorized"));
     throw new APIError(
       body.error?.message ?? "The request could not be completed.",
       response.status,
     );
+  }
   return body as T;
 }
 

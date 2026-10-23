@@ -1,4 +1,4 @@
-name: Foundation checks
+name: Application checks
 on:
   push:
   pull_request:
@@ -32,21 +32,4 @@ jobs:
           docker build -t reelscarey:ci .
           docker run -d --name reelscarey-ci -p 127.0.0.1:8787:8787 reelscarey:ci
           trap 'docker logs reelscarey-ci; docker rm -fv reelscarey-ci' EXIT
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:8787/readyz; then break; fi
-            sleep 1
-          done
-          curl --fail http://127.0.0.1:8787/readyz
-          curl --fail http://127.0.0.1:8787/ | grep -q 'ReelScarey'
-          curl --fail http://127.0.0.1:8787/api/v1/system
-          curl --fail -X PUT -H 'Content-Type: application/json' \
-            --data '{"library_name":"CI cinema","movie_folder":"Movies","series_folder":"TV","revision":1}' \
-            http://127.0.0.1:8787/api/v1/settings
-          docker restart reelscarey-ci
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:8787/readyz; then break; fi
-            sleep 1
-          done
-          curl --fail http://127.0.0.1:8787/api/v1/settings | grep -q 'CI cinema'
-          docker exec reelscarey-ci reelscarey healthcheck
-          docker exec reelscarey-ci ffprobe -version
+          node scripts/container-smoke.mjs

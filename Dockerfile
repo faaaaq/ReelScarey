@@ -13,7 +13,7 @@ RUN go mod download
 COPY . .
 COPY --from=frontend /src/web/dist ./web/dist
 RUN go test ./... && go vet ./...
-ARG VERSION=0.1.0-dev
+ARG VERSION=0.2.0-dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/reelscarey ./cmd/reelscarey
 
 FROM debian:bookworm-slim AS runtime

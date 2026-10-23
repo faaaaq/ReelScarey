@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, messageFor } from "./api";
 
-export function useResource<T>(path: string) {
+export function useResource<T>(path: string | null) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -9,6 +9,12 @@ export function useResource<T>(path: string) {
   const reload = useCallback(() => setAttempt((value) => value + 1), []);
 
   useEffect(() => {
+    if (path === null) {
+      setData(undefined);
+      setError("");
+      setLoading(false);
+      return;
+    }
     const controller = new AbortController();
     setLoading(true);
     setError("");

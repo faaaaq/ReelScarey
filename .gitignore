@@ -9,6 +9,8 @@
 /web/test-results/
 /web/playwright-report/
 .env
+secrets.key
+setup-token
 *.db
 *.db-shm
 *.db-wal

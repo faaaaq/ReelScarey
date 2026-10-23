@@ -3,14 +3,16 @@
 **Media management, without the horror.**
 
 A unified, self-hosted media application in Go and React. This is the first
-foundation milestone, not yet a replacement for Sonarr/Radarr/Prowlarr/Bazarr.
+movie-catalog milestone, not yet a complete replacement for Sonarr/Radarr/Prowlarr/Bazarr.
 
-Working now: one server for UI and REST API, SQLite with versioned migrations,
-persisted library settings, live dashboard counts and database status, read-only
-library collections, responsive navigation, and explicit upcoming-feature screens.
+Working now: administrator setup/login/logout, persistent sessions, encrypted
+TMDb connection settings with real connection tests, TMDb movie search/details,
+idempotent movie adds, paginated poster browsing, persisted library settings,
+live dashboard counts, and one server for the UI, REST API and SQLite database.
 
-Not implemented: metadata search, adding movies/TV, indexers, download clients,
-imports, background jobs, subtitles, authentication, or production hardening.
+Not implemented: adding TV shows, indexers, download clients, imports, background
+jobs, subtitles, or full production hardening. Monitoring is currently a saved
+preference; it does not yet trigger downloads.
 No existing media is scanned or changed. FFprobe is packaged in the Dockerfile;
 the application does not call it yet.
 
@@ -27,8 +29,12 @@ docker compose logs -f reelscarey
 
 On PowerShell, use `Copy-Item .env.example .env` for the first command.
 Open [ReelScarey](http://localhost:8787). The port is published on loopback only.
-This release has **no authentication**; do not expose it to shared networks or
-the internet.
+Retrieve your one-time setup code with `docker compose exec reelscarey reelscarey
+setup-token`, then create the administrator account in the browser. The code is
+also in `/config/setup-token` and is removed after setup. No default password is
+created. Go to Settings, enter your TMDb **API Read Access Token**, and save/test
+the connection. Search for a movie and add it to the library. Existing config
+volumes upgrade automatically; the first login upgrade requires account setup.
 
 The named `reelscarey_config` volume persists the database under `/config`.
 Change `MEDIA_PATH` and `DOWNLOADS_PATH` in `.env` for your host folders; they map
@@ -55,6 +61,8 @@ go build -o bin/reelscarey ./cmd/reelscarey
 
 On Windows build with `go build -o bin/reelscarey.exe ./cmd/reelscarey` and run
 `.\bin\reelscarey.exe`. Open [the local app](http://127.0.0.1:8787).
+Read `data/config/setup-token` (or run `reelscarey setup-token` with the same
+config environment) to create the administrator, then connect TMDb in Settings.
 To iterate on UI, keep Go running and run `npm run dev` in `web`; Vite proxies
 the API to port 8787. Rebuild UI and Go for changes to the embedded production UI.
 
@@ -67,6 +75,13 @@ the API to port 8787. Rebuild UI and Go for changes to the embedded production U
 | `REELSCAREY_MEDIA_DIR` | `/media` | Media root; Windows default `./data/media` |
 | `REELSCAREY_DOWNLOADS_DIR` | `/downloads` | Download root; Windows default `./data/downloads` |
 | `REELSCAREY_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
+| `REELSCAREY_PUBLIC_URL` | empty | Explicit browser origin for another hostname or HTTPS reverse proxy |
+
+Only loopback Host names are accepted by default. For remote use, terminate TLS
+at a reverse proxy, forward the original Host, and set `REELSCAREY_PUBLIC_URL`
+to the exact browser origin (for example `https://media.example.com`). Cookies
+then use Secure. Arbitrary forwarded headers are not trusted. Authentication is
+implemented; a full production security review remains on the roadmap.
 
 Relative paths resolve against the working directory. Docker explicitly sets
 the three paths to `/config`, `/media`, and `/downloads`. UI preferences are stored
@@ -106,17 +121,24 @@ on local storage. Back up before upgrades; migrations run transactionally at
 startup, and newer or altered migration histories are rejected. In-place
 downgrades are not supported.
 
+Include **secrets.key** in backups. It encrypts saved provider credentials; a
+database backup without the matching key cannot decrypt them. Restrict access
+to the entire config backup because it contains both the key and encrypted data.
+Lost administrator password? See the local stdin-based recovery procedure in
+[authentication operations](docs/AUTHENTICATION.md); it revokes all sessions.
+
 ## Project references
 
 - [Architecture and entity model](ARCHITECTURE.md)
 - [Roadmap and acceptance criteria](ROADMAP.md)
 - [REST API](docs/API.md)
+- [Authentication and secret operations](docs/AUTHENTICATION.md)
 - [Contributor rules](AGENTS.md)
 - [Validation evidence](docs/VALIDATION.md)
 
-The next milestone is one complete movie workflow: TMDb → Torznab → qBittorrent
-→ restart-safe monitoring → safe import. Build and verify it before broadening
-into television or subtitles.
+The next task continues the movie workflow with a real Torznab indexer, then
+qBittorrent, restart-safe monitoring, and safe import. Complete and verify that
+vertical slice before broadening into television or subtitles.
 
 ## License
 

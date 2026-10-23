@@ -1,7 +1,7 @@
 // Uses a disposable config directory and never reads a real media library.
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { spawn, spawnSync } from 'node:child_process'
+import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import net from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -17,12 +17,18 @@ const base = `http://127.0.0.1:${port}`
 const env = {
   ...process.env,
   REELSCAREY_LISTEN_ADDR: `127.0.0.1:${port}`,
+  REELSCAREY_PUBLIC_URL: base,
   REELSCAREY_CONFIG_DIR: path.join(directory, 'config'),
   REELSCAREY_MEDIA_DIR: path.join(directory, 'media'),
   REELSCAREY_DOWNLOADS_DIR: path.join(directory, 'downloads'),
 }
 let child
 let logs = ''
+let cookie = ''
+let csrf = ''
+async function authenticated(endpoint, options = {}) {
+  return fetch(`${base}${endpoint}`, { ...options, headers: { Cookie: cookie, 'X-CSRF-Token': csrf, ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers } })
+}
 
 async function start() {
   child = spawn(binary, [], { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -59,27 +65,49 @@ try {
   assert.ok(asset, 'built JavaScript reference missing')
   assert.equal((await fetch(`${base}${asset}`)).status, 200)
   assert.equal((await fetch(`${base}/assets/missing.js`)).status, 404)
-  const system = await (await fetch(`${base}/api/v1/system`)).json()
+  assert.equal((await fetch(`${base}/api/v1/settings`)).status, 401)
+  const status = await (await fetch(`${base}/api/v1/auth/session`)).json()
+  assert.equal(status.setup_required, true)
+  const setupCode = (await readFile(path.join(directory, 'config', 'setup-token'), 'utf8')).trim()
+  const printed = spawnSync(binary, ['setup-token'], { env, windowsHide: true, encoding: 'utf8' })
+  assert.equal(printed.status, 0)
+  assert.equal(printed.stdout.trim(), setupCode)
+  const setup = await fetch(`${base}/api/v1/auth/setup`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify({ username: 'smoketest', password: 'test-only-smoke-password', setup_token: setupCode }) })
+  assert.equal(setup.status, 201)
+  cookie = setup.headers.get('set-cookie').split(';')[0]
+  const session = await setup.json()
+  csrf = session.csrf_token
+  assert.ok(!JSON.stringify(session).includes(cookie.split('=')[1]), 'raw session exposed to JavaScript')
+  const system = await (await authenticated('/api/v1/system')).json()
   assert.equal(system.database, 'connected')
-  assert.equal(system.capabilities.metadata_search, false)
-  const before = await (await fetch(`${base}/api/v1/settings`)).json()
-  const saved = await fetch(`${base}/api/v1/settings`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json', Origin: base },
+  assert.equal(system.capabilities.metadata_search, true)
+  assert.equal((await authenticated('/api/v1/metadata/movies?query=Test')).status, 409)
+  const before = await (await authenticated('/api/v1/settings')).json()
+  const saved = await authenticated('/api/v1/settings', {
+    method: 'PUT', headers: { Origin: base },
     body: JSON.stringify({ library_name: 'Restart verification', movie_folder: 'Features', series_folder: 'TV', revision: before.revision }),
   })
   assert.equal(saved.status, 200)
   await stop()
   await start()
-  const after = await (await fetch(`${base}/api/v1/settings`)).json()
+  const after = await (await authenticated('/api/v1/settings')).json()
   assert.equal(after.library_name, 'Restart verification')
   assert.equal(after.revision, before.revision + 1)
-  const dashboard = await (await fetch(`${base}/api/v1/dashboard`)).json()
+  const dashboard = await (await authenticated('/api/v1/dashboard')).json()
   assert.equal(dashboard.library_name, 'Restart verification')
   assert.deepEqual(dashboard.counts, { movies: 0, series: 0 })
   const check = spawn(binary, ['healthcheck'], { env, windowsHide: true, stdio: 'inherit' })
   const code = await new Promise((resolve, reject) => { check.once('error', reject); check.once('exit', resolve) })
   assert.equal(code, 0)
-  console.log('PASS: native startup, health/readiness, embedded UI/assets, API, settings persistence across restart, and CLI healthcheck.')
+  const reset = spawnSync(binary, ['reset-password'], { env, input: 'new-test-only-password\n', windowsHide: true, encoding: 'utf8' })
+  assert.equal(reset.status, 0)
+  assert.equal((await authenticated('/api/v1/settings')).status, 401)
+  const login = await fetch(`${base}/api/v1/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify({ username: 'smoketest', password: 'new-test-only-password' }) })
+  assert.equal(login.status, 200)
+  cookie = login.headers.get('set-cookie').split(';')[0]; csrf = (await login.json()).csrf_token
+  assert.equal((await authenticated('/api/v1/auth/logout', { method: 'POST', body: '{}' })).status, 200)
+  assert.equal((await authenticated('/api/v1/settings')).status, 401)
+  console.log('PASS: native startup, embedded UI/API, admin setup, session and settings persistence, CLI healthcheck/password reset, session revocation and logout.')
 } catch (error) {
   console.error(logs)
   throw error

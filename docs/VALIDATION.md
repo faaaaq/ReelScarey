@@ -1,58 +1,62 @@
-# Foundation validation — 2026-10-22
+# Movie-catalog milestone validation — 2026-10-22
 
-Implemented and tested locally against the initially empty private
-`faaaaq/ReelScarey` repository. External integrations and background workers are
-explicitly absent. No real media library or provider account was used.
+Implemented: single-admin authentication, encrypted TMDb configuration, real
+TMDb movie search/details, canonical idempotent movie adds, and a paginated
+movie library. This completes the requested catalog milestone; the full
+Torznab/download/import vertical slice remains on the roadmap.
 
-## Passed
+## Local checks passed
 
 | Check | Evidence |
 | --- | --- |
-| Go tests | `go test ./...` passes all config, database, settings and HTTP tests |
-| Static Go checks | `go vet ./...` passes |
-| SQLite | New database, WAL/foreign keys/busy timeout, repeated migrations, settings across reopen, Unicode/spaces in config path |
-| Migration safety | Failed SQL rolls back DDL and ledger; modified migration checksum and newer schema are rejected |
-| Settings | Folder traversal/device names/collisions rejected; concurrent same-revision updates produce one success and one conflict |
-| HTTP | Health/readiness, real library counts/list, settings, error envelopes, unknown API routes, content type/body limits, malformed JSON, cross-origin rejection, SPA deep links, missing assets, readiness failure |
-| TypeScript | `npm run check` passes |
-| Frontend behavior | `npm test`: 4 tests pass (API-driven dashboard/navigation, settings save, conflict/reload, offline/retry) |
-| Production frontend | `npm run build` succeeds with Vite; generated JS/CSS embedded into Go |
-| Windows executable | Native `go build` succeeds and application launches |
-| Linux executable | `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build` succeeds; cross-compiled, not executed |
-| Process smoke test | `node scripts/smoke.mjs`: starts the real binary, verifies readiness/UI/JS/API, saves preferences, restarts, verifies persisted values and CLI healthcheck |
-| Live browser | Dashboard renders at narrow viewport; settings save succeeds, reload retains value, default restored; mobile navigation and movie empty state work |
-| Dependency installation | Locked npm install succeeds; npm reports zero known vulnerabilities at installation time |
+| Go tests | `go test ./...`: auth, config, database, HTTP, library, metadata, securestore and settings |
+| Static Go checks | `go vet ./...` |
+| Authentication | Protected API data, one-time setup closure, invalid credentials, Argon2id hashes, hashed session storage, cookie flags, session expiry/restart/logout, rate/concurrency limits, password recovery revocation |
+| Credentials | AES-GCM encryption, reopen with matching key, reject missing key/tampered ciphertext, write-only status responses, failed replacement preserves current token |
+| Provider contract | Bearer header, encoded query/page/adult flag, details normalization, official poster URLs, error/body limits, rate-limit cooldown, timeouts and safe errors |
+| Movie workflow | Authenticated provider configure → search → canonical details → add → library read; duplicate retry survives provider failure without changing monitoring |
+| Library | Concurrent duplicate adds create one row; 24-item pagination/totals; metadata, monitoring and artwork references survive reopen |
+| SQLite | Initial creation and existing migration history, WAL/foreign keys/timeouts, rollback, checksum drift/newer schema rejection, Unicode config paths |
+| Frontend | TypeScript check, formatting check, production Vite build |
+| UI behavior | 11 tests: setup/login, session expiry/logout, search/details/add with monitoring choice, failed add, write-only TMDb save, settings/conflicts/offline recovery/navigation |
+| Dependency repair | Fresh npm install from repaired lock; Linux x64 dry-run resolution succeeds; npm reports zero known vulnerabilities at install time |
+| Native executable | Windows amd64 build and real process launch |
+| Native process smoke | Embedded frontend/assets, health/readiness, protected API, setup-code CLI, setup/login, session + settings across restart, healthcheck CLI, stdin password reset/revocation and logout |
+| Browser | Narrow-viewport administrator setup page renders with labels and code instructions; actual account creation left to the owner |
 
 Local tools: Windows amd64, portable Go 1.27.3, Node 24.12.0, npm 11.6.2.
-The native network smoke test required the execution environment's loopback
-network permission; it passed with that permission. Initial test failures in
-Windows SQLite URI handling and the bare `/api` route were fixed and the suite
-rerun successfully.
+Tests use temporary config roots only. Provider response fixtures exist only
+inside tests; production always uses the real official TMDb HTTPS adapter.
+No existing user media was scanned or changed.
 
-## Not executed / limitations
+## CI and environment limits
 
-- Docker is not installed; neither `docker build` nor Compose/container runtime
-  checks have passed here. The Dockerfile and CI smoke job are prepared, and the
-  roadmap intentionally leaves container verification unchecked.
-- Go race detector requires CGO and a C compiler; no supported compiler is
-  installed here. Linux CI is configured to run `go test -race ./...`.
-- GitHub CI has not run because this milestone has not been pushed.
-- Linux runtime behavior, ARM builds, long-running resource measurements,
-  crash/power-loss recovery, backup/restore drills, and production security
-  review are not validated by this milestone.
-- Browser testing covered the narrow in-app viewport; desktop CSS is included
-  but a full desktop/browser accessibility audit remains future work.
-- This release has no authentication and is only suitable for local evaluation.
-  Media folder preferences do not yet create or mutate folders.
-- An open-source license still needs the owner's choice before distribution.
+The foundation push's [first CI run](https://github.com/faaaaq/ReelScarey/actions/runs/39851298503)
+failed before tests: npm found missing cross-platform @emnapi dependency entries.
+This milestone regenerates the lock without an existing node_modules directory
+and verifies both a clean Windows install and Linux resolution.
+
+The updated workflow runs the full frontend suite, Go race detector/static
+checks, native authenticated smoke test, Docker build and authenticated
+container restart/persistence/health/FFprobe smoke test. Container and Linux
+race execution require CI because Docker and a C toolchain are not available
+locally. Results will be recorded after that workflow runs on this branch.
+
+## Remaining acceptance work
+
+- Live authenticated TMDb search/add requires the owner's Read Access Token
+  entered in Settings. It has not been supplied or substituted with demo data.
+- Linux/ARM deployment coverage, resource measurements, backup/restore drills,
+  broad accessibility audits and full security review remain future work.
+- No indexer, downloader, import worker, TV ingest or subtitle adapter exists yet.
+- Sessions use a fixed 24-hour lifetime. Rate-limit counters are memory-resident
+  and reset on restart; durable sessions and library data are SQLite-backed.
+- The project license still needs the owner's choice before public distribution.
 
 ## Reproduce
 
-Run the commands in [README.md](../README.md). `scripts/smoke.mjs` accepts an
-optional binary path, creates its own temporary database and configured roots,
-and removes only that test-created directory. The CI workflow includes an
-additional Docker health/FFprobe/restart persistence check for a Linux runner.
-
-The next implementation task is authenticated, write-only provider configuration
-followed by real TMDb movie search and idempotent add-to-library behavior, then
-the remaining Torznab → qBittorrent → import vertical slice.
+Follow README.md to build the UI before Go, then run `go test ./...`,
+`go vet ./...` and `node scripts/smoke.mjs <binary-path>`. The smoke test creates
+and removes only its own temporary config directory. `scripts/container-smoke.mjs`
+is intended exclusively for the disposable `reelscarey-ci` container in CI.
+See AUTHENTICATION.md for first setup, password recovery and key backup.

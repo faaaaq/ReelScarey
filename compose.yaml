@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        VERSION: 0.1.0-dev
+        VERSION: 0.2.0-dev
     image: reelscarey:local
     restart: unless-stopped
     init: true
@@ -15,6 +15,7 @@ services:
       REELSCAREY_MEDIA_DIR: /media
       REELSCAREY_DOWNLOADS_DIR: /downloads
       REELSCAREY_LOG_LEVEL: ${REELSCAREY_LOG_LEVEL:-info}
+      REELSCAREY_PUBLIC_URL: ${REELSCAREY_PUBLIC_URL:-}
     volumes:
       - reelscarey_config:/config
       - ${MEDIA_PATH:-./media}:/media:ro

@@ -17,7 +17,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - cmd/reelscarey is the composition root; internal/httpapi owns HTTP transport.
 - internal/config owns process environment, internal/settings owns persisted
   preferences, internal/database owns SQLite and versioned SQL migrations.
-- internal/library owns the shared library read model. Future providers live in
+- internal/auth owns the single administrator, password hashes and sessions;
+  internal/securestore owns encrypted credentials and local key files.
+- internal/metadata owns TMDb normalization and its MovieProvider boundary.
+- internal/library owns the shared library catalog. Future providers live in
   their feature modules behind narrow, consumer-owned interfaces.
 - web contains React, TypeScript, Vite, Tailwind, and Radix Themes. Use maintained
   accessible components. Go serves the built web/dist directory via embed.
@@ -26,7 +29,14 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 ## Reliability and safety
 - Use context-aware operations, bounded HTTP bodies and timeouts, structured
   logs, parameterized SQL, and transactions for multi-step writes.
-- Secrets must never appear in logs, API responses, or committed files.
+- Secrets must never appear in logs, API responses, or committed files. Session
+  tokens travel only in HttpOnly cookies; CSRF tokens are separate browser state.
+  `setup-token` is an explicit local-owner CLI command, never a log message.
+- All application APIs require authentication except setup/login/session status.
+  Every authenticated mutation requires CSRF and same-origin validation. Never
+  add a bypass for tests to production code; use disposable test sessions.
+- Store provider tokens only through securestore; its AES-GCM key must be backed
+  up with the database. Missing/wrong keys must fail closed, never silently reset.
 - Migrations are append-only after release. Back up SQLite before upgrading.
 - Never test against a real library. No media mutation is implemented yet.
   Future import must validate containment, refuse overwrite, stage and verify
@@ -38,7 +48,9 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - Frontend: `cd web && npm ci && npm run format:check && npm run check && npm test && npm run build`.
 - Backend, after the frontend build: `go test ./...`, `go vet ./...`,
   and `go build ./cmd/reelscarey`.
-- Linux CI additionally runs `go test -race ./...` and a Docker smoke test.
+- Linux CI additionally runs `go test -race ./...` and an authenticated Docker
+  smoke test. The original foundation CI failure was an incomplete platform
+  lockfile; regenerate locks without an existing node_modules directory.
 - Test input boundaries, persistence across reopen, migration rollback, API
   contracts, and meaningful user behavior. Use temporary directories only.
 - Run gofmt on Go changes and `npm run format` for the frontend. Keep dependencies locked and explain additions.

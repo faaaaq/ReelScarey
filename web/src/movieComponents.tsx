@@ -1,0 +1,239 @@
+import { useState, type ReactNode } from "react";
+import { Badge, Button, Dialog, Switch } from "@radix-ui/themes";
+import { Check, ChevronLeft, ChevronRight, Film, Plus } from "lucide-react";
+import { Link } from "react-router-dom";
+import { api, messageFor, type Movie } from "./api";
+import { RequestState } from "./components";
+import { useResource } from "./useResource";
+
+export function Poster({
+  movie,
+}: {
+  movie: Pick<Movie, "poster_url" | "title">;
+}) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="movie-poster">
+      {movie.poster_url && !failed ? (
+        <img
+          src={movie.poster_url}
+          alt={`${movie.title} poster`}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <div className="poster-fallback">
+          <Film size={35} strokeWidth={1} />
+          <span>Artwork unavailable</span>
+        </div>
+      )}
+    </div>
+  );
+}
+export function MovieCard({
+  movie,
+  children,
+}: {
+  movie: Movie;
+  children: ReactNode;
+}) {
+  return (
+    <article className="panel movie-card">
+      <Poster movie={movie} />
+      <div className="movie-card-copy">
+        <h2>{movie.title}</h2>
+        <p className="movie-meta">
+          {movie.year ?? "Release date unknown"}
+          {movie.runtime_minutes ? ` · ${movie.runtime_minutes} min` : ""}
+        </p>
+        <p className="movie-overview">
+          {movie.overview || "No synopsis is available yet."}
+        </p>
+        {children}
+      </div>
+    </article>
+  );
+}
+export function AddMovieButton({
+  id,
+  added,
+  onAdded,
+  monitored = true,
+}: {
+  id: number;
+  added: boolean;
+  onAdded: (id: number) => void;
+  monitored?: boolean;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  async function add() {
+    if (pending) return;
+    setPending(true);
+    setError("");
+    try {
+      await api("/library/movies", {
+        method: "POST",
+        body: JSON.stringify({ tmdb_id: id, monitored }),
+      });
+      onAdded(id);
+    } catch (error) {
+      setError(messageFor(error));
+    } finally {
+      setPending(false);
+    }
+  }
+  if (added)
+    return (
+      <Badge color="green" size="2">
+        <Check size={14} /> In library
+      </Badge>
+    );
+  return (
+    <div>
+      <Button disabled={pending} onClick={() => void add()}>
+        <Plus size={16} />
+        {pending ? "Adding…" : "Add movie"}
+      </Button>
+      {error && (
+        <p role="alert" className="movie-error">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+export function MovieDetails({
+  id,
+  title,
+  added,
+  onAdded,
+  close,
+}: {
+  id: number;
+  title: string;
+  added: boolean;
+  onAdded: (id: number) => void;
+  close: () => void;
+}) {
+  const details = useResource<Movie>(`/metadata/movies/${id}`);
+  const [monitored, setMonitored] = useState(true);
+  return (
+    <Dialog.Root
+      open
+      onOpenChange={(value) => {
+        if (!value) close();
+      }}
+    >
+      <Dialog.Content maxWidth="650px">
+        <Dialog.Title>{details.data?.title ?? title}</Dialog.Title>
+        <Dialog.Description size="2">
+          Movie details from TMDb.
+        </Dialog.Description>
+        <RequestState
+          loading={details.loading}
+          error={details.error}
+          retry={details.reload}
+        />
+        {details.data && (
+          <>
+            <div className="movie-details">
+              <Poster movie={details.data} />
+              <div>
+                <p className="movie-meta">
+                  {details.data.year ?? "Release date unknown"}
+                  {details.data.runtime_minutes
+                    ? ` · ${details.data.runtime_minutes} min`
+                    : ""}
+                </p>
+                <p>
+                  {details.data.overview || "No synopsis is available yet."}
+                </p>
+                <a
+                  className="text-link"
+                  href={`https://www.themoviedb.org/movie/${id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View on TMDb
+                </a>
+              </div>
+            </div>
+            {!added && (
+              <>
+                <label className="monitor-choice">
+                  <Switch checked={monitored} onCheckedChange={setMonitored} />{" "}
+                  Monitor this movie
+                </label>
+                <p className="field-help">
+                  Saves your monitoring preference. Automatic searching and
+                  downloading arrive in the next part of the movie workflow.
+                </p>
+              </>
+            )}
+            <div className="movie-dialog-actions">
+              <AddMovieButton
+                id={id}
+                added={added}
+                onAdded={onAdded}
+                monitored={monitored}
+              />
+              {added && (
+                <Button asChild variant="soft">
+                  <Link to="/movies" onClick={close}>
+                    Open library
+                  </Link>
+                </Button>
+              )}
+              <Dialog.Close>
+                <Button variant="soft" color="gray">
+                  Close
+                </Button>
+              </Dialog.Close>
+            </div>
+          </>
+        )}
+        {!details.data && (
+          <Dialog.Close>
+            <Button variant="soft" color="gray">
+              Close
+            </Button>
+          </Dialog.Close>
+        )}
+      </Dialog.Content>
+    </Dialog.Root>
+  );
+}
+export function Pagination({
+  page,
+  pages,
+  onPage,
+}: {
+  page: number;
+  pages: number;
+  onPage: (page: number) => void;
+}) {
+  if (pages <= 1) return null;
+  return (
+    <nav className="pagination" aria-label="Pagination">
+      <Button
+        variant="soft"
+        disabled={page <= 1}
+        onClick={() => onPage(page - 1)}
+      >
+        <ChevronLeft size={16} /> Previous
+      </Button>
+      <span>
+        Page {page} of {pages}
+      </span>
+      <Button
+        variant="soft"
+        disabled={page >= pages}
+        onClick={() => onPage(page + 1)}
+      >
+        Next <ChevronRight size={16} />
+      </Button>
+    </nav>
+  );
+}

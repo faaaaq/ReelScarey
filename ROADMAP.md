@@ -2,7 +2,7 @@
 
 Status is evidence-based: checked items are implemented, not planned adapters.
 
-## 1 — Foundation (current milestone)
+## 1 — Foundation
 - [x] Go server, structured logging, graceful shutdown and validated environment
 - [x] SQLite initialization, transactional checksummed migrations and persistence
 - [x] Versioned REST API, health/readiness, settings and library reads
@@ -13,16 +13,25 @@ Status is evidence-based: checked items are implemented, not planned adapters.
 - [x] Automated tests and native launch/API/frontend verification
 - [ ] Docker build and runtime smoke test executed successfully
 
-## 2 — Complete movie vertical slice (next)
-1. Authenticate administration and implement write-only provider credentials.
-2. Implement TMDb movie search/details with timeouts, rate-limit handling and tests.
-3. Add a movie idempotently; persist real metadata/artwork and monitoring state.
-4. Configure/test a Torznab indexer; return normalized, real release results.
-5. Configure/test qBittorrent and enqueue the selected release once.
-6. Introduce persistent jobs, leases and restart-safe download reconciliation.
-7. Detect completion, map paths, probe files and plan safe imports.
-8. Hardlink without touching seeding sources; copy safely across filesystems.
-9. Journal imports, update library availability and display actionable failures.
+## 2 — Movie workflow (current)
+- [x] Authenticate administration: code-protected setup, login/logout, persistent
+  sessions, CSRF/Host checks, password hashing, throttling and local recovery.
+- [x] Implement encrypted, write-only TMDb credentials with real test/replace/
+  disconnect operations; document key backup and fail-closed recovery.
+- [x] Implement real TMDb movie search/details with timeouts, safe errors,
+  rate-limit cooldown and contract tests.
+- [x] Add a movie idempotently from canonical provider metadata; persist artwork
+  references and monitoring state, show paginated library collections.
+- [x] Test authentication, search/add API behavior, duplicate/restart cases,
+  provider failures and frontend interaction with isolated fixtures.
+- [ ] Verify authenticated search/add against live TMDb with the owner's token
+  entered directly in Settings. No real token has been supplied to this run.
+- [ ] Configure/test a Torznab indexer; return normalized, real release results.
+- [ ] Configure/test qBittorrent and enqueue the selected release once.
+- [ ] Introduce persistent jobs, leases and restart-safe download reconciliation.
+- [ ] Detect completion, map paths, probe files and plan safe imports.
+- [ ] Hardlink without touching seeding sources; copy safely across filesystems.
+- [ ] Journal imports, update library availability and display actionable failures.
 
 Acceptance: a real movie moves from TMDb search through a real indexer and
 download client to a verified library file. Restart during download/import must
@@ -53,8 +62,10 @@ temporary libraries only. Never use unauthorized content as test material.
 
 ## Validation record
 
-2026-10-22: native Windows tests, production build and restart smoke test passed;
-Linux amd64 cross-build passed. Four frontend behavior tests passed. Live browser
-navigation/settings checks passed. Docker runtime and Linux race checks remain
-unverified because Docker and a C toolchain are absent on this host. CI is written
-but has not run on GitHub. See [validation evidence](docs/VALIDATION.md).
+2026-10-22: Foundation native checks passed. Its first GitHub run failed because
+the npm lock omitted cross-platform dependencies. The lock was regenerated in a
+clean directory; a clean Windows install and Linux resolution check now pass.
+The movie catalog backend suite and 11 frontend tests pass. Native process smoke
+checks include setup, login, persistent sessions/settings, logout and password
+recovery/revocation. Full details and remaining live-provider/container checks
+are in [validation evidence](docs/VALIDATION.md).

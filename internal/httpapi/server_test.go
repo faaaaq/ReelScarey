@@ -3,11 +3,16 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
+	"github.com/faaaaq/ReelScarey/internal/auth"
+	"github.com/faaaaq/ReelScarey/internal/metadata"
+	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -16,15 +21,44 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/database"
 )
 
-func fixture(t *testing.T) (http.Handler, *sql.DB) {
+func rawFixture(t *testing.T, provider metadata.MovieProvider) (http.Handler, *sql.DB, *auth.Service, string) {
 	t.Helper()
-	db, err := database.Open(context.Background(), t.TempDir())
+	dir := t.TempDir()
+	db, err := database.Open(context.Background(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
 	assets := fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>ReelScarey</title>")}, "assets/app.js": {Data: []byte("console.log('asset')")}}
-	return New(db, config.Config{MediaDir: "/media", DownloadsDir: "/downloads"}, slog.New(slog.NewTextHandler(io.Discard, nil)), assets, "test"), db
+	authService, err := auth.New(context.Background(), db, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := securestore.New(context.Background(), db, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := securestore.SecretFile(filepath.Join(dir, "setup-token"), 32, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider == nil {
+		provider = metadata.NewTMDb()
+	}
+	return New(db, config.Config{ConfigDir: dir, MediaDir: "/media", DownloadsDir: "/downloads", PublicURL: "http://example.com"}, slog.New(slog.NewTextHandler(io.Discard, nil)), assets, "test", Dependencies{Auth: authService, Metadata: metadata.New(store, provider)}), db, authService, base64.RawURLEncoding.EncodeToString(code)
+}
+
+func fixture(t *testing.T) (http.Handler, *sql.DB) {
+	handler, db, service, code := rawFixture(t, nil)
+	session, err := service.Setup(context.Background(), "testadmin", "test-only-password", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.AddCookie(&http.Cookie{Name: cookieName, Value: session.Token})
+		r.Header.Set("X-CSRF-Token", session.CSRFToken)
+		handler.ServeHTTP(w, r)
+	}), db
 }
 
 const validSettings = `{"library_name":"Cinema","movie_folder":"Movies","series_folder":"TV","revision":1}`
