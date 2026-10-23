@@ -1,4 +1,30 @@
-# Movie-catalog milestone validation — 2026-10-22
+# Validation record — 2026-10-22
+
+## Movie download/import milestone
+
+Implemented Torznab capability tests/search, authenticated qBittorrent submission,
+encrypted settings and torrent payloads, durable leased reconciliation, file
+selection and FFprobe/SHA-256 verified imports. All media tests use temporary
+roots and generated data; no existing user library or torrents are modified.
+
+- Local Go suite and API/security checks pass, including lost-response recovery,
+  lease fencing, traversal, collision refusal, staged-copy restart and already-
+  published restart. Windows uses staged copies; Linux anchored links and actual
+  cross-filesystem behavior are exercised in CI.
+- Real local FFmpeg/FFprobe generated a video, verified it, and rejected garbage.
+- Frontend formatting, TypeScript, production build and 17 behavior tests pass.
+- Windows executable build and isolated native startup/auth/restart smoke pass.
+- Linux CI includes an opt-in real authenticated qBittorrent-nox test with a
+  private generated video downloaded from a localhost web seed. Its Torznab
+  service is a protocol fixture, not a public indexer. CI results are recorded
+  after execution.
+- Owner has no Torznab service configured yet. Existing Mutiny catalog data and
+  credentials are preserved. Connecting the hosted qBittorrent and mounting its
+  download folder remain necessary for owner-service acceptance.
+
+See [workflow operations](MOVIE_WORKFLOW.md) for filesystem guarantees and limits.
+
+## Previous movie-catalog milestone
 
 Implemented: single-admin authentication, encrypted TMDb configuration, real
 TMDb movie search/details, canonical idempotent movie adds, and a paginated

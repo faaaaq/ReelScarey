@@ -65,6 +65,11 @@ secure file-handling procedure, then sign in using the existing username.
 
 ## TMDb credentials and backups
 
+The same secrets.key also protects Torznab/qBittorrent configuration documents
+and secret-bearing release/torrent payloads. Missing, wrong or tampered keys
+fail closed at startup, even if TMDb is disconnected. See MOVIE_WORKFLOW.md for
+write-only integration credentials, replacement tests and active-job restrictions.
+
 Sign in, open Settings, and enter the **API Read Access Token** from your
 [TMDb API account page](https://www.themoviedb.org/settings/api). The integration
 uses [Bearer application authentication](https://developer.themoviedb.org/docs/authentication-application),

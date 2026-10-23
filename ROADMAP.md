@@ -26,12 +26,14 @@ Status is evidence-based: checked items are implemented, not planned adapters.
   provider failures and frontend interaction with isolated fixtures.
 - [x] Verify authenticated search/details/add against live TMDb with the owner's
   token entered directly in Settings: Mutiny (2026), TMDb 1288445.
-- [ ] Configure/test a Torznab indexer; return normalized, real release results.
-- [ ] Configure/test qBittorrent and enqueue the selected release once.
-- [ ] Introduce persistent jobs, leases and restart-safe download reconciliation.
-- [ ] Detect completion, map paths, probe files and plan safe imports.
-- [ ] Hardlink without touching seeding sources; copy safely across filesystems.
-- [ ] Journal imports, update library availability and display actionable failures.
+- [x] Configure/test Torznab; normalize real API release responses.
+- [x] Configure/test qBittorrent; deduplicate releases and reconcile lost responses.
+- [x] Introduce persistent jobs, leases and restart-safe download reconciliation.
+- [x] Detect completion, map paths, probe files and plan safe imports.
+- [x] Preserve seeding sources; prefer Linux hardlinks and safely stage copies.
+- [x] Journal imports, update library availability and display actionable failures.
+- [ ] Complete owner-service acceptance after a Torznab service and shared download
+  mount are connected. Disposable real-client CI validation is recorded separately.
 
 Acceptance: a real movie moves from TMDb search through a real indexer and
 download client to a verified library file. Restart during download/import must
@@ -71,3 +73,10 @@ recovery/revocation. Linux race/static checks and authenticated Docker restart
 checks passed in GitHub Actions. Live TMDb search/details/add saved Mutiny (2026)
 with artwork and monitoring state. Full details are in
 [validation evidence](docs/VALIDATION.md).
+
+2026-10-22 movie workflow: local backend/API/static checks and 17 UI tests pass.
+Generated-video FFprobe validation, partial-copy and publication restart,
+destination collisions and source retention pass in temporary roots. CI adds a
+disposable real qBittorrent/web-seed test and actual cross-filesystem copy.
+Owner supplied a qBittorrent URL but does not currently use Torznab; existing
+user torrents/library files are not used for testing.

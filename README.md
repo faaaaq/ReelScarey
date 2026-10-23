@@ -3,18 +3,20 @@
 **Media management, without the horror.**
 
 A unified, self-hosted media application in Go and React. This is the first
-movie-catalog milestone, not yet a complete replacement for Sonarr/Radarr/Prowlarr/Bazarr.
+movie workflow milestone, not yet a complete replacement for Sonarr/Radarr/Prowlarr/Bazarr.
 
 Working now: administrator setup/login/logout, persistent sessions, encrypted
 TMDb connection settings with real connection tests, TMDb movie search/details,
 idempotent movie adds, paginated poster browsing, persisted library settings,
-live dashboard counts, and one server for the UI, REST API and SQLite database.
+live dashboard counts, Torznab release search, qBittorrent downloads, persistent
+download tracking and verified imports. One server owns the UI, REST API,
+worker and SQLite database.
 
-Not implemented: adding TV shows, indexers, download clients, imports, background
-jobs, subtitles, or full production hardening. Monitoring is currently a saved
-preference; it does not yet trigger downloads.
-No existing media is scanned or changed. FFprobe is packaged in the Dockerfile;
-the application does not call it yet.
+Not implemented: adding TV shows, scheduled searches, quality/upgrade policies,
+subtitles, or full production hardening. Monitoring is a saved preference;
+downloads start only when you select a release. No existing media is scanned.
+FFprobe verifies completed video files before import. Sources remain in place
+for seeding; existing library files are never overwritten.
 
 ## Run with Docker
 
@@ -35,11 +37,15 @@ also in `/config/setup-token` and is removed after setup. No default password is
 created. Go to Settings, enter your TMDb **API Read Access Token**, and save/test
 the connection. Search for a movie and add it to the library. Existing config
 volumes upgrade automatically; the first login upgrade requires account setup.
+Connect a Torznab API endpoint and qBittorrent in Settings. In Movies, choose
+Find releases, search, then select Download. Activity tracks download/import
+progress and offers recovery actions. See [movie workflow setup](docs/MOVIE_WORKFLOW.md).
 
 The named `reelscarey_config` volume persists the database under `/config`.
 Change `MEDIA_PATH` and `DOWNLOADS_PATH` in `.env` for your host folders; they map
-to `/media` and `/downloads` and are read-only in this milestone. Do not change
-them to writable until the tested import workflow is available. The image runs
+to `/media` (writable for imports) and `/downloads` (read-only to preserve torrent
+sources). The host download folder must contain the same files as qBittorrent's
+configured download root. The image runs
 as UID/GID 10001; if you replace the config volume with a bind mount, give that
 user read/write access. `docker compose down` keeps the database; adding `-v`
 deletes the named volume and its data.
@@ -66,6 +72,10 @@ config environment) to create the administrator, then connect TMDb in Settings.
 To iterate on UI, keep Go running and run `npm run dev` in `web`; Vite proxies
 the API to port 8787. Rebuild UI and Go for changes to the embedded production UI.
 
+Native imports also require `ffprobe` on PATH. Media/download directories must
+already exist, remain separate from config and each other, and be accessible to
+the application. Mount a remote qBittorrent's downloads locally before importing.
+
 ## Configuration
 
 | Variable | Default | Meaning |
@@ -85,8 +95,9 @@ implemented; a full production security review remains on the roadmap.
 
 Relative paths resolve against the working directory. Docker explicitly sets
 the three paths to `/config`, `/media`, and `/downloads`. UI preferences are stored
-in SQLite and survive process restarts. Folder settings are reserved for future
-imports and do not mutate files. Structured JSON logs go to standard output.
+in SQLite and survive process restarts. Folder preferences control the next
+import's destination; saving a preference does not create or scan folders.
+Structured JSON logs go to standard output.
 
 ## Checks
 
@@ -136,9 +147,9 @@ Lost administrator password? See the local stdin-based recovery procedure in
 - [Contributor rules](AGENTS.md)
 - [Validation evidence](docs/VALIDATION.md)
 
-The next task continues the movie workflow with a real Torznab indexer, then
-qBittorrent, restart-safe monitoring, and safe import. Complete and verify that
-vertical slice before broadening into television or subtitles.
+See [movie workflow operations](docs/MOVIE_WORKFLOW.md) for integration setup,
+path mapping, recovery, import guarantees and current limitations. Scheduling,
+release scoring and upgrades remain separate future work.
 
 ## License
 

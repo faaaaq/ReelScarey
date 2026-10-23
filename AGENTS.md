@@ -20,6 +20,8 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - internal/auth owns the single administrator, password hashes and sessions;
   internal/securestore owns encrypted credentials and local key files.
 - internal/metadata owns TMDb normalization and its MovieProvider boundary.
+- internal/transfer owns Torznab/qBittorrent adapters, encrypted integration
+  settings, release selections, leased download jobs and journaled imports.
 - internal/library owns the shared library catalog. Future providers live in
   their feature modules behind narrow, consumer-owned interfaces.
 - web contains React, TypeScript, Vite, Tailwind, and Radix Themes. Use maintained
@@ -38,9 +40,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - Store provider tokens only through securestore; its AES-GCM key must be backed
   up with the database. Missing/wrong keys must fail closed, never silently reset.
 - Migrations are append-only after release. Back up SQLite before upgrading.
-- Never test against a real library. No media mutation is implemented yet.
-  Future import must validate containment, refuse overwrite, stage and verify
-  copies, preserve torrent sources, and journal state for crash recovery.
+- Never test against an existing user library. Imports must validate containment,
+  refuse overwrite, stage and verify copies, preserve torrent sources, and journal
+  state for crash recovery. Media tests use generated files in disposable roots;
+  real-client tests start a separate authenticated client.
 - Durable jobs will use database leases and idempotent handlers. Do not promise
   exactly-once delivery or use an in-memory queue as the source of truth.
 
@@ -51,6 +54,9 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - Linux CI additionally runs `go test -race ./...` and an authenticated Docker
   smoke test. The original foundation CI failure was an incomplete platform
   lockfile; regenerate locks without an existing node_modules directory.
+- Linux CI installs qBittorrent-nox and FFmpeg from Ubuntu packages and runs the
+  opt-in REELSCAREY_LIVE_QBT=1 test with its own localhost client, protocol
+  fixture, private torrent and generated web-seeded video.
 - Test input boundaries, persistence across reopen, migration rollback, API
   contracts, and meaningful user behavior. Use temporary directories only.
 - Run gofmt on Go changes and `npm run format` for the frontend. Keep dependencies locked and explain additions.

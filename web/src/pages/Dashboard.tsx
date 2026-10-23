@@ -59,7 +59,7 @@ export function Dashboard() {
                 </Link>
               </Button>
               <p className="foundation-note">
-                Movie catalog · Downloads and imports are up next.
+                Search releases, download, and bring movies home.
               </p>
             </div>
             <div className="cinema-art" aria-hidden="true">
@@ -110,7 +110,7 @@ export function Dashboard() {
             <section className="panel checklist">
               <div className="section-title">
                 <h2>Your opening checklist</h2>
-                <Badge color="gray">Movie catalog</Badge>
+                <Badge color="gray">Movie workflow</Badge>
               </div>
               <div className="checklist-row">
                 <span className="check-circle">
@@ -170,8 +170,9 @@ export function Dashboard() {
                 <FolderOpen size={18} />
               </div>
               <p>
-                Configured server paths. This release does not scan, move, or
-                import files.
+                Completed movies are imported under the media root. Mount the
+                same download folder used by qBittorrent to make files
+                available.
               </p>
               <dl>
                 {Object.entries(system.data.paths).map(([key, value]) => (

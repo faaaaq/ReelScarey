@@ -146,8 +146,8 @@ export function Search() {
             </>
           )}
           <p className="search-disclaimer">
-            Adding a movie saves its metadata and monitoring preference.
-            Downloading and importing are still upcoming.
+            Adding a movie saves its metadata and monitoring preference. Open
+            Movies to find a release and download it through qBittorrent.
           </p>
         </>
       )}

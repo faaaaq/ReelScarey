@@ -1,0 +1,352 @@
+package transfer
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"path"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/faaaaq/ReelScarey/internal/config"
+	"github.com/faaaaq/ReelScarey/internal/library"
+	"github.com/faaaaq/ReelScarey/internal/securestore"
+)
+
+type Service struct {
+	db       *sql.DB
+	secrets  *securestore.Store
+	cfg      config.Config
+	client   Client
+	indexer  Indexer
+	configMu sync.Mutex
+	importer *Importer
+}
+
+func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Client, indexer Indexer) *Service {
+	s := &Service{db: db, secrets: secrets, cfg: cfg, client: client, indexer: indexer}
+	s.importer = NewImporter(s)
+	return s
+}
+
+type IntegrationStatus struct {
+	Configured   bool   `json:"configured"`
+	URL          string `json:"url"`
+	Username     string `json:"username,omitempty"`
+	DownloadPath string `json:"download_path,omitempty"`
+}
+
+func (s *Service) indexerConfig(ctx context.Context) (IndexerConfig, error) {
+	var c IndexerConfig
+	b, e := s.secrets.GetNamed(ctx, "torznab")
+	if e != nil {
+		return c, e
+	}
+	if len(b) == 0 {
+		return c, problem("indexer_not_configured", "Connect a Torznab indexer in Settings first.")
+	}
+	e = json.Unmarshal(b, &c)
+	return c, e
+}
+func (s *Service) clientConfig(ctx context.Context) (ClientConfig, error) {
+	var c ClientConfig
+	b, e := s.secrets.GetNamed(ctx, "qbittorrent")
+	if e != nil {
+		return c, e
+	}
+	if len(b) == 0 {
+		return c, problem("client_not_configured", "Connect qBittorrent in Settings first.")
+	}
+	e = json.Unmarshal(b, &c)
+	return c, e
+}
+func (s *Service) Status(ctx context.Context, name string) (IntegrationStatus, error) {
+	if name == "torznab" {
+		c, e := s.indexerConfig(ctx)
+		var p *Error
+		if errors.As(e, &p) && p.Code == "indexer_not_configured" {
+			return IntegrationStatus{}, nil
+		}
+		return IntegrationStatus{Configured: e == nil, URL: c.URL}, e
+	}
+	c, e := s.clientConfig(ctx)
+	var p *Error
+	if errors.As(e, &p) && p.Code == "client_not_configured" {
+		return IntegrationStatus{}, nil
+	}
+	return IntegrationStatus{Configured: e == nil, URL: c.URL, Username: c.Username, DownloadPath: c.DownloadPath}, e
+}
+
+type IndexerUpdate struct {
+	URL    string  `json:"url"`
+	APIKey *string `json:"api_key"`
+}
+type ClientUpdate struct {
+	URL          string  `json:"url"`
+	Username     string  `json:"username"`
+	Password     *string `json:"password"`
+	DownloadPath string  `json:"download_path"`
+}
+
+func (s *Service) ConfigureIndexer(ctx context.Context, in IndexerUpdate) error {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	u, e := endpoint(in.URL)
+	if e != nil {
+		return e
+	}
+	old, oldErr := s.indexerConfig(ctx)
+	var missing *Error
+	if oldErr != nil && !(errors.As(oldErr, &missing) && missing.Code == "indexer_not_configured") {
+		return oldErr
+	}
+	key := old.APIKey
+	if in.APIKey != nil {
+		key = *in.APIKey
+	}
+	if len(key) > 2048 || strings.ContainsAny(key, "\r\n\x00") {
+		return problem("invalid_settings", "Enter a valid indexer API key.")
+	}
+	if old.URL != "" && old.URL != u.String() && in.APIKey == nil {
+		return problem("invalid_settings", "Re-enter the API key when changing the indexer URL.")
+	}
+	c := IndexerConfig{URL: u.String(), APIKey: key, Generation: ID()}
+	if e = s.indexer.Test(ctx, c); e != nil {
+		return e
+	}
+	b, e := json.Marshal(c)
+	if e != nil {
+		return e
+	}
+	return s.secrets.SetNamed(ctx, "torznab", b)
+}
+func (s *Service) ConfigureClient(ctx context.Context, in ClientUpdate) error {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	u, e := endpoint(in.URL)
+	if e != nil {
+		return e
+	}
+	remote, e := remoteRoot(in.DownloadPath)
+	if e != nil {
+		return e
+	}
+	old, oldErr := s.clientConfig(ctx)
+	var missing *Error
+	if oldErr != nil && !(errors.As(oldErr, &missing) && missing.Code == "client_not_configured") {
+		return oldErr
+	}
+	password := old.Password
+	if in.Password != nil {
+		password = *in.Password
+	}
+	if !textOK(in.Username, 200) || !textOK(password, 2048) {
+		return problem("invalid_settings", "Enter your qBittorrent Web UI username and password.")
+	}
+	if old.URL != "" && (old.URL != u.String() || old.Username != in.Username) && in.Password == nil {
+		return problem("invalid_settings", "Re-enter the password when changing the qBittorrent URL or username.")
+	}
+	if old.URL != "" && (old.URL != u.String() || old.DownloadPath != remote) {
+		var active int
+		if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE state NOT IN ('completed','cancelled')`).Scan(&active); e != nil {
+			return e
+		}
+		if active > 0 {
+			return problem("active_downloads", "Finish or stop tracking active downloads before changing the client URL or download root.")
+		}
+	}
+	c := ClientConfig{URL: u.String(), Username: in.Username, Password: password, DownloadPath: remote}
+	if _, e = s.client.Test(ctx, c); e != nil {
+		return e
+	}
+	b, e := json.Marshal(c)
+	if e != nil {
+		return e
+	}
+	return s.secrets.SetNamed(ctx, "qbittorrent", b)
+}
+func (s *Service) Test(ctx context.Context, name string) error {
+	if name == "torznab" {
+		c, e := s.indexerConfig(ctx)
+		if e != nil {
+			return e
+		}
+		return s.indexer.Test(ctx, c)
+	}
+	c, e := s.clientConfig(ctx)
+	if e != nil {
+		return e
+	}
+	_, e = s.client.Test(ctx, c)
+	return e
+}
+func (s *Service) Remove(ctx context.Context, name string) error {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	if name == "qbittorrent" {
+		var active int
+		if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE state NOT IN ('completed','cancelled')`).Scan(&active); e != nil {
+			return e
+		}
+		if active > 0 {
+			return problem("active_downloads", "Finish or stop tracking active downloads before disconnecting qBittorrent.")
+		}
+	}
+	return s.secrets.DeleteNamed(ctx, name)
+}
+func (s *Service) Search(ctx context.Context, movieID int64, query string) ([]Release, error) {
+	var title string
+	var year *int
+	if e := s.db.QueryRowContext(ctx, `SELECT title,year FROM media_items WHERE id=? AND kind='movie'`, movieID).Scan(&title, &year); e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			return nil, problem("movie_not_found", "Choose a movie already in your library.")
+		}
+		return nil, e
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		query = title
+		if year != nil {
+			b, _ := json.Marshal(*year)
+			query += " " + string(b)
+		}
+	}
+	if !textOK(query, 200) {
+		return nil, problem("invalid_search", "Enter a release search with 1–200 characters.")
+	}
+	c, e := s.indexerConfig(ctx)
+	if e != nil {
+		return nil, e
+	}
+	candidates, e := s.indexer.Search(ctx, c, query)
+	if e != nil {
+		return nil, e
+	}
+	if len(candidates) > 50 {
+		candidates = candidates[:50]
+	}
+	out := make([]Release, 0, len(candidates))
+	now := time.Now().Unix()
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return nil, e
+	}
+	defer tx.Rollback()
+	if _, e = tx.ExecContext(ctx, `DELETE FROM release_candidates WHERE id NOT IN (SELECT release_id FROM downloads) AND (movie_id=? OR expires_at<?)`, movieID, now); e != nil {
+		return nil, e
+	}
+	for _, v := range candidates {
+		v.ID = ID()
+		v.MovieID = movieID
+		v.Generation = c.Generation
+		b, e := json.Marshal(v)
+		if e != nil {
+			return nil, e
+		}
+		sealed, e := s.secrets.Seal("release", b)
+		if e != nil {
+			return nil, e
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO release_candidates(id,movie_id,title,size_bytes,seeders,peers,published_at,payload,expires_at) VALUES(?,?,?,?,?,?,?,?,?)`, v.ID, movieID, v.Title, v.Size, v.Seeders, v.Peers, v.Published, sealed, now+1800); e != nil {
+			return nil, e
+		}
+		out = append(out, v.Release)
+	}
+	if e = tx.Commit(); e != nil {
+		return nil, e
+	}
+	return out, nil
+}
+func (s *Service) Queue(ctx context.Context, releaseID string) (Job, bool, error) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	if existing, e := s.jobBy(ctx, "d.release_id", releaseID); e == nil {
+		return existing, false, nil
+	} else if !errors.Is(e, sql.ErrNoRows) {
+		return Job{}, false, e
+	}
+	var sealed []byte
+	var expires int64
+	if e := s.db.QueryRowContext(ctx, `SELECT payload,expires_at FROM release_candidates WHERE id=?`, releaseID).Scan(&sealed, &expires); e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			return Job{}, false, problem("release_expired", "Search again to get a fresh release selection.")
+		}
+		return Job{}, false, e
+	}
+	if expires < time.Now().Unix() {
+		return Job{}, false, problem("release_expired", "This release selection expired. Search again.")
+	}
+	b, e := s.secrets.Open("release", sealed)
+	if e != nil {
+		return Job{}, false, e
+	}
+	var v Candidate
+	if e = json.Unmarshal(b, &v); e != nil {
+		return Job{}, false, e
+	}
+	indexer, e := s.indexerConfig(ctx)
+	if e != nil {
+		return Job{}, false, e
+	}
+	if v.Generation != indexer.Generation {
+		return Job{}, false, problem("release_expired", "The indexer settings changed. Search again before downloading.")
+	}
+	client, e := s.clientConfig(ctx)
+	if e != nil {
+		return Job{}, false, e
+	}
+	payload, hash, e := s.indexer.Fetch(ctx, indexer, v)
+	if e != nil {
+		return Job{}, false, e
+	}
+	if existing, e := s.jobBy(ctx, "d.info_hash", hash); e == nil {
+		if existing.MovieID != v.MovieID {
+			return Job{}, false, problem("duplicate_hash", "This torrent is already attached to a different movie. Choose another release.")
+		}
+		return existing, false, nil
+	} else if !errors.Is(e, sql.ErrNoRows) {
+		return Job{}, false, e
+	}
+	b, e = json.Marshal(payload)
+	if e != nil {
+		return Job{}, false, e
+	}
+	sealed, e = s.secrets.Seal("download", b)
+	if e != nil {
+		return Job{}, false, e
+	}
+	id := ID()
+	save := path.Join(client.DownloadPath, "ReelScarey", id)
+	now := time.Now().Unix()
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return Job{}, false, e
+	}
+	defer tx.Rollback()
+	var active int
+	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM media_files WHERE movie_id=?)`, v.MovieID, v.MovieID).Scan(&active); e != nil {
+		return Job{}, false, e
+	}
+	if active > 0 {
+		return Job{}, false, problem("movie_busy", "This movie already has an active download or imported file. Open Activity to manage it.")
+	}
+	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,'queued',?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now); e != nil {
+		return Job{}, false, e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET status='downloading' WHERE id=? AND status<>'available'`, v.MovieID); e != nil {
+		return Job{}, false, e
+	}
+	if e = tx.Commit(); e != nil {
+		return Job{}, false, e
+	}
+	job, e := s.Job(ctx, id)
+	return job, true, e
+}
+
+// MovieByID is the catalog read used by the release browser; it does not need a
+// fresh TMDb request and remains usable during provider outages.
+func (s *Service) MovieByID(ctx context.Context, id int64) (library.Item, error) {
+	return library.New(s.db).ByID(ctx, id)
+}

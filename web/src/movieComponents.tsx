@@ -167,8 +167,8 @@ export function MovieDetails({
                   Monitor this movie
                 </label>
                 <p className="field-help">
-                  Saves your monitoring preference. Automatic searching and
-                  downloading arrive in the next part of the movie workflow.
+                  Saves your monitoring preference. Find and select releases
+                  from your movie library; scheduled searching is upcoming.
                 </p>
               </>
             )}

@@ -220,7 +220,10 @@ describe("authentication and movies", () => {
     const field = await screen.findByLabelText("API Read Access Token");
     await userEvent.type(field, "test-only-provider-token-value");
     await userEvent.click(
-      screen.getByRole("button", { name: "Save & test connection" }),
+      within(screen.getByRole("region", { name: "TMDb settings" })).getByRole(
+        "button",
+        { name: "Save & test connection" },
+      ),
     );
     expect(
       await screen.findByText("TMDb connection verified and saved."),

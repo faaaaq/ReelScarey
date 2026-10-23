@@ -27,6 +27,8 @@ import { Library } from "./pages/Library";
 import { Settings } from "./pages/Settings";
 import { Search as MovieSearch } from "./pages/Search";
 import { AuthGate, useAuth } from "./auth";
+import { Activity as DownloadActivity } from "./pages/Activity";
+import { Releases } from "./pages/Releases";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -122,9 +124,9 @@ function AppShell() {
           </nav>
           <div className="foundation-label">
             <span className="status-dot" />
-            <span>Movie catalog</span>
+            <span>Movie workflow</span>
             <Badge color="gray" size="1">
-              0.2
+              0.3
             </Badge>
           </div>
           <div className="account-control">
@@ -156,24 +158,8 @@ function AppShell() {
             />
             <Route path="/settings" element={<Settings />} />
             <Route path="/search" element={<MovieSearch />} />
-            <Route
-              path="/activity"
-              element={
-                <>
-                  <PageHeading
-                    eyebrow="BEHIND THE SCENES"
-                    title="Activity"
-                    description="A clear view of what your library is doing."
-                  />
-                  <FuturePage
-                    icon={Activity}
-                    title="No download workflow is running."
-                    description="Download tracking, persistent background jobs, and safe imports arrive with the movie workflow. No download clients are connected in this release."
-                    phase="Planned · Phase 2"
-                  />
-                </>
-              }
-            />
+            <Route path="/releases" element={<Releases />} />
+            <Route path="/activity" element={<DownloadActivity />} />
             <Route
               path="/subtitles"
               element={

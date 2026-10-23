@@ -11,6 +11,7 @@ import {
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
 import { TMDbSettings } from "./TMDbSettings";
+import { IntegrationSettings } from "./IntegrationSettings";
 
 export function Settings() {
   const settings = useResource<LibrarySettings>("/settings");
@@ -140,8 +141,9 @@ export function Settings() {
                 />
                 <p className="field-help" id="folder-help">
                   Separate folder names under your media root. Use letters,
-                  numbers, spaces, hyphens, or underscores. Saved for the future
-                  import workflow; folders are not created yet.
+                  numbers, spaces, hyphens, or underscores. New movie imports
+                  use this movie folder; saving preferences alone creates no
+                  folders.
                 </p>
               </fieldset>
               {error && (
@@ -207,6 +209,8 @@ export function Settings() {
                 </div>
               </section>
               <TMDbSettings />
+              <IntegrationSettings kind="torznab" />
+              <IntegrationSettings kind="qbittorrent" />
             </div>
           </div>
         )}

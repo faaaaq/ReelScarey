@@ -49,7 +49,10 @@ export function TMDbSettings() {
     void action("save");
   }
   return (
-    <section className="panel settings-info tmdb-settings">
+    <section
+      className="panel settings-info tmdb-settings"
+      aria-label="TMDb settings"
+    >
       <div className="section-title">
         <h2>
           <Plug size={19} /> TMDb metadata

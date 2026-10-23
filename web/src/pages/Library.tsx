@@ -49,12 +49,31 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                     >
                       {item.status === "missing"
                         ? "Not downloaded"
-                        : item.status}
+                        : item.status === "available"
+                          ? "Available"
+                          : "Downloading"}
                     </Badge>
                     <span>
                       {item.monitored ? "Monitored" : "Not monitored"}
                     </span>
                   </div>
+                  {movies && item.status !== "available" && (
+                    <div className="movie-card-actions">
+                      <Button asChild variant="soft">
+                        <Link
+                          to={
+                            item.status === "downloading"
+                              ? "/activity"
+                              : `/releases?movie=${item.id}`
+                          }
+                        >
+                          {item.status === "downloading"
+                            ? "View progress"
+                            : "Find releases"}
+                        </Link>
+                      </Button>
+                    </div>
+                  )}
                 </MovieCard>
               ))}
             </div>

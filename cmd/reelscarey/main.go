@@ -22,10 +22,11 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/httpapi"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
+	"github.com/faaaaq/ReelScarey/internal/transfer"
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.2.0-dev"
+var version = "0.3.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -103,15 +104,20 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	metadataService := metadata.New(secretStore, metadata.NewTMDb())
+	transferService := transfer.New(db, secretStore, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
 	assets, err := web.Assets()
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
+	workerCtx, workerCancel := context.WithCancel(ctx)
+	workerDone := make(chan struct{})
+	go func() { defer close(workerDone); transferService.Run(workerCtx, logger) }()
+	defer func() { workerCancel(); <-workerDone }()
 	failed := make(chan error, 1)
 	go func() { failed <- server.Serve(listener) }()
 	logger.Info("ReelScarey started", "address", listener.Addr().String(), "version", version)

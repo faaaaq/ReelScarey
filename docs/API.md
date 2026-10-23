@@ -28,6 +28,17 @@ explicitly documented as breaking before the first stable release.
 | GET | `/api/v1/metadata/movies?query=title&page=1` | Real TMDb movie search; per-result in_library flag |
 | GET | `/api/v1/metadata/movies/{tmdb_id}` | Canonical movie details from TMDb |
 | POST | `/api/v1/library/movies` | Add canonical metadata by TMDb ID; 201 created or 200 existing |
+| GET | `/api/v1/library/movies/{id}` | Saved movie by catalog ID, without a TMDb request |
+| GET/PUT/DELETE | `/api/v1/integrations/torznab` | Safe status; test/encrypt configuration; disconnect |
+| GET/PUT/DELETE | `/api/v1/integrations/qbittorrent` | Safe status; test/encrypt configuration; disconnect when no active jobs |
+| POST | `/api/v1/integrations/{name}/test` | Test saved Torznab/qBittorrent connection |
+| GET | `/api/v1/releases?movie_id=1&query=title` | Torznab search; materialize encrypted short-lived selections |
+| GET | `/api/v1/downloads?page=1` | Activity: items, page, total, limit 24 |
+| POST | `/api/v1/downloads` | `{ "release_id": "..." }`; 202 queued or 200 existing; item + created |
+| GET | `/api/v1/downloads/{id}` | One durable job with progress/error fields |
+| POST | `/api/v1/downloads/{id}/retry` | `{}`; retry/resume blocked, failed or stopped tracking |
+| POST | `/api/v1/downloads/{id}/stop` | `{}`; stop blocked/failed local tracking, leaving client/files untouched |
+| POST | `/api/v1/downloads/{id}/file` | `{ "index": 3 }`; select a file from a choose_file job |
 
 Library responses contain `items`, `page`, `total`, and `limit: 24`. Page bounds
 are 1–100000; ordering is case-insensitive title then ID. Search responses contain
@@ -39,7 +50,24 @@ true). The server fetches metadata; caller-supplied titles, artwork or paths are
 rejected as unknown fields. Response is `{ "created": true, "item": {...} }`.
 The `(kind,tmdb_id)` uniqueness constraint prevents duplicate rows. Existing adds
 return the original item without calling TMDb or changing monitoring preferences.
-New adds save status `missing`; no download or media-file mutation is triggered.
+New movie adds save status `missing`; selecting a release is a separate action.
+Queueing sets `downloading`; a verified import transaction sets `available`.
+
+Torznab PUT body is `{ "url": "https://indexer.example/api", "api_key": "..." }`.
+qBittorrent PUT body is `{ "url": "https://qbt.example", "username": "admin",
+"password": "...", "download_path": "/downloads" }`. Omitted credential fields
+retain a saved credential; changed URL/username requires explicit re-entry.
+Settings responses contain configured/url and, for qBittorrent, username and
+download_path. Tests and saves call real services; failed saves preserve old data.
+
+Release responses contain items with id (opaque), movie_id, title, size_bytes,
+seeders/peers (nullable) and published_at. Selection expiry is 30 minutes;
+searches/settings changes invalidate unqueued older selections. No download URLs
+or magnets appear in responses. Queue payloads accept a release ID only.
+Activity exposes state, progress, bytes, client_state, attempts, safe error fields,
+file choices and timestamps; encrypted submission payloads/credentials are omitted.
+States are queued, submitting, downloading, importing, blocked, failed, completed
+and cancelled. See MOVIE_WORKFLOW.md for leases, retry and import semantics.
 
 Movie DTOs include tmdb_id, title, overview, year (nullable), release_date,
 poster_path, poster_url, and runtime_minutes (nullable). Saved library items
@@ -75,8 +103,9 @@ Library names accept 1–80 Unicode characters without controls. Folder names
 accept 1–80 ASCII letters, digits, spaces, underscores, and hyphens, start with a
 letter/digit, reject reserved Windows device names, and must differ ignoring
 case. Surrounding whitespace is removed. Folders are preferences only: saving
-does not create, scan, move, or rename any file. Media/download roots are read-only
-process settings configured through environment variables.
+does not create, scan, move, or rename any file. Media/download roots are
+process settings configured through environment variables. Imports require
+writable media and readable downloads.
 
 Errors use `{"error":{"code":"...","message":"..."}}`:
 - 400 invalid input, kind, or JSON
@@ -98,6 +127,6 @@ Missing TMDb configuration returns 409 `tmdb_not_configured`; stale settings use
 text, credentials, request headers or URLs containing secrets.
 
 Planned route groups (not registered): television/library editing,
-`/indexers`, `/releases`, `/download-clients`, `/downloads`, `/jobs`, `/subtitles`,
+multi-indexer/client CRUD, generic `/jobs`, `/subtitles`,
 and `/profiles`. Design each group's concrete request/response types with its
 first complete vertical slice; do not expose placeholder 200 responses.

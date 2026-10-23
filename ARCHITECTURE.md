@@ -26,6 +26,7 @@ internal/library/    unified media item read model
 internal/auth/       administrator, Argon2id passwords and persistent sessions
 internal/securestore/ encrypted provider credentials and local key lifecycle
 internal/metadata/   real TMDb adapter and normalized movie service
+internal/transfer/   Torznab/qBittorrent, durable downloads and safe imports
 internal/httpapi/    REST handlers, middleware, frontend serving
 web/src/             application, pages, reusable UI, API client
 web/dist/            generated frontend (ignored, embedded at build time)
@@ -36,7 +37,8 @@ docs/                API and operational documentation
 ## Data model
 
 Implemented tables: `schema_migrations`, singleton `settings`, `media_items`,
-singleton `admin_account`, `sessions`, and `provider_secrets`.
+singleton `admin_account`, `sessions`, `provider_secrets`, `integration_configs`,
+`release_candidates`, `downloads`, `import_operations`, and `media_files`.
 The migration ledger stores version, filename, checksum, and applied time.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored
@@ -46,7 +48,9 @@ An authenticated add accepts only a TMDb ID and monitoring preference, retrieves
 canonical details from TMDb, and inserts transactionally. Duplicate adds return
 the existing item without changing metadata or monitoring, even during a provider
 outage. Collections have stable title/id ordering, totals, and 24-item pagination.
-No media files are created or changed.
+Movie adds do not change files. A separately selected release creates a durable
+download job. Verified import registers a media file and marks the movie available.
+Migration 003 adds this without altering prior migrations or account/provider state.
 
 Planned entities (design, **not implemented schema**):
 
@@ -54,14 +58,11 @@ Planned entities (design, **not implemented schema**):
 | --- | --- |
 | seasons | Belongs to a series media item; unique series + season number |
 | episodes | Belongs to season; unique season + episode number; optional air date |
-| media_files | Belongs to media item; episode_files join supports multi-episode files; unique canonical path, size and probe data |
-| indexers | Provider type, endpoint, categories and protected credentials |
-| download_clients | Provider type, endpoint, protected credentials and path mapping |
-| downloads | Media item, optional episode targets, indexer release identity, client download ID, state and import journal |
+| episode_files | Join future episode records to imported files; multi-episode mapping |
+| indexers/download_clients | Future multi-provider CRUD; one encrypted configuration per integration exists now |
 | quality_profiles | Ordered qualities, languages, cutoff and scoring rules |
 | subtitles | Media file, language, provider identity, path and hearing-impaired flag |
-| jobs | Type, payload, unique deduplication key, due time, attempts, lease owner/expiry and last safe error |
-| import_operations | Download, source fingerprint, destination, staged progress and completion |
+| jobs | Future generic scheduler; downloads already persist their own leases/retries |
 
 Media file paths are never derived from untrusted release names without
 normalization and root containment checks. Downloads remain separate from files:
@@ -69,9 +70,10 @@ an imported file can survive removal of download-client history.
 
 ## Module boundaries and planned interfaces
 
-TMDb MovieProvider is implemented for Validate/Search/Movie; the library's
-Counts/List/Movie/AddMovie operations are implemented. The remaining contracts
-below describe future scope. Concrete interfaces are added with their first
+TMDb MovieProvider implements Validate/Search/Movie; the library implements
+Counts/List/Movie/ByID/AddMovie. Transfer's Indexer and Client interfaces implement
+capability tests, search/metainfo retrieval and authenticated add/info/files.
+The broader contracts below include future scope. Interfaces accompany tested
 tested consumer. Every operation receives a context and returns typed results/errors.
 
 | Module | Responsibility | Primary service contract |
@@ -100,7 +102,18 @@ Leases must be renewed during long work. Deduplication keys prevent concurrently
 scheduled duplicates; handlers reconcile external client state before retrying
 side effects. This is at-least-once execution with idempotency, not exactly-once.
 The movie slice introduces the first actual worker for download reconciliation
-and import. No worker or scheduler is running in this catalog milestone.
+and import. A single worker now reconciles downloads using random owners,
+60-second leases renewed every 15 seconds and fenced state changes. Temporary
+failures back off; ambiguous submissions reconcile by expected hash/tag.
+Scheduled searches, generic scheduling and upgrade policies remain unimplemented.
+
+Import plans journal the anchored source, deterministic destination, size,
+mtime, SHA-256 and FFprobe data before writes. Linux prefers anchored hardlinks;
+other hosts and cross-device operations stage verified copies. Partial copies
+resume after prefix validation. Exclusive hardlink publication cannot overwrite
+an existing file, so the media filesystem must support this operation. Sources
+stay untouched. File registration, available catalog state and job completion
+commit together. See docs/MOVIE_WORKFLOW.md for guarantees/platform limitations.
 
 ## Configuration and security
 
@@ -152,9 +165,9 @@ paths and the official image origin. CSP permits that origin for images only.
 ## Deployment
 
 The multi-stage Docker build compiles UI, tests Go, and creates a non-root Debian
-runtime with CA certificates and FFprobe available for the future import module.
+runtime with CA certificates and FFprobe for verified movie imports.
 `/config`, `/media`, and `/downloads` are mounted persistently. Initial Compose
-media/download mounts are read-only because this milestone performs no imports.
+download mounts are read-only to preserve sources; media is writable for imports.
 Persistent host folders must be accessible to UID/GID 10001 (or an explicit
 Compose user override). One process must own a given config directory; SQLite
 should be on local storage, not a network filesystem.

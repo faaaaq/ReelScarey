@@ -63,6 +63,46 @@ export type AuthStatus = {
   session?: Session;
 };
 export type ProviderStatus = { configured: boolean; updated_at: string };
+export type IntegrationStatus = {
+  configured: boolean;
+  url: string;
+  username?: string;
+  download_path?: string;
+};
+export type Release = {
+  id: string;
+  movie_id: number;
+  title: string;
+  size_bytes: number;
+  seeders: number | null;
+  peers: number | null;
+  published_at: string;
+};
+export type DownloadJob = {
+  id: string;
+  movie_id: number;
+  movie_title: string;
+  title: string;
+  info_hash: string;
+  state: string;
+  progress: number;
+  total_bytes: number;
+  downloaded_bytes: number;
+  client_state: string;
+  selected_file: number | null;
+  choices: { index: number; name: string; size_bytes: number }[];
+  attempts: number;
+  error_code: string;
+  error_message: string;
+  created_at: number;
+  updated_at: number;
+};
+export type DownloadPage = {
+  items: DownloadJob[];
+  page: number;
+  total: number;
+  limit: number;
+};
 let csrfToken = "";
 export function setCSRFToken(value: string) {
   csrfToken = value;
@@ -91,7 +131,7 @@ export async function api<T>(
         : {}),
     },
     credentials: "same-origin",
-    signal: options.signal ?? AbortSignal.timeout(15000),
+    signal: options.signal ?? AbortSignal.timeout(30000),
   });
   const body = await response.json();
   if (!response.ok) {

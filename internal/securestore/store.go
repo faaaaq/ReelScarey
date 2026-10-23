@@ -64,7 +64,7 @@ type Store struct {
 
 func New(ctx context.Context, db *sql.DB, dir string) (*Store, error) {
 	var count int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM provider_secrets").Scan(&count); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM provider_secrets) + (SELECT COUNT(*) FROM integration_configs) + (SELECT COUNT(*) FROM release_candidates) + (SELECT COUNT(*) FROM downloads)`).Scan(&count); err != nil {
 		return nil, err
 	}
 	key, err := SecretFile(filepath.Join(dir, "secrets.key"), 32, count == 0)
@@ -84,8 +84,69 @@ func New(ctx context.Context, db *sql.DB, dir string) (*Store, error) {
 		if _, err := store.Get(ctx); err != nil {
 			return nil, err
 		}
+		rows, err := db.QueryContext(ctx, `SELECT 'config:' || name, ciphertext FROM integration_configs UNION ALL SELECT 'release', payload FROM release_candidates UNION ALL SELECT 'download', payload FROM downloads`)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var purpose string
+			var sealed []byte
+			if err := rows.Scan(&purpose, &sealed); err != nil {
+				return nil, err
+			}
+			if _, err := store.Open(purpose, sealed); err != nil {
+				return nil, err
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	}
 	return store, nil
+}
+
+// Seal and Open protect integration settings and torrent payloads as well as
+// credentials: torrent URLs/metainfo can contain private tracker passkeys.
+func (s *Store) Seal(purpose string, plain []byte) ([]byte, error) {
+	nonce := make([]byte, s.aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	return s.aead.Seal(nonce, nonce, plain, []byte("reelscarey:"+purpose+":v1")), nil
+}
+func (s *Store) Open(purpose string, sealed []byte) ([]byte, error) {
+	if len(sealed) < s.aead.NonceSize() {
+		return nil, errors.New("invalid encrypted integration data")
+	}
+	plain, err := s.aead.Open(nil, sealed[:s.aead.NonceSize()], sealed[s.aead.NonceSize():], []byte("reelscarey:"+purpose+":v1"))
+	if err != nil {
+		return nil, errors.New("cannot decrypt integration data; restore the matching secrets.key")
+	}
+	return plain, nil
+}
+func (s *Store) GetNamed(ctx context.Context, name string) ([]byte, error) {
+	var sealed []byte
+	err := s.db.QueryRowContext(ctx, "SELECT ciphertext FROM integration_configs WHERE name = ?", name).Scan(&sealed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.Open("config:"+name, sealed)
+}
+func (s *Store) SetNamed(ctx context.Context, name string, plain []byte) error {
+	sealed, err := s.Seal("config:"+name, plain)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO integration_configs(name,ciphertext) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET ciphertext=excluded.ciphertext,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')`, name, sealed)
+	return err
+}
+func (s *Store) DeleteNamed(ctx context.Context, name string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM integration_configs WHERE name = ?", name)
+	return err
 }
 
 func (s *Store) Get(ctx context.Context) (string, error) {

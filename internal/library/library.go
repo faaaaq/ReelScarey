@@ -98,6 +98,9 @@ func (s *Store) List(ctx context.Context, kind string, page int) (Page, error) {
 func (s *Store) Movie(ctx context.Context, tmdbID int64) (Item, error) {
 	return scan(s.db.QueryRowContext(ctx, "SELECT "+columns+" FROM media_items WHERE kind = 'movie' AND tmdb_id = ?", tmdbID))
 }
+func (s *Store) ByID(ctx context.Context, id int64) (Item, error) {
+	return scan(s.db.QueryRowContext(ctx, "SELECT "+columns+" FROM media_items WHERE kind = 'movie' AND id = ?", id))
+}
 func (s *Store) AddMovie(ctx context.Context, movie metadata.Movie, monitored bool) (Item, bool, error) {
 	if movie.TMDbID < 1 || movie.Title == "" {
 		return Item{}, false, errors.New("invalid movie metadata")
