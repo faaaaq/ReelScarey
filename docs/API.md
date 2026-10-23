@@ -206,7 +206,7 @@ multi-indexer/client CRUD and generic `/jobs`.
 Design each group's concrete request/response types with its
 first complete vertical slice; do not expose placeholder 200 responses.
 
-Subtitle PUT preferences accepts enabled, tracks (`[{language:"en",variant:"full"}]`),
+Subtitle PUT preferences accepts enabled, tracks (`[{"language":"en","variant":"full"}]`),
 hearing_impaired (any/exclude/prefer), match_policy (hash/hash_or_release),
 interval_minutes (60–10080), only_monitored and revision. Choose 1–9 unique tracks,
 at most three languages from GET's supported languages list, and full/signs/forced

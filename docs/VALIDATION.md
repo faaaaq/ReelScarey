@@ -37,8 +37,20 @@ real adapter is OpenSubtitles.com; owner-account acceptance awaits private setup
   subtitle job existed. File/list handling now accepts an absent job; a backend
   regression test confirms visibility while automatic work is paused.
 
-Browser acceptance, owner preview upgrade and Linux CI results will be recorded
-after verification. See SUBTITLES.md for exact format/matching/cache/recovery limits.
+- Disposable browser acceptance connected the fixture provider through the real
+  form, searched a generated video, required explicit review before a forced-track
+  download, then enabled automatic work to complete the full/signs tracks. The UI
+  reported three available tracks; all three SRT files exist and the video SHA-256
+  is unchanged. The temporary server and both QA roots were removed afterward.
+- The owner's stopped configuration was fully backed up before schema 7. The
+  preview upgraded without reading/changing owner credentials or adding media.
+  Its detached process later stopped without an application error; readiness
+  correctly failed. It was restarted in a persistent terminal session and readiness
+  returned 200. The owner can complete OpenSubtitles setup privately; a successful
+  live owner-account connection has not yet been confirmed.
+
+Linux CI results will be recorded after verification. See SUBTITLES.md for exact
+format/matching/cache/recovery limits.
 
 ## Scheduled searches and quality profiles
 
