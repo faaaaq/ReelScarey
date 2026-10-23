@@ -30,8 +30,30 @@ start paused/search-only. Media/download tests use disposable data exclusively.
   default executable and correctly failed the automation capability assertion;
   rerunning against the newly built executable passed.
 
-Preview/browser checks and Linux race/real-client/container results are recorded
-after completion. See AUTOMATION.md for precise selection and safety limits.
+- The existing local preview was stopped, backed up and upgraded to 0.6. The
+  administrator account still requires sign-in; no owner credential was read or
+  changed. The new schedule defaults to paused, and owner Torznab remains deferred.
+- A separate disposable browser installation saved a 60-minute/five-target
+  schedule, created a Japanese-language HD profile with a required term, assigned
+  it to a generated catalog item, changed movie monitoring and reloaded those
+  preferences. Its real scheduler recorded waiting_indexer with zero searches or
+  downloads, then accepted a pause. The test server/data were removed afterward.
+- Browser verification exposed an omitted frontend direct-route entry; the fix
+  is covered by HTTP routing, native smoke and container smoke checks. The local
+  native direct-link/restart check passes with the fix.
+
+- The [successful Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/39983093550)
+  at code commit 89ff38b passed all 26 UI tests, full Go race/static checks,
+  disposable authenticated qBittorrent movie/TV downloads with generated media,
+  native direct-link/restart smoke, Docker build and authenticated container
+  restart checks. Both native/container checks retain profiles and enabled
+  search-only schedules across restart while waiting for the unconfigured indexer.
+  Real TV import verification still registers two files for three episodes and
+  preserves sources. No owner services or media were used by these checks.
+
+See AUTOMATION.md for precise selection and safety limits. Earlier CI attempts
+were superseded/cancelled while the direct-link and stricter pack matching fixes
+were finalized; the linked run validates the final code head.
 
 ## Television downloads and imports
 

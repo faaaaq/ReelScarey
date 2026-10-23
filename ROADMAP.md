@@ -123,3 +123,17 @@ imports two generated videos for three episodes, and preserves seeding sources.
 Disposable browser verification also confirmed review gating, both verified
 imports and three available episodes. The owner preview was backed up and
 upgraded; owner Torznab/shared-mount acceptance remains deferred.
+
+2026-10-23 automation: durable interval/one-off searches, editable quality/language
+profiles, item assignments, conservative ranked decisions and opt-in automatic
+missing-item queues are implemented. Restart/reclaim, cursor fairness, provider
+backoff, deduplication and changed-policy fences pass backend/API checks; all 26
+frontend interaction tests pass. Native smoke preserves schedule/profile/session
+settings across restart. Disposable browser checks confirm save/reload, waiting
+for a deferred indexer and pausing without touching owner services. Movie/TV
+resolution upgrades are suggestions only; existing files remain protected and
+TV imports require reviewed mappings. The
+[successful Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/39983093550)
+passed all UI/race/static checks, real disposable movie/TV qBittorrent downloads,
+native smoke and Docker build/authenticated restart persistence. Full evidence
+is in [validation](docs/VALIDATION.md); owner Torznab/shared-mount acceptance is deferred.
