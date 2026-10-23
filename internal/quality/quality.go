@@ -80,6 +80,7 @@ func Normalize(s string) string {
 }
 
 var episodeCode = regexp.MustCompile(`(?i)s([0-9]{1,2})e([0-9]{1,3})(?:e[0-9]+|[- ]+e?[0-9]+)?`)
+var extraEpisode = regexp.MustCompile(`(?i)^[^a-z0-9]*(?:e[0-9]{1,3}|[0-9]{1,3})(?:[^a-z0-9]|$)`)
 
 func Identify(title string, t Target) bool {
 	n := Normalize(title)
@@ -105,6 +106,9 @@ func Identify(title string, t Target) bool {
 	if s != t.Season || e != t.Episode || m[1] != m[5] {
 		return false
 	}
+	if extraEpisode.MatchString(title[m[1]:]) {
+		return false
+	}
 	prefix := Normalize(title[:m[0]])
 	return prefix == base || (t.Year != nil && prefix == base+" "+strconv.Itoa(*t.Year))
 }
@@ -126,6 +130,14 @@ func Evaluate(p Profile, t Target, r Release) Decision {
 		}
 	}
 	tokens := " " + Normalize(labels) + " "
+	if t.TV {
+		for _, bad := range []string{"complete", "season", "pack", "batch"} {
+			if strings.Contains(tokens, " "+bad+" ") {
+				reject("Season packs require manual episode selection and review.")
+				break
+			}
+		}
+	}
 	for _, bad := range []string{"cam", "hdcam", "telesync", "telecine", "ts", "tc", "screener", "dvdscr", "sample", "trailer"} {
 		if strings.Contains(tokens, " "+bad+" ") {
 			reject("Camera recordings, screeners, samples and trailers are excluded.")

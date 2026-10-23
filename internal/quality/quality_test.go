@@ -42,6 +42,11 @@ func TestConservativeIdentityAndProfileRanking(t *testing.T) {
 		t.Fatal("size limit ignored")
 	}
 	target = Target{Title: "Test Show", Year: &year, TV: true, Season: 1, Episode: 2}
+	for _, title := range []string{"Test.Show.S01E02.E03.1080p.English.WEB", "Test.Show.S01E02+03.1080p.English.WEB", "Test.Show.S01E02.COMPLETE.1080p.English.WEB", "Test.Show.S01E02.SEASON.PACK.1080p.English.WEB"} {
+		if Evaluate(p, target, Release{Title: title, Size: 2 << 30, Seeders: &seeders}).Eligible {
+			t.Fatal("pack or multiple episode selection accepted", title)
+		}
+	}
 	for _, tc := range []struct {
 		title string
 		ok    bool
