@@ -105,3 +105,14 @@ No owner show was added as test data. TV download/import mapping remains next.
 The [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/39892317129)
 also passed the complete frontend/race/static checks, disposable qBittorrent
 regression, native smoke and Docker build/container restart checks.
+
+2026-10-23 television downloads: reviewed episode/file mappings, episode target
+reservations, shared multi-episode files and per-file safe import recovery pass
+backend/API tests and all 22 UI tests. The
+[Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/39916273665)
+passed race/static/native/container checks and real disposable qBittorrent movie
+and TV pack downloads. The TV check reopens state around download and mapping,
+imports two generated videos for three episodes, and preserves seeding sources.
+Disposable browser verification also confirmed review gating, both verified
+imports and three available episodes. The owner preview was backed up and
+upgraded; owner Torznab/shared-mount acceptance remains deferred.

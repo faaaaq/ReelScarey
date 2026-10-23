@@ -23,8 +23,18 @@ per-file crash journals, naming preferences and registered episode availability.
   startup/authentication/restart/password-recovery smoke pass.
 - The Linux opt-in real-client check now includes a generated multi-file TV pack
   with three episodes across two videos, plus the existing movie regression.
-  It reopens state during download and after mapping confirmation. Execution
-  results, native checks and preview checks are recorded after completion.
+  Both passed in the [successful Linux run](https://github.com/faaaaq/ReelScarey/actions/runs/39916273665)
+  at code commit ff345d8. It reopens state during download and after mapping
+  confirmation. The run also passed all 22 frontend tests, full Go race/static
+  checks, native smoke and Docker build/authenticated container restart smoke.
+- The stopped preview configuration was backed up before migration to 0.5.
+  The existing administrator session, saved integrations and library survive;
+  Torznab remains unconfigured. No owner download or library file was used.
+- A separate browser session against disposable generated media required review
+  before import, then registered three episodes across two files. The season
+  showed all three available, including the shared episode file. Both source
+  videos remain present and SHA-256 hashes of both imports match their sources.
+  The disposable server and its temporary media were removed after verification.
 
 Media tests use disposable roots and owned generated data. The owner's existing
 torrents/library are not used for acceptance. See TV_DOWNLOADS.md for behavior,
