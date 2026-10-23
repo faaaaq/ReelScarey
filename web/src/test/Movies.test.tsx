@@ -50,6 +50,8 @@ function setup(
         total_results: 1,
       });
     if (url.endsWith("/metadata/movies/11")) return Response.json(movie);
+    if (url.endsWith("/setup"))
+      return Response.json({ steps: [], recovery_pending: false });
     if (url.endsWith("/library/movies"))
       return Response.json({ created: true, item: movie }, { status: 201 });
     if (url.endsWith("/settings"))
@@ -98,7 +100,7 @@ describe("authentication and movies", () => {
       screen.getByRole("button", { name: "Create administrator" }),
     );
     expect(
-      await screen.findByRole("heading", { name: "My library" }),
+      await screen.findByRole("heading", { name: "Set up your library" }),
     ).toBeVisible();
     const sent = fetch.mock.calls.find(([url]) => url.endsWith("/auth/setup"));
     expect(JSON.parse(String(sent?.[1]?.body))).toEqual({

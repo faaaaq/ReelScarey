@@ -1,4 +1,24 @@
-# REST API — media catalog, downloads, imports, automation and subtitles
+# REST API — media catalog, downloads, imports, automation and operations
+
+## Setup and installation health
+
+All these routes require the administrator session and mutations also require
+CSRF/origin validation. They never return credentials or contact providers.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/api/v1/setup` | Actual saved-connection checklist; Torznab optional; recovery hold state |
+| GET | `/api/v1/system/checks` | Last report from this process or null; current recovery_pending; no probes |
+| POST | `/api/v1/system/checks` | `{}`; bounded local checks with private temporary folder probes; 409 if busy |
+| POST | `/api/v1/system/recovery/resume` | `{"reviewed":true}`; validates critical checks and marker, releases restored worker hold; does not enable schedules |
+
+Reports contain checked_at (Unix seconds), checks (id/title/state/message,
+optional free_bytes) and resources (heap_bytes, go_memory_bytes, goroutines,
+logical_cpus). Go memory is not total process/container RSS. Checks are snapshots,
+not persistent monitoring; reports reset on restart. Backup/restore is local CLI
+only; there is no web endpoint accepting arbitrary filesystem backup paths.
+
+## Common behavior
 
 All routes are same-origin. JSON uses snake_case. All `/api/v1` routes require
 an administrator session except the three public auth routes below. Mutations

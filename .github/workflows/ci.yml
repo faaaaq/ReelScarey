@@ -25,6 +25,10 @@ jobs:
         working-directory: web
       - run: go test -race ./...
       - run: go vet ./...
+      - name: Known dependency vulnerabilities
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+          npm audit --audit-level=high --prefix web
       - name: Install disposable qBittorrent and video test tools
         timeout-minutes: 20
         run: |
@@ -45,12 +49,33 @@ jobs:
           REELSCAREY_LIVE_SUBTITLES: '1'
       - run: go build -o bin/reelscarey ./cmd/reelscarey
       - run: node scripts/smoke.mjs
+      - name: Build private installation packages
+        run: |
+          go run ./scripts/package 0.8.0-dev dist/private-0.8.0
+          cd dist/private-0.8.0
+          sha256sum --check SHA256SUMS
+          mkdir unpacked
+          tar -xzf reelscarey-0.8.0-dev-linux-amd64.tar.gz -C unpacked
+          test "$(unpacked/reelscarey version)" = '0.8.0-dev'
+          cd ../..
+          node scripts/smoke.mjs dist/private-0.8.0/unpacked/reelscarey
       - name: Build and smoke-test the container
         shell: bash
         run: |
           set -euo pipefail
           docker compose config --quiet
           docker build -t reelscarey:ci .
-          docker run -d --name reelscarey-ci -p 127.0.0.1:8787:8787 reelscarey:ci
+          docker run -d --name reelscarey-ci --memory=512m --cpus=1 --pids-limit=256 -p 127.0.0.1:8787:8787 reelscarey:ci
           trap 'docker logs reelscarey-ci; docker rm -fv reelscarey-ci' EXIT
           node scripts/container-smoke.mjs
+          docker stats --no-stream --format 'Container resources: {{.MemUsage}}, {{.CPUPerc}}, {{.PIDs}}' reelscarey-ci
+      - name: Retain private packages and checksums
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: reelscarey-private-0.8.0
+          path: |
+            dist/private-0.8.0/*.tar.gz
+            dist/private-0.8.0/*.zip
+            dist/private-0.8.0/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14

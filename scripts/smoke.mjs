@@ -1,7 +1,7 @@
 // Uses a disposable config directory and never reads a real media library.
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdtemp, rm, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, readFile } from 'node:fs/promises'
 import net from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -54,7 +54,14 @@ async function stop() {
 }
 
 try {
+  await mkdir(env.REELSCAREY_MEDIA_DIR)
+  await mkdir(env.REELSCAREY_DOWNLOADS_DIR)
   await start()
+  const duplicate = spawnSync(binary, [], { env: { ...env, REELSCAREY_LISTEN_ADDR: `127.0.0.1:${port === 65535 ? port - 1 : port + 1}` }, windowsHide: true, encoding: 'utf8', timeout: 15000 })
+  assert.notEqual(duplicate.status, 0)
+  assert.match(duplicate.stdout + duplicate.stderr, /config directory is in use/)
+  const activeBackup = spawnSync(binary, ['backup', path.join(directory, 'active-backup')], { env, windowsHide: true, encoding: 'utf8', timeout: 15000 })
+  assert.notEqual(activeBackup.status, 0, 'backup must refuse a running server')
   const health = await fetch(`${base}/healthz`)
   assert.equal(health.status, 200)
   const page = await fetch(`${base}/automation`)
@@ -132,9 +139,41 @@ try {
   const login = await fetch(`${base}/api/v1/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify({ username: 'smoketest', password: 'new-test-only-password' }) })
   assert.equal(login.status, 200)
   cookie = login.headers.get('set-cookie').split(';')[0]; csrf = (await login.json()).csrf_token
+  const guide = await (await authenticated('/api/v1/setup')).json()
+  assert.equal(guide.steps.find(step => step.id === 'torznab').optional, true)
+  assert.equal((await (await authenticated('/api/v1/system/checks')).json()).report, null, 'GET must not run probes')
+  await stop()
+  const backup = path.join(directory, 'verified-backup')
+  const recovered = path.join(directory, 'recovered-config')
+  for (const args of [['backup', backup], ['backup-check', backup], ['restore', backup, recovered]]) {
+    const command = spawnSync(binary, args, { env, windowsHide: true, encoding: 'utf8', timeout: 60000 })
+    assert.equal(command.status, 0, `Maintenance command failed: ${command.stdout}${command.stderr}`)
+  }
+  const secondRestore = spawnSync(binary, ['restore', backup, recovered], { env, windowsHide: true, encoding: 'utf8', timeout: 15000 })
+  assert.notEqual(secondRestore.status, 0, 'restore must preserve an existing config')
+  env.REELSCAREY_CONFIG_DIR = recovered
+  await start()
+  assert.equal((await authenticated('/api/v1/settings')).status, 401, 'restore must revoke copied sessions')
+  const recoveredLogin = await fetch(`${base}/api/v1/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify({ username: 'smoketest', password: 'new-test-only-password' }) })
+  assert.equal(recoveredLogin.status, 200)
+  cookie = recoveredLogin.headers.get('set-cookie').split(';')[0]; csrf = (await recoveredLogin.json()).csrf_token
+  const recoveredState = await (await authenticated('/api/v1/system/checks')).json()
+  assert.equal(recoveredState.recovery_pending, true)
+  assert.equal((await (await authenticated('/api/v1/automation')).json()).enabled, false)
+  assert.equal((await (await authenticated('/api/v1/subtitles/preferences')).json()).preferences.enabled, false)
+  assert.equal((await (await authenticated('/api/v1/settings')).json()).library_name, 'Restart verification')
+  assert.equal((await authenticated('/api/v1/system/recovery/resume', { method: 'POST', body: '{"reviewed":false}' })).status, 400)
+  const checks = await authenticated('/api/v1/system/checks', { method: 'POST', body: '{}' })
+  assert.equal(checks.status, 200)
+  for (const check of (await checks.json()).report.checks) assert.equal(check.state, 'ready', `${check.title}: ${check.message}`)
+  assert.equal((await authenticated('/api/v1/system/recovery/resume', { method: 'POST', body: '{"reviewed":true}' })).status, 200)
+  assert.equal((await (await authenticated('/api/v1/system/checks')).json()).recovery_pending, false)
+  assert.equal((await (await authenticated('/api/v1/automation')).json()).enabled, false)
+  const checkBackup = spawnSync(binary, ['backup-check', backup], { env, windowsHide: true, encoding: 'utf8', timeout: 15000 })
+  assert.equal(checkBackup.status, 0, 'restore must not alter the backup')
   assert.equal((await authenticated('/api/v1/auth/logout', { method: 'POST', body: '{}' })).status, 200)
   assert.equal((await authenticated('/api/v1/settings')).status, 401)
-  console.log('PASS: native startup, embedded UI/API, admin setup, session/settings/profile/schedule/subtitle preference persistence, deferred providers, CLI healthcheck/password reset, session revocation and logout.')
+  console.log('PASS: native startup/restart, embedded UI, auth and preferences; duplicate instance and live-backup refusal; verified offline backup, new-folder restore, revoked sessions, held workers, explicit recovery review and paused schedules; deferred Torznab and logout.')
 } catch (error) {
   console.error(logs)
   throw error

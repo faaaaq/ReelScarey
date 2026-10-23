@@ -157,14 +157,13 @@ smoke test. `reelscarey healthcheck` checks database readiness with a timeout.
 
 ## Backup and restore
 
-Stop ReelScarey before copying the entire config directory/volume, including any
-SQLite WAL/SHM files. Use SQLite-aware backup tools for live backups; copying the
-database file alone during writes is unsafe. Restore into an empty config
-location with the correct ownership, then start the matching application version.
-Never attach two application instances to the same config directory. Keep SQLite
-on local storage. Back up before upgrades; migrations run transactionally at
-startup, and newer or altered migration histories are rejected. In-place
-downgrades are not supported.
+Stop ReelScarey, then use `reelscarey backup NEW_FOLDER` and
+`reelscarey backup-check BACKUP_FOLDER` to create and verify a consistent config
+snapshot. `reelscarey restore BACKUP_FOLDER NEW_CONFIG_FOLDER` refuses existing
+folders, revokes sessions and holds background workers for review. See the full
+[installation and recovery guide](docs/OPERATIONS.md) before using these commands.
+Keep SQLite on local storage. Back up before upgrades; in-place downgrades are
+not supported. Never run two instances against the same config.
 
 Include **secrets.key** in backups. It encrypts saved provider credentials; a
 database backup without the matching key cannot decrypt them. Restrict access
@@ -182,8 +181,11 @@ Lost administrator password? See the local stdin-based recovery procedure in
 - [Validation evidence](docs/VALIDATION.md)
 
 See [movie workflow operations](docs/MOVIE_WORKFLOW.md) for integration setup,
-path mapping, recovery, import guarantees and current limitations. Scheduling,
-release scoring and upgrades remain separate future work.
+path mapping, recovery, import guarantees and current limitations. Scheduled
+searches and quality profiles are documented in [automation](docs/AUTOMATION.md);
+existing-media upgrades remain suggestions. Setup and System checks guide local
+installation; Torznab remains optional. See [security boundaries](docs/SECURITY.md)
+for the threat model and remaining public-release gates.
 
 ## License
 

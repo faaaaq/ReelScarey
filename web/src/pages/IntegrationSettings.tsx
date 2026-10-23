@@ -79,6 +79,7 @@ export function IntegrationSettings({
   }
   return (
     <section
+      id={kind}
       className="panel settings-info integration-settings"
       aria-label={`${name} settings`}
     >

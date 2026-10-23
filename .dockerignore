@@ -2,6 +2,7 @@
 .env
 .tools
 bin
+dist
 data
 config
 media

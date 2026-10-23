@@ -50,6 +50,7 @@ export function TMDbSettings() {
   }
   return (
     <section
+      id="tmdb"
       className="panel settings-info tmdb-settings"
       aria-label="TMDb settings"
     >

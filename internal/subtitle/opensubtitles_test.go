@@ -66,7 +66,7 @@ func TestOpenSubtitlesContractAndCredentialIsolation(t *testing.T) {
 				t.Fatal("VIP login not applied")
 			}
 			q := r.URL.Query()
-			if q.Get("languages") != "en,ja" || q.Get("tmdb_id") != "123" || q.Get("type") != "movie" || q.Get("moviehash") != "0123456789abcdef" || q.Get("ai_translated") != "exclude" || q.Get("machine_translated") != "exclude" || r.URL.RawQuery != q.Encode() {
+			if q.Get("languages") != "en,ja" || q.Get("tmdb_id") != "123" || q.Get("type") != "movie" || q.Get("moviehash") != "0123456789abcdef" || q.Get("ai_translated") != "exclude" || q.Has("machine_translated") || r.URL.RawQuery != q.Encode() {
 				t.Fatal(q)
 			}
 			return response(200, `{"data":[{"id":"1","attributes":{"language":"eng","release":"Signs.2002.WEB","moviehash_match":true,"feature_details":{"feature_type":"Movie","tmdb_id":"123"},"files":[{"file_id":45,"file_name":"Signs.2002.en.srt"}]}},{"id":"2","attributes":{"language":"en","release":"Signs.2002.Signs.Songs","foreign_parts_only":true,"feature_details":{"feature_type":"Movie","tmdb_id":123},"files":[{"file_id":"46","file_name":"Signs.2002.signs.srt"}]}},{"id":"3","attributes":{"language":"en","release":"Signs.2002.WEB","foreign_parts_only":true,"feature_details":{"feature_type":"Movie","tmdb_id":123},"files":[{"file_id":47,"file_name":"Signs.2002.forced.srt"}]}}]}`)

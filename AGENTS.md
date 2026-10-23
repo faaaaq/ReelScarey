@@ -31,9 +31,12 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   Providers receive canonical metadata/hash only, never local paths. Existing
   video/sidecars must not be replaced; automatic selections require provider
   identity and hash/exact original-release evidence. Uncertain timing needs review.
-  internal/automation owns interval scheduling, leased searches and bounded audit
+- internal/automation owns interval scheduling, leased searches and bounded audit
   history. It delegates downloads/imports to transfer; automatic queueing must be
   fenced inside the reservation transaction against changed policy and monitoring.
+- internal/instance owns OS config locks; internal/maintenance owns verified
+  offline backups and new-folder restores; internal/operations owns explicit
+  local checks, setup guidance and authenticated recovery review.
 - web contains React, TypeScript, Vite, Tailwind, and Radix Themes. Use maintained
   accessible components. Go serves the built web/dist directory via embed.
 - Do not import HTTP handlers into domain packages or create separate daemons.

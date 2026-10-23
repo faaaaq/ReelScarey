@@ -1,10 +1,41 @@
 # Validation record — 2026-10-23
 
+## Production hardening (0.8 development)
+
+- Local backend/API tests and static checks pass; all 35 UI interaction tests
+  pass, including the first-administrator setup checklist, deferred Torznab,
+  explicit storage checks, recovery review and failed-check retry.
+- The native disposable-process drill passes startup/restart, duplicate-config
+  process rejection, live-backup refusal, verified offline snapshot/new-folder
+  restore, retained account/preferences, revoked sessions, held workers and
+  explicit recovery release without enabling schedules. Source backup checksums
+  still verify after restore. No owner services or media are test fixtures.
+- Unit checks cover encrypted-provider recovery, missing-key refusal, changed
+  checksums, manifest path rejection, migration drift, overlapping storage roots,
+  probe cleanup/source preservation, concurrency and invalid recovery markers.
+- Clean locked npm installation and audit report zero known vulnerabilities.
+  Local govulncheck v1.9.0 could not reach vuln.go.dev because this Windows
+  environment denied the socket; Linux CI runs the required scan.
+- Packaging cross-builds Linux amd64/arm64 and Windows amd64, includes only the
+  executable, whitelisted documentation and dependency manifests, and produces
+  SHA256SUMS. Linux CI verifies/extracts the amd64 package and runs the same full
+  native recovery drill. Its container smoke is capped at 512 MiB, one CPU and
+  256 PIDs; this is a constrained startup test, not a NAS workload benchmark.
+- Owner reports OpenSubtitles connected. Actual owner-media subtitle downloading
+  remains untested until registered media exists. Torznab and the shared download
+  mount remain deferred. The adapter omits the provider's default machine-
+  translation filter to avoid a canonical redirect and retains local filtering.
+
+Linux CI, package execution and disposable browser acceptance evidence will be
+recorded below after completion. NAS/arm64 runtime validation, sustained budgets,
+independent security review, release provenance and license choice remain gates.
+
 ## Subtitle providers, language preferences and automatic downloads
 
 English full dialogue, signs/songs and forced tracks are independent defaults;
 automatic work starts paused. Torznab owner setup remains deferred. The first
-real adapter is OpenSubtitles.com; owner-account acceptance awaits private setup.
+real adapter is OpenSubtitles.com; the owner has since reported its connection
+saved. Owner-media download acceptance remains separate.
 
 - Real-adapter protocol tests pass for login/VIP hosts, canonical sorted movie/TV
   requests, identity/language/type normalization, signed-download credential
@@ -287,10 +318,11 @@ not available locally, so container and race checks run in GitHub Actions.
 
 ## Remaining acceptance work
 
-- Linux/ARM deployment coverage, resource measurements, backup/restore drills,
-  broad accessibility audits and full security review remain future work.
+- ARM runtime/NAS deployment coverage, sustained resource measurements,
+  broad accessibility audits and independent security review remain future work.
 - Owner-service download/import acceptance requires the indexer and shared mount
-  described above. TV ingest and subtitle adapters remain future work.
+  described above. TV ingest and the OpenSubtitles adapter are now implemented;
+  their generated-media/real-client evidence is recorded in the newer sections.
 - Sessions use a fixed 24-hour lifetime. Rate-limit counters are memory-resident
   and reset on restart; durable sessions and library data are SQLite-backed.
 - The project license still needs the owner's choice before public distribution.

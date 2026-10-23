@@ -219,7 +219,9 @@ func (o *OpenSubtitles) Search(ctx context.Context, c Credentials, t Target, lan
 	defer o.mu.Unlock()
 	langs := slices.Clone(languages)
 	slices.Sort(langs)
-	q := url.Values{"languages": {strings.Join(langs, ",")}, "ai_translated": {"exclude"}, "machine_translated": {"exclude"}}
+	// Machine translations are excluded by the provider's default. Sending that
+	// default explicitly causes a canonical redirect, which we intentionally refuse.
+	q := url.Values{"languages": {strings.Join(langs, ",")}, "ai_translated": {"exclude"}}
 	if t.Kind == "movie" {
 		q.Set("tmdb_id", strconv.FormatInt(t.TMDbID, 10))
 		q.Set("type", "movie")

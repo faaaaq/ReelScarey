@@ -1590,6 +1590,83 @@ dd {
 .subtitle-matches {
   margin-top: 20px;
 }
+.setup-steps {
+  display: grid;
+  gap: 12px;
+  margin: 24px 0;
+}
+.setup-step {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px 26px;
+}
+.setup-step > div {
+  flex: 1;
+}
+.setup-step h2 {
+  font-size: 17px;
+  margin: 0 0 7px;
+}
+.setup-step p,
+.system-panel p {
+  color: var(--gray-11);
+  line-height: 1.65;
+}
+.setup-step p {
+  margin: 0;
+}
+.setup-number {
+  color: var(--accent-11);
+  width: 26px;
+  flex-shrink: 0;
+  font-size: 20px;
+}
+.system-panel {
+  padding: 26px;
+  margin: 22px 0;
+}
+.system-panel h2 {
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+.system-panel .rt-Button {
+  margin: 12px 12px 0 0;
+}
+.recovery-panel {
+  border-color: var(--amber-8);
+}
+.recovery-confirm {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 20px;
+}
+.resource-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.resource-grid dt {
+  color: var(--gray-11);
+  font-size: 13px;
+}
+.resource-grid dd {
+  margin: 8px 0;
+  font-size: 24px;
+}
+@media (max-width: 700px) {
+  .setup-step {
+    flex-wrap: wrap;
+    padding: 18px;
+  }
+  .setup-step > div {
+    flex-basis: 75%;
+  }
+  .resource-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
 @media (max-width: 1100px) {
   .subtitle-setup-grid {
     grid-template-columns: minmax(0, 1fr);

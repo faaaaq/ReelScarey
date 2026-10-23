@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@radix-ui/themes";
 import {
   Activity,
+  CheckCircle2,
   Captions,
   Clapperboard,
   Clock3,
@@ -12,6 +13,7 @@ import {
   MonitorPlay,
   Search,
   Settings2,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import {
@@ -33,6 +35,7 @@ import { Releases } from "./pages/Releases";
 import { Series } from "./pages/Series";
 import { Automation } from "./pages/Automation";
 import { Subtitles } from "./pages/Subtitles";
+import { Setup, SystemChecks } from "./pages/System";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -122,6 +125,14 @@ function AppShell() {
         </nav>
         <div className="sidebar-bottom">
           <nav aria-label="Administration">
+            <NavLink to="/setup">
+              <CheckCircle2 size={19} strokeWidth={1.7} />
+              <span>Setup</span>
+            </NavLink>
+            <NavLink to="/system">
+              <ShieldCheck size={19} strokeWidth={1.7} />
+              <span>System checks</span>
+            </NavLink>
             <NavLink to="/settings">
               <Settings2 size={19} strokeWidth={1.7} />
               <span>Settings</span>
@@ -131,7 +142,7 @@ function AppShell() {
             <span className="status-dot" />
             <span>Movies & TV</span>
             <Badge color="gray" size="1">
-              0.7
+              0.8
             </Badge>
           </div>
           <div className="account-control">
@@ -162,6 +173,8 @@ function AppShell() {
               element={<Library key="series" kind="series" />}
             />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/setup" element={<Setup />} />
+            <Route path="/system" element={<SystemChecks />} />
             <Route path="/series/:id" element={<Series />} />
             <Route path="/search" element={<MovieSearch />} />
             <Route path="/releases" element={<Releases />} />

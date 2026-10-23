@@ -30,6 +30,9 @@ internal/transfer/   Torznab/qBittorrent, durable downloads and safe imports
 internal/quality/    conservative identity, profile persistence and release ranking
 internal/automation/ persistent scheduled searches, audit history and policy fences
 internal/subtitle/   provider, track preferences, registered-media jobs and sidecars
+internal/instance/   OS config ownership and maintenance locks
+internal/maintenance/ verified offline config snapshots and new-folder restores
+internal/operations/ explicit installation checks, setup and recovery review
 internal/httpapi/    REST handlers, middleware, frontend serving
 web/src/             application, pages, reusable UI, API client
 web/dist/            generated frontend (ignored, embedded at build time)

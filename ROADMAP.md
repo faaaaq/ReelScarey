@@ -76,16 +76,25 @@ temporary libraries only. Never use unauthorized content as test material.
   review for uncertain timing, expiring opaque selections.
 - [x] Leased automatic searches/downloads, bounded retries, persistent allowance
   state and journaled SRT publication with collision refusal and restart recovery.
-- [ ] Owner-account OpenSubtitles acceptance awaits private credential setup.
+- [x] Owner reports OpenSubtitles connected through private settings.
+- [ ] Owner-library subtitle download acceptance awaits imported media; it is
+  separate from the completed connection and generated-media tests.
 - [ ] Additional providers, arbitrary-library scanning, ASS-style downloads,
   subtitle replacement/resynchronization and per-show language overrides remain future scope.
 
 ## 6 — Production hardening
-- Setup wizard, broader integration tests and error recovery exercises
-- Security review, secret/key lifecycle and threat model
-- Performance/resource budgets on representative NAS hardware
-- Release packaging, backup/restore drills and upgrade documentation
-- Owner chooses open-source license before public distribution
+- [x] Guided setup checklist with optional/deferred Torznab and real settings links.
+- [x] Explicit authenticated installation checks, private folder/publication probes,
+  database/key integrity and correctly labeled runtime resource snapshots.
+- [x] OS configuration/maintenance locks, verified offline backup/check/new-folder
+  restore, revoked sessions and paused workers requiring authenticated review.
+- [x] Threat model, upgrade/rollback and backup/recovery documentation.
+- [x] Private Linux amd64/arm64 and Windows amd64 packaging with checksums;
+  automated native recovery drill and dependency vulnerability checks.
+- [ ] Independent security review and signed public-release provenance.
+- [ ] Sustained performance/resource budgets on representative NAS hardware;
+  arm64 runtime and shared-storage filesystem acceptance.
+- [ ] Owner chooses open-source license before public distribution.
 
 ## Validation record
 

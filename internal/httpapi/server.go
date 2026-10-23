@@ -23,6 +23,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
+	"github.com/faaaaq/ReelScarey/internal/operations"
 	"github.com/faaaaq/ReelScarey/internal/settings"
 	"github.com/faaaaq/ReelScarey/internal/subtitle"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
@@ -41,6 +42,7 @@ type Server struct {
 	transfer   *transfer.Service
 	automation *automation.Service
 	subtitle   *subtitle.Service
+	operations *operations.Service
 }
 
 type Dependencies struct {
@@ -53,10 +55,14 @@ type Dependencies struct {
 
 func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string, deps Dependencies) http.Handler {
 	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle}
+	s.operations = operations.New(db, cfg)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", method(http.MethodGet, s.health))
 	mux.HandleFunc("/readyz", method(http.MethodGet, s.ready))
 	mux.HandleFunc("/api/v1/system", method(http.MethodGet, s.system))
+	mux.HandleFunc("/api/v1/setup", method(http.MethodGet, s.setupGuide))
+	mux.HandleFunc("/api/v1/system/checks", s.installationChecks)
+	mux.HandleFunc("/api/v1/system/recovery/resume", method(http.MethodPost, s.resumeRecovery))
 	mux.HandleFunc("/api/v1/dashboard", method(http.MethodGet, s.dashboard))
 	mux.HandleFunc("/api/v1/library", method(http.MethodGet, s.listLibrary))
 	mux.HandleFunc("/api/v1/settings", s.handleSettings)
@@ -160,7 +166,7 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, map[string]any{
-		"name": "ReelScarey", "version": s.version, "milestone": "subtitles",
+		"name": "ReelScarey", "version": s.version, "milestone": "hardening",
 		"database": "connected", "schema_version": version, "uptime_seconds": int(time.Since(s.started).Seconds()),
 		"paths":        map[string]string{"config": s.config.ConfigDir, "media": s.config.MediaDir, "downloads": s.config.DownloadsDir},
 		"capabilities": map[string]bool{"authentication": true, "library_settings": true, "metadata_search": true, "movie_add": true, "series_catalog": s.metadata != nil && s.metadata.SupportsSeries(), "episode_monitoring": true, "tv_downloads": s.transfer != nil, "torznab_search": s.transfer != nil, "downloads": s.transfer != nil, "import": s.transfer != nil, "persistent_jobs": s.transfer != nil, "subtitles": s.subtitle != nil, "automation": s.automation != nil, "quality_profiles": true},
@@ -283,7 +289,7 @@ func (s *Server) sameOrigin(r *http.Request) bool {
 
 func frontend(assets fs.FS) http.HandlerFunc {
 	files := http.FileServer(http.FS(assets))
-	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/search": true, "/releases": true, "/activity": true, "/automation": true, "/subtitles": true, "/settings": true}
+	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/search": true, "/releases": true, "/activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
@@ -344,6 +350,9 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://image.tmdb.org; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+		if r.TLS != nil || strings.HasPrefix(s.config.PublicURL, "https://") {
+			w.Header().Set("Strict-Transport-Security", "max-age=86400")
+		}
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				s.logger.Error("request panic", "method", r.Method, "path", r.URL.Path)

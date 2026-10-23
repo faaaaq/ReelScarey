@@ -63,11 +63,80 @@ type Store struct {
 }
 
 func New(ctx context.Context, db *sql.DB, dir string) (*Store, error) {
+	return open(ctx, db, dir, true)
+}
+
+// Validate checks the saved key and all encrypted records without creating a key.
+func Validate(ctx context.Context, db *sql.DB, dir string) error {
+	// Older verified snapshots may predate some encrypted tables. Validation
+	// inspects only these known schemas and never migrates a backup.
+	queries := []string{}
+	count := 0
+	for _, item := range []struct{ table, query string }{
+		{"provider_secrets", `SELECT 'tmdb',ciphertext FROM provider_secrets`},
+		{"integration_configs", `SELECT 'config:' || name,ciphertext FROM integration_configs`},
+		{"release_candidates", `SELECT 'release',payload FROM release_candidates`},
+		{"downloads", `SELECT 'download',payload FROM downloads`},
+	} {
+		var exists int
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, item.table).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			continue
+		}
+		var n int
+		if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+item.table).Scan(&n); err != nil {
+			return err
+		}
+		count += n
+		queries = append(queries, item.query)
+	}
+	if count == 0 {
+		if _, err := os.Lstat(filepath.Join(dir, "secrets.key")); errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+	}
+	key, err := SecretFile(filepath.Join(dir, "secrets.key"), 32, false)
+	if err != nil {
+		return err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return err
+	}
+	if len(queries) == 0 {
+		return nil
+	}
+	rows, err := db.QueryContext(ctx, strings.Join(queries, " UNION ALL "))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	store := &Store{db: db, aead: aead}
+	for rows.Next() {
+		var purpose string
+		var sealed []byte
+		if err := rows.Scan(&purpose, &sealed); err != nil {
+			return err
+		}
+		if _, err := store.Open(purpose, sealed); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+func open(ctx context.Context, db *sql.DB, dir string, create bool) (*Store, error) {
 	var count int
 	if err := db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM provider_secrets) + (SELECT COUNT(*) FROM integration_configs) + (SELECT COUNT(*) FROM release_candidates) + (SELECT COUNT(*) FROM downloads)`).Scan(&count); err != nil {
 		return nil, err
 	}
-	key, err := SecretFile(filepath.Join(dir, "secrets.key"), 32, count == 0)
+	key, err := SecretFile(filepath.Join(dir, "secrets.key"), 32, create && count == 0)
 	if err != nil {
 		return nil, err
 	}

@@ -17,6 +17,7 @@ import {
   type Session,
 } from "./api";
 import { RequestState } from "./components";
+import { useNavigate } from "react-router-dom";
 
 const AuthContext = createContext<{
   session: Session;
@@ -29,6 +30,7 @@ export function useAuth() {
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const [status, setStatus] = useState<AuthStatus>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -84,6 +86,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       <AuthForm
         setup={status?.setup_required ?? false}
         onSignedIn={(session) => {
+          if (status?.setup_required) navigate("/setup", { replace: true });
           setCSRFToken(session.csrf_token);
           setStatus({ authenticated: true, setup_required: false, session });
         }}
