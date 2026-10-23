@@ -26,7 +26,7 @@ func run() error {
 		return fmt.Errorf("usage: go run ./scripts/package VERSION NEW_OUTPUT_FOLDER")
 	}
 	version, out := os.Args[1], os.Args[2]
-	docs := []string{"README.md", "docs/OPERATIONS.md", "docs/SECURITY.md", "docs/AUTHENTICATION.md", "docs/MOVIE_WORKFLOW.md", "docs/SUBTITLES.md", "docs/VALIDATION.md", "go.mod", "go.sum", "web/package.json", "web/package-lock.json"}
+	docs := []string{"README.md", "ARCHITECTURE.md", "ROADMAP.md", "AGENTS.md", "docs/OPERATIONS.md", "docs/SECURITY.md", "docs/API.md", "docs/AUTHENTICATION.md", "docs/MOVIE_WORKFLOW.md", "docs/TELEVISION.md", "docs/TV_DOWNLOADS.md", "docs/AUTOMATION.md", "docs/SUBTITLES.md", "docs/VALIDATION.md", "go.mod", "go.sum", "web/package.json", "web/package-lock.json"}
 	if _, e := os.Stat("web/dist/index.html"); e != nil {
 		return fmt.Errorf("build the frontend before packaging")
 	}
@@ -34,6 +34,9 @@ func run() error {
 		if _, e := os.Stat(name); e != nil {
 			return e
 		}
+	}
+	if e := os.MkdirAll(filepath.Dir(out), 0700); e != nil {
+		return e
 	}
 	if e := os.Mkdir(out, 0700); e != nil {
 		return fmt.Errorf("output folder must be new: %w", e)
