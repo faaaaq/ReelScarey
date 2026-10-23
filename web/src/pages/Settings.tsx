@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { CheckCircle2, FolderOpen, Save, Server } from "lucide-react";
 import {
   api,
@@ -15,6 +15,7 @@ import { TMDbSettings } from "./TMDbSettings";
 import { IntegrationSettings } from "./IntegrationSettings";
 
 export function Settings() {
+  const location = useLocation();
   const settings = useResource<LibrarySettings>("/settings");
   const system = useResource<System>("/system");
   const [form, setForm] = useState<SettingsUpdate>();
@@ -22,6 +23,23 @@ export function Settings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const ready =
+    !settings.loading &&
+    !system.loading &&
+    !settings.error &&
+    !system.error &&
+    !!form &&
+    !!system.data;
+  useEffect(() => {
+    if (
+      ready &&
+      ["#tmdb", "#torznab", "#qbittorrent"].includes(location.hash)
+    ) {
+      document
+        .getElementById(location.hash.slice(1))
+        ?.scrollIntoView({ block: "start" });
+    }
+  }, [ready, location.hash]);
 
   useEffect(() => {
     if (settings.data) {

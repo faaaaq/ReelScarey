@@ -133,5 +133,6 @@ workflow tests use disposable media roots. Opt-in generated-video acceptance use
 `REELSCAREY_LIVE_SUBTITLES=1 go test ./internal/subtitle -run TestRealSubtitleMedia -v`
 with FFmpeg/FFprobe installed. It tests actual embedded track detection and three
 sidecar publications with a fixture provider. This does not claim a live owner
-OpenSubtitles acceptance test; that requires credentials entered privately in the
-app. See VALIDATION.md for executed results.
+OpenSubtitles media-download acceptance test. The owner now reports a privately
+saved connection; a real sidecar check still needs imported media. See
+VALIDATION.md for executed results.

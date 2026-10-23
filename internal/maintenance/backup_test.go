@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/auth"
 	"github.com/faaaaq/ReelScarey/internal/config"
@@ -167,7 +169,11 @@ func TestBackupFailsClosedForMissingKeyLocksCorruptionAndUnsafeEntries(t *testin
 	if e != nil {
 		t.Fatal(e)
 	}
-	body[0] ^= 1
+	if body[0] == 'A' {
+		body[0] = 'B'
+	} else {
+		body[0] = 'A'
+	}
 	if e = os.WriteFile(filepath.Join(dest, "secrets.key"), body, 0600); e != nil {
 		t.Fatal(e)
 	}
@@ -179,12 +185,64 @@ func TestBackupFailsClosedForMissingKeyLocksCorruptionAndUnsafeEntries(t *testin
 		t.Fatal(e)
 	}
 	defer root.Close()
-	m := Manifest{Format: 1, Version: "test", Schema: 7, Files: []File{{Name: "../escaped.db", Size: 1, SHA: "00"}}}
+	// Even a matching checksum cannot make the wrong encryption key valid.
+	m, e := ReadManifest(root)
+	if e != nil {
+		t.Fatal(e)
+	}
+	changed, e := measure(ctx, root, "secrets.key")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for i := range m.Files {
+		if m.Files[i].Name == "secrets.key" {
+			m.Files[i] = changed
+		}
+	}
 	payload, _ := json.Marshal(m)
+	if e = os.WriteFile(filepath.Join(dest, "backup-manifest.json"), payload, 0600); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = Verify(ctx, dest); e == nil {
+		t.Fatal("wrong key accepted after checksum update")
+	}
+	if _, e = Restore(ctx, cfg, dest, dest+"-recovered"); e == nil {
+		t.Fatal("wrong-key backup restored")
+	}
+	if _, e = os.Stat(dest + "-recovered"); !os.IsNotExist(e) {
+		t.Fatal("failed verification created a runnable destination")
+	}
+	m = Manifest{Format: 1, Version: "test", Schema: 7, Created: time.Now().UTC().Format(time.RFC3339), Files: []File{{Name: "../escaped.db", Size: 1, SHA: strings.Repeat("0", 64)}}}
+	payload, _ = json.Marshal(m)
 	if e = os.WriteFile(filepath.Join(dest, "backup-manifest.json"), payload, 0600); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = ReadManifest(root); e == nil {
 		t.Fatal("manifest path escape accepted")
+	}
+}
+
+func TestBackupCancellationAndStorageOverlapPreserveSource(t *testing.T) {
+	cfg := fixtureConfig(t)
+	ctx := context.Background()
+	db, e := database.Open(ctx, cfg.ConfigDir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	dest := filepath.Join(filepath.Dir(cfg.ConfigDir), "canceled")
+	if _, e = Backup(canceled, cfg, dest, "test"); e == nil {
+		t.Fatal("canceled backup succeeded")
+	}
+	if _, e = os.Stat(dest); !os.IsNotExist(e) {
+		t.Fatal("canceled snapshot published")
+	}
+	if _, e = Backup(ctx, cfg, filepath.Join(cfg.ConfigDir, "nested"), "test"); e == nil {
+		t.Fatal("nested config backup accepted")
+	}
+	if _, e = database.Inspect(ctx, db); e != nil {
+		t.Fatal("source database changed", e)
 	}
 }

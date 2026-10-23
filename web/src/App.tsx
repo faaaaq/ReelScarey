@@ -74,7 +74,7 @@ function AppShell() {
   const location = useLocation();
   useEffect(() => {
     setMenuOpen(false);
-    document.title = `${location.pathname.startsWith("/series/") ? "TV show" : location.pathname === "/settings" ? "Settings" : location.pathname === "/releases" ? "Releases" : (navigation.find((item) => item.path === location.pathname)?.name ?? "Page")} · ReelScarey`;
+    document.title = `${location.pathname === "/setup" ? "Setup" : location.pathname === "/system" ? "System checks" : location.pathname.startsWith("/series/") ? "TV show" : location.pathname === "/settings" ? "Settings" : location.pathname === "/releases" ? "Releases" : (navigation.find((item) => item.path === location.pathname)?.name ?? "Page")} · ReelScarey`;
   }, [location.pathname]);
   useEffect(() => {
     function close(event: KeyboardEvent) {

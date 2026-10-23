@@ -53,6 +53,7 @@ button:disabled {
   color: #eeeef0;
 }
 .sidebar {
+  overflow-y: auto;
   width: 236px;
   position: fixed;
   inset: 0 auto 0 0;

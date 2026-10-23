@@ -5,6 +5,7 @@ security review and the owner's license decision remain release gates.
 
 ## First run and storage
 
+Source builds require Go 1.27.3 or newer for the standard-library security fixes.
 Use the container instructions in README or extract the package matching your
 OS and CPU. Native installs need FFprobe/FFmpeg on PATH for media validation;
 packages contain the application and embedded UI, not those external tools.

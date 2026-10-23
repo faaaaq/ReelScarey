@@ -26,8 +26,19 @@
   mount remain deferred. The adapter omits the provider's default machine-
   translation filter to avoid a canonical redirect and retains local filtering.
 
-Linux CI, package execution and disposable browser acceptance evidence will be
-recorded below after completion. NAS/arm64 runtime validation, sustained budgets,
+The first hardening Linux run (40027066795) passed UI/race/static checks, then
+correctly failed the new vulnerability gate: setup-go selected Go 1.27.0 from
+the old module minimum and reported 12 reachable standard-library advisories,
+all fixed by 1.27.3. The minimum is now 1.27.3, matching the existing local and
+container builds. The check remains enforced; no advisories are suppressed.
+Disposable browser verification passed checks/recovery resume and optional
+Torznab. It also caught settings-anchor scrolling and short-viewport sidebar
+overflow, both corrected before the preview upgrade. The preview reports
+0.8.0-dev and readiness 200 after a stopped, verified config backup; the old
+executable and original settings remain available. No owner secrets were shown.
+
+Final Linux/package evidence will be recorded after completion.
+NAS/arm64 runtime validation, sustained budgets,
 independent security review, release provenance and license choice remain gates.
 
 ## Subtitle providers, language preferences and automatic downloads
