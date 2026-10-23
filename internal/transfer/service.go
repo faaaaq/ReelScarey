@@ -286,6 +286,9 @@ func (s *Service) Queue(ctx context.Context, releaseID string) (Job, bool, error
 	if e = json.Unmarshal(b, &v); e != nil {
 		return Job{}, false, e
 	}
+	if v.ID != releaseID {
+		return Job{}, false, problem("invalid_release", "The encrypted release selection does not match its record. Search again.")
+	}
 	indexer, e := s.indexerConfig(ctx)
 	if e != nil {
 		return Job{}, false, e

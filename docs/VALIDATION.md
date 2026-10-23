@@ -18,9 +18,11 @@ roots and generated data; no existing user library or torrents are modified.
   private generated video downloaded from a localhost web seed. Its Torznab
   service is a protocol fixture, not a public indexer. CI results are recorded
   after execution.
-- Owner has no Torznab service configured yet. Existing Mutiny catalog data and
-  credentials are preserved. Connecting the hosted qBittorrent and mounting its
-  download folder remain necessary for owner-service acceptance.
+- The owner's hosted qBittorrent connection was verified and saved through
+  Settings after supporting its newer HTTP 204 login and session-cookie format.
+  Credentials were entered privately and remain encrypted. No owner torrents
+  were added or changed. No Torznab service is configured yet; an indexer and a
+  shared download mount remain necessary for owner-service acceptance.
 
 See [workflow operations](MOVIE_WORKFLOW.md) for filesystem guarantees and limits.
 
@@ -75,7 +77,8 @@ not available locally, so container and race checks run in GitHub Actions.
 
 - Linux/ARM deployment coverage, resource measurements, backup/restore drills,
   broad accessibility audits and full security review remain future work.
-- No indexer, downloader, import worker, TV ingest or subtitle adapter exists yet.
+- Owner-service download/import acceptance requires the indexer and shared mount
+  described above. TV ingest and subtitle adapters remain future work.
 - Sessions use a fixed 24-hour lifetime. Rate-limit counters are memory-resident
   and reset on restart; durable sessions and library data are SQLite-backed.
 - The project license still needs the owner's choice before public distribution.

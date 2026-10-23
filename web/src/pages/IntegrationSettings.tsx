@@ -109,6 +109,8 @@ export function IntegrationSettings({
             </label>
             <TextField.Root
               id={`${kind}-url`}
+              name={`${kind}-endpoint`}
+              autoComplete="off"
               type="url"
               value={url}
               onChange={(e) => setURL(e.target.value)}
@@ -126,6 +128,7 @@ export function IntegrationSettings({
                 <label htmlFor="qbt-username">Web UI username</label>
                 <TextField.Root
                   id="qbt-username"
+                  name="qbittorrent-service-username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
@@ -140,12 +143,13 @@ export function IntegrationSettings({
             </label>
             <TextField.Root
               id={`${kind}-secret`}
+              name={`${kind}-service-secret`}
               type="password"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
               required={!indexer && !resource.data.configured}
               maxLength={2048}
-              autoComplete="off"
+              autoComplete="new-password"
               disabled={pending}
             />
             <p className="field-help">

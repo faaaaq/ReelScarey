@@ -323,3 +323,16 @@ func TestLeaseFencesStaleWorker(t *testing.T) {
 		t.Fatal("stale owner can submit", e)
 	}
 }
+
+func TestPayloadIdentityCheckedBeforeSubmission(t *testing.T) {
+	f := setupWorkflow(t)
+	j := f.queue(t)
+	if _, e := f.db.Exec(`UPDATE downloads SET info_hash=? WHERE id=?`, strings.Repeat("f", 40), j.ID); e != nil {
+		t.Fatal(e)
+	}
+	f.tick(t)
+	current, e := f.s.Job(context.Background(), j.ID)
+	if e != nil || current.ErrorCode != "payload_mismatch" || f.client.adds != 0 {
+		t.Fatal("mismatched payload was submitted", current.ErrorCode, e)
+	}
+}

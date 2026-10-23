@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -60,8 +61,12 @@ func qbtRequest(ctx context.Context, c ClientConfig, client *http.Client, method
 	if resp.StatusCode >= 500 || resp.StatusCode == 429 {
 		return nil, resp.StatusCode, unavailable("qBittorrent is temporarily unavailable.")
 	}
-	if resp.StatusCode != 200 {
-		return nil, resp.StatusCode, problem("client_response", "qBittorrent did not return a successful API response. Check the Web UI URL; redirects are not followed.")
+	if resp.StatusCode != 200 && resp.StatusCode != 202 && resp.StatusCode != 204 {
+		operation := strings.SplitN(api, "?", 2)[0]
+		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+			return nil, resp.StatusCode, problem("client_redirect", fmt.Sprintf("qBittorrent redirected %s (HTTP %d). Use its direct Web UI API address; credentials are not forwarded through redirects.", operation, resp.StatusCode))
+		}
+		return nil, resp.StatusCode, problem("client_response", fmt.Sprintf("qBittorrent returned HTTP %d for %s. Check that the Web UI URL exposes its /api/v2 endpoints.", resp.StatusCode, operation))
 	}
 	return data, resp.StatusCode, nil
 }
@@ -75,7 +80,7 @@ func (q *QBittorrent) session(ctx context.Context, c ClientConfig) (*http.Client
 	client := newHTTP()
 	jar, _ := cookiejar.New(nil)
 	client.Jar = jar
-	data, _, err := qbtRequest(ctx, c, client, http.MethodPost, "auth/login", "application/x-www-form-urlencoded", strings.NewReader(url.Values{"username": {c.Username}, "password": {c.Password}}.Encode()))
+	data, status, err := qbtRequest(ctx, c, client, http.MethodPost, "auth/login", "application/x-www-form-urlencoded", strings.NewReader(url.Values{"username": {c.Username}, "password": {c.Password}}.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -83,11 +88,16 @@ func (q *QBittorrent) session(ctx context.Context, c ClientConfig) (*http.Client
 	u.Path += "/"
 	hasSID := false
 	for _, cookie := range jar.Cookies(u) {
-		if cookie.Name == "SID" && cookie.Value != "" {
+		modernName := false
+		if strings.HasPrefix(cookie.Name, "QBT_SID_") {
+			port, e := strconv.Atoi(strings.TrimPrefix(cookie.Name, "QBT_SID_"))
+			modernName = e == nil && port >= 1 && port <= 65535
+		}
+		if (cookie.Name == "SID" || modernName) && cookie.Value != "" {
 			hasSID = true
 		}
 	}
-	if strings.TrimSpace(string(data)) != "Ok." || !hasSID {
+	if !((status == 200 && strings.TrimSpace(string(data)) == "Ok.") || (status == 204 && len(data) == 0)) || !hasSID {
 		return nil, problem("client_auth", "qBittorrent rejected the username or password. Use its Web UI credentials.")
 	}
 	if len(q.sessions) >= 4 {
@@ -187,8 +197,16 @@ func (q *QBittorrent) Add(ctx context.Context, c ClientConfig, tag, savePath str
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(string(data)) != "Ok." {
-		return problem("client_add_rejected", "qBittorrent did not accept the torrent. Check the client and retry.")
+	if strings.TrimSpace(string(data)) == "Ok." || len(bytes.TrimSpace(data)) == 0 {
+		return nil
 	}
-	return nil
+	var result struct {
+		Success *int `json:"success_count"`
+		Failure *int `json:"failure_count"`
+		Pending *int `json:"pending_count"`
+	}
+	if json.Unmarshal(data, &result) == nil && result.Success != nil && result.Failure != nil && result.Pending != nil && *result.Failure == 0 && *result.Success >= 0 && *result.Pending >= 0 && *result.Success+*result.Pending == 1 {
+		return nil
+	}
+	return problem("client_add_rejected", "qBittorrent did not accept the torrent. Check the client and retry.")
 }

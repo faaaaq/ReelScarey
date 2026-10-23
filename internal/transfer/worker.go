@@ -139,6 +139,17 @@ func (s *Service) process(ctx context.Context, j Job) error {
 		if err = json.Unmarshal(plain, &payload); err != nil {
 			return err
 		}
+		var actualHash string
+		if payload.Magnet != "" && len(payload.Torrent) == 0 {
+			actualHash, err = MagnetHash(payload.Magnet)
+		} else if payload.Magnet == "" && len(payload.Torrent) > 0 {
+			actualHash, err = TorrentHash(payload.Torrent)
+		} else {
+			return problem("payload_mismatch", "The saved torrent payload is invalid. No submission was made.")
+		}
+		if err != nil || actualHash != j.Hash {
+			return problem("payload_mismatch", "The saved torrent payload does not match this job's info hash. No submission was made.")
+		}
 		if err = s.owned(ctx, j, `UPDATE downloads SET state='submitting',submission_attempted=1,submitted_at=unixepoch(),updated_at=unixepoch()`); err != nil {
 			return err
 		}

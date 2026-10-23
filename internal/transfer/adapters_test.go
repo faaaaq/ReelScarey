@@ -191,3 +191,64 @@ func TestPathMappingRejectsTraversal(t *testing.T) {
 		}
 	}
 }
+
+func TestQBittorrentModernNoContentRequiresSession(t *testing.T) {
+	for _, withCookie := range []bool{true, false} {
+		t.Run(fmt.Sprint(withCookie), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/v2/auth/login":
+					if withCookie {
+						http.SetCookie(w, &http.Cookie{Name: "QBT_SID_8080", Value: "modern-test-session", Path: "/"})
+					}
+					w.WriteHeader(http.StatusNoContent)
+				case "/api/v2/app/webapiVersion":
+					fmt.Fprint(w, "2.12.0")
+				case "/api/v2/torrents/add":
+					w.WriteHeader(http.StatusNoContent)
+				default:
+					w.WriteHeader(404)
+				}
+			}))
+			defer server.Close()
+			q := NewQBittorrent()
+			c := ClientConfig{URL: server.URL, Username: "testadmin", Password: "test-password"}
+			_, e := q.Test(context.Background(), c)
+			if !withCookie {
+				if e == nil {
+					t.Fatal("empty unauthenticated response accepted")
+				}
+				return
+			}
+			if e != nil {
+				t.Fatal(e)
+			}
+			if e = q.Add(context.Background(), c, "reelscarey-test", "/downloads/test", Payload{Magnet: testMagnet}); e != nil {
+				t.Fatal("modern empty add response rejected", e)
+			}
+		})
+	}
+}
+
+func TestQBittorrentModernAddResults(t *testing.T) {
+	for _, body := range []string{`{"success_count":1,"failure_count":0,"pending_count":0,"added_torrent_ids":[]}`, `{"success_count":0,"failure_count":0,"pending_count":1,"added_torrent_ids":[]}`, `{"success_count":0,"failure_count":1,"pending_count":0}`, `<html>not an API response</html>`} {
+		t.Run(body[:10], func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v2/auth/login" {
+					http.SetCookie(w, &http.Cookie{Name: "QBT_SID_8080", Value: "modern-test-session", Path: "/"})
+					w.WriteHeader(204)
+					return
+				}
+				w.WriteHeader(202)
+				fmt.Fprint(w, body)
+			}))
+			defer server.Close()
+			q := NewQBittorrent()
+			e := q.Add(context.Background(), ClientConfig{URL: server.URL, Username: "testadmin", Password: "test-password"}, "reelscarey-test", "/downloads/test", Payload{Magnet: testMagnet})
+			want := strings.Contains(body, `"success_count":1`) || strings.Contains(body, `"pending_count":1`)
+			if (e == nil) != want {
+				t.Fatal("unexpected modern add result", e)
+			}
+		})
+	}
+}

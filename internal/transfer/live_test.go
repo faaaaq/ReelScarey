@@ -63,21 +63,23 @@ func TestRealQBittorrentDownloadAndImport(t *testing.T) {
 	if e = os.WriteFile(filepath.Join(configPath, "qBittorrent.conf"), []byte(ini), 0600); e != nil {
 		t.Fatal(e)
 	}
-	cmd := exec.CommandContext(ctx, "qbittorrent-nox", "--profile="+profile, "--webui-port="+strconv.Itoa(port), "--confirm-legal-notice")
+	// The isolated profile already accepts the notice. The command-line notice
+	// flag is unavailable in older supported clients, including Ubuntu's 4.6.3.
+	cmd := exec.CommandContext(ctx, "qbittorrent-nox", "--profile="+profile, "--webui-port="+strconv.Itoa(port))
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	if e = cmd.Start(); e != nil {
 		t.Fatal(e)
 	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
 	defer func() {
 		_ = cmd.Process.Signal(os.Interrupt)
-		done := make(chan struct{})
-		go func() { _ = cmd.Wait(); close(done) }()
 		select {
-		case <-done:
+		case <-exited:
 		case <-time.After(15 * time.Second):
 			_ = cmd.Process.Kill()
-			<-done
+			<-exited
 		}
 	}()
 	qbt := NewQBittorrent()
@@ -89,6 +91,9 @@ func TestRealQBittorrentDownloadAndImport(t *testing.T) {
 			break
 		}
 		select {
+		case exitErr := <-exited:
+			exited <- exitErr
+			t.Fatalf("isolated qBittorrent exited before becoming ready: %v", exitErr)
 		case <-ctx.Done():
 			t.Fatal(ctx.Err())
 		case <-time.After(300 * time.Millisecond):

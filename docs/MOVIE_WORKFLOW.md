@@ -135,4 +135,7 @@ See VALIDATION.md for executed results.
 
 Contracts were checked against the [Torznab specification](https://torznab.github.io/spec-1.3-draft/torznab/Specification-v1.3.html)
 and [qBittorrent Web API documentation](https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-%28qBittorrent-5.0%29).
+Compatibility also covers current upstream [session-cookie/204 handling](https://github.com/qbittorrent/qBittorrent/blob/master/src/webui/webapplication.cpp)
+and structured/async torrent-add responses. An authenticated session cookie is
+still required, and payload hashes are rechecked immediately before submission.
 No implementation code was copied from the media applications inspiring this project.
