@@ -26,7 +26,15 @@ show/season/episode monitoring. TV release/download/import work remains pending.
   startup/authentication/restart/password-recovery smoke pass. An initial Go
   package scan overlapped a dependency reinstall and failed while node_modules
   was being replaced; the required sequential run after the frontend build passed.
-- Live preview and Linux CI results are recorded after execution.
+- The stopped preview config was backed up before migration. Version 0.4 starts
+  successfully with the existing administrator session and saved TMDb connection.
+  Live browser search/details returned FROM (2022), TMDb 124364, with its real
+  artwork and synopsis. This was a read-only check; no show was added to the
+  owner's catalog and no owner media/downloads were used for testing.
+- The [successful Linux run](https://github.com/faaaaq/ReelScarey/actions/runs/39892317129)
+  at code commit e701dfa passed all 19 frontend tests, the full Go race/static
+  checks, real disposable qBittorrent download/import regression, native process
+  smoke, Docker build and authenticated container restart/persistence smoke.
 
 See [television operations](TELEVISION.md) for monitoring semantics and limits.
 

@@ -93,3 +93,13 @@ The owner's hosted qBittorrent connection also verifies after an app restart;
 owner-service acceptance still requires an indexer and shared download mount.
 Owner supplied a qBittorrent URL but does not currently use Torznab; existing
 user torrents/library files are not used for testing.
+
+2026-10-22 television catalog: canonical TV search/add, on-demand season episode
+metadata, parent monitoring pauses, metadata refresh and revision conflicts are
+implemented. All 19 frontend tests, backend/API tests, migration upgrade checks,
+static checks and native restart smoke pass locally. Live read-only TMDb browser
+search/details returned FROM (2022), TMDb 124364, using the saved connection.
+No owner show was added as test data. TV download/import mapping remains next.
+The [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/39892317129)
+also passed the complete frontend/race/static checks, disposable qBittorrent
+regression, native smoke and Docker build/container restart checks.
