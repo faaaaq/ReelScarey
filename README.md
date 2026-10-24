@@ -1,13 +1,11 @@
 # ReelScarey
 
-**Media management, without the horror.**
-
 A unified, self-hosted media application in Go and React. Movie and TV downloads
 and verified imports share durable scheduled searches and quality profiles.
 
 Working now: administrator setup/login/logout, persistent sessions, encrypted
 TMDb connection settings with real connection tests, TMDb movie search/details,
-idempotent movie adds, paginated poster browsing, persisted library settings,
+idempotent movie adds, filtered poster and table browsing, persisted library settings,
 live dashboard counts, Torznab release search, qBittorrent downloads, persistent
 download tracking and verified imports, plus TV search, canonical show adds,
 season/episode lists, metadata refresh, persistent monitoring choices, episode and
@@ -23,6 +21,11 @@ episodes, saved dates and tracked job status. They work offline with explicit
 search/Activity links. See [planning and metadata limits](docs/PLANNING.md).
 One server owns the UI, REST API,
 worker and SQLite database.
+
+Movies and TV libraries support literal title search, status/monitoring filters,
+stable sorting and bookmarkable poster/table views. The interface uses a compact
+catalog layout and a live overview instead of promotional copy and welcome art.
+See [library browsing and status limits](docs/LIBRARY_BROWSING.md).
 
 Not implemented: replacement/upgrade imports, audio-language verification,
 or full production hardening. Automation starts paused and defaults to
@@ -55,7 +58,7 @@ Add direct IPTorrents/XSpeeds, public NYAA, private RSS or Torznab connections i
 Find releases, search, then select Download. Activity tracks download/import
 progress and offers recovery actions. See [movie workflow setup](docs/MOVIE_WORKFLOW.md).
 
-For TV, choose TV shows in Search, add a show, then open Seasons & episodes in
+For TV, choose TV shows in Search, add a show, then open Episodes in
 the TV library. Load each season's episodes from TMDb as needed and choose which
 ones to monitor. Pausing a show or season preserves individual selections.
 TV catalog features do not require Torznab or access to media files. Once an

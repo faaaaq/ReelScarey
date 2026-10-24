@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 type Item struct {
@@ -38,10 +40,11 @@ func (s *Store) Counts(ctx context.Context) (Counts, error) {
 }
 
 type Page struct {
-	Items []Item `json:"items"`
-	Page  int    `json:"page"`
-	Total int    `json:"total"`
-	Limit int    `json:"limit"`
+	Items           []Item `json:"items"`
+	Page            int    `json:"page"`
+	Total           int    `json:"total"`
+	Limit           int    `json:"limit"`
+	CollectionTotal int    `json:"collection_total"`
 }
 
 const PageSize = 24
@@ -57,22 +60,56 @@ func scan(row scanner) (Item, error) {
 }
 
 func (s *Store) List(ctx context.Context, kind string, page int) (Page, error) {
-	if kind != "movie" && kind != "series" {
-		return Page{}, fmt.Errorf("kind must be movie or series")
+	return s.Browse(ctx, BrowseFilter{Kind: kind, Page: page})
+}
+
+var ErrBrowseInput = errors.New("Choose valid library filters and a page between 1 and 100000.")
+
+type BrowseFilter struct {
+	Kind, Query, Status, Monitored, Sort string
+	Page                                 int
+}
+
+// Browse reads saved catalog state only. Ordering SQL comes from a fixed allowlist.
+func (s *Store) Browse(ctx context.Context, f BrowseFilter) (Page, error) {
+	orders := map[string]string{
+		"title":      "title COLLATE NOCASE, id",
+		"title_desc": "title COLLATE NOCASE DESC, id",
+		"year_desc":  "year IS NULL, year DESC, title COLLATE NOCASE, id",
+		"year":       "year IS NULL, year, title COLLATE NOCASE, id",
+		"added":      "id DESC",
 	}
-	if page < 1 || page > 100000 {
-		return Page{}, fmt.Errorf("invalid library page")
+	if f.Sort == "" {
+		f.Sort = "title"
 	}
+	if f.Status == "" {
+		f.Status = "all"
+	}
+	if f.Monitored == "" {
+		f.Monitored = "all"
+	}
+	if (f.Kind != "movie" && f.Kind != "series") || f.Page < 1 || f.Page > 100000 ||
+		orders[f.Sort] == "" || (f.Status != "all" && f.Status != "missing" && f.Status != "available" && f.Status != "downloading") ||
+		(f.Monitored != "all" && f.Monitored != "monitored" && f.Monitored != "paused") ||
+		len(f.Query) > 200 || !utf8.ValidString(f.Query) || strings.ContainsFunc(f.Query, unicode.IsControl) {
+		return Page{}, ErrBrowseInput
+	}
+	f.Query = strings.TrimSpace(f.Query)
+	where := " WHERE kind=? AND title LIKE ? ESCAPE '\\' AND (?='all' OR status=?) AND (?='all' OR monitored=?)"
+	args := []any{f.Kind, planningText(f.Query), f.Status, f.Status, f.Monitored, f.Monitored == "monitored"}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Page{}, err
 	}
 	defer tx.Rollback()
-	out := Page{Items: make([]Item, 0), Page: page, Limit: PageSize}
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items WHERE kind = ?", kind).Scan(&out.Total); err != nil {
+	out := Page{Items: make([]Item, 0), Page: f.Page, Limit: PageSize}
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items WHERE kind=?", f.Kind).Scan(&out.CollectionTotal); err != nil {
 		return Page{}, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT "+columns+" FROM media_items WHERE kind = ? ORDER BY title COLLATE NOCASE, id LIMIT ? OFFSET ?", kind, PageSize, (page-1)*PageSize)
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items"+where, args...).Scan(&out.Total); err != nil {
+		return Page{}, err
+	}
+	rows, err := tx.QueryContext(ctx, "SELECT "+columns+" FROM media_items"+where+" ORDER BY "+orders[f.Sort]+" LIMIT ? OFFSET ?", append(args, PageSize, (f.Page-1)*PageSize)...)
 	if err != nil {
 		return Page{}, err
 	}

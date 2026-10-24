@@ -4,22 +4,19 @@ import { Link } from "react-router-dom";
 import type { ReactNode } from "react";
 
 export function PageHeading({
-  eyebrow,
   title,
   description,
   children,
 }: {
-  eyebrow: string;
   title: string;
-  description: string;
+  description?: string;
   children?: ReactNode;
 }) {
   return (
     <header className="page-heading flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p className="eyebrow">{eyebrow}</p>
         <h1>{title}</h1>
-        <p className="page-description">{description}</p>
+        {description && <p className="page-description">{description}</p>}
       </div>
       {children}
     </header>

@@ -145,7 +145,7 @@ See [existing-library workflow](docs/EXISTING_LIBRARY.md).
 See [Usenet setup and limits](docs/USENET.md). IPTorrents and XSpeeds account
 testing remains deferred.
 
-## 10 — Wanted and release calendar (current)
+## 10 — Wanted and release calendar
 - [x] Authenticated read-only movie/episode planning from registered files,
   tracked reservations, monitoring hierarchy and validated cached dates.
 - [x] Wanted filters, literal title search, counts, stable pagination and real
@@ -159,6 +159,21 @@ testing remains deferred.
 
 See [planning behavior and limits](docs/PLANNING.md). IPTorrents and XSpeeds
 account testing remains deferred.
+
+## 11 — Library browsing and visual overhaul (current)
+- [x] Literal title search, saved status/parent monitoring filters, stable title,
+  year and recently-added ordering with bounded pagination and coherent counts.
+- [x] Bookmarkable poster/table views, filter preservation, page recovery and
+  explicit partial-show availability labels.
+- [x] Shared catalog layout, compact navigation, functional overview and removal
+  of application slogans, decorative labels, welcome art and promotional copy.
+- [x] Local backend/API checks and 62 UI interaction tests.
+- [ ] Complete browser/native/package/Linux acceptance and preview upgrade.
+- [ ] Bulk editing, media removal, disk health scanning and versioned replacement
+  imports remain future scope. No private-account testing is included.
+
+See [browsing behavior and interface](docs/LIBRARY_BROWSING.md). IPTorrents and
+XSpeeds account testing remains explicitly deferred.
 
 ## Validation record
 

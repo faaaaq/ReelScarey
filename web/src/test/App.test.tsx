@@ -73,11 +73,9 @@ describe("foundation UI", () => {
     expect(
       await screen.findByRole("heading", { name: "My library" }),
     ).toBeVisible();
-    expect(await screen.findByText("Connected")).toBeVisible();
+    expect(await screen.findByText(/^Connected ·/)).toBeVisible();
     await userEvent.click(screen.getByRole("link", { name: /^Movies$/ }));
-    expect(
-      await screen.findByText("Your next feature starts here."),
-    ).toBeVisible();
+    expect(await screen.findByText("No movies in the library")).toBeVisible();
     expect(screen.getByRole("link", { name: /Add movies/i })).toBeVisible();
     expect(
       fetch.mock.calls.some(

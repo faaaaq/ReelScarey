@@ -95,7 +95,6 @@ export function Automation() {
   return (
     <>
       <PageHeading
-        eyebrow="LET THE LIBRARY KEEP UP"
         title="Automation"
         description="Search on a schedule, choose your quality, and see every decision."
       />

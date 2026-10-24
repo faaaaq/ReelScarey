@@ -101,7 +101,6 @@ function ReleaseBrowser() {
   return (
     <>
       <PageHeading
-        eyebrow="FIND A RELEASE"
         title={
           movie.data
             ? `Releases for ${movie.data.title}`

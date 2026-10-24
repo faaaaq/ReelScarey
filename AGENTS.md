@@ -36,6 +36,11 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   contact providers, change monitoring or enqueue work. Registered availability
   and incomplete cached metadata must be labeled honestly; invalid dates must
   not authorize scheduled searches.
+  Catalog browsing filters use saved parent status/monitoring; never imply that
+  a partially registered show is complete. Keep literal queries parameterized,
+  sort expressions allowlisted, and pagination stable. Shared UI copy must be
+  functional; do not reintroduce slogans, promotional welcome art or decorative
+  page labels. See docs/LIBRARY_BROWSING.md.
 - internal/quality owns editable profiles, conservative release identity and ranking.
 - internal/subtitle owns registered-media inspections, OpenSubtitles credentials/
   protocol, language/track preferences, leased jobs and journaled sidecar storage.

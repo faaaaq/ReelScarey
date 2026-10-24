@@ -8,7 +8,7 @@ import {
   type FormEvent,
 } from "react";
 import { Button, TextField } from "@radix-ui/themes";
-import { Clapperboard, KeyRound, LogIn, ShieldCheck } from "lucide-react";
+import { Film, KeyRound, LogIn, ShieldCheck } from "lucide-react";
 import {
   api,
   messageFor,
@@ -152,15 +152,14 @@ function AuthForm({
       <section className="panel auth-card">
         <div className="auth-brand">
           <span className="brand-mark">
-            <Clapperboard size={23} />
+            <Film size={23} />
           </span>
           <span className="wordmark">ReelScarey</span>
         </div>
-        <p className="eyebrow">YOUR MEDIA. ONE HOME.</p>
-        <h1>{setup ? "Your library starts with you." : "Welcome back."}</h1>
+        <h1>{setup ? "Create administrator" : "Sign in"}</h1>
         <p className="muted">
           {setup
-            ? "Create the administrator account to make this library yours."
+            ? "Create the administrator account for this installation."
             : "Sign in to manage your library."}
         </p>
         <form onSubmit={submit}>
@@ -251,7 +250,6 @@ function AuthForm({
                 : "Sign in"}
           </Button>
         </form>
-        <p className="auth-footnote">Media management, without the horror.</p>
       </section>
     </div>
   );

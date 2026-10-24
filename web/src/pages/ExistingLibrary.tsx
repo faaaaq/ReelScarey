@@ -103,7 +103,6 @@ export function ExistingLibrary() {
   return (
     <>
       <PageHeading
-        eyebrow="ALREADY ON YOUR SHELVES"
         title="Import existing library"
         description="Discover videos in your configured media folders, review their identities, and add verified files where they already are."
       />

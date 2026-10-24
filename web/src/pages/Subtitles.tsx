@@ -91,7 +91,6 @@ export function Subtitles() {
   return (
     <>
       <PageHeading
-        eyebrow="EVERY WORD. EVERY SCENE."
         title="Subtitles"
         description="English dialogue, signs and songs, and forced tracks — kept with your media."
       />
@@ -601,7 +600,6 @@ function MediaFiles({
   return (
     <section>
       <PageHeading
-        eyebrow="IN YOUR LIBRARY"
         title="Subtitle activity"
         description="Imported movies and episode files appear here. Existing media stays untouched."
       />

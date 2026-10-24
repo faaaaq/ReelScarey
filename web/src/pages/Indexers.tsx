@@ -108,7 +108,6 @@ export function Indexers() {
   return (
     <>
       <PageHeading
-        eyebrow="YOUR SOURCES, CONNECTED"
         title="Indexers"
         description="Connect torrent trackers, RSS feeds and Newznab Usenet sources. Search results keep their source and use the matching download client."
       >

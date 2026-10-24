@@ -1,5 +1,23 @@
 # Validation record — 2026-10-24
 
+## Library browsing and visual overhaul (0.13 development)
+
+- Saved catalog reads pass literal wildcard/backslash search, status/parent
+  monitoring filters, stable sorting, unknown-year placement, pagination,
+  coherent collection/filtered counts, reopen and no-write checks. API checks
+  reject malformed/repeated/unknown filters and require authentication.
+- All 62 UI tests pass after a clean locked install (zero audit vulnerabilities),
+  format/type checks and production build. Seven new behavior checks cover filter
+  bookmarks/back navigation, page resets, layout changes without another fetch,
+  precise workflow links, empty-page/filter recovery, partial TV status and
+  independent overview errors. Existing authentication tests retain their behavior
+  with the new plain labels. No migration or dependency was added.
+- A first clean install was interrupted in the restricted runtime and left an
+  incomplete node_modules; repeating the locked install with registry access
+  succeeded. Protocol-fixture backend tests also require local socket access and
+  pass with it. Browser, complete native/package/Linux acceptance and owner preview
+  upgrade are pending. IPTorrents/XSpeeds account tests remain deferred.
+
 ## Wanted and release calendar (0.12 development)
 
 - Local library/API/automation tests pass for registration/job precedence,

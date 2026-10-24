@@ -40,7 +40,6 @@ export function Setup() {
   return (
     <>
       <PageHeading
-        eyebrow="MAKE YOURSELF AT HOME"
         title="Set up your library"
         description="Start with your library and metadata. Connect the optional services whenever you are ready."
       />
@@ -142,7 +141,6 @@ export function SystemChecks() {
   return (
     <>
       <PageHeading
-        eyebrow="READY FOR THE NEXT SCENE"
         title="System checks"
         description="Check this installation before importing media or resuming a restored configuration."
       >

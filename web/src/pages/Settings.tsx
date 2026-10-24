@@ -103,9 +103,8 @@ export function Settings() {
   return (
     <>
       <PageHeading
-        eyebrow="MAKE YOURSELF AT HOME"
         title="Settings"
-        description="A few simple preferences. One place to keep them."
+        description="Library folders, naming and service connections."
       />
       <RequestState
         loading={settings.loading || system.loading}

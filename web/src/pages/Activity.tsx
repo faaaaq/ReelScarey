@@ -36,7 +36,6 @@ function FocusedJobContent({ id }: { id: string }) {
   return (
     <>
       <PageHeading
-        eyebrow="BEHIND THE SCENES"
         title="Download details"
         description="Release, progress, files and safe import status."
       />
@@ -98,7 +97,6 @@ function ActivityList() {
   return (
     <>
       <PageHeading
-        eyebrow="BEHIND THE SCENES"
         title="Activity"
         description="Follow your movies and episodes from download to library."
       >

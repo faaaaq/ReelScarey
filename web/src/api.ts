@@ -48,6 +48,7 @@ export type SearchResults = {
   total_results: number;
 };
 export type LibraryPage = {
+  collection_total: number;
   items: MediaItem[];
   page: number;
   total: number;

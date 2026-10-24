@@ -203,7 +203,19 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listLibrary(w http.ResponseWriter, r *http.Request) {
-	kind := r.URL.Query().Get("kind")
+	values, parseErr := url.ParseQuery(r.URL.RawQuery)
+	allowed := map[string]bool{"kind": true, "page": true, "query": true, "status": true, "monitored": true, "sort": true}
+	if parseErr != nil {
+		fail(w, 400, "invalid_library", library.ErrBrowseInput.Error())
+		return
+	}
+	for k, v := range values {
+		if !allowed[k] || len(v) != 1 {
+			fail(w, 400, "invalid_library", library.ErrBrowseInput.Error())
+			return
+		}
+	}
+	kind := values.Get("kind")
 	if kind != "movie" && kind != "series" {
 		fail(w, 400, "invalid_kind", "Choose kind=movie or kind=series.")
 		return
@@ -213,7 +225,13 @@ func (s *Server) listLibrary(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid_page", "Choose a page between 1 and 100000.")
 		return
 	}
-	items, err := s.library.List(r.Context(), kind, page)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	items, err := s.library.Browse(ctx, library.BrowseFilter{Kind: kind, Page: page, Query: values.Get("query"), Status: values.Get("status"), Monitored: values.Get("monitored"), Sort: values.Get("sort")})
+	if errors.Is(err, library.ErrBrowseInput) {
+		fail(w, 400, "invalid_library", err.Error())
+		return
+	}
 	if err != nil {
 		s.internal(w, "library_list", err)
 		return

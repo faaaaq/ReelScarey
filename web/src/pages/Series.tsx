@@ -82,7 +82,6 @@ function SeriesView({ initial }: { initial: TVSeries }) {
   return (
     <>
       <PageHeading
-        eyebrow="YOUR SERIES"
         title={show.title}
         description={[show.year, show.series_status]
           .filter(Boolean)

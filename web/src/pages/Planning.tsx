@@ -119,7 +119,6 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
   return (
     <>
       <PageHeading
-        eyebrow={calendar ? "WHAT’S ON THE HORIZON" : "THE NEXT THING TO WATCH"}
         title={calendar ? "Release calendar" : "Wanted"}
         description={
           calendar

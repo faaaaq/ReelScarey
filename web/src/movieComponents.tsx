@@ -183,7 +183,7 @@ export function MovieDetails({
                 <p className="field-help">
                   {kind === "series"
                     ? "Regular seasons start selected; specials start unselected. Choose seasons and episodes in your library, then find releases. Completed TV files need your mapping confirmation before import."
-                    : "Saves your monitoring preference. Find and select releases from your movie library; scheduled searching is upcoming."}
+                    : "Saves your monitoring preference. Choose releases from the library or configure scheduled searches in Automation."}
                 </p>
               </>
             )}

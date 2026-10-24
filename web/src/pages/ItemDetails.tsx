@@ -154,9 +154,6 @@ export function ItemInformation({
           {hero && (
             <>
               <PageHeading
-                eyebrow={
-                  data.item.kind === "series" ? "YOUR SERIES" : "YOUR MOVIE"
-                }
                 title={data.item.title}
                 description={[
                   data.item.year,

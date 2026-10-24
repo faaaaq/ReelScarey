@@ -84,7 +84,7 @@ describe("authentication and movies", () => {
     mount();
     expect(
       await screen.findByRole("heading", {
-        name: "Your library starts with you.",
+        name: "Create administrator",
       }),
     ).toBeVisible();
     expect(
@@ -146,7 +146,7 @@ describe("authentication and movies", () => {
           : undefined,
     );
     mount();
-    await screen.findByRole("heading", { name: "Welcome back." });
+    await screen.findByRole("heading", { name: "Sign in" });
     await userEvent.type(screen.getByLabelText("Username"), "testadmin");
     await userEvent.type(screen.getByLabelText("Password"), "wrong-password");
     await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
@@ -250,7 +250,7 @@ describe("authentication and movies", () => {
     );
     mount("/settings");
     expect(
-      await screen.findByRole("heading", { name: "Welcome back." }),
+      await screen.findByRole("heading", { name: "Sign in" }),
     ).toBeVisible();
     expect(screen.queryByLabelText("Library name")).not.toBeInTheDocument();
   });
@@ -264,9 +264,7 @@ describe("authentication and movies", () => {
     await screen.findByRole("heading", { name: "My library" });
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await waitFor(() =>
-      expect(
-        screen.getByRole("heading", { name: "Welcome back." }),
-      ).toBeVisible(),
+      expect(screen.getByRole("heading", { name: "Sign in" })).toBeVisible(),
     );
     const sent = fetch.mock.calls.find(([url]) => url.endsWith("/auth/logout"));
     expect(sent?.[1]?.headers).toMatchObject({ "X-CSRF-Token": "test-csrf" });

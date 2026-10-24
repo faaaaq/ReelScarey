@@ -53,12 +53,11 @@ function MediaSearch({ kind }: { kind: "movie" | "series" }) {
   return (
     <>
       <PageHeading
-        eyebrow="FIND YOUR NEXT FEATURE"
         title={tv ? "Search TV shows" : "Search movies"}
         description={
           tv
-            ? "Find your next series and choose the episodes to follow."
-            : "Explore TMDb and make room for your next movie night."
+            ? "Search TMDb and add TV shows to your library."
+            : "Search TMDb and add movies to your library."
         }
       />
       <nav className="search-kind" aria-label="Search type">
@@ -117,7 +116,7 @@ function MediaSearch({ kind }: { kind: "movie" | "series" }) {
           {!query && (
             <section className="panel search-intro">
               <SearchIcon size={30} />
-              <h2>What’s on your watchlist?</h2>
+              <h2>Search by title</h2>
               <p>
                 Search a title to see real {tv ? "show" : "movie"} details,
                 artwork, and release dates.

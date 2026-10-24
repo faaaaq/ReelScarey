@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { Badge } from "@radix-ui/themes";
 import {
   Activity,
   CheckCircle2,
   Captions,
-  Clapperboard,
+  Film as BrandIcon,
   Clock3,
   CalendarDays,
   ListFilter,
@@ -100,7 +99,7 @@ function AppShell() {
       </a>
       <header className="mobile-bar">
         <Link to="/" className="wordmark">
-          <Clapperboard size={21} />
+          <BrandIcon size={21} />
           ReelScarey
         </Link>
         <button
@@ -118,13 +117,11 @@ function AppShell() {
       >
         <Link to="/" className="brand">
           <span className="brand-mark">
-            <Clapperboard size={23} />
+            <BrandIcon size={21} />
           </span>
-          <div className="wordmark">
-            ReelScarey<small>YOUR MEDIA. ONE HOME.</small>
-          </div>
+          <div className="wordmark">ReelScarey</div>
         </Link>
-        <p className="nav-label">LIBRARY</p>
+        <p className="nav-label">Library</p>
         <nav aria-label="Main navigation">
           {navigation.map(({ path, name, icon: Icon }) => (
             <NavLink key={path} to={path} end={path === "/"}>
@@ -134,6 +131,7 @@ function AppShell() {
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <p className="nav-label">Manage</p>
           <nav aria-label="Administration">
             <NavLink to="/import">
               <FolderSearch size={19} strokeWidth={1.7} />
@@ -156,15 +154,10 @@ function AppShell() {
               <span>Settings</span>
             </NavLink>
           </nav>
-          <div className="foundation-label">
-            <span className="status-dot" />
-            <span>Movies & TV</span>
-            <Badge color="gray" size="1">
-              0.12
-            </Badge>
-          </div>
           <div className="account-control">
-            <span>Signed in as {session.username}</span>
+            <span>
+              {session.username} <small>v0.13</small>
+            </span>
             <button onClick={() => void logout()} disabled={signingOut}>
               <LogOut size={15} />
               {signingOut ? "Signing out…" : "Sign out"}
@@ -174,10 +167,6 @@ function AppShell() {
         </div>
       </aside>
       <main id="main-content" tabIndex={-1}>
-        <div className="topbar">
-          <span>THE HOME SCREEN, REIMAGINED.</span>
-          <span className="topbar-note">Self-hosted. All yours.</span>
-        </div>
         <div className="page-content">
           <Routes>
             <Route path="/login" element={<Navigate to="/" replace />} />
@@ -212,9 +201,8 @@ function AppShell() {
               element={
                 <>
                   <PageHeading
-                    eyebrow="SCENE NOT FOUND"
-                    title="This page isn’t here."
-                    description="Return to your library to pick up where you left off."
+                    title="Page not found"
+                    description="Check the address or return to your library."
                   />
                   <Link to="/" className="text-link">
                     Back to dashboard
@@ -223,10 +211,6 @@ function AppShell() {
               }
             />
           </Routes>
-          <footer className="page-footer">
-            <span>ReelScarey</span>
-            <span>Less managing. More watching.</span>
-          </footer>
         </div>
       </main>
     </div>

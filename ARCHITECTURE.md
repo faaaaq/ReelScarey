@@ -79,6 +79,12 @@ worker or filesystem operation is started by these reads. Calendar dates remain
 civil dates; UTC supplies the comparison day. Invalid saved dates stay undated
 and cannot authorize automation. This adds no tables/migrations/dependencies;
 schema remains 10. See docs/PLANNING.md.
+Library browsing extends the existing paginated read with strict literal-title,
+parent-status/monitoring filters and allowlisted stable ordering. Counts and rows
+share a transaction; the UI keeps filters/view/page in the URL. Poster/table view
+changes are local presentation only. The overview reuses planning reads without
+starting work. No migration or application dependency is needed.
+See docs/LIBRARY_BROWSING.md.
 The migration ledger stores version, filename, checksum, and applied time.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored
