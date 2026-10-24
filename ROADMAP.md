@@ -168,7 +168,7 @@ account testing remains deferred.
 - [x] Shared catalog layout, compact navigation, functional overview and removal
   of application slogans, decorative labels, welcome art and promotional copy.
 - [x] Local backend/API checks and 62 UI interaction tests.
-- [ ] Complete browser/native/package/Linux acceptance and preview upgrade.
+- [x] Complete browser/native/package/Linux acceptance and preview upgrade.
 - [ ] Bulk editing, media removal, disk health scanning and versioned replacement
   imports remain future scope. No private-account testing is included.
 
@@ -176,6 +176,17 @@ See [browsing behavior and interface](docs/LIBRARY_BROWSING.md). IPTorrents and
 XSpeeds account testing remains explicitly deferred.
 
 ## Validation record
+
+2026-10-24 library browsing and visual overhaul: the
+[final Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40133125302)
+passes all 62 UI tests, backend/race/static/vulnerability checks, real disposable
+download/import regressions, checksummed packages/recovery and container restart.
+Desktop/phone browser checks verify poster/table views, saved filters, ordering,
+pagination, navigation and the functional overview. Slogans, decorative labels,
+welcome art and promotional copy are removed. The owner preview is backed up and
+running 0.13. No owner media or private services were used as fixtures; IPTorrents
+and XSpeeds account testing remains deferred. Full evidence and limits are in
+[validation](docs/VALIDATION.md).
 
 2026-10-24 Wanted and calendar: the
 [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40073977195)

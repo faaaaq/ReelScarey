@@ -12,11 +12,41 @@
   precise workflow links, empty-page/filter recovery, partial TV status and
   independent overview errors. Existing authentication tests retain their behavior
   with the new plain labels. No migration or dependency was added.
-- A first clean install was interrupted in the restricted runtime and left an
-  incomplete node_modules; repeating the locked install with registry access
-  succeeded. Protocol-fixture backend tests also require local socket access and
-  pass with it. Browser, complete native/package/Linux acceptance and owner preview
-  upgrade are pending. IPTorrents/XSpeeds account tests remain deferred.
+- An initial restricted clean install failed with npm's "Exit handler never
+  called" and left an incomplete node_modules; repeating the locked install with
+  registry access succeeded. Protocol-fixture tests also require local socket
+  access and pass with it. Full Go tests/vet/build and native startup, restart,
+  backup and recovery checks pass. All three final package checksums verify;
+  the extracted Windows package passes the same disposable recovery drill.
+- Browser checks use a separate disposable catalog, known public poster URLs,
+  sample titles and no connected owner services. Poster/table layouts, paused
+  filtering, year ordering/unknown years, title queries, clear-filter recovery,
+  back navigation, the two-page boundary and layout preservation pass. Overview,
+  details, Settings and Wanted were inspected. At 390 pixels wide, phone
+  navigation closes after a route change, two-column posters fit and the table
+  stays in its own scrollable region. Screenshots remain outside Git. The test
+  process, catalog and settings were removed. No actual download/import was
+  claimed by the browser fixtures; existing real-client regressions run in CI.
+- The stopped owner preview's schema-10 config was backed up and verified at
+  `before-redesign-20261024-161237`; the 0.12 executable is retained. Version 0.13
+  reports readiness 200, setup_required=false and healthy database, encryption,
+  storage/publication and FFprobe checks. Movies is open after sign-in. No owner
+  media was used as a fixture or scanned. IPTorrents/XSpeeds account testing stays
+  deferred.
+
+The [final Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40133125302)
+passed for application commit `03787f9`: all 62 UI tests, Go race/static checks,
+real disposable qBittorrent and SABnzbd movie/TV downloads and verified imports,
+generated subtitle and existing-library regressions, native/extracted-package
+recovery, checksummed cross-builds and authenticated container restart.
+Govulncheck reports zero vulnerabilities affecting the application and one
+advisory in a required module outside imported/called code; npm audit reports
+zero. No advisory is suppressed. The constrained container snapshot is
+6.703 MiB/512 MiB and seven PIDs, not a sustained workload measurement.
+Private artifact `12576500637` contains the 0.13 packages/checksums with 14-day
+retention. Local final archives are in `dist/private-0.13.0-final`; the extracted
+Windows build also passes. NAS/arm64 runtime, owner service/shared-storage
+acceptance and broader security/accessibility review remain separate work.
 
 ## Wanted and release calendar (0.12 development)
 
