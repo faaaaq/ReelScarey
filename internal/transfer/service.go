@@ -20,6 +20,7 @@ type Service struct {
 	secrets     *securestore.Store
 	cfg         config.Config
 	client      Client
+	sab         *SABnzbd
 	indexer     Indexer
 	adapters    map[string]Indexer
 	configMu    sync.Mutex
@@ -31,6 +32,8 @@ type Service struct {
 func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Client, indexer Indexer) *Service {
 	s := &Service{db: db, secrets: secrets, cfg: cfg, client: client, indexer: indexer}
 	s.adapters = map[string]Indexer{"iptorrents": NewDirect("iptorrents"), "xspeeds": NewDirect("xspeeds"), "nyaa": NewDirect("nyaa"), "rss": NewDirect("rss")}
+	s.adapters["newznab"] = NewNewznab()
+	s.sab = NewSABnzbd()
 	s.importer = NewImporter(s)
 	return s
 }
@@ -67,6 +70,17 @@ func (s *Service) clientConfig(ctx context.Context) (ClientConfig, error) {
 	return c, e
 }
 func (s *Service) Status(ctx context.Context, name string) (IntegrationStatus, error) {
+	if name == "sabnzbd" {
+		return s.sabStatus(ctx)
+	}
+	if name == "clients" {
+		a, e := s.Status(ctx, "qbittorrent")
+		if e != nil {
+			return a, e
+		}
+		b, e := s.sabStatus(ctx)
+		return IntegrationStatus{Configured: a.Configured || b.Configured}, e
+	}
 	if name == "indexers" {
 		var enabled int
 		if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM indexers WHERE enabled=1`).Scan(&enabled); e != nil {
@@ -166,7 +180,7 @@ func (s *Service) ConfigureClient(ctx context.Context, in ClientUpdate) error {
 	}
 	if old.URL != "" && (old.URL != u.String() || old.DownloadPath != remote) {
 		var active int
-		if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE state NOT IN ('completed','cancelled')`).Scan(&active); e != nil {
+		if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE protocol='torrent' AND state NOT IN ('completed','cancelled')`).Scan(&active); e != nil {
 			return e
 		}
 		if active > 0 {
@@ -184,6 +198,13 @@ func (s *Service) ConfigureClient(ctx context.Context, in ClientUpdate) error {
 	return s.secrets.SetNamed(ctx, "qbittorrent", b)
 }
 func (s *Service) Test(ctx context.Context, name string) error {
+	if name == "sabnzbd" {
+		c, e := s.sabConfig(ctx)
+		if e != nil {
+			return e
+		}
+		return s.sab.Test(ctx, c)
+	}
 	if name == "torznab" {
 		c, e := s.indexerConfig(ctx)
 		if e != nil {
@@ -201,13 +222,17 @@ func (s *Service) Test(ctx context.Context, name string) error {
 func (s *Service) Remove(ctx context.Context, name string) error {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
-	if name == "qbittorrent" {
+	if name == "qbittorrent" || name == "sabnzbd" {
+		protocol := "torrent"
+		if name == "sabnzbd" {
+			protocol = "usenet"
+		}
 		var active int
-		if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE state NOT IN ('completed','cancelled')`).Scan(&active); e != nil {
+		if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE protocol=? AND state NOT IN ('completed','cancelled')`, protocol).Scan(&active); e != nil {
 			return e
 		}
 		if active > 0 {
-			return problem("active_downloads", "Finish or stop tracking active downloads before disconnecting qBittorrent.")
+			return problem("active_downloads", "Finish or stop tracking this client's active downloads before disconnecting it.")
 		}
 	}
 	return s.secrets.DeleteNamed(ctx, name)
@@ -318,7 +343,15 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard)
 	if v.Generation != indexer.Generation {
 		return Job{}, false, problem("release_expired", "The indexer settings changed. Search again before downloading.")
 	}
-	client, e := s.clientConfig(ctx)
+	protocol := "torrent"
+	if indexer.Kind == "newznab" {
+		protocol = "usenet"
+	}
+	if v.Protocol != "" && v.Protocol != protocol {
+		return Job{}, false, problem("invalid_release", "The release protocol does not match its indexer. Search again.")
+	}
+	v.Protocol = protocol
+	client, e := s.downloadConfig(ctx, protocol)
 	if e != nil {
 		return Job{}, false, e
 	}
@@ -372,7 +405,7 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard)
 	if active > 0 {
 		return Job{}, false, problem("movie_busy", "This movie already has an active download or imported file. Open Activity to manage it.")
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,indexer_name) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, v.IndexerName); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,indexer_name,protocol) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, v.IndexerName, protocol); e != nil {
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET status='downloading' WHERE id=? AND status<>'available'`, v.MovieID); e != nil {

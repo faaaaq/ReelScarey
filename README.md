@@ -16,6 +16,8 @@ scheduled monitored searches, quality/language profiles, ranked release decision
 opt-in automatic missing-item downloads and resolution upgrade suggestions,
 OpenSubtitles.com connections, language/track preferences, embedded/sidecar
 detection and safe automatic subtitle downloads for registered movie/TV files.
+Managed Newznab sources and SABnzbd downloads share release search, automation,
+reviewed TV mappings and safe importing. See [Usenet setup](docs/USENET.md).
 One server owns the UI, REST API,
 worker and SQLite database.
 

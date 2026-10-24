@@ -54,7 +54,7 @@ func newHTTP() *http.Client {
 func remoteRoot(s string) (string, error) {
 	s = strings.ReplaceAll(strings.TrimSpace(s), "\\", "/")
 	if (!strings.HasPrefix(s, "/") && !regexp.MustCompile(`^[A-Za-z]:/`).MatchString(s)) || strings.HasPrefix(s, "//") || strings.ContainsAny(s, "\x00\r\n") {
-		return "", problem("invalid_settings", "Enter an absolute download path as qBittorrent sees it, such as /downloads or D:/Downloads.")
+		return "", problem("invalid_settings", "Enter an absolute download path as the download client sees it, such as /downloads or D:/Downloads.")
 	}
 	for _, part := range strings.Split(s, "/") {
 		if part == ".." || part == "." {
@@ -86,8 +86,10 @@ type ClientConfig struct {
 	Username     string `json:"username"`
 	Password     string `json:"password"`
 	DownloadPath string `json:"download_path"`
+	APIKey       string `json:"api_key,omitempty"`
 }
 type Release struct {
+	Protocol    string `json:"protocol,omitempty"`
 	IndexerID   string `json:"indexer_id,omitempty"`
 	IndexerName string `json:"indexer,omitempty"`
 	Freeleech   bool   `json:"freeleech,omitempty"`
@@ -106,6 +108,7 @@ type Candidate struct {
 	URL, Magnet, Hash, Generation string
 }
 type Payload struct {
+	NZB     []byte `json:"nzb,omitempty"`
 	Magnet  string `json:"magnet,omitempty"`
 	Torrent []byte `json:"torrent,omitempty"`
 }

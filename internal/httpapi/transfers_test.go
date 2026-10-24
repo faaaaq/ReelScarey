@@ -26,6 +26,24 @@ import (
 func TestAuthenticatedReleaseDownloadAPI(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/sab/api":
+			if r.URL.Query().Get("apikey") != "test-private-key" {
+				w.WriteHeader(403)
+				return
+			}
+			if r.URL.Query().Get("mode") == "version" {
+				fmt.Fprint(w, `{"version":"5.1.3"}`)
+			} else {
+				fmt.Fprint(w, `{"categories":["reelscarey"]}`)
+			}
+		case "/newznab":
+			if r.URL.Query().Get("t") == "caps" {
+				fmt.Fprint(w, `<caps><searching><search available="yes" supportedParams="q"/></searching></caps>`)
+			} else {
+				fmt.Fprintf(w, `<rss><channel><item><title>Owned NZB</title><guid>nzb-one</guid><enclosure url="http://%s/nzb" length="100" type="application/x-nzb"/></item></channel></rss>`, r.Host)
+			}
+		case "/nzb":
+			fmt.Fprint(w, `<nzb><file subject="owned"><groups><group>alt.test</group></groups><segments><segment bytes="100" number="1">owned@invalid</segment></segments></file></nzb>`)
 		case "/api":
 			if r.URL.Query().Get("apikey") != "test-private-key" {
 				w.WriteHeader(403)
@@ -83,7 +101,7 @@ func TestAuthenticatedReleaseDownloadAPI(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, url := range []string{"/api/v1/indexers", "/api/v1/indexers/status", "/api/v1/library/items/1", "/api/v1/integrations/torznab", "/api/v1/integrations/qbittorrent", "/api/v1/releases?movie_id=1", "/api/v1/downloads", "/api/v1/downloads/test", "/api/v1/library/movies/1"} {
+	for _, url := range []string{"/api/v1/indexers", "/api/v1/indexers/status", "/api/v1/library/items/1", "/api/v1/integrations/torznab", "/api/v1/integrations/qbittorrent", "/api/v1/integrations/sabnzbd", "/api/v1/releases?movie_id=1", "/api/v1/downloads", "/api/v1/downloads/test", "/api/v1/library/movies/1"} {
 		if out := request(handler, "GET", url, "", nil, false); out.Code != 401 {
 			t.Fatal("unprotected workflow route", url, out.Code)
 		}
@@ -217,5 +235,47 @@ func TestAuthenticatedReleaseDownloadAPI(t *testing.T) {
 	}
 	if out = request(handler, "POST", "/api/v1/library/items/1/metadata", "{}", &session, true); out.Code != 503 {
 		t.Fatal("missing metadata dependency not handled")
+	}
+	// Usenet shares normal authentication, CSRF, opaque release selection and
+	// write-only credentials; it can coexist with an active torrent client.
+	body = fmt.Sprintf(`{"url":%q,"api_key":"test-private-key","download_path":"/completed"}`, upstream.URL+"/sab")
+	for _, op := range []struct{ method, path string }{{"PUT", "/api/v1/integrations/sabnzbd"}, {"DELETE", "/api/v1/integrations/sabnzbd"}, {"POST", "/api/v1/integrations/sabnzbd/test"}} {
+		if out = request(handler, op.method, op.path, body, &session, false); out.Code != 403 {
+			t.Fatal("SAB CSRF missing", out.Code)
+		}
+	}
+	if out = request(handler, "PUT", "/api/v1/integrations/sabnzbd", body, &session, true); out.Code != 200 {
+		t.Fatal(out.Code, out.Body)
+	}
+	if out = request(handler, "GET", "/api/v1/integrations/sabnzbd", "", &session, false); out.Code != 200 || strings.Contains(out.Body.String(), "test-private-key") {
+		t.Fatal("SAB credential leak", out.Body)
+	}
+	body = fmt.Sprintf(`{"name":"Owned Newznab","kind":"newznab","url":%q,"api_key":"test-private-key","enabled":true}`, upstream.URL+"/newznab")
+	if out = request(handler, "POST", "/api/v1/indexers", body, &session, true); out.Code != 201 {
+		t.Fatal("Newznab create", out.Code, out.Body)
+	}
+	second, _, e := library.New(db).AddMovie(ctx, metadata.Movie{TMDbID: 999, Title: "Owned NZB movie"}, false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	out = request(handler, "GET", fmt.Sprintf("/api/v1/releases?movie_id=%d", second.ID), "", &session, false)
+	if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &results) != nil {
+		t.Fatal("NZB search", out.Body)
+	}
+	selected := ""
+	for _, r := range results.Items {
+		if r.Protocol == "usenet" {
+			selected = r.ID
+		}
+	}
+	if selected == "" {
+		t.Fatal("NZB missing from mixed results")
+	}
+	out = request(handler, "POST", "/api/v1/downloads", fmt.Sprintf(`{"release_id":%q}`, selected), &session, true)
+	if out.Code != 202 || json.Unmarshal(out.Body.Bytes(), &queued) != nil || queued.Item.Protocol != "usenet" {
+		t.Fatal("NZB queue", out.Code, out.Body)
+	}
+	if out = request(handler, "DELETE", "/api/v1/integrations/sabnzbd", "", &session, true); out.Code != 409 {
+		t.Fatal("active SAB disconnected")
 	}
 }

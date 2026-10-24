@@ -66,7 +66,7 @@ temporary libraries only. Never use unauthorized content as test material.
 - [ ] Versioned replacement imports, audio-language verification and richer source/
   codec scoring remain future extensions; they are not represented as working.
 
-## 5 — Subtitles (current)
+## 5 — Subtitles
 - [x] Provider interface and real OpenSubtitles.com REST integration; encrypted,
   write-only credentials, connection tests, quota/cooldown handling.
 - [x] Revision-checked language, full/signs/forced and hearing-impaired preferences;
@@ -127,6 +127,23 @@ recorded in [validation](docs/VALIDATION.md).
 
 IPTorrents and XSpeeds account acceptance remains explicitly deferred by the owner.
 See [existing-library workflow](docs/EXISTING_LIBRARY.md).
+
+## 9 — Usenet search, downloads and safe imports (current)
+- [x] Managed Newznab caps/search/NZBs, encrypted keys, bounded responses,
+  source provenance, same-origin download URLs and redirect refusal.
+- [x] Encrypted SABnzbd settings/tests and protocol-aware client routing,
+  without applying torrent seed counts to Usenet.
+- [x] Durable client identity/progress, lost-reply reconciliation, conservative
+  uncertain-submission handling and completed post-processing gates.
+- [x] Bounded dedicated-folder discovery, stable file choices, shared movie/TV
+  reservations, mandatory TV review and journaled source-preserving imports.
+- [x] Generated-video real SABnzbd/NNTP/FFprobe movie and TV tests on Windows.
+- [ ] Final Linux race/container/package and real SABnzbd acceptance.
+- [ ] Owner Newznab/SABnzbd/shared-mount acceptance requires private setup.
+- [ ] Retention scoring, multiple SABnzbd clients and NZBGet remain future scope.
+
+See [Usenet setup and limits](docs/USENET.md). IPTorrents and XSpeeds account
+testing remains deferred.
 
 ## Validation record
 

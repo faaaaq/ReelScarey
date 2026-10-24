@@ -155,7 +155,7 @@ function AppShell() {
             <span className="status-dot" />
             <span>Movies & TV</span>
             <Badge color="gray" size="1">
-              0.10
+              0.11
             </Badge>
           </div>
           <div className="account-control">

@@ -24,6 +24,7 @@ type LocalFile struct {
 	Origin     string `json:"origin"`
 }
 type History struct {
+	Protocol string  `json:"protocol"`
 	ID       string  `json:"id"`
 	Title    string  `json:"title"`
 	Indexer  string  `json:"indexer"`
@@ -110,14 +111,14 @@ func (s *Service) Details(ctx context.Context, id int64, page int) (ItemDetails,
 	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE movie_id=?`, id).Scan(&out.HistoryCount); e != nil {
 		return out, e
 	}
-	rows, e = s.db.QueryContext(ctx, `SELECT id,title,indexer_name,state,progress,total_bytes,created_at,updated_at,error_message FROM downloads WHERE movie_id=? ORDER BY created_at DESC,id LIMIT 50 OFFSET ?`, id, (page-1)*50)
+	rows, e = s.db.QueryContext(ctx, `SELECT id,title,indexer_name,state,progress,total_bytes,created_at,updated_at,error_message,protocol FROM downloads WHERE movie_id=? ORDER BY created_at DESC,id LIMIT 50 OFFSET ?`, id, (page-1)*50)
 	if e != nil {
 		return out, e
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var h History
-		if e = rows.Scan(&h.ID, &h.Title, &h.Indexer, &h.State, &h.Progress, &h.Size, &h.Created, &h.Updated, &h.Error); e != nil {
+		if e = rows.Scan(&h.ID, &h.Title, &h.Indexer, &h.State, &h.Progress, &h.Size, &h.Created, &h.Updated, &h.Error, &h.Protocol); e != nil {
 			return out, e
 		}
 		out.History = append(out.History, h)

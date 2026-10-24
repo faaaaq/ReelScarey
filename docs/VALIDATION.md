@@ -1,4 +1,30 @@
-# Validation record — 2026-10-23
+# Validation record — 2026-10-24
+
+## Usenet search, downloads and imports (0.11 development)
+
+- Local changed backend/API/upgrade/policy checks pass. All 47 UI tests pass,
+  including Newznab setup, SABnzbd secret preservation and protocol-specific
+  download controls. UI build passes with no added application dependency.
+- Newznab/SABnzbd protocol fixtures cover source credentials, NZB descriptor
+  validation, stale selections, duplicate prevention, lost upload replies,
+  completed post-processing, failed/changed/duplicate jobs, path containment,
+  symlinks, explicit TV review and source retention. Uncertain submissions retain
+  their attempt fence through manual retry/reopen rather than resubmitting.
+- Real portable SABnzbd 5.1.3 was downloaded from the official release and its
+  published SHA-256 verified. Its isolated local profile fetched generated yEnc
+  video articles from a local NNTP fixture, assembled actual movie/TV videos,
+  survived application database reopen while articles were held, and passed
+  FFprobe/import verification. TV mapping required review and completed sources
+  retained identical bytes. No owner provider, indexer or media was used.
+- Real acceptance first caught SABnzbd 5's UUID identities and its single-file
+  history storage path. Both were corrected while retaining strict dedicated-job
+  containment. Earlier sandboxed tests lacked socket/file-publication access;
+  the same suites passed with access to their disposable services/directories.
+- Clean locked npm install/audit (zero vulnerabilities), format/type/47 UI tests
+  and production build pass. Full Go tests/vet/build and native process/recovery
+  smoke pass. Browser acceptance, Linux CI, packages and preview upgrade remain
+  pending. Owner Usenet/shared-mount acceptance is
+  separate; IPTorrents and XSpeeds account tests remain explicitly deferred.
 
 ## Existing-library registration (0.10 development)
 

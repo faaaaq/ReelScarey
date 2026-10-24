@@ -1,5 +1,23 @@
 # REST API — media catalog, downloads, imports, automation and operations
 
+## Usenet integration
+
+`/api/v1/integrations/sabnzbd` uses authenticated GET/PUT/DELETE and the existing
+CSRF/same-origin guards. PUT accepts only `{url,api_key?,download_path}`. Omit the
+key to retain it; first connect needs the full API key. GET returns configured,
+url/download_path, never secrets. POST `/api/v1/integrations/sabnzbd/test` with
+`{}` tests the saved connection. Active Usenet jobs prevent disconnecting or
+changing their client's address/remote root.
+
+Managed `/indexers` accepts kind `newznab`, API endpoint and write-only api_key,
+sharing revision/generation fences and health. Releases include protocol torrent/
+usenet; NZB peer/seeder counts are null. Queueing still accepts only opaque
+release_id, never caller URLs, paths or NZBs. Jobs and item history expose protocol;
+jobs expose non-secret opaque client_id once known. The legacy info_hash field
+contains a namespaced NZB descriptor SHA-256 (`nzb:`) for Usenet, not a torrent
+hash. Payloads/output snapshots stay private. Retry preserves uncertain Usenet
+submission intent. See [Usenet](USENET.md) for mapping, review and recovery limits.
+
 ## Existing-library discovery and reviewed registration
 
 All routes require the administrator session; mutations also require CSRF and

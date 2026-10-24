@@ -60,6 +60,16 @@ Manual discovery and reviewed verification use persistent leases in transfer,
 with a separate worker in the same Go process and the shared FFprobe/hash helpers.
 Registration updates availability atomically without publishing/moving files.
 See docs/EXISTING_LIBRARY.md for bounds, review and identity checks.
+
+Migration 010 retains encrypted integrations/indexers while adding Newznab and
+SABnzbd. Old jobs default to torrent; jobs retain protocol, client ID and immutable
+completed-output snapshots. Newznab shares caps/search but validates NZBs
+separately. SABnzbd is a distinct adapter; only submission/reconciliation branch,
+with shared review/reservations/import and the same process/SQLite leases.
+NZB descriptor checksums use an `nzb:` namespace. Uncertain submissions reconcile
+without automatic resubmission. Completed post-processing and exact dedicated
+mapped output are mandatory. No client deletion/script execution API exists.
+See docs/USENET.md.
 The migration ledger stores version, filename, checksum, and applied time.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored
@@ -96,7 +106,7 @@ Planned entities (design, **not implemented schema**):
 
 | Entity | Relationships and invariants |
 | --- | --- |
-| download_clients | Future multi-client CRUD; one encrypted qBittorrent configuration exists now |
+| download_clients | Future multi-client CRUD; one encrypted configuration per qBittorrent/SABnzbd exists now |
 | jobs | Future arbitrary job types; searches and downloads already have durable leases/retries |
 
 Media file paths are never derived from untrusted release names without

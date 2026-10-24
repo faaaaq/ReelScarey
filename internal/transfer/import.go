@@ -77,7 +77,7 @@ func MapSource(save, file, remote string) (string, error) {
 	}
 	save = strings.ReplaceAll(save, "\\", "/")
 	if _, e = remoteRoot(save); e != nil {
-		return "", problem("path_mapping", "qBittorrent returned an unsafe save path.")
+		return "", problem("path_mapping", "The download client returned an unsafe save path.")
 	}
 	compareBase, compareSave := base, save
 	if regexp.MustCompile(`^[A-Za-z]:/`).MatchString(base) {
@@ -85,7 +85,7 @@ func MapSource(save, file, remote string) (string, error) {
 		compareSave = strings.ToLower(save)
 	}
 	if compareSave != compareBase && !strings.HasPrefix(compareSave, compareBase+"/") {
-		return "", problem("path_mapping", "The torrent is outside the configured qBittorrent download root. Check the shared download mount and remote path.")
+		return "", problem("path_mapping", "The download is outside the configured client download root. Check the shared download mount and remote path.")
 	}
 	relative := strings.TrimPrefix(save[len(base):], "/")
 	file, e = safeRelative(file)

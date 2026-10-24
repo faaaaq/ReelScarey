@@ -33,7 +33,7 @@ export function Settings() {
   useEffect(() => {
     if (
       ready &&
-      ["#tmdb", "#torznab", "#qbittorrent"].includes(location.hash)
+      ["#tmdb", "#torznab", "#qbittorrent", "#sabnzbd"].includes(location.hash)
     ) {
       document
         .getElementById(location.hash.slice(1))
@@ -256,10 +256,10 @@ export function Settings() {
               </section>
               <TMDbSettings />
               <section className="panel settings-info">
-                <h2>Torrent indexers</h2>
+                <h2>Indexers</h2>
                 <p>
                   Manage direct IPTorrents, XSpeeds, NYAA, private feeds and
-                  multiple Torznab connections.
+                  multiple Torznab and Newznab connections.
                 </p>
                 <Link className="text-link" to="/indexers">
                   Manage indexers
@@ -267,6 +267,7 @@ export function Settings() {
               </section>
               <IntegrationSettings kind="torznab" />
               <IntegrationSettings kind="qbittorrent" />
+              <IntegrationSettings kind="sabnzbd" />
               <section className="panel settings-info">
                 <h2>Subtitle providers</h2>
                 <p>

@@ -110,6 +110,7 @@ export type IntegrationStatus = {
   download_path?: string;
 };
 export type Release = {
+  protocol?: "torrent" | "usenet";
   indexer?: string;
   indexer_id?: string;
   freeleech?: boolean;
@@ -122,6 +123,8 @@ export type Release = {
   published_at: string;
 };
 export type DownloadJob = {
+  protocol?: "torrent" | "usenet";
+  client_id?: string;
   kind?: "movie" | "series";
   targets?: {
     episode_id: number;

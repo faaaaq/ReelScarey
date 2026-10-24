@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,6 +24,77 @@ type indexer struct {
 	err     error
 	onFetch func()
 	title   string
+}
+
+func TestNewznabAutomationUsesSABAndDoesNotApplyTorrentSeedRules(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/nzb":
+			fmt.Fprint(w, `<nzb><file subject="owned"><groups><group>alt.test</group></groups><segments><segment bytes="10" number="1">owned@invalid</segment></segments></file></nzb>`)
+		case "/api":
+			if r.URL.Query().Get("mode") == "version" {
+				fmt.Fprint(w, `{"version":"5.1.3"}`)
+				return
+			}
+			if r.URL.Query().Get("mode") == "get_cats" {
+				fmt.Fprint(w, `{"categories":["reelscarey"]}`)
+				return
+			}
+			if r.URL.Query().Get("t") == "caps" {
+				fmt.Fprint(w, `<caps><searching><search available="yes" supportedParams="q"/></searching></caps>`)
+				return
+			}
+			fmt.Fprintf(w, `<rss><channel><item><title>A.Test.Movie.2020.1080p.English.WEB</title><guid>owned</guid><enclosure type="application/x-nzb" url="http://%s/nzb" length="1000"/></item></channel></rss>`, r.Host)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer server.Close()
+	if e := f.w.Remove(ctx, "torznab"); e != nil {
+		t.Fatal(e)
+	}
+	key := "fixture-key"
+	if _, e := f.w.SaveIndexer(ctx, "", transfer.ManagedIndexerUpdate{Name: "Owned Newznab", Kind: "newznab", URL: server.URL + "/api", APIKey: &key, Enabled: true}); e != nil {
+		t.Fatal(e)
+	}
+	configure(t, f.s, false, "search", 10)
+	if e := f.s.Request(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	runs, _ := f.s.Runs(ctx)
+	results, _ := f.s.Results(ctx, runs[0].ID)
+	if len(results) != 1 || results[0].Outcome != "match" {
+		t.Fatal("NZB rejected for lack of seeds", results)
+	}
+	configure(t, f.s, false, "download", 10)
+	if e := f.s.Request(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var count int
+	if e := f.db.QueryRow(`SELECT COUNT(*) FROM downloads`).Scan(&count); e != nil || count != 0 {
+		t.Fatal("NZB routed to torrent client", count, e)
+	}
+	if e := f.w.ConfigureSAB(ctx, transfer.SABUpdate{URL: server.URL, APIKey: &key, DownloadPath: "/completed"}); e != nil {
+		t.Fatal(e)
+	}
+	if e := f.s.Request(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var protocol string
+	if e := f.db.QueryRow(`SELECT protocol FROM downloads`).Scan(&protocol); e != nil || protocol != "usenet" {
+		t.Fatal("NZB did not pass atomic policy guard", protocol, e)
+	}
 }
 
 func (*indexer) Test(context.Context, transfer.IndexerConfig) error { return nil }

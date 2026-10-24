@@ -8,7 +8,7 @@ import { useResource } from "../useResource";
 export function IntegrationSettings({
   kind,
 }: {
-  kind: "torznab" | "qbittorrent";
+  kind: "torznab" | "qbittorrent" | "sabnzbd";
 }) {
   const resource = useResource<IntegrationStatus>(`/integrations/${kind}`);
   const [url, setURL] = useState("");
@@ -19,7 +19,8 @@ export function IntegrationSettings({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const indexer = kind === "torznab";
-  const name = indexer ? "Torznab indexer" : "qBittorrent";
+  const usenet = kind === "sabnzbd";
+  const name = indexer ? "Torznab indexer" : usenet ? "SABnzbd" : "qBittorrent";
   useEffect(() => {
     if (resource.data) {
       setURL(resource.data.url ?? "");
@@ -43,12 +44,18 @@ export function IntegrationSettings({
                   ? {}
                   : { api_key: "" }),
             }
-          : {
-              url,
-              username,
-              download_path: downloadPath,
-              ...(secret ? { password: secret } : {}),
-            };
+          : usenet
+            ? {
+                url,
+                download_path: downloadPath,
+                ...(secret ? { api_key: secret } : {}),
+              }
+            : {
+                url,
+                username,
+                download_path: downloadPath,
+                ...(secret ? { password: secret } : {}),
+              };
         await api(`/integrations/${kind}`, {
           method: "PUT",
           body: JSON.stringify(body),
@@ -102,7 +109,9 @@ export function IntegrationSettings({
           <p>
             {indexer
               ? "Connect the Torznab API from Prowlarr, Jackett, or another compatible indexer to search movie releases."
-              : "Send selected releases to qBittorrent, track completion, and import verified movie files into your library."}
+              : usenet
+                ? "Send NZB releases to SABnzbd. Import verified videos after repair and unpacking finish; TV files require episode review."
+                : "Send selected releases to qBittorrent, track completion, and import verified movie files into your library."}
           </p>
           <form onSubmit={submit}>
             <label htmlFor={`${kind}-url`}>
@@ -124,7 +133,7 @@ export function IntegrationSettings({
               maxLength={2048}
               disabled={pending}
             />
-            {!indexer && (
+            {!indexer && !usenet && (
               <>
                 <label htmlFor="qbt-username">Web UI username</label>
                 <TextField.Root
@@ -140,7 +149,7 @@ export function IntegrationSettings({
               </>
             )}
             <label htmlFor={`${kind}-secret`}>
-              {indexer ? "API key" : "Web UI password"}
+              {indexer || usenet ? "API key" : "Web UI password"}
             </label>
             <TextField.Root
               id={`${kind}-secret`}
@@ -158,16 +167,20 @@ export function IntegrationSettings({
                 ? "Leave blank to keep the saved credential. Re-enter it when changing the service URL."
                 : indexer
                   ? "Public endpoints may leave the API key blank."
-                  : "Use your qBittorrent Web UI credentials."}{" "}
+                  : usenet
+                    ? "Use the full SABnzbd API key from Config → General, not the NZB-only key."
+                    : "Use your qBittorrent Web UI credentials."}{" "}
               Credentials are encrypted locally and never returned after saving.
             </p>
             {!indexer && (
               <>
-                <label htmlFor="qbt-download-path">
-                  qBittorrent downloads folder
+                <label htmlFor={`${kind}-download-path`}>
+                  {usenet
+                    ? "SABnzbd completed downloads folder"
+                    : "qBittorrent downloads folder"}
                 </label>
                 <TextField.Root
-                  id="qbt-download-path"
+                  id={`${kind}-download-path`}
                   value={downloadPath}
                   onChange={(e) => setDownloadPath(e.target.value)}
                   placeholder="/downloads"
@@ -176,11 +189,19 @@ export function IntegrationSettings({
                   disabled={pending}
                 />
                 <p className="field-help">
-                  The folder as qBittorrent sees it. Mount that same folder at
+                  The folder as {name} sees it. Mount that same folder at
                   ReelScarey’s Downloads path shown above. A Web UI connection
                   alone does not give ReelScarey access to files on another
                   server.
                 </p>
+                {usenet && (
+                  <p className="field-help">
+                    In SABnzbd, create category <strong>reelscarey</strong> with
+                    Folder/Path <strong>ReelScarey</strong>. Disable sorting for
+                    this category and choose no script. Retain its completed
+                    history. ReelScarey preserves completed source files.
+                  </p>
+                )}
               </>
             )}
             <Button
@@ -188,7 +209,8 @@ export function IntegrationSettings({
               disabled={
                 pending ||
                 !url.trim() ||
-                (!indexer && (!username.trim() || !downloadPath.trim()))
+                (!indexer &&
+                  ((!usenet && !username.trim()) || !downloadPath.trim()))
               }
             >
               {pending ? "Please wait…" : "Save & test connection"}

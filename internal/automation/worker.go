@@ -147,7 +147,7 @@ func (s *Service) guard(c claim, t searchTarget, p quality.Profile) transfer.Que
 		if v.MovieID != t.MediaID || (t.TV && (v.Kind != "series" || len(v.Targets) != 1 || v.Targets[0].EpisodeID != *t.EpisodeID)) || (!t.TV && v.Kind == "series") {
 			return ErrLease
 		}
-		d := quality.Evaluate(p, current.Target, quality.Release{ID: v.ID, Title: v.Title, Size: v.Size, Seeders: v.Seeders})
+		d := quality.Evaluate(p, current.Target, quality.Release{ID: v.ID, Title: v.Title, Size: v.Size, Seeders: v.Seeders, Protocol: v.Protocol})
 		if !d.Eligible {
 			return ErrLease
 		}
@@ -261,14 +261,14 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 		return "", "", e
 	}
 	if !indexer.Configured {
-		return "waiting_indexer", "Waiting for an enabled indexer. Add a direct tracker or Torznab connection in Indexers.", nil
+		return "waiting_indexer", "Waiting for an enabled indexer. Add a direct tracker, Torznab or Newznab connection in Indexers.", nil
 	}
-	client, e := s.workflow.Status(ctx, "qbittorrent")
+	client, e := s.workflow.Status(ctx, "clients")
 	if e != nil {
 		return "", "", e
 	}
 	if c.Mode == "download" && !client.Configured {
-		return "waiting_client", "Waiting for qBittorrent before automatic downloads can start.", nil
+		return "waiting_client", "Connect qBittorrent or SABnzbd before automatic downloads can start.", nil
 	}
 	targets, e := s.targets(ctx, c.Cursor, c.Batch)
 	if e != nil {
@@ -316,9 +316,35 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 		}
 		candidates := make([]quality.Release, 0, len(releases))
 		for _, r := range releases {
-			candidates = append(candidates, quality.Release{ID: r.ID, Title: r.Title, Size: r.Size, Seeders: r.Seeders})
+			candidates = append(candidates, quality.Release{ID: r.ID, Title: r.Title, Size: r.Size, Seeders: r.Seeders, Protocol: r.Protocol})
 		}
 		decisions := quality.Rank(p, t.Target, candidates)
+		if c.Mode == "download" && current == 0 {
+			ready := map[string]bool{}
+			for _, name := range []string{"qbittorrent", "sabnzbd"} {
+				status, err := s.workflow.Status(ctx, name)
+				if err != nil {
+					return "", "", err
+				}
+				ready[name] = status.Configured
+			}
+			for i := range decisions {
+				for _, r := range releases {
+					if r.ID != decisions[i].ID {
+						continue
+					}
+					name := "qbittorrent"
+					if r.Protocol == "usenet" {
+						name = "sabnzbd"
+					}
+					if !ready[name] {
+						decisions[i].Eligible = false
+						decisions[i].Reasons = append(decisions[i].Reasons, "The matching download client is not connected.")
+					}
+					break
+				}
+			}
+		}
 		outcome, message := "no_match", "No release satisfies the profile and exact identity rules."
 		var downloadID *string
 		var best *quality.Decision

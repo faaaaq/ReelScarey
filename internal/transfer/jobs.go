@@ -15,42 +15,45 @@ type FileChoice struct {
 	Size        int64   `json:"size_bytes"`
 }
 type Job struct {
-	Kind                string     `json:"kind"`
-	Targets             []TVTarget `json:"targets,omitempty"`
-	fileIndex           *int
-	fileTargets         []TVTarget
-	ID                  string       `json:"id"`
-	MovieID             int64        `json:"movie_id"`
-	MovieTitle          string       `json:"movie_title"`
-	Title               string       `json:"title"`
-	Hash                string       `json:"info_hash"`
-	State               string       `json:"state"`
-	Progress            float64      `json:"progress"`
-	Total               int64        `json:"total_bytes"`
-	Downloaded          int64        `json:"downloaded_bytes"`
-	ClientState         string       `json:"client_state"`
-	Selected            *int         `json:"selected_file"`
-	Choices             []FileChoice `json:"choices"`
-	Attempts            int          `json:"attempts"`
-	ErrorCode           string       `json:"error_code"`
-	ErrorMessage        string       `json:"error_message"`
-	Created             int64        `json:"created_at"`
-	Updated             int64        `json:"updated_at"`
-	owner               string
-	payload             []byte
-	clientURL, savePath string
-	attempted           int
-	submittedAt         int64
+	Protocol                   string `json:"protocol"`
+	ClientID                   string `json:"client_id,omitempty"`
+	clientFiles, clientStorage string
+	Kind                       string     `json:"kind"`
+	Targets                    []TVTarget `json:"targets,omitempty"`
+	fileIndex                  *int
+	fileTargets                []TVTarget
+	ID                         string       `json:"id"`
+	MovieID                    int64        `json:"movie_id"`
+	MovieTitle                 string       `json:"movie_title"`
+	Title                      string       `json:"title"`
+	Hash                       string       `json:"info_hash"`
+	State                      string       `json:"state"`
+	Progress                   float64      `json:"progress"`
+	Total                      int64        `json:"total_bytes"`
+	Downloaded                 int64        `json:"downloaded_bytes"`
+	ClientState                string       `json:"client_state"`
+	Selected                   *int         `json:"selected_file"`
+	Choices                    []FileChoice `json:"choices"`
+	Attempts                   int          `json:"attempts"`
+	ErrorCode                  string       `json:"error_code"`
+	ErrorMessage               string       `json:"error_message"`
+	Created                    int64        `json:"created_at"`
+	Updated                    int64        `json:"updated_at"`
+	owner                      string
+	payload                    []byte
+	clientURL, savePath        string
+	attempted                  int
+	submittedAt                int64
 }
 
-const jobColumns = `d.kind,d.id,d.movie_id,m.title,d.title,d.info_hash,d.state,d.progress,d.total_bytes,d.downloaded_bytes,d.client_state,d.selected_file,d.choices,d.attempts,d.error_code,d.error_message,d.created_at,d.updated_at,d.lease_owner,d.payload,d.client_url,d.save_path,d.submission_attempted,d.submitted_at`
+const jobColumns = `d.kind,d.id,d.movie_id,m.title,d.title,d.info_hash,d.state,d.progress,d.total_bytes,d.downloaded_bytes,d.client_state,d.selected_file,d.choices,d.attempts,d.error_code,d.error_message,d.created_at,d.updated_at,d.lease_owner,d.payload,d.client_url,d.save_path,d.submission_attempted,d.submitted_at,d.protocol,d.client_id,d.client_files,d.client_storage`
 
 type scanner interface{ Scan(...any) error }
 
 func scanJob(row scanner) (Job, error) {
 	var j Job
 	var choices string
-	e := row.Scan(&j.Kind, &j.ID, &j.MovieID, &j.MovieTitle, &j.Title, &j.Hash, &j.State, &j.Progress, &j.Total, &j.Downloaded, &j.ClientState, &j.Selected, &choices, &j.Attempts, &j.ErrorCode, &j.ErrorMessage, &j.Created, &j.Updated, &j.owner, &j.payload, &j.clientURL, &j.savePath, &j.attempted, &j.submittedAt)
+	e := row.Scan(&j.Kind, &j.ID, &j.MovieID, &j.MovieTitle, &j.Title, &j.Hash, &j.State, &j.Progress, &j.Total, &j.Downloaded, &j.ClientState, &j.Selected, &choices, &j.Attempts, &j.ErrorCode, &j.ErrorMessage, &j.Created, &j.Updated, &j.owner, &j.payload, &j.clientURL, &j.savePath, &j.attempted, &j.submittedAt, &j.Protocol, &j.ClientID, &j.clientFiles, &j.clientStorage)
 	if e == nil {
 		e = json.Unmarshal([]byte(choices), &j.Choices)
 	}
@@ -216,7 +219,7 @@ func (s *Service) Cancel(ctx context.Context, id string) error {
 		return e
 	}
 	defer tx.Rollback()
-	result, e := tx.ExecContext(ctx, `UPDATE downloads SET state='cancelled',error_code='',error_message='Tracking stopped. The torrent and its source files remain in qBittorrent.',updated_at=unixepoch() WHERE id=? AND state IN ('blocked','failed') AND lease_until<unixepoch()`, id)
+	result, e := tx.ExecContext(ctx, `UPDATE downloads SET state='cancelled',error_code='',error_message='Tracking stopped. The client job and its source files were left unchanged.',updated_at=unixepoch() WHERE id=? AND state IN ('blocked','failed') AND lease_until<unixepoch()`, id)
 	if e != nil {
 		return e
 	}

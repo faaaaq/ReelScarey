@@ -47,6 +47,7 @@ export type LocalDetails = {
     };
   }[];
   history: {
+    protocol?: "torrent" | "usenet";
     id: string;
     title: string;
     indexer: string;
@@ -477,8 +478,9 @@ export function ItemInformation({
                     <p>
                       {job.indexer ||
                         "Indexer not recorded for this older download"}{" "}
-                      · {bytes(job.size_bytes)} ·{" "}
-                      {Math.round(job.progress * 100)}%
+                      · {job.protocol === "usenet" ? "Usenet" : "Torrent"} ·{" "}
+                      {bytes(job.size_bytes)} · {Math.round(job.progress * 100)}
+                      %
                     </p>
                     <p className="field-help">
                       Added {new Date(job.created_at * 1000).toLocaleString()} ·

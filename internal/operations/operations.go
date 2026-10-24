@@ -64,7 +64,7 @@ func (s *Service) Guide(ctx context.Context) (Guide, error) {
 		return "pending"
 	}
 	out.Steps = []Step{{"account", "Administrator", "Your local administrator controls this installation.", state(admin == 1), "/setup", false}, {"library", "Library preferences", "Choose library and destination folder names. Storage checks verify access separately.", "ready", "/settings", false}, {"metadata", "Movie and TV metadata", "Save a TMDb connection to search and add titles.", state(tmdb > 0), "/settings#tmdb", false}}
-	for _, item := range []struct{ name, title, href string }{{"torznab", "Torrent indexers", "/indexers"}, {"qbittorrent", "Download client", "/settings#qbittorrent"}, {"opensubtitles", "Subtitle provider", "/subtitles"}} {
+	for _, item := range []struct{ name, title, href string }{{"torznab", "Indexers", "/indexers"}, {"qbittorrent", "Torrent download client", "/settings#qbittorrent"}, {"sabnzbd", "Usenet download client", "/settings#sabnzbd"}, {"opensubtitles", "Subtitle provider", "/subtitles"}} {
 		var n int
 		if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM integration_configs WHERE name=?`, item.name).Scan(&n); e != nil {
 			return out, e

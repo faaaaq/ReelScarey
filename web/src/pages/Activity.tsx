@@ -10,7 +10,7 @@ import { useLiveResource } from "../useLiveResource";
 
 const labels: Record<string, string> = {
   queued: "Queued",
-  submitting: "Sending to qBittorrent",
+  submitting: "Sending to download client",
   downloading: "Downloading",
   importing: "Verifying & importing",
   blocked: "Needs attention",
@@ -136,7 +136,7 @@ function ActivityList() {
       )}
       <p className="search-disclaimer">
         Progress is saved on the server and resumes after a restart. Stopping
-        tracking leaves the torrent and its files in qBittorrent.
+        tracking leaves the client job and its source files unchanged.
       </p>
     </>
   );
@@ -176,6 +176,12 @@ function JobCard({ job, reload }: { job: DownloadJob; reload: () => void }) {
         </Badge>
       </div>
       <p className="release-title">{job.title}</p>
+      <p className="field-help">
+        {job.protocol === "usenet"
+          ? "Usenet · SABnzbd"
+          : "Torrent · qBittorrent"}
+        {job.client_id ? ` · ${job.client_id}` : ""}
+      </p>
       {job.state !== "cancelled" && (
         <>
           <progress

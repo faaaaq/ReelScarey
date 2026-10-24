@@ -30,6 +30,7 @@ type Target struct {
 	TV              bool
 }
 type Release struct {
+	Protocol  string
 	ID, Title string
 	Size      int64
 	Seeders   *int
@@ -182,7 +183,7 @@ func Evaluate(p Profile, t Target, r Release) Decision {
 	if p.Language != "any" && d.Language != p.Language {
 		reject("The required language is not explicitly labeled.")
 	}
-	if r.Seeders == nil || *r.Seeders < p.MinSeeders {
+	if r.Protocol != "usenet" && (r.Seeders == nil || *r.Seeders < p.MinSeeders) {
 		reject("Seed count is unknown or below the minimum.")
 	}
 	if r.Size <= 0 || r.Size > int64(p.MaxSizeGiB)*(1<<30) {
@@ -213,7 +214,7 @@ func Evaluate(p Profile, t Target, r Release) Decision {
 	} else {
 		d.Score = 100000 + q*100
 	}
-	if r.Seeders != nil {
+	if r.Protocol != "usenet" && r.Seeders != nil {
 		d.Score += min(*r.Seeders, 99)
 	}
 	d.Eligible = len(d.Reasons) == 0

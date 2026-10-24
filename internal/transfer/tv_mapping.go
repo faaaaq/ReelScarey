@@ -78,10 +78,10 @@ func suggestedEpisodes(name string, targets []TVTarget) []int64 {
 }
 func (s *Service) prepareTVMapping(ctx context.Context, j Job, choices []FileChoice, savePath, remote string) error {
 	if len(choices) == 0 {
-		return problem("no_episode_file", "The completed torrent has no complete supported episode videos. Archives, samples, trailers and unselected files are excluded.")
+		return problem("no_episode_file", "The completed download has no complete supported episode videos. Archives, samples, trailers and unselected files are excluded.")
 	}
 	if len(choices) > 500 {
-		return problem("too_many_files", "This torrent has more than 500 video files. Use a smaller release.")
+		return problem("too_many_files", "This download has more than 500 video files. Use a smaller release.")
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -103,8 +103,8 @@ func (s *Service) prepareTVMapping(ctx context.Context, j Job, choices []FileCho
 		if e != nil {
 			return e
 		}
-		if !strings.HasPrefix(source, "ReelScarey/"+j.ID+"/") {
-			return problem("path_mapping", "Restore this torrent to its dedicated ReelScarey download folder before importing.")
+		if !sourceInJob(j, source) {
+			return problem("path_mapping", "Restore this download to its dedicated ReelScarey download folder before importing.")
 		}
 		choices[n].Suggestions = suggestedEpisodes(choices[n].Name, j.Targets)
 		if _, e = tx.ExecContext(ctx, `INSERT INTO download_tv_files(download_id,file_index,name,source_path,size_bytes) VALUES(?,?,?,?,?)`, j.ID, choices[n].Index, choices[n].Name, source, choices[n].Size); e != nil {

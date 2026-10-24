@@ -68,10 +68,10 @@ func (t *Torznab) get(ctx context.Context, c IndexerConfig, target *url.URL, max
 	if err != nil {
 		return nil, problem("invalid_response", "The indexer returned an invalid URL.")
 	}
-	req.Header.Set("Accept", "application/rss+xml, application/xml, application/x-bittorrent")
+	req.Header.Set("Accept", "application/rss+xml, application/xml, application/x-bittorrent, application/x-nzb")
 	resp, err := t.HTTP.Do(req)
 	if err != nil {
-		return nil, unavailable("The Torznab indexer could not be reached. Check its URL and network connection.")
+		return nil, unavailable("The indexer could not be reached. Check its URL and network connection.")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 401 || resp.StatusCode == 403 {
@@ -126,10 +126,10 @@ func (t *Torznab) capabilities(ctx context.Context, c IndexerConfig) (int, error
 	}
 	var out caps
 	if xml.Unmarshal(body, &out) != nil || out.XMLName.Local != "caps" {
-		return 0, problem("indexer_response", "The URL did not return Torznab capabilities. Enter the complete API endpoint.")
+		return 0, problem("indexer_response", "The URL did not return indexer capabilities. Enter the complete API endpoint.")
 	}
 	if out.Search.Available != "yes" || !containsPart(out.Search.Params, "q") {
-		return 0, problem("indexer_capabilities", "This Torznab endpoint must support text searches (search with q).")
+		return 0, problem("indexer_capabilities", "This endpoint must support text searches (search with q).")
 	}
 	limit := 50
 	if out.Limits.Max > 0 && out.Limits.Max < limit {
@@ -205,6 +205,15 @@ func (t *Torznab) Search(ctx context.Context, c IndexerConfig, query string) ([]
 		}
 		if v.Size < 0 {
 			continue
+		}
+		if c.Kind == "newznab" {
+			if v.Magnet != "" || (item.Enclosure.Type != "" && item.Enclosure.Type != "application/x-nzb") {
+				continue
+			}
+			v.Hash = ""
+			v.Seeders = nil
+			v.Peers = nil
+			v.Protocol = "usenet"
 		}
 		identity := item.GUID
 		if identity == "" {

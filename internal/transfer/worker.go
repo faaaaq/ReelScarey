@@ -7,7 +7,6 @@ import (
 	"errors"
 	"log/slog"
 	"math"
-	"strings"
 	"time"
 )
 
@@ -119,6 +118,9 @@ func (s *Service) process(ctx context.Context, j Job) error {
 			return err
 		}
 	}
+	if j.Protocol == "usenet" {
+		return s.processUsenet(ctx, j)
+	}
 	c, err := s.clientConfig(ctx)
 	if err != nil {
 		return err
@@ -147,6 +149,9 @@ func (s *Service) process(ctx context.Context, j Job) error {
 			return err
 		}
 		var actualHash string
+		if len(payload.NZB) > 0 {
+			return problem("payload_mismatch", "A torrent job cannot submit an NZB.")
+		}
 		if payload.Magnet != "" && len(payload.Torrent) == 0 {
 			actualHash, err = MagnetHash(payload.Magnet)
 		} else if payload.Magnet == "" && len(payload.Torrent) > 0 {
@@ -189,13 +194,16 @@ func (s *Service) process(ctx context.Context, j Job) error {
 	if err != nil {
 		return err
 	}
+	return s.processCompleted(ctx, j, torrent.SavePath, files, c.DownloadPath)
+}
+func (s *Service) processCompleted(ctx context.Context, j Job, savePath string, files []TorrentFile, remoteRoot string) error {
 	choices := make([]FileChoice, 0)
 	seen := map[int]bool{}
 	var chosen *TorrentFile
 	for n := range files {
 		f := &files[n]
 		if seen[f.Index] || f.Index < 0 {
-			return problem("client_response", "qBittorrent returned duplicate or invalid file indexes.")
+			return problem("client_response", "The completed download returned duplicate or invalid file indexes.")
 		}
 		seen[f.Index] = true
 		if !video(f.Name) || extraVideo.MatchString(f.Name) || f.Priority <= 0 {
@@ -213,7 +221,7 @@ func (s *Service) process(ctx context.Context, j Job) error {
 		}
 	}
 	if j.Kind == "series" {
-		return s.prepareTVMapping(ctx, j, choices, torrent.SavePath, c.DownloadPath)
+		return s.prepareTVMapping(ctx, j, choices, savePath, remoteRoot)
 	}
 	if j.Selected == nil && len(choices) == 1 {
 		for n := range files {
@@ -224,19 +232,19 @@ func (s *Service) process(ctx context.Context, j Job) error {
 	}
 	if chosen == nil {
 		if len(choices) == 0 {
-			return problem("no_movie_file", "The completed torrent has no complete, supported movie file. Archives, samples, trailers, and unselected files are not imported.")
+			return problem("no_movie_file", "The completed download has no complete, supported movie file. Archives, samples, trailers, and unselected files are not imported.")
 		}
 		b, _ := json.Marshal(choices)
-		if err = s.owned(ctx, j, `UPDATE downloads SET choices=?,updated_at=unixepoch()`, string(b)); err != nil {
+		if err := s.owned(ctx, j, `UPDATE downloads SET choices=?,updated_at=unixepoch()`, string(b)); err != nil {
 			return err
 		}
-		return problem("choose_file", "This torrent contains more than one movie file. Choose the correct file to import.")
+		return problem("choose_file", "This download contains more than one movie file. Choose the correct file to import.")
 	}
-	source, err := MapSource(torrent.SavePath, chosen.Name, c.DownloadPath)
+	source, err := MapSource(savePath, chosen.Name, remoteRoot)
 	if err != nil {
 		return err
 	}
-	if !strings.HasPrefix(source, "ReelScarey/"+j.ID+"/") {
+	if !sourceInJob(j, source) {
 		return problem("path_mapping", "The torrent's save location changed outside this job's dedicated download directory. Restore its location in qBittorrent before retrying.")
 	}
 	if err = s.owned(ctx, j, `UPDATE downloads SET state='importing',selected_file=?,choices='[]',updated_at=unixepoch()`, chosen.Index); err != nil {

@@ -164,7 +164,7 @@ func (s *Service) SaveIndexer(ctx context.Context, id string, in ManagedIndexerU
 	c.Generation = ID()
 	c.UserAgent = in.UserAgent
 	c.FreeleechOnly = in.FreeleechOnly
-	if c.Kind != "torznab" && c.Kind != "iptorrents" && c.Kind != "xspeeds" && c.Kind != "rss" && c.Kind != "nyaa" {
+	if c.Kind != "torznab" && c.Kind != "newznab" && c.Kind != "iptorrents" && c.Kind != "xspeeds" && c.Kind != "rss" && c.Kind != "nyaa" {
 		return IndexerStatus{}, problem("invalid_settings", "Choose a supported indexer type.")
 	}
 	changed := old.URL != "" && old.URL != c.URL
@@ -208,7 +208,7 @@ func (s *Service) SaveIndexer(ctx context.Context, id string, in ManagedIndexerU
 			return IndexerStatus{}, problem("invalid_settings", "The private feed must belong to the configured website origin.")
 		}
 	}
-	if (c.Kind != "torznab" && c.APIKey != "") || (c.Kind != "rss" && c.FeedURL != "") || (c.Kind == "torznab" && c.Cookie != "") {
+	if ((c.Kind != "torznab" && c.Kind != "newznab") && c.APIKey != "") || (c.Kind != "rss" && c.FeedURL != "") || ((c.Kind == "torznab" || c.Kind == "newznab") && (c.Cookie != "" || c.FreeleechOnly || c.UserAgent != "")) {
 		return IndexerStatus{}, problem("invalid_settings", "Only enter credentials supported by the selected indexer type.")
 	}
 	if a := s.adapter(c); a == nil {
@@ -339,7 +339,7 @@ func (s *Service) searchIndexers(ctx context.Context, query, category string) ([
 		configs = append(configs, c)
 	}
 	if len(configs) == 0 {
-		return nil, problem("indexer_not_configured", "Add and enable a torrent indexer in Indexers first.")
+		return nil, problem("indexer_not_configured", "Add and enable an indexer in Indexers first.")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -413,6 +413,10 @@ func (s *Service) searchIndexers(ctx context.Context, query, category string) ([
 			v.IndexerID = configs[i].ID
 			v.IndexerName = configs[i].Name
 			v.Generation = configs[i].Generation
+			v.Protocol = "torrent"
+			if configs[i].Kind == "newznab" {
+				v.Protocol = "usenet"
+			}
 			out = append(out, v)
 			if len(out) == 200 {
 				break

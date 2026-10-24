@@ -33,6 +33,12 @@ export type Indexer = {
 };
 const kinds = [
   {
+    id: "newznab",
+    name: "Newznab (Usenet)",
+    url: "",
+    help: "Connect the complete Newznab API endpoint from your Usenet indexer. NZB releases download through SABnzbd.",
+  },
+  {
     id: "iptorrents",
     name: "IPTorrents",
     url: "https://iptorrents.com",
@@ -103,8 +109,8 @@ export function Indexers() {
     <>
       <PageHeading
         eyebrow="YOUR SOURCES, CONNECTED"
-        title="Torrent indexers"
-        description="Connect trackers directly or add Torznab and RSS sources. Search results keep their source, and downloads use the connection they came from."
+        title="Indexers"
+        description="Connect torrent trackers, RSS feeds and Newznab Usenet sources. Search results keep their source and use the matching download client."
       >
         <Button onClick={() => setEditing(null)}>
           <Plus size={17} />
@@ -247,7 +253,7 @@ export function Indexers() {
       >
         <Dialog.Content maxWidth="640px">
           <Dialog.Title>
-            {editing ? `Edit ${editing.name}` : "Add a torrent indexer"}
+            {editing ? `Edit ${editing.name}` : "Add an indexer"}
           </Dialog.Title>
           <Dialog.Description>
             Credentials are encrypted locally and never shown again after
@@ -278,7 +284,7 @@ function IndexerForm({
 }) {
   const [kind, setKind] = useState(initial?.kind ?? "iptorrents");
   const [name, setName] = useState(initial?.name ?? "IPTorrents");
-  const [url, setURL] = useState(initial?.url ?? kinds[0].url);
+  const [url, setURL] = useState(initial?.url ?? "https://iptorrents.com");
   const [agent, setAgent] = useState(initial?.user_agent ?? "");
   const [cookie, setCookie] = useState("");
   const [key, setKey] = useState("");
@@ -290,6 +296,7 @@ function IndexerForm({
   const [clearCookie, setClearCookie] = useState(false);
   const [clearKey, setClearKey] = useState(false);
   const privateSite = kind === "iptorrents" || kind === "xspeeds";
+  const apiIndexer = kind === "torznab" || kind === "newznab";
   function changeKind(value: string) {
     const selected = kinds.find((k) => k.id === value)!;
     setKind(value);
@@ -326,8 +333,7 @@ function IndexerForm({
                 ? ""
                 : cookie || undefined
               : undefined,
-          api_key:
-            kind === "torznab" ? (clearKey ? "" : key || undefined) : undefined,
+          api_key: apiIndexer ? (clearKey ? "" : key || undefined) : undefined,
           feed_url: kind === "rss" ? feed || undefined : undefined,
         }),
       });
@@ -371,7 +377,9 @@ function IndexerForm({
         />
       </label>
       <label>
-        {kind === "torznab" ? "Torznab API endpoint" : "Website URL"}
+        {apiIndexer
+          ? `${kind === "newznab" ? "Newznab" : "Torznab"} API endpoint`
+          : "Website URL"}
         <TextField.Root
           aria-label="Indexer URL"
           value={url}
@@ -380,7 +388,7 @@ function IndexerForm({
           disabled={busy}
         />
       </label>
-      {kind === "torznab" && (
+      {apiIndexer && (
         <>
           <label>
             API key

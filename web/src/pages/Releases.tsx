@@ -44,6 +44,7 @@ function ReleaseBrowser() {
   );
   const indexer = useResource<IntegrationStatus>("/indexers/status");
   const client = useResource<IntegrationStatus>("/integrations/qbittorrent");
+  const sab = useResource<IntegrationStatus>("/integrations/sabnzbd");
   const [input, setInput] = useState("");
   const [items, setItems] = useState<Release[]>();
   const [searching, setSearching] = useState(false);
@@ -126,20 +127,23 @@ function ReleaseBrowser() {
         </p>
       )}
       <RequestState
-        loading={movie.loading || indexer.loading || client.loading}
-        error={movie.error || indexer.error || client.error}
+        loading={
+          movie.loading || indexer.loading || client.loading || sab.loading
+        }
+        error={movie.error || indexer.error || client.error || sab.error}
         retry={() => {
           movie.reload();
           indexer.reload();
           client.reload();
+          sab.reload();
         }}
       />
       {indexer.data && !indexer.data.configured && (
         <section className="panel connect-prompt">
           <h2>Release search is ready when you connect an indexer.</h2>
           <p>
-            Add a direct tracker, a private RSS feed or a Torznab endpoint. Your
-            library and monitoring choices remain available.
+            Add a direct tracker, a private RSS feed, Torznab or Newznab
+            endpoint. Your library and monitoring choices remain available.
           </p>
           <Button asChild>
             <Link to="/indexers">Connect indexer</Link>
@@ -162,15 +166,18 @@ function ReleaseBrowser() {
               {searching ? "Searching…" : "Search releases"}
             </Button>
           </form>
-          {client.data && !client.data.configured && (
-            <p className="search-disclaimer">
-              You can browse releases now.{" "}
-              <Link to="/settings" className="text-link">
-                Connect qBittorrent
-              </Link>{" "}
-              to download.
-            </p>
-          )}
+          {client.data &&
+            sab.data &&
+            !client.data.configured &&
+            !sab.data.configured && (
+              <p className="search-disclaimer">
+                You can browse releases now.{" "}
+                <Link to="/settings" className="text-link">
+                  Connect qBittorrent or SABnzbd
+                </Link>{" "}
+                to download.
+              </p>
+            )}
           {items && (
             <>
               <p className="search-result-count">
@@ -179,11 +186,10 @@ function ReleaseBrowser() {
               </p>
               {items.length === 0 ? (
                 <section className="panel search-intro">
-                  <h2>No supported torrent releases found.</h2>
+                  <h2>No supported releases found.</h2>
                   <p>
                     Try another title or check the indexer’s{" "}
-                    {tv ? "TV" : "movie"} categories. Releases need a v1 or
-                    hybrid magnet, or a torrent URL served by your indexer.
+                    {tv ? "TV" : "movie"} categories and API endpoint.
                   </p>
                 </section>
               ) : (
@@ -194,24 +200,46 @@ function ReleaseBrowser() {
                         <h2>{release.title}</h2>
                         <p className="field-help">
                           {release.indexer ?? "Torznab"}
+                          {release.protocol === "usenet"
+                            ? " · Usenet · SABnzbd"
+                            : " · Torrent · qBittorrent"}
                           {release.freeleech ? " · Freeleech" : ""}
                         </p>
                         <p>
                           {bytes(release.size_bytes)} ·{" "}
-                          {release.seeders ?? "Unknown"} seeders ·{" "}
-                          {release.peers ?? "Unknown"} peers
+                          {release.protocol === "usenet"
+                            ? "NZB"
+                            : `${release.seeders ?? "Unknown"} seeders · ${release.peers ?? "Unknown"} peers`}
                           {release.published_at
                             ? ` · ${new Date(release.published_at).toLocaleDateString()}`
                             : ""}
                         </p>
                       </div>
                       <Button
-                        disabled={!!pending || !client.data?.configured}
+                        disabled={
+                          !!pending ||
+                          !(release.protocol === "usenet"
+                            ? sab.data?.configured
+                            : client.data?.configured)
+                        }
                         onClick={() => void download(release.id)}
                       >
                         <Download size={16} />
                         {pending === release.id ? "Sending…" : "Download"}
                       </Button>
+                      {!(release.protocol === "usenet"
+                        ? sab.data?.configured
+                        : client.data?.configured) && (
+                        <Link
+                          className="text-link"
+                          to={`/settings#${release.protocol === "usenet" ? "sabnzbd" : "qbittorrent"}`}
+                        >
+                          Connect{" "}
+                          {release.protocol === "usenet"
+                            ? "SABnzbd"
+                            : "qBittorrent"}
+                        </Link>
+                      )}
                     </article>
                   ))}
                 </div>
@@ -219,7 +247,7 @@ function ReleaseBrowser() {
             </>
           )}
           <p className="search-disclaimer">
-            Selected releases download into a dedicated qBittorrent folder.
+            Torrent releases use qBittorrent; NZB releases use SABnzbd.
             Completed video files are verified before importing.{" "}
             {tv
               ? "TV files require your episode mapping confirmation in Activity. "

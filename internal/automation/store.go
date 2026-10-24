@@ -67,7 +67,7 @@ func (s *Service) Get(ctx context.Context) (Schedule, error) {
 		if e != nil {
 			return v, e
 		}
-		b, e := s.workflow.Status(ctx, "qbittorrent")
+		b, e := s.workflow.Status(ctx, "clients")
 		if e != nil {
 			return v, e
 		}
@@ -76,7 +76,7 @@ func (s *Service) Get(ctx context.Context) (Schedule, error) {
 	}
 	if (v.Enabled || v.Requested) && !v.IndexerConnected {
 		v.State = "waiting_indexer"
-		v.Message = "Waiting for an enabled indexer. Add a direct tracker, RSS feed or Torznab connection in Indexers."
+		v.Message = "Waiting for an enabled indexer. Add a direct tracker, RSS feed, Torznab or Newznab connection in Indexers."
 	}
 	return v, nil
 }

@@ -284,11 +284,11 @@ function ScheduleForm({
           </p>
           {form.mode === "download" && (
             <p className="automation-notice">
-              This mode queues matching missing items through qBittorrent. TV
-              imports still need episode-to-file review. Upgrade suggestions
-              preserve existing files.
+              This mode queues matching missing items through qBittorrent or
+              SABnzbd. TV imports still need episode-to-file review. Upgrade
+              suggestions preserve existing files.
               {!schedule.client_connected &&
-                " Connect qBittorrent before automatic downloads can run."}
+                " Connect the matching download client before automatic downloads can run."}
             </p>
           )}
           <div className="button-row">

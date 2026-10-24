@@ -26,6 +26,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   It also owns explicit existing-library discovery and reviewed in-place
   registration. Discovery never authorizes a metadata match or a filesystem
   write; registered existing files must not fabricate download/release rows.
+  Newznab/SABnzbd share review, reservations and importer; NZB checksums have a
+  separate namespace. Uncertain SABnzbd submissions must reconcile, never
+  automatically resubmit. Only completed post-processing in an exact dedicated
+  mapped output folder may supply import candidates.
 - internal/library owns the shared catalog, TV seasons/episodes and revision-checked monitoring. Future providers live in
   their feature modules behind narrow, consumer-owned interfaces.
 - internal/quality owns editable profiles, conservative release identity and ranking.
@@ -81,6 +85,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   must be confirmed explicitly before import, including in integration tests.
 - Test input boundaries, persistence across reopen, migration rollback, API
   contracts, and meaningful user behavior. Use temporary directories only.
+- Usenet acceptance uses isolated real SABnzbd and generated yEnc/NNTP articles,
+  never owner accounts. REELSCAREY_LIVE_SAB=1 requires REELSCAREY_SABNZBD
+  (executable/script); scripts may specify REELSCAREY_SABNZBD_PYTHON. SABnzbd
+  is not bundled into the application.
 - Automation checks must cover pause/lease/profile/monitoring changes during
   metainfo fetch, bounded retries/cursor rotation, duplicate prevention, TV review
   gating and preservation of registered files during upgrade detection.
