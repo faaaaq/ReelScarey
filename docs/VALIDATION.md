@@ -15,8 +15,34 @@
 - Migration tests preserve existing file IDs and all episode/subtitle references;
   invalid foreign-key migrations roll back. Existing filenames do not become
   invented release evidence for automatic subtitle selection.
-- Final browser, native/package, Linux and preview-upgrade evidence follows
-  after those checks run. IPTorrents/XSpeeds account testing remains deferred.
+- Browser acceptance uses its own config, fictional catalog titles and generated
+  movie/TV videos. It verifies explicit discovery, gated title review, consecutive
+  episode choices, successful in-place registration, true paths/probe data and no
+  invented download history. A shared TV file counts once and both episodes show
+  available at the same original path. Screenshots remain outside Git; the QA
+  application, catalog and generated media were removed after verification.
+- Clean npm installation, format/type/test/build, backend/static/build and native
+  process/recovery checks pass. Empty-folder discovery requires an explicit API
+  request and its scan history survives native process restart. All three private
+  cross-build checksums verify; the extracted Windows package passes the full
+  recovery drill. No dependency was added.
+- Owner preview reports 0.10.0-dev, readiness 200, setup_required=false and healthy
+  database/key/storage/FFprobe checks. A stopped schema-8 backup was created and
+  verified before migration 009, with the previous executable retained. No scan
+  of the owner library was initiated. IPTorrents/XSpeeds account testing remains
+  explicitly deferred.
+
+The [final Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40057876547)
+passed for application commit `0592715`: all 44 UI tests, Go race/static checks,
+real disposable qBittorrent movie/TV downloads and reviewed imports, generated
+subtitle media, generated existing-library registration, native/extracted-package
+recovery, checksummed cross-builds and the container restart test. Govulncheck
+reports zero vulnerabilities affecting the application and one advisory in a
+required module outside imported/called code; npm audit reports zero. No advisory
+is suppressed. The constrained container snapshot reports 10.36 MiB/512 MiB and
+seven PIDs; this is a smoke-test snapshot, not a workload performance claim.
+Private artifact `12546317672` contains the 0.10 packages/checksums and has the
+workflow's 14-day retention.
 
 ## Direct indexers and title details (0.9 development)
 

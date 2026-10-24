@@ -130,6 +130,17 @@ See [existing-library workflow](docs/EXISTING_LIBRARY.md).
 
 ## Validation record
 
+2026-10-23 existing-library registration: the
+[Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40057876547)
+passes all 44 UI tests, backend/race/static/vulnerability gates, generated-media
+registration and real disposable-client regressions, native/package recovery and
+container restart checks. Browser acceptance verifies reviewed movie and shared
+TV-file registration with generated videos, preserving their original paths and
+recording no invented download history. The owner preview is backed up and
+upgraded to 0.10; no owner library scan was initiated. IPTorrents/XSpeeds account
+testing remains deferred. Full evidence and limits are in
+[validation](docs/VALIDATION.md).
+
 2026-10-23 direct indexers and title details: the
 [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40048388113)
 passes all 39 UI tests, backend/race/static/vulnerability gates, generated-media
