@@ -197,6 +197,9 @@ func (s *Service) SaveIndexer(ctx context.Context, id string, in ManagedIndexerU
 		}
 	}
 	if c.Kind == "rss" {
+		if u.Path != "" {
+			return IndexerStatus{}, problem("invalid_settings", "Use the website homepage above and put the complete private URL in the feed field.")
+		}
 		feed, e := validPrivateURL(c.FeedURL)
 		if e != nil {
 			return IndexerStatus{}, e
@@ -204,6 +207,9 @@ func (s *Service) SaveIndexer(ctx context.Context, id string, in ManagedIndexerU
 		if !sameOrigin(u, feed) {
 			return IndexerStatus{}, problem("invalid_settings", "The private feed must belong to the configured website origin.")
 		}
+	}
+	if (c.Kind != "torznab" && c.APIKey != "") || (c.Kind != "rss" && c.FeedURL != "") || (c.Kind == "torznab" && c.Cookie != "") {
+		return IndexerStatus{}, problem("invalid_settings", "Only enter credentials supported by the selected indexer type.")
 	}
 	if a := s.adapter(c); a == nil {
 		return IndexerStatus{}, problem("invalid_settings", "This adapter is unavailable.")

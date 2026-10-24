@@ -1840,9 +1840,12 @@ dd {
 }
 @media (max-width: 700px) {
   .item-hero {
-    grid-template-columns: 100px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 18px;
     padding: 18px;
+  }
+  .item-hero .movie-poster {
+    max-width: 140px;
   }
   .credits-grid,
   .item-storage-stats {
