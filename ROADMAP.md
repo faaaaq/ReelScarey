@@ -175,7 +175,7 @@ account testing remains deferred.
 See [browsing behavior and interface](docs/LIBRARY_BROWSING.md). IPTorrents and
 XSpeeds account testing remains explicitly deferred.
 
-## 12 — Reviewed bulk monitoring (current)
+## 12 — Reviewed bulk monitoring
 - [x] Explicit page selection in poster/table views, current-state review and
   atomic parent movie/show pause/resume with stale-edit rejection.
 - [x] Preserve child selections, existing downloads, profiles and schedules;
@@ -187,6 +187,19 @@ XSpeeds account testing remains explicitly deferred.
   remain future scope. Private tracker account testing stays deferred.
 
 See [bulk monitoring and limits](docs/BULK_MONITORING.md).
+
+## 13 — Reviewed profile assignment (current)
+- [x] Library effective-profile labels and filters, including inherited defaults.
+- [x] Explicit page selection, target-rule review and atomic profile assignment
+  or return to schedule-default inheritance for movies/shows.
+- [x] Fence stale assignments/profile rules/defaults and automatic queue decisions;
+  preserve monitoring, child choices, schedules, existing downloads and files.
+- [ ] Complete local/browser/native/package/Linux acceptance and preview upgrade.
+- [ ] Replacement imports, episode bulk edits, removal and file moving remain
+  future work. IPTorrents/XSpeeds account testing stays deferred.
+
+See [profile assignment and exact limits](docs/BULK_PROFILES.md). The graphite/blue
+layout and plain interface copy are retained.
 
 ## Validation record
 

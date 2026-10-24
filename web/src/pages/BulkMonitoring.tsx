@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, Dialog } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
 
@@ -23,11 +23,13 @@ export function BulkMonitoring({
   ids,
   onClear,
   onApplied,
+  children,
 }: {
   kind: "movie" | "series";
   ids: number[];
   onClear: () => void;
   onApplied: (message: string) => void;
+  children?: ReactNode;
 }) {
   const [monitored, setMonitored] = useState(false),
     [open, setOpen] = useState(false),
@@ -123,6 +125,7 @@ export function BulkMonitoring({
         <Button variant="soft" onClick={() => void loadReview()}>
           Review monitoring
         </Button>
+        {children}
         <Button variant="ghost" color="gray" onClick={onClear}>
           Clear selection
         </Button>

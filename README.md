@@ -29,6 +29,9 @@ See [library browsing and status limits](docs/LIBRARY_BROWSING.md).
 Select titles on the current library page to review and apply parent monitoring
 changes together. Profiles, season/episode choices and existing downloads are
 retained. See [bulk monitoring](docs/BULK_MONITORING.md).
+The library also shows/filters effective quality profiles and supports reviewed
+profile assignment or return to default inheritance for selected titles. See
+[profile assignment](docs/BULK_PROFILES.md).
 
 Not implemented: replacement/upgrade imports, audio-language verification,
 or full production hardening. Automation starts paused and defaults to

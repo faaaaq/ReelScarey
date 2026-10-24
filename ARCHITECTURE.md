@@ -91,6 +91,12 @@ write. Existing series and automation revisions fence old editors and automatic
 queue decisions; explicit profiles and TV child selections are preserved. No
 worker, provider, filesystem operation or new migration is involved. The UI
 selection is page-scoped and requires review before apply. See docs/BULK_MONITORING.md.
+Quality exposes transaction-aware profile reads. Catalog profile context and
+effective-profile filters share the catalog transaction; automation owns reviewed
+profile assignment. Apply checks the complete assignment/current-rule/target-rule/
+schedule snapshot before changing profile_id/revision. Changed assignment revisions
+fence editors and pending queues; monitoring and files are untouched. No migration
+or dependency is required. See docs/BULK_PROFILES.md.
 The migration ledger stores version, filename, checksum, and applied time.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored

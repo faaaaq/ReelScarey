@@ -46,6 +46,12 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   automatic queue decisions through the current revisions. Keep selection visibly
   page-scoped. Retain the current layout and neutral graphite/blue palette; do not
   reintroduce olive backgrounds. See docs/BULK_MONITORING.md.
+  Effective profile labels/filters must distinguish inheritance from explicit
+  assignments. Automation owns bulk profile writes; compare the complete review,
+  including profile rules and schedule revisions, before changing assignments.
+  Preserve monitoring/files and fence pending automatic queue decisions. Quality
+  owns canonical profile decoding; use transaction-aware reads for snapshots.
+  See docs/BULK_PROFILES.md.
 - internal/quality owns editable profiles, conservative release identity and ranking.
 - internal/subtitle owns registered-media inspections, OpenSubtitles credentials/
   protocol, language/track preferences, leased jobs and journaled sidecar storage.

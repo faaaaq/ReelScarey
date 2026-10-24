@@ -24,6 +24,15 @@ export type Dashboard = {
   settings_revision: number;
   settings_updated_at: string;
 };
+export type ProfileSummary = { id: number; name: string; revision: number };
+export type CatalogProfileContext = {
+  default_profile: ProfileSummary;
+  profiles: ProfileSummary[];
+};
+export type CatalogProfile = {
+  profile_id: number | null;
+  effective_profile: ProfileSummary;
+};
 export type MediaItem = {
   id: number;
   kind: "movie" | "series";
@@ -37,6 +46,7 @@ export type MediaItem = {
   poster_path: string;
   release_date: string;
   runtime_minutes: number | null;
+  quality_profile?: CatalogProfile;
 };
 
 export type Movie = Omit<MediaItem, "id" | "kind" | "monitored" | "status">;
@@ -48,6 +58,7 @@ export type SearchResults = {
   total_results: number;
 };
 export type LibraryPage = {
+  profile_context?: CatalogProfileContext;
   collection_total: number;
   items: MediaItem[];
   page: number;

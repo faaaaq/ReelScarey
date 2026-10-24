@@ -2,11 +2,26 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { Plus, LayoutGrid, List, Search } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
-import { type LibraryPage, type MediaItem } from "../api";
+import {
+  type LibraryPage,
+  type MediaItem,
+  type CatalogProfileContext,
+} from "../api";
 import { PageHeading, RequestState } from "../components";
 import { Poster, Pagination } from "../movieComponents";
 import { useResource } from "../useResource";
 import { BulkMonitoring } from "./BulkMonitoring";
+import { BulkProfiles } from "./BulkProfiles";
+
+function ProfileLabel({ item }: { item: MediaItem }) {
+  const profile = item.quality_profile;
+  return profile ? (
+    <span className="catalog-profile-label">
+      {profile.effective_profile.name}
+      {profile.profile_id === null ? " · default" : " · assigned"}
+    </span>
+  ) : null;
+}
 
 function statusLabel(item: MediaItem) {
   if (item.status === "available")
@@ -81,7 +96,13 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
     change("query", input.trim());
   }
   const data = resource.data;
-  const filtered = ["query", "status", "monitored"].some(
+  const [savedProfileContext, setSavedProfileContext] =
+    useState<CatalogProfileContext>();
+  useEffect(() => {
+    if (data?.profile_context) setSavedProfileContext(data.profile_context);
+  }, [data]);
+  const profileContext = data?.profile_context ?? savedProfileContext;
+  const filtered = ["query", "status", "monitored", "profile"].some(
     (k) => !!params.get(k) && params.get(k) !== "all",
   );
   return (
@@ -167,6 +188,24 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
               <option value="added">Recently added</option>
             </select>
           </label>
+          {profileContext && (
+            <label>
+              Quality profile
+              <select
+                aria-label="Library quality profile"
+                value={params.get("profile") ?? "all"}
+                onChange={(e) => change("profile", e.target.value)}
+              >
+                <option value="all">All profiles</option>
+                <option value="default">Follows schedule default</option>
+                {profileContext.profiles.map((profile) => (
+                  <option key={profile.id} value={String(profile.id)}>
+                    {profile.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <Button variant="ghost" color="gray" onClick={() => setParams({})}>
             Reset filters
           </Button>
@@ -237,7 +276,20 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
             setMonitoringMessage(message);
             resource.reload();
           }}
-        />
+        >
+          {data?.profile_context && (
+            <BulkProfiles
+              kind={kind}
+              ids={selected}
+              context={data.profile_context}
+              onApplied={(message) => {
+                setSelected([]);
+                setMonitoringMessage(message);
+                resource.reload();
+              }}
+            />
+          )}
+        </BulkMonitoring>
       )}
       <RequestState
         loading={resource.loading}
@@ -272,6 +324,7 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                       <th scope="col">Year</th>
                       <th scope="col">Status</th>
                       <th scope="col">Monitoring</th>
+                      <th scope="col">Quality profile</th>
                       <th scope="col">
                         <span className="sr-only">Actions</span>
                       </th>
@@ -304,6 +357,9 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                           </span>
                         </td>
                         <td>{item.monitored ? "Monitored" : "Paused"}</td>
+                        <td>
+                          <ProfileLabel item={item} />
+                        </td>
                         <td>
                           <ItemAction item={item} />
                         </td>
@@ -345,6 +401,7 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                       <span>{item.monitored ? "Monitored" : "Paused"}</span>
                     </div>
                     <ItemAction item={item} />
+                    <ProfileLabel item={item} />
                   </article>
                 ))}
               </div>

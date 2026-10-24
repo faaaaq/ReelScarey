@@ -5,24 +5,26 @@ import (
 	"database/sql"
 	"errors"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
 type Item struct {
-	ID             int64  `json:"id"`
-	Kind           string `json:"kind"`
-	TMDbID         int64  `json:"tmdb_id"`
-	Title          string `json:"title"`
-	Year           *int   `json:"year"`
-	Monitored      bool   `json:"monitored"`
-	Status         string `json:"status"`
-	Overview       string `json:"overview"`
-	PosterPath     string `json:"poster_path"`
-	PosterURL      string `json:"poster_url"`
-	ReleaseDate    string `json:"release_date"`
-	RuntimeMinutes *int   `json:"runtime_minutes"`
+	ID             int64           `json:"id"`
+	Kind           string          `json:"kind"`
+	TMDbID         int64           `json:"tmdb_id"`
+	Title          string          `json:"title"`
+	Year           *int            `json:"year"`
+	Monitored      bool            `json:"monitored"`
+	Status         string          `json:"status"`
+	Overview       string          `json:"overview"`
+	PosterPath     string          `json:"poster_path"`
+	PosterURL      string          `json:"poster_url"`
+	ReleaseDate    string          `json:"release_date"`
+	RuntimeMinutes *int            `json:"runtime_minutes"`
+	QualityProfile *CatalogProfile `json:"quality_profile,omitempty"`
 }
 
 type Counts struct {
@@ -40,11 +42,12 @@ func (s *Store) Counts(ctx context.Context) (Counts, error) {
 }
 
 type Page struct {
-	Items           []Item `json:"items"`
-	Page            int    `json:"page"`
-	Total           int    `json:"total"`
-	Limit           int    `json:"limit"`
-	CollectionTotal int    `json:"collection_total"`
+	Items           []Item          `json:"items"`
+	Page            int             `json:"page"`
+	Total           int             `json:"total"`
+	Limit           int             `json:"limit"`
+	CollectionTotal int             `json:"collection_total"`
+	ProfileContext  *ProfileContext `json:"profile_context,omitempty"`
 }
 
 const PageSize = 24
@@ -52,9 +55,10 @@ const columns = "id, kind, tmdb_id, title, year, monitored, status, overview, po
 
 type scanner interface{ Scan(...any) error }
 
-func scan(row scanner) (Item, error) {
+func scan(row scanner, extra ...any) (Item, error) {
 	var item Item
-	err := row.Scan(&item.ID, &item.Kind, &item.TMDbID, &item.Title, &item.Year, &item.Monitored, &item.Status, &item.Overview, &item.PosterPath, &item.ReleaseDate, &item.RuntimeMinutes)
+	args := []any{&item.ID, &item.Kind, &item.TMDbID, &item.Title, &item.Year, &item.Monitored, &item.Status, &item.Overview, &item.PosterPath, &item.ReleaseDate, &item.RuntimeMinutes}
+	err := row.Scan(append(args, extra...)...)
 	item.PosterURL = metadata.PosterURL(item.PosterPath)
 	return item, err
 }
@@ -66,8 +70,8 @@ func (s *Store) List(ctx context.Context, kind string, page int) (Page, error) {
 var ErrBrowseInput = errors.New("Choose valid library filters and a page between 1 and 100000.")
 
 type BrowseFilter struct {
-	Kind, Query, Status, Monitored, Sort string
-	Page                                 int
+	Kind, Query, Status, Monitored, Sort, Profile string
+	Page                                          int
 }
 
 // Browse reads saved catalog state only. Ordering SQL comes from a fixed allowlist.
@@ -103,22 +107,52 @@ func (s *Store) Browse(ctx context.Context, f BrowseFilter) (Page, error) {
 	}
 	defer tx.Rollback()
 	out := Page{Items: make([]Item, 0), Page: f.Page, Limit: PageSize}
+	profileContext, profiles, e := catalogProfiles(ctx, tx)
+	if e != nil {
+		return Page{}, e
+	}
+	out.ProfileContext = profileContext
+	if f.Profile == "default" {
+		where += ` AND NOT EXISTS(SELECT 1 FROM item_automation a WHERE a.media_id=media_items.id AND a.profile_id IS NOT NULL)`
+	} else if f.Profile != "" && f.Profile != "all" {
+		id, e := strconv.ParseInt(f.Profile, 10, 64)
+		if e != nil || id < 1 || strconv.FormatInt(id, 10) != f.Profile || profiles[id].ID == 0 {
+			return Page{}, ErrBrowseInput
+		}
+		where += ` AND COALESCE((SELECT profile_id FROM item_automation a WHERE a.media_id=media_items.id),?)=?`
+		args = append(args, profileContext.Default.ID, id)
+	}
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items WHERE kind=?", f.Kind).Scan(&out.CollectionTotal); err != nil {
 		return Page{}, err
 	}
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items"+where, args...).Scan(&out.Total); err != nil {
 		return Page{}, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT "+columns+" FROM media_items"+where+" ORDER BY "+orders[f.Sort]+" LIMIT ? OFFSET ?", append(args, PageSize, (f.Page-1)*PageSize)...)
+	rows, err := tx.QueryContext(ctx, "SELECT "+columns+",(SELECT profile_id FROM item_automation a WHERE a.media_id=media_items.id) FROM media_items"+where+" ORDER BY "+orders[f.Sort]+" LIMIT ? OFFSET ?", append(args, PageSize, (f.Page-1)*PageSize)...)
 	if err != nil {
 		return Page{}, err
 	}
 	for rows.Next() {
-		item, err := scan(rows)
+		var profileID sql.NullInt64
+		item, err := scan(rows, &profileID)
 		if err != nil {
 			rows.Close()
 			return Page{}, err
 		}
+		effectiveID := profileContext.Default.ID
+		assignment := &CatalogProfile{}
+		if profileID.Valid {
+			id := profileID.Int64
+			assignment.ProfileID = &id
+			effectiveID = id
+		}
+		var exists bool
+		assignment.Effective, exists = profiles[effectiveID]
+		if !exists {
+			rows.Close()
+			return Page{}, errors.New("saved profile assignment is unavailable")
+		}
+		item.QualityProfile = assignment
 		out.Items = append(out.Items, item)
 	}
 	err = rows.Err()

@@ -147,10 +147,12 @@ explicitly documented as breaking before the first stable release.
 | GET | `/api/v1/dashboard` | Library name, real SQL movie/series counts, settings revision/time |
 | GET | `/api/v1/settings` | Current library preferences and revision |
 | PUT | `/api/v1/settings` | Validate and atomically update preferences if revision matches |
-| GET | `/api/v1/library?kind=movie&page=1&query=&status=all&monitored=all&sort=title` | Filtered movies, saved metadata, filtered total and collection_total |
+| GET | `/api/v1/library?kind=movie&page=1&query=&status=all&monitored=all&sort=title&profile=all` | Filtered movies, saved metadata, filtered/collection totals and coherent effective-profile context |
 | GET | `/api/v1/library?kind=series&page=1` | Same filters and pagination for TV parent catalog status/monitoring |
 | POST | `/api/v1/library/monitoring/preview` | Read current monitoring/revisions for explicit kind/ids; authenticated + CSRF; no writes |
 | PUT | `/api/v1/library/monitoring` | Apply desired parent monitoring to exact expected items atomically; stale selection returns 409 |
+| POST | `/api/v1/library/profiles/preview` | Review explicit kind/ids and chosen profile/default, with current assignments and full target rules |
+| PUT | `/api/v1/library/profiles` | Atomic assignment from expected item/profile/schedule revisions; stale review returns 409 |
 | GET | `/api/v1/auth/session` | Public setup/auth status; authenticated response includes username, csrf_token, expires_at |
 | POST | `/api/v1/auth/setup` | Public, rate-limited first admin creation; username, password, setup_token; returns 201 + cookie |
 | POST | `/api/v1/auth/login` | Public, rate-limited username/password login; returns 200 + cookie |

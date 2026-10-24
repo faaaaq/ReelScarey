@@ -69,6 +69,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library", method(http.MethodGet, s.listLibrary))
 	mux.HandleFunc("/api/v1/library/monitoring/preview", method(http.MethodPost, s.reviewMonitoring))
 	mux.HandleFunc("/api/v1/library/monitoring", method(http.MethodPut, s.applyMonitoring))
+	mux.HandleFunc("/api/v1/library/profiles/preview", method(http.MethodPost, s.reviewProfiles))
+	mux.HandleFunc("/api/v1/library/profiles", method(http.MethodPut, s.applyProfiles))
 	mux.HandleFunc("/api/v1/library/imports", s.existingCollection)
 	mux.HandleFunc("/api/v1/library/imports/catalog", method(http.MethodGet, s.existingCatalog))
 	mux.HandleFunc("/api/v1/library/imports/{id}", s.existingScan)
@@ -206,7 +208,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listLibrary(w http.ResponseWriter, r *http.Request) {
 	values, parseErr := url.ParseQuery(r.URL.RawQuery)
-	allowed := map[string]bool{"kind": true, "page": true, "query": true, "status": true, "monitored": true, "sort": true}
+	allowed := map[string]bool{"kind": true, "page": true, "query": true, "status": true, "monitored": true, "sort": true, "profile": true}
 	if parseErr != nil {
 		fail(w, 400, "invalid_library", library.ErrBrowseInput.Error())
 		return
@@ -229,7 +231,7 @@ func (s *Server) listLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	items, err := s.library.Browse(ctx, library.BrowseFilter{Kind: kind, Page: page, Query: values.Get("query"), Status: values.Get("status"), Monitored: values.Get("monitored"), Sort: values.Get("sort")})
+	items, err := s.library.Browse(ctx, library.BrowseFilter{Kind: kind, Page: page, Query: values.Get("query"), Status: values.Get("status"), Monitored: values.Get("monitored"), Sort: values.Get("sort"), Profile: values.Get("profile")})
 	if errors.Is(err, library.ErrBrowseInput) {
 		fail(w, 400, "invalid_library", err.Error())
 		return

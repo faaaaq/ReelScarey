@@ -35,7 +35,18 @@ func (s *Store) Get(ctx context.Context, id int64) (Profile, error) {
 	return scan(s.db.QueryRowContext(ctx, `SELECT `+columns+` FROM quality_profiles WHERE id=?`, id))
 }
 func (s *Store) List(ctx context.Context) ([]Profile, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT `+columns+` FROM quality_profiles ORDER BY id`)
+	return listProfiles(ctx, s.db)
+}
+
+type profileQuery interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+// ListTx lets catalog and assignment reviews share a coherent database snapshot.
+func ListTx(ctx context.Context, tx *sql.Tx) ([]Profile, error) { return listProfiles(ctx, tx) }
+
+func listProfiles(ctx context.Context, q profileQuery) ([]Profile, error) {
+	rows, e := q.QueryContext(ctx, `SELECT `+columns+` FROM quality_profiles ORDER BY id`)
 	if e != nil {
 		return nil, e
 	}

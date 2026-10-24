@@ -23,6 +23,15 @@ type Profile struct {
 	RejectedTerms string `json:"rejected_terms"`
 	Revision      int    `json:"revision"`
 }
+
+type Summary struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Revision int    `json:"revision"`
+}
+
+func (p Profile) Summary() Summary { return Summary{ID: p.ID, Name: p.Name, Revision: p.Revision} }
+
 type Target struct {
 	Title           string
 	Year            *int

@@ -347,7 +347,7 @@ func TestLeaseReclaimAndPauseFenceDuringMetainfoFetch(t *testing.T) {
 	}
 }
 func TestProfileAndMonitoringChangesFenceAutomaticQueue(t *testing.T) {
-	for _, change := range []string{"profile", "monitor", "assignment", "bulk-pause-resume"} {
+	for _, change := range []string{"profile", "monitor", "assignment", "bulk-pause-resume", "bulk-profile-roundtrip"} {
 		t.Run(change, func(t *testing.T) {
 			f := setup(t)
 			ctx := context.Background()
@@ -365,6 +365,17 @@ func TestProfileAndMonitoringChangesFenceAutomaticQueue(t *testing.T) {
 					off := false
 					if e := f.s.Assign(ctx, 1, AssignmentUpdate{Revision: 0, Monitored: &off}); e != nil {
 						t.Fatal(e)
+					}
+				case "bulk-profile-roundtrip":
+					id := int64(2)
+					for _, choice := range []ProfileChoice{{ProfileID: &id}, {UseDefault: true}} {
+						review, e := f.s.ReviewProfiles(ctx, "movie", []int64{1}, choice)
+						if e != nil {
+							t.Fatal(e)
+						}
+						if _, e = f.s.ApplyProfiles(ctx, applySnapshot("movie", review)); e != nil {
+							t.Fatal(e)
+						}
 					}
 				case "bulk-pause-resume":
 					store := library.New(f.db)

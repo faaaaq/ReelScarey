@@ -1,5 +1,23 @@
 # Validation record — 2026-10-24
 
+## Reviewed profile assignment (0.15 development)
+
+- Changed backend/API suites pass for coherent read-only reviews, assignment vs
+  inheritance, effective/default-only filters, profile/default/assignment changes,
+  missing targets, atomic concurrent writes, cancellation and reopen persistence.
+  Single-item/bulk-monitoring editors and automatic queues reject stale state,
+  including assignments changed away/back during metainfo retrieval.
+- Monitoring, TV parent/season choices and profile definitions are retained.
+  All 78 UI tests pass after a clean locked install (zero audit vulnerabilities),
+  formatting, type checks and production build. The eight new interactions cover
+  exact review/cancel, target rules and revisions, pinning a current default,
+  return to inheritance/no-op completion, conflict re-review, saving locks,
+  bookmarked profile filters/selection scope and obsolete preview replies.
+  Full Go tests/vet/build and native recovery checks pass. No migration or
+  application dependency was added. Package/browser/Linux acceptance and preview
+  upgrade are pending. IPTorrents/XSpeeds account testing remains deferred;
+  graphite/blue is retained.
+
 ## Reviewed bulk monitoring and neutral palette (0.14 development)
 
 - Feature/API/security tests pass for explicit bounded IDs, read-only previews,
