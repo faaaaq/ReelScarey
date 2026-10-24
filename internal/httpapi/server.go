@@ -65,6 +65,13 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/system/recovery/resume", method(http.MethodPost, s.resumeRecovery))
 	mux.HandleFunc("/api/v1/dashboard", method(http.MethodGet, s.dashboard))
 	mux.HandleFunc("/api/v1/library", method(http.MethodGet, s.listLibrary))
+	mux.HandleFunc("/api/v1/library/items/{id}", method(http.MethodGet, s.itemDetails))
+	mux.HandleFunc("/api/v1/library/items/{id}/metadata", method(http.MethodPost, s.refreshInformation))
+	mux.HandleFunc("/api/v1/indexers", s.indexers)
+	mux.HandleFunc("/api/v1/indexers/status", method(http.MethodGet, s.indexerStatus))
+	mux.HandleFunc("/api/v1/indexers/{id}", s.indexerItem)
+	mux.HandleFunc("/api/v1/indexers/{id}/test", method(http.MethodPost, s.indexerTest))
+	mux.HandleFunc("/api/v1/indexers/{id}/enabled", method(http.MethodPut, s.indexerEnabled))
 	mux.HandleFunc("/api/v1/settings", s.handleSettings)
 	mux.HandleFunc("/api/v1/subtitles/preferences", s.subtitlePreferences)
 	mux.HandleFunc("/api/v1/providers/opensubtitles", s.subtitleProvider)
@@ -289,7 +296,7 @@ func (s *Server) sameOrigin(r *http.Request) bool {
 
 func frontend(assets fs.FS) http.HandlerFunc {
 	files := http.FileServer(http.FS(assets))
-	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/search": true, "/releases": true, "/activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true}
+	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/search": true, "/releases": true, "/activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
@@ -298,7 +305,8 @@ func frontend(assets fs.FS) http.HandlerFunc {
 		}
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 		seriesID, seriesErr := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/series/"), 10, 64)
-		if routes[r.URL.Path] || (strings.HasPrefix(r.URL.Path, "/series/") && seriesErr == nil && seriesID > 0) {
+		movieID, movieErr := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/movies/"), 10, 64)
+		if routes[r.URL.Path] || (strings.HasPrefix(r.URL.Path, "/series/") && seriesErr == nil && seriesID > 0) || (strings.HasPrefix(r.URL.Path, "/movies/") && movieErr == nil && movieID > 0) {
 			body, err := fs.ReadFile(assets, "index.html")
 			if err != nil {
 				fail(w, 503, "frontend_unavailable", "Build the frontend before starting the application.")

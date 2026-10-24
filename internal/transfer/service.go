@@ -16,17 +16,21 @@ import (
 )
 
 type Service struct {
-	db       *sql.DB
-	secrets  *securestore.Store
-	cfg      config.Config
-	client   Client
-	indexer  Indexer
-	configMu sync.Mutex
-	importer *Importer
+	db          *sql.DB
+	secrets     *securestore.Store
+	cfg         config.Config
+	client      Client
+	indexer     Indexer
+	adapters    map[string]Indexer
+	configMu    sync.Mutex
+	healthMu    sync.RWMutex
+	legacyError string
+	importer    *Importer
 }
 
 func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Client, indexer Indexer) *Service {
 	s := &Service{db: db, secrets: secrets, cfg: cfg, client: client, indexer: indexer}
+	s.adapters = map[string]Indexer{"iptorrents": NewDirect("iptorrents"), "xspeeds": NewDirect("xspeeds"), "nyaa": NewDirect("nyaa"), "rss": NewDirect("rss")}
 	s.importer = NewImporter(s)
 	return s
 }
@@ -63,6 +67,18 @@ func (s *Service) clientConfig(ctx context.Context) (ClientConfig, error) {
 	return c, e
 }
 func (s *Service) Status(ctx context.Context, name string) (IntegrationStatus, error) {
+	if name == "indexers" {
+		var enabled int
+		if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM indexers WHERE enabled=1`).Scan(&enabled); e != nil {
+			return IntegrationStatus{}, e
+		}
+		_, e := s.indexerConfig(ctx)
+		var p *Error
+		if errors.As(e, &p) && p.Code == "indexer_not_configured" {
+			return IntegrationStatus{Configured: enabled > 0}, nil
+		}
+		return IntegrationStatus{Configured: e == nil || enabled > 0}, e
+	}
 	if name == "torznab" {
 		c, e := s.indexerConfig(ctx)
 		var p *Error
@@ -216,16 +232,9 @@ func (s *Service) Search(ctx context.Context, movieID int64, query string) ([]Re
 	if !textOK(query, 200) {
 		return nil, problem("invalid_search", "Enter a release search with 1–200 characters.")
 	}
-	c, e := s.indexerConfig(ctx)
+	candidates, e := s.searchIndexers(ctx, query, "2000")
 	if e != nil {
 		return nil, e
-	}
-	candidates, e := s.indexer.Search(ctx, c, query)
-	if e != nil {
-		return nil, e
-	}
-	if len(candidates) > 50 {
-		candidates = candidates[:50]
 	}
 	out := make([]Release, 0, len(candidates))
 	now := time.Now().Unix()
@@ -240,7 +249,6 @@ func (s *Service) Search(ctx context.Context, movieID int64, query string) ([]Re
 	for _, v := range candidates {
 		v.ID = ID()
 		v.MovieID = movieID
-		v.Generation = c.Generation
 		b, e := json.Marshal(v)
 		if e != nil {
 			return nil, e
@@ -303,7 +311,7 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard)
 	if v.ID != releaseID {
 		return Job{}, false, problem("invalid_release", "The encrypted release selection does not match its record. Search again.")
 	}
-	indexer, e := s.indexerConfig(ctx)
+	indexer, e := s.candidateIndexer(ctx, v)
 	if e != nil {
 		return Job{}, false, e
 	}
@@ -314,7 +322,11 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard)
 	if e != nil {
 		return Job{}, false, e
 	}
-	payload, hash, e := s.indexer.Fetch(ctx, indexer, v)
+	adapter := s.adapter(indexer)
+	if adapter == nil {
+		return Job{}, false, problem("release_expired", "The source adapter is unavailable. Search again.")
+	}
+	payload, hash, e := adapter.Fetch(ctx, indexer, v)
 	if e != nil {
 		return Job{}, false, e
 	}
@@ -360,7 +372,7 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard)
 	if active > 0 {
 		return Job{}, false, problem("movie_busy", "This movie already has an active download or imported file. Open Activity to manage it.")
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,'queued',?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,indexer_name) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, v.IndexerName); e != nil {
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET status='downloading' WHERE id=? AND status<>'available'`, v.MovieID); e != nil {

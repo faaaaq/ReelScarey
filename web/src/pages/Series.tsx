@@ -11,6 +11,7 @@ import {
 import { PageHeading, RequestState } from "../components";
 import { Poster } from "../movieComponents";
 import { useResource } from "../useResource";
+import { ItemInformation } from "./ItemDetails";
 
 export function Series() {
   const { id } = useParams();
@@ -117,7 +118,7 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           <p className="field-help">
             Find releases for an episode or selected missing episodes in a
             season. Completed TV files wait for your mapping review in Activity.
-            Scheduled searches are upcoming.
+            Scheduled searches follow your automation settings.
           </p>
           <a
             className="text-link"
@@ -129,6 +130,10 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           </a>
         </div>
       </section>
+      <ItemInformation
+        key={`details-${show.id}-${show.revision}`}
+        id={show.id}
+      />
       {error && (
         <div role="alert" className="movie-error">
           <p>{error}</p>

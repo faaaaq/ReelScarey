@@ -256,12 +256,12 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 	if s.workflow == nil {
 		return "waiting_indexer", "Waiting for a search provider.", nil
 	}
-	indexer, e := s.workflow.Status(ctx, "torznab")
+	indexer, e := s.workflow.Status(ctx, "indexers")
 	if e != nil {
 		return "", "", e
 	}
 	if !indexer.Configured {
-		return "waiting_indexer", "Waiting for Torznab. Setup can be completed later.", nil
+		return "waiting_indexer", "Waiting for an enabled indexer. Add a direct tracker or Torznab connection in Indexers.", nil
 	}
 	client, e := s.workflow.Status(ctx, "qbittorrent")
 	if e != nil {

@@ -14,6 +14,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  Radio,
   X,
 } from "lucide-react";
 import {
@@ -36,6 +37,8 @@ import { Series } from "./pages/Series";
 import { Automation } from "./pages/Automation";
 import { Subtitles } from "./pages/Subtitles";
 import { Setup, SystemChecks } from "./pages/System";
+import { Indexers } from "./pages/Indexers";
+import { ItemDetails } from "./pages/ItemDetails";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -74,7 +77,7 @@ function AppShell() {
   const location = useLocation();
   useEffect(() => {
     setMenuOpen(false);
-    document.title = `${location.pathname === "/setup" ? "Setup" : location.pathname === "/system" ? "System checks" : location.pathname.startsWith("/series/") ? "TV show" : location.pathname === "/settings" ? "Settings" : location.pathname === "/releases" ? "Releases" : (navigation.find((item) => item.path === location.pathname)?.name ?? "Page")} · ReelScarey`;
+    document.title = `${location.pathname === "/setup" ? "Setup" : location.pathname === "/system" ? "System checks" : location.pathname.startsWith("/series/") ? "TV show" : location.pathname.startsWith("/movies/") ? "Movie details" : location.pathname === "/indexers" ? "Indexers" : location.pathname === "/settings" ? "Settings" : location.pathname === "/releases" ? "Releases" : (navigation.find((item) => item.path === location.pathname)?.name ?? "Page")} · ReelScarey`;
   }, [location.pathname]);
   useEffect(() => {
     function close(event: KeyboardEvent) {
@@ -125,6 +128,10 @@ function AppShell() {
         </nav>
         <div className="sidebar-bottom">
           <nav aria-label="Administration">
+            <NavLink to="/indexers">
+              <Radio size={19} strokeWidth={1.7} />
+              <span>Indexers</span>
+            </NavLink>
             <NavLink to="/setup">
               <CheckCircle2 size={19} strokeWidth={1.7} />
               <span>Setup</span>
@@ -142,7 +149,7 @@ function AppShell() {
             <span className="status-dot" />
             <span>Movies & TV</span>
             <Badge color="gray" size="1">
-              0.8
+              0.9
             </Badge>
           </div>
           <div className="account-control">
@@ -173,6 +180,8 @@ function AppShell() {
               element={<Library key="series" kind="series" />}
             />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/indexers" element={<Indexers />} />
+            <Route path="/movies/:id" element={<ItemDetails />} />
             <Route path="/setup" element={<Setup />} />
             <Route path="/system" element={<SystemChecks />} />
             <Route path="/series/:id" element={<Series />} />

@@ -6,6 +6,7 @@ import { PageHeading, RequestState } from "../components";
 import { Pagination } from "../movieComponents";
 import { bytes } from "./Releases";
 import { TVMapping } from "./TVMapping";
+import { useLiveResource } from "../useLiveResource";
 
 const labels: Record<string, string> = {
   queued: "Queued",
@@ -18,6 +19,40 @@ const labels: Record<string, string> = {
   cancelled: "Tracking stopped",
 };
 export function Activity() {
+  const [params] = useSearchParams();
+  const id = params.get("job");
+  return id ? <FocusedJob key={id} id={id} /> : <ActivityList />;
+}
+function FocusedJob({ id }: { id: string }) {
+  const valid = /^[a-f0-9]{32}$/.test(id);
+  return valid ? (
+    <FocusedJobContent id={id} />
+  ) : (
+    <p role="alert">Choose a valid download from its library item.</p>
+  );
+}
+function FocusedJobContent({ id }: { id: string }) {
+  const job = useLiveResource<DownloadJob>(`/downloads/${id}`, 5000);
+  return (
+    <>
+      <PageHeading
+        eyebrow="BEHIND THE SCENES"
+        title="Download details"
+        description="Release, progress, files and safe import status."
+      />
+      <Link className="text-link" to="/activity">
+        View all activity
+      </Link>
+      <RequestState
+        loading={job.loading}
+        error={job.error}
+        retry={job.reload}
+      />
+      {job.data && <JobCard job={job.data} reload={job.reload} />}
+    </>
+  );
+}
+function ActivityList() {
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") ?? 1);
   const [data, setData] = useState<DownloadPage>();

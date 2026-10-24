@@ -34,15 +34,23 @@ export function Poster({
 export function MovieCard({
   movie,
   children,
+  href,
 }: {
   movie: Movie;
   children: ReactNode;
+  href?: string;
 }) {
   return (
     <article className="panel movie-card">
-      <Poster movie={movie} />
+      {href ? (
+        <Link to={href} aria-label={`Open ${movie.title} details`}>
+          <Poster movie={movie} />
+        </Link>
+      ) : (
+        <Poster movie={movie} />
+      )}
       <div className="movie-card-copy">
-        <h2>{movie.title}</h2>
+        <h2>{href ? <Link to={href}>{movie.title}</Link> : movie.title}</h2>
         <p className="movie-meta">
           {movie.year ?? "Release date unknown"}
           {movie.runtime_minutes ? ` · ${movie.runtime_minutes} min` : ""}

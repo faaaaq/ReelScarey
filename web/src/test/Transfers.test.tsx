@@ -73,7 +73,7 @@ function setup(
           expires_at: 9999999999,
         },
       });
-    if (url.includes("/integrations/"))
+    if (url.includes("/integrations/") || url.endsWith("/indexers/status"))
       return Response.json({
         configured: true,
         url: "https://service.invalid",
@@ -318,7 +318,7 @@ describe("release downloads and imports", () => {
   });
   it("explains missing indexer configuration without inventing releases", async () => {
     const fetch = setup((url) =>
-      url.endsWith("/integrations/torznab")
+      url.endsWith("/indexers/status")
         ? Response.json({ configured: false, url: "" })
         : undefined,
     );

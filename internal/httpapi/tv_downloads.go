@@ -31,5 +31,5 @@ func (s *Server) searchTVReleases(w http.ResponseWriter, r *http.Request) {
 		s.transferError(w, e)
 		return
 	}
-	send(w, 200, map[string]any{"items": out})
+	send(w, 200, map[string]any{"items": out, "warnings": s.transfer.IndexerWarnings(r.Context())})
 }

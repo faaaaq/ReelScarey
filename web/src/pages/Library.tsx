@@ -42,7 +42,11 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
           {resource.data.items.length ? (
             <div className="movie-grid">
               {resource.data.items.map((item) => (
-                <MovieCard movie={item} key={item.id}>
+                <MovieCard
+                  movie={item}
+                  key={item.id}
+                  href={`/${movies ? "movies" : "series"}/${item.id}`}
+                >
                   <div className="library-status">
                     <Badge
                       color={item.status === "available" ? "green" : "gray"}

@@ -42,13 +42,14 @@ function ReleaseBrowser() {
   const movie = useResource<MediaItem>(
     valid ? `/library/${tv ? "series" : "movies"}/${movieID}` : null,
   );
-  const indexer = useResource<IntegrationStatus>("/integrations/torznab");
+  const indexer = useResource<IntegrationStatus>("/indexers/status");
   const client = useResource<IntegrationStatus>("/integrations/qbittorrent");
   const [input, setInput] = useState("");
   const [items, setItems] = useState<Release[]>();
   const [searching, setSearching] = useState(false);
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
+  const [warnings, setWarnings] = useState<string[]>([]);
   const navigate = useNavigate();
   const targetLabel = tv
     ? `S${String(season).padStart(2, "0")}${episode ? `E${String(episode).padStart(2, "0")}` : " · selected missing episodes"}`
@@ -65,12 +66,13 @@ function ReleaseBrowser() {
     setError("");
     setItems(undefined);
     try {
-      const out = await api<{ items: Release[] }>(
+      const out = await api<{ items: Release[]; warnings?: string[] }>(
         tv
           ? `/library/series/${movieID}/seasons/${season}/releases?${episode ? `episode=${episode}&` : ""}query=${encodeURIComponent(input.trim() || suggested)}`
           : `/releases?movie_id=${movieID}&query=${encodeURIComponent(input.trim() || suggested)}`,
       );
       setItems(out.items);
+      setWarnings(out.warnings ?? []);
     } catch (e) {
       setError(messageFor(e));
     } finally {
@@ -136,11 +138,11 @@ function ReleaseBrowser() {
         <section className="panel connect-prompt">
           <h2>Release search is ready when you connect an indexer.</h2>
           <p>
-            You can set up Torznab later. Your library and monitoring choices
-            remain available.
+            Add a direct tracker, a private RSS feed or a Torznab endpoint. Your
+            library and monitoring choices remain available.
           </p>
           <Button asChild>
-            <Link to="/settings">Connect indexer</Link>
+            <Link to="/indexers">Connect indexer</Link>
           </Button>
         </section>
       )}
@@ -173,7 +175,7 @@ function ReleaseBrowser() {
             <>
               <p className="search-result-count">
                 {items.length} {items.length === 1 ? "release" : "releases"}{" "}
-                from your indexer.
+                from your enabled indexers.
               </p>
               {items.length === 0 ? (
                 <section className="panel search-intro">
@@ -190,6 +192,10 @@ function ReleaseBrowser() {
                     <article className="panel release-row" key={release.id}>
                       <div>
                         <h2>{release.title}</h2>
+                        <p className="field-help">
+                          {release.indexer ?? "Torznab"}
+                          {release.freeleech ? " · Freeleech" : ""}
+                        </p>
                         <p>
                           {bytes(release.size_bytes)} ·{" "}
                           {release.seeders ?? "Unknown"} seeders ·{" "}
@@ -227,6 +233,22 @@ function ReleaseBrowser() {
         <p role="alert" className="movie-error">
           {error}
         </p>
+      )}
+      {warnings.length > 0 && (
+        <div className="error-box" role="status">
+          <div>
+            <p>
+              Some indexers need attention. Results from available sources are
+              shown.
+            </p>
+            {warnings.map((warning) => (
+              <p key={warning}>{warning}</p>
+            ))}
+            <Link className="text-link" to="/indexers">
+              Review indexer connections
+            </Link>
+          </div>
+        </div>
       )}
     </>
   );

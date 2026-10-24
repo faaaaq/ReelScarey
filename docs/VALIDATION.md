@@ -1,5 +1,31 @@
 # Validation record — 2026-10-23
 
+## Direct indexers and title details (0.9 development)
+
+- Local Go/API/static checks pass. The 39 UI interaction tests cover public
+  source creation, private-secret preservation, offline disabling, detail links,
+  cast/crew/storage/history and retained cached content after refresh failure.
+- Independently authored IPTorrents/XSpeeds protocol fixtures verify HTTP
+  method/query/form, cookie/agent, freeleech, size/seed normalization, unknown
+  layouts/challenges, same-origin links, redirect refusal and cancellation.
+  RSS tests cover NYAA namespace fields, duplicate/foreign links and malformed
+  feeds. Direct metainfo uses the shared bounded torrent identity validator.
+- Managed-source tests cover encrypted storage, revisions/generations, source
+  fairness, partial/all failure, removed/disabled selection refusal, queued-job
+  independence and original source history. Scheduler tests cover managed
+  connections without the legacy single Torznab configuration.
+- Movie import details survive reopen. TV shared files retain grouped episodes
+  and count once in totals. Backup recovery preserves encrypted indexer sessions;
+  an indexer-only config with a missing key refuses startup.
+- The public NYAA RSS endpoint returned HTTP 200 through PowerShell on this
+  machine. The opt-in Go adapter's direct socket was denied by Windows
+  (`connectex` access permissions), so live app-to-NYAA acceptance is pending.
+  This is recorded as a failed live check, not a passing integration. No public
+  torrent was retrieved. Private IPTorrents/XSpeeds account acceptance also
+  remains pending owner sessions entered privately in the app.
+- Linux CI, native packaged acceptance and browser evidence are recorded below
+  after their actual runs. Owner media is never used as a test fixture.
+
 ## Production hardening (0.8 development)
 
 - Local backend/API tests and static checks pass; all 35 UI interaction tests

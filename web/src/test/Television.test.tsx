@@ -65,6 +65,20 @@ function setup(
       });
     if (url.endsWith("/providers/tmdb"))
       return Response.json({ configured: true });
+    if (url.includes("/library/items/7?"))
+      return Response.json({
+        item: show,
+        information: { cast: [], crew: [], genres: [], rating: 0, tagline: "" },
+        metadata_updated_at: Math.floor(Date.now() / 1000),
+        media_root: "/media",
+        library_root: "/media/TV",
+        total_size_bytes: 0,
+        file_count: 0,
+        history_count: 0,
+        page: 1,
+        files: [],
+        history: [],
+      });
     return Response.json(
       { error: { message: "Unexpected test request" } },
       { status: 404 },

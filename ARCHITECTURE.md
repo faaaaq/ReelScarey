@@ -87,7 +87,7 @@ Planned entities (design, **not implemented schema**):
 
 | Entity | Relationships and invariants |
 | --- | --- |
-| indexers/download_clients | Future multi-provider CRUD; one encrypted configuration per integration exists now |
+| download_clients | Future multi-client CRUD; one encrypted qBittorrent configuration exists now |
 | jobs | Future arbitrary job types; searches and downloads already have durable leases/retries |
 
 Media file paths are never derived from untrusted release names without
@@ -95,6 +95,14 @@ normalization and root containment checks. Downloads remain separate from files:
 an imported file can survive removal of download-client history.
 
 ## Module boundaries and planned interfaces
+
+Migration 008 adds managed `indexers`, cached `media_enrichment` and historical
+download source names. Transfer selects the saved adapter for every encrypted
+release; revision/generation checks invalidate stale selections. Native IPTorrents,
+XSpeeds, NYAA and private RSS share bounded multi-source search with Torznab and
+automation. Metadata enrichment stays behind the metadata provider boundary.
+Local details read verified import records, counting shared TV files once, and
+remain available independently of providers. See docs/INDEXERS_DETAILS.md.
 
 TMDb MovieProvider implements Validate/Search/Movie; SeriesProvider implements
 SearchSeries/Series/Season using the same bounded HTTP client, rate-limit cooldown

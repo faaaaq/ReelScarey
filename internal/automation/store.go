@@ -63,7 +63,7 @@ func (s *Service) Get(ctx context.Context) (Schedule, error) {
 		return v, e
 	}
 	if s.workflow != nil {
-		a, e := s.workflow.Status(ctx, "torznab")
+		a, e := s.workflow.Status(ctx, "indexers")
 		if e != nil {
 			return v, e
 		}
@@ -76,7 +76,7 @@ func (s *Service) Get(ctx context.Context) (Schedule, error) {
 	}
 	if (v.Enabled || v.Requested) && !v.IndexerConnected {
 		v.State = "waiting_indexer"
-		v.Message = "Waiting for Torznab. Library browsing and manual management remain available."
+		v.Message = "Waiting for an enabled indexer. Add a direct tracker, RSS feed or Torznab connection in Indexers."
 	}
 	return v, nil
 }

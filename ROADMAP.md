@@ -96,6 +96,22 @@ temporary libraries only. Never use unauthorized content as test material.
   arm64 runtime and shared-storage filesystem acceptance.
 - [ ] Owner chooses open-source license before public distribution.
 
+## 7 — Direct indexers and title details
+- [x] Managed encrypted multi-indexer CRUD, explicit tests, offline disabling,
+  source-bound selections and visible partial failures.
+- [x] Independent direct IPTorrents/XSpeeds session adapters, public NYAA RSS,
+  private RSS and multiple Torznab endpoints; Prowlarr optional.
+- [x] Movie/TV detail navigation, cached cast/creators/directors/writers,
+  IMDb/TMDb/trailer links and offline local status.
+- [x] Verified file paths/sizes/technical details, original release/source history
+  and individual Activity links; shared TV files counted once.
+- [ ] Owner private tracker session acceptance and shared-storage import acceptance.
+- [ ] Absolute anime numbering, automatic challenge solving and arbitrary library
+  scanning are outside this milestone.
+
+See [setup and exact limits](docs/INDEXERS_DETAILS.md). Current validation is
+recorded in [validation](docs/VALIDATION.md).
+
 ## Validation record
 
 2026-10-23 production hardening: setup guidance, explicit local diagnostics,

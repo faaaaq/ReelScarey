@@ -198,7 +198,7 @@ function ScheduleForm({
       </div>
       {!schedule.indexer_connected ? (
         <div className="automation-notice">
-          <strong>Torznab can wait.</strong>
+          <strong>Searches are waiting for an indexer.</strong>
           <p>
             Save profiles and schedule preferences now. Searches will wait for
             an indexer connection. You can keep managing your library.

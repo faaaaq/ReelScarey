@@ -27,7 +27,7 @@ func (s *Server) transferError(w http.ResponseWriter, err error) {
 		switch e.Code {
 		case "invalid_settings", "invalid_search", "invalid_file", "invalid_release", "unsupported_torrent", "unsafe_path", "invalid_mapping", "too_many_episodes":
 			status = 400
-		case "indexer_not_configured", "client_not_configured", "active_downloads", "release_expired", "movie_busy", "download_busy", "duplicate_hash", "episode_busy", "episode_changed", "episodes_not_loaded", "no_episode_targets", "mapping_locked":
+		case "revision_conflict", "indexer_not_configured", "client_not_configured", "active_downloads", "release_expired", "movie_busy", "download_busy", "duplicate_hash", "episode_busy", "episode_changed", "episodes_not_loaded", "no_episode_targets", "mapping_locked":
 			status = 409
 		case "movie_not_found":
 			status = 404
@@ -134,7 +134,7 @@ func (s *Server) searchReleases(w http.ResponseWriter, r *http.Request) {
 		s.transferError(w, err)
 		return
 	}
-	send(w, 200, map[string]any{"items": out})
+	send(w, 200, map[string]any{"items": out, "warnings": s.transfer.IndexerWarnings(r.Context())})
 }
 func (s *Server) downloadCollection(w http.ResponseWriter, r *http.Request) {
 	if !s.transferReady(w) {

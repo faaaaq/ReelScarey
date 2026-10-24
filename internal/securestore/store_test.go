@@ -72,3 +72,33 @@ func TestEncryptionAndKeyLifecycle(t *testing.T) {
 		t.Fatal("credential removal failed")
 	}
 }
+
+func TestIndexerOnlyKeyLifecycle(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, e := database.Open(ctx, dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	store, e := New(ctx, db, dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	cipher, e := store.Seal("indexer:fixture", []byte("private fixture cookie"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`INSERT INTO indexers(id,name,kind,enabled,generation,ciphertext,updated_at) VALUES('fixture','Fixture','rss',1,'one',?,1)`, cipher); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = New(ctx, db, dir); e != nil {
+		t.Fatal(e)
+	}
+	if e = os.Remove(filepath.Join(dir, "secrets.key")); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = New(ctx, db, dir); e == nil {
+		t.Fatal("indexer-only config silently generated a replacement key")
+	}
+}

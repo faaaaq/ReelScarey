@@ -46,7 +46,7 @@ also in `/config/setup-token` and is removed after setup. No default password is
 created. Go to Settings, enter your TMDb **API Read Access Token**, and save/test
 the connection. Search for a movie and add it to the library. Existing config
 volumes upgrade automatically; the first login upgrade requires account setup.
-Connect a Torznab API endpoint and qBittorrent in Settings. In Movies, choose
+Add direct IPTorrents/XSpeeds, public NYAA, private RSS or Torznab connections in Indexers, then connect qBittorrent in Settings. In Movies, choose
 Find releases, search, then select Download. Activity tracks download/import
 progress and offers recovery actions. See [movie workflow setup](docs/MOVIE_WORKFLOW.md).
 
@@ -193,3 +193,5 @@ License selection is pending the repository owner's decision. No open-source
 license is granted by this initial scaffold. Dependencies retain their own
 licenses. This is an independent implementation; no code was copied from the
 four applications that inspired its scope.
+
+See [indexers and title details](docs/INDEXERS_DETAILS.md) for direct tracker setup, cached cast/credits/trailers and local file/release history.

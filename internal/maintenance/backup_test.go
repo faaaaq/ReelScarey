@@ -49,6 +49,13 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	if e = secrets.SetNamed(ctx, "opensubtitles", []byte(`{"api_key":"fixture-private-key"}`)); e != nil {
 		t.Fatal(e)
 	}
+	indexerCipher, e := secrets.Seal("indexer:fixture", []byte(`{"cookie":"fixture-session"}`))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`INSERT INTO indexers(id,name,kind,enabled,generation,ciphertext,updated_at) VALUES('fixture','Fixture','iptorrents',1,'one',?,1)`, indexerCipher); e != nil {
+		t.Fatal(e)
+	}
 	if _, e = db.Exec(`UPDATE settings SET library_name='Recovered cinema'; UPDATE subtitle_preferences SET enabled=1; UPDATE search_schedule SET enabled=1`); e != nil {
 		t.Fatal(e)
 	}
@@ -58,7 +65,7 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	if e != nil {
 		t.Fatal(e)
 	}
-	if m.Schema != 7 || len(m.Files) != 2 {
+	if m.Schema != 8 || len(m.Files) != 2 {
 		t.Fatal(m)
 	}
 	if _, e = Verify(ctx, backup); e != nil {
@@ -94,6 +101,12 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	b, e := saved.GetNamed(ctx, "opensubtitles")
 	if e != nil || !bytes.Contains(b, []byte("fixture-private-key")) {
 		t.Fatal("provider secret lost", e)
+	}
+	if e = restored.QueryRow(`SELECT ciphertext FROM indexers WHERE id='fixture'`).Scan(&indexerCipher); e != nil {
+		t.Fatal(e)
+	}
+	if b, e = saved.Open("indexer:fixture", indexerCipher); e != nil || !bytes.Contains(b, []byte("fixture-session")) {
+		t.Fatal("indexer credential lost in recovery", e)
 	}
 	accounts, e := auth.New(ctx, restored, dest)
 	if e != nil {

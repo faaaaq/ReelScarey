@@ -83,7 +83,7 @@ func TestAuthenticatedReleaseDownloadAPI(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, url := range []string{"/api/v1/integrations/torznab", "/api/v1/integrations/qbittorrent", "/api/v1/releases?movie_id=1", "/api/v1/downloads", "/api/v1/downloads/test", "/api/v1/library/movies/1"} {
+	for _, url := range []string{"/api/v1/indexers", "/api/v1/indexers/status", "/api/v1/library/items/1", "/api/v1/integrations/torznab", "/api/v1/integrations/qbittorrent", "/api/v1/releases?movie_id=1", "/api/v1/downloads", "/api/v1/downloads/test", "/api/v1/library/movies/1"} {
 		if out := request(handler, "GET", url, "", nil, false); out.Code != 401 {
 			t.Fatal("unprotected workflow route", url, out.Code)
 		}
@@ -183,5 +183,39 @@ func TestAuthenticatedReleaseDownloadAPI(t *testing.T) {
 	}
 	if out = request(handler, "POST", mappingURL, body, &session, true); out.Code != 200 || !strings.Contains(out.Body.String(), `"state":"importing"`) {
 		t.Fatal(out.Code, out.Body)
+	}
+	managedBody := fmt.Sprintf(`{"name":"Managed fixture","kind":"torznab","url":%q,"api_key":"test-private-key","enabled":true}`, upstream.URL+"/api")
+	if out = request(handler, "POST", "/api/v1/indexers", managedBody, &session, false); out.Code != 403 {
+		t.Fatal("indexer create lacked CSRF")
+	}
+	if out = request(handler, "POST", "/api/v1/indexers", `{"name":"bad","unexpected":"field"}`, &session, true); out.Code != 400 {
+		t.Fatal("unknown indexer field accepted")
+	}
+	out = request(handler, "POST", "/api/v1/indexers", managedBody, &session, true)
+	var managed transfer.IndexerStatus
+	if out.Code != 201 || json.Unmarshal(out.Body.Bytes(), &managed) != nil || managed.ID == "" || strings.Contains(out.Body.String(), "test-private-key") {
+		t.Fatal("managed credential contract", out.Code, out.Body)
+	}
+	base := "/api/v1/indexers/" + managed.ID
+	if out = request(handler, "PUT", base+"/enabled", `{"enabled":false,"revision":1}`, &session, false); out.Code != 403 {
+		t.Fatal("toggle lacked CSRF")
+	}
+	if out = request(handler, "PUT", base+"/enabled", `{"enabled":false,"revision":1}`, &session, true); out.Code != 200 {
+		t.Fatal(out.Code, out.Body)
+	}
+	if out = request(handler, "DELETE", base, `{"revision":1}`, &session, true); out.Code != 409 {
+		t.Fatal("stale deletion accepted")
+	}
+	if out = request(handler, "DELETE", base, `{"revision":2}`, &session, true); out.Code != 200 {
+		t.Fatal(out.Code, out.Body)
+	}
+	if out = request(handler, "GET", "/api/v1/library/items/1?page=1", "", &session, false); out.Code != 200 || !strings.Contains(out.Body.String(), "history_count") {
+		t.Fatal(out.Code, out.Body)
+	}
+	if out = request(handler, "POST", "/api/v1/library/items/1/metadata", "{}", &session, false); out.Code != 403 {
+		t.Fatal("metadata mutation lacked CSRF")
+	}
+	if out = request(handler, "POST", "/api/v1/library/items/1/metadata", "{}", &session, true); out.Code != 503 {
+		t.Fatal("missing metadata dependency not handled")
 	}
 }

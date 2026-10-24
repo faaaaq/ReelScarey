@@ -99,7 +99,9 @@ describe("automation", () => {
   it("lets Torznab wait while saving an opt-in download schedule", async () => {
     const fetch = setup();
     mount();
-    expect(await screen.findByText("Torznab can wait.")).toBeVisible();
+    expect(
+      await screen.findByText("Searches are waiting for an indexer."),
+    ).toBeVisible();
     expect(screen.getByRole("button", { name: "Search now" })).toBeDisabled();
     expect(
       screen.getByLabelText("Enable scheduled searches"),
@@ -144,7 +146,7 @@ describe("automation", () => {
       return undefined;
     });
     mount();
-    await screen.findByText("Torznab can wait.");
+    await screen.findByText("Searches are waiting for an indexer.");
     await userEvent.selectOptions(
       screen.getByLabelText("Release language"),
       "japanese",

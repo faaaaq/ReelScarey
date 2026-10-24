@@ -177,6 +177,33 @@ func TestUnconfiguredIndexerWaitsWithoutRequests(t *testing.T) {
 		t.Fatal("waiting job busy-looped", ok, e)
 	}
 }
+
+func TestManagedIndexerEnablesAutomationWithoutLegacyConnection(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	if e := f.w.Remove(ctx, "torznab"); e != nil {
+		t.Fatal(e)
+	}
+	source, e := f.w.SaveIndexer(ctx, "", transfer.ManagedIndexerUpdate{Name: "Managed source", Kind: "torznab", URL: "https://fixture.invalid/api", Enabled: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	v, e := f.s.Get(ctx)
+	if e != nil || !v.IndexerConnected {
+		t.Fatal("managed source not available to scheduler", e)
+	}
+	configure(t, f.s, true, "search", 10)
+	if _, e = f.s.ProcessNext(ctx); e != nil || f.i.calls != 1 {
+		t.Fatal("managed source not searched", e)
+	}
+	if _, e = f.w.SetIndexerEnabled(ctx, source.ID, source.Revision, false); e != nil {
+		t.Fatal(e)
+	}
+	v, e = f.s.Get(ctx)
+	if e != nil || v.IndexerConnected {
+		t.Fatal("disabled source remained available", e)
+	}
+}
 func TestLeaseReclaimAndPauseFenceDuringMetainfoFetch(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()

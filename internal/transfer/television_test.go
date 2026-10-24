@@ -103,6 +103,17 @@ func TestTVMultiEpisodeImportReopenAndSourceRetention(t *testing.T) {
 			if !strings.Contains(season.Episodes[0].FilePath, "S01E01-E02") {
 				t.Fatal("multi-episode naming wrong", season.Episodes[0].FilePath)
 			}
+			details, e := f.s.Details(ctx, id, 1)
+			if e != nil || details.FileCount != 2 || len(details.Files) != 2 || details.HistoryCount != 1 || details.Files[0].Episodes != "S01E01, S01E02" {
+				t.Fatal("TV details did not retain shared-file associations", details, e)
+			}
+			var expectedSize int64
+			for _, file := range f.client.files {
+				expectedSize += file.Size
+			}
+			if details.TotalSize != expectedSize {
+				t.Fatal("shared TV file counted more than once")
+			}
 			for _, ep := range season.Episodes {
 				if _, e = os.Stat(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(ep.FilePath))); e != nil {
 					t.Fatal(e)

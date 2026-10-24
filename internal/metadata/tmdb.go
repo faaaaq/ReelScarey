@@ -106,6 +106,9 @@ func ValidToken(token string) bool {
 	return len(token) >= 20 && len(token) <= 4096 && strings.TrimSpace(token) == token && strings.IndexFunc(token, func(r rune) bool { return r < 33 || r > 126 }) < 0
 }
 func (c *Client) request(ctx context.Context, token, endpoint string, query url.Values, out any) error {
+	return c.requestLimit(ctx, token, endpoint, query, out, 2<<20)
+}
+func (c *Client) requestLimit(ctx context.Context, token, endpoint string, query url.Values, out any, limit int64) error {
 	if !ValidToken(token) {
 		return &Error{Code: "tmdb_invalid_token", Message: "Enter a valid TMDb API Read Access Token."}
 	}
@@ -151,8 +154,8 @@ func (c *Client) request(ctx context.Context, token, endpoint string, query url.
 	default:
 		return &Error{Code: "tmdb_unavailable", Message: "TMDb is temporarily unavailable. Try again later."}
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, (2<<20)+1))
-	if err != nil || len(body) > 2<<20 || json.Unmarshal(body, out) != nil {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil || int64(len(body)) > limit || json.Unmarshal(body, out) != nil {
 		return &Error{Code: "tmdb_invalid_response", Message: "TMDb returned an unreadable response. Try again later."}
 	}
 	return nil

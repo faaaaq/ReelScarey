@@ -110,6 +110,9 @@ export type IntegrationStatus = {
   download_path?: string;
 };
 export type Release = {
+  indexer?: string;
+  indexer_id?: string;
+  freeleech?: boolean;
   id: string;
   movie_id: number;
   title: string;

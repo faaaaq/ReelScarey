@@ -1,5 +1,45 @@
 # REST API — media catalog, downloads, imports, automation and operations
 
+## Managed indexers and title details
+
+All routes below require the administrator session; every mutation also requires
+CSRF/origin validation. See [provider behavior and limits](INDEXERS_DETAILS.md).
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/api/v1/indexers` | Safe statuses, including a virtual `legacy` Torznab connection when configured |
+| POST | `/api/v1/indexers` | Validate/test/encrypt a new managed source; 201 |
+| PUT | `/api/v1/indexers/{id}` | Test and replace settings with matching revision; immutable kind |
+| DELETE | `/api/v1/indexers/{id}` | `{revision}`; remove connection and credentials, retain queued jobs |
+| PUT | `/api/v1/indexers/{id}/enabled` | `{revision,enabled}`; rotate generation without contacting provider |
+| POST | `/api/v1/indexers/{id}/test` | `{}`; explicit connection test, update safe health status |
+| GET | `/api/v1/indexers/status` | `configured` means at least one enabled managed or legacy source |
+| GET | `/api/v1/library/items/{id}?page=1` | Cached metadata, current roots, verified file facts, unique-file totals and download history |
+| POST | `/api/v1/library/items/{id}/metadata` | `{}`; refresh canonical TMDb cast/credits/genres/rating/external links and save locally |
+
+Managed input fields: `name` (1–80), `kind` (`iptorrents`, `xspeeds`, `nyaa`,
+`rss`, `torznab`), `url`, `enabled`, `revision`, `user_agent`, `freeleech_only`,
+optional write-only `cookie`, `api_key`, `feed_url`. Omitted secrets preserve saved
+values; an explicit empty string clears a supported optional secret. Changed
+origin/agent requires fresh associated secrets. Maximum twelve managed sources.
+Status returns `has_cookie`, `has_api_key`, `has_feed`, safe homepage/endpoint,
+revision and test/search timestamps/count/error; no credentials or feed passkeys.
+Revision conflicts return 409. The legacy connection edits through its original
+integration API; it supports testing/removal from this list.
+
+Movie and TV release responses now add `warnings` for unavailable sources.
+Each release may add `indexer_id`, `indexer` and `freeleech`. Selections remain
+opaque, encrypted and expiring. Sources are rechecked at queue time. Search errors
+from all sources fail the request; partial failures retain healthy results.
+
+Item details returns `item`, nullable `information`, `metadata_updated_at`,
+`media_root`, `library_root`, `file_count`, `total_size_bytes`, `history_count`,
+`files`, `history`, `page`. Both arrays paginate at 50. Files include path,
+directory, size, import time, probe, release, download ID and grouped TV episode
+labels. History contains safe job identity/title/source/state/progress/size/dates
+and error. Metadata refresh failure retains the previous cache. Reads do not
+contact TMDb or scan the media filesystem.
+
 ## Setup and installation health
 
 All these routes require the administrator session and mutations also require

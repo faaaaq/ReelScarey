@@ -255,6 +255,16 @@ export function Settings() {
                 </div>
               </section>
               <TMDbSettings />
+              <section className="panel settings-info">
+                <h2>Torrent indexers</h2>
+                <p>
+                  Manage direct IPTorrents, XSpeeds, NYAA, private feeds and
+                  multiple Torznab connections.
+                </p>
+                <Link className="text-link" to="/indexers">
+                  Manage indexers
+                </Link>
+              </section>
               <IntegrationSettings kind="torznab" />
               <IntegrationSettings kind="qbittorrent" />
               <section className="panel settings-info">

@@ -69,10 +69,17 @@ func remoteRoot(s string) (string, error) {
 }
 
 type IndexerConfig struct {
-	Category   string `json:"category,omitempty"`
-	URL        string `json:"url"`
-	APIKey     string `json:"api_key"`
-	Generation string `json:"generation"`
+	ID            string `json:"id,omitempty"`
+	Name          string `json:"name,omitempty"`
+	Kind          string `json:"kind,omitempty"`
+	Cookie        string `json:"cookie,omitempty"`
+	UserAgent     string `json:"user_agent,omitempty"`
+	FeedURL       string `json:"feed_url,omitempty"`
+	FreeleechOnly bool   `json:"freeleech_only,omitempty"`
+	Category      string `json:"category,omitempty"`
+	URL           string `json:"url"`
+	APIKey        string `json:"api_key"`
+	Generation    string `json:"generation"`
 }
 type ClientConfig struct {
 	URL          string `json:"url"`
@@ -81,13 +88,16 @@ type ClientConfig struct {
 	DownloadPath string `json:"download_path"`
 }
 type Release struct {
-	ID        string `json:"id"`
-	MovieID   int64  `json:"movie_id"`
-	Title     string `json:"title"`
-	Size      int64  `json:"size_bytes"`
-	Seeders   *int   `json:"seeders"`
-	Peers     *int   `json:"peers"`
-	Published string `json:"published_at"`
+	IndexerID   string `json:"indexer_id,omitempty"`
+	IndexerName string `json:"indexer,omitempty"`
+	Freeleech   bool   `json:"freeleech,omitempty"`
+	ID          string `json:"id"`
+	MovieID     int64  `json:"movie_id"`
+	Title       string `json:"title"`
+	Size        int64  `json:"size_bytes"`
+	Seeders     *int   `json:"seeders"`
+	Peers       *int   `json:"peers"`
+	Published   string `json:"published_at"`
 }
 type Candidate struct {
 	Release

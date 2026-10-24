@@ -75,17 +75,9 @@ func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode 
 	if !textOK(query, 200) {
 		return nil, problem("invalid_search", "Enter a release search with 1–200 characters.")
 	}
-	c, e := s.indexerConfig(ctx)
+	candidates, e := s.searchIndexers(ctx, query, "5000")
 	if e != nil {
 		return nil, e
-	}
-	c.Category = "5000"
-	candidates, e := s.indexer.Search(ctx, c, query)
-	if e != nil {
-		return nil, e
-	}
-	if len(candidates) > 50 {
-		candidates = candidates[:50]
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -103,7 +95,6 @@ func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode 
 		v.MovieID = seriesID
 		v.Kind = "series"
 		v.Targets = targets
-		v.Generation = c.Generation
 		b, e := json.Marshal(v)
 		if e != nil {
 			return nil, e
@@ -209,7 +200,7 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 			return Job{}, false, e
 		}
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,kind) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,'series')`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, path.Join(client.DownloadPath, "ReelScarey", id), now, now); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,kind,indexer_name) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,'series',?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, path.Join(client.DownloadPath, "ReelScarey", id), now, now, v.IndexerName); e != nil {
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO download_tv(download_id,series_tmdb_id,series_title,series_year,season_number,series_folder,naming) VALUES(?,?,?,?,?,?,?)`, id, show.TMDbID, show.Title, show.Year, v.Targets[0].Season, prefs.SeriesFolder, prefs.EpisodeNaming); e != nil {
