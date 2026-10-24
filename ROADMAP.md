@@ -112,6 +112,22 @@ temporary libraries only. Never use unauthorized content as test material.
 See [setup and exact limits](docs/INDEXERS_DETAILS.md). Current validation is
 recorded in [validation](docs/VALIDATION.md).
 
+## 8 — Existing-library discovery and registration
+- [x] Explicit bounded discovery of configured movie/TV folders with durable
+  restart recovery, review history, skip/stop controls and no arbitrary paths.
+- [x] Saved-catalog/TMDb match review, new titles paused, explicit consecutive
+  TV episode selection and no automatic filename-based registration.
+- [x] Stable identity/size/mtime checks, double SHA-256 and FFprobe verification,
+  lease-fenced atomic in-place registration and download/episode conflict refusal.
+- [x] Genuine existing-file provenance, preserved migration references and shared
+  availability/quality/subtitle consumers without fabricated download history.
+- [ ] Owner-library acceptance is separate from generated/disposable tests.
+- [ ] Copy/move/rename, arbitrary-root browsing, automatic bulk matching and
+  replacement/reassignment remain future scope.
+
+IPTorrents and XSpeeds account acceptance remains explicitly deferred by the owner.
+See [existing-library workflow](docs/EXISTING_LIBRARY.md).
+
 ## Validation record
 
 2026-10-23 direct indexers and title details: the

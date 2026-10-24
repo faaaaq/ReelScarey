@@ -7,6 +7,7 @@ import {
   Clapperboard,
   Clock3,
   Film,
+  FolderSearch,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -39,6 +40,7 @@ import { Subtitles } from "./pages/Subtitles";
 import { Setup, SystemChecks } from "./pages/System";
 import { Indexers } from "./pages/Indexers";
 import { ItemDetails } from "./pages/ItemDetails";
+import { ExistingLibrary } from "./pages/ExistingLibrary";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -77,7 +79,7 @@ function AppShell() {
   const location = useLocation();
   useEffect(() => {
     setMenuOpen(false);
-    document.title = `${location.pathname === "/setup" ? "Setup" : location.pathname === "/system" ? "System checks" : location.pathname.startsWith("/series/") ? "TV show" : location.pathname.startsWith("/movies/") ? "Movie details" : location.pathname === "/indexers" ? "Indexers" : location.pathname === "/settings" ? "Settings" : location.pathname === "/releases" ? "Releases" : (navigation.find((item) => item.path === location.pathname)?.name ?? "Page")} · ReelScarey`;
+    document.title = `${location.pathname === "/setup" ? "Setup" : location.pathname === "/system" ? "System checks" : location.pathname.startsWith("/series/") ? "TV show" : location.pathname.startsWith("/movies/") ? "Movie details" : location.pathname === "/import" ? "Import library" : location.pathname === "/indexers" ? "Indexers" : location.pathname === "/settings" ? "Settings" : location.pathname === "/releases" ? "Releases" : (navigation.find((item) => item.path === location.pathname)?.name ?? "Page")} · ReelScarey`;
   }, [location.pathname]);
   useEffect(() => {
     function close(event: KeyboardEvent) {
@@ -128,6 +130,10 @@ function AppShell() {
         </nav>
         <div className="sidebar-bottom">
           <nav aria-label="Administration">
+            <NavLink to="/import">
+              <FolderSearch size={19} strokeWidth={1.7} />
+              <span>Import library</span>
+            </NavLink>
             <NavLink to="/indexers">
               <Radio size={19} strokeWidth={1.7} />
               <span>Indexers</span>
@@ -149,7 +155,7 @@ function AppShell() {
             <span className="status-dot" />
             <span>Movies & TV</span>
             <Badge color="gray" size="1">
-              0.9
+              0.10
             </Badge>
           </div>
           <div className="account-control">
@@ -181,6 +187,7 @@ function AppShell() {
             />
             <Route path="/settings" element={<Settings />} />
             <Route path="/indexers" element={<Indexers />} />
+            <Route path="/import" element={<ExistingLibrary />} />
             <Route path="/movies/:id" element={<ItemDetails />} />
             <Route path="/setup" element={<Setup />} />
             <Route path="/system" element={<SystemChecks />} />

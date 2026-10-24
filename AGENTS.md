@@ -23,6 +23,9 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - internal/transfer owns Torznab/qBittorrent adapters, encrypted integration
   settings, release selections, leased download jobs, TV episode reservations/
   reviewed file mappings and per-file journaled imports. TV shares the importer.
+  It also owns explicit existing-library discovery and reviewed in-place
+  registration. Discovery never authorizes a metadata match or a filesystem
+  write; registered existing files must not fabricate download/release rows.
 - internal/library owns the shared catalog, TV seasons/episodes and revision-checked monitoring. Future providers live in
   their feature modules behind narrow, consumer-owned interfaces.
 - internal/quality owns editable profiles, conservative release identity and ranking.
@@ -53,6 +56,8 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - Store provider tokens only through securestore; its AES-GCM key must be backed
   up with the database. Missing/wrong keys must fail closed, never silently reset.
 - Migrations are append-only after release. Back up SQLite before upgrading.
+  Parent-table rebuilds must preserve existing IDs/consumers and pass the
+  migration runner's foreign-key check before committing.
 - Never test against an existing user library. Imports must validate containment,
   refuse overwrite, stage and verify copies, preserve torrent sources, and journal
   state for crash recovery. Media tests use generated files in disposable roots;

@@ -24,6 +24,9 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
             : "Every season, all in one place."
         }
       >
+        <Button asChild variant="soft">
+          <Link to="/import">Import existing</Link>
+        </Button>
         {
           <Button asChild>
             <Link to={movies ? "/search" : "/search?kind=series"}>

@@ -25,9 +25,9 @@ func (s *Server) transferError(w http.ResponseWriter, err error) {
 	if errors.As(err, &e) {
 		status := 502
 		switch e.Code {
-		case "invalid_settings", "invalid_search", "invalid_file", "invalid_release", "unsupported_torrent", "unsafe_path", "invalid_mapping", "too_many_episodes":
+		case "invalid_settings", "invalid_search", "invalid_file", "invalid_release", "unsupported_torrent", "unsafe_path", "invalid_mapping", "invalid_scan", "too_many_episodes":
 			status = 400
-		case "revision_conflict", "indexer_not_configured", "client_not_configured", "active_downloads", "release_expired", "movie_busy", "download_busy", "duplicate_hash", "episode_busy", "episode_changed", "episodes_not_loaded", "no_episode_targets", "mapping_locked":
+		case "revision_conflict", "indexer_not_configured", "client_not_configured", "active_downloads", "release_expired", "movie_busy", "download_busy", "duplicate_hash", "episode_busy", "episode_changed", "episodes_not_loaded", "no_episode_targets", "mapping_locked", "scan_busy", "scan_history_full", "duplicate_file", "source_changed":
 			status = 409
 		case "movie_not_found":
 			status = 404

@@ -160,7 +160,7 @@ func reserveTV(ctx context.Context, tx *sql.Tx, id string, seriesID int64, targe
 			return e
 		}
 		var busy int
-		if e := tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM episode_downloads WHERE episode_id=? AND download_id<>?)+(SELECT COUNT(*) FROM episode_files ef JOIN media_files mf ON mf.id=ef.media_file_id WHERE ef.episode_id=? AND mf.download_id<>?)`, t.EpisodeID, id, t.EpisodeID, id).Scan(&busy); e != nil {
+		if e := tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM episode_downloads WHERE episode_id=? AND download_id<>?)+(SELECT COUNT(*) FROM episode_files ef JOIN media_files mf ON mf.id=ef.media_file_id WHERE ef.episode_id=? AND (mf.download_id IS NULL OR mf.download_id<>?))`, t.EpisodeID, id, t.EpisodeID, id).Scan(&busy); e != nil {
 			return e
 		}
 		if busy > 0 {

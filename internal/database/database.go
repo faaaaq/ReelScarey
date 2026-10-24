@@ -124,6 +124,19 @@ func apply(ctx context.Context, tx *sql.Tx, version int, name, checksum string, 
 	if _, err := tx.ExecContext(ctx, string(body)); err != nil {
 		return err
 	}
+	checks, err := tx.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		return err
+	}
+	violated := checks.Next()
+	checkErr := checks.Err()
+	checks.Close()
+	if checkErr != nil {
+		return checkErr
+	}
+	if violated {
+		return fmt.Errorf("migration would break foreign key references")
+	}
 	_, err = tx.ExecContext(ctx, "INSERT INTO schema_migrations (version, name, checksum) VALUES (?, ?, ?)", version, name, checksum)
 	return err
 }

@@ -30,6 +30,7 @@ export type LocalDetails = {
   history_count: number;
   page: number;
   files: {
+    origin?: string;
     id: number;
     path: string;
     directory: string;
@@ -421,17 +422,27 @@ export function ItemInformation({
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
-                    <p>Release: {file.release}</p>
+                    <p>
+                      {file.origin === "existing" ? "Existing file" : "Release"}
+                      : {file.release}
+                    </p>
+                    {file.origin === "existing" && (
+                      <Badge color="gray">
+                        Registered in its existing location
+                      </Badge>
+                    )}
                     <p className="field-help">
-                      Imported{" "}
+                      {file.origin === "existing" ? "Registered" : "Imported"}{" "}
                       {new Date(file.imported_at * 1000).toLocaleString()}
                     </p>
-                    <Link
-                      className="text-link"
-                      to={`/activity?job=${encodeURIComponent(file.download_id)}`}
-                    >
-                      View download
-                    </Link>
+                    {file.download_id && (
+                      <Link
+                        className="text-link"
+                        to={`/activity?job=${encodeURIComponent(file.download_id)}`}
+                      >
+                        View download
+                      </Link>
+                    )}
                   </article>
                 ))}
               </div>

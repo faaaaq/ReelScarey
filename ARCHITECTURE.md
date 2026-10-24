@@ -51,6 +51,15 @@ singleton `admin_account`, `sessions`, `provider_secrets`, `integration_configs`
 `automation_results`, `subtitle_preferences`, `subtitle_provider_state`,
 `subtitle_jobs`, `subtitle_candidates`, `subtitle_inspections`, `subtitles` and
 `subtitle_imports`, `indexers` and `media_enrichment`.
+
+Migration 009 adds `library_scans`, `library_scan_dirs` and `library_scan_files`.
+Existing videos register in `media_files` with explicit existing-file provenance
+and no fabricated download. A transactional parent rebuild retains all IDs and
+episode/subtitle references; the runner checks foreign keys before commit.
+Manual discovery and reviewed verification use persistent leases in transfer,
+with a separate worker in the same Go process and the shared FFprobe/hash helpers.
+Registration updates availability atomically without publishing/moving files.
+See docs/EXISTING_LIBRARY.md for bounds, review and identity checks.
 The migration ledger stores version, filename, checksum, and applied time.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored

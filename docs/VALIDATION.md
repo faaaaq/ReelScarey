@@ -1,5 +1,23 @@
 # Validation record — 2026-10-23
 
+## Existing-library registration (0.10 development)
+
+- Local backend/API tests and all 44 UI tests pass, including explicit scan
+  requests, canonical title additions paused for monitoring, movie/TV match
+  review, rejection handling and no client-supplied filesystem paths.
+- Disposable domain tests cover restart/lease recovery, duplicate prevention,
+  retained file identity/bytes/mtime, source replacement/change, active-download
+  conflicts, consecutive TV mappings, shared-file totals, skipping/cancellation
+  and symlink rejection. No owner library is scanned or used as test input.
+- A real generated H264 video passes discovery, reviewed registration, double
+  hashing and FFprobe (320×180, verified duration), preserving original bytes,
+  physical identity and modification time without creating a download job.
+- Migration tests preserve existing file IDs and all episode/subtitle references;
+  invalid foreign-key migrations roll back. Existing filenames do not become
+  invented release evidence for automatic subtitle selection.
+- Final browser, native/package, Linux and preview-upgrade evidence follows
+  after those checks run. IPTorrents/XSpeeds account testing remains deferred.
+
 ## Direct indexers and title details (0.9 development)
 
 - Local Go/API/static checks pass. The 39 UI interaction tests cover public

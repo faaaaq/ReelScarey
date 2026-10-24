@@ -12,6 +12,10 @@ import (
 )
 
 func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
+	libraryCtx, libraryCancel := context.WithCancel(ctx)
+	libraryDone := make(chan struct{})
+	go func() { defer close(libraryDone); s.runLibrary(libraryCtx, logger) }()
+	defer func() { libraryCancel(); <-libraryDone }()
 	if err := s.cleanupCommitted(ctx); err != nil && ctx.Err() == nil {
 		logger.Warn("committed import staging cleanup deferred")
 	}

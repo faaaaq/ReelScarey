@@ -96,6 +96,8 @@ try {
   assert.equal((await (await authenticated('/api/v1/indexers/status')).json()).configured, false)
   assert.equal((await authenticated('/indexers')).status, 200)
   assert.equal((await authenticated('/movies/1')).status, 200)
+  assert.equal((await authenticated('/import')).status, 200)
+  assert.deepEqual((await (await authenticated('/api/v1/library/imports')).json()).items, [])
   const subtitles = await (await authenticated('/api/v1/subtitles/preferences')).json()
   assert.equal(subtitles.preferences.enabled, false)
   assert.deepEqual(subtitles.preferences.tracks, [{ language: 'en', variant: 'full' }, { language: 'en', variant: 'signs' }, { language: 'en', variant: 'forced' }])
@@ -116,8 +118,22 @@ try {
     body: JSON.stringify({ library_name: 'Restart verification', movie_folder: 'Features', series_folder: 'TV', revision: before.revision }),
   })
   assert.equal(saved.status, 200)
+  await mkdir(path.join(env.REELSCAREY_MEDIA_DIR, 'Features'))
+  const scanStart = await authenticated('/api/v1/library/imports', { method: 'POST', body: JSON.stringify({ kind: 'movie' }) })
+  assert.equal(scanStart.status, 202)
+  const scanId = (await scanStart.json()).id
+  let scanState
+  for (let attempt = 0; attempt < 80; attempt++) {
+    scanState = await (await authenticated(`/api/v1/library/imports/${scanId}?page=1`)).json()
+    if (scanState.scan.state === 'completed') break
+    assert.notEqual(scanState.scan.state, 'failed')
+    await delay(100)
+  }
+  assert.equal(scanState.scan.state, 'completed')
+  assert.equal(scanState.total, 0)
   await stop()
   await start()
+  assert.equal((await (await authenticated('/api/v1/library/imports')).json()).items[0].id, scanId)
   const after = await (await authenticated('/api/v1/settings')).json()
   assert.equal(after.library_name, 'Restart verification')
   assert.equal(after.revision, before.revision + 1)

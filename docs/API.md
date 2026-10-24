@@ -1,5 +1,37 @@
 # REST API — media catalog, downloads, imports, automation and operations
 
+## Existing-library discovery and reviewed registration
+
+All routes require the administrator session; mutations also require CSRF and
+same-origin validation. Reads never start a filesystem scan.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/api/v1/library/imports` | Recent scans and configured movie/TV server roots |
+| POST | `/api/v1/library/imports` | `{kind:"movie"|"series"}`; queue bounded discovery; 202 |
+| GET | `/api/v1/library/imports/{id}?page=1&state=` | Scan status/counts plus 50 discovered files; optional review/blocked/registered/skipped filter |
+| POST | `/api/v1/library/imports/{id}/cancel` | `{}`; stop discovery; prior reviewed registrations remain independent |
+| DELETE | `/api/v1/library/imports/{id}` | `{}`; forget finished review records; refuses active discovery/verification; never deletes registered media |
+| GET | `/api/v1/library/imports/catalog?kind=movie&query=title` | Up to 20 saved catalog title matches; offline read |
+| POST | `/api/v1/library/import-files/{id}/register` | `{media_id,episode_ids:[],reviewed:true}`; queue verified in-place registration; 202 |
+| POST | `/api/v1/library/import-files/{id}/skip` | `{}`; skip a review/blocked item |
+
+Paths are immutable server snapshots selected through opaque discovered IDs;
+requests never accept an arbitrary root or file path. File responses include
+relative/full path, size, mtime snapshot, filename search hint, state/message and
+nullable media/file IDs. Stable physical file identities remain internal.
+Scans expose kind/folder/state/message, timestamps, discovery/registration/queued
+counts and directory-completion examination/skip counts. Limits and exact
+semantics are in [existing-library import](EXISTING_LIBRARY.md).
+
+Registration requires explicit review and canonical catalog identities. TV
+targets must be loaded, consecutive episodes of one season (maximum 20).
+Source identity/size/mtime, checksum, FFprobe, active download reservations,
+duplicate paths/targets and current leases are checked before commit. There is
+no automatic matching, client submission or filesystem publication. Existing
+registered files appear in item details with `origin:"existing"`, an original
+filename and empty `download_id`; only downloaded files link to Activity.
+
 ## Managed indexers and title details
 
 All routes below require the administrator session; every mutation also requires

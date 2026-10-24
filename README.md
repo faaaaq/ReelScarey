@@ -195,3 +195,5 @@ licenses. This is an independent implementation; no code was copied from the
 four applications that inspired its scope.
 
 See [indexers and title details](docs/INDEXERS_DETAILS.md) for direct tracker setup, cached cast/credits/trailers and local file/release history.
+
+Import existing movies and TV videos through **Import library**: review canonical matches and register verified files in their current locations. See [existing-library import](docs/EXISTING_LIBRARY.md) for mounting, limits and safety checks.

@@ -65,6 +65,12 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/system/recovery/resume", method(http.MethodPost, s.resumeRecovery))
 	mux.HandleFunc("/api/v1/dashboard", method(http.MethodGet, s.dashboard))
 	mux.HandleFunc("/api/v1/library", method(http.MethodGet, s.listLibrary))
+	mux.HandleFunc("/api/v1/library/imports", s.existingCollection)
+	mux.HandleFunc("/api/v1/library/imports/catalog", method(http.MethodGet, s.existingCatalog))
+	mux.HandleFunc("/api/v1/library/imports/{id}", s.existingScan)
+	mux.HandleFunc("/api/v1/library/imports/{id}/cancel", method(http.MethodPost, s.existingCancel))
+	mux.HandleFunc("/api/v1/library/import-files/{id}/register", method(http.MethodPost, s.existingRegister))
+	mux.HandleFunc("/api/v1/library/import-files/{id}/skip", method(http.MethodPost, s.existingSkip))
 	mux.HandleFunc("/api/v1/library/items/{id}", method(http.MethodGet, s.itemDetails))
 	mux.HandleFunc("/api/v1/library/items/{id}/metadata", method(http.MethodPost, s.refreshInformation))
 	mux.HandleFunc("/api/v1/indexers", s.indexers)
@@ -296,7 +302,7 @@ func (s *Server) sameOrigin(r *http.Request) bool {
 
 func frontend(assets fs.FS) http.HandlerFunc {
 	files := http.FileServer(http.FS(assets))
-	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/search": true, "/releases": true, "/activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true}
+	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/search": true, "/releases": true, "/activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true, "/import": true}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
