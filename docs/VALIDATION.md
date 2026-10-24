@@ -41,9 +41,21 @@
   Diagnostics in run 40070818945 identified missing par2/unrar runtime tools;
   SABnzbd explicitly disabled downloading despite keeping its API available.
   CI now installs the real tools and the opt-in test checks their presence before
-  starting. No integration behavior was bypassed. Final Linux acceptance is pending.
+  starting. No integration behavior was bypassed. The final Linux run passes.
   Owner Newznab/SABnzbd/shared-mount acceptance is
   separate; IPTorrents and XSpeeds account tests remain explicitly deferred.
+
+The [final Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40071407180)
+passed for commit `6e25cb6`: all 47 UI tests, Go race/static checks, real disposable
+qBittorrent and SABnzbd movie/TV workflows, generated subtitle and existing-library
+regressions, native/extracted-package recovery, checksummed cross-builds and the
+container restart test. Real SABnzbd 5.1.3 completed both generated-media cases
+in that Linux run. Govulncheck reports zero vulnerabilities affecting the app and
+one advisory in a required module outside imported/called code; npm audit reports
+zero. No advisory is suppressed. The constrained container snapshot reports
+8.508 MiB/512 MiB and seven PIDs; this is a smoke snapshot, not a workload budget.
+Private artifact `12551980524` contains the 0.11 packages/checksums with the
+workflow's 14-day retention.
 
 ## Existing-library registration (0.10 development)
 

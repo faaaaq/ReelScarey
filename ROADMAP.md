@@ -138,7 +138,7 @@ See [existing-library workflow](docs/EXISTING_LIBRARY.md).
 - [x] Bounded dedicated-folder discovery, stable file choices, shared movie/TV
   reservations, mandatory TV review and journaled source-preserving imports.
 - [x] Generated-video real SABnzbd/NNTP/FFprobe movie and TV tests on Windows.
-- [ ] Final Linux race/container/package and real SABnzbd acceptance.
+- [x] Final Linux race/container/package and real SABnzbd acceptance.
 - [ ] Owner Newznab/SABnzbd/shared-mount acceptance requires private setup.
 - [ ] Retention scoring, multiple SABnzbd clients and NZBGet remain future scope.
 
@@ -146,6 +146,17 @@ See [Usenet setup and limits](docs/USENET.md). IPTorrents and XSpeeds account
 testing remains deferred.
 
 ## Validation record
+
+2026-10-24 Usenet: the
+[final Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40071407180)
+passes all 47 UI tests, backend/race/static/vulnerability checks, real generated
+SABnzbd/NNTP movie and reviewed TV imports, torrent/subtitle/existing-library
+regressions, package recovery and container restart. Windows real-client and
+disposable browser checks also pass. The preview is backed up and running 0.11;
+no owner media or private accounts were used as fixtures. The initial Linux
+failure was missing SABnzbd runtime tools, now installed and checked. Owner
+Usenet/shared-mount acceptance and IPTorrents/XSpeeds account testing remain
+separate/deferred. Full evidence is in [validation](docs/VALIDATION.md).
 
 2026-10-23 existing-library registration: the
 [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40057876547)
