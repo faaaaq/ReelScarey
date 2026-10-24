@@ -29,7 +29,7 @@ jobs:
         run: |
           go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
           npm audit --audit-level=high --prefix web
-      - name: Install disposable qBittorrent and video test tools
+      - name: Install disposable download clients and media test tools
         timeout-minutes: 20
         run: |
           # The hosted runner's Azure mirror can throttle these media packages.
@@ -38,7 +38,7 @@ jobs:
             printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
           fi
           sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update
-          sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y --no-install-recommends qbittorrent-nox ffmpeg
+          sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y --no-install-recommends qbittorrent-nox ffmpeg par2 unrar
       - name: Real qBittorrent movie and TV downloads and safe imports
         run: go test -race ./internal/transfer -run TestRealQBittorrent -count=1 -v -timeout=8m
         env:

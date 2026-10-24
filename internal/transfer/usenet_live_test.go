@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,13 @@ import (
 func TestRealSABnzbdMovieAndTVImports(t *testing.T) {
 	if os.Getenv("REELSCAREY_LIVE_SAB") != "1" {
 		t.Skip("set REELSCAREY_LIVE_SAB=1 and REELSCAREY_SABNZBD to a disposable SABnzbd executable/script")
+	}
+	if runtime.GOOS == "linux" {
+		for _, binary := range []string{"par2", "unrar"} {
+			if _, e := exec.LookPath(binary); e != nil {
+				t.Fatalf("SABnzbd requires its real %s runtime tool: %v", binary, e)
+			}
+		}
 	}
 	for _, tv := range []bool{false, true} {
 		t.Run(map[bool]string{false: "movie", true: "reviewed-TV"}[tv], func(t *testing.T) { runRealSAB(t, tv) })

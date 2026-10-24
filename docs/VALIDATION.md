@@ -38,7 +38,10 @@
 - The first Linux run (40070146621) passed the frontend/race/static/vulnerability,
   real qBittorrent, generated subtitle and existing-library checks, then failed
   the real SABnzbd test: both jobs remained Downloading until their timeout.
-  Isolated client/NNTP diagnostics were added; final Linux acceptance is pending.
+  Diagnostics in run 40070818945 identified missing par2/unrar runtime tools;
+  SABnzbd explicitly disabled downloading despite keeping its API available.
+  CI now installs the real tools and the opt-in test checks their presence before
+  starting. No integration behavior was bypassed. Final Linux acceptance is pending.
   Owner Newznab/SABnzbd/shared-mount acceptance is
   separate; IPTorrents and XSpeeds account tests remain explicitly deferred.
 
