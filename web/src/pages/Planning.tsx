@@ -123,7 +123,7 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
         description={
           calendar
             ? "Saved movie releases and loaded TV episodes, month by month."
-            : "Missing movies and episodes, with dates and download status in one place."
+            : "Missing movies and episodes, with saved dates and download status."
         }
       >
         <Button asChild variant="soft">

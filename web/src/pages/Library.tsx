@@ -159,7 +159,7 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
       <div className="catalog-result-bar">
         <p role="status">
           {data && !resource.loading && !resource.error
-            ? `${data.total} matching ${noun}${data.items.length ? ` · ${(data.page - 1) * data.limit + 1}–${(data.page - 1) * data.limit + data.items.length} shown` : ""}`
+            ? `${data.total} matching ${data.total === 1 ? (movies ? "movie" : "show") : noun}${data.items.length ? ` · ${(data.page - 1) * data.limit + 1}–${(data.page - 1) * data.limit + data.items.length} shown` : ""}`
             : ""}
         </p>
         <div className="view-switch" role="group" aria-label="Library view">
