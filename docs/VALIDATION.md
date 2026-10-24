@@ -1,5 +1,20 @@
 # Validation record — 2026-10-24
 
+## Wanted and release calendar (0.12 development)
+
+- Local library/API/automation tests pass for registration/job precedence,
+  effective monitoring, shared TV files, coverage, literal search, date validity,
+  UTC boundaries, pagination, reopen persistence and read-only behavior.
+- All 55 UI tests pass, including eight planning interactions: exact workflow
+  links, paused monitoring explanations, retained filter bookmarks, month/year
+  bounds, unknown dates, invalid filter recovery and out-of-range pages.
+- Invalid saved movie/episode dates no longer authorize scheduled provider work;
+  focused automation regressions pass. No dependency or migration was added.
+- Clean locked npm install/audit (zero vulnerabilities), format/type/55 UI tests,
+  production UI build, full backend tests/vet/build and the native disposable
+  startup/restart/backup/recovery drill pass. Browser/package/Linux acceptance
+  and preview upgrade remain pending. IPTorrents/XSpeeds account tests stay deferred.
+
 ## Usenet search, downloads and imports (0.11 development)
 
 - Local changed backend/API/upgrade/policy checks pass. All 47 UI tests pass,

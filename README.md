@@ -18,6 +18,9 @@ OpenSubtitles.com connections, language/track preferences, embedded/sidecar
 detection and safe automatic subtitle downloads for registered movie/TV files.
 Managed Newznab sources and SABnzbd downloads share release search, automation,
 reviewed TV mappings and safe importing. See [Usenet setup](docs/USENET.md).
+Wanted and the monthly release calendar organize missing movies and loaded
+episodes, saved dates and tracked job status. They work offline with explicit
+search/Activity links. See [planning and metadata limits](docs/PLANNING.md).
 One server owns the UI, REST API,
 worker and SQLite database.
 

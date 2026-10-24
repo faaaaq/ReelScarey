@@ -61,6 +61,15 @@ export function Dashboard() {
               <p className="foundation-note">
                 Search releases, download, and bring movies home.
               </p>
+              <p className="foundation-note">
+                <Link className="text-link" to="/wanted">
+                  Review wanted items
+                </Link>{" "}
+                ·{" "}
+                <Link className="text-link" to="/calendar">
+                  Open release calendar
+                </Link>
+              </p>
             </div>
             <div className="cinema-art" aria-hidden="true">
               <div className="film-frame frame-back">

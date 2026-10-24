@@ -6,6 +6,8 @@ import {
   Captions,
   Clapperboard,
   Clock3,
+  CalendarDays,
+  ListFilter,
   Film,
   FolderSearch,
   LayoutDashboard,
@@ -41,11 +43,14 @@ import { Setup, SystemChecks } from "./pages/System";
 import { Indexers } from "./pages/Indexers";
 import { ItemDetails } from "./pages/ItemDetails";
 import { ExistingLibrary } from "./pages/ExistingLibrary";
+import { Planning } from "./pages/Planning";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
   { path: "/movies", name: "Movies", icon: Film },
   { path: "/series", name: "TV shows", icon: MonitorPlay },
+  { path: "/wanted", name: "Wanted", icon: ListFilter },
+  { path: "/calendar", name: "Calendar", icon: CalendarDays },
   { path: "/search", name: "Search", icon: Search },
   { path: "/activity", name: "Activity", icon: Activity },
   { path: "/automation", name: "Automation", icon: Clock3 },
@@ -155,7 +160,7 @@ function AppShell() {
             <span className="status-dot" />
             <span>Movies & TV</span>
             <Badge color="gray" size="1">
-              0.11
+              0.12
             </Badge>
           </div>
           <div className="account-control">
@@ -188,6 +193,11 @@ function AppShell() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/indexers" element={<Indexers />} />
             <Route path="/import" element={<ExistingLibrary />} />
+            <Route path="/wanted" element={<Planning key="wanted" />} />
+            <Route
+              path="/calendar"
+              element={<Planning key="calendar" calendar />}
+            />
             <Route path="/movies/:id" element={<ItemDetails />} />
             <Route path="/setup" element={<Setup />} />
             <Route path="/system" element={<SystemChecks />} />

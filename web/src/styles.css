@@ -1887,6 +1887,195 @@ dd {
 .import-match h3 {
   font-size: 16px;
 }
+
+.planning-filters {
+  padding: 20px;
+  margin: 24px 0;
+}
+.planning-search {
+  display: flex;
+  gap: 12px;
+}
+.planning-search .rt-TextFieldRoot {
+  flex: 1;
+  min-width: 0;
+}
+.planning-selects {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 18px;
+}
+.planning-selects label,
+.planning-month label {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--gray-11);
+}
+.planning-selects select,
+.planning-month input {
+  background: var(--gray-2);
+  color: var(--gray-12);
+  border: 1px solid var(--gray-7);
+  border-radius: 6px;
+  padding: 9px;
+  max-width: 100%;
+  color-scheme: dark;
+}
+.planning-selects .text-link {
+  margin-bottom: 9px;
+}
+.planning-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin: 22px 0;
+}
+.planning-counts button {
+  color: var(--gray-11);
+  text-align: left;
+  padding: 16px;
+  cursor: pointer;
+}
+.planning-counts button.is-selected {
+  border-color: var(--accent-8);
+  background: var(--accent-3);
+}
+.planning-counts button:hover {
+  border-color: var(--accent-7);
+}
+.planning-counts button:focus-visible {
+  outline: 2px solid var(--accent-9);
+  outline-offset: 3px;
+}
+.planning-counts span {
+  display: block;
+  font-size: 13px;
+}
+.planning-counts strong {
+  display: block;
+  color: var(--gray-12);
+  font-size: 27px;
+  margin-top: 10px;
+}
+.planning-notes {
+  font-size: 13px;
+  color: var(--gray-11);
+  line-height: 1.7;
+}
+.planning-month {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 20px;
+  margin: 20px 0;
+}
+.planning-month h2 {
+  margin: 0 0 12px;
+  font-size: 21px;
+}
+.planning-day-heading {
+  font-size: 17px;
+  margin: 28px 0 14px;
+  color: var(--gray-11);
+}
+.planning-items {
+  display: grid;
+  gap: 12px;
+}
+.planning-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 20px;
+}
+.planning-poster {
+  width: 52px;
+  min-width: 52px;
+  height: 78px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--gray-3);
+  color: var(--gray-9);
+  overflow: hidden;
+}
+.planning-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.planning-copy {
+  min-width: 0;
+  flex: 1;
+}
+.planning-copy :is(h2, h3) {
+  font-size: 16px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.planning-copy :is(h2, h3) span {
+  font-size: 14px;
+  color: var(--gray-10);
+  font-weight: normal;
+}
+.planning-copy > p {
+  font-size: 13px;
+  color: var(--gray-11);
+  margin: 7px 0;
+  overflow-wrap: anywhere;
+}
+.planning-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  color: var(--gray-11);
+}
+.planning-row-actions {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+.planning-row-actions .text-link {
+  font-size: 13px;
+}
+@media (max-width: 650px) {
+  .planning-row {
+    flex-wrap: wrap;
+    padding: 16px;
+    gap: 12px;
+  }
+  .planning-row-actions {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 18px;
+  }
+  .planning-month {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .planning-selects label {
+    flex: 1 1 140px;
+  }
+  .planning-selects .text-link {
+    flex-basis: 100%;
+  }
+}
+@media (max-width: 420px) {
+  .planning-search {
+    flex-wrap: wrap;
+  }
+  .planning-search .rt-TextFieldRoot {
+    flex-basis: 100%;
+  }
+}
 .import-match-row {
   display: flex;
   align-items: flex-start;

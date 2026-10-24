@@ -128,7 +128,7 @@ recorded in [validation](docs/VALIDATION.md).
 IPTorrents and XSpeeds account acceptance remains explicitly deferred by the owner.
 See [existing-library workflow](docs/EXISTING_LIBRARY.md).
 
-## 9 — Usenet search, downloads and safe imports (current)
+## 9 — Usenet search, downloads and safe imports
 - [x] Managed Newznab caps/search/NZBs, encrypted keys, bounded responses,
   source provenance, same-origin download URLs and redirect refusal.
 - [x] Encrypted SABnzbd settings/tests and protocol-aware client routing,
@@ -144,6 +144,21 @@ See [existing-library workflow](docs/EXISTING_LIBRARY.md).
 
 See [Usenet setup and limits](docs/USENET.md). IPTorrents and XSpeeds account
 testing remains deferred.
+
+## 10 — Wanted and release calendar (current)
+- [x] Authenticated read-only movie/episode planning from registered files,
+  tracked reservations, monitoring hierarchy and validated cached dates.
+- [x] Wanted filters, literal title search, counts, stable pagination and real
+  links to existing release searches, title details and Activity.
+- [x] Monthly calendar agenda, retained filter bookmarks, civil-date display and
+  explicit undated/unloaded metadata coverage without forecasting episodes.
+- [x] Invalid catalog dates cannot authorize automated provider searches.
+- [ ] Complete browser/native/package/Linux acceptance for the final head.
+- [ ] Calendar uses cached metadata; broadcasts, filesystem-health checks,
+  automatic metadata refresh and replacement imports remain future scope.
+
+See [planning behavior and limits](docs/PLANNING.md). IPTorrents and XSpeeds
+account testing remains deferred.
 
 ## Validation record
 

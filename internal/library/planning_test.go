@@ -1,0 +1,215 @@
+package library
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"path/filepath"
+	"reflect"
+	"testing"
+	"time"
+
+	"github.com/faaaaq/ReelScarey/internal/database"
+)
+
+var planningNow = time.Date(2026, 10, 24, 1, 0, 0, 0, time.UTC)
+
+func planningFixture(t *testing.T) (*Store, *sql.DB) {
+	t.Helper()
+	db, e := database.Open(context.Background(), t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { db.Close() })
+	s := New(db)
+	for _, q := range []string{
+		`INSERT INTO media_items(id,kind,tmdb_id,title,year,monitored,release_date) VALUES(1,'movie',1,'Missing movie',2026,1,'2026-10-01'),(2,'movie',2,'Future movie',2026,1,'2026-11-01'),(3,'movie',3,'No date',2026,1,''),(4,'movie',4,'Bad date',2026,1,'2026-02-30'),(5,'movie',5,'Available movie',2026,1,'2026-10-12'),(6,'movie',6,'Paused movie',2026,0,'2026-10-21'),(7,'movie',7,'Downloading movie',2026,1,'2026-10-20'),(8,'movie',8,'Failed movie',2026,1,'2026-10-22'),(10,'series',10,'Saved Show',2026,1,'2026-01-01'),(11,'series',11,'Paused Show',2026,0,'2026-01-01')`,
+		`INSERT INTO series_details(media_id) VALUES(10),(11)`,
+		`INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(101,10,101,1,'First','','',8,1,'loaded'),(102,10,102,2,'Paused','','',1,0,'loaded'),(103,10,103,3,'Not loaded','','',1,1,''),(104,10,104,0,'Specials','','',1,0,'loaded'),(111,11,111,1,'First','','',1,1,'loaded')`,
+		`INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1001,101,1001,1,'Past','','2026-10-01',1),(1002,101,1002,2,'Today','','2026-10-24',1),(1003,101,1003,3,'Tomorrow','','2026-10-25',1),(1004,101,1004,4,'Undated','','',1),(1005,101,1005,5,'Shared first','','2026-10-05',1),(1006,101,1006,6,'Shared second','','2026-10-06',1),(1007,101,1007,7,'Review pending','','2026-10-07',1),(1008,101,1008,8,'Unselected','','2026-10-08',0),(2001,102,2001,1,'Paused season','','2026-10-24',1),(3001,103,3001,1,'Unloaded entry','','2026-10-24',1),(4001,104,4001,1,'Special','','2026-10-24',1),(11001,111,11001,1,'Paused show','','2026-10-24',1)`,
+		`INSERT INTO media_files(id,series_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin) VALUES(1,10,'TV/shared.mp4',100,'sha','{}',1,'existing')`,
+		`INSERT INTO media_files(id,movie_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin) VALUES(2,5,'Movies/registered.mp4',100,'sha','{}',1,'existing')`,
+		`INSERT INTO episode_files(episode_id,media_file_id) VALUES(1005,1),(1006,1)`,
+	} {
+		if _, e = db.Exec(q); e != nil {
+			t.Fatal(q, e)
+		}
+	}
+	for _, j := range []struct {
+		id                    string
+		media                 int
+		kind, state, protocol string
+	}{{"movie-job", 7, "movie", "downloading", "torrent"}, {"failed-job", 8, "movie", "failed", "usenet"}, {"tv-job", 10, "series", "blocked", "usenet"}} {
+		if _, e = db.Exec(`INSERT INTO release_candidates(id,movie_id,title,size_bytes,published_at,payload,expires_at) VALUES(?,?,'release',100,'',X'01',1)`, j.id, j.media); e != nil {
+			t.Fatal(e)
+		}
+		if _, e = db.Exec(`INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,kind,protocol,created_at,updated_at) VALUES(?,?,?,'private release',?,X'02','https://private.invalid','/private',?,?,?,1,1)`, j.id, j.media, j.id, j.id, j.state, j.kind, j.protocol); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if _, e = db.Exec(`INSERT INTO download_tv(download_id,series_tmdb_id,series_title,season_number,series_folder,naming) VALUES('tv-job',10,'Saved Show',1,'TV','standard');INSERT INTO episode_downloads(episode_id,download_id) VALUES(1007,'tv-job'),(1005,'tv-job')`); e != nil {
+		t.Fatal(e)
+	}
+	return s, db
+}
+func TestWantedDistinguishesDatesMonitoringRegistrationAndReservations(t *testing.T) {
+	s, db := planningFixture(t)
+	ctx := context.Background()
+	var before int
+	if e := db.QueryRow(`SELECT total_changes()`).Scan(&before); e != nil {
+		t.Fatal(e)
+	}
+	f := PlanningFilter{OnlyMonitored: true, Status: "all"}
+	out, e := s.Wanted(ctx, f, planningNow)
+	if e != nil {
+		t.Fatal(e)
+	}
+	want := PlanningCounts{Missing: 3, Upcoming: 2, Undated: 3, Downloading: 1, Attention: 2}
+	if out.Counts != want || out.Total != 11 || len(out.Items) != 11 || out.Coverage.UnloadedSeasons != 1 || out.Coverage.Undated != 3 {
+		t.Fatalf("wrong catalog state: %+v", out)
+	}
+	for _, v := range out.Items {
+		if v.Available || !v.Monitored || (v.EpisodeID != nil && *v.EpisodeID == 3001) {
+			t.Fatal("unavailable scope was wrong", v)
+		}
+	}
+	out, e = s.Wanted(ctx, PlanningFilter{OnlyMonitored: true}, planningNow)
+	if e != nil || out.Total != 3 {
+		t.Fatal("default released missing selection", out, e)
+	}
+	out, e = s.Wanted(ctx, PlanningFilter{Kind: "series", Status: "attention", OnlyMonitored: true}, planningNow)
+	if e != nil || out.Total != 1 || out.Items[0].DownloadID != "tv-job" || out.Items[0].Protocol != "usenet" {
+		t.Fatal("TV reservation not actionable", out, e)
+	}
+	all, e := s.Wanted(ctx, PlanningFilter{Status: "all"}, planningNow)
+	if e != nil || all.Total != 16 {
+		t.Fatal("paused items not included on request", all.Total, e)
+	}
+	reasons := map[string]bool{}
+	for _, v := range all.Items {
+		if !v.Monitored {
+			reasons[v.MonitoringReason] = true
+		}
+	}
+	for _, reason := range []string{"Movie monitoring is paused.", "Show monitoring is paused.", "Season monitoring is paused.", "Episode is not monitored."} {
+		if !reasons[reason] {
+			t.Fatal("missing parent pause explanation", reason)
+		}
+	}
+	var after int
+	if e = db.QueryRow(`SELECT total_changes()`).Scan(&after); e != nil || after != before {
+		t.Fatal("planning reads mutated state", before, after, e)
+	}
+}
+func TestCalendarIncludesSharedEpisodesOnceAndUsesUTCDateOnly(t *testing.T) {
+	s, _ := planningFixture(t)
+	ctx := context.Background()
+	local := time.Date(2026, 10, 23, 20, 0, 0, 0, time.FixedZone("test", -7*3600))
+	out, e := s.Calendar(ctx, PlanningFilter{Month: "2026-10", OnlyMonitored: true}, local)
+	if e != nil || out.Month != "2026-10" || out.AsOfDate != "2026-10-24" || out.Total != 10 || out.Counts.Available != 3 || out.Counts.Missing != 3 || out.Counts.Upcoming != 1 {
+		t.Fatal("calendar date/state", out, e)
+	}
+	seen := map[int64]bool{}
+	for _, v := range out.Items {
+		if v.Date == "" || v.Date[:7] != "2026-10" {
+			t.Fatal("date escaped month", v)
+		}
+		if v.EpisodeID != nil {
+			if seen[*v.EpisodeID] {
+				t.Fatal("episode repeated")
+			}
+			seen[*v.EpisodeID] = true
+		}
+	}
+	if !seen[1005] || !seen[1006] {
+		t.Fatal("shared video removed one calendar episode")
+	}
+	if out.Coverage.Undated != 3 || out.Coverage.UnloadedSeasons != 1 {
+		t.Fatal("incomplete metadata hidden", out.Coverage)
+	}
+	november, e := s.Calendar(ctx, PlanningFilter{Month: "2026-11", OnlyMonitored: true}, planningNow)
+	if e != nil || november.Total != 1 || november.Items[0].Title != "Future movie" {
+		t.Fatal(november, e)
+	}
+}
+func TestPlanningLiteralSearchValidationAndStablePagination(t *testing.T) {
+	s, db := planningFixture(t)
+	ctx := context.Background()
+	for _, q := range []string{"%", "_", `\`} {
+		title := "Literal " + q + " title"
+		if _, e := db.Exec(`INSERT INTO media_items(kind,tmdb_id,title,monitored,release_date) VALUES('movie',?,?,1,'2026-10-01')`, 100+len(q)+int(q[0]), title); e != nil {
+			t.Fatal(e)
+		}
+		out, e := s.Wanted(ctx, PlanningFilter{Query: q, OnlyMonitored: true}, planningNow)
+		if e != nil || out.Total != 1 || out.Items[0].Title != title {
+			t.Fatal("LIKE metacharacter was not literal", q, out, e)
+		}
+	}
+	for i := range 60 {
+		if _, e := db.Exec(`INSERT INTO media_items(kind,tmdb_id,title,monitored,release_date) VALUES('movie',?,'Same name',1,'2026-10-01')`, 1000+i); e != nil {
+			t.Fatal(e)
+		}
+	}
+	a, e := s.Wanted(ctx, PlanningFilter{Query: "Same name", OnlyMonitored: true, Page: 1}, planningNow)
+	if e != nil || a.Total != 60 || len(a.Items) != 50 {
+		t.Fatal(a.Total, len(a.Items), e)
+	}
+	b, e := s.Wanted(ctx, PlanningFilter{Query: "Same name", OnlyMonitored: true, Page: 2}, planningNow)
+	if e != nil || len(b.Items) != 10 || a.Items[49].MediaID >= b.Items[0].MediaID {
+		t.Fatal("unstable pagination", e)
+	}
+	for _, f := range []PlanningFilter{{Kind: "episode"}, {Page: -1}, {Page: 100001}, {Query: "bad\x00query"}, {Status: "unknown"}, {Month: "2026-10"}, {Status: "available"}} {
+		if _, e = s.Wanted(ctx, f, planningNow); !errors.Is(e, ErrPlanningInput) {
+			t.Fatal("invalid wanted filter accepted", f, e)
+		}
+	}
+	for _, month := range []string{"2026-13", "2026-1", "0000-01", "10000-01", "not-a-month"} {
+		if _, e = s.Calendar(ctx, PlanningFilter{Month: month}, planningNow); !errors.Is(e, ErrPlanningInput) {
+			t.Fatal("invalid month accepted", month, e)
+		}
+	}
+	a, e = s.Wanted(ctx, PlanningFilter{Query: "Tomorrow", Status: "all", OnlyMonitored: true}, planningNow)
+	if e != nil || a.Total != 1 || a.Items[0].EpisodeTitle != "Tomorrow" {
+		t.Fatal("episode title search failed", a, e)
+	}
+}
+func TestPlanningReflectsChangesAndRetainsSavedStateAfterReopen(t *testing.T) {
+	s, db := planningFixture(t)
+	ctx := context.Background()
+	f := PlanningFilter{Kind: "movie", Status: "all", OnlyMonitored: true}
+	before, e := s.Wanted(ctx, f, planningNow)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var dbPath string
+	var seq int
+	var name string
+	if e = db.QueryRow(`PRAGMA database_list`).Scan(&seq, &name, &dbPath); e != nil {
+		t.Fatal(e)
+	}
+	db.Close()
+	db, e = database.Open(ctx, filepath.Dir(dbPath))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	s = New(db)
+	after, e := s.Wanted(ctx, f, planningNow)
+	if e != nil || !reflect.DeepEqual(before, after) {
+		t.Fatal("saved planning changed after reopen", e)
+	}
+	if _, e = db.Exec(`UPDATE downloads SET state='cancelled' WHERE id='movie-job';UPDATE media_items SET monitored=0 WHERE id=1`); e != nil {
+		t.Fatal(e)
+	}
+	after, e = s.Wanted(ctx, PlanningFilter{Kind: "movie", OnlyMonitored: true}, planningNow)
+	if e != nil || after.Total != 1 || after.Items[0].MediaID != 7 {
+		t.Fatal("stopped job/paused title stale", after, e)
+	}
+	if _, e = db.Exec(`UPDATE media_items SET release_date='2024-02-29' WHERE id=2`); e != nil {
+		t.Fatal(e)
+	}
+	leap, e := s.Calendar(ctx, PlanningFilter{Month: "2024-02", OnlyMonitored: true}, planningNow)
+	if e != nil || leap.Total != 1 {
+		t.Fatal("leap day lost", leap, e)
+	}
+}

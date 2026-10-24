@@ -98,6 +98,8 @@ try {
   assert.equal((await authenticated('/movies/1')).status, 200)
   assert.equal((await authenticated('/import')).status, 200)
   assert.deepEqual((await (await authenticated('/api/v1/library/imports')).json()).items, [])
+  for (const route of ['/wanted', '/calendar']) assert.equal((await authenticated(route)).status, 200)
+  for (const route of ['/api/v1/wanted', '/api/v1/calendar?month=2026-10']) { const response = await authenticated(route); assert.equal(response.status, 200); const planning = await response.json(); assert.deepEqual(planning.items, []); assert.equal(planning.total, 0); assert.equal(planning.limit, 50); assert.equal(planning.coverage.unloaded_seasons, 0) }
   const subtitles = await (await authenticated('/api/v1/subtitles/preferences')).json()
   assert.equal(subtitles.preferences.enabled, false)
   assert.deepEqual(subtitles.preferences.tracks, [{ language: 'en', variant: 'full' }, { language: 'en', variant: 'signs' }, { language: 'en', variant: 'forced' }])

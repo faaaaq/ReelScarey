@@ -32,6 +32,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   mapped output folder may supply import candidates.
 - internal/library owns the shared catalog, TV seasons/episodes and revision-checked monitoring. Future providers live in
   their feature modules behind narrow, consumer-owned interfaces.
+  It also owns read-only Wanted/Calendar projections. Reads must not scan disk,
+  contact providers, change monitoring or enqueue work. Registered availability
+  and incomplete cached metadata must be labeled honestly; invalid dates must
+  not authorize scheduled searches.
 - internal/quality owns editable profiles, conservative release identity and ranking.
 - internal/subtitle owns registered-media inspections, OpenSubtitles credentials/
   protocol, language/track preferences, leased jobs and journaled sidecar storage.

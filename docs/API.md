@@ -1,5 +1,27 @@
 # REST API — media catalog, downloads, imports, automation and operations
 
+## Wanted and calendar
+
+Authenticated GET `/api/v1/wanted` and `/api/v1/calendar` accept kind
+(all/movie/series), status (all/missing/upcoming/undated/downloading/attention;
+Calendar also permits available), monitored (monitored/all), query and page.
+Calendar additionally accepts month YYYY-MM; default is the current UTC month.
+Wanted defaults to status missing; Calendar to all; monitoring defaults to
+effectively monitored. Unknown/repeated keys and invalid values return 400.
+Query is literal, up to 200 UTF-8 bytes without controls; page is 1–100000.
+
+Responses contain items, status counts, coverage.unloaded_seasons/undated,
+total/page/limit (50), as_of_date and effective month/kind/status/query/
+monitored_only. Counts ignore the selected status but follow other filters and
+the view's scope (Wanted excludes registrations; Calendar includes dated items
+in its month). Undated coverage counts untracked, unavailable undated items that
+can be reviewed with Wanted's undated filter. Entries contain kind/media_id,
+nullable episode_id/year/season/episode, title/episode_title, normalized date,
+poster_url, monitored/monitoring_reason, available, status and non-secret
+download_id/download_state/protocol. No source/client secrets or paths appear.
+Reads do not initiate searches, scans or jobs. See [planning](PLANNING.md) for
+status precedence, cached-date coverage and calendar semantics.
+
 ## Usenet integration
 
 `/api/v1/integrations/sabnzbd` uses authenticated GET/PUT/DELETE and the existing

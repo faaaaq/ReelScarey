@@ -70,6 +70,15 @@ NZB descriptor checksums use an `nzb:` namespace. Uncertain submissions reconcil
 without automatic resubmission. Completed post-processing and exact dedicated
 mapped output are mandatory. No client deletion/script execution API exists.
 See docs/USENET.md.
+
+Wanted and Calendar are transactionally consistent read models owned by library,
+combining movie/loaded-episode metadata, registration existence and active target
+reservations. HTTP owns strict filter validation and a five-second read budget;
+the UI uses bookmarkable filters and explicit existing workflow links. No provider,
+worker or filesystem operation is started by these reads. Calendar dates remain
+civil dates; UTC supplies the comparison day. Invalid saved dates stay undated
+and cannot authorize automation. This adds no tables/migrations/dependencies;
+schema remains 10. See docs/PLANNING.md.
 The migration ledger stores version, filename, checksum, and applied time.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored

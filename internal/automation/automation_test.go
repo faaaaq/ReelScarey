@@ -233,6 +233,34 @@ func TestSearchOnlyThenAutomaticQueuePersistsAndDeduplicates(t *testing.T) {
 		t.Fatal("duplicate or active target searched after restart", count, f.i.calls)
 	}
 }
+
+func TestInvalidSavedDatesDoNotAuthorizeScheduledSearches(t *testing.T) {
+	for _, date := range []string{"", "2026-02-30", "2025-02-29", "0000-01-01", "2020-01-01T00:00:00Z", "unknown"} {
+		t.Run(date, func(t *testing.T) {
+			f := setup(t)
+			ctx := context.Background()
+			if _, e := f.db.Exec(`UPDATE media_items SET release_date=? WHERE id=1`, date); e != nil {
+				t.Fatal(e)
+			}
+			if _, e := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,monitored) VALUES(2,'series',2,'Saved Show',1);INSERT INTO series_details(media_id) VALUES(2);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,2,3,1,'First','','',1,1,'loaded');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,4,1,'Episode','','',1)`); e != nil {
+				t.Fatal(e)
+			}
+			if _, e := f.db.Exec(`UPDATE episodes SET air_date=? WHERE id=1`, date); e != nil {
+				t.Fatal(e)
+			}
+			configure(t, f.s, false, "search", 10)
+			if e := f.s.Request(ctx); e != nil {
+				t.Fatal(e)
+			}
+			if _, e := f.s.ProcessNext(ctx); e != nil {
+				t.Fatal(e)
+			}
+			if f.i.calls != 0 {
+				t.Fatal("invalid catalog date triggered provider work", date)
+			}
+		})
+	}
+}
 func TestUnconfiguredIndexerWaitsWithoutRequests(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
