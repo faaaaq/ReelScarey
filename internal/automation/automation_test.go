@@ -14,6 +14,7 @@ import (
 
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
+	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/quality"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
@@ -346,7 +347,7 @@ func TestLeaseReclaimAndPauseFenceDuringMetainfoFetch(t *testing.T) {
 	}
 }
 func TestProfileAndMonitoringChangesFenceAutomaticQueue(t *testing.T) {
-	for _, change := range []string{"profile", "monitor", "assignment"} {
+	for _, change := range []string{"profile", "monitor", "assignment", "bulk-pause-resume"} {
 		t.Run(change, func(t *testing.T) {
 			f := setup(t)
 			ctx := context.Background()
@@ -364,6 +365,19 @@ func TestProfileAndMonitoringChangesFenceAutomaticQueue(t *testing.T) {
 					off := false
 					if e := f.s.Assign(ctx, 1, AssignmentUpdate{Revision: 0, Monitored: &off}); e != nil {
 						t.Fatal(e)
+					}
+				case "bulk-pause-resume":
+					store := library.New(f.db)
+					for _, monitored := range []bool{false, true} {
+						review, e := store.ReviewMonitoring(ctx, "movie", []int64{1})
+						if e != nil {
+							t.Fatal(e)
+						}
+						v := review[0]
+						expected := []library.MonitoringExpectation{{ID: v.ID, Monitored: &v.Monitored, SeriesRevision: v.SeriesRevision, AutomationRevision: v.AutomationRevision}}
+						if _, e = store.ApplyMonitoring(ctx, "movie", expected, monitored); e != nil {
+							t.Fatal(e)
+						}
 					}
 				case "assignment":
 					id := int64(2)

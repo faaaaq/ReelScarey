@@ -26,6 +26,9 @@ Movies and TV libraries support literal title search, status/monitoring filters,
 stable sorting and bookmarkable poster/table views. The interface uses a compact
 catalog layout and a live overview instead of promotional copy and welcome art.
 See [library browsing and status limits](docs/LIBRARY_BROWSING.md).
+Select titles on the current library page to review and apply parent monitoring
+changes together. Profiles, season/episode choices and existing downloads are
+retained. See [bulk monitoring](docs/BULK_MONITORING.md).
 
 Not implemented: replacement/upgrade imports, audio-language verification,
 or full production hardening. Automation starts paused and defaults to

@@ -89,6 +89,8 @@ try {
   assert.ok(!JSON.stringify(session).includes(cookie.split('=')[1]), 'raw session exposed to JavaScript')
   const system = await (await authenticated('/api/v1/system')).json()
   assert.equal(system.database, 'connected')
+  assert.equal((await authenticated('/api/v1/library/monitoring/preview', { method: 'POST', body: JSON.stringify({kind: 'movie', ids: []}) })).status, 400)
+  assert.equal((await authenticated('/api/v1/library/monitoring', { method: 'PUT', body: JSON.stringify({kind: 'movie', monitored: false, items: []}) })).status, 400)
   const catalog = await authenticated('/api/v1/library?kind=movie&query=100%25_&status=missing&monitored=monitored&sort=added')
   assert.equal(catalog.status, 200)
   assert.deepEqual(await catalog.json(), { items: [], page: 1, total: 0, limit: 24, collection_total: 0 })

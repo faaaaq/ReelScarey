@@ -1,5 +1,21 @@
 # Validation record — 2026-10-24
 
+## Reviewed bulk monitoring and neutral palette (0.14 development)
+
+- Feature/API/security tests pass for explicit bounded IDs, read-only previews,
+  missing/repeated/invalid targets, complete-snapshot conflicts, atomic concurrent
+  writes, unchanged rows, preserved profiles/child choices/tracked downloads,
+  restart persistence and cancellation. Old TV and assignment editors are fenced;
+  automatic queue tests reject preferences paused and resumed during metainfo fetch.
+- All 70 UI tests pass, including eight new behaviors: explicit selection/review,
+  cancel without a write, exact expected-state apply, refreshed results, view/page
+  selection scope, show-level resume, fresh review after conflict, no-op completion,
+  saving locks and preview errors. The compact layout/plain copy remain while
+  olive surfaces and accents are replaced with neutral graphite and blue.
+- No application dependency or migration was added. Clean/native/package/browser/
+  Linux acceptance and preview upgrade are pending. IPTorrents/XSpeeds account
+  testing remains deferred.
+
 ## Library browsing and visual overhaul (0.13 development)
 
 - Saved catalog reads pass literal wildcard/backslash search, status/parent

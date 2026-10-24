@@ -160,7 +160,7 @@ testing remains deferred.
 See [planning behavior and limits](docs/PLANNING.md). IPTorrents and XSpeeds
 account testing remains deferred.
 
-## 11 — Library browsing and visual overhaul (current)
+## 11 — Library browsing and visual overhaul
 - [x] Literal title search, saved status/parent monitoring filters, stable title,
   year and recently-added ordering with bounded pagination and coherent counts.
 - [x] Bookmarkable poster/table views, filter preservation, page recovery and
@@ -174,6 +174,19 @@ account testing remains deferred.
 
 See [browsing behavior and interface](docs/LIBRARY_BROWSING.md). IPTorrents and
 XSpeeds account testing remains explicitly deferred.
+
+## 12 — Reviewed bulk monitoring (current)
+- [x] Explicit page selection in poster/table views, current-state review and
+  atomic parent movie/show pause/resume with stale-edit rejection.
+- [x] Preserve child selections, existing downloads, profiles and schedules;
+  invalidate older TV/assignment editors and automatic queue decisions.
+- [x] Keep the catalog layout and plain copy; replace olive with graphite/blue.
+- [x] Local feature/API/security checks and 70 UI tests.
+- [ ] Complete clean/native/package/browser/Linux acceptance and preview upgrade.
+- [ ] Bulk episode/profile edits, removal, file moving and replacement imports
+  remain future scope. Private tracker account testing stays deferred.
+
+See [bulk monitoring and limits](docs/BULK_MONITORING.md).
 
 ## Validation record
 

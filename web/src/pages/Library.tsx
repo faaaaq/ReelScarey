@@ -6,6 +6,7 @@ import { type LibraryPage, type MediaItem } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { Poster, Pagination } from "../movieComponents";
 import { useResource } from "../useResource";
+import { BulkMonitoring } from "./BulkMonitoring";
 
 function statusLabel(item: MediaItem) {
   if (item.status === "available")
@@ -50,6 +51,21 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
     if (key !== "view" && key !== "page" && key !== "kind")
       apiParams.append(key, value);
   const resource = useResource<LibraryPage>(`/library?${apiParams.toString()}`);
+  const selectionScope = apiParams.toString();
+  const [selected, setSelected] = useState<number[]>([]);
+  const [monitoringMessage, setMonitoringMessage] = useState("");
+  useEffect(() => {
+    setSelected([]);
+    setMonitoringMessage("");
+  }, [selectionScope]);
+  function toggle(id: number, checked: boolean) {
+    setSelected((current) =>
+      checked
+        ? [...new Set([...current, id])]
+        : current.filter((value) => value !== id),
+    );
+    setMonitoringMessage("");
+  }
   const movies = kind === "movie",
     noun = movies ? "movies" : "shows",
     table = params.get("view") === "table";
@@ -181,6 +197,48 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
           </button>
         </div>
       </div>
+      {monitoringMessage && (
+        <p role="status" className="save-success">
+          {monitoringMessage}
+        </p>
+      )}
+      {!resource.loading && !resource.error && data?.items.length ? (
+        <div className="catalog-selection">
+          <label>
+            <input
+              type="checkbox"
+              aria-label="Select all titles on this page"
+              checked={data.items.every((item) => selected.includes(item.id))}
+              ref={(element) => {
+                if (element)
+                  element.indeterminate =
+                    selected.length > 0 &&
+                    !data.items.every((item) => selected.includes(item.id));
+              }}
+              onChange={(e) => {
+                setSelected(
+                  e.target.checked ? data.items.map((item) => item.id) : [],
+                );
+                setMonitoringMessage("");
+              }}
+            />
+            Select this page
+          </label>
+          <span>Selection is cleared when filters or pages change.</span>
+        </div>
+      ) : null}
+      {!!selected.length && !resource.loading && !resource.error && (
+        <BulkMonitoring
+          kind={kind}
+          ids={selected}
+          onClear={() => setSelected([])}
+          onApplied={(message) => {
+            setSelected([]);
+            setMonitoringMessage(message);
+            resource.reload();
+          }}
+        />
+      )}
       <RequestState
         loading={resource.loading}
         error={resource.error}
@@ -207,6 +265,9 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                 >
                   <thead>
                     <tr>
+                      <th scope="col">
+                        <span className="sr-only">Select</span>
+                      </th>
                       <th scope="col">Title</th>
                       <th scope="col">Year</th>
                       <th scope="col">Status</th>
@@ -219,6 +280,14 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                   <tbody>
                     {data.items.map((item) => (
                       <tr key={item.id}>
+                        <td className="catalog-select-cell">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${item.title}`}
+                            checked={selected.includes(item.id)}
+                            onChange={(e) => toggle(item.id, e.target.checked)}
+                          />
+                        </td>
                         <th scope="row">
                           <Link
                             to={`/${movies ? "movies" : "series"}/${item.id}`}
@@ -247,6 +316,15 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
               <div className="catalog-posters">
                 {data.items.map((item) => (
                   <article className="catalog-card" key={item.id}>
+                    <label className="catalog-card-select">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${item.title}`}
+                        checked={selected.includes(item.id)}
+                        onChange={(e) => toggle(item.id, e.target.checked)}
+                      />
+                      Select
+                    </label>
                     <Link
                       className="catalog-art"
                       to={`/${movies ? "movies" : "series"}/${item.id}`}

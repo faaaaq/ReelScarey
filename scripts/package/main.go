@@ -26,7 +26,7 @@ func run() error {
 		return fmt.Errorf("usage: go run ./scripts/package VERSION NEW_OUTPUT_FOLDER")
 	}
 	version, out := os.Args[1], os.Args[2]
-	docs := []string{"README.md", "ARCHITECTURE.md", "ROADMAP.md", "AGENTS.md", "docs/OPERATIONS.md", "docs/SECURITY.md", "docs/API.md", "docs/AUTHENTICATION.md", "docs/MOVIE_WORKFLOW.md", "docs/TELEVISION.md", "docs/TV_DOWNLOADS.md", "docs/AUTOMATION.md", "docs/SUBTITLES.md", "docs/VALIDATION.md", "docs/INDEXERS_DETAILS.md", "docs/EXISTING_LIBRARY.md", "docs/USENET.md", "docs/PLANNING.md", "docs/LIBRARY_BROWSING.md", "go.mod", "go.sum", "web/package.json", "web/package-lock.json"}
+	docs := []string{"README.md", "ARCHITECTURE.md", "ROADMAP.md", "AGENTS.md", "docs/OPERATIONS.md", "docs/SECURITY.md", "docs/API.md", "docs/AUTHENTICATION.md", "docs/MOVIE_WORKFLOW.md", "docs/TELEVISION.md", "docs/TV_DOWNLOADS.md", "docs/AUTOMATION.md", "docs/SUBTITLES.md", "docs/VALIDATION.md", "docs/INDEXERS_DETAILS.md", "docs/EXISTING_LIBRARY.md", "docs/USENET.md", "docs/PLANNING.md", "docs/LIBRARY_BROWSING.md", "docs/BULK_MONITORING.md", "go.mod", "go.sum", "web/package.json", "web/package-lock.json"}
 	if _, e := os.Stat("web/dist/index.html"); e != nil {
 		return fmt.Errorf("build the frontend before packaging")
 	}

@@ -85,6 +85,12 @@ share a transaction; the UI keeps filters/view/page in the URL. Poster/table vie
 changes are local presentation only. The overview reuses planning reads without
 starting work. No migration or application dependency is needed.
 See docs/LIBRARY_BROWSING.md.
+Reviewed bulk monitoring remains a bounded library transaction over explicit IDs.
+The complete parent monitoring/series/assignment snapshot is checked before any
+write. Existing series and automation revisions fence old editors and automatic
+queue decisions; explicit profiles and TV child selections are preserved. No
+worker, provider, filesystem operation or new migration is involved. The UI
+selection is page-scoped and requires review before apply. See docs/BULK_MONITORING.md.
 The migration ledger stores version, filename, checksum, and applied time.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored

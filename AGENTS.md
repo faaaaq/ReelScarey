@@ -41,6 +41,11 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   sort expressions allowlisted, and pagination stable. Shared UI copy must be
   functional; do not reintroduce slogans, promotional welcome art or decorative
   page labels. See docs/LIBRARY_BROWSING.md.
+  Bulk monitoring must operate on explicit bounded IDs, compare the entire review
+  before writing, preserve profiles/TV child choices and fence existing editors/
+  automatic queue decisions through the current revisions. Keep selection visibly
+  page-scoped. Retain the current layout and neutral graphite/blue palette; do not
+  reintroduce olive backgrounds. See docs/BULK_MONITORING.md.
 - internal/quality owns editable profiles, conservative release identity and ranking.
 - internal/subtitle owns registered-media inspections, OpenSubtitles credentials/
   protocol, language/track preferences, leased jobs and journaled sidecar storage.

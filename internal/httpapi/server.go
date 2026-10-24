@@ -67,6 +67,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/wanted", method(http.MethodGet, s.planning))
 	mux.HandleFunc("/api/v1/calendar", method(http.MethodGet, s.planning))
 	mux.HandleFunc("/api/v1/library", method(http.MethodGet, s.listLibrary))
+	mux.HandleFunc("/api/v1/library/monitoring/preview", method(http.MethodPost, s.reviewMonitoring))
+	mux.HandleFunc("/api/v1/library/monitoring", method(http.MethodPut, s.applyMonitoring))
 	mux.HandleFunc("/api/v1/library/imports", s.existingCollection)
 	mux.HandleFunc("/api/v1/library/imports/catalog", method(http.MethodGet, s.existingCatalog))
 	mux.HandleFunc("/api/v1/library/imports/{id}", s.existingScan)

@@ -40,7 +40,7 @@ Counts and items share a transaction, with a five-second HTTP read budget.
 ## Interface
 
 The shared interface uses a compact catalog layout: charcoal surfaces, restrained
-olive accents, square edges, aligned rules, larger body text and artwork as the
+blue accents, square edges, aligned rules, larger body text and artwork as the
 main visual content. Shared slogan bars, decorative page labels, welcome art,
 promotional cards and tagline footers are removed, including from sign-in and
 setup. Functional descriptions, safety explanations and TMDb credit remain.
@@ -55,5 +55,7 @@ Native table semantics, labeled controls, keyboard focus, reduced-motion support
 and phone navigation remain. Narrow tables scroll inside a labeled, focusable
 region. No external fonts, application dependencies or migrations are added.
 Schema remains 10. This milestone does not add bulk edits, removal, disk health
-scans, replacement imports or private-account acceptance. IPTorrents and XSpeeds
+scans, replacement imports or private-account acceptance. Version 0.14 adds
+[reviewed parent monitoring](BULK_MONITORING.md) and replaces olive surfaces with
+neutral graphite/blue while retaining this layout. IPTorrents and XSpeeds
 account testing remains deferred.
