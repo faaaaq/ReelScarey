@@ -183,7 +183,7 @@ XSpeeds account testing remains explicitly deferred.
 - [x] Keep the catalog layout and plain copy; replace olive with graphite/blue.
 - [x] Local feature/API/security checks and 70 UI tests.
 - [x] Complete clean/native/package/browser/Linux acceptance and preview upgrade.
-- [ ] Bulk episode/profile edits, removal, file moving and replacement imports
+- [ ] Bulk episode edits, removal, file moving and replacement imports
   remain future scope. Private tracker account testing stays deferred.
 
 See [bulk monitoring and limits](docs/BULK_MONITORING.md).
@@ -194,7 +194,7 @@ See [bulk monitoring and limits](docs/BULK_MONITORING.md).
   or return to schedule-default inheritance for movies/shows.
 - [x] Fence stale assignments/profile rules/defaults and automatic queue decisions;
   preserve monitoring, child choices, schedules, existing downloads and files.
-- [ ] Complete local/browser/native/package/Linux acceptance and preview upgrade.
+- [x] Complete local/browser/native/package/Linux acceptance and preview upgrade.
 - [ ] Replacement imports, episode bulk edits, removal and file moving remain
   future work. IPTorrents/XSpeeds account testing stays deferred.
 
@@ -202,6 +202,16 @@ See [profile assignment and exact limits](docs/BULK_PROFILES.md). The graphite/b
 layout and plain interface copy are retained.
 
 ## Validation record
+
+2026-10-24 reviewed profile assignment: the
+[Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40139874438)
+passes all 78 UI tests, backend/race/static/vulnerability checks, real disposable
+download/import regressions, package recovery and container restart. Browser
+checks verify effective/default-only filters, exact movie/show reviews, target
+rules, cancel/apply, inheritance and retained TV episode/specials choices on
+desktop and phone. Graphite/blue is retained. The owner preview is backed up and
+running 0.15; private tracker account testing remains deferred. See
+[validation and environment limits](docs/VALIDATION.md).
 
 2026-10-24 reviewed bulk monitoring: the
 [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40136864657)

@@ -14,9 +14,36 @@
   return to inheritance/no-op completion, conflict re-review, saving locks,
   bookmarked profile filters/selection scope and obsolete preview replies.
   Full Go tests/vet/build and native recovery checks pass. No migration or
-  application dependency was added. Package/browser/Linux acceptance and preview
-  upgrade are pending. IPTorrents/XSpeeds account testing remains deferred;
-  graphite/blue is retained.
+  application dependency was added. All three cross-build package checksums
+  verify; the extracted Windows package passes the disposable recovery drill.
+- A separate disposable browser catalog verifies effective/default-only profile
+  filters, explicit vs inherited labels, exact selected movies/shows, mixed
+  changed/unchanged review counts, target rules, cancel without a write, profile
+  assignment and return to inheritance. Paused titles remain paused; TV specials
+  and individual episode choices are retained. The review and its actions fit a
+  390-pixel phone viewport; the override was reset. Screenshots remain outside
+  Git, and the test process/catalog were removed. No owner media, private
+  accounts or connected services were used as fixtures.
+- The stopped owner preview's schema-10 config was backed up and verified at
+  `before-profiles-20261024-174848`; the 0.14 executable is retained. Version
+  0.15 reports readiness 200, setup_required=false and healthy database,
+  encryption, storage/publication and FFprobe checks. Movies is open after
+  sign-in. No owner profile or monitoring assignments were changed as test data.
+  IPTorrents/XSpeeds account testing remains deferred; graphite/blue is retained.
+
+The [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40139874438)
+passed for application commit `d7d9316`: all 78 UI tests, Go race/static checks,
+real disposable qBittorrent/SABnzbd movie/TV downloads and verified imports,
+generated subtitle and existing-library regressions, native/extracted-package
+recovery, checksummed cross-builds and authenticated container restart.
+Govulncheck reports zero vulnerabilities affecting the application and one
+advisory in a required module outside imported/called code; npm audit reports
+zero. No advisory is suppressed. The constrained container snapshot is
+8.586 MiB/512 MiB and seven PIDs, not a sustained workload measurement.
+Private artifact `12579155390` contains the 0.15 packages/checksums with 14-day
+retention. ARM runtime/NAS deployment, sustained load and owner-service/private
+tracker acceptance remain unverified; local Docker/CGO/race tools are unavailable,
+so those checks ran on Linux CI.
 
 ## Reviewed bulk monitoring and neutral palette (0.14 development)
 
