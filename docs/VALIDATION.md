@@ -12,8 +12,36 @@
   focused automation regressions pass. No dependency or migration was added.
 - Clean locked npm install/audit (zero vulnerabilities), format/type/55 UI tests,
   production UI build, full backend tests/vet/build and the native disposable
-  startup/restart/backup/recovery drill pass. Browser/package/Linux acceptance
-  and preview upgrade remain pending. IPTorrents/XSpeeds account tests stay deferred.
+  startup/restart/backup/recovery drill pass. All three private cross-build
+  checksums verify; the extracted Windows package passes the same recovery drill.
+- Browser acceptance uses a separate disposable catalog and generated H264
+  movie/shared TV file registered through the normal reviewed import workflow.
+  Wanted excludes registered items, shows the exact missing episode, explains
+  paused monitoring and links a controlled blocked job to its focused Activity
+  view. Back navigation retains filters. Calendar shows both episodes sharing
+  one file, correct saved civil dates, month navigation, unloaded-season coverage
+  and an undated-items link. No provider call or download was initiated by these
+  views. Desktop and narrow-screen layouts were inspected; screenshots remain
+  outside Git. The disposable catalog and generated media were removed.
+- The stopped owner preview's schema-10 config was backed up and verified at
+  `before-planning-20261024-023115`; the 0.11 executable is retained. Version 0.12
+  reports readiness 200, setup_required=false and healthy database, encryption,
+  storage and FFprobe checks. The local Wanted page is open after sign-in.
+  No owner media or services were used as fixtures or scanned. IPTorrents/XSpeeds
+  account tests stay deferred.
+
+The [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40073977195)
+passed for application commit `44375a4`: all 55 UI tests, full Go race/static
+checks, real disposable qBittorrent and SABnzbd movie/TV downloads and verified
+imports, generated subtitle and existing-library regressions, native/extracted
+package recovery, checksummed cross-builds and authenticated container restart.
+Govulncheck reports zero vulnerabilities affecting the application and one
+advisory in a required module outside imported/called code; npm audit reports
+zero. No advisory is suppressed. The constrained container snapshot is
+6.629 MiB/512 MiB and seven PIDs, not a sustained workload measurement.
+Private artifact `12552896307` contains the 0.12 packages/checksums with 14-day
+retention. NAS/arm64 runtime, owner service/shared-storage acceptance and broader
+security/accessibility review remain separate release work.
 
 ## Usenet search, downloads and imports (0.11 development)
 

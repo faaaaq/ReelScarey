@@ -153,7 +153,7 @@ testing remains deferred.
 - [x] Monthly calendar agenda, retained filter bookmarks, civil-date display and
   explicit undated/unloaded metadata coverage without forecasting episodes.
 - [x] Invalid catalog dates cannot authorize automated provider searches.
-- [ ] Complete browser/native/package/Linux acceptance for the final head.
+- [x] Complete browser/native/package/Linux acceptance for the application head.
 - [ ] Calendar uses cached metadata; broadcasts, filesystem-health checks,
   automatic metadata refresh and replacement imports remain future scope.
 
@@ -161,6 +161,17 @@ See [planning behavior and limits](docs/PLANNING.md). IPTorrents and XSpeeds
 account testing remains deferred.
 
 ## Validation record
+
+2026-10-24 Wanted and calendar: the
+[Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40073977195)
+passes all 55 UI tests, backend/race/static/vulnerability checks, real disposable
+download/import regressions, package recovery and container restart. Disposable
+browser checks verify monitoring, registered/shared files, job links, saved
+filters, undated coverage, month navigation and responsive layouts. The owner
+preview is backed up and running 0.12; no owner media or private services were
+used as fixtures. IPTorrents/XSpeeds account tests remain deferred. Dates are
+cached catalog metadata, not broadcast times or a promise of release availability.
+Full evidence and limits are in [validation](docs/VALIDATION.md).
 
 2026-10-24 Usenet: the
 [final Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40071407180)
