@@ -182,13 +182,24 @@ XSpeeds account testing remains explicitly deferred.
   invalidate older TV/assignment editors and automatic queue decisions.
 - [x] Keep the catalog layout and plain copy; replace olive with graphite/blue.
 - [x] Local feature/API/security checks and 70 UI tests.
-- [ ] Complete clean/native/package/browser/Linux acceptance and preview upgrade.
+- [x] Complete clean/native/package/browser/Linux acceptance and preview upgrade.
 - [ ] Bulk episode/profile edits, removal, file moving and replacement imports
   remain future scope. Private tracker account testing stays deferred.
 
 See [bulk monitoring and limits](docs/BULK_MONITORING.md).
 
 ## Validation record
+
+2026-10-24 reviewed bulk monitoring: the
+[Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40136864657)
+passes all 70 UI tests, backend/race/static/vulnerability checks, real disposable
+download/import regressions, package recovery and container restart. Browser
+checks verify exact selections, cancel/apply, changed/unchanged counts and retained
+TV episode/specials choices on desktop and phone. The layout stays intact with
+graphite/blue replacing olive. The owner preview is backed up and running 0.14;
+no owner media or preferences were used as test data. IPTorrents/XSpeeds account
+testing remains deferred. Full evidence and limits are in
+[validation](docs/VALIDATION.md).
 
 2026-10-24 library browsing and visual overhaul: the
 [final Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40133125302)

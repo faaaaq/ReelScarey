@@ -12,9 +12,38 @@
   selection scope, show-level resume, fresh review after conflict, no-op completion,
   saving locks and preview errors. The compact layout/plain copy remain while
   olive surfaces and accents are replaced with neutral graphite and blue.
-- No application dependency or migration was added. Clean/native/package/browser/
-  Linux acceptance and preview upgrade are pending. IPTorrents/XSpeeds account
-  testing remains deferred.
+- Clean locked npm install/audit (zero vulnerabilities), format/type/70 UI tests,
+  production build, full Go tests/vet/build and native startup/restart/recovery
+  checks pass. All three cross-build package checksums verify; the extracted
+  Windows package passes the disposable recovery drill. No application dependency
+  or migration was added.
+- A separate disposable browser catalog verifies exact movie selections, mixed
+  changed/unchanged review counts, cancel without a write, successful apply and
+  refreshed monitoring labels. Show-level pause/resume retains a selected first
+  episode, unselected second episode and unselected specials. Navigation and the
+  review fit a 390-pixel phone viewport; the override was reset. Known public
+  posters and sample metadata were used only in that catalog. No owner media,
+  services or private sessions were used as fixtures. Screenshots remain outside
+  Git; the test process and catalog were removed.
+- The stopped owner preview's schema-10 config was backed up and verified at
+  `before-bulk-monitoring-20261024-170450`; the 0.13 executable is retained.
+  Version 0.14 reports readiness 200, setup_required=false and healthy database,
+  encryption, storage/publication and FFprobe checks. Movies is open after
+  sign-in. No owner monitoring selections were changed as test data.
+  IPTorrents/XSpeeds account testing remains deferred.
+
+The [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40136864657)
+passed for application commit `8279f4b`: all 70 UI tests, Go race/static checks,
+real disposable qBittorrent and SABnzbd movie/TV downloads and verified imports,
+generated subtitle and existing-library regressions, native/extracted-package
+recovery, checksummed cross-builds and authenticated container restart.
+Govulncheck reports zero vulnerabilities affecting the application and one
+advisory in a required module outside imported/called code; npm audit reports
+zero. No advisory is suppressed. The constrained container snapshot is
+8.539 MiB/512 MiB and nine PIDs, not a sustained workload measurement.
+Private artifact `12577636976` contains the 0.14 packages/checksums with 14-day
+retention. NAS/arm64 runtime, owner service/shared-storage acceptance and broader
+security/accessibility review remain separate work.
 
 ## Library browsing and visual overhaul (0.13 development)
 
