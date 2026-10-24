@@ -50,7 +50,7 @@ singleton `admin_account`, `sessions`, `provider_secrets`, `integration_configs`
 `quality_profiles`, `item_automation`, `search_schedule`, `automation_runs` and
 `automation_results`, `subtitle_preferences`, `subtitle_provider_state`,
 `subtitle_jobs`, `subtitle_candidates`, `subtitle_inspections`, `subtitles` and
-`subtitle_imports`.
+`subtitle_imports`, `indexers` and `media_enrichment`.
 The migration ledger stores version, filename, checksum, and applied time.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored

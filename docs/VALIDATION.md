@@ -17,14 +17,36 @@
 - Movie import details survive reopen. TV shared files retain grouped episodes
   and count once in totals. Backup recovery preserves encrypted indexer sessions;
   an indexer-only config with a missing key refuses startup.
-- The public NYAA RSS endpoint returned HTTP 200 through PowerShell on this
-  machine. The opt-in Go adapter's direct socket was denied by Windows
+- The public NYAA RSS endpoint returned HTTP 200 and 75 release entries with
+  size/seeder fields through PowerShell on this machine. The opt-in Go adapter's direct socket was denied by Windows
   (`connectex` access permissions), so live app-to-NYAA acceptance is pending.
   This is recorded as a failed live check, not a passing integration. No public
   torrent was retrieved. Private IPTorrents/XSpeeds account acceptance also
   remains pending owner sessions entered privately in the app.
-- Linux CI, native packaged acceptance and browser evidence are recorded below
-  after their actual runs. Owner media is never used as a test fixture.
+- Clean npm install/audit reports zero vulnerabilities. Private packages for
+  Linux amd64/arm64 and Windows amd64 were built and all three checksums verify.
+  The extracted Windows package passes the full disposable restart/recovery drill.
+- Browser acceptance uses a separate port/config and fictional movie/TV metadata.
+  It verifies title navigation, credits/links, a real generated-video import's
+  technical facts/source/history, focused Activity, TV seasons, RSS save/test,
+  disable/re-enable and blank-secret editing. Narrow layout was corrected from
+  the observed page. Screenshots are retained outside Git; generated QA media
+  and its temporary application/configuration were removed after acceptance.
+- The owner preview reports 0.9.0-dev, readiness 200 and setup_required=false.
+  A stopped schema-7 backup was verified before migration 008; the previous
+  executable is retained. Local installation/credential checks pass. Owner
+  provider settings and catalog were not used as test fixtures.
+
+The [final Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40048388113)
+passed for application commit `0b0cb00`: all 39 UI tests, Go race/static checks,
+real disposable qBittorrent movie/TV downloads and reviewed imports, generated
+subtitle media, native/extracted-package recovery, checksummed cross-builds and
+the container restart test. Govulncheck reports zero vulnerabilities affecting
+the application and one advisory in a required module outside imported/called
+code; npm audit reports zero. No advisory is suppressed. The constrained
+container snapshot reports 8.41 MiB/512 MiB and seven PIDs; this is a smoke-test
+snapshot, not a workload performance claim. Private artifact `12542446904`
+contains the 0.9 packages/checksums and has the workflow's 14-day retention.
 
 ## Production hardening (0.8 development)
 

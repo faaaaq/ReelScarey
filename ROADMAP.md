@@ -114,6 +114,17 @@ recorded in [validation](docs/VALIDATION.md).
 
 ## Validation record
 
+2026-10-23 direct indexers and title details: the
+[Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40048388113)
+passes all 39 UI tests, backend/race/static/vulnerability gates, generated-media
+and real disposable-client regressions, native/package recovery and container
+restart checks. Browser acceptance verifies source management and title/file
+history with disposable data. The owner preview is backed up and upgraded to
+0.9. Public NYAA RSS format/search was read successfully, but the Go adapter's
+direct socket is blocked by this Windows environment; private tracker account
+checks await owner sessions. Full evidence and limits are in
+[validation](docs/VALIDATION.md).
+
 2026-10-23 production hardening: setup guidance, explicit local diagnostics,
 config ownership locks, verified offline backups and new-folder restores with
 session revocation/worker review are implemented. The

@@ -102,7 +102,7 @@ explicitly documented as breaking before the first stable release.
 | GET/PUT/DELETE | `/api/v1/integrations/torznab` | Safe status; test/encrypt configuration; disconnect |
 | GET/PUT/DELETE | `/api/v1/integrations/qbittorrent` | Safe status; test/encrypt configuration; disconnect when no active jobs |
 | POST | `/api/v1/integrations/{name}/test` | Test saved Torznab/qBittorrent connection |
-| GET | `/api/v1/releases?movie_id=1&query=title` | Torznab search; materialize encrypted short-lived selections |
+| GET | `/api/v1/releases?movie_id=1&query=title` | Search enabled indexers; materialize encrypted short-lived selections |
 | GET | `/api/v1/downloads?page=1` | Activity: items, page, total, limit 24 |
 | POST | `/api/v1/downloads` | `{ "release_id": "..." }`; 202 queued or 200 existing; item + created |
 | GET | `/api/v1/downloads/{id}` | One durable job with progress/error fields |
@@ -296,7 +296,7 @@ Automation PUT accepts only `enabled`, `mode` (search/download),
 `interval_minutes` (15–10080), `batch_size` (1–25), `default_profile_id` and
 `revision`. New schedules are paused/search-only. GET additionally returns
 next_run (Unix seconds), requested, state, message, indexer_connected and
-client_connected. Missing Torznab is waiting_indexer; saving a schedule never
+client_connected. No enabled indexer is waiting_indexer; saving a schedule never
 connects an integration. Search now uses saved mode and never changes enabled.
 Saving preferences invalidates in-progress policy guards; existing queued
 downloads continue. State/message describe the last/current run, while enabled
