@@ -22,8 +22,24 @@
   the same suites passed with access to their disposable services/directories.
 - Clean locked npm install/audit (zero vulnerabilities), format/type/47 UI tests
   and production build pass. Full Go tests/vet/build and native process/recovery
-  smoke pass. Browser acceptance, Linux CI, packages and preview upgrade remain
-  pending. Owner Usenet/shared-mount acceptance is
+  smoke pass. All three cross-build package checksums verify, and the extracted
+  Windows package passes the full restart/backup/new-folder recovery drill.
+- Browser acceptance uses a separate disposable app/config, fictional metadata,
+  generated H264 video and controlled Newznab/SABnzbd protocol services. It
+  verifies setup, saved-key editing, NZB-only download availability, Activity
+  completion and original release/path/probe/history in the library. The browser
+  screenshot is outside Git; temporary application/settings/media were removed.
+  Real SABnzbd/NNTP acceptance is recorded separately above.
+- The stopped owner preview's schema-9 config was backed up and verified before
+  migration 010; the 0.10 executable is retained. Version 0.11 reports readiness
+  200, setup_required=false and healthy database/encryption/storage/FFprobe checks.
+  The usual local settings page is open at SABnzbd after sign-in. Owner media and
+  existing services were not used as fixtures or scanned.
+- The first Linux run (40070146621) passed the frontend/race/static/vulnerability,
+  real qBittorrent, generated subtitle and existing-library checks, then failed
+  the real SABnzbd test: both jobs remained Downloading until their timeout.
+  Isolated client/NNTP diagnostics were added; final Linux acceptance is pending.
+  Owner Newznab/SABnzbd/shared-mount acceptance is
   separate; IPTorrents and XSpeeds account tests remain explicitly deferred.
 
 ## Existing-library registration (0.10 development)

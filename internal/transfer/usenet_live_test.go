@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,7 +41,7 @@ func runRealSAB(t *testing.T, tv bool) {
 	if !tv {
 		id = f.movie.ID
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	generated := filepath.Join(t.TempDir(), "owned.mp4")
 	if output, e := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=10", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", generated).CombinedOutput(); e != nil {
@@ -72,6 +73,19 @@ func runRealSAB(t *testing.T, tv bool) {
 	apiListener.Close()
 	profile := t.TempDir()
 	key := ID()
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		b, err := os.ReadFile(filepath.Join(profile, "logs", "sabnzbd.log"))
+		if err == nil {
+			if len(b) > 8000 {
+				b = b[len(b)-8000:]
+			}
+			safe := regexp.MustCompile(`[a-fA-F0-9]{32}`).ReplaceAllString(string(b), "<redacted>")
+			t.Logf("Isolated SABnzbd diagnostic tail:\n%s", safe)
+		}
+	})
 	configFile := filepath.Join(profile, "sabnzbd.ini")
 	ini := fmt.Sprintf(`__version__ = 19
 [misc]
@@ -321,6 +335,7 @@ func startOwnedNNTP(t *testing.T, ctx context.Context, articles map[string][]byt
 						return
 					}
 					command := strings.ToUpper(words[0])
+					t.Logf("Owned NNTP command: %s", command)
 					id := ""
 					if len(words) > 1 {
 						id = strings.Trim(words[1], "<>")
