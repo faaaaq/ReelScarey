@@ -124,13 +124,14 @@ func (s *Server) movieDetails(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		TMDbID    int64 `json:"tmdb_id"`
-		Monitored *bool `json:"monitored"`
+		TMDbID    int64  `json:"tmdb_id"`
+		Monitored *bool  `json:"monitored"`
+		Category  string `json:"category"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if body.TMDbID < 1 {
+	if body.TMDbID < 1 || (body.Category != "" && body.Category != "standard" && body.Category != "anime") {
 		fail(w, 400, "invalid_movie", "Choose a valid TMDb movie ID.")
 		return
 	}
@@ -151,7 +152,7 @@ func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
 	if body.Monitored != nil {
 		monitored = *body.Monitored
 	}
-	item, created, err := s.library.AddMovie(r.Context(), movie, monitored)
+	item, created, err := s.library.AddMovie(r.Context(), movie, monitored, body.Category)
 	if err != nil {
 		s.internal(w, "movie_add", err)
 		return

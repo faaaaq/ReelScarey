@@ -78,13 +78,14 @@ func (s *Server) seriesDetails(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		TMDbID    int64 `json:"tmdb_id"`
-		Monitored *bool `json:"monitored"`
+		TMDbID    int64  `json:"tmdb_id"`
+		Monitored *bool  `json:"monitored"`
+		Category  string `json:"category"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if body.TMDbID < 1 {
+	if body.TMDbID < 1 || (body.Category != "" && body.Category != "standard" && body.Category != "anime") {
 		fail(w, 400, "invalid_series", "Choose a valid TMDb show ID.")
 		return
 	}
@@ -104,7 +105,7 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	if body.Monitored != nil {
 		monitored = *body.Monitored
 	}
-	item, created, e := s.library.AddSeries(r.Context(), show, monitored)
+	item, created, e := s.library.AddSeries(r.Context(), show, monitored, body.Category)
 	if e != nil {
 		s.tvError(w, e)
 		return

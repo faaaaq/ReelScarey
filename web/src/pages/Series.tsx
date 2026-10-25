@@ -95,8 +95,11 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           {pending ? "Saving…" : "Refresh show details"}
         </Button>
       </PageHeading>
-      <Link className="text-link" to="/series">
-        Back to TV shows
+      <Link
+        className="text-link"
+        to={show.category === "anime" ? "/anime" : "/series"}
+      >
+        {show.category === "anime" ? "Back to Anime" : "Back to TV shows"}
       </Link>
       <section className="panel series-summary">
         <Poster movie={show} />

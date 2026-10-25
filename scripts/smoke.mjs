@@ -162,7 +162,7 @@ try {
   assert.equal((await (await authenticated('/api/v1/quality-profiles')).json()).items[0].name, 'Persistent smoke profile')
   const dashboard = await (await authenticated('/api/v1/dashboard')).json()
   assert.equal(dashboard.library_name, 'Restart verification')
-  assert.deepEqual(dashboard.counts, { movies: 0, series: 0 })
+  assert.deepEqual(dashboard.counts, { movies: 0, series: 0, anime: 0 })
   const check = spawn(binary, ['healthcheck'], { env, windowsHide: true, stdio: 'inherit' })
   const code = await new Promise((resolve, reject) => { check.once('error', reject); check.once('exit', resolve) })
   assert.equal(code, 0)

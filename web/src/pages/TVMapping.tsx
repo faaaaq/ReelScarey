@@ -78,7 +78,7 @@ export function TVMapping({
           <div className="mapping-row" key={t.episode_id}>
             <label
               htmlFor={`map-${job.id}-${t.episode_id}`}
-            >{`S${String(t.season).padStart(2, "0")}E${String(t.number).padStart(2, "0")} · ${t.title}`}</label>
+            >{`S${String(t.season).padStart(2, "0")}E${String(t.number).padStart(2, "0")}${t.absolute_number ? ` · Absolute ${t.absolute_number}` : ""} · ${t.title}`}</label>
             <select
               id={`map-${job.id}-${t.episode_id}`}
               value={values[t.episode_id] ?? ""}

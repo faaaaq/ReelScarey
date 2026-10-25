@@ -106,6 +106,16 @@ export function Settings() {
         title="Settings"
         description="Library folders, naming and service connections."
       />
+      <section className="panel organization-root">
+        <h2>Media organization</h2>
+        <p>
+          Configure Movies, TV Shows, Anime and custom collections; choose
+          naming presets or review existing file changes.
+        </p>
+        <Link className="text-link" to="/organization">
+          Open folders, naming & reorganization
+        </Link>
+      </section>
       <RequestState
         loading={settings.loading || system.loading}
         error={settings.error || system.error}
@@ -170,9 +180,9 @@ export function Settings() {
                   aria-describedby="folder-help"
                 />
                 <p className="field-help" id="folder-help">
-                  Separate folder names under your media root. Use letters,
-                  numbers, spaces, hyphens, or underscores. Saving preferences
-                  alone creates no folders.
+                  Default folder names before organization rules are saved.
+                  Organize library controls configured collection destinations.
+                  Saving preferences alone creates no folders.
                 </p>
                 <label htmlFor="episode-naming">TV episode names</label>
                 <select
@@ -186,9 +196,10 @@ export function Settings() {
                   </option>
                 </select>
                 <p className="field-help">
-                  New TV downloads use this naming choice and TV folder.
-                  Multi-episode files use S01E01-E02. Existing files and import
-                  plans keep their names.
+                  The Current ReelScarey naming preset uses this episode-name
+                  choice. Other presets and custom paths are in Organize
+                  library. Multi-episode files use S01E01-E02. Existing files
+                  and queued import plans keep their names.
                 </p>
               </fieldset>
               {error && (

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"log/slog"
 	"slices"
 	"time"
@@ -28,6 +29,10 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 	}
 }
 func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
+	defer organization.ReadMedia()()
+	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
+		return false, e
+	}
 	p, e := s.Preferences(ctx)
 	if e != nil {
 		return false, e

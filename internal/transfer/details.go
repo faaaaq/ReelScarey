@@ -7,7 +7,7 @@ import (
 	"errors"
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
-	"github.com/faaaaq/ReelScarey/internal/settings"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"path/filepath"
 )
 
@@ -56,14 +56,11 @@ func (s *Service) Details(ctx context.Context, id int64, page int) (ItemDetails,
 		return out, e
 	}
 	out.Item = item
-	prefs, e := settings.New(s.db).Get(ctx)
+	assignment, e := organization.New(s.db, s.cfg).GetAssignment(ctx, id)
 	if e != nil {
 		return out, e
 	}
-	folder := prefs.MovieFolder
-	if item.Kind == "series" {
-		folder = prefs.SeriesFolder
-	}
+	folder := organization.Directory(assignment.EffectiveLibrary, item.Kind)
 	out.LibraryRoot = filepath.Join(s.cfg.MediaDir, folder)
 	var raw string
 	e = s.db.QueryRowContext(ctx, `SELECT payload,updated_at FROM media_enrichment WHERE media_id=?`, id).Scan(&raw, &out.MetadataUpdated)

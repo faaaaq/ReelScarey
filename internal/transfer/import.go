@@ -16,6 +16,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/settings"
 )
 
@@ -216,6 +217,11 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 	var destination string
 	if j.Kind == "series" {
 		destination, e = s.tvDestination(ctx, j, source)
+	} else if j.organizationSnapshot != "" {
+		var snapshot organization.Snapshot
+		if e = json.Unmarshal([]byte(j.organizationSnapshot), &snapshot); e == nil {
+			destination, e = organization.Destination(snapshot, nil, source)
+		}
 	} else {
 		var name string
 		movie, err := s.MovieByID(ctx, j.MovieID)
@@ -230,6 +236,10 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 		destination = path.Join(prefs.MovieFolder, name, name+strings.ToLower(path.Ext(source)))
 	}
 	if e != nil {
+		var namingError *organization.Error
+		if errors.As(e, &namingError) {
+			return p, problem(namingError.Code, namingError.Message)
+		}
 		return p, e
 	}
 	if _, e = safeRelative(destination); e != nil {
@@ -271,7 +281,11 @@ func syncParent(parent *os.File) error {
 	return e
 }
 func (i *Importer) Execute(ctx context.Context, j Job, source string, size int64) error {
+	defer organization.ReadMedia()()
 	s := i.service
+	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
+		return e
+	}
 	srcRoot, dstRoot, e := roots(s.cfg.DownloadsDir, s.cfg.MediaDir, s.cfg.ConfigDir)
 	if e != nil {
 		return e
@@ -567,6 +581,10 @@ func (i *Importer) commitPublished(ctx context.Context, j Job, p importPlan, fol
 // Remove only redundant app-named links to the very same committed file.
 // Unknown files and all torrent sources are left untouched.
 func (s *Service) cleanupCommitted(ctx context.Context) error {
+	defer organization.ReadMedia()()
+	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
+		return e
+	}
 	rows, e := s.db.QueryContext(ctx, `SELECT destination_path,stage_name FROM import_operations WHERE phase='committed'`)
 	if e != nil {
 		return e

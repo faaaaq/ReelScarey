@@ -12,24 +12,27 @@ import (
 )
 
 type Item struct {
-	ID             int64           `json:"id"`
-	Kind           string          `json:"kind"`
-	TMDbID         int64           `json:"tmdb_id"`
-	Title          string          `json:"title"`
-	Year           *int            `json:"year"`
-	Monitored      bool            `json:"monitored"`
-	Status         string          `json:"status"`
-	Overview       string          `json:"overview"`
-	PosterPath     string          `json:"poster_path"`
-	PosterURL      string          `json:"poster_url"`
-	ReleaseDate    string          `json:"release_date"`
-	RuntimeMinutes *int            `json:"runtime_minutes"`
-	QualityProfile *CatalogProfile `json:"quality_profile,omitempty"`
+	ID               int64           `json:"id"`
+	Kind             string          `json:"kind"`
+	TMDbID           int64           `json:"tmdb_id"`
+	Title            string          `json:"title"`
+	Year             *int            `json:"year"`
+	Monitored        bool            `json:"monitored"`
+	Status           string          `json:"status"`
+	Overview         string          `json:"overview"`
+	PosterPath       string          `json:"poster_path"`
+	PosterURL        string          `json:"poster_url"`
+	ReleaseDate      string          `json:"release_date"`
+	RuntimeMinutes   *int            `json:"runtime_minutes"`
+	QualityProfile   *CatalogProfile `json:"quality_profile,omitempty"`
+	Category         string          `json:"category"`
+	CategoryRevision int             `json:"category_revision"`
 }
 
 type Counts struct {
 	Movies int `json:"movies"`
 	Series int `json:"series"`
+	Anime  int `json:"anime"`
 }
 type Store struct{ db *sql.DB }
 
@@ -37,7 +40,7 @@ func New(db *sql.DB) *Store { return &Store{db: db} }
 
 func (s *Store) Counts(ctx context.Context) (Counts, error) {
 	var counts Counts
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(kind = 'movie'), 0), COALESCE(SUM(kind = 'series'), 0) FROM media_items`).Scan(&counts.Movies, &counts.Series)
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(kind = 'movie' AND category='standard'), 0), COALESCE(SUM(kind = 'series' AND category='standard'), 0),COALESCE(SUM(category='anime'),0) FROM media_items`).Scan(&counts.Movies, &counts.Series, &counts.Anime)
 	return counts, err
 }
 
@@ -51,13 +54,13 @@ type Page struct {
 }
 
 const PageSize = 24
-const columns = "id, kind, tmdb_id, title, year, monitored, status, overview, poster_path, release_date, runtime_minutes"
+const columns = "id, kind, tmdb_id, title, year, monitored, status, overview, poster_path, release_date, runtime_minutes, category, category_revision"
 
 type scanner interface{ Scan(...any) error }
 
 func scan(row scanner, extra ...any) (Item, error) {
 	var item Item
-	args := []any{&item.ID, &item.Kind, &item.TMDbID, &item.Title, &item.Year, &item.Monitored, &item.Status, &item.Overview, &item.PosterPath, &item.ReleaseDate, &item.RuntimeMinutes}
+	args := []any{&item.ID, &item.Kind, &item.TMDbID, &item.Title, &item.Year, &item.Monitored, &item.Status, &item.Overview, &item.PosterPath, &item.ReleaseDate, &item.RuntimeMinutes, &item.Category, &item.CategoryRevision}
 	err := row.Scan(append(args, extra...)...)
 	item.PosterURL = metadata.PosterURL(item.PosterPath)
 	return item, err
@@ -92,15 +95,21 @@ func (s *Store) Browse(ctx context.Context, f BrowseFilter) (Page, error) {
 	if f.Monitored == "" {
 		f.Monitored = "all"
 	}
-	if (f.Kind != "movie" && f.Kind != "series") || f.Page < 1 || f.Page > 100000 ||
+	if (f.Kind != "movie" && f.Kind != "series" && f.Kind != "anime") || f.Page < 1 || f.Page > 100000 ||
 		orders[f.Sort] == "" || (f.Status != "all" && f.Status != "missing" && f.Status != "available" && f.Status != "downloading") ||
 		(f.Monitored != "all" && f.Monitored != "monitored" && f.Monitored != "paused") ||
 		len(f.Query) > 200 || !utf8.ValidString(f.Query) || strings.ContainsFunc(f.Query, unicode.IsControl) {
 		return Page{}, ErrBrowseInput
 	}
 	f.Query = strings.TrimSpace(f.Query)
-	where := " WHERE kind=? AND title LIKE ? ESCAPE '\\' AND (?='all' OR status=?) AND (?='all' OR monitored=?)"
-	args := []any{f.Kind, planningText(f.Query), f.Status, f.Status, f.Monitored, f.Monitored == "monitored"}
+	collectionWhere := " WHERE kind=? AND category='standard'"
+	collectionArgs := []any{f.Kind}
+	if f.Kind == "anime" {
+		collectionWhere = " WHERE category='anime'"
+		collectionArgs = nil
+	}
+	where := collectionWhere + " AND title LIKE ? ESCAPE '\\' AND (?='all' OR status=?) AND (?='all' OR monitored=?)"
+	args := append(append([]any{}, collectionArgs...), planningText(f.Query), f.Status, f.Status, f.Monitored, f.Monitored == "monitored")
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Page{}, err
@@ -122,7 +131,7 @@ func (s *Store) Browse(ctx context.Context, f BrowseFilter) (Page, error) {
 		where += ` AND COALESCE((SELECT profile_id FROM item_automation a WHERE a.media_id=media_items.id),?)=?`
 		args = append(args, profileContext.Default.ID, id)
 	}
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items WHERE kind=?", f.Kind).Scan(&out.CollectionTotal); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items"+collectionWhere, collectionArgs...).Scan(&out.CollectionTotal); err != nil {
 		return Page{}, err
 	}
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items"+where, args...).Scan(&out.Total); err != nil {
@@ -175,7 +184,11 @@ func (s *Store) ByID(ctx context.Context, id int64) (Item, error) {
 func (s *Store) Item(ctx context.Context, id int64) (Item, error) {
 	return scan(s.db.QueryRowContext(ctx, "SELECT "+columns+" FROM media_items WHERE id=?", id))
 }
-func (s *Store) AddMovie(ctx context.Context, movie metadata.Movie, monitored bool) (Item, bool, error) {
+func (s *Store) AddMovie(ctx context.Context, movie metadata.Movie, monitored bool, category ...string) (Item, bool, error) {
+	section, e := addCategory(category)
+	if e != nil {
+		return Item{}, false, e
+	}
 	if movie.TMDbID < 1 || movie.Title == "" {
 		return Item{}, false, errors.New("invalid movie metadata")
 	}
@@ -184,7 +197,7 @@ func (s *Store) AddMovie(ctx context.Context, movie metadata.Movie, monitored bo
 		return Item{}, false, err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date,runtime_minutes) VALUES('movie',?,?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, movie.TMDbID, movie.Title, movie.Year, monitored, movie.Overview, movie.PosterPath, movie.ReleaseDate, movie.RuntimeMinutes)
+	result, err := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date,runtime_minutes,category) VALUES('movie',?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, movie.TMDbID, movie.Title, movie.Year, monitored, movie.Overview, movie.PosterPath, movie.ReleaseDate, movie.RuntimeMinutes, section)
 	if err != nil {
 		return Item{}, false, err
 	}

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/library"
-	"github.com/faaaaq/ReelScarey/internal/settings"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 )
 
 const maxDiscoveryFiles = 10000
@@ -109,7 +109,11 @@ func (s *Service) existingRoot(ctx context.Context, scan *LibraryScan) (*os.Root
 	}
 	return os.OpenRoot(s.cfg.MediaDir)
 }
-func (s *Service) StartLibraryScan(ctx context.Context, kind string) (LibraryScan, error) {
+func (s *Service) StartLibraryScan(ctx context.Context, kind string, collection ...string) (LibraryScan, error) {
+	defer organization.ReadMedia()()
+	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
+		return LibraryScan{}, e
+	}
 	if kind != "movie" && kind != "series" {
 		return LibraryScan{}, problem("invalid_scan", "Choose movies or TV shows.")
 	}
@@ -118,13 +122,35 @@ func (s *Service) StartLibraryScan(ctx context.Context, kind string) (LibrarySca
 		return LibraryScan{}, e
 	}
 	defer root.Close()
-	prefs, e := settings.New(s.db).Get(ctx)
+	prefs, e := organization.New(s.db, s.cfg).Get(ctx)
 	if e != nil {
 		return LibraryScan{}, e
 	}
-	folder := prefs.MovieFolder
+	key := "movies"
 	if kind == "series" {
-		folder = prefs.SeriesFolder
+		key = "tv"
+	}
+	if len(collection) > 1 {
+		return LibraryScan{}, problem("invalid_scan", "Choose one configured collection.")
+	}
+	if len(collection) == 1 && collection[0] != "" {
+		key = collection[0]
+	}
+	folder := ""
+	for _, l := range prefs.Libraries {
+		if l.Key == key && (l.Content == "mixed" || l.Content == kind) {
+			folder = l.Folder
+			if l.Content == "mixed" {
+				if kind == "movie" {
+					folder = path.Join(folder, "Movies")
+				} else {
+					folder = path.Join(folder, "TV Shows")
+				}
+			}
+		}
+	}
+	if folder == "" {
+		return LibraryScan{}, problem("invalid_scan", "Choose a configured collection compatible with movies or shows.")
 	}
 	if e = segments(root, folder, false); e != nil {
 		return LibraryScan{}, problem("storage_unavailable", "The selected movie or TV folder must already exist inside the media root. Check its mount and folder preference.")

@@ -19,13 +19,14 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/httpapi"
 	"github.com/faaaaq/ReelScarey/internal/instance"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"github.com/faaaaq/ReelScarey/internal/subtitle"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.15.0-dev"
+var version = "0.16.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -91,6 +92,7 @@ func run(logger *slog.Logger) error {
 	transferService := transfer.New(db, secretStore, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
 	automationService := automation.New(db, transferService)
 	subtitleService := subtitle.New(db, secretStore, cfg, subtitle.NewOpenSubtitles())
+	organizationService := organization.New(db, cfg)
 	assets, err := web.Assets()
 	if err != nil {
 		return err
@@ -123,6 +125,14 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 	defer func() { workerCancel(); <-subtitleDone }()
+	organizationDone := make(chan struct{})
+	go func() {
+		defer close(organizationDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			organizationService.Run(workerCtx)
+		}
+	}()
+	defer func() { workerCancel(); <-organizationDone }()
 	defer func() { workerCancel(); <-automationDone }()
 	defer func() { workerCancel(); <-workerDone }()
 	failed := make(chan error, 1)

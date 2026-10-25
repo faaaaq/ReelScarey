@@ -1,5 +1,27 @@
 # REST API — media catalog, downloads, imports, automation and operations
 
+## Anime and organization
+
+Library browsing accepts kind=anime (mixed canonical movie/show types); ordinary
+movie/series collections exclude explicitly classified Anime. Adds accept optional
+category=anime. Item responses add category/category_revision, counts add anime.
+GET/PUT `/library/items/{id}/anime` reads/saves explicit section and absolute
+aliases against category/show revisions; strict maximum 512 KiB/5000 entries.
+Anime episode automation remains manual; no absolute order is inferred.
+
+GET/PUT `/organization` reads/saves revision-checked collection/naming rules
+(strict maximum 64 KiB); main_root is server-authoritative. GET/PUT
+`/library/items/{id}/organization` reads/saves a compatible future-import
+collection, empty library_key restoring section inheritance. GET
+`/organization/files` lists registered files without filesystem work. GET/POST
+`/organization/plans` lists recent saved reviews/jobs or previews explicit1–100
+file_ids and optional target_library. GET `/organization/plans/{id}` reads it;
+POST `/organization/plans/{id}/apply` with `{}` queues/resumes that exact review.
+All paths above have the `/api/v1` prefix. Preview reads and verifies files but
+moves no media; apply runs a durable worker. Mutations require auth/CSRF/origin.
+Existing-library discovery GET includes configured collections; POST accepts an
+optional library_key. See [exact payloads, worker invariants and limits](ANIME_ORGANIZATION.md).
+
 ## Wanted and calendar
 
 Authenticated GET `/api/v1/wanted` and `/api/v1/calendar` accept kind

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"time"
 )
 
@@ -44,16 +45,17 @@ type Job struct {
 	clientURL, savePath        string
 	attempted                  int
 	submittedAt                int64
+	organizationSnapshot       string
 }
 
-const jobColumns = `d.kind,d.id,d.movie_id,m.title,d.title,d.info_hash,d.state,d.progress,d.total_bytes,d.downloaded_bytes,d.client_state,d.selected_file,d.choices,d.attempts,d.error_code,d.error_message,d.created_at,d.updated_at,d.lease_owner,d.payload,d.client_url,d.save_path,d.submission_attempted,d.submitted_at,d.protocol,d.client_id,d.client_files,d.client_storage`
+const jobColumns = `d.kind,d.id,d.movie_id,m.title,d.title,d.info_hash,d.state,d.progress,d.total_bytes,d.downloaded_bytes,d.client_state,d.selected_file,d.choices,d.attempts,d.error_code,d.error_message,d.created_at,d.updated_at,d.lease_owner,d.payload,d.client_url,d.save_path,d.submission_attempted,d.submitted_at,d.protocol,d.client_id,d.client_files,d.client_storage,d.organization_snapshot`
 
 type scanner interface{ Scan(...any) error }
 
 func scanJob(row scanner) (Job, error) {
 	var j Job
 	var choices string
-	e := row.Scan(&j.Kind, &j.ID, &j.MovieID, &j.MovieTitle, &j.Title, &j.Hash, &j.State, &j.Progress, &j.Total, &j.Downloaded, &j.ClientState, &j.Selected, &choices, &j.Attempts, &j.ErrorCode, &j.ErrorMessage, &j.Created, &j.Updated, &j.owner, &j.payload, &j.clientURL, &j.savePath, &j.attempted, &j.submittedAt, &j.Protocol, &j.ClientID, &j.clientFiles, &j.clientStorage)
+	e := row.Scan(&j.Kind, &j.ID, &j.MovieID, &j.MovieTitle, &j.Title, &j.Hash, &j.State, &j.Progress, &j.Total, &j.Downloaded, &j.ClientState, &j.Selected, &choices, &j.Attempts, &j.ErrorCode, &j.ErrorMessage, &j.Created, &j.Updated, &j.owner, &j.payload, &j.clientURL, &j.savePath, &j.attempted, &j.submittedAt, &j.Protocol, &j.ClientID, &j.clientFiles, &j.clientStorage, &j.organizationSnapshot)
 	if e == nil {
 		e = json.Unmarshal([]byte(choices), &j.Choices)
 	}
@@ -123,6 +125,9 @@ func (s *Service) owned(ctx context.Context, j Job, query string, args ...any) e
 	return e
 }
 func (s *Service) claim(ctx context.Context) (Job, error) {
+	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
+		return Job{}, e
+	}
 	owner := ID()
 	now := time.Now().Unix()
 	var id string

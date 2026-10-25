@@ -12,10 +12,57 @@ import (
 )
 
 var episodeToken = regexp.MustCompile(`(?i)S[0-9]{1,4}E[0-9]{1,5}(?:E[0-9]{1,5})*(?:-E?[0-9]{1,5})?|[0-9]{1,4}x[0-9]{1,5}(?:-[0-9]{1,5})?`)
+var absoluteToken = regexp.MustCompile(`(?i)(?:^| - )([0-9]{1,6})(?:-([0-9]{1,6}))?(?:v[1-9][0-9]*)?`)
+
+// Absolute filename labels are hints only, and only refer to explicitly saved
+// aliases snapshotted with this download. No season order is inferred.
+func suggestedAbsoluteEpisodes(name string, targets []TVTarget) []int64 {
+	base := path.Base(strings.ReplaceAll(name, "\\", "/"))
+	matches := absoluteToken.FindAllStringSubmatchIndex(base, -1)
+	if len(matches) != 1 {
+		return nil
+	}
+	m := matches[0]
+	if m[1] < len(base) && !strings.ContainsRune(" .[", rune(base[m[1]])) {
+		return nil
+	}
+	start, _ := strconv.Atoi(base[m[2]:m[3]])
+	end := start
+	if m[4] >= 0 {
+		end, _ = strconv.Atoi(base[m[4]:m[5]])
+	}
+	if start < 1 || end < start || end-start >= 20 {
+		return nil
+	}
+	out := []int64{}
+	season, previous := -1, -1
+	for absolute := start; absolute <= end; absolute++ {
+		var match *TVTarget
+		for n := range targets {
+			t := &targets[n]
+			if t.AbsoluteNumber != nil && *t.AbsoluteNumber == absolute {
+				if match != nil {
+					return nil
+				}
+				match = t
+			}
+		}
+		if match == nil || (season != -1 && (match.Season != season || match.Number != previous+1)) {
+			return nil
+		}
+		season = match.Season
+		previous = match.Number
+		out = append(out, match.EpisodeID)
+	}
+	return out
+}
 
 // Suggestions never authorize an import. Every mapping requires owner review.
 func suggestedEpisodes(name string, targets []TVTarget) []int64 {
 	tokens := episodeToken.FindAllString(strings.ToUpper(path.Base(strings.ReplaceAll(name, "\\", "/"))), -1)
+	if len(tokens) == 0 {
+		return suggestedAbsoluteEpisodes(name, targets)
+	}
 	if len(tokens) != 1 {
 		return nil
 	}
@@ -301,13 +348,13 @@ func (s *Service) processTVImports(ctx context.Context, j Job) error {
 			continue
 		}
 		targets := []TVTarget{}
-		rows, e := s.db.QueryContext(ctx, `SELECT t.episode_id,t.tmdb_id,t.season_number,t.episode_number,t.title FROM download_targets t JOIN download_mappings m ON m.download_id=t.download_id AND m.episode_id=t.episode_id WHERE m.download_id=? AND m.file_index=? ORDER BY t.episode_number`, j.ID, f.index)
+		rows, e := s.db.QueryContext(ctx, `SELECT t.episode_id,t.tmdb_id,t.season_number,t.episode_number,t.title,t.absolute_number FROM download_targets t JOIN download_mappings m ON m.download_id=t.download_id AND m.episode_id=t.episode_id WHERE m.download_id=? AND m.file_index=? ORDER BY t.episode_number`, j.ID, f.index)
 		if e != nil {
 			return e
 		}
 		for rows.Next() {
 			var t TVTarget
-			if e = rows.Scan(&t.EpisodeID, &t.TMDbID, &t.Season, &t.Number, &t.Title); e != nil {
+			if e = rows.Scan(&t.EpisodeID, &t.TMDbID, &t.Season, &t.Number, &t.Title, &t.AbsoluteNumber); e != nil {
 				rows.Close()
 				return e
 			}

@@ -24,25 +24,27 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/operations"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/settings"
 	"github.com/faaaaq/ReelScarey/internal/subtitle"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
 )
 
 type Server struct {
-	db         *sql.DB
-	config     config.Config
-	logger     *slog.Logger
-	settings   *settings.Store
-	library    *library.Store
-	version    string
-	started    time.Time
-	auth       *auth.Service
-	metadata   *metadata.Service
-	transfer   *transfer.Service
-	automation *automation.Service
-	subtitle   *subtitle.Service
-	operations *operations.Service
+	db           *sql.DB
+	config       config.Config
+	logger       *slog.Logger
+	settings     *settings.Store
+	library      *library.Store
+	version      string
+	started      time.Time
+	auth         *auth.Service
+	metadata     *metadata.Service
+	transfer     *transfer.Service
+	automation   *automation.Service
+	subtitle     *subtitle.Service
+	operations   *operations.Service
+	organization *organization.Service
 }
 
 type Dependencies struct {
@@ -56,6 +58,7 @@ type Dependencies struct {
 func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string, deps Dependencies) http.Handler {
 	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle}
 	s.operations = operations.New(db, cfg)
+	s.organization = organization.New(db, cfg)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", method(http.MethodGet, s.health))
 	mux.HandleFunc("/readyz", method(http.MethodGet, s.ready))
@@ -78,6 +81,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/import-files/{id}/register", method(http.MethodPost, s.existingRegister))
 	mux.HandleFunc("/api/v1/library/import-files/{id}/skip", method(http.MethodPost, s.existingSkip))
 	mux.HandleFunc("/api/v1/library/items/{id}", method(http.MethodGet, s.itemDetails))
+	mux.HandleFunc("/api/v1/library/items/{id}/anime", s.animeSettings)
 	mux.HandleFunc("/api/v1/library/items/{id}/metadata", method(http.MethodPost, s.refreshInformation))
 	mux.HandleFunc("/api/v1/indexers", s.indexers)
 	mux.HandleFunc("/api/v1/indexers/status", method(http.MethodGet, s.indexerStatus))
@@ -85,6 +89,12 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/indexers/{id}/test", method(http.MethodPost, s.indexerTest))
 	mux.HandleFunc("/api/v1/indexers/{id}/enabled", method(http.MethodPut, s.indexerEnabled))
 	mux.HandleFunc("/api/v1/settings", s.handleSettings)
+	mux.HandleFunc("/api/v1/organization", s.organizationSettings)
+	mux.HandleFunc("/api/v1/organization/files", method(http.MethodGet, s.organizationFiles))
+	mux.HandleFunc("/api/v1/organization/plans", s.organizationPlans)
+	mux.HandleFunc("/api/v1/organization/plans/{id}", method(http.MethodGet, s.organizationPlan))
+	mux.HandleFunc("/api/v1/organization/plans/{id}/apply", method(http.MethodPost, s.organizationApply))
+	mux.HandleFunc("/api/v1/library/items/{id}/organization", s.organizationAssignment)
 	mux.HandleFunc("/api/v1/subtitles/preferences", s.subtitlePreferences)
 	mux.HandleFunc("/api/v1/providers/opensubtitles", s.subtitleProvider)
 	mux.HandleFunc("/api/v1/providers/opensubtitles/test", method(http.MethodPost, s.subtitleProviderTest))
@@ -220,8 +230,8 @@ func (s *Server) listLibrary(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	kind := values.Get("kind")
-	if kind != "movie" && kind != "series" {
-		fail(w, 400, "invalid_kind", "Choose kind=movie or kind=series.")
+	if kind != "movie" && kind != "series" && kind != "anime" {
+		fail(w, 400, "invalid_kind", "Choose kind=movie, kind=series or kind=anime.")
 		return
 	}
 	page, valid := pageNumber(r, 100000)
@@ -326,7 +336,7 @@ func (s *Server) sameOrigin(r *http.Request) bool {
 
 func frontend(assets fs.FS) http.HandlerFunc {
 	files := http.FileServer(http.FS(assets))
-	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/search": true, "/releases": true, "/activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true, "/import": true, "/wanted": true, "/calendar": true}
+	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/anime": true, "/organization": true, "/search": true, "/releases": true, "/activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true, "/import": true, "/wanted": true, "/calendar": true}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")

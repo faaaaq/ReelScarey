@@ -3,7 +3,9 @@ package transfer
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"path"
 	"strings"
 	"unicode"
@@ -30,6 +32,17 @@ func cleanTVName(raw string, limit int) string {
 func (s *Service) tvDestination(ctx context.Context, j Job, source string) (string, error) {
 	if j.fileIndex == nil || len(j.fileTargets) == 0 || len(j.fileTargets) > 20 {
 		return "", mappingError()
+	}
+	if j.organizationSnapshot != "" {
+		var snapshot organization.Snapshot
+		if e := json.Unmarshal([]byte(j.organizationSnapshot), &snapshot); e != nil {
+			return "", e
+		}
+		episodes := []organization.Episode{}
+		for _, t := range j.fileTargets {
+			episodes = append(episodes, organization.Episode{ID: t.EpisodeID, Season: t.Season, Number: t.Number, Title: t.Title, Absolute: t.AbsoluteNumber})
+		}
+		return organization.Destination(snapshot, episodes, source)
 	}
 	var title, folder, naming string
 	var year *int

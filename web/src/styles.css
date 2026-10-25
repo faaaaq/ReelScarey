@@ -2434,6 +2434,118 @@ dd {
   margin: 20px 0;
   font-size: 13px;
 }
+.organization-root {
+  margin-bottom: 20px;
+  padding: 18px 22px;
+}
+.organization-root h2,
+.organization-selection h2 {
+  font-size: 18px;
+  margin: 0 0 10px;
+}
+.organization-root code {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.organization-selection {
+  padding: 22px;
+  margin-bottom: 20px;
+}
+.organization-selection fieldset {
+  margin: 18px 0;
+}
+.organization-selection label,
+.organization-settings label {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0;
+}
+.organization-selection > label,
+.organization-selection label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.organization-library {
+  padding: 16px 0;
+  border-block-start: 1px solid var(--line);
+}
+.organization-library summary,
+.organization-job summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.organization-library summary span {
+  margin-left: 12px;
+  font-weight: normal;
+}
+.organization-library label {
+  margin-top: 16px;
+}
+.organization-files {
+  margin-block: 16px;
+}
+.organization-selection .organization-file {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 0;
+  margin: 0;
+  border-top: 1px solid var(--line);
+}
+.organization-file > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.organization-file input {
+  margin-top: 5px;
+}
+.organization-file code,
+.organization-plan-files code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.organization-plan-files {
+  padding-left: 20px;
+}
+.organization-plan-files li {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.organization-path-change {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr);
+  gap: 12px;
+  padding-top: 8px;
+}
+.organization-job {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.library-register {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 650px) {
+  .organization-selection {
+    padding: 16px;
+  }
+  .organization-path-change {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .organization-library summary span {
+    display: block;
+    margin: 5px 0 0;
+  }
+  .library-register {
+    grid-template-columns: 1fr;
+  }
+  .library-register > a + a {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
 .profile-target select {
   background: var(--gray-2);
   color: var(--gray-12);

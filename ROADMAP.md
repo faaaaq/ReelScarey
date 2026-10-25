@@ -188,7 +188,7 @@ XSpeeds account testing remains explicitly deferred.
 
 See [bulk monitoring and limits](docs/BULK_MONITORING.md).
 
-## 13 — Reviewed profile assignment (current)
+## 13 — Reviewed profile assignment
 - [x] Library effective-profile labels and filters, including inherited defaults.
 - [x] Explicit page selection, target-rule review and atomic profile assignment
   or return to schedule-default inheritance for movies/shows.
@@ -200,6 +200,27 @@ See [bulk monitoring and limits](docs/BULK_MONITORING.md).
 
 See [profile assignment and exact limits](docs/BULK_PROFILES.md). The graphite/blue
 layout and plain interface copy are retained.
+
+## 14 — Anime and configurable organization (current)
+- [x] Separate mixed movie/show Anime catalog, explicit classification and
+  revision-checked absolute aliases retaining canonical provider/episode IDs.
+- [x] Reviewed absolute filename hints, immutable queued alias/naming snapshots
+  and conservative manual Anime episode release searching.
+- [x] Movies/TV/Anime/custom collections below the deployment main root,
+  media-server naming presets/custom tokens and inherited/explicit assignments.
+- [x] Collection-aware existing-library discovery with explicit registration.
+- [x] Exact registered-file batch reviews, durable no-overwrite publication,
+  atomic video/subtitle reference changes and selective cleanup/restart recovery.
+- [x] Independent migration, API, concurrency, partial publication/copy and
+  generated FFmpeg/FFprobe shared Anime/ASS/seeding-link acceptance.
+- [x] Clean locked frontend checks, 95 interface tests and production build.
+- [ ] Complete full native/browser/package/Linux acceptance and preview upgrade.
+- [ ] Live main-root migration, whole-folder extras/artwork moves, queued batch
+  rollback/cancellation, AniDB identity and alternate-order automation remain
+  future work. IPTorrents/XSpeeds account testing stays deferred.
+
+See [Anime, organization and exact limits](docs/ANIME_ORGANIZATION.md). Graphite/blue
+and plain functional interface copy are retained.
 
 ## Validation record
 

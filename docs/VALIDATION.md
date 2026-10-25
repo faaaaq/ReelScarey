@@ -1,5 +1,35 @@
 # Validation record — 2026-10-24
 
+## Anime and organization (0.16 development)
+
+- Separate Anime film/show classification and coherent browsing preserve
+  canonical IDs, duplicate-add behavior, monitoring, file and episode references.
+  Explicit unique aliases, no-op edits, foreign/duplicate/out-of-range entries,
+  metadata identity/revision changes and automatic episode exclusions are tested.
+- Independent migration review verifies released schema-10 data/credentials,
+  paths, sidecar journals and profile/monitoring choices survive additive11/12.
+  API review covers auth/CSRF/origin, strict MIME/JSON/bounds, revisions, literal
+  file filters, no-media-write preview and durable queue/history behavior.
+- Organization tests cover stale settings/assignments/aliases/files/companions,
+  unsafe/overlapping paths, custom templates, distinct media-server ID tags,
+  collision refusal, hardlink and staged-copy publication, styled sidecars,
+  partial-copy/published/cleanup recovery, cancellation, foreign-output identity
+  and same-folder renames. Durable reservations and the shared filesystem gate
+  exclude restarted subtitle/discovery/import workers until reconciliation.
+  Queued download naming/aliases remain immutable through edits and reopen.
+- Generated owned FFmpeg media passes real existing-library discovery, explicit
+  shared two-episode Anime registration, FFprobe/hash verification, custom
+  absolute25–26 reorganization across reopen, ASS content/reference preservation
+  and independent seeding-hardlink identity/mtime preservation. No owner file,
+  service or private tracker account is used.
+- Clean locked npm install/audit (zero vulnerabilities), formatting/type checks,
+  all95 interface tests and production build pass. The build reports the standard
+  >500 KiB JavaScript chunk advisory; it succeeds. Full backend/native checks,
+  browser/package/Linux acceptance and preview upgrade are being completed.
+  Graphite/blue is retained. Private IPTorrents/XSpeeds account testing remains
+  deferred. Main-root migration, whole-folder extras, AniDB/alternate-order
+  automation and queued batch rollback/cancellation are explicitly outside scope.
+
 ## Reviewed profile assignment (0.15 development)
 
 - Changed backend/API suites pass for coherent read-only reviews, assignment vs

@@ -98,6 +98,14 @@ schedule snapshot before changing profile_id/revision. Changed assignment revisi
 fence editors and pending queues; monitoring and files are untouched. No migration
 or dependency is required. See docs/BULK_PROFILES.md.
 The migration ledger stores version, filename, checksum, and applied time.
+Additive migration 011 introduces explicit Anime classification and canonical
+episode absolute aliases without changing movie/series identity. Migration 012
+adds organization settings/assignments, immutable queued naming/alias snapshots
+and plan/output journals. Organization owns review, safe publication and batch
+reference switching; transfer consumes its narrow destination planner. Shared
+filesystem exclusion and durable pending-plan checks coordinate imports,
+existing discovery and subtitle workers through restart. Registered paths remain
+relative to the deployment-selected main root. See docs/ANIME_ORGANIZATION.md.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored
 flag, and status. `(kind, tmdb_id)` is unique; a movie and series may have the

@@ -53,7 +53,7 @@ function ItemAction({ item }: { item: MediaItem }) {
     </Link>
   );
 }
-export function Library({ kind }: { kind: "movie" | "series" }) {
+export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const [params, setParams] = useSearchParams();
   const [input, setInput] = useState(params.get("query") ?? "");
   useEffect(() => setInput(params.get("query") ?? ""), [params]);
@@ -82,7 +82,14 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
     setMonitoringMessage("");
   }
   const movies = kind === "movie",
-    noun = movies ? "movies" : "shows",
+    anime = kind === "anime",
+    noun = anime ? "titles" : movies ? "movies" : "shows",
+    singular = anime ? "title" : movies ? "movie" : "show",
+    searchPath = anime
+      ? "/search?kind=anime"
+      : movies
+        ? "/search"
+        : "/search?kind=series",
     table = params.get("view") === "table";
   function change(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -102,16 +109,31 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
     if (data?.profile_context) setSavedProfileContext(data.profile_context);
   }, [data]);
   const profileContext = data?.profile_context ?? savedProfileContext;
+  const selectedGroups =
+    kind === "anime"
+      ? (["movie", "series"] as const)
+          .map((groupKind) => ({
+            kind: groupKind,
+            ids: (data?.items ?? [])
+              .filter(
+                (item) => item.kind === groupKind && selected.includes(item.id),
+              )
+              .map((item) => item.id),
+          }))
+          .filter((group) => group.ids.length > 0)
+      : selected.length
+        ? [{ kind, ids: selected }]
+        : [];
   const filtered = ["query", "status", "monitored", "profile"].some(
     (k) => !!params.get(k) && params.get(k) !== "all",
   );
   return (
     <>
       <PageHeading
-        title={movies ? "Movies" : "TV shows"}
+        title={anime ? "Anime" : movies ? "Movies" : "TV shows"}
         description={
           data
-            ? `${data.collection_total ?? data.total} ${(data.collection_total ?? data.total) === 1 ? (movies ? "movie" : "show") : noun} in the catalog`
+            ? `${data.collection_total ?? data.total} ${(data.collection_total ?? data.total) === 1 ? singular : noun} in the catalog`
             : "Saved titles"
         }
       >
@@ -120,9 +142,9 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
             <Link to="/import">Import existing</Link>
           </Button>
           <Button asChild>
-            <Link to={movies ? "/search" : "/search?kind=series"}>
+            <Link to={searchPath}>
               <Plus size={16} />
-              {movies ? "Add movies" : "Add shows"}
+              {anime ? "Add anime" : movies ? "Add movies" : "Add shows"}
             </Link>
           </Button>
         </div>
@@ -154,10 +176,18 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
             >
               <option value="all">All statuses</option>
               <option value="missing">
-                {movies ? "Missing" : "No episode files"}
+                {anime
+                  ? "Missing / no episode files"
+                  : movies
+                    ? "Missing"
+                    : "No episode files"}
               </option>
               <option value="available">
-                {movies ? "In library" : "Episode files registered"}
+                {anime
+                  ? "Files registered"
+                  : movies
+                    ? "In library"
+                    : "Episode files registered"}
               </option>
               <option value="downloading">Downloading</option>
             </select>
@@ -214,7 +244,7 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
       <div className="catalog-result-bar">
         <p role="status">
           {data && !resource.loading && !resource.error
-            ? `${data.total} matching ${data.total === 1 ? (movies ? "movie" : "show") : noun}${data.items.length ? ` · ${(data.page - 1) * data.limit + 1}–${(data.page - 1) * data.limit + data.items.length} shown` : ""}`
+            ? `${data.total} matching ${data.total === 1 ? singular : noun}${data.items.length ? ` · ${(data.page - 1) * data.limit + 1}–${(data.page - 1) * data.limit + data.items.length} shown` : ""}`
             : ""}
         </p>
         <div className="view-switch" role="group" aria-label="Library view">
@@ -266,31 +296,47 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
           <span>Selection is cleared when filters or pages change.</span>
         </div>
       ) : null}
-      {!!selected.length && !resource.loading && !resource.error && (
-        <BulkMonitoring
-          kind={kind}
-          ids={selected}
-          onClear={() => setSelected([])}
-          onApplied={(message) => {
-            setSelected([]);
-            setMonitoringMessage(message);
-            resource.reload();
-          }}
-        >
-          {data?.profile_context && (
-            <BulkProfiles
-              kind={kind}
-              ids={selected}
-              context={data.profile_context}
+      {!resource.loading &&
+        !resource.error &&
+        selectedGroups.map((group) => (
+          <section
+            key={group.kind}
+            aria-label={
+              anime
+                ? `Selected anime ${group.kind === "movie" ? "movies" : "shows"}`
+                : undefined
+            }
+          >
+            {anime && (
+              <h2>
+                {group.kind === "movie" ? "Selected movies" : "Selected shows"}
+              </h2>
+            )}
+            <BulkMonitoring
+              kind={group.kind}
+              ids={group.ids}
+              onClear={() => setSelected([])}
               onApplied={(message) => {
                 setSelected([]);
                 setMonitoringMessage(message);
                 resource.reload();
               }}
-            />
-          )}
-        </BulkMonitoring>
-      )}
+            >
+              {data?.profile_context && (
+                <BulkProfiles
+                  kind={group.kind}
+                  ids={group.ids}
+                  context={data.profile_context}
+                  onApplied={(message) => {
+                    setSelected([]);
+                    setMonitoringMessage(message);
+                    resource.reload();
+                  }}
+                />
+              )}
+            </BulkMonitoring>
+          </section>
+        ))}
       <RequestState
         loading={resource.loading}
         error={resource.error}
@@ -313,7 +359,13 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
               >
                 <table
                   className="catalog-table"
-                  aria-label={movies ? "Movie library" : "TV library"}
+                  aria-label={
+                    anime
+                      ? "Anime library"
+                      : movies
+                        ? "Movie library"
+                        : "TV library"
+                  }
                 >
                   <thead>
                     <tr>
@@ -322,6 +374,7 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                       </th>
                       <th scope="col">Title</th>
                       <th scope="col">Year</th>
+                      {anime && <th scope="col">Format</th>}
                       <th scope="col">Status</th>
                       <th scope="col">Monitoring</th>
                       <th scope="col">Quality profile</th>
@@ -343,12 +396,15 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                         </td>
                         <th scope="row">
                           <Link
-                            to={`/${movies ? "movies" : "series"}/${item.id}`}
+                            to={`/${item.kind === "movie" ? "movies" : "series"}/${item.id}`}
                           >
                             {item.title}
                           </Link>
                         </th>
                         <td>{item.year ?? "—"}</td>
+                        {anime && (
+                          <td>{item.kind === "movie" ? "Movie" : "Show"}</td>
+                        )}
                         <td>
                           <span
                             className={`catalog-state state-${item.status}`}
@@ -383,7 +439,7 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                     </label>
                     <Link
                       className="catalog-art"
-                      to={`/${movies ? "movies" : "series"}/${item.id}`}
+                      to={`/${item.kind === "movie" ? "movies" : "series"}/${item.id}`}
                       aria-label={`Open ${item.title} details`}
                     >
                       <Poster movie={item} />
@@ -392,12 +448,17 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                       </span>
                     </Link>
                     <h2>
-                      <Link to={`/${movies ? "movies" : "series"}/${item.id}`}>
+                      <Link
+                        to={`/${item.kind === "movie" ? "movies" : "series"}/${item.id}`}
+                      >
                         {item.title}
                       </Link>
                     </h2>
                     <div className="catalog-card-meta">
                       <span>{item.year ?? "Year unknown"}</span>
+                      {anime && (
+                        <span>{item.kind === "movie" ? "Movie" : "Show"}</span>
+                      )}
                       <span>{item.monitored ? "Monitored" : "Paused"}</span>
                     </div>
                     <ItemAction item={item} />
@@ -413,9 +474,11 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                   ? `No ${noun} on this page`
                   : filtered
                     ? `No matching ${noun}`
-                    : movies
-                      ? "No movies in the library"
-                      : "No shows in the library"}
+                    : anime
+                      ? "No anime in the library"
+                      : movies
+                        ? "No movies in the library"
+                        : "No shows in the library"}
               </h2>
               <p>
                 {page > 1
@@ -434,8 +497,12 @@ export function Library({ kind }: { kind: "movie" | "series" }) {
                 </Button>
               ) : (
                 <Button asChild>
-                  <Link to={movies ? "/search" : "/search?kind=series"}>
-                    {movies ? "Find a movie" : "Find a show"}
+                  <Link to={searchPath}>
+                    {anime
+                      ? "Find anime"
+                      : movies
+                        ? "Find a movie"
+                        : "Find a show"}
                   </Link>
                 </Button>
               )}

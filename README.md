@@ -33,6 +33,13 @@ The library also shows/filters effective quality profiles and supports reviewed
 profile assignment or return to default inheritance for selected titles. See
 [profile assignment](docs/BULK_PROFILES.md).
 
+Anime has a separate movie/show catalog with explicit absolute episode mappings.
+Organize library configures Movies, TV Shows, Anime and custom collections,
+Plex/Jellyfin/Emby presets or custom templates, immutable future-import naming and
+reviewed batch video/subtitle reorganization. See [Anime and organization](docs/ANIME_ORGANIZATION.md)
+for main-root setup, safeguards and exact limits. Anime episode searches remain
+manual until alternate-order automation is implemented.
+
 Not implemented: replacement/upgrade imports, audio-language verification,
 or full production hardening. Automation starts paused and defaults to
 search results for review; automatic downloads require explicit selection of that

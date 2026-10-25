@@ -10,17 +10,19 @@ import (
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/library"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/settings"
 )
 
 type TVTarget struct {
-	EpisodeID int64  `json:"episode_id"`
-	TMDbID    int64  `json:"tmdb_id"`
-	Season    int    `json:"season"`
-	Number    int    `json:"number"`
-	Title     string `json:"title"`
-	Skipped   bool   `json:"skipped"`
-	Imported  bool   `json:"imported"`
+	AbsoluteNumber *int   `json:"absolute_number,omitempty"`
+	EpisodeID      int64  `json:"episode_id"`
+	TMDbID         int64  `json:"tmdb_id"`
+	Season         int    `json:"season"`
+	Number         int    `json:"number"`
+	Title          string `json:"title"`
+	Skipped        bool   `json:"skipped"`
+	Imported       bool   `json:"imported"`
 }
 
 func (s *Service) SearchTV(ctx context.Context, seriesID int64, season, episode int, query string) ([]Release, error) {
@@ -41,14 +43,14 @@ func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode 
 	if loaded == "" {
 		return nil, problem("episodes_not_loaded", "Load this season's episodes before searching for releases.")
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT e.id,e.tmdb_id,s.number,e.number,e.title FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id WHERE s.series_id=? AND s.number=? AND (?=0 OR e.number=?) AND (?<>0 OR (m.monitored=1 AND s.monitored=1 AND e.monitored=1)) AND (? OR NOT EXISTS(SELECT 1 FROM episode_files f WHERE f.episode_id=e.id)) ORDER BY e.number LIMIT 101`, seriesID, season, episode, episode, episode, includeAvailable)
+	rows, e := s.db.QueryContext(ctx, `SELECT e.id,e.tmdb_id,s.number,e.number,e.title,a.absolute_number FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id LEFT JOIN anime_episode_numbers a ON a.episode_id=e.id WHERE s.series_id=? AND s.number=? AND (?=0 OR e.number=?) AND (?<>0 OR (m.monitored=1 AND s.monitored=1 AND e.monitored=1)) AND (? OR NOT EXISTS(SELECT 1 FROM episode_files f WHERE f.episode_id=e.id)) ORDER BY e.number LIMIT 101`, seriesID, season, episode, episode, episode, includeAvailable)
 	if e != nil {
 		return nil, e
 	}
 	targets := []TVTarget{}
 	for rows.Next() {
 		var t TVTarget
-		if e = rows.Scan(&t.EpisodeID, &t.TMDbID, &t.Season, &t.Number, &t.Title); e != nil {
+		if e = rows.Scan(&t.EpisodeID, &t.TMDbID, &t.Season, &t.Number, &t.Title, &t.AbsoluteNumber); e != nil {
 			rows.Close()
 			return nil, e
 		}
@@ -111,7 +113,7 @@ func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode 
 	return out, tx.Commit()
 }
 func (s *Service) targets(ctx context.Context, id string) ([]TVTarget, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT t.episode_id,t.tmdb_id,t.season_number,t.episode_number,t.title,t.skipped,EXISTS(SELECT 1 FROM episode_files ef JOIN media_files mf ON mf.id=ef.media_file_id WHERE ef.episode_id=t.episode_id AND mf.download_id=t.download_id) FROM download_targets t WHERE t.download_id=? ORDER BY t.season_number,t.episode_number`, id)
+	rows, e := s.db.QueryContext(ctx, `SELECT t.episode_id,t.tmdb_id,t.season_number,t.episode_number,t.title,t.skipped,EXISTS(SELECT 1 FROM episode_files ef JOIN media_files mf ON mf.id=ef.media_file_id WHERE ef.episode_id=t.episode_id AND mf.download_id=t.download_id),t.absolute_number FROM download_targets t WHERE t.download_id=? ORDER BY t.season_number,t.episode_number`, id)
 	if e != nil {
 		return nil, e
 	}
@@ -119,7 +121,7 @@ func (s *Service) targets(ctx context.Context, id string) ([]TVTarget, error) {
 	out := []TVTarget{}
 	for rows.Next() {
 		var t TVTarget
-		if e = rows.Scan(&t.EpisodeID, &t.TMDbID, &t.Season, &t.Number, &t.Title, &t.Skipped, &t.Imported); e != nil {
+		if e = rows.Scan(&t.EpisodeID, &t.TMDbID, &t.Season, &t.Number, &t.Title, &t.Skipped, &t.Imported, &t.AbsoluteNumber); e != nil {
 			return nil, e
 		}
 		out = append(out, t)
@@ -130,12 +132,13 @@ func sameTargets(a, b []TVTarget) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	seen := map[int64]bool{}
+	seen := map[int64]TVTarget{}
 	for _, t := range a {
-		seen[t.EpisodeID] = true
+		seen[t.EpisodeID] = t
 	}
 	for _, t := range b {
-		if !seen[t.EpisodeID] {
+		previous, exists := seen[t.EpisodeID]
+		if !exists || previous.AbsoluteNumber == nil && t.AbsoluteNumber != nil || previous.AbsoluteNumber != nil && (t.AbsoluteNumber == nil || *previous.AbsoluteNumber != *t.AbsoluteNumber) {
 			return false
 		}
 	}
@@ -200,7 +203,15 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 			return Job{}, false, e
 		}
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,kind,indexer_name,protocol) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,'series',?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, path.Join(client.DownloadPath, "ReelScarey", id), now, now, v.IndexerName, v.Protocol); e != nil {
+	naming, e := organization.New(s.db, s.cfg).CaptureTx(ctx, tx, v.MovieID)
+	if e != nil {
+		return Job{}, false, e
+	}
+	namingJSON, e := json.Marshal(naming)
+	if e != nil {
+		return Job{}, false, e
+	}
+	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,kind,indexer_name,protocol,organization_snapshot) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,'series',?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, path.Join(client.DownloadPath, "ReelScarey", id), now, now, v.IndexerName, v.Protocol, string(namingJSON)); e != nil {
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO download_tv(download_id,series_tmdb_id,series_title,series_year,season_number,series_folder,naming) VALUES(?,?,?,?,?,?,?)`, id, show.TMDbID, show.Title, show.Year, v.Targets[0].Season, prefs.SeriesFolder, prefs.EpisodeNaming); e != nil {
@@ -212,7 +223,14 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 			return Job{}, false, problem("invalid_release", "This TV selection contains invalid episode targets.")
 		}
 		seen[t.EpisodeID] = true
-		if _, e = tx.ExecContext(ctx, `INSERT INTO download_targets(download_id,episode_id,tmdb_id,season_number,episode_number,title) VALUES(?,?,?,?,?,?)`, id, t.EpisodeID, t.TMDbID, t.Season, t.Number, t.Title); e != nil {
+		var absolute *int
+		if e = tx.QueryRowContext(ctx, `SELECT (SELECT absolute_number FROM anime_episode_numbers WHERE episode_id=?)`, t.EpisodeID).Scan(&absolute); e != nil {
+			return Job{}, false, e
+		}
+		if absolute == nil && t.AbsoluteNumber != nil || absolute != nil && (t.AbsoluteNumber == nil || *absolute != *t.AbsoluteNumber) {
+			return Job{}, false, problem("episode_changed", "The absolute episode mapping changed. Search again before queueing this release.")
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO download_targets(download_id,episode_id,tmdb_id,season_number,episode_number,title,absolute_number) VALUES(?,?,?,?,?,?,?)`, id, t.EpisodeID, t.TMDbID, t.Season, t.Number, t.Title, t.AbsoluteNumber); e != nil {
 			return Job{}, false, e
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"io"
 	"log/slog"
 	"os"
@@ -34,6 +35,10 @@ func (s *Service) runLibrary(ctx context.Context, logger *slog.Logger) {
 	}
 }
 func (s *Service) ProcessLibraryNext(ctx context.Context) (bool, error) {
+	defer organization.ReadMedia()()
+	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
+		return false, e
+	}
 	owner := ID()
 	now := time.Now().Unix()
 	var id string

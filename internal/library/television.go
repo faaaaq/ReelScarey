@@ -135,7 +135,11 @@ func putSeasons(ctx context.Context, tx *sql.Tx, id int64, seasons []metadata.Se
 	}
 	return nil
 }
-func (s *Store) AddSeries(ctx context.Context, show metadata.Series, monitored bool) (Item, bool, error) {
+func (s *Store) AddSeries(ctx context.Context, show metadata.Series, monitored bool, category ...string) (Item, bool, error) {
+	section, err := addCategory(category)
+	if err != nil {
+		return Item{}, false, err
+	}
 	if show.TMDbID < 1 || show.Title == "" {
 		return Item{}, false, errors.New("invalid series metadata")
 	}
@@ -144,7 +148,7 @@ func (s *Store) AddSeries(ctx context.Context, show metadata.Series, monitored b
 		return Item{}, false, e
 	}
 	defer tx.Rollback()
-	result, e := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date) VALUES('series',?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, show.TMDbID, show.Title, show.Year, monitored, show.Overview, show.PosterPath, show.ReleaseDate)
+	result, e := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date,category) VALUES('series',?,?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, show.TMDbID, show.Title, show.Year, monitored, show.Overview, show.PosterPath, show.ReleaseDate, section)
 	if e != nil {
 		return Item{}, false, e
 	}

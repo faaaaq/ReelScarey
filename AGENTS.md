@@ -53,6 +53,15 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   owns canonical profile decoding; use transaction-aware reads for snapshots.
   See docs/BULK_PROFILES.md.
 - internal/quality owns editable profiles, conservative release identity and ranking.
+- internal/organization owns collection/naming rules, immutable import snapshots
+  and reviewed registered-file reorganization journals. Keep canonical media and
+  episode IDs; Anime is an explicit category with reviewed absolute aliases.
+  Ordinary media workers must acquire ReadMedia once before their claim/IO and
+  honor durable pending organization reservations. Avoid nested read locks.
+  Publish without replacement, verify journal output ownership, switch subtitle
+  and media references atomically, then clean up verified old library links.
+  Main-root changes remain offline deployment migrations. See
+  docs/ANIME_ORGANIZATION.md for scope and safety limits.
 - internal/subtitle owns registered-media inspections, OpenSubtitles credentials/
   protocol, language/track preferences, leased jobs and journaled sidecar storage.
   Providers receive canonical metadata/hash only, never local paths. Existing

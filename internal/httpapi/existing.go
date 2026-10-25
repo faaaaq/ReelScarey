@@ -18,20 +18,45 @@ func (s *Server) existingCollection(w http.ResponseWriter, r *http.Request) {
 			s.transferError(w, e)
 			return
 		}
-		prefs, e := s.settings.Get(r.Context())
+		prefs, e := s.organization.Get(r.Context())
 		if e != nil {
 			s.internal(w, "library_scan_settings", e)
 			return
 		}
-		send(w, 200, map[string]any{"items": items, "media_root": s.config.MediaDir, "movie_root": filepath.Join(s.config.MediaDir, prefs.MovieFolder), "series_root": filepath.Join(s.config.MediaDir, prefs.SeriesFolder)})
+		collections := []map[string]string{}
+		movieRoot, seriesRoot := "", ""
+		for _, l := range prefs.Libraries {
+			m, t := "", ""
+			if l.Content == "movie" || l.Content == "mixed" {
+				m = filepath.Join(s.config.MediaDir, l.Folder)
+				if l.Content == "mixed" {
+					m = filepath.Join(m, "Movies")
+				}
+			}
+			if l.Content == "series" || l.Content == "mixed" {
+				t = filepath.Join(s.config.MediaDir, l.Folder)
+				if l.Content == "mixed" {
+					t = filepath.Join(t, "TV Shows")
+				}
+			}
+			if l.Key == "movies" {
+				movieRoot = m
+			}
+			if l.Key == "tv" {
+				seriesRoot = t
+			}
+			collections = append(collections, map[string]string{"key": l.Key, "name": l.Name, "content": l.Content, "movie_root": m, "series_root": t})
+		}
+		send(w, 200, map[string]any{"items": items, "media_root": s.config.MediaDir, "movie_root": movieRoot, "series_root": seriesRoot, "collections": collections})
 	case http.MethodPost:
 		var in struct {
-			Kind string `json:"kind"`
+			Kind       string `json:"kind"`
+			LibraryKey string `json:"library_key"`
 		}
 		if !decodeJSON(w, r, &in) {
 			return
 		}
-		out, e := s.transfer.StartLibraryScan(r.Context(), in.Kind)
+		out, e := s.transfer.StartLibraryScan(r.Context(), in.Kind, in.LibraryKey)
 		if e != nil {
 			s.transferError(w, e)
 			return

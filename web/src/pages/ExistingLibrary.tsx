@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   AlertDialog,
   Badge,
@@ -62,6 +62,13 @@ type ScanList = {
   media_root: string;
   movie_root: string;
   series_root: string;
+  collections?: {
+    key: string;
+    name: string;
+    content: "movie" | "series" | "mixed";
+    movie_root: string;
+    series_root: string;
+  }[];
 };
 const stateLabels: Record<string, string> = {
   queued: "Queued",
@@ -81,6 +88,17 @@ export function ExistingLibrary() {
   const [params, setParams] = useSearchParams();
   const scanID = params.get("scan") ?? roots.data?.items[0]?.id;
   const [kind, setKind] = useState<"movie" | "series">("movie");
+  const [libraryKey, setLibraryKey] = useState("");
+  const collection = roots.data?.collections?.find(
+    (item) => item.key === libraryKey,
+  );
+  const movieAllowed = !collection || collection.content !== "series";
+  const seriesAllowed = !collection || collection.content !== "movie";
+  useEffect(() => {
+    if (libraryKey && roots.data && !collection) setLibraryKey("");
+    if (collection?.content === "movie") setKind("movie");
+    else if (collection?.content === "series") setKind("series");
+  }, [collection, libraryKey, roots.data]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function start() {
@@ -90,7 +108,10 @@ export function ExistingLibrary() {
     try {
       const scan = await api<LibraryScan>("/library/imports", {
         method: "POST",
-        body: JSON.stringify({ kind }),
+        body: JSON.stringify({
+          kind,
+          ...(collection ? { library_key: collection.key } : {}),
+        }),
       });
       setParams({ scan: scan.id });
       roots.reload();
@@ -121,15 +142,43 @@ export function ExistingLibrary() {
             existing subtitles untouched. Nothing is matched or registered
             automatically.
           </p>
+          {!!roots.data.collections?.length && (
+            <label>
+              Collection{" "}
+              <select
+                aria-label="Scan collection"
+                value={libraryKey}
+                onChange={(event) => setLibraryKey(event.target.value)}
+                disabled={busy}
+              >
+                <option value="">Default folders</option>
+                {roots.data.collections.map((item) => (
+                  <option key={item.key} value={item.key}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <dl className="detail-paths">
-            <dt>Movies</dt>
-            <dd>
-              <code>{roots.data.movie_root}</code>
-            </dd>
-            <dt>TV shows</dt>
-            <dd>
-              <code>{roots.data.series_root}</code>
-            </dd>
+            {movieAllowed && (
+              <>
+                <dt>Movies</dt>
+                <dd>
+                  <code>{collection?.movie_root ?? roots.data.movie_root}</code>
+                </dd>
+              </>
+            )}
+            {seriesAllowed && (
+              <>
+                <dt>TV shows</dt>
+                <dd>
+                  <code>
+                    {collection?.series_root ?? roots.data.series_root}
+                  </code>
+                </dd>
+              </>
+            )}
           </dl>
           <div className="import-actions">
             <label>
@@ -140,13 +189,18 @@ export function ExistingLibrary() {
                 onChange={(e) => setKind(e.target.value as "movie" | "series")}
                 disabled={busy}
               >
-                <option value="movie">Movies</option>
-                <option value="series">TV shows</option>
+                <option value="movie" disabled={!movieAllowed}>
+                  Movies
+                </option>
+                <option value="series" disabled={!seriesAllowed}>
+                  TV shows
+                </option>
               </select>
             </label>
             <Button
               disabled={
                 busy ||
+                (kind === "movie" ? !movieAllowed : !seriesAllowed) ||
                 roots.data.items.some((s) =>
                   ["queued", "scanning"].includes(s.state),
                 )
@@ -159,8 +213,11 @@ export function ExistingLibrary() {
           <p className="field-help">
             These paths are on the ReelScarey server. Mount existing media under
             the media root and check your{" "}
-            <Link to="/settings">folder preferences</Link>. This milestone
-            registers files in place; it does not move or rename them.
+            <Link to="/settings">folder preferences</Link>. Discovery and
+            registration keep files in place. Review renaming or reorganization
+            separately in <Link to="/organization">Organize library</Link>.
+            Anime classification and episode numbering are explicit choices in
+            the title's Library section settings.
           </p>
         </section>
       )}

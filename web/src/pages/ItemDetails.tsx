@@ -7,6 +7,8 @@ import { PageHeading, RequestState } from "../components";
 import { Poster, Pagination } from "../movieComponents";
 import { useResource } from "../useResource";
 import { bytes } from "./Releases";
+import { AnimeSettings } from "./AnimeSettings";
+import { ItemOrganization } from "./Organization";
 
 export type Information = {
   tagline: string;
@@ -175,9 +177,20 @@ export function ItemInformation({
               </PageHeading>
               <Link
                 className="text-link"
-                to={data.item.kind === "series" ? "/series" : "/movies"}
+                to={
+                  data.item.category === "anime"
+                    ? "/anime"
+                    : data.item.kind === "series"
+                      ? "/series"
+                      : "/movies"
+                }
               >
-                Back to {data.item.kind === "series" ? "TV shows" : "movies"}
+                Back to{" "}
+                {data.item.category === "anime"
+                  ? "Anime"
+                  : data.item.kind === "series"
+                    ? "TV shows"
+                    : "movies"}
               </Link>
               <section className="panel item-hero">
                 <Poster movie={data.item} />
@@ -501,6 +514,8 @@ export function ItemInformation({
               </p>
             )}
           </section>
+          <AnimeSettings id={id} onSaved={resource.reload} />
+          <ItemOrganization id={id} />
           <Pagination
             page={page}
             pages={Math.ceil(

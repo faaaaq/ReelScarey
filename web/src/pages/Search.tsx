@@ -14,10 +14,23 @@ import { useResource } from "../useResource";
 
 export function Search() {
   const [params] = useSearchParams();
-  const kind = params.get("kind") === "series" ? "series" : "movie";
-  return <MediaSearch key={kind} kind={kind} />;
+  const anime = params.get("kind") === "anime";
+  const kind = anime
+    ? params.get("format") === "movie"
+      ? "movie"
+      : "series"
+    : params.get("kind") === "series"
+      ? "series"
+      : "movie";
+  return <MediaSearch key={`${anime}-${kind}`} kind={kind} anime={anime} />;
 }
-function MediaSearch({ kind }: { kind: "movie" | "series" }) {
+function MediaSearch({
+  kind,
+  anime,
+}: {
+  kind: "movie" | "series";
+  anime: boolean;
+}) {
   const tv = kind === "series";
   const [params, setParams] = useSearchParams();
   const query = params.get("query") ?? "";
@@ -29,6 +42,11 @@ function MediaSearch({ kind }: { kind: "movie" | "series" }) {
     title: string;
     inLibrary: boolean;
   }>();
+  const searchType: Record<string, string> = anime
+    ? { kind: "anime", format: kind }
+    : tv
+      ? { kind: "series" }
+      : {};
   const provider = useResource<ProviderStatus>("/providers/tmdb");
   const results = useResource<SearchResults>(
     query && provider.data?.configured
@@ -42,7 +60,7 @@ function MediaSearch({ kind }: { kind: "movie" | "series" }) {
     if (query === trimmed && page === 1) results.reload();
     else
       setParams({
-        ...(tv ? { kind: "series" } : {}),
+        ...searchType,
         query: trimmed,
         page: "1",
       });
@@ -53,25 +71,64 @@ function MediaSearch({ kind }: { kind: "movie" | "series" }) {
   return (
     <>
       <PageHeading
-        title={tv ? "Search TV shows" : "Search movies"}
+        title={
+          anime
+            ? `Search anime ${tv ? "shows" : "movies"}`
+            : tv
+              ? "Search TV shows"
+              : "Search movies"
+        }
         description={
-          tv
-            ? "Search TMDb and add TV shows to your library."
-            : "Search TMDb and add movies to your library."
+          anime
+            ? "Search TMDb titles and add them to Anime. Check the format and episode identity before importing."
+            : tv
+              ? "Search TMDb and add TV shows to your library."
+              : "Search TMDb and add movies to your library."
         }
       />
       <nav className="search-kind" aria-label="Search type">
-        <Button asChild variant={tv ? "soft" : "solid"}>
-          <Link to="/search" aria-current={!tv ? "page" : undefined}>
+        <Button asChild variant={!anime && !tv ? "solid" : "soft"}>
+          <Link to="/search" aria-current={!anime && !tv ? "page" : undefined}>
             Movies
           </Link>
         </Button>
-        <Button asChild variant={tv ? "solid" : "soft"}>
-          <Link to="/search?kind=series" aria-current={tv ? "page" : undefined}>
+        <Button asChild variant={!anime && tv ? "solid" : "soft"}>
+          <Link
+            to="/search?kind=series"
+            aria-current={!anime && tv ? "page" : undefined}
+          >
             TV shows
           </Link>
         </Button>
+        <Button asChild variant={anime ? "solid" : "soft"}>
+          <Link
+            to="/search?kind=anime"
+            aria-current={anime ? "page" : undefined}
+          >
+            Anime
+          </Link>
+        </Button>
       </nav>
+      {anime && (
+        <nav className="search-kind" aria-label="Anime format">
+          <Button asChild variant={tv ? "solid" : "soft"}>
+            <Link
+              to="/search?kind=anime&format=series"
+              aria-current={tv ? "page" : undefined}
+            >
+              Shows
+            </Link>
+          </Button>
+          <Button asChild variant={tv ? "soft" : "solid"}>
+            <Link
+              to="/search?kind=anime&format=movie"
+              aria-current={!tv ? "page" : undefined}
+            >
+              Movies
+            </Link>
+          </Button>
+        </nav>
+      )}
       <RequestState
         loading={provider.loading}
         error={provider.error}
@@ -159,6 +216,7 @@ function MediaSearch({ kind }: { kind: "movie" | "series" }) {
                         </Button>
                         <AddMovieButton
                           kind={kind}
+                          category={anime ? "anime" : undefined}
                           id={movie.tmdb_id}
                           added={movie.in_library || added.has(movie.tmdb_id)}
                           onAdded={onAdded}
@@ -173,7 +231,7 @@ function MediaSearch({ kind }: { kind: "movie" | "series" }) {
                 pages={results.data.total_pages}
                 onPage={(page) =>
                   setParams({
-                    ...(tv ? { kind: "series" } : {}),
+                    ...searchType,
                     query,
                     page: String(page),
                   })
@@ -182,15 +240,18 @@ function MediaSearch({ kind }: { kind: "movie" | "series" }) {
             </>
           )}
           <p className="search-disclaimer">
-            {tv
-              ? "Adding a show saves its seasons and monitoring choices. Open the show to load episodes and find releases. Automatic searching is upcoming."
-              : "Adding a movie saves its metadata and monitoring preference. Open Movies to find a release and download it through qBittorrent."}
+            {anime
+              ? "Anime keeps the title's movie or show identity. Titles already saved stay in their current section; use Library section in their details to change it. Absolute episode numbers are entered explicitly after loading the season episodes."
+              : tv
+                ? "Adding a show saves its seasons and monitoring choices. Open the show to load episodes and find releases. Scheduled searches follow your settings in Automation."
+                : "Adding a movie saves its metadata and monitoring preference. Open Movies to find a release and download it through qBittorrent."}
           </p>
         </>
       )}
       {selected && (
         <MovieDetails
           kind={kind}
+          category={anime ? "anime" : undefined}
           id={selected.id}
           title={selected.title}
           added={selected.inLibrary || added.has(selected.id)}

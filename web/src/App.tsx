@@ -3,6 +3,7 @@ import {
   Activity,
   CheckCircle2,
   Captions,
+  Clapperboard,
   Film as BrandIcon,
   Clock3,
   CalendarDays,
@@ -43,11 +44,13 @@ import { Indexers } from "./pages/Indexers";
 import { ItemDetails } from "./pages/ItemDetails";
 import { ExistingLibrary } from "./pages/ExistingLibrary";
 import { Planning } from "./pages/Planning";
+import { Organization } from "./pages/Organization";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
   { path: "/movies", name: "Movies", icon: Film },
   { path: "/series", name: "TV shows", icon: MonitorPlay },
+  { path: "/anime", name: "Anime", icon: Clapperboard },
   { path: "/wanted", name: "Wanted", icon: ListFilter },
   { path: "/calendar", name: "Calendar", icon: CalendarDays },
   { path: "/search", name: "Search", icon: Search },
@@ -137,6 +140,10 @@ function AppShell() {
               <FolderSearch size={19} strokeWidth={1.7} />
               <span>Import library</span>
             </NavLink>
+            <NavLink to="/organization">
+              <FolderSearch size={19} strokeWidth={1.7} />
+              <span>Organize library</span>
+            </NavLink>
             <NavLink to="/indexers">
               <Radio size={19} strokeWidth={1.7} />
               <span>Indexers</span>
@@ -156,7 +163,7 @@ function AppShell() {
           </nav>
           <div className="account-control">
             <span>
-              {session.username} <small>v0.15</small>
+              {session.username} <small>v0.16</small>
             </span>
             <button onClick={() => void logout()} disabled={signingOut}>
               <LogOut size={15} />
@@ -179,7 +186,12 @@ function AppShell() {
               path="/series"
               element={<Library key="series" kind="series" />}
             />
+            <Route
+              path="/anime"
+              element={<Library key="anime" kind="anime" />}
+            />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/organization" element={<Organization />} />
             <Route path="/indexers" element={<Indexers />} />
             <Route path="/import" element={<ExistingLibrary />} />
             <Route path="/wanted" element={<Planning key="wanted" />} />

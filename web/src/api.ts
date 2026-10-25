@@ -20,7 +20,7 @@ export type System = {
 };
 export type Dashboard = {
   library_name: string;
-  counts: { movies: number; series: number };
+  counts: { movies: number; series: number; anime?: number };
   settings_revision: number;
   settings_updated_at: string;
 };
@@ -47,6 +47,23 @@ export type MediaItem = {
   release_date: string;
   runtime_minutes: number | null;
   quality_profile?: CatalogProfile;
+  category?: "standard" | "anime";
+  category_revision?: number;
+};
+
+export type AnimeLibrarySettings = {
+  id: number;
+  kind: "movie" | "series";
+  category: "standard" | "anime";
+  revision: number;
+  numbering_revision: number;
+  episodes: {
+    episode_id: number;
+    season: number;
+    number: number;
+    title: string;
+    absolute_number: number | null;
+  }[];
 };
 
 export type Movie = Omit<MediaItem, "id" | "kind" | "monitored" | "status">;
@@ -141,6 +158,7 @@ export type DownloadJob = {
   targets?: {
     episode_id: number;
     tmdb_id: number;
+    absolute_number?: number | null;
     season: number;
     number: number;
     title: string;

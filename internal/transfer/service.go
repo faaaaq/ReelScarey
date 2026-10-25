@@ -12,6 +12,7 @@ import (
 
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/library"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 )
 
@@ -405,7 +406,15 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard)
 	if active > 0 {
 		return Job{}, false, problem("movie_busy", "This movie already has an active download or imported file. Open Activity to manage it.")
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,indexer_name,protocol) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, v.IndexerName, protocol); e != nil {
+	naming, e := organization.New(s.db, s.cfg).CaptureTx(ctx, tx, v.MovieID)
+	if e != nil {
+		return Job{}, false, e
+	}
+	namingJSON, e := json.Marshal(naming)
+	if e != nil {
+		return Job{}, false, e
+	}
+	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,indexer_name,protocol,organization_snapshot) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, v.IndexerName, protocol, string(namingJSON)); e != nil {
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET status='downloading' WHERE id=? AND status<>'available'`, v.MovieID); e != nil {

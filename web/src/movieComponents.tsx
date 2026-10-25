@@ -69,12 +69,14 @@ export function AddMovieButton({
   onAdded,
   monitored = true,
   kind = "movie",
+  category,
 }: {
   id: number;
   added: boolean;
   onAdded: (id: number) => void;
   monitored?: boolean;
   kind?: "movie" | "series";
+  category?: "anime";
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -85,7 +87,11 @@ export function AddMovieButton({
     try {
       await api(kind === "series" ? "/library/series" : "/library/movies", {
         method: "POST",
-        body: JSON.stringify({ tmdb_id: id, monitored }),
+        body: JSON.stringify({
+          tmdb_id: id,
+          monitored,
+          ...(category ? { category } : {}),
+        }),
       });
       onAdded(id);
     } catch (error) {
@@ -121,6 +127,7 @@ export function MovieDetails({
   onAdded,
   close,
   kind = "movie",
+  category,
 }: {
   id: number;
   title: string;
@@ -128,6 +135,7 @@ export function MovieDetails({
   onAdded: (id: number) => void;
   close: () => void;
   kind?: "movie" | "series";
+  category?: "anime";
 }) {
   const details = useResource<Movie>(
     `/metadata/${kind === "series" ? "series" : "movies"}/${id}`,
@@ -190,6 +198,7 @@ export function MovieDetails({
             <div className="movie-dialog-actions">
               <AddMovieButton
                 kind={kind}
+                category={category}
                 id={id}
                 added={added}
                 onAdded={onAdded}
@@ -198,7 +207,13 @@ export function MovieDetails({
               {added && (
                 <Button asChild variant="soft">
                   <Link
-                    to={kind === "series" ? "/series" : "/movies"}
+                    to={
+                      category === "anime"
+                        ? "/anime"
+                        : kind === "series"
+                          ? "/series"
+                          : "/movies"
+                    }
                     onClick={close}
                   >
                     Open library

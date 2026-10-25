@@ -71,6 +71,14 @@ export function Dashboard() {
               </div>
               <ArrowUpRight size={20} />
             </Link>
+            <Link to="/anime">
+              <Film size={23} />
+              <div>
+                <span>Anime</span>
+                <strong>{dashboard.data.counts.anime ?? 0}</strong>
+              </div>
+              <ArrowUpRight size={20} />
+            </Link>
           </section>
           <div className="overview-columns">
             <section className="overview-section">
