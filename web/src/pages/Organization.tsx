@@ -489,8 +489,9 @@ function Reorganize({ config }: { config: Config }) {
         {files.data && (
           <>
             <p className="field-help">
-              {files.data.total} registered files · selections clear when
-              filters or pages change.
+              {files.data.total} registered{" "}
+              {files.data.total === 1 ? "file" : "files"} · selections clear
+              when filters or pages change.
             </p>
             {!!files.data.items.length && (
               <label>
@@ -615,14 +616,26 @@ function Reorganize({ config }: { config: Config }) {
               ? "Review file changes"
               : "Organization job"}
           </h2>
-          <p>{plan.message || plan.state}</p>
+          <p>
+            {plan.message ||
+              (plan.state === "review"
+                ? "Ready for review"
+                : plan.state === "queued"
+                  ? "Queued"
+                  : plan.state === "running"
+                    ? "Applying reviewed changes"
+                    : plan.state === "completed"
+                      ? "Completed"
+                      : "Needs attention")}
+          </p>
           <p className="field-help">
             {plan.files.filter((f) => !f.unchanged).length}{" "}
-            {plan.state === "completed"
-              ? "files changed"
-              : "files in this plan"}
-            ; {plan.files.filter((f) => f.unchanged).length} unchanged.
-            Subtitles listed below move with their video.
+            {plan.files.filter((f) => !f.unchanged).length === 1
+              ? "file"
+              : "files"}{" "}
+            {plan.state === "completed" ? "changed" : "in this plan"};{" "}
+            {plan.files.filter((f) => f.unchanged).length} unchanged. Subtitles
+            listed below move with their video.
           </p>
           <PlanFiles plan={plan} />
           {plan.state === "review" && (
@@ -672,7 +685,8 @@ function Reorganize({ config }: { config: Config }) {
           .map((p) => (
             <details className="organization-job" key={p.id}>
               <summary>
-                {p.state} · {p.files.length} files ·{" "}
+                {p.state} · {p.files.length}{" "}
+                {p.files.length === 1 ? "file" : "files"} ·{" "}
                 {new Date(p.updated_at * 1000).toLocaleString()}
               </summary>
               <p>{p.message}</p>

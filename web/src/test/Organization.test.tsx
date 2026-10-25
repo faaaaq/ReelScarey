@@ -233,7 +233,7 @@ describe("Reviewed library organization", () => {
     await screen.findByRole("checkbox", {
       name: "Select file 41: First feature",
     });
-    await userEvent.click(await screen.findByText(/failed · 1 files ·/));
+    await userEvent.click(await screen.findByText(/failed · 1 file ·/));
     await userEvent.click(
       screen.getByRole("button", { name: "Resume saved job" }),
     );
