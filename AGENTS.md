@@ -114,6 +114,11 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   must be confirmed explicitly before import, including in integration tests.
 - Test input boundaries, persistence across reopen, migration rollback, API
   contracts, and meaningful user behavior. Use temporary directories only.
+- Generated organization acceptance uses REELSCAREY_LIVE_ORGANIZATION=1 with
+  FFmpeg/FFprobe: discover/register owned shared Anime media, review explicit
+  absolute aliases, reorganize across reopen, retain styled ASS references and
+  seeding links. Never use owner media. Exercise stale reviews, foreign outputs,
+  partial-copy/publication recovery and durable worker exclusion.
 - Usenet acceptance uses isolated real SABnzbd and generated yEnc/NNTP articles,
   never owner accounts. REELSCAREY_LIVE_SAB=1 requires REELSCAREY_SABNZBD
   (executable/script); scripts may specify REELSCAREY_SABNZBD_PYTHON. SABnzbd

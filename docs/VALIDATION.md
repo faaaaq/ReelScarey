@@ -1,4 +1,4 @@
-# Validation record — 2026-10-24
+# Validation record — 2026-10-25
 
 ## Anime and organization (0.16 development)
 
@@ -7,7 +7,7 @@
   Explicit unique aliases, no-op edits, foreign/duplicate/out-of-range entries,
   metadata identity/revision changes and automatic episode exclusions are tested.
 - Independent migration review verifies released schema-10 data/credentials,
-  paths, sidecar journals and profile/monitoring choices survive additive11/12.
+  paths, sidecar journals and profile/monitoring choices survive additive 11/12.
   API review covers auth/CSRF/origin, strict MIME/JSON/bounds, revisions, literal
   file filters, no-media-write preview and durable queue/history behavior.
 - Organization tests cover stale settings/assignments/aliases/files/companions,
@@ -19,16 +19,47 @@
   Queued download naming/aliases remain immutable through edits and reopen.
 - Generated owned FFmpeg media passes real existing-library discovery, explicit
   shared two-episode Anime registration, FFprobe/hash verification, custom
-  absolute25–26 reorganization across reopen, ASS content/reference preservation
+  absolute 25–26 reorganization across reopen, ASS content/reference preservation
   and independent seeding-hardlink identity/mtime preservation. No owner file,
   service or private tracker account is used.
 - Clean locked npm install/audit (zero vulnerabilities), formatting/type checks,
-  all95 interface tests and production build pass. The build reports the standard
-  >500 KiB JavaScript chunk advisory; it succeeds. Full backend/native checks,
-  browser/package/Linux acceptance and preview upgrade are being completed.
+  all 95 interface tests and production build pass. Full Go tests/vet/build,
+  native recovery and final extracted-Windows package recovery pass. All three
+  final package checksums verify. The build reports the standard >500 KiB
+  JavaScript chunk advisory; it succeeds.
+- Disposable browser checks verify Anime-only film/show separation, correctly
+  grouped bulk actions, reviewed absolute numbering, saved custom Anime templates
+  and a Family collection with distinct server presets. Cancel leaves original
+  paths untouched; apply completes and refreshes exact video/ASS paths. SHA-256
+  matches the retained seeding-source fixture. The 390-pixel phone review fits,
+  with reachable controls; the viewport override was reset. Collection-aware
+  discovery paths and desktop table views are checked. Test catalog/process were
+  removed; screenshots stay outside Git. No owner media/preferences were used.
+- The stopped owner's schema-10 configuration was backed up and verified at
+  `before-anime-organization-20261025-015316`; the 0.15 executable is retained.
+  Version 0.16 migrates to schema 12 and reports readiness 200, setup_required=false
+  and healthy database/key/storage/publication/FFprobe checks. Organize library is
+  open after sign-in. No owner files were renamed, moved or reclassified as tests.
   Graphite/blue is retained. Private IPTorrents/XSpeeds account testing remains
   deferred. Main-root migration, whole-folder extras, AniDB/alternate-order
   automation and queued batch rollback/cancellation are explicitly outside scope.
+
+The [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40170620500)
+passed for application commit `7ec0230`: all 95 interface tests, Go race/static
+checks, real disposable qBittorrent/SABnzbd movie/TV downloads and verified
+imports, generated subtitles/existing-library tests, the generated shared Anime
+organization/ASS/seeding-source acceptance, native/extracted-package recovery,
+checksummed cross-builds and authenticated container restart.
+Govulncheck reports zero vulnerabilities affecting application code and one
+advisory in a required module outside imported/called code; npm audit reports
+zero. No advisory is suppressed. The constrained container snapshot is
+8.598 MiB/512 MiB and eight PIDs, not a sustained workload measurement.
+Private artifact `12590261844` retains the 0.16 packages/checksums for 14 days.
+ARM runtime/NAS deployment, sustained load and owner-service/private tracker
+acceptance remain unverified. Local Docker/CGO/race tools are unavailable; those
+checks ran on Linux CI. The earlier push's run was superseded by the final browser
+label fixes. Parallel codebase exploration, implementation and independent test
+review were integrated before this final acceptance.
 
 ## Reviewed profile assignment (0.15 development)
 

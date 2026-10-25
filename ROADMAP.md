@@ -214,7 +214,7 @@ layout and plain interface copy are retained.
 - [x] Independent migration, API, concurrency, partial publication/copy and
   generated FFmpeg/FFprobe shared Anime/ASS/seeding-link acceptance.
 - [x] Clean locked frontend checks, 95 interface tests and production build.
-- [ ] Complete full native/browser/package/Linux acceptance and preview upgrade.
+- [x] Complete full native/browser/package/Linux acceptance and preview upgrade.
 - [ ] Live main-root migration, whole-folder extras/artwork moves, queued batch
   rollback/cancellation, AniDB identity and alternate-order automation remain
   future work. IPTorrents/XSpeeds account testing stays deferred.
@@ -223,6 +223,17 @@ See [Anime, organization and exact limits](docs/ANIME_ORGANIZATION.md). Graphite
 and plain functional interface copy are retained.
 
 ## Validation record
+
+2026-10-25 Anime and organization: the
+[Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40170620500)
+passes all 95 interface tests, backend/race/static/vulnerability checks, real
+disposable download/import regressions, generated Anime/ASS/absolute-number
+organization, package recovery and container restart. Separate browser data
+verifies catalog separation, explicit numbering, custom collections/presets,
+cancel/apply and completed video/subtitle paths on desktop and phone. The owner
+preview was backed up and upgraded from schema 10/version 0.15 to schema 12/version
+0.16, with healthy local checks. Graphite/blue is retained; private tracker account
+testing stays deferred. See [validation and limits](docs/VALIDATION.md).
 
 2026-10-24 reviewed profile assignment: the
 [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40139874438)

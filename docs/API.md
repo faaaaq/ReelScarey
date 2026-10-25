@@ -14,7 +14,7 @@ GET/PUT `/organization` reads/saves revision-checked collection/naming rules
 `/library/items/{id}/organization` reads/saves a compatible future-import
 collection, empty library_key restoring section inheritance. GET
 `/organization/files` lists registered files without filesystem work. GET/POST
-`/organization/plans` lists recent saved reviews/jobs or previews explicit1–100
+`/organization/plans` lists recent saved reviews/jobs or previews explicit 1–100
 file_ids and optional target_library. GET `/organization/plans/{id}` reads it;
 POST `/organization/plans/{id}/apply` with `{}` queues/resumes that exact review.
 All paths above have the `/api/v1` prefix. Preview reads and verifies files but
