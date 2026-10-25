@@ -19,8 +19,9 @@ type Job struct {
 	Protocol                   string `json:"protocol"`
 	ClientID                   string `json:"client_id,omitempty"`
 	clientFiles, clientStorage string
-	Kind                       string     `json:"kind"`
-	Targets                    []TVTarget `json:"targets,omitempty"`
+	Kind                       string               `json:"kind"`
+	Targets                    []TVTarget           `json:"targets,omitempty"`
+	AnimeSearch                *AnimeSearchSnapshot `json:"anime_search,omitempty"`
 	fileIndex                  *int
 	fileTargets                []TVTarget
 	ID                         string       `json:"id"`
@@ -48,16 +49,19 @@ type Job struct {
 	organizationSnapshot       string
 }
 
-const jobColumns = `d.kind,d.id,d.movie_id,m.title,d.title,d.info_hash,d.state,d.progress,d.total_bytes,d.downloaded_bytes,d.client_state,d.selected_file,d.choices,d.attempts,d.error_code,d.error_message,d.created_at,d.updated_at,d.lease_owner,d.payload,d.client_url,d.save_path,d.submission_attempted,d.submitted_at,d.protocol,d.client_id,d.client_files,d.client_storage,d.organization_snapshot`
+const jobColumns = `d.kind,d.id,d.movie_id,m.title,d.title,d.info_hash,d.state,d.progress,d.total_bytes,d.downloaded_bytes,d.client_state,d.selected_file,d.choices,d.attempts,d.error_code,d.error_message,d.created_at,d.updated_at,d.lease_owner,d.payload,d.client_url,d.save_path,d.submission_attempted,d.submitted_at,d.protocol,d.client_id,d.client_files,d.client_storage,d.organization_snapshot,d.anime_search_snapshot`
 
 type scanner interface{ Scan(...any) error }
 
 func scanJob(row scanner) (Job, error) {
 	var j Job
-	var choices string
-	e := row.Scan(&j.Kind, &j.ID, &j.MovieID, &j.MovieTitle, &j.Title, &j.Hash, &j.State, &j.Progress, &j.Total, &j.Downloaded, &j.ClientState, &j.Selected, &choices, &j.Attempts, &j.ErrorCode, &j.ErrorMessage, &j.Created, &j.Updated, &j.owner, &j.payload, &j.clientURL, &j.savePath, &j.attempted, &j.submittedAt, &j.Protocol, &j.ClientID, &j.clientFiles, &j.clientStorage, &j.organizationSnapshot)
+	var choices, anime string
+	e := row.Scan(&j.Kind, &j.ID, &j.MovieID, &j.MovieTitle, &j.Title, &j.Hash, &j.State, &j.Progress, &j.Total, &j.Downloaded, &j.ClientState, &j.Selected, &choices, &j.Attempts, &j.ErrorCode, &j.ErrorMessage, &j.Created, &j.Updated, &j.owner, &j.payload, &j.clientURL, &j.savePath, &j.attempted, &j.submittedAt, &j.Protocol, &j.ClientID, &j.clientFiles, &j.clientStorage, &j.organizationSnapshot, &anime)
 	if e == nil {
 		e = json.Unmarshal([]byte(choices), &j.Choices)
+	}
+	if e == nil && anime != "" {
+		e = json.Unmarshal([]byte(anime), &j.AnimeSearch)
 	}
 	if j.Choices == nil {
 		j.Choices = []FileChoice{}

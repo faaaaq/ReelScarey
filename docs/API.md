@@ -7,7 +7,16 @@ movie/series collections exclude explicitly classified Anime. Adds accept option
 category=anime. Item responses add category/category_revision, counts add anime.
 GET/PUT `/library/items/{id}/anime` reads/saves explicit section and absolute
 aliases against category/show revisions; strict maximum 512 KiB/5000 entries.
-Anime episode automation remains manual; no absolute order is inferred.
+GET/PUT `/library/items/{id}/anime-search` reads/saves per-show opt-in search
+policy. PUT uses revision/category_revision/numbering_revision, mode
+(disabled/season/absolute), search_title (empty follows canonical) and up to eight
+alternate_titles. Titles are bounded to 200 UTF-8 bytes; enabled query titles to
+180. Strict ordinary 16 KiB JSON, authentication, CSRF and origin checks apply.
+Stale revisions return 409; invalid input returns 400. Only Anime shows can save
+policies; existing shows remain disabled. Returned loaded/ready/missing counts
+cover loaded regular seasons and numbering coverage, not search eligibility.
+Downloads may include immutable anime_search evidence. No absolute order is
+inferred; completed files still require review. See [Anime searches](ANIME_SEARCH.md).
 
 GET/PUT `/organization` reads/saves revision-checked collection/naming rules
 (strict maximum 64 KiB); main_root is server-authoritative. GET/PUT

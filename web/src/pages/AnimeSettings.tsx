@@ -212,9 +212,10 @@ function AnimeSettingsForm({
           </p>
           {category === "anime" && (
             <p className="field-help">
-              Automatic episode searches are paused for Anime until
-              absolute-order search is supported. Use season/episode release
-              searches and review the completed file mapping.
+              Automatic Anime searches are off until enabled in this show's
+              Automatic Anime search settings. Absolute mode requires these
+              explicit numbers. Completed episode files still need mapping
+              review.
             </p>
           )}
           {seasons.length > 0 ? (

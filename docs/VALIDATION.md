@@ -1,5 +1,26 @@
 # Validation record — 2026-10-25
 
+## Automatic Anime searching (0.17 development)
+
+- Opt-in policy/API/parser/scheduler/transfer tests pass for explicit titles,
+  season and absolute labels, numeric boundaries, packs/ranges/special refusal,
+  missing numbers, strict JSON/authentication, no-op/stale reviews and default-off
+  migration. Schema-12 data and old downloads survive additive migration 013.
+- Independent localhost Torznab review checks chosen-title padded queries,
+  same-budget timeouts, source deduplication and immutable job evidence. Seven
+  policy/identity/profile/monitoring changes away/back during metainfo retrieval
+  cannot queue work. Opting out remains possible after unsuitable title refresh.
+- Clean npm install reports zero vulnerabilities; formatting, types, all 102
+  interface tests and production build pass. Full Go tests, vet and native build
+  pass, as does the disposable native startup/recovery drill. The standard >500
+  KiB JavaScript chunk advisory remains. Initial restricted npm installation was
+  denied directory writes; normal filesystem access completed the clean install.
+- Real generated Anime scheduler-to-qBittorrent download/reopen/review/import
+  acceptance is added to Linux CI. Final CI, packages, browser acceptance and
+  preview update are pending; this paragraph will be replaced with final evidence.
+- No owner media or private accounts are fixtures. IPTorrents/XSpeeds account
+  testing stays deferred and graphite/blue remains unchanged.
+
 ## Anime and organization (0.16 development)
 
 - Separate Anime film/show classification and coherent browsing preserve

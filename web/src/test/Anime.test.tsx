@@ -243,7 +243,7 @@ describe("Anime library and explicit numbering", () => {
       screen.getByRole("region", { name: "Review library section changes" }),
     ).toHaveTextContent("Unknown → 13");
     expect(
-      screen.getByText(/Automatic episode searches are paused for Anime/),
+      screen.getByText(/Automatic Anime searches are off until enabled/),
     ).toBeVisible();
     expect(fetch.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(
       false,

@@ -47,6 +47,10 @@ jobs:
         run: go test -race ./internal/subtitle -run TestRealSubtitleMedia -count=1 -v -timeout=2m
         env:
           REELSCAREY_LIVE_SUBTITLES: '1'
+      - name: Automatic Anime matching and reviewed real-client import
+        run: go test -race ./internal/automation -run TestRealAnime -count=1 -v -timeout=4m
+        env:
+          REELSCAREY_LIVE_ANIME: '1'
       - name: Existing library discovery and verified in-place registration
         run: go test -race ./internal/transfer -run TestRealExistingLibraryMedia -count=1 -v -timeout=2m
         env:
@@ -74,14 +78,14 @@ jobs:
       - run: node scripts/smoke.mjs
       - name: Build private installation packages
         run: |
-          go run ./scripts/package 0.16.0-dev dist/private-0.16.0
-          cd dist/private-0.16.0
+          go run ./scripts/package 0.17.0-dev dist/private-0.17.0
+          cd dist/private-0.17.0
           sha256sum --check SHA256SUMS
           mkdir unpacked
-          tar -xzf reelscarey-0.16.0-dev-linux-amd64.tar.gz -C unpacked
-          test "$(unpacked/reelscarey version)" = '0.16.0-dev'
+          tar -xzf reelscarey-0.17.0-dev-linux-amd64.tar.gz -C unpacked
+          test "$(unpacked/reelscarey version)" = '0.17.0-dev'
           cd ../..
-          node scripts/smoke.mjs dist/private-0.16.0/unpacked/reelscarey
+          node scripts/smoke.mjs dist/private-0.17.0/unpacked/reelscarey
       - name: Build and smoke-test the container
         shell: bash
         run: |
@@ -95,10 +99,10 @@ jobs:
       - name: Retain private packages and checksums
         uses: actions/upload-artifact@v6.0.0
         with:
-          name: reelscarey-private-0.16.0
+          name: reelscarey-private-0.17.0
           path: |
-            dist/private-0.16.0/*.tar.gz
-            dist/private-0.16.0/*.zip
-            dist/private-0.16.0/SHA256SUMS
+            dist/private-0.17.0/*.tar.gz
+            dist/private-0.17.0/*.zip
+            dist/private-0.17.0/SHA256SUMS
           if-no-files-found: error
           retention-days: 14

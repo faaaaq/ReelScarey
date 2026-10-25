@@ -37,6 +37,10 @@ type Target struct {
 	Year            *int
 	Season, Episode int
 	TV              bool
+	Anime           bool
+	AnimeMode       string
+	AlternateTitles []string
+	AbsoluteNumber  *int
 }
 type Release struct {
 	Protocol  string
@@ -92,7 +96,7 @@ func Normalize(s string) string {
 var episodeCode = regexp.MustCompile(`(?i)s([0-9]{1,2})e([0-9]{1,3})(?:e[0-9]+|[- ]+e?[0-9]+)?`)
 var extraEpisode = regexp.MustCompile(`(?i)^[^a-z0-9]*(?:e[0-9]{1,3}|[0-9]{1,3})(?:[^a-z0-9]|$)`)
 
-func Identify(title string, t Target) bool {
+func identifyStandard(title string, t Target) bool {
 	n := Normalize(title)
 	base := Normalize(t.Title)
 	if base == "" {
@@ -122,22 +126,28 @@ func Identify(title string, t Target) bool {
 	prefix := Normalize(title[:m[0]])
 	return prefix == base || (t.Year != nil && prefix == base+" "+strconv.Itoa(*t.Year))
 }
+func identityLabels(title string, t Target) (string, bool) {
+	if t.Anime && t.TV {
+		return identifyAnime(title, t)
+	}
+	if !identifyStandard(title, t) {
+		return title, false
+	}
+	if t.TV {
+		m := episodeCode.FindStringIndex(title)
+		return title[m[1]:], true
+	}
+	n := Normalize(title)
+	prefix := Normalize(t.Title) + " " + strconv.Itoa(*t.Year)
+	return strings.TrimPrefix(n, prefix), true
+}
+func Identify(title string, t Target) bool { _, ok := identityLabels(title, t); return ok }
 func Evaluate(p Profile, t Target, r Release) Decision {
 	d := Decision{ID: r.ID, Title: r.Title, Reasons: []string{}, Language: "unknown"}
 	reject := func(s string) { d.Reasons = append(d.Reasons, s) }
-	if !Identify(r.Title, t) {
+	labels, identified := identityLabels(r.Title, t)
+	if !identified {
 		reject("Title, year or episode identity does not match exactly.")
-	}
-	labels := r.Title
-	if Identify(r.Title, t) {
-		if t.TV {
-			m := episodeCode.FindStringIndex(r.Title)
-			labels = r.Title[m[1]:]
-		} else {
-			n := Normalize(r.Title)
-			prefix := Normalize(t.Title) + " " + strconv.Itoa(*t.Year)
-			labels = strings.TrimPrefix(n, prefix)
-		}
 	}
 	tokens := " " + Normalize(labels) + " "
 	if t.TV {

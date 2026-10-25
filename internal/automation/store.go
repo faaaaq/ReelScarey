@@ -18,6 +18,7 @@ type Workflow interface {
 	Search(context.Context, int64, string) ([]transfer.Release, error)
 	SearchTV(context.Context, int64, int, int, string) ([]transfer.Release, error)
 	SearchTVUpgrade(context.Context, int64, int, int) ([]transfer.Release, error)
+	SearchAnimeAutomatic(context.Context, int64, int, int, bool) ([]transfer.Release, error)
 	QueueAutomatic(context.Context, string, transfer.QueueGuard) (transfer.Job, bool, error)
 }
 type Service struct {
@@ -248,6 +249,9 @@ func (s *Service) Runs(ctx context.Context) ([]Run, error) {
 }
 func targetName(t searchTarget) string {
 	if t.TV {
+		if t.Anime && t.AnimeMode == "absolute" && t.AbsoluteNumber != nil {
+			return fmt.Sprintf("%s · S%02dE%02d · absolute %d", t.Title, t.Season, t.Episode, *t.AbsoluteNumber)
+		}
 		return fmt.Sprintf("%s · S%02dE%02d", t.Title, t.Season, t.Episode)
 	}
 	return t.Title

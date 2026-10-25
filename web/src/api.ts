@@ -152,6 +152,15 @@ export type Release = {
   published_at: string;
 };
 export type DownloadJob = {
+  anime_search?: {
+    mode: string;
+    search_title: string;
+    canonical_title: string;
+    alternate_titles: string[];
+    policy_revision: number;
+    absolute_number?: number;
+    queries: string[];
+  };
   protocol?: "torrent" | "usenet";
   client_id?: string;
   kind?: "movie" | "series";

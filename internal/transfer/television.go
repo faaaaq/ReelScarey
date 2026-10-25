@@ -31,7 +31,7 @@ func (s *Service) SearchTV(ctx context.Context, seriesID int64, season, episode 
 func (s *Service) SearchTVUpgrade(ctx context.Context, seriesID int64, season, episode int) ([]Release, error) {
 	return s.searchTV(ctx, seriesID, season, episode, "", true)
 }
-func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode int, query string, includeAvailable bool) ([]Release, error) {
+func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode int, query string, includeAvailable bool, anime ...*AnimeSearchSnapshot) ([]Release, error) {
 	show, e := library.New(s.db).TVShow(ctx, seriesID)
 	if e != nil {
 		return nil, e
@@ -74,10 +74,17 @@ func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode 
 			query += fmt.Sprintf("E%02d", episode)
 		}
 	}
-	if !textOK(query, 200) {
+	if len(anime) == 0 && !textOK(query, 200) {
 		return nil, problem("invalid_search", "Enter a release search with 1–200 characters.")
 	}
-	candidates, e := s.searchIndexers(ctx, query, "5000")
+	var snapshot *AnimeSearchSnapshot
+	var candidates []Candidate
+	if len(anime) > 0 {
+		snapshot = anime[0]
+		candidates, e = s.animeCandidates(ctx, snapshot, season, episode, targets)
+	} else {
+		candidates, e = s.searchIndexers(ctx, query, "5000")
+	}
 	if e != nil {
 		return nil, e
 	}
@@ -97,6 +104,7 @@ func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode 
 		v.MovieID = seriesID
 		v.Kind = "series"
 		v.Targets = targets
+		v.AnimeSearch = snapshot
 		b, e := json.Marshal(v)
 		if e != nil {
 			return nil, e
@@ -198,6 +206,9 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 		return Job{}, false, e
 	}
 	defer tx.Rollback()
+	if e = validateAnimeSnapshot(ctx, tx, v); e != nil {
+		return Job{}, false, e
+	}
 	if guard != nil {
 		if e = guard(ctx, tx, v); e != nil {
 			return Job{}, false, e
@@ -211,7 +222,15 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 	if e != nil {
 		return Job{}, false, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,kind,indexer_name,protocol,organization_snapshot) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,'series',?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, path.Join(client.DownloadPath, "ReelScarey", id), now, now, v.IndexerName, v.Protocol, string(namingJSON)); e != nil {
+	animeJSON := ""
+	if v.AnimeSearch != nil {
+		b, e := json.Marshal(v.AnimeSearch)
+		if e != nil {
+			return Job{}, false, e
+		}
+		animeJSON = string(b)
+	}
+	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,kind,indexer_name,protocol,organization_snapshot,anime_search_snapshot) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,'series',?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, path.Join(client.DownloadPath, "ReelScarey", id), now, now, v.IndexerName, v.Protocol, string(namingJSON), animeJSON); e != nil {
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO download_tv(download_id,series_tmdb_id,series_title,series_year,season_number,series_folder,naming) VALUES(?,?,?,?,?,?,?)`, id, show.TMDbID, show.Title, show.Year, v.Targets[0].Season, prefs.SeriesFolder, prefs.EpisodeNaming); e != nil {

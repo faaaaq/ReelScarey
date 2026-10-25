@@ -17,9 +17,10 @@ Metadata identity changes are rejected rather than reinterpreting saved aliases.
 Canonical episode/file IDs, monitoring and files remain unchanged. Changed
 classification/aliases invalidate older editors and automatic queue decisions.
 
-Anime episodes use manual release search and reviewed file mappings. Scheduled
-episode searching excludes Anime until alternate-order matching is implemented;
-Anime movies still use ordinary movie automation. An explicit absolute alias can
+Anime episodes retain manual release search and reviewed file mappings. Version
+0.17 adds [per-show opt-in automatic searches](ANIME_SEARCH.md) using canonical
+season/episode labels or these explicit absolute aliases. Anime movies still use
+ordinary movie automation. An explicit absolute alias can
 suggest a completed filename mapping (including a bounded consecutive range or
 v2 suffix), but every suggestion still requires confirmation. Conflicting,
 unknown or ambiguous labels produce no suggestion. New jobs snapshot aliases;

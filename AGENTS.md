@@ -53,6 +53,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   owns canonical profile decoding; use transaction-aware reads for snapshots.
   See docs/BULK_PROFILES.md.
 - internal/quality owns editable profiles, conservative release identity and ranking.
+  Anime automation is per-show opt-in and single-episode only. Explicit aliases
+  never infer canonical ordering; strip identity labels before quality scoring.
+  Fence query/policy/category/numbering changes inside queue reservations and
+  retain immutable search evidence on jobs. See docs/ANIME_SEARCH.md.
 - internal/organization owns collection/naming rules, immutable import snapshots
   and reviewed registered-file reorganization journals. Keep canonical media and
   episode IDs; Anime is an explicit category with reviewed absolute aliases.

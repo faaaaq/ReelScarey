@@ -103,8 +103,9 @@ type Release struct {
 }
 type Candidate struct {
 	Release
-	Kind                          string     `json:"kind,omitempty"`
-	Targets                       []TVTarget `json:"targets,omitempty"`
+	AnimeSearch                   *AnimeSearchSnapshot `json:"anime_search,omitempty"`
+	Kind                          string               `json:"kind,omitempty"`
+	Targets                       []TVTarget           `json:"targets,omitempty"`
 	URL, Magnet, Hash, Generation string
 }
 type Payload struct {

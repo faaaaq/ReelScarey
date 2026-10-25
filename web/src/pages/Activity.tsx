@@ -225,6 +225,17 @@ function JobCard({ job, reload }: { job: DownloadJob; reload: () => void }) {
           </Button>
         </div>
       )}
+      {job.anime_search && (
+        <p className="field-help">
+          Anime match:{" "}
+          {job.anime_search.mode === "absolute"
+            ? `absolute ${job.anime_search.absolute_number}`
+            : "season and episode"}{" "}
+          · {job.anime_search.search_title}. Saved with search revision{" "}
+          {job.anime_search.policy_revision}. Episode file mapping still
+          requires review.
+        </p>
+      )}
       {job.kind === "series" &&
         job.error_code === "map_episodes" &&
         attention && (

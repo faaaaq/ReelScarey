@@ -106,6 +106,12 @@ reference switching; transfer consumes its narrow destination planner. Shared
 filesystem exclusion and durable pending-plan checks coordinate imports,
 existing discovery and subtitle workers through restart. Registered paths remain
 relative to the deployment-selected main root. See docs/ANIME_ORGANIZATION.md.
+Migration 013 adds per-show opt-in Anime search settings and immutable download
+search snapshots. Quality matches one exact episode against explicit identity
+labels; automation delegates bounded queries to transfer and checks policy,
+category and numbering revisions again inside queue reservations. Existing shows
+remain disabled; canonical episode IDs and reviewed imports are retained. See
+docs/ANIME_SEARCH.md.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored
 flag, and status. `(kind, tmdb_id)` is unique; a movie and series may have the

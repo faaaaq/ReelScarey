@@ -8,6 +8,7 @@ import { Poster, Pagination } from "../movieComponents";
 import { useResource } from "../useResource";
 import { bytes } from "./Releases";
 import { AnimeSettings } from "./AnimeSettings";
+import { AnimeSearch } from "./AnimeSearch";
 import { ItemOrganization } from "./Organization";
 
 export type Information = {
@@ -515,6 +516,9 @@ export function ItemInformation({
             )}
           </section>
           <AnimeSettings id={id} onSaved={resource.reload} />
+          {data.item.category === "anime" && data.item.kind === "series" && (
+            <AnimeSearch id={id} />
+          )}
           <ItemOrganization id={id} />
           <Pagination
             page={page}

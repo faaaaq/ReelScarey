@@ -201,7 +201,7 @@ See [bulk monitoring and limits](docs/BULK_MONITORING.md).
 See [profile assignment and exact limits](docs/BULK_PROFILES.md). The graphite/blue
 layout and plain interface copy are retained.
 
-## 14 — Anime and configurable organization (current)
+## 14 — Anime and configurable organization
 - [x] Separate mixed movie/show Anime catalog, explicit classification and
   revision-checked absolute aliases retaining canonical provider/episode IDs.
 - [x] Reviewed absolute filename hints, immutable queued alias/naming snapshots
@@ -221,6 +221,20 @@ layout and plain interface copy are retained.
 
 See [Anime, organization and exact limits](docs/ANIME_ORGANIZATION.md). Graphite/blue
 and plain functional interface copy are retained.
+
+## 15 — Automatic Anime episode searching (current)
+- [x] Per-show opt-in canonical season/episode or explicit absolute-number mode;
+  reviewed alternate identity titles and a single chosen query title.
+- [x] Bounded padded numeric queries, source deduplication, exact single-episode
+  matching, quality profiles and visible missing-number outcomes.
+- [x] Policy/category/numbering/profile/monitoring fences, immutable queued search
+  evidence and retained canonical IDs with mandatory file mapping review.
+- [ ] Complete clean/native/browser/package/Linux acceptance and preview upgrade.
+- [ ] Automatic provider identity/order mapping, specials and batch/cross-season
+  matching remain future work. IPTorrents/XSpeeds account testing stays deferred.
+
+See [Anime searches](docs/ANIME_SEARCH.md) and the consolidated
+[remaining work](docs/REMAINING.md). Graphite/blue remains unchanged.
 
 ## Validation record
 
