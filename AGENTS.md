@@ -123,6 +123,11 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   absolute aliases, reorganize across reopen, retain styled ASS references and
   seeding links. Never use owner media. Exercise stale reviews, foreign outputs,
   partial-copy/publication recovery and durable worker exclusion.
+- Automatic Anime acceptance uses REELSCAREY_LIVE_ANIME=1 on Linux with a private
+  authenticated qBittorrent profile, local Torznab and generated owned video.
+  Exercise the actual scheduler, explicit absolute alias, opt-out/alias edits
+  after queueing, reopen, mandatory mapping review, FFprobe import and retained
+  seeding bytes. Provider/account mocks alone do not prove this workflow.
 - Usenet acceptance uses isolated real SABnzbd and generated yEnc/NNTP articles,
   never owner accounts. REELSCAREY_LIVE_SAB=1 requires REELSCAREY_SABNZBD
   (executable/script); scripts may specify REELSCAREY_SABNZBD_PYTHON. SABnzbd

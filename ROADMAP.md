@@ -229,7 +229,8 @@ and plain functional interface copy are retained.
   matching, quality profiles and visible missing-number outcomes.
 - [x] Policy/category/numbering/profile/monitoring fences, immutable queued search
   evidence and retained canonical IDs with mandatory file mapping review.
-- [ ] Complete clean/native/browser/package/Linux acceptance and preview upgrade.
+- [x] Complete clean/native/browser/package/Linux application acceptance and preview upgrade;
+  GitHub's final package upload is blocked by account artifact storage quota.
 - [ ] Automatic provider identity/order mapping, specials and batch/cross-season
   matching remain future work. IPTorrents/XSpeeds account testing stays deferred.
 
@@ -237,6 +238,18 @@ See [Anime searches](docs/ANIME_SEARCH.md) and the consolidated
 [remaining work](docs/REMAINING.md). Graphite/blue remains unchanged.
 
 ## Validation record
+
+2026-10-25 automatic Anime searches: per-show opt-in canonical/explicit absolute
+matching, alternate titles, bounded queries, immutable job evidence and stale-policy
+queue rejection pass local and Linux tests. All 102 UI tests, Go race/static,
+real generated Anime scheduler/qBittorrent/reviewed import, qBittorrent/SABnzbd
+regressions, native/package recovery and container restart pass in the
+[workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40247030198).
+Its overall result is failure only because GitHub artifact storage quota blocked
+the final upload; verified packages are retained locally. The preview is backed
+up and running 0.17/schema 13. Graphite/blue is retained and private tracker
+account testing stays deferred. See [validation](docs/VALIDATION.md) for exact
+evidence and the consolidated [remaining work](docs/REMAINING.md).
 
 2026-10-25 Anime and organization: the
 [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40170620500)

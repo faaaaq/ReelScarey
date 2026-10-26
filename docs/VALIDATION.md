@@ -15,9 +15,37 @@
   pass, as does the disposable native startup/recovery drill. The standard >500
   KiB JavaScript chunk advisory remains. Initial restricted npm installation was
   denied directory writes; normal filesystem access completed the clean install.
-- Real generated Anime scheduler-to-qBittorrent download/reopen/review/import
-  acceptance is added to Linux CI. Final CI, packages, browser acceptance and
-  preview update are pending; this paragraph will be replaced with final evidence.
+- Desktop and 390-pixel phone browser checks verify default-off policy,
+  read-only review/cancel, saved alternate query/absolute and season modes,
+  numbering coverage, persistence on reopen and reachable save/cancel controls.
+  The viewport was reset and isolated catalog/process removed. Screenshots remain
+  outside Git. Generated FFmpeg subtitle, existing-library and shared Anime/ASS
+  organization acceptance passes locally. All three private package checksums
+  verify and the extracted Windows package passes native recovery.
+- The stopped schema-12/version-0.16 owner configuration was backed up and
+  verified at `before-anime-search-20261025-190535`; the old executable is retained
+  as `bin/reelscarey-before-anime-search.exe`. Version 0.17 migrates to schema 13,
+  reports readiness 200/setup_required=false and healthy local integrity,
+  encrypted-credential, storage, publication and FFprobe checks. Anime is open
+  for sign-in. No owner show was opted in and no owner media was modified.
+- The [Linux workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40247030198)
+  at application commit `71d3d6f` passes every application gate: all 102 UI tests,
+  full Go race/static checks, dependency scans, real disposable qBittorrent and
+  SABnzbd movie/TV workflows, generated subtitles/existing-library/organization,
+  native and extracted-Linux recovery, all cross-build checksums and authenticated
+  container restart. The new automatic Anime real-client acceptance completes in
+  4.48 seconds with source retention, reviewed mapping and immutable audit evidence.
+  Container snapshot: 6.727 MiB/512 MiB and eight PIDs; this is not sustained-load
+  evidence. Govulncheck finds zero affected/imported vulnerabilities and one
+  advisory in a required module outside imported/called code. Nothing is suppressed.
+- The workflow's overall result is **failure solely at artifact retention**:
+  GitHub reports the account's artifact storage quota is full. Packages were
+  built and verified, but no new remote artifact was retained. Local verified
+  packages/checksums are in `dist/private-0.17.0`, with the final documentation
+  package set in `dist/private-0.17.0-final`. No older remote artifacts were deleted
+  and the failed upload was not hidden. Local Docker/CGO/race tools are unavailable;
+  those checks ran on Linux CI. ARM runtime/NAS/owner-service acceptance remains
+  separate. Parallel implementation and independent review were integrated.
 - No owner media or private accounts are fixtures. IPTorrents/XSpeeds account
   testing stays deferred and graphite/blue remains unchanged.
 

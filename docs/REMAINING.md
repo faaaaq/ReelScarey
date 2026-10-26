@@ -10,11 +10,12 @@ separate.
 
 ## Current milestone acceptance
 
-- [ ] Complete and record integrated validation for version 0.17: clean frontend,
+- [x] Complete and record integrated application validation for version 0.17: clean frontend,
   backend/race/static checks, browser behavior, native/package recovery, generated
   media/real disposable client regressions, container startup/restart and a
   verified-backup preview upgrade. Do not use owner media or private accounts as
-  automated fixtures.
+  automated fixtures. All application gates passed; the workflow's final package
+  upload failed only because GitHub artifact storage is full. See VALIDATION.md.
 
 ## Deferred owner-service acceptance
 
@@ -84,6 +85,9 @@ separate.
 
 ## Deployment and public release
 
+- [ ] Restore GitHub artifact retention capacity. Version 0.17 packages built
+  and verified in CI, but account storage quota blocked upload; verified local
+  packages remain available. No previous remote artifacts were removed.
 - [ ] Independent security review and broader accessibility acceptance.
 - [ ] Representative NAS/shared-storage filesystem and arm64 runtime acceptance.
   Cross-compiling an arm64 package does not establish runtime compatibility.
