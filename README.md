@@ -41,6 +41,11 @@ for main-root setup, safeguards and exact limits. Anime shows can opt into autom
 single-episode searches using canonical season/episode numbers or explicitly saved
 absolute numbers and alternate titles. File mapping still requires review. See
 [Anime automatic searches](docs/ANIME_SEARCH.md) and [remaining work](docs/REMAINING.md).
+AniList identities and reviewed release-order mappings can cover separate cours
+and specials without changing canonical TMDb episodes. TMDb episode-group proposals
+join exact saved episode IDs. Reviewed manual packs can span seasons through
+separate files, with immutable order history and mandatory import review. See
+[Anime providers and episode orders](docs/ANIME_PROVIDER_ORDERS.md).
 
 Not implemented: replacement/upgrade imports, audio-language verification,
 or full production hardening. Automation starts paused and defaults to

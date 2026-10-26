@@ -209,6 +209,17 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 	if e = validateAnimeSnapshot(ctx, tx, v); e != nil {
 		return Job{}, false, e
 	}
+	if v.AnimeOrder != nil {
+		if guard != nil {
+			return Job{}, false, problem("manual_anime_selection", "Reviewed Anime packs and specials require a manual download choice.")
+		}
+		if !orderMatchesTargets(v.AnimeOrder, v.MovieID, v.Targets) {
+			return Job{}, false, problem("invalid_anime_selection", "The reviewed Anime order does not match the selected canonical targets.")
+		}
+		if e = library.ValidateAnimeOrderSnapshot(ctx, tx, v.AnimeOrder); e != nil {
+			return Job{}, false, orderError(e)
+		}
+	}
 	if guard != nil {
 		if e = guard(ctx, tx, v); e != nil {
 			return Job{}, false, e
@@ -230,7 +241,15 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 		}
 		animeJSON = string(b)
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,kind,indexer_name,protocol,organization_snapshot,anime_search_snapshot) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,'series',?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, path.Join(client.DownloadPath, "ReelScarey", id), now, now, v.IndexerName, v.Protocol, string(namingJSON), animeJSON); e != nil {
+	orderJSON := ""
+	if v.AnimeOrder != nil {
+		b, e := json.Marshal(v.AnimeOrder)
+		if e != nil {
+			return Job{}, false, e
+		}
+		orderJSON = string(b)
+	}
+	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,kind,indexer_name,protocol,organization_snapshot,anime_search_snapshot,anime_order_snapshot) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,'series',?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, path.Join(client.DownloadPath, "ReelScarey", id), now, now, v.IndexerName, v.Protocol, string(namingJSON), animeJSON, orderJSON); e != nil {
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO download_tv(download_id,series_tmdb_id,series_title,series_year,season_number,series_folder,naming) VALUES(?,?,?,?,?,?,?)`, id, show.TMDbID, show.Title, show.Year, v.Targets[0].Season, prefs.SeriesFolder, prefs.EpisodeNaming); e != nil {
@@ -238,7 +257,7 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 	}
 	seen := map[int64]bool{}
 	for _, t := range v.Targets {
-		if seen[t.EpisodeID] || t.Season != v.Targets[0].Season || t.Skipped || t.Imported {
+		if seen[t.EpisodeID] || v.AnimeOrder == nil && t.Season != v.Targets[0].Season || t.Skipped || t.Imported {
 			return Job{}, false, problem("invalid_release", "This TV selection contains invalid episode targets.")
 		}
 		seen[t.EpisodeID] = true

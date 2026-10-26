@@ -245,6 +245,42 @@ function JobCard({ job, reload }: { job: DownloadJob; reload: () => void }) {
             reload={reload}
           />
         )}
+      {job.anime_order && (
+        <section aria-label="Saved Anime episode order" className="field-help">
+          <p>
+            Reviewed Anime order · revision {job.anime_order.revision}. This
+            download keeps its saved identities and episode labels after later
+            edits.
+          </p>
+          <ul>
+            {job.anime_order.entries.map((entry) => {
+              const target = job.targets?.find(
+                (target) => target.episode_id === entry.episode_id,
+              );
+              return (
+                <li key={entry.episode_id}>
+                  {entry.release_title} · {entry.label}
+                  {target
+                    ? ` → S${String(target.season).padStart(2, "0")}E${String(target.number).padStart(2, "0")} · ${target.title}`
+                    : ""}
+                </li>
+              );
+            })}
+          </ul>
+          {job.anime_order.identities.map((identity) => (
+            <a
+              key={identity.id}
+              className="text-link"
+              href={identity.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              AniList: {identity.title}{" "}
+            </a>
+          ))}
+          <p>Completed files require mapping review before import.</p>
+        </section>
+      )}
       {job.kind === "series" &&
         !!job.targets?.length &&
         job.error_code !== "map_episodes" && (

@@ -112,6 +112,14 @@ labels; automation delegates bounded queries to transfer and checks policy,
 category and numbering revisions again inside queue reservations. Existing shows
 remain disabled; canonical episode IDs and reviewed imports are retained. See
 docs/ANIME_SEARCH.md.
+Migration 014 adds scoped AniList identity snapshots, explicit typed release-order
+entries and expiring server-side reviews. TMDb group proposals join exact loaded
+canonical episode IDs; AniList counts/titles never infer an episode graph. Apply
+compares order/category/metadata revisions and preserves existing absolute aliases.
+Transfer snapshots reviewed manual target sets and provider facts, permits packs
+across seasons through separate files, and rechecks the order inside reservations.
+Each shared file retains the same-season consecutive mapping constraint; ordinary
+automatic episode rules remain separate. See docs/ANIME_PROVIDER_ORDERS.md.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored
 flag, and status. `(kind, tmdb_id)` is unique; a movie and series may have the

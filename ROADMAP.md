@@ -222,7 +222,7 @@ layout and plain interface copy are retained.
 See [Anime, organization and exact limits](docs/ANIME_ORGANIZATION.md). Graphite/blue
 and plain functional interface copy are retained.
 
-## 15 — Automatic Anime episode searching (current)
+## 15 — Automatic Anime episode searching
 - [x] Per-show opt-in canonical season/episode or explicit absolute-number mode;
   reviewed alternate identity titles and a single chosen query title.
 - [x] Bounded padded numeric queries, source deduplication, exact single-episode
@@ -236,6 +236,22 @@ and plain functional interface copy are retained.
 
 See [Anime searches](docs/ANIME_SEARCH.md) and the consolidated
 [remaining work](docs/REMAINING.md). Graphite/blue remains unchanged.
+
+## 16 — Anime provider identity and episode-order mapping (current)
+- [x] Reviewed scoped AniList identity links, cached offline facts and bounded
+  public title search without credentials or title/count-based episode inference.
+- [x] TMDb series/group membership checks and exact-ID subgroup order proposals,
+  typed release labels, explicit per-episode review and stale/replayed review refusal.
+- [x] Manual mapped specials and cross-season packs with immutable queued order
+  snapshots, canonical reservations and mandatory reviewed per-file import mappings.
+- [x] Preserve ordinary automation, explicit absolute aliases, monitoring and files;
+  reject ambiguous filename identities across provider links and stale queues.
+- [ ] Complete clean/native/browser/package/Linux acceptance and preview upgrade.
+- [ ] AniDB, automatic provider-order/special/pack matching, guided cached-identity
+  refresh and cross-season shared single-video mapping remain future extensions.
+
+See [Anime providers and order review](docs/ANIME_PROVIDER_ORDERS.md). Graphite/blue
+and deferred IPTorrents/XSpeeds account testing are retained.
 
 ## Validation record
 

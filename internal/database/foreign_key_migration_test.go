@@ -20,7 +20,7 @@ func TestMigrationRejectsForeignKeyDamageBeforeCommit(t *testing.T) {
 		b, _ := fs.ReadFile(migrationFiles, name)
 		files[name] = &fstest.MapFile{Data: b}
 	}
-	files["migrations/014_invalid_references.sql"] = &fstest.MapFile{Data: []byte(`PRAGMA defer_foreign_keys=ON; CREATE TABLE invalid_reference(id INTEGER REFERENCES media_items(id)); INSERT INTO invalid_reference VALUES(999999); PRAGMA defer_foreign_keys=OFF;`)}
+	files["migrations/015_invalid_references.sql"] = &fstest.MapFile{Data: []byte(`PRAGMA defer_foreign_keys=ON; CREATE TABLE invalid_reference(id INTEGER REFERENCES media_items(id)); INSERT INTO invalid_reference VALUES(999999); PRAGMA defer_foreign_keys=OFF;`)}
 	if e = migrate(ctx, db, files); e == nil {
 		t.Fatal("invalid reference committed after deferred table rebuild")
 	}
@@ -28,7 +28,7 @@ func TestMigrationRejectsForeignKeyDamageBeforeCommit(t *testing.T) {
 	if e = db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name='invalid_reference'`).Scan(&n); e != nil || n != 0 {
 		t.Fatal("failed migration was not rolled back", n, e)
 	}
-	if version, e := Version(ctx, db); e != nil || version != 13 {
+	if version, e := Version(ctx, db); e != nil || version != 14 {
 		t.Fatal("invalid migration ledger", version, e)
 	}
 }

@@ -1,6 +1,7 @@
 # Remaining project work
 
-This checklist consolidates the open work after the Anime search implementation.
+This checklist consolidates the open work after version 0.18's Anime provider
+identity, reviewed order and manual special/multi-season pack implementation.
 Earlier milestone sections in [ROADMAP.md](../ROADMAP.md) also record historical
 scope limits. Implemented profile/monitoring bulk edits, explicit Anime numbering,
 configured-collection discovery and registered-file rename/reorganization are no
@@ -16,6 +17,11 @@ separate.
   verified-backup preview upgrade. Do not use owner media or private accounts as
   automated fixtures. All application gates passed; the workflow's final package
   upload failed only because GitHub artifact storage is full. See VALIDATION.md.
+- [ ] Complete and record integrated version 0.18 acceptance, including Linux
+  native AniList access, generated real-client special/multi-season pack imports,
+  restart/snapshot preservation, frontend, package/recovery and container gates.
+  Implemented features and passing isolated tests do not establish these unrun
+  acceptance checks. See [ANIME_PROVIDER_ORDERS.md](ANIME_PROVIDER_ORDERS.md).
 
 ## Deferred owner-service acceptance
 
@@ -55,13 +61,24 @@ separate.
 
 ## Anime, metadata and media-server coverage
 
-- [ ] AniDB/AniList or other Anime-specific provider identity and external
-  alternate-order mapping. Current identities remain canonical TMDb plus explicit
-  owner-entered title/absolute-number aliases.
-- [ ] Broader reviewed Anime workflows for specials/OVA/extras and cross-season
-  packs. Automatic searching accepts one exact non-special episode; manual
-  shared-file imports remain bounded to consecutive canonical episodes from one
-  season.
+- [x] AniList identity links and owner-reviewed release-order labels, with
+  read-only TMDb group/subgroup proposals joined to exact canonical episode IDs.
+  Existing title/absolute aliases remain preserved. Provider identity alone
+  never infers an episode order. Integration acceptance remains listed above.
+- [x] Manual reviewed Anime specials/OVA and multi-season packs using explicitly
+  selected canonical targets and separate files, immutable queued order evidence
+  and mandatory file mapping. Each shared file remains bounded to at most twenty
+  consecutive canonical episodes from one season.
+- [ ] Automatic provider-mapped release matching, including specials and packs.
+  Version 0.17 automation still searches one exact regular non-special episode
+  using explicit season/absolute settings; saving an external identity or order
+  does not authorize new automatic behavior.
+- [ ] AniDB or additional Anime identity/order providers and an explicit refresh
+  workflow for already-linked AniList facts. Current linked identity facts are
+  cached; remove/apply then relink to fetch again.
+- [ ] One-file cross-season Anime mappings, broader extras and unsupported release
+  grammars. Current multi-season support applies to separate reviewed files,
+  not arbitrary franchise flattening or inferred canonical season offsets.
 - [ ] Broader release grammar support where conservative matching currently
   requires manual search/review. No arbitrary filename or season-order inference.
 - [ ] Acceptance of naming presets with real Plex, Emby and Jellyfin scans on

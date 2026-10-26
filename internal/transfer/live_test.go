@@ -37,7 +37,10 @@ func TestRealQBittorrentDownloadAndImport(t *testing.T) {
 func TestRealQBittorrentTVDownloadAndImport(t *testing.T) {
 	runRealQBittorrent(t, true)
 }
-func runRealQBittorrent(t *testing.T, tv bool) {
+func TestRealQBittorrentAnimeOrderPackDownloadAndImport(t *testing.T) {
+	runRealQBittorrent(t, true, true)
+}
+func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 	if os.Getenv("REELSCAREY_LIVE_QBT") != "1" {
 		t.Skip("set REELSCAREY_LIVE_QBT=1 with qbittorrent-nox and FFmpeg installed")
 	}
@@ -49,7 +52,16 @@ func runRealQBittorrent(t *testing.T, tv bool) {
 			t.Fatalf("required integration binary %s: %v", binary, e)
 		}
 	}
-	f := setupWorkflow(t)
+	pack := len(providerOrder) > 0 && providerOrder[0]
+	var f *workflowFixture
+	var packID int64
+	var packEpisodeIDs []int64
+	var packOrder library.AnimeOrderSettings
+	if pack {
+		f, packID, packEpisodeIDs, packOrder, _ = setupOrderPack(t)
+	} else {
+		f = setupWorkflow(t)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	profile := t.TempDir()
@@ -123,7 +135,13 @@ func runRealQBittorrent(t *testing.T, tv bool) {
 	allData := data
 	if tv {
 		videoNames = []string{"Owned.S01E01-E02.mp4", "Owned.S01E03.mp4"}
-		allData = append(append([]byte{}, data...), data...)
+		if pack {
+			videoNames = []string{"Pack Story - SP01.mp4", "Pack Story - 001.mp4", "Pack Story Part 2 - 001v2.mp4"}
+		}
+		allData = nil
+		for range videoNames {
+			allData = append(allData, data...)
+		}
 	}
 	var metainfo []byte
 	initialized := make(chan struct{})
@@ -153,14 +171,18 @@ func runRealQBittorrent(t *testing.T, tv bool) {
 				if r.URL.Query().Get("limit") != "10" {
 					t.Error("indexer limit was ignored")
 				}
-				fmt.Fprintf(w, `<rss><channel><item><title>Owned.Test.Video.2026</title><guid>owned-video</guid><enclosure url="%s/torrent" length="%d" type="application/x-bittorrent"/></item></channel></rss>`, server.URL, len(allData))
+				title := "Owned.Test.Video.2026"
+				if pack {
+					title = "Owned Anime Complete Pack"
+				}
+				fmt.Fprintf(w, `<rss><channel><item><title>%s</title><guid>owned-video</guid><enclosure url="%s/torrent" length="%d" type="application/x-bittorrent"/></item></channel></rss>`, title, server.URL, len(allData))
 			}
 		case "/torrent":
 			w.Header().Set("Content-Type", "application/x-bittorrent")
 			_, _ = w.Write(metainfo)
 		case "/announce":
 			_, _ = w.Write(bencode(map[string]any{"interval": int64(60), "peers": ""}))
-		case "/fixture.mp4", "/tv-fixture/Owned.S01E01-E02.mp4", "/tv-fixture/Owned.S01E03.mp4":
+		case "/fixture.mp4", "/tv-fixture/Owned.S01E01-E02.mp4", "/tv-fixture/Owned.S01E03.mp4", "/tv-fixture/Pack Story - SP01.mp4", "/tv-fixture/Pack Story - 001.mp4", "/tv-fixture/Pack Story Part 2 - 001v2.mp4":
 			first.Do(func() { close(started) })
 			select {
 			case <-releaseBody:
@@ -211,7 +233,9 @@ func runRealQBittorrent(t *testing.T, tv bool) {
 		t.Fatal(e)
 	}
 	var results []Release
-	if tv {
+	if pack {
+		results, e = f.s.SearchAnimePack(ctx, packID, packEpisodeIDs, "Owned Anime Pack", packOrder.Revision)
+	} else if tv {
 		show := metadata.Series{Movie: metadata.Movie{TMDbID: 456, Title: "Owned Test Series"}, Seasons: []metadata.SeasonSummary{{TMDbID: 457, Number: 1, Title: "Season 1", EpisodeCount: 3}}}
 		item, _, err := library.New(f.db).AddSeries(ctx, show, true)
 		if err != nil {
@@ -230,6 +254,14 @@ func runRealQBittorrent(t *testing.T, tv bool) {
 	job, created, e := f.s.Queue(ctx, results[0].ID)
 	if e != nil || !created {
 		t.Fatal("queue", e)
+	}
+	if pack {
+		changed := append([]library.AnimeOrderEntry{}, packOrder.Entries...)
+		for n := range changed {
+			changed[n].ReleaseTitle = "Changed Future Pack Title"
+			changed[n].Label = []string{"SP9", "9", "10"}[n]
+		}
+		saveTransferOrder(t, f, packID, changed)
 	}
 	if _, e = f.s.ProcessNext(ctx); e != nil {
 		t.Fatal(e)
@@ -255,6 +287,7 @@ func runRealQBittorrent(t *testing.T, tv bool) {
 	}
 	f.s = New(db, secrets, f.cfg, NewQBittorrent(), NewTorznab())
 	close(releaseBody)
+	reviewed := false
 	for ctx.Err() == nil {
 		_, _ = db.Exec(`UPDATE downloads SET next_run=0`)
 		if _, e = f.s.ProcessNext(ctx); e != nil {
@@ -264,10 +297,19 @@ func runRealQBittorrent(t *testing.T, tv bool) {
 		if e != nil {
 			t.Fatal(e)
 		}
+		if pack && (current.AnimeOrder == nil || current.AnimeOrder.Revision != packOrder.Revision || len(current.AnimeOrder.Entries) != 3) {
+			t.Fatal("queued provider order snapshot lost after edit/reopen", current.AnimeOrder)
+		}
 		if current.State == "completed" {
+			if tv && !reviewed {
+				t.Fatal("TV/Anime pack imported without a confirmed file mapping")
+			}
 			break
 		}
 		if tv && current.State == "blocked" && current.ErrorCode == "map_episodes" {
+			if reviewed {
+				t.Fatal("confirmed TV/Anime file mapping was lost after reopen")
+			}
 			var count int
 			if e = db.QueryRow(`SELECT COUNT(*) FROM media_files WHERE download_id=?`, job.ID).Scan(&count); e != nil || count != 0 {
 				t.Fatal("TV imported before confirmation", e)
@@ -282,6 +324,7 @@ func runRealQBittorrent(t *testing.T, tv bool) {
 			if e = f.s.ConfirmTVMapping(ctx, job.ID, mapping); e != nil {
 				t.Fatal(e)
 			}
+			reviewed = true
 			// Reopen after confirmation as well as during the real download.
 			db.Close()
 			db, e = database.Open(ctx, f.cfg.ConfigDir)
@@ -345,6 +388,28 @@ func runRealQBittorrent(t *testing.T, tv bool) {
 		}
 	}
 	if tv {
+		if pack {
+			for n, number := range []int{0, 1, 2} {
+				season, e := library.New(db).TVSeason(ctx, packID, number)
+				if e != nil || season.Season.AvailableEpisodes != 1 || len(season.Episodes) != 1 || season.Episodes[0].ID != packEpisodeIDs[n] || !season.Episodes[0].Available {
+					t.Fatal("reviewed cross-season/special registration incorrect", number, season, e)
+				}
+				if number == 0 && season.Season.Monitored {
+					t.Fatal("reviewed special import enabled monitoring")
+				}
+			}
+			details, e := f.s.Details(ctx, packID, 1)
+			if e != nil || details.FileCount != 3 || len(details.Files) != 3 {
+				t.Fatal("cross-season pack did not register three distinct files", details, e)
+			}
+			for _, file := range details.Files {
+				if file.Probe.Width != 128 || file.Probe.Height != 96 || file.Probe.Codec == "" || !strings.Contains(file.Path, filepath.Join("Anime", "TV Shows")) {
+					t.Fatal("pack import lacked real FFprobe or Anime organization", file)
+				}
+			}
+			t.Log("PASS: real authenticated qBittorrent downloaded three generated Anime pack videos; explicit provider order survived edits and reopen, mandatory mapping registered canonical S00E01/S01E01/S02E01, FFprobe verified each file and seeding sources remained intact")
+			return
+		}
 		season, e := library.New(db).TVSeason(ctx, job.MovieID, 1)
 		if e != nil || season.Season.AvailableEpisodes != 3 || season.Episodes[0].FilePath != season.Episodes[1].FilePath || season.Episodes[1].FilePath == season.Episodes[2].FilePath {
 			t.Fatal("live episode registration incorrect", e)

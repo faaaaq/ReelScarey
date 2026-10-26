@@ -31,34 +31,40 @@ import (
 )
 
 type Server struct {
-	db           *sql.DB
-	config       config.Config
-	logger       *slog.Logger
-	settings     *settings.Store
-	library      *library.Store
-	version      string
-	started      time.Time
-	auth         *auth.Service
-	metadata     *metadata.Service
-	transfer     *transfer.Service
-	automation   *automation.Service
-	subtitle     *subtitle.Service
-	operations   *operations.Service
-	organization *organization.Service
+	db            *sql.DB
+	config        config.Config
+	logger        *slog.Logger
+	settings      *settings.Store
+	library       *library.Store
+	version       string
+	started       time.Time
+	auth          *auth.Service
+	metadata      *metadata.Service
+	transfer      *transfer.Service
+	automation    *automation.Service
+	subtitle      *subtitle.Service
+	operations    *operations.Service
+	organization  *organization.Service
+	animeProvider metadata.AnimeProvider
 }
 
 type Dependencies struct {
-	Auth       *auth.Service
-	Metadata   *metadata.Service
-	Transfer   *transfer.Service
-	Automation *automation.Service
-	Subtitle   *subtitle.Service
+	Auth          *auth.Service
+	Metadata      *metadata.Service
+	Transfer      *transfer.Service
+	Automation    *automation.Service
+	Subtitle      *subtitle.Service
+	AnimeProvider metadata.AnimeProvider
 }
 
 func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string, deps Dependencies) http.Handler {
 	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle}
 	s.operations = operations.New(db, cfg)
 	s.organization = organization.New(db, cfg)
+	s.animeProvider = deps.AnimeProvider
+	if s.animeProvider == nil {
+		s.animeProvider = metadata.NewAniList()
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", method(http.MethodGet, s.health))
 	mux.HandleFunc("/readyz", method(http.MethodGet, s.ready))
@@ -83,6 +89,12 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/items/{id}", method(http.MethodGet, s.itemDetails))
 	mux.HandleFunc("/api/v1/library/items/{id}/anime", s.animeSettings)
 	mux.HandleFunc("/api/v1/library/items/{id}/anime-search", s.animeSearchSettings)
+	mux.HandleFunc("/api/v1/metadata/anime", method(http.MethodGet, s.searchAnimeIdentities))
+	mux.HandleFunc("/api/v1/library/items/{id}/anime-order", s.animeOrderSettings)
+	mux.HandleFunc("/api/v1/library/items/{id}/anime-order/preview", method(http.MethodPost, s.reviewAnimeOrder))
+	mux.HandleFunc("/api/v1/library/items/{id}/anime-order/sources", method(http.MethodGet, s.animeOrderSources))
+	mux.HandleFunc("/api/v1/library/items/{id}/anime-order/propose", method(http.MethodPost, s.proposeAnimeOrder))
+	mux.HandleFunc("/api/v1/releases/anime-pack", method(http.MethodPost, s.searchAnimePack))
 	mux.HandleFunc("/api/v1/library/items/{id}/metadata", method(http.MethodPost, s.refreshInformation))
 	mux.HandleFunc("/api/v1/indexers", s.indexers)
 	mux.HandleFunc("/api/v1/indexers/status", method(http.MethodGet, s.indexerStatus))

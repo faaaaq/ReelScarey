@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"github.com/faaaaq/ReelScarey/internal/library"
 	"net/http"
 	"net/url"
 	"path"
@@ -103,9 +104,10 @@ type Release struct {
 }
 type Candidate struct {
 	Release
-	AnimeSearch                   *AnimeSearchSnapshot `json:"anime_search,omitempty"`
-	Kind                          string               `json:"kind,omitempty"`
-	Targets                       []TVTarget           `json:"targets,omitempty"`
+	AnimeOrder                    *library.AnimeOrderSnapshot `json:"anime_order,omitempty"`
+	AnimeSearch                   *AnimeSearchSnapshot        `json:"anime_search,omitempty"`
+	Kind                          string                      `json:"kind,omitempty"`
+	Targets                       []TVTarget                  `json:"targets,omitempty"`
 	URL, Magnet, Hash, Generation string
 }
 type Payload struct {

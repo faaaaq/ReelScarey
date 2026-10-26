@@ -153,7 +153,11 @@ func (s *Service) prepareTVMapping(ctx context.Context, j Job, choices []FileCho
 		if !sourceInJob(j, source) {
 			return problem("path_mapping", "Restore this download to its dedicated ReelScarey download folder before importing.")
 		}
-		choices[n].Suggestions = suggestedEpisodes(choices[n].Name, j.Targets)
+		if j.AnimeOrder != nil {
+			choices[n].Suggestions = suggestedOrderEpisodes(choices[n].Name, j.Targets, j.AnimeOrder, j.MovieTitle)
+		} else {
+			choices[n].Suggestions = suggestedEpisodes(choices[n].Name, j.Targets)
+		}
 		if _, e = tx.ExecContext(ctx, `INSERT INTO download_tv_files(download_id,file_index,name,source_path,size_bytes) VALUES(?,?,?,?,?)`, j.ID, choices[n].Index, choices[n].Name, source, choices[n].Size); e != nil {
 			return e
 		}
@@ -348,7 +352,7 @@ func (s *Service) processTVImports(ctx context.Context, j Job) error {
 			continue
 		}
 		targets := []TVTarget{}
-		rows, e := s.db.QueryContext(ctx, `SELECT t.episode_id,t.tmdb_id,t.season_number,t.episode_number,t.title,t.absolute_number FROM download_targets t JOIN download_mappings m ON m.download_id=t.download_id AND m.episode_id=t.episode_id WHERE m.download_id=? AND m.file_index=? ORDER BY t.episode_number`, j.ID, f.index)
+		rows, e := s.db.QueryContext(ctx, `SELECT t.episode_id,t.tmdb_id,t.season_number,t.episode_number,t.title,t.absolute_number FROM download_targets t JOIN download_mappings m ON m.download_id=t.download_id AND m.episode_id=t.episode_id WHERE m.download_id=? AND m.file_index=? ORDER BY t.season_number,t.episode_number`, j.ID, f.index)
 		if e != nil {
 			return e
 		}

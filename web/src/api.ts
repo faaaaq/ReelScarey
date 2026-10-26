@@ -161,6 +161,17 @@ export type DownloadJob = {
     absolute_number?: number;
     queries: string[];
   };
+  anime_order?: {
+    media_id: number;
+    revision: number;
+    entries: {
+      episode_id: number;
+      provider_id: number;
+      release_title: string;
+      label: string;
+    }[];
+    identities: { id: number; title: string; url: string }[];
+  };
   protocol?: "torrent" | "usenet";
   client_id?: string;
   kind?: "movie" | "series";

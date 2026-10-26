@@ -311,6 +311,9 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard)
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
 	if existing, e := s.jobBy(ctx, "d.release_id", releaseID); e == nil {
+		if guard != nil && existing.AnimeOrder != nil {
+			return Job{}, false, problem("manual_anime_selection", "Reviewed Anime packs and specials require an explicit manual download choice.")
+		}
 		return existing, false, nil
 	} else if !errors.Is(e, sql.ErrNoRows) {
 		return Job{}, false, e
@@ -336,6 +339,9 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard)
 	}
 	if v.ID != releaseID {
 		return Job{}, false, problem("invalid_release", "The encrypted release selection does not match its record. Search again.")
+	}
+	if guard != nil && v.AnimeOrder != nil {
+		return Job{}, false, problem("manual_anime_selection", "Reviewed Anime packs and specials cannot be queued automatically.")
 	}
 	indexer, e := s.candidateIndexer(ctx, v)
 	if e != nil {

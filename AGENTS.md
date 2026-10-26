@@ -57,6 +57,12 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   never infer canonical ordering; strip identity labels before quality scoring.
   Fence query/policy/category/numbering changes inside queue reservations and
   retain immutable search evidence on jobs. See docs/ANIME_SEARCH.md.
+  Provider order mappings retain explicit typed labels and scoped identity links;
+  AniList title similarity/counts never infer canonical episodes. TMDb proposals
+  require series group membership and exact loaded episode IDs. Cross-season
+  Anime packs require explicit reviewed targets and immutable order snapshots;
+  automatic queues must reject these manual selections. Keep each shared file
+  consecutive within one canonical season. See docs/ANIME_PROVIDER_ORDERS.md.
 - internal/organization owns collection/naming rules, immutable import snapshots
   and reviewed registered-file reorganization journals. Keep canonical media and
   episode IDs; Anime is an explicit category with reviewed absolute aliases.

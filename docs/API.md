@@ -1,5 +1,22 @@
 # REST API — media catalog, downloads, imports, automation and operations
 
+## Anime providers and release-order reviews
+
+Authenticated GET `/metadata/anime?query=...` searches public AniList identities.
+GET `/library/items/{id}/anime-order` reads saved identities, mappings, canonical
+episodes and revisions. POST `.../anime-order/preview` reviews the complete
+provider_ids/entries against revision/category_revision/numbering_revision;
+PUT `.../anime-order` applies only an opaque server review_id. Preview accepts
+strict JSON up to 512 KiB, max20 identities/eight new per review/max5000 mappings.
+GET `.../anime-order/sources` and POST `.../anime-order/propose` offer read-only
+TMDb group/subgroup proposals; exact payloads are in
+[provider order documentation](ANIME_PROVIDER_ORDERS.md).
+POST `/releases/anime-pack` explicitly searches 1–100 saved mapped episode IDs
+including specials and mixed seasons, against order_revision. Existing download
+selection/import review remains required. Paths have the `/api/v1` prefix;
+mutations require authentication, CSRF and same origin. This does not enable
+automatic special/pack matching or modify existing absolute aliases.
+
 ## Anime and organization
 
 Library browsing accepts kind=anime (mixed canonical movie/show types); ordinary

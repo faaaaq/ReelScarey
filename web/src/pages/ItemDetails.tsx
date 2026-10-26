@@ -9,6 +9,7 @@ import { useResource } from "../useResource";
 import { bytes } from "./Releases";
 import { AnimeSettings } from "./AnimeSettings";
 import { AnimeSearch } from "./AnimeSearch";
+import { AnimeOrder } from "./AnimeOrder";
 import { ItemOrganization } from "./Organization";
 
 export type Information = {
@@ -519,6 +520,7 @@ export function ItemInformation({
           {data.item.category === "anime" && data.item.kind === "series" && (
             <AnimeSearch id={id} />
           )}
+          {data.item.category === "anime" && <AnimeOrder id={id} />}
           <ItemOrganization id={id} />
           <Pagination
             page={page}

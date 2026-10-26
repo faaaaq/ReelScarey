@@ -1,4 +1,23 @@
-# Validation record — 2026-10-25
+# Validation record — 2026-10-26
+
+## Anime provider identity and orders (0.18 development)
+
+- Independent provider/library/API/migration checks pass for GraphQL variables,
+  exact Anime type/ID, bounded requests/responses, malformed/duplicate identities,
+  redirects, cooldown/cancellation, series group membership and foreign episodes.
+  Order preview/apply separates reads from reviewed writes, rejects stale/replayed
+  reviews and ambiguous typed labels across provider links, and preserves canonical
+  IDs, monitoring, existing absolute aliases, queued jobs, files and ASS references
+  through additive schema 14. Films accept identity links without TV mapping controls.
+- Transfer tests pass for explicit specials and mixed-season target selections,
+  immutable order snapshots, mapping edits during metainfo retrieval, manual-only
+  queue authority, duplicate prevention, typed filename hints, cross-season
+  single-file refusal and reopened three-file reviewed imports/source retention.
+- The fixed public AniList query succeeds through Windows PowerShell HTTP with
+  no credentials; the Go adapter's opt-in native live check is blocked by Windows
+  socket access permissions. This is recorded separately from contract fixtures.
+  Linux real-provider and qBittorrent pack acceptance, final UI/browser/package/
+  container checks and the preview upgrade are pending.
 
 ## Automatic Anime searching (0.17 development)
 

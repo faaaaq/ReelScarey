@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        VERSION: 0.17.0-dev
+        VERSION: 0.18.0-dev
     image: reelscarey:local
     restart: unless-stopped
     init: true
