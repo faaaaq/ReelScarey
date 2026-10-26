@@ -16,8 +16,72 @@
 - The fixed public AniList query succeeds through Windows PowerShell HTTP with
   no credentials; the Go adapter's opt-in native live check is blocked by Windows
   socket access permissions. This is recorded separately from contract fixtures.
-  Linux real-provider and qBittorrent pack acceptance, final UI/browser/package/
-  container checks and the preview upgrade are pending.
+  The real Go adapter subsequently passed public identity and title-search
+  acceptance on Linux; no owner catalog or credentials were transmitted. A
+  normal-permission Windows retry after updating the preview returned the same
+  OS socket-permission error from the temporary Go test executable. The installed
+  `bin/reelscarey.exe`, started with an empty disposable configuration and account,
+  then successfully searched live AniList through its normal authenticated API
+  and found Cowboy Bebop (AniList ID 1). Thus native installed-app connectivity
+  passes; the temporary test-executable restriction remains distinct. The helper
+  process/configuration were removed. No network/security control was changed
+  or bypassed and no owner catalog/account was used.
+- Clean npm installation reports zero vulnerabilities; formatting, types, all
+  114 UI tests, production build, full Go tests/vet and native build pass. A final
+  display-only fix separates adjacent Activity provider links; all 114 UI tests,
+  formatting/types/build and native recovery pass again. The standard >500 KiB
+  JavaScript chunk advisory remains. A mistyped focused test filename ran no
+  tests and was replaced by the full suite, not counted as a pass.
+- Disposable browser checks cover two AniList identity links, exact-ID TMDb
+  subgroup proposals, a typed SP1 special, review/cancel/apply, preserved absolute
+  aliases, explicit S00/S01/S02 pack targets, separate release confirmation and
+  saved order evidence in Activity after process restart. Desktop and 390-pixel
+  phone layouts retain reachable controls. The final display fix was visually
+  rechecked; no browser console errors were observed. Fixture providers/client
+  prove UI behavior only; real provider/client evidence is recorded separately.
+  The temporary process/catalog were removed and the viewport reset. Screenshots
+  remain outside Git, including `data/preview/anime-order-activity-qa.png`.
+- All three initial private cross-build package checksums verify; the extracted
+  Windows package passes native recovery. Restricted Go module-stat-cache writes
+  emitted access-denied warnings during packaging but all builds completed and
+  verified. No dependency or permission policy was changed to suppress them.
+- Before updating the owner preview, stopped version 0.17/schema 13 was backed
+  up and verified at `before-anime-orders-20261026-012943`. Its executable remains
+  at `bin/reelscarey-before-anime-orders.exe`. Version 0.18 starts successfully,
+  reports readiness 200/setup_required=false and healthy integrity, encrypted
+  credentials, storage/publication and FFprobe checks. The Anime page is open for
+  sign-in. No owner identities, mappings, monitoring or media were changed.
+- The [initial Linux run](https://github.com/faaaaq/ReelScarey/actions/runs/40278619357)
+  at `cdc0973` passed UI/race/static/dependency checks, real AniList identity/search
+  (2.16 s), real qBittorrent special/multi-season pack acceptance (3.57 s), existing
+  qBittorrent/SABnzbd/automatic-Anime regressions, generated subtitles/discovery/
+  organization, native and extracted-Linux recovery and verified cross-builds.
+  Container authenticated restart smoke logged PASS (6.742 MiB/512 MiB, seven
+  PIDs; not a sustained-load measure). The run was superseded/canceled during
+  container cleanup when the final link-layout commit started another run; it
+  is not reported as an overall successful workflow.
+- The [final Linux run](https://github.com/faaaaq/ReelScarey/actions/runs/40279969256)
+  at application commit `2c6e20e` passes every application gate: all 114 UI tests,
+  full Go race/static checks, dependency scans, real public AniList identity/search
+  (2.23 s), the generated real-qBittorrent special/multi-season pack (2.91 s),
+  movie/TV/automatic-Anime/SABnzbd regressions, generated subtitle/discovery/
+  organization checks, native and extracted-Linux recovery, verified cross-build
+  archives and authenticated container restart. Container snapshot: 8.625 MiB /
+  512 MiB, seven PIDs; not a sustained-load measurement. Govulncheck reports zero
+  affected/imported vulnerabilities and one advisory in a required module outside
+  imported/called code. Nothing is suppressed. Local Docker/CGO/race tools are
+  unavailable, so those checks ran on Linux CI.
+- The final workflow's overall result is **failure solely at artifact retention**:
+  GitHub's account storage quota prevents new artifact uploads. No older remote
+  artifacts were deleted and the failure was not hidden. Local verified packages
+  remain in `dist/private-0.18.0`; the final documentation package set is in
+  `dist/private-0.18.0-final`. All three final checksums verify and its extracted
+  Windows executable passes native recovery. No owner service setup is required
+  to install these private packages. ARM runtime/NAS acceptance remains separate.
+- Parallel implementation and independent final review found no blockers.
+  No owner media or private accounts are fixtures. IPTorrents/XSpeeds testing
+  remains deferred and the graphite/blue style is retained. Manual specials and
+  packs do not add automatic provider-order matching; see REMAINING.md.
 
 ## Automatic Anime searching (0.17 development)
 

@@ -246,7 +246,9 @@ See [Anime searches](docs/ANIME_SEARCH.md) and the consolidated
   snapshots, canonical reservations and mandatory reviewed per-file import mappings.
 - [x] Preserve ordinary automation, explicit absolute aliases, monitoring and files;
   reject ambiguous filename identities across provider links and stale queues.
-- [ ] Complete clean/native/browser/package/Linux acceptance and preview upgrade.
+- [x] Complete clean/native/browser/package/Linux acceptance and preview upgrade.
+  All application gates pass; account storage quota blocks GitHub artifact
+  retention. Verified private installation packages remain available locally.
 - [ ] AniDB, automatic provider-order/special/pack matching, guided cached-identity
   refresh and cross-season shared single-video mapping remain future extensions.
 
@@ -254,6 +256,19 @@ See [Anime providers and order review](docs/ANIME_PROVIDER_ORDERS.md). Graphite/
 and deferred IPTorrents/XSpeeds account testing are retained.
 
 ## Validation record
+
+2026-10-26 Anime identities/orders: 114 interface tests, full backend/race/static
+checks, live public AniList access, generated real qBittorrent specials/multi-season
+pack imports, regression workflows and native/package/container recovery pass.
+The installed Windows app also searches AniList successfully with a disposable
+account; a temporary Go test-executable socket restriction is recorded separately.
+Reviewed mappings survive edits/reopen, canonical targets and seeding files remain
+preserved, and imports require explicit file review. The owner preview runs 0.18
+after a verified schema-13 backup. The
+[final workflow](https://github.com/faaaaq/ReelScarey/actions/runs/40279969256)
+fails only at package upload because account artifact storage is full; verified
+local packages remain available. Private tracker testing is deferred and the
+graphite/blue style is retained. See [validation](docs/VALIDATION.md).
 
 2026-10-25 automatic Anime searches: per-show opt-in canonical/explicit absolute
 matching, alternate titles, bounded queries, immutable job evidence and stale-policy

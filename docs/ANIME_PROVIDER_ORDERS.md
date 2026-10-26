@@ -7,6 +7,26 @@ canonical catalog: provider links do not replace media or episode IDs, move
 episodes between seasons, change monitoring, or overwrite existing absolute
 number aliases.
 
+## Using the editor
+
+1. Open a title from **Anime**, then choose **Edit Anime identity & mapping**.
+   Search AniList and select the identities that belong to that title. Separate
+   cours or specials can have separate links.
+2. For a show, load the relevant seasons in its episode list. Enter a release
+   title and label beside each episode, or load a TMDb episode order and review
+   one subgroup's proposed labels before merging them into the draft.
+3. Choose **Review Anime mapping changes**, check the canonical episode targets,
+   then confirm and save. Canceling leaves the saved mapping unchanged.
+4. To search a pack or special, select its saved mapped episodes in **Manual pack
+   and special searches**. Review the target list, search, choose a release and
+   confirm it. Activity keeps the mapping used for that download.
+5. Once the download completes, review its files in Activity before importing.
+   Saving an order never starts a search or changes files by itself.
+
+Anime films support identity links; episode-order and pack controls apply to
+shows. AniList needs no application key. TMDb order proposals use the existing
+TMDb connection; release searches need an enabled indexer.
+
 ## Identity and order are separate decisions
 
 AniList search uses the public GraphQL service without an owner API key. A saved
@@ -150,12 +170,16 @@ ambiguous labels, review expiry/replay/staleness, snapshot immutability, reopen
 and schema 13-to-14 preservation. Library, metadata, database and HTTP package
 tests passed with native local-fixture permissions during implementation.
 
-The Windows Go process could not open a public AniList connection because of an
-OS socket restriction; a public PowerShell API read succeeded. This is not a
-passed native Go provider acceptance check. Linux native-provider acceptance and
-the generated real-client special/multi-season pack workflow remain pending
-until their recorded runs complete. Keep final integrated acceptance evidence
-in [VALIDATION.md](VALIDATION.md).
+The temporary Windows Go test executable could not open a public AniList
+connection because of an OS socket restriction. The installed Windows app did
+successfully search AniList through its normal authenticated API with a disposable
+account/configuration. The real Go adapter also passed public identity and search
+acceptance on Linux. A disposable real
+qBittorrent downloaded three generated files for S00E01, S01E01 and S02E01;
+saved mappings survived edits/reopen, import required review and each verified
+source remained intact. Desktop/phone browser checks, all 114 interface tests,
+native/package recovery and the backup-protected preview update also passed.
+See [VALIDATION.md](VALIDATION.md) for the complete runs and environment limits.
 
 Owner IPTorrents and XSpeeds account tests remain deferred. Neither private
 accounts nor owner media are automated test fixtures. AniDB integration,

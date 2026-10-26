@@ -134,6 +134,11 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   Exercise the actual scheduler, explicit absolute alias, opt-out/alias edits
   after queueing, reopen, mandatory mapping review, FFprobe import and retained
   seeding bytes. Provider/account mocks alone do not prove this workflow.
+- Provider-order pack acceptance runs with REELSCAREY_LIVE_QBT=1. Generate
+  separate videos for specials and multiple canonical seasons; change the saved
+  order after queueing, reopen before/after mapping, require explicit review and
+  verify canonical folders and retained seeding sources. Public AniList identity
+  acceptance uses REELSCAREY_LIVE_ANILIST=1 without owner credentials or media.
 - Usenet acceptance uses isolated real SABnzbd and generated yEnc/NNTP articles,
   never owner accounts. REELSCAREY_LIVE_SAB=1 requires REELSCAREY_SABNZBD
   (executable/script); scripts may specify REELSCAREY_SABNZBD_PYTHON. SABnzbd

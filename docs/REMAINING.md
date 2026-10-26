@@ -17,14 +17,19 @@ separate.
   verified-backup preview upgrade. Do not use owner media or private accounts as
   automated fixtures. All application gates passed; the workflow's final package
   upload failed only because GitHub artifact storage is full. See VALIDATION.md.
-- [ ] Complete and record integrated version 0.18 acceptance, including Linux
+- [x] Complete and record integrated version 0.18 acceptance, including Linux
   native AniList access, generated real-client special/multi-season pack imports,
   restart/snapshot preservation, frontend, package/recovery and container gates.
-  Implemented features and passing isolated tests do not establish these unrun
-  acceptance checks. See [ANIME_PROVIDER_ORDERS.md](ANIME_PROVIDER_ORDERS.md).
+  The installed Windows app also passed live AniList search through its API.
+  All application gates passed; GitHub artifact storage quota alone blocked the
+  final upload. See [ANIME_PROVIDER_ORDERS.md](ANIME_PROVIDER_ORDERS.md) and VALIDATION.md.
 
 ## Deferred owner-service acceptance
 
+- [x] Verify native Windows AniList access through the installed application's
+  authenticated API with a disposable account/configuration. Public search found
+  Cowboy Bebop (AniList 1). The temporary Go test executable alone received an
+  OS socket-permission error; no network/security control was changed or bypassed.
 - [ ] Test the owner's IPTorrents session directly in the app when the owner is
   ready. Keep cookies and matching user-agent values out of chat and Git.
 - [ ] Test the owner's XSpeeds session on the same basis. Both private-account
@@ -102,7 +107,7 @@ separate.
 
 ## Deployment and public release
 
-- [ ] Restore GitHub artifact retention capacity. Version 0.17 packages built
+- [ ] Restore GitHub artifact retention capacity. Versions 0.17 and 0.18 packages built
   and verified in CI, but account storage quota blocked upload; verified local
   packages remain available. No previous remote artifacts were removed.
 - [ ] Independent security review and broader accessibility acceptance.
