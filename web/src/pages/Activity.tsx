@@ -267,17 +267,20 @@ function JobCard({ job, reload }: { job: DownloadJob; reload: () => void }) {
               );
             })}
           </ul>
-          {job.anime_order.identities.map((identity) => (
-            <a
-              key={identity.id}
-              className="text-link"
-              href={identity.url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              AniList: {identity.title}{" "}
-            </a>
-          ))}
+          <ul>
+            {job.anime_order.identities.map((identity) => (
+              <li key={identity.id}>
+                <a
+                  className="text-link"
+                  href={identity.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  AniList: {identity.title}
+                </a>
+              </li>
+            ))}
+          </ul>
           <p>Completed files require mapping review before import.</p>
         </section>
       )}
