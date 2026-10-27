@@ -26,7 +26,12 @@
 - The 0.20 Linux amd64/arm64 and Windows amd64 packages were built with the
   YouTube guide and their checksums verified. The extracted Windows package passes
   disposable startup, backup/restore and recovery smoke checks; arm64 was
-  cross-built but not run. Packages are retained in `dist/private-0.20.0-final`.
+  cross-built but not run. Packages are retained in `dist/private-0.20.0-final2`.
+- Hosted workflow 40479132232 for the initial YouTube implementation passed
+  all application, generated-media, package and read-only-container checks. Its
+  final artifact upload still failed on GitHub storage quota after the approved
+  0.8 artifact deletion; GitHub reports usage recalculation takes 6–12 hours.
+  The staging-file recovery hardening added afterward is covered by local tests.
 
 ## Mapped Anime automation (0.19 development)
 

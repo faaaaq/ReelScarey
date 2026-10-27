@@ -245,9 +245,9 @@ func (w *Worker) executeImport(ctx context.Context, cfg config.Config, jobID, ow
 			return ErrInput
 		}
 	}
-	var source, dest, stage, hash, probe string
+	var source, dest, stage, hash, probe, phase string
 	var size, mtime int64
-	if e := db.QueryRowContext(ctx, `SELECT source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,probe_json FROM youtube_imports WHERE job_id=?`, jobID).Scan(&source, &dest, &stage, &size, &mtime, &hash, &probe); e != nil {
+	if e := db.QueryRowContext(ctx, `SELECT source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,probe_json,phase FROM youtube_imports WHERE job_id=?`, jobID).Scan(&source, &dest, &stage, &size, &mtime, &hash, &probe, &phase); e != nil {
 		return e
 	}
 	if !safePath(source) || !safePath(dest) || !safePath(stage) || strings.Contains(stage, "/") {
@@ -290,6 +290,9 @@ func (w *Worker) executeImport(ctx context.Context, cfg config.Config, jobID, ow
 	defer folder.Close()
 	name := path.Base(dest)
 	stageInfo, e := folder.Lstat(stage)
+	if e == nil && phase == "planned" {
+		return ErrChanged
+	}
 	if errors.Is(e, os.ErrNotExist) {
 		if _, e = folder.Lstat(name); e == nil {
 			return ErrBusy
@@ -325,8 +328,8 @@ func (w *Worker) executeImport(ctx context.Context, cfg config.Config, jobID, ow
 		stageFile.Close()
 		return ErrChanged
 	}
-	if opened.Size() < size {
-		e = copyVerified(ctx, src, stageFile, size)
+	if opened.Size() != size {
+		e = ErrChanged
 	}
 	if e == nil {
 		actual, e = hashFile(ctx, stageFile)
@@ -435,19 +438,19 @@ func (w *Worker) CleanupCommitted(ctx context.Context, cfg config.Config) error 
 }
 
 type subtitlePlan struct {
-	language, source, destination, stage, hash string
-	size, mtime                                int64
+	language, source, destination, stage, hash, phase string
+	size, mtime                                       int64
 }
 
 func (w *Worker) publishSubtitles(ctx context.Context, srcRoot, folder *os.Root, jobID, owner, dir string) error {
-	rows, e := w.Store.db.QueryContext(ctx, `SELECT language,source_path,destination_path,stage_name,size_bytes,source_mtime,sha256 FROM youtube_subtitle_imports WHERE job_id=? ORDER BY language`, jobID)
+	rows, e := w.Store.db.QueryContext(ctx, `SELECT language,source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,phase FROM youtube_subtitle_imports WHERE job_id=? ORDER BY language`, jobID)
 	if e != nil {
 		return e
 	}
 	plans := []subtitlePlan{}
 	for rows.Next() {
 		var p subtitlePlan
-		if e = rows.Scan(&p.language, &p.source, &p.destination, &p.stage, &p.size, &p.mtime, &p.hash); e != nil {
+		if e = rows.Scan(&p.language, &p.source, &p.destination, &p.stage, &p.size, &p.mtime, &p.hash, &p.phase); e != nil {
 			rows.Close()
 			return e
 		}
@@ -481,6 +484,10 @@ func (w *Worker) publishSubtitles(ctx context.Context, srcRoot, folder *os.Root,
 		}
 		name := path.Base(p.destination)
 		st, e := folder.Lstat(p.stage)
+		if e == nil && p.phase == "planned" {
+			src.Close()
+			return ErrChanged
+		}
 		if errors.Is(e, os.ErrNotExist) {
 			if _, err := folder.Lstat(name); err == nil {
 				src.Close()
@@ -521,8 +528,8 @@ func (w *Worker) publishSubtitles(ctx context.Context, srcRoot, folder *os.Root,
 			src.Close()
 			return ErrChanged
 		}
-		if opened.Size() < p.size {
-			e = copyVerified(ctx, src, f, p.size)
+		if opened.Size() != p.size {
+			e = ErrChanged
 		}
 		if e == nil {
 			actual, e = hashFile(ctx, f)

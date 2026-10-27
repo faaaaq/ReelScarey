@@ -21,6 +21,9 @@ same target is reserved against other import and download workflows. A conflict
 leaves the files in place for review and retry; completed staging links are removed
 only when they still identify the committed file. Cancel is available before
 publication; uncertain partial acquisition files are retained for inspection.
+If a copy is interrupted before its staged phase is recorded, an existing
+partial stage is left untouched and requires operator review rather than an
+automatic retry. Fully recorded stages can be verified and resumed.
 
 The container image includes a pinned, checksum-verified yt-dlp release and
 FFmpeg, with a dedicated writable YouTube staging volume. The existing downloads

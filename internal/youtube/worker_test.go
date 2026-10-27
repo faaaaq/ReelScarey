@@ -200,6 +200,64 @@ func TestImportNeverReplacesExistingDestination(t *testing.T) {
 	}
 }
 
+func TestUnrecognizedPartialStageIsNotModified(t *testing.T) {
+	ctx := context.Background()
+	base := t.TempDir()
+	db, err := database.Open(ctx, filepath.Join(base, "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	media := filepath.Join(base, "media")
+	if err = os.Mkdir(media, 0700); err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(db)
+	c, err := s.CreateCollection(ctx, "Generated")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.Preview(ctx, Video{ID: "abcdefghijk", Title: "Generated"}, Target{Kind: "custom", CollectionID: c.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, err := s.Queue(ctx, r.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := Worker{Store: s, Downloader: testDownloader{}, Prober: testProber{}, StagingRoot: filepath.Join(base, "staging")}
+	if _, err = w.ProcessOne(ctx); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{MediaDir: media}
+	ir, err := s.ReviewImport(ctx, cfg, j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ApproveImport(ctx, cfg, ir); err != nil {
+		t.Fatal(err)
+	}
+	var stage string
+	if err = db.QueryRow(`SELECT stage_name FROM youtube_imports WHERE job_id=?`, j.ID).Scan(&stage); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(media, filepath.FromSlash(filepath.Dir(ir.Destination)))
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(dir, stage)
+	if err = os.WriteFile(foreign, []byte("owned generated"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = w.ProcessImport(ctx, cfg); err == nil {
+		t.Fatal("accepted unrecognized stage")
+	}
+	content, err := os.ReadFile(foreign)
+	if err != nil || string(content) != "owned generated" {
+		t.Fatalf("foreign stage changed: %q %v", content, err)
+	}
+}
+
 func TestReviewedEpisodeImportRegistersCanonicalEpisode(t *testing.T) {
 	ctx := context.Background()
 	base := t.TempDir()
