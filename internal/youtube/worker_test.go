@@ -276,7 +276,7 @@ func TestReviewedEpisodeImportRegistersCanonicalEpisode(t *testing.T) {
 		}
 	}
 	s := NewStore(db)
-	r, err := s.Preview(ctx, Video{ID: "abcdefghijk", Title: "Generated"}, Target{Kind: "episode", MediaID: 1, EpisodeID: 1})
+	r, err := s.PreviewWithSubtitles(ctx, Video{ID: "abcdefghijk", Title: "Generated"}, Target{Kind: "episode", MediaID: 1, EpisodeID: 1}, DownloadOptions{Languages: []string{"en"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,6 +302,9 @@ func TestReviewedEpisodeImportRegistersCanonicalEpisode(t *testing.T) {
 	var count int
 	if err = db.QueryRow(`SELECT COUNT(*) FROM episode_files e JOIN youtube_files y ON y.media_file_id=e.media_file_id WHERE e.episode_id=1 AND y.job_id=?`, j.ID).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("registration: %d %v", count, err)
+	}
+	if err = db.QueryRow(`SELECT COUNT(*) FROM subtitles s JOIN episode_files e ON e.media_file_id=s.media_file_id WHERE e.episode_id=1 AND s.language='en' AND s.source='downloaded'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("episode subtitle: %d %v", count, err)
 	}
 }
 
