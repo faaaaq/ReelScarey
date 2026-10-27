@@ -32,7 +32,9 @@
   all application, generated-media, package and read-only-container checks. Its
   final artifact upload still failed on GitHub storage quota after the approved
   0.8 artifact deletion; GitHub reports usage recalculation takes 6–12 hours.
-  The staging-file recovery hardening added afterward is covered by local tests.
+  The final hosted run 40534519027 at commit `fe2c9dd` also passed all
+  application, race, generated video/subtitle, package and container checks;
+  its artifact upload failed on the same storage quota.
 
 ## Mapped Anime automation (0.19 development)
 
@@ -75,8 +77,10 @@
   container step. Its final artifact upload failed because the account's GitHub
   artifact storage quota is full. With owner approval, the oldest hosted 0.8
   artifact was removed after verifying local copies. The retry passed all
-  application steps but the upload again hit quota; GitHub reports 6–12 hours
-  for usage recalculation. Verified 0.19 packages remain available locally.
+  application steps but the upload again hit quota. A further retry after more
+  than seven hours likewise passed all checks and failed only at artifact upload;
+  GitHub reports 6–12 hours for usage recalculation. Verified 0.19 packages
+  remain available locally.
 
 ## Anime provider identity and orders (0.18 development)
 
