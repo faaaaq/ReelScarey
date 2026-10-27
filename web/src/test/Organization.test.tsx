@@ -154,6 +154,34 @@ async function selectFirstAndReview() {
 }
 
 describe("Reviewed library organization", () => {
+  it("reviews every registered file for a title only after choosing a destination", async () => {
+    const { fetch } = setup((url, options, fixture) => {
+      if (url.endsWith("/organization/plans") && options?.method === "POST")
+        return Response.json(fixture.plan([41]));
+    });
+    mount("/organization?media_id=1");
+    const button = await screen.findByRole("button", {
+      name: "Review all files for this title",
+    });
+    expect(button).toBeDisabled();
+    await userEvent.selectOptions(
+      screen.getByLabelText("Destination collection"),
+      "anime",
+    );
+    await userEvent.click(button);
+    await screen.findByRole("region", { name: "Organization review" });
+    const call = fetch.mock.calls.find(
+      ([url, options]) =>
+        url.endsWith("/organization/plans") && options?.method === "POST",
+    );
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+      media_id: 1,
+      target_library: "anime",
+    });
+    expect(fetch.mock.calls.some(([url]) => url.endsWith("/apply"))).toBe(
+      false,
+    );
+  });
   it("discards an obsolete preview reply after changing pages", async () => {
     let resolvePreview: ((response: Response) => void) | undefined;
     let previewSignal: AbortSignal | null | undefined;

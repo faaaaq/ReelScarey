@@ -148,15 +148,47 @@ func (s *Service) build(ctx context.Context, root *os.Root, q query, ids []int64
 	return out, nil
 }
 func (s *Service) Preview(ctx context.Context, ids []int64, target string) (Plan, error) {
-	if len(ids) < 1 || len(ids) > 100 {
-		return Plan{}, problem("invalid_selection", "Choose 1–100 registered media files.")
+	return s.preview(ctx, ids, 0, target)
+}
+
+// PreviewTitle captures the complete registered-file set in the same transaction
+// as the review. Large titles must be organized in explicit smaller selections.
+func (s *Service) PreviewTitle(ctx context.Context, mediaID int64, target string) (Plan, error) {
+	if mediaID < 1 || target == "" {
+		return Plan{}, problem("invalid_selection", "Choose a title and a destination collection.")
 	}
-	seen := map[int64]bool{}
-	for _, n := range ids {
-		if n < 1 || seen[n] {
-			return Plan{}, problem("invalid_selection", "Choose distinct registered media files.")
+	return s.preview(ctx, nil, mediaID, target)
+}
+
+func titleFiles(ctx context.Context, q query, mediaID int64) ([]int64, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id FROM media_files WHERE movie_id=? OR series_id=? ORDER BY id LIMIT 101`, mediaID, mediaID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
 		}
-		seen[n] = true
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (s *Service) preview(ctx context.Context, ids []int64, mediaID int64, target string) (Plan, error) {
+	if mediaID == 0 {
+		if len(ids) < 1 || len(ids) > 100 {
+			return Plan{}, problem("invalid_selection", "Choose 1–100 registered media files.")
+		}
+		seen := map[int64]bool{}
+		for _, n := range ids {
+			if n < 1 || seen[n] {
+				return Plan{}, problem("invalid_selection", "Choose distinct registered media files.")
+			}
+			seen[n] = true
+		}
 	}
 	unlock := ReadMedia()
 	defer unlock()
@@ -170,6 +202,15 @@ func (s *Service) Preview(ctx context.Context, ids []int64, target string) (Plan
 		return Plan{}, e
 	}
 	defer tx.Rollback()
+	if mediaID != 0 {
+		ids, e = titleFiles(ctx, tx, mediaID)
+		if e != nil {
+			return Plan{}, e
+		}
+		if len(ids) == 0 || len(ids) > 100 {
+			return Plan{}, problem("invalid_selection", "A whole-title move requires 1–100 registered files. For larger titles, select files in batches.")
+		}
+	}
 	files, e := s.build(ctx, root, tx, ids, target)
 	if e != nil {
 		return Plan{}, e
@@ -179,7 +220,7 @@ func (s *Service) Preview(ctx context.Context, ids []int64, target string) (Plan
 		return Plan{}, e
 	}
 	now := time.Now().Unix()
-	p := Plan{ID: id(), State: "review", ConfigRevision: c.Revision, TargetLibrary: target, Files: files, Created: now, Updated: now, Root: resolved, Phase: "planned"}
+	p := Plan{ID: id(), State: "review", ConfigRevision: c.Revision, TargetLibrary: target, EntireMediaID: mediaID, Files: files, Created: now, Updated: now, Root: resolved, Phase: "planned"}
 	raw, e := json.Marshal(p)
 	if e != nil {
 		return p, e
@@ -280,6 +321,20 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 	return s.Plan(ctx, id)
 }
 func (s *Service) validate(ctx context.Context, root *os.Root, q query, p Plan, allowPublished bool) error {
+	if p.EntireMediaID != 0 {
+		ids, err := titleFiles(ctx, q, p.EntireMediaID)
+		if err != nil {
+			return err
+		}
+		if len(ids) != len(p.Files) {
+			return problem("revision_conflict", "The title's registered files changed after review. Create a new review.")
+		}
+		for i, id := range ids {
+			if id != p.Files[i].FileID {
+				return problem("revision_conflict", "The title's registered files changed after review. Create a new review.")
+			}
+		}
+	}
 	owned := map[string]string{}
 	if allowPublished {
 		rows, e := q.QueryContext(ctx, `SELECT destination,identity FROM organization_outputs WHERE plan_id=? AND identity<>''`, p.ID)

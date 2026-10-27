@@ -1,5 +1,16 @@
 # Validation record — 2026-10-27
 
+## Reviewed title moves between collections
+
+- Whole-title review captures up to 100 registered files and rejects a changed
+  file set. Tests cover a reviewed move with subtitle references and retained
+  seeding bytes, stale reviews, API selection and interface confirmation.
+- Full Go tests and vet, frontend formatting and type checks, all 123 interface
+  tests and the production build passed. A Docker image built with its Linux
+  test suite, and a disposable read-only-root container passed health and setup
+  state persistence across restart. Its container and temporary volumes were
+  removed. Whole-folder moves and unrelated extras remain unimplemented.
+
 ## YouTube sourcing and subtitle sidecars (0.20 development)
 
 - Clean frontend install, format/type checks and all 122 UI tests pass. Full Go

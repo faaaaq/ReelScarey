@@ -9,6 +9,10 @@ longer missing features. Current acceptance evidence belongs in
 [VALIDATION.md](VALIDATION.md); implementation and owner-service testing are
 separate.
 
+Docker is the sole supported deployment target. Historical native and Windows
+results are evidence of past work, not ongoing acceptance requirements. The
+owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
+
 ## Current milestone acceptance
 
 - [x] Complete and record integrated application validation for version 0.17: clean frontend,
@@ -97,8 +101,8 @@ separate.
 - [x] Reviewed YouTube source inspection and individual-video acquisition for
   existing movies/episodes and custom collections, with selected VTT subtitles.
   See [YouTube sourcing](YOUTUBE.md) and [validation](VALIDATION.md) for limits.
-- [ ] Automatic channel/playlist subscriptions, bulk video acquisition, richer
-  subtitle selection and native Windows networking acceptance remain future work.
+- [ ] Automatic channel/playlist subscriptions, bulk video acquisition and richer
+  subtitle selection remain future work.
 - [ ] Verified audio-language inspection and richer source/codec scoring; release
   language text currently supplies selection evidence only.
 - [ ] Additional subtitle providers, ASS-style provider downloads, subtitle
@@ -112,16 +116,15 @@ separate.
 
 ## Deployment and public release
 
-- [ ] Restore GitHub artifact retention capacity. Versions 0.17 and 0.18 packages built
-  and verified in CI, but account storage quota blocked upload; verified local
-  packages remain available. No previous remote artifacts were removed.
+- [ ] Restore GitHub artifact retention capacity if hosted artifacts are needed.
+  The approved oldest artifact was removed, but quota still blocked the latest
+  uploads. See [VALIDATION.md](VALIDATION.md) for the recorded results.
 - [ ] Independent security review and broader accessibility acceptance.
 - [ ] Representative NAS/shared-storage filesystem and arm64 runtime acceptance.
   Cross-compiling an arm64 package does not establish runtime compatibility.
 - [ ] Sustained workload/resource budgets. Container snapshots are point-in-time
   evidence rather than a long-running capacity measurement.
-- [ ] Signed release provenance and a public distribution process. Existing
-  private package checksums detect corruption but are not signatures.
+- [ ] Signed container release provenance and a public distribution process.
 - [ ] Owner license selection before public distribution.
 
 Keep graphite/blue and the functional interface style during later milestones.

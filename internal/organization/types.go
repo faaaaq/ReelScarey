@@ -95,6 +95,7 @@ type Plan struct {
 	Message        string        `json:"message"`
 	ConfigRevision int           `json:"config_revision"`
 	TargetLibrary  string        `json:"target_library"`
+	EntireMediaID  int64         `json:"entire_media_id,omitempty"`
 	Files          []PlannedFile `json:"files"`
 	Created        int64         `json:"created_at"`
 	Updated        int64         `json:"updated_at"`

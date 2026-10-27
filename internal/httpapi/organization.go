@@ -127,6 +127,7 @@ func (s *Server) organizationPlans(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var in struct {
 			FileIDs       []int64 `json:"file_ids"`
+			MediaID       int64   `json:"media_id"`
 			TargetLibrary string  `json:"target_library"`
 		}
 		if !decodeJSON(w, r, &in) {
@@ -134,7 +135,16 @@ func (s *Server) organizationPlans(w http.ResponseWriter, r *http.Request) {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
-		out, e := s.organization.Preview(ctx, in.FileIDs, in.TargetLibrary)
+		var out organization.Plan
+		var e error
+		if in.MediaID != 0 && len(in.FileIDs) == 0 {
+			out, e = s.organization.PreviewTitle(ctx, in.MediaID, in.TargetLibrary)
+		} else if in.MediaID != 0 {
+			fail(w, 400, "invalid_selection", "Choose a title or individual files, not both.")
+			return
+		} else {
+			out, e = s.organization.Preview(ctx, in.FileIDs, in.TargetLibrary)
+		}
 		if e != nil {
 			s.organizationError(w, e)
 			return

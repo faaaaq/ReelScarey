@@ -5,6 +5,9 @@ and a React/TypeScript UI embedded into the application binary. Read
 ARCHITECTURE.md and ROADMAP.md before expanding a module.
 
 ## Scope and honesty
+- Docker is the sole supported deployment target. Do not treat standalone native
+  or Windows builds, packages, preview upgrades, or acceptance as product goals.
+  Development tools and historical validation may still run outside containers.
 - Complete the foundation before the movie vertical slice. Complete that slice
   before adding substantial TV, automation, or subtitle functionality.
 - Never present fixtures, empty adapters, inert controls, or roadmap items as

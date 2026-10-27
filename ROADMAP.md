@@ -2,6 +2,39 @@
 
 Status is evidence-based: checked items are implemented, not planned adapters.
 
+## Deployment direction
+
+Docker is the sole supported deployment target. Future releases, installation
+instructions and acceptance should focus on the container and its persistent
+volumes; standalone Windows and native packages are not product deliverables.
+Historical native and package results below remain as records of past work.
+
+## Requested features
+
+- [ ] Move media physically between configured libraries, with a clear preview,
+  collision handling, safe transfer and recovery, and updated catalog paths.
+  Registered videos and recognized subtitles can now be moved through a reviewed
+  title or file selection; whole folders and unrelated extras remain open work.
+- [ ] Provide non-admin accounts and a request system in which each user can
+  configure their own IMDb, TMDb and Trakt import lists. Give administrators
+  control over approval and importing, with clear request status for users.
+- [ ] Add built-in Discord webhook notifications. Let users supply their own
+  webhook information and receive notifications when their requests are fulfilled.
+- [ ] Make unmatched files easy to discover and review for matching or registration.
+- [ ] Integrate Emby play activity so users can see what is actually being watched.
+- [ ] Make per-series release preferences easy to set beyond a quality profile,
+  including codecs such as H.264/H.265 and release groups such as Obscure/Megusta.
+- [ ] Show related franchise titles on a title's detail page, inspired by Mydia's
+  presentation, with clear links and library status.
+- [ ] Offer to create the destination folder when adding a title, before media
+  is fetched, so files can be placed there manually.
+- [ ] Add a Discord companion bot that accepts requests, searches and replies
+  with interactive release-selection buttons. Notify the server administrator
+  with the same interactive information when a request is made in ReelScarey.
+- [ ] Add an accessible history/notification tray along the edge of the interface,
+  with a compact timeline of events, timestamps and a way to see more, inspired
+  by the supplied reference image.
+
 ## 1 — Foundation
 - [x] Go server, structured logging, graceful shutdown and validated environment
 - [x] SQLite initialization, transactional checksummed migrations and persistence

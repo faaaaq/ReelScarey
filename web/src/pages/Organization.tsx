@@ -93,7 +93,7 @@ export function Organization() {
               variant={tab === "files" ? "solid" : "soft"}
               onClick={() => setTab("files")}
             >
-              Rename & reorganize
+              Move & organize files
             </Button>
             <Button
               variant={tab === "settings" ? "solid" : "soft"}
@@ -369,8 +369,9 @@ function Reorganize({ config }: { config: Config }) {
   useEffect(() => {
     if (plan?.state === "completed") files.reload();
   }, [plan?.state, files.reload]);
-  async function preview() {
-    if (pending || !selected.length) return;
+  async function preview(wholeTitle = false) {
+    if (pending || (wholeTitle ? !mediaID || !target : !selected.length))
+      return;
     setPending("preview");
     setError("");
     setReviewed(false);
@@ -382,7 +383,11 @@ function Reorganize({ config }: { config: Config }) {
     try {
       const out = await api<Plan>("/organization/plans", {
         method: "POST",
-        body: JSON.stringify({ file_ids: selected, target_library: target }),
+        body: JSON.stringify(
+          wholeTitle
+            ? { media_id: Number(mediaID), target_library: target }
+            : { file_ids: selected, target_library: target },
+        ),
         signal: AbortSignal.any([
           controller.signal,
           AbortSignal.timeout(35000),
@@ -452,7 +457,7 @@ function Reorganize({ config }: { config: Config }) {
   return (
     <>
       <section className="panel organization-selection">
-        <h2>Choose registered files</h2>
+        <h2>Move or organize registered files</h2>
         <p>
           Review up to 50 files from this page. The plan checks video identity,
           subtitles, conflicts and current naming rules. Downloads and seeding
@@ -587,9 +592,25 @@ function Reorganize({ config }: { config: Config }) {
           imports after the batch commits. Unselected existing files retain
           their locations.
         </p>
+        {mediaID && (
+          <>
+            <p className="field-help">
+              Move all registered files for this title to the chosen collection
+              in one review (up to 100 files). Unregistered files and unrelated
+              extras are not moved.
+            </p>
+            <Button
+              variant="soft"
+              disabled={!target || !!pending || running}
+              onClick={() => void preview(true)}
+            >
+              Review all files for this title
+            </Button>{" "}
+          </>
+        )}
         <Button
           disabled={!selected.length || !!pending || running}
-          onClick={() => void preview()}
+          onClick={() => void preview(false)}
         >
           {pending === "preview"
             ? "Checking files…"
@@ -824,7 +845,7 @@ export function ItemOrganization({ id }: { id: number }) {
                 </Button>
                 <Button asChild variant="soft">
                   <Link to={`/organization?media_id=${id}`}>
-                    Review existing files
+                    Move or organize existing files
                   </Link>
                 </Button>
               </div>

@@ -88,6 +88,13 @@ subtitle work reject stale decisions. Destination conflicts never overwrite.
 Selecting another collection also changes those titles' future-import assignment
 when the batch commits; unselected files keep their current locations.
 
+From a title's File organization panel, choose Move or organize existing files,
+select a destination collection and review all registered files for that title.
+The server snapshots up to 100 files across all pages, and rejects a review if
+the registered set changes before commit. Larger titles can be moved in explicit
+batches. This moves registered videos and recognized subtitle companions, not
+unregistered files, artwork or unrelated extras.
+
 The durable worker journals owned stages/output identities, prefers a hardlink,
 otherwise copies to a verified stage, and publishes with no-replace hardlinks.
 It verifies bytes before atomically switching all media/subtitle references and
@@ -127,7 +134,9 @@ work and retains uncertain files. Large copies require sufficient free space.
 - GET `/api/v1/organization/files`: saved registered files, literal query,
   optional kind/media_id, stable 50-file pages. Reads do not scan disk.
 - GET/POST `/api/v1/organization/plans`: last 20 saved reviews/jobs; POST accepts
-  explicit file_ids and optional target_library, with a 30-second preview budget.
+  explicit file_ids and optional target_library, or media_id and a required
+  target_library for a complete registered-title review (1–100 files). The two
+  selections cannot be combined. Reviews have a 30-second preview budget.
 - GET `/api/v1/organization/plans/{id}`; POST its `/apply` with `{}` queues or
   resumes the exact saved job. There is no select-all-matching endpoint.
 - Existing-library POST accepts optional library_key; GET includes configured

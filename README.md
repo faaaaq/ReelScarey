@@ -121,7 +121,8 @@ deletes the named volume and its data.
 ## Local development
 
 Requires Go 1.27+ and Node 24.12+ (24.x). Build the frontend before compiling Go,
-because frontend assets are embedded in the executable.
+because frontend assets are embedded in the executable. These commands are for
+development; Docker is the sole supported deployment target.
 
 ```sh
 cd web
@@ -133,8 +134,7 @@ go build -o bin/reelscarey ./cmd/reelscarey
 ./bin/reelscarey
 ```
 
-On Windows build with `go build -o bin/reelscarey.exe ./cmd/reelscarey` and run
-`.\bin\reelscarey.exe`. Open [the local app](http://127.0.0.1:8787).
+Open [the local app](http://127.0.0.1:8787).
 Read `data/config/setup-token` (or run `reelscarey setup-token` with the same
 config environment) to create the administrator, then connect TMDb in Settings.
 To iterate on UI, keep Go running and run `npm run dev` in `web`; Vite proxies
@@ -150,8 +150,8 @@ the application. Mount a remote qBittorrent's downloads locally before importing
 | --- | --- | --- |
 | `REELSCAREY_LISTEN_ADDR` | `127.0.0.1:8787` | HTTP bind address |
 | `REELSCAREY_CONFIG_DIR` | `./data/config` | SQLite directory (created if absent) |
-| `REELSCAREY_MEDIA_DIR` | `/media` | Media root; Windows default `./data/media` |
-| `REELSCAREY_DOWNLOADS_DIR` | `/downloads` | Download root; Windows default `./data/downloads` |
+| `REELSCAREY_MEDIA_DIR` | `/media` | Media root |
+| `REELSCAREY_DOWNLOADS_DIR` | `/downloads` | Download root |
 | `REELSCAREY_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 | `REELSCAREY_PUBLIC_URL` | empty | Explicit browser origin for another hostname or HTTPS reverse proxy |
 

@@ -137,7 +137,7 @@ func TestReviewOrganizationAPISecuritySettingsAndExactSelections(t *testing.T) {
 	if out = request(f.handler, "PUT", "/api/v1/organization", string(body), &f.session, true); out.Code != 409 {
 		t.Fatal("stale organization config accepted", out.Code, out.Body)
 	}
-	for _, body := range []string{`null`, `{}`, `{"file_ids":[1],"all":true}`, `{"file_ids":[1,1]}`, `{"file_ids":[0]}`, `{"file_ids":[1]}{}`, `{"file_ids":[1],"target_library":"unknown"}`} {
+	for _, body := range []string{`null`, `{}`, `{"file_ids":[1],"all":true}`, `{"file_ids":[1,1]}`, `{"file_ids":[0]}`, `{"file_ids":[1]}{}`, `{"file_ids":[1],"target_library":"unknown"}`, `{"media_id":1}`, `{"media_id":1,"file_ids":[1],"target_library":"anime"}`} {
 		if out = request(f.handler, "POST", "/api/v1/organization/plans", body, &f.session, true); out.Code != 400 {
 			t.Fatal("invalid/non-explicit organization selection accepted", body, out.Code, out.Body)
 		}
@@ -180,9 +180,9 @@ func TestReviewOrganizationPreviewQueuesBeforeChangingFilesAndRetainsHistory(t *
 	f := newOrganizationReviewFixture(t)
 	source := "Movies/Original/first.mkv"
 	f.movie(t, 1, "Review film", source)
-	out := request(f.handler, "POST", "/api/v1/organization/plans", `{"file_ids":[1],"target_library":"anime"}`, &f.session, true)
+	out := request(f.handler, "POST", "/api/v1/organization/plans", `{"media_id":1,"target_library":"anime"}`, &f.session, true)
 	var plan organization.Plan
-	if out.Code != 201 || json.Unmarshal(out.Body.Bytes(), &plan) != nil || plan.State != "review" || len(plan.Files) != 1 || plan.Files[0].FileID != 1 || plan.Files[0].Source != source {
+	if out.Code != 201 || json.Unmarshal(out.Body.Bytes(), &plan) != nil || plan.State != "review" || plan.EntireMediaID != 1 || len(plan.Files) != 1 || plan.Files[0].FileID != 1 || plan.Files[0].Source != source {
 		t.Fatal("preview did not retain exact selected file", out.Code, out.Body)
 	}
 	old := filepath.Join(f.cfg.MediaDir, filepath.FromSlash(source))

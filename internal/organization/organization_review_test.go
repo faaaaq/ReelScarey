@@ -72,6 +72,28 @@ func (f reviewFixture) movie(t *testing.T, id int, rel string, body []byte) {
 	}
 }
 
+func TestWholeTitleMoveRejectsChangedFileSet(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	f.movie(t, 1, "Movies/Original/movie.mkv", []byte("original video"))
+	plan, err := f.s.PreviewTitle(ctx, 1, "anime")
+	if err != nil || plan.EntireMediaID != 1 || len(plan.Files) != 1 {
+		t.Fatalf("whole-title review: %+v, %v", plan, err)
+	}
+	if _, err = f.db.Exec(`DELETE FROM media_files WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.s.Apply(ctx, plan.ID); err == nil {
+		t.Fatal("a review must become stale when a file is unregistered")
+	}
+	if _, err = os.Stat(filepath.Join(f.cfg.MediaDir, "Movies", "Original", "movie.mkv")); err != nil {
+		t.Fatal("stale review changed the original", err)
+	}
+	if _, err = f.s.PreviewTitle(ctx, 1, ""); err == nil {
+		t.Fatal("missing destination accepted")
+	}
+}
+
 func TestReviewOrganizationRejectsUnsafeOrOverlappingFoldersAtomically(t *testing.T) {
 	ctx := context.Background()
 	f := newReviewFixture(t)
@@ -290,7 +312,7 @@ func TestReviewReorganizationPreservesHardlinkedDownloadAndSubtitleReferences(t 
 	if _, err := f.db.Exec(`INSERT INTO subtitle_imports(id,media_file_id,language,variant,provider_file_id,destination,stage_name,sha256,size_bytes,phase,updated_at) VALUES('review-sub',1,'en','signs',99,?,'old-committed-stage',?,?,'committed',1)`, sidecarSource, hex.EncodeToString(sum[:]), len(sidecarBytes)); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := f.s.Preview(ctx, []int64{1}, "anime")
+	plan, err := f.s.PreviewTitle(ctx, 1, "anime")
 	if err != nil || len(plan.Files) != 1 || len(plan.Files[0].Companions) != 1 {
 		t.Fatal("review omitted subtitle companion", plan, err)
 	}
