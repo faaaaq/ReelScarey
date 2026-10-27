@@ -45,12 +45,14 @@ import { ItemDetails } from "./pages/ItemDetails";
 import { ExistingLibrary } from "./pages/ExistingLibrary";
 import { Planning } from "./pages/Planning";
 import { Organization } from "./pages/Organization";
+import { YouTube } from "./pages/YouTube";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
   { path: "/movies", name: "Movies", icon: Film },
   { path: "/series", name: "TV shows", icon: MonitorPlay },
   { path: "/anime", name: "Anime", icon: Clapperboard },
+  { path: "/youtube", name: "YouTube", icon: MonitorPlay },
   { path: "/wanted", name: "Wanted", icon: ListFilter },
   { path: "/calendar", name: "Calendar", icon: CalendarDays },
   { path: "/search", name: "Search", icon: Search },
@@ -163,7 +165,7 @@ function AppShell() {
           </nav>
           <div className="account-control">
             <span>
-              {session.username} <small>v0.19</small>
+              {session.username} <small>v0.20</small>
             </span>
             <button onClick={() => void logout()} disabled={signingOut}>
               <LogOut size={15} />
@@ -178,6 +180,7 @@ function AppShell() {
           <Routes>
             <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="/" element={<Dashboard />} />
+            <Route path="/youtube" element={<YouTube />} />
             <Route
               path="/movies"
               element={<Library key="movie" kind="movie" />}

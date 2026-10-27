@@ -80,6 +80,11 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   Providers receive canonical metadata/hash only, never local paths. Existing
   video/sidecars must not be replaced; automatic selections require provider
   identity and hash/exact original-release evidence. Uncertain timing needs review.
+- internal/youtube owns explicit public source review, durable acquisition and
+  reviewed journaled video/subtitle imports. Preserve canonical target IDs,
+  no-overwrite publication, source evidence and shared transfer reservations;
+  custom collections must not fabricate provider identities. Sidecars require
+  explicit language choice, bounded content, review and recovery alongside video.
 - internal/automation owns interval scheduling, leased searches and bounded audit
   history. It delegates downloads/imports to transfer; automatic queueing must be
   fenced inside the reservation transaction against changed policy and monitoring.

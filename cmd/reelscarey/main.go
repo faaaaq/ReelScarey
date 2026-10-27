@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -23,10 +24,11 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"github.com/faaaaq/ReelScarey/internal/subtitle"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
+	"github.com/faaaaq/ReelScarey/internal/youtube"
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.19.0-dev"
+var version = "0.20.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -93,16 +95,58 @@ func run(logger *slog.Logger) error {
 	automationService := automation.New(db, transferService)
 	subtitleService := subtitle.New(db, secretStore, cfg, subtitle.NewOpenSubtitles())
 	organizationService := organization.New(db, cfg)
+	youtubePath := os.Getenv("REELSCAREY_YTDLP_PATH")
+	if youtubePath == "" {
+		youtubePath = "yt-dlp"
+	}
+	youtubeInspector, _ := youtube.NewInspector(youtubePath)
+	youtubeStaging := os.Getenv("REELSCAREY_YOUTUBE_STAGING_DIR")
+	if youtubeStaging == "" {
+		youtubeStaging = filepath.Join(cfg.DownloadsDir, ".reelscarey-youtube")
+	}
+	var httpYouTubeInspector httpapi.YouTubeInspector
+	if youtubeInspector != nil {
+		httpYouTubeInspector = youtubeInspector
+	}
 	assets, err := web.Assets()
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
 	workerCtx, workerCancel := context.WithCancel(ctx)
+	youtubeDone := make(chan struct{})
+	go func() {
+		defer close(youtubeDone)
+		if youtubeInspector == nil || !waitRecovery(workerCtx, cfg.ConfigDir) {
+			return
+		}
+		worker := &youtube.Worker{Store: youtube.NewStore(db), Downloader: youtubeInspector, Prober: transfer.FFprobe{}, StagingRoot: youtubeStaging, MediaRoot: cfg.MediaDir, ConfigRoot: cfg.ConfigDir}
+		if e := worker.CleanupCommitted(workerCtx, cfg); e != nil && workerCtx.Err() == nil {
+			logger.Warn("YouTube staging cleanup deferred", "error", e)
+		}
+		for workerCtx.Err() == nil {
+			imported, e := worker.ProcessImport(workerCtx, cfg)
+			if e != nil && workerCtx.Err() == nil {
+				logger.Warn("YouTube import needs attention", "error", e)
+			}
+			acquired, e := worker.ProcessOne(workerCtx)
+			if e != nil && workerCtx.Err() == nil {
+				logger.Warn("YouTube acquisition failed", "error", e)
+			}
+			if !imported && !acquired {
+				select {
+				case <-workerCtx.Done():
+					return
+				case <-time.After(5 * time.Second):
+				}
+			}
+		}
+	}()
+	defer func() { workerCancel(); <-youtubeDone }()
 	workerDone := make(chan struct{})
 	go func() {
 		defer close(workerDone)

@@ -30,6 +30,7 @@ internal/transfer/   Torznab/qBittorrent, durable downloads and safe imports
 internal/quality/    conservative identity, profile persistence and release ranking
 internal/automation/ persistent scheduled searches, audit history and policy fences
 internal/subtitle/   provider, track preferences, registered-media jobs and sidecars
+internal/youtube/    reviewed public source inspection, acquisition and imports
 internal/instance/   OS config ownership and maintenance locks
 internal/maintenance/ verified offline config snapshots and new-folder restores
 internal/operations/ explicit installation checks, setup and recovery review
@@ -124,6 +125,12 @@ Migration 015 adds explicit mapped-search consent, optional specials and bounded
 packs. Automation searches reviewed typed label cohorts and rechecks the exact
 order, policy and eligibility in the queue transaction. Completed downloads
 still require file mapping review. See docs/ANIME_SEARCH.md.
+Migrations 016–019 add distinct YouTube collections and reviewed source jobs,
+leased acquisition, additive provenance and journaled subtitle sidecars. Saved
+videos link explicitly to a catalog target or a custom collection; they never
+fabricate metadata-provider IDs. YouTube reservations fence the shared import
+paths, and publication remains reviewed, verified and no-overwrite. See
+docs/YOUTUBE.md for setup, limits and recovery.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored
 flag, and status. `(kind, tmdb_id)` is unique; a movie and series may have the

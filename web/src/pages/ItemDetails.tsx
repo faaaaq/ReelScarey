@@ -436,7 +436,11 @@ export function ItemInformation({
                         .join(" · ")}
                     </p>
                     <p>
-                      {file.origin === "existing" ? "Existing file" : "Release"}
+                      {file.origin === "existing"
+                        ? "Existing file"
+                        : file.origin === "youtube"
+                          ? "YouTube video"
+                          : "Release"}
                       : {file.release}
                     </p>
                     {file.origin === "existing" && (

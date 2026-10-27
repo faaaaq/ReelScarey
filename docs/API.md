@@ -1,5 +1,20 @@
 # REST API — media catalog, downloads, imports, automation and operations
 
+## YouTube sourcing
+
+Authenticated POST `/api/v1/youtube/inspect` accepts `{url}` for a bounded
+public YouTube video, playlist or channel inspection. GET/POST
+`/api/v1/youtube/collections` lists or creates a named custom collection.
+POST `/api/v1/youtube/reviews` accepts an explicit `video_id`, target
+(`custom`, `movie` or `episode`) and `subtitles` (`languages` and `automatic`);
+the server independently inspects the video and returns a short-lived review.
+POST `/api/v1/youtube/reviews/{id}/queue` applies that review. GET
+`/api/v1/youtube/jobs` and `/api/v1/youtube/files` list job and custom-library
+state. GET `/api/v1/youtube/jobs/{id}/import-review` returns the verified media
+and subtitle evidence and destinations; POST `.../import` submits that exact
+review. POST `.../cancel` cancels jobs before publication. Mutations require
+CSRF and same origin. See [YouTube sourcing](YOUTUBE.md) for limits and setup.
+
 ## Anime providers and release-order reviews
 
 Authenticated GET `/metadata/anime?query=...` searches public AniList identities.

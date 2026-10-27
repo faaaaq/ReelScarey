@@ -39,13 +39,19 @@ Plex/Jellyfin/Emby presets or custom templates, immutable future-import naming a
 reviewed batch video/subtitle reorganization. See [Anime and organization](docs/ANIME_ORGANIZATION.md)
 for main-root setup, safeguards and exact limits. Anime shows can opt into automatic
 single-episode searches using canonical season/episode numbers or explicitly saved
-absolute numbers and alternate titles. File mapping still requires review. See
+absolute numbers and alternate titles, or reviewed mapped singles and explicitly
+enabled specials and packs. File mapping still requires review. See
 [Anime automatic searches](docs/ANIME_SEARCH.md) and [remaining work](docs/REMAINING.md).
 AniList identities and reviewed release-order mappings can cover separate cours
 and specials without changing canonical TMDb episodes. TMDb episode-group proposals
 join exact saved episode IDs. Reviewed manual packs can span seasons through
 separate files, with immutable order history and mandatory import review. See
 [Anime providers and episode orders](docs/ANIME_PROVIDER_ORDERS.md).
+
+YouTube source inspection supports explicit video selection from public channels
+and playlists, mapped to existing movies/episodes or named custom collections.
+Selected creator or automatic subtitles are reviewed and imported as VTT sidecars
+with the video. See [YouTube sourcing](docs/YOUTUBE.md) for setup and limits.
 
 Not implemented: replacement/upgrade imports, audio-language verification,
 or full production hardening. Automation starts paused and defaults to

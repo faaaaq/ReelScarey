@@ -28,37 +28,47 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/settings"
 	"github.com/faaaaq/ReelScarey/internal/subtitle"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
+	"github.com/faaaaq/ReelScarey/internal/youtube"
 )
 
 type Server struct {
-	db            *sql.DB
-	config        config.Config
-	logger        *slog.Logger
-	settings      *settings.Store
-	library       *library.Store
-	version       string
-	started       time.Time
-	auth          *auth.Service
-	metadata      *metadata.Service
-	transfer      *transfer.Service
-	automation    *automation.Service
-	subtitle      *subtitle.Service
-	operations    *operations.Service
-	organization  *organization.Service
-	animeProvider metadata.AnimeProvider
+	db               *sql.DB
+	config           config.Config
+	logger           *slog.Logger
+	settings         *settings.Store
+	library          *library.Store
+	version          string
+	started          time.Time
+	auth             *auth.Service
+	metadata         *metadata.Service
+	transfer         *transfer.Service
+	automation       *automation.Service
+	subtitle         *subtitle.Service
+	operations       *operations.Service
+	organization     *organization.Service
+	animeProvider    metadata.AnimeProvider
+	youtube          *youtube.Store
+	youtubeInspector YouTubeInspector
 }
 
 type Dependencies struct {
-	Auth          *auth.Service
-	Metadata      *metadata.Service
-	Transfer      *transfer.Service
-	Automation    *automation.Service
-	Subtitle      *subtitle.Service
-	AnimeProvider metadata.AnimeProvider
+	Auth             *auth.Service
+	Metadata         *metadata.Service
+	Transfer         *transfer.Service
+	Automation       *automation.Service
+	Subtitle         *subtitle.Service
+	AnimeProvider    metadata.AnimeProvider
+	YouTubeInspector YouTubeInspector
+}
+
+type YouTubeInspector interface {
+	Inspect(context.Context, string) (youtube.Inspection, error)
 }
 
 func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string, deps Dependencies) http.Handler {
 	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle}
+	s.youtube = youtube.NewStore(db)
+	s.youtubeInspector = deps.YouTubeInspector
 	s.operations = operations.New(db, cfg)
 	s.organization = organization.New(db, cfg)
 	s.animeProvider = deps.AnimeProvider
@@ -116,6 +126,15 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/subtitles/files/{id}/{action}", method(http.MethodPost, s.subtitleFileAction))
 	mux.HandleFunc("/api/v1/subtitles/candidates/{id}/download", method(http.MethodPost, s.subtitleDownload))
 	mux.HandleFunc("/api/v1/automation", s.automationSettings)
+	mux.HandleFunc("/api/v1/youtube/inspect", method(http.MethodPost, s.youtubeInspect))
+	mux.HandleFunc("/api/v1/youtube/collections", s.youtubeCollections)
+	mux.HandleFunc("/api/v1/youtube/reviews", method(http.MethodPost, s.youtubeReview))
+	mux.HandleFunc("/api/v1/youtube/reviews/{id}/queue", method(http.MethodPost, s.youtubeQueue))
+	mux.HandleFunc("/api/v1/youtube/jobs", method(http.MethodGet, s.youtubeJobs))
+	mux.HandleFunc("/api/v1/youtube/jobs/{id}/import-review", method(http.MethodGet, s.youtubeImportReview))
+	mux.HandleFunc("/api/v1/youtube/jobs/{id}/import", method(http.MethodPost, s.youtubeImport))
+	mux.HandleFunc("/api/v1/youtube/jobs/{id}/cancel", method(http.MethodPost, s.youtubeCancel))
+	mux.HandleFunc("/api/v1/youtube/files", method(http.MethodGet, s.youtubeFiles))
 	mux.HandleFunc("/api/v1/automation/run", method(http.MethodPost, s.automationRequest))
 	mux.HandleFunc("/api/v1/automation/runs", method(http.MethodGet, s.automationRuns))
 	mux.HandleFunc("/api/v1/automation/runs/{id}", method(http.MethodGet, s.automationResults))

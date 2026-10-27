@@ -406,7 +406,7 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard)
 		}
 	}
 	var active int
-	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM media_files WHERE movie_id=?)`, v.MovieID, v.MovieID).Scan(&active); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM media_files WHERE movie_id=?)+(SELECT COUNT(*) FROM youtube_jobs WHERE media_id=? AND target_kind='movie' AND state NOT IN ('completed','cancelled','failed'))`, v.MovieID, v.MovieID, v.MovieID).Scan(&active); e != nil {
 		return Job{}, false, e
 	}
 	if active > 0 {

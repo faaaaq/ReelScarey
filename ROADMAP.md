@@ -264,6 +264,14 @@ and deferred IPTorrents/XSpeeds account testing are retained.
   container acceptance pass; the preview is upgraded after a verified backup.
   See [validation](docs/VALIDATION.md) for limits.
 
+## 18 — YouTube sourcing and subtitle sidecars
+- [x] Review public channel, playlist and video identities; explicitly select an
+  existing movie/episode or a custom collection without inferring a match.
+- [x] Acquire a single selected video and requested creator or automatic VTT
+  captions, with durable review, target reservations and no-overwrite import.
+- [x] Exercise both XG test sources and a real XG DAYS video with English VTT in
+  disposable Linux storage. See [validation](docs/VALIDATION.md) for limitations.
+
 ## Validation record
 
 2026-10-26 Anime identities/orders: 114 interface tests, full backend/race/static

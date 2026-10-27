@@ -437,7 +437,7 @@ func (s *Service) RegisterDiscovered(ctx context.Context, id string, in Existing
 func existingTargetFree(ctx context.Context, tx *sql.Tx, id int64, kind string, targets []TVTarget) error {
 	var count int
 	if kind == "movie" {
-		if e := tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM media_files WHERE movie_id=?)+(SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))`, id, id).Scan(&count); e != nil {
+		if e := tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM media_files WHERE movie_id=?)+(SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM youtube_jobs WHERE media_id=? AND target_kind='movie' AND state NOT IN ('completed','cancelled','failed'))`, id, id, id).Scan(&count); e != nil {
 			return e
 		}
 		if count > 0 {
@@ -449,7 +449,7 @@ func existingTargetFree(ctx context.Context, tx *sql.Tx, id int64, kind string, 
 		if e := validateTVTarget(ctx, tx, id, t); e != nil {
 			return e
 		}
-		if e := tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM episode_files WHERE episode_id=?)+(SELECT COUNT(*) FROM episode_downloads WHERE episode_id=?)`, t.EpisodeID, t.EpisodeID).Scan(&count); e != nil {
+		if e := tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM episode_files WHERE episode_id=?)+(SELECT COUNT(*) FROM episode_downloads WHERE episode_id=?)+(SELECT COUNT(*) FROM youtube_jobs WHERE episode_id=? AND target_kind='episode' AND state NOT IN ('completed','cancelled','failed'))`, t.EpisodeID, t.EpisodeID, t.EpisodeID).Scan(&count); e != nil {
 			return e
 		}
 		if count > 0 {

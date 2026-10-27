@@ -94,13 +94,11 @@ separate.
 
 ## Quality, subtitles and additional clients
 
-- [ ] YouTube sourcing for applicable catalog entries and custom items that do
-  not have a conventional movie/TV provider identity. Include reviewed channel,
-  series/playlist and individual-video selection, durable source identity,
-  metadata/organization choices and the existing verified import safeguards.
-  User-requested future test cases are XG's Xtra XG and XG Days. This follows the
-  current mapped Anime automation milestone; no YouTube download or account
-  testing has been performed yet.
+- [x] Reviewed YouTube source inspection and individual-video acquisition for
+  existing movies/episodes and custom collections, with selected VTT subtitles.
+  See [YouTube sourcing](YOUTUBE.md) and [validation](VALIDATION.md) for limits.
+- [ ] Automatic channel/playlist subscriptions, bulk video acquisition, richer
+  subtitle selection and native Windows networking acceptance remain future work.
 - [ ] Verified audio-language inspection and richer source/codec scoring; release
   language text currently supplies selection evidence only.
 - [ ] Additional subtitle providers, ASS-style provider downloads, subtitle

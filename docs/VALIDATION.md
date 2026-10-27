@@ -1,4 +1,32 @@
-# Validation record — 2026-10-26
+# Validation record — 2026-10-27
+
+## YouTube sourcing and subtitle sidecars (0.20 development)
+
+- Clean frontend install, format/type checks and all 122 UI tests pass. Full Go
+  tests, vet and native build pass. Linux full race checks and targeted race
+  checks for the final YouTube/transfer/API changes pass; the opt-in generated
+  video and VTT fixture uses a subprocess and real FFprobe.
+- Generated tests cover custom, movie and episode targets, exact review evidence,
+  subtitle registration, missing language reporting, reservation conflicts,
+  refusal to replace foreign files, changed sources, symlink/overlapping roots,
+  verified staging cleanup and recovery after a subtitle conflict and reopen.
+- Public source metadata and creator-provided English VTT were retrieved for
+  XTRA XG #84 (`boKAdg0BS-c`) and XG DAYS #30 (`limOfz2srCk`) without account
+  credentials. In a disposable Linux container the XG DAYS video and English
+  VTT completed the actual reviewed acquisition and import. A subsequent test
+  confirmed acquisition writes to the dedicated staging volume while the
+  ordinary `/downloads` mount is read-only. Test containers and media were removed.
+- The rebuilt container passes startup/authentication and restart persistence
+  checks with a read-only root and download mount. Its pinned yt-dlp package is
+  SHA-256 verified. Windows native app startup works, but its yt-dlp child received
+  `WinError 10013` connecting to YouTube on this host; public inspection through
+  that app returned 502. PowerShell HTTPS and Linux container access succeeded.
+  No firewall or operating-system security settings were changed. Windows native
+  YouTube network acceptance remains unresolved; the existing preview remains 0.19.
+- The 0.20 Linux amd64/arm64 and Windows amd64 packages were built with the
+  YouTube guide and their checksums verified. The extracted Windows package passes
+  disposable startup, backup/restore and recovery smoke checks; arm64 was
+  cross-built but not run. Packages are retained in `dist/private-0.20.0-final`.
 
 ## Mapped Anime automation (0.19 development)
 
@@ -37,6 +65,12 @@
   npm audit reports zero vulnerabilities. govulncheck v1.9.0 reports none in
   called code or imported packages, with one advisory elsewhere in a required
   module. Verified private packages are retained in `dist/private-0.19.0`.
+- Hosted workflow 40443035881 passed every application, real-client, package and
+  container step. Its final artifact upload failed because the account's GitHub
+  artifact storage quota is full. With owner approval, the oldest hosted 0.8
+  artifact was removed after verifying local copies. The retry passed all
+  application steps but the upload again hit quota; GitHub reports 6–12 hours
+  for usage recalculation. Verified 0.19 packages remain available locally.
 
 ## Anime provider identity and orders (0.18 development)
 

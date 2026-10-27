@@ -31,6 +31,10 @@ func sanitize(v string, limit int) string {
 	}
 	return v
 }
+
+// SafeComponent applies the same portable filename rules to user-visible
+// source collections without allowing a title to introduce path components.
+func SafeComponent(v string, limit int) string { return sanitize(v, limit) }
 func validateTemplates(l Library) error {
 	for n, v := range []string{l.MovieTemplate, l.SeriesTemplate, l.EpisodeTemplate} {
 		if len(v) < 1 || len(v) > 600 {

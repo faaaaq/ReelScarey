@@ -2,8 +2,8 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { setTimeout as delay } from 'node:timers/promises'
-const base = 'http://127.0.0.1:8787'
-const container = 'reelscarey-ci'
+const base = process.env.REELSCAREY_SMOKE_URL ?? 'http://127.0.0.1:8787'
+const container = process.env.REELSCAREY_SMOKE_CONTAINER ?? 'reelscarey-ci'
 async function ready() {
   for (let i = 0; i < 100; i++) {
     try { if ((await fetch(`${base}/readyz`, { signal: AbortSignal.timeout(1000) })).ok) return } catch { /* Wait for startup. */ }
@@ -25,6 +25,8 @@ const session = await setup.json()
 const headers = { Cookie: cookie, 'X-CSRF-Token': session.csrf_token, 'Content-Type': 'application/json', Origin: base }
 const system = await (await fetch(`${base}/api/v1/system`, { headers })).json()
 assert.equal(system.capabilities.subtitles, true)
+execFileSync('docker', ['exec', container, 'test', '-w', '/youtube-staging'])
+assert.match(execFileSync('docker', ['exec', container, '/opt/reelscarey-yt-dlp/bin/yt-dlp', '--version'], { encoding: 'utf8' }), /2026\.10\.21/)
 const subtitles = await (await fetch(`${base}/api/v1/subtitles/preferences`, { headers })).json()
 assert.equal(subtitles.preferences.enabled, false)
 assert.deepEqual(subtitles.preferences.tracks, [{ language: 'en', variant: 'full' }, { language: 'en', variant: 'signs' }, { language: 'en', variant: 'forced' }])

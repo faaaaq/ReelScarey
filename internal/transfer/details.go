@@ -76,7 +76,7 @@ func (s *Service) Details(ctx context.Context, id int64, page int) (ItemDetails,
 	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(size_bytes),0) FROM media_files WHERE movie_id=? OR series_id=?`, id, id).Scan(&out.FileCount, &out.TotalSize); e != nil {
 		return out, e
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT f.id,f.relative_path,f.size_bytes,f.imported_at,COALESCE(f.download_id,''),COALESCE(d.title,f.source_name),f.probe_json,COALESCE((SELECT group_concat(label,', ') FROM (SELECT printf('S%02dE%02d',s.number,e.number) label FROM episode_files ef JOIN episodes e ON e.id=ef.episode_id JOIN seasons s ON s.id=e.season_id WHERE ef.media_file_id=f.id ORDER BY s.number,e.number)),''),f.origin FROM media_files f LEFT JOIN downloads d ON d.id=f.download_id WHERE f.movie_id=? OR f.series_id=? ORDER BY f.relative_path LIMIT 50 OFFSET ?`, id, id, (page-1)*50)
+	rows, e := s.db.QueryContext(ctx, `SELECT f.id,f.relative_path,f.size_bytes,f.imported_at,COALESCE(f.download_id,''),COALESCE(d.title,f.source_name),f.probe_json,COALESCE((SELECT group_concat(label,', ') FROM (SELECT printf('S%02dE%02d',s.number,e.number) label FROM episode_files ef JOIN episodes e ON e.id=ef.episode_id JOIN seasons s ON s.id=e.season_id WHERE ef.media_file_id=f.id ORDER BY s.number,e.number)),''),CASE WHEN EXISTS(SELECT 1 FROM youtube_files yf WHERE yf.media_file_id=f.id) THEN 'youtube' ELSE f.origin END FROM media_files f LEFT JOIN downloads d ON d.id=f.download_id WHERE f.movie_id=? OR f.series_id=? ORDER BY f.relative_path LIMIT 50 OFFSET ?`, id, id, (page-1)*50)
 	if e != nil {
 		return out, e
 	}

@@ -63,6 +63,10 @@ jobs:
         run: go test -race ./internal/organization -run TestRealOrganization -count=1 -v -timeout=2m
         env:
           REELSCAREY_LIVE_ORGANIZATION: '1'
+      - name: Reviewed YouTube video and subtitle import with generated media
+        run: go test -race ./internal/youtube -run TestRealYouTubeGeneratedFixture -count=1 -v -timeout=2m
+        env:
+          REELSCAREY_LIVE_YOUTUBE_FIXTURE: '1'
       - name: Install isolated SABnzbd test runtime
         run: |
           mkdir -p "$RUNNER_TEMP/reelscarey-sab"
@@ -82,31 +86,31 @@ jobs:
       - run: node scripts/smoke.mjs
       - name: Build private installation packages
         run: |
-          go run ./scripts/package 0.19.0-dev dist/private-0.19.0
-          cd dist/private-0.19.0
+          go run ./scripts/package 0.20.0-dev dist/private-0.20.0
+          cd dist/private-0.20.0
           sha256sum --check SHA256SUMS
           mkdir unpacked
-          tar -xzf reelscarey-0.19.0-dev-linux-amd64.tar.gz -C unpacked
-          test "$(unpacked/reelscarey version)" = '0.19.0-dev'
+          tar -xzf reelscarey-0.20.0-dev-linux-amd64.tar.gz -C unpacked
+          test "$(unpacked/reelscarey version)" = '0.20.0-dev'
           cd ../..
-          node scripts/smoke.mjs dist/private-0.19.0/unpacked/reelscarey
+          node scripts/smoke.mjs dist/private-0.20.0/unpacked/reelscarey
       - name: Build and smoke-test the container
         shell: bash
         run: |
           set -euo pipefail
           docker compose config --quiet
           docker build -t reelscarey:ci .
-          docker run -d --name reelscarey-ci --memory=512m --cpus=1 --pids-limit=256 -p 127.0.0.1:8787:8787 reelscarey:ci
+          docker run -d --name reelscarey-ci --memory=512m --cpus=1 --pids-limit=256 --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m --tmpfs /downloads:ro,nosuid,noexec,size=16m -p 127.0.0.1:8787:8787 reelscarey:ci
           trap 'docker logs reelscarey-ci; docker rm -fv reelscarey-ci' EXIT
           node scripts/container-smoke.mjs
           docker stats --no-stream --format 'Container resources: {{.MemUsage}}, {{.CPUPerc}}, {{.PIDs}}' reelscarey-ci
       - name: Retain private packages and checksums
         uses: actions/upload-artifact@v6.0.0
         with:
-          name: reelscarey-private-0.19.0
+          name: reelscarey-private-0.20.0
           path: |
-            dist/private-0.19.0/*.tar.gz
-            dist/private-0.19.0/*.zip
-            dist/private-0.19.0/SHA256SUMS
+            dist/private-0.20.0/*.tar.gz
+            dist/private-0.20.0/*.zip
+            dist/private-0.20.0/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
