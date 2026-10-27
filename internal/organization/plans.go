@@ -38,7 +38,7 @@ func (s *Service) episodes(ctx context.Context, q query, fileID int64) ([]Episod
 }
 func idle(ctx context.Context, q query, mediaID, fileID int64) error {
 	var n int
-	e := q.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM subtitle_jobs WHERE media_file_id=? AND (lease_until>=unixepoch() OR (requested=1 AND state IN ('queued','running','retrying','waiting_provider'))))+(SELECT COUNT(*) FROM subtitle_imports WHERE media_file_id=? AND phase<>'committed')`, mediaID, fileID, fileID).Scan(&n)
+	e := q.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM subtitle_jobs WHERE media_file_id=? AND (lease_until>=unixepoch() OR (requested=1 AND state IN ('queued','running','retrying','waiting_provider'))))+(SELECT COUNT(*) FROM subtitle_imports WHERE media_file_id=? AND phase<>'committed')+(SELECT COUNT(*) FROM youtube_jobs WHERE media_id=? AND state NOT IN ('completed','cancelled','failed'))+(SELECT COUNT(*) FROM youtube_imports i JOIN youtube_jobs j ON j.id=i.job_id WHERE j.media_id=? AND i.phase<>'committed')`, mediaID, fileID, fileID, mediaID, mediaID).Scan(&n)
 	if e != nil {
 		return e
 	}
@@ -301,12 +301,28 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 	}
 	defer tx.Rollback()
 	if p.Phase == "planned" {
-		if e = s.validate(ctx, root, tx, p, false); e != nil {
+		if p.FolderMove != nil {
+			src, err := folderExists(root, p.FolderMove.Source)
+			if err != nil {
+				return p, err
+			}
+			dst, err := folderExists(root, p.FolderMove.Destination)
+			if err != nil {
+				return p, err
+			}
+			if src == dst {
+				return p, problem("source_changed", "The reviewed folder locations changed.")
+			}
+			e = s.validateFolder(ctx, root, tx, p, !src)
+		} else {
+			e = s.validate(ctx, root, tx, p, false)
+		}
+		if e != nil {
 			return p, e
 		}
 	}
 	var count int
-	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state IN ('queued','running') AND id<>?`, id).Scan(&count); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE (state IN ('queued','running') OR (state='failed' AND json_extract(snapshot,'$.folder_move') IS NOT NULL AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe'))) AND id<>?`, id).Scan(&count); e != nil {
 		return p, e
 	}
 	if count != 0 {
@@ -447,6 +463,9 @@ func (s *Service) Tick(ctx context.Context) error {
 	}
 	e = s.execute(ctx, &p)
 	if e != nil {
+		if p.FolderMove != nil && s.folderStillAtSource(p) {
+			_ = s.savePhase(context.WithoutCancel(ctx), &p, "failed_safe")
+		}
 		message := "Organization stopped safely. Original files and verified outputs were retained; review the failure before retrying."
 		var problem *Error
 		if errors.As(e, &problem) {

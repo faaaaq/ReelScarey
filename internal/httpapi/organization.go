@@ -129,6 +129,7 @@ func (s *Server) organizationPlans(w http.ResponseWriter, r *http.Request) {
 			FileIDs       []int64 `json:"file_ids"`
 			MediaID       int64   `json:"media_id"`
 			TargetLibrary string  `json:"target_library"`
+			WholeFolder   bool    `json:"whole_folder"`
 		}
 		if !decodeJSON(w, r, &in) {
 			return
@@ -137,7 +138,12 @@ func (s *Server) organizationPlans(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		var out organization.Plan
 		var e error
-		if in.MediaID != 0 && len(in.FileIDs) == 0 {
+		if in.WholeFolder && (in.MediaID == 0 || len(in.FileIDs) != 0) {
+			fail(w, 400, "invalid_selection", "Choose one title for a whole-folder review.")
+			return
+		} else if in.WholeFolder {
+			out, e = s.organization.PreviewFolder(ctx, in.MediaID, in.TargetLibrary)
+		} else if in.MediaID != 0 && len(in.FileIDs) == 0 {
 			out, e = s.organization.PreviewTitle(ctx, in.MediaID, in.TargetLibrary)
 		} else if in.MediaID != 0 {
 			fail(w, 400, "invalid_selection", "Choose a title or individual files, not both.")

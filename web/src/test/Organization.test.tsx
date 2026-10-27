@@ -154,6 +154,53 @@ async function selectFirstAndReview() {
 }
 
 describe("Reviewed library organization", () => {
+  it("shows all folder contents before a whole-folder move", async () => {
+    const { fetch } = setup((url, options, fixture) => {
+      if (url.endsWith("/organization/plans") && options?.method === "POST")
+        return Response.json({
+          ...fixture.plan([41]),
+          folder_move: {
+            source: "Movies/First",
+            destination: "Anime/Movies/First",
+            inventory: {
+              directories: [
+                { path: "Movies/First" },
+                { path: "Movies/First/Extras" },
+              ],
+              files: [{ source: "Movies/First/poster.jpg", size_bytes: 123 }],
+            },
+          },
+        });
+    });
+    mount("/organization?media_id=1");
+    const button = await screen.findByRole("button", {
+      name: "Review entire folder and extras",
+    });
+    await userEvent.selectOptions(
+      screen.getByLabelText("Destination collection"),
+      "anime",
+    );
+    await userEvent.click(button);
+    const review = await screen.findByRole("region", {
+      name: "Organization review",
+    });
+    expect(
+      within(review).getByText("Movies/First/poster.jpg"),
+    ).toBeInTheDocument();
+    expect(within(review).getByText("Movies/First/Extras")).toBeInTheDocument();
+    const call = fetch.mock.calls.find(
+      ([url, options]) =>
+        url.endsWith("/organization/plans") && options?.method === "POST",
+    );
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+      media_id: 1,
+      target_library: "anime",
+      whole_folder: true,
+    });
+    expect(fetch.mock.calls.some(([url]) => url.endsWith("/apply"))).toBe(
+      false,
+    );
+  });
   it("reviews every registered file for a title only after choosing a destination", async () => {
     const { fetch } = setup((url, options, fixture) => {
       if (url.endsWith("/organization/plans") && options?.method === "POST")

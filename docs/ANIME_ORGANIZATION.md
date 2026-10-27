@@ -95,6 +95,20 @@ the registered set changes before commit. Larger titles can be moved in explicit
 batches. This moves registered videos and recognized subtitle companions, not
 unregistered files, artwork or unrelated extras.
 
+Alternatively, choose **Review entire folder and extras** to move one title
+directory with its existing names, nested extras, artwork and empty directories.
+The review lists every directory and file, hashes file contents, refuses links,
+shared registered titles and existing destinations, and rechecks the inventory
+before committing paths. This uses a Linux atomic no-replace rename and requires
+both collections to reside on the same filesystem. Titles whose registered files
+span separate title folders need individual file reviews. The inventory is
+limited to 2,000 entries and the review has a 30-second budget.
+
+If a restart interrupts a rename, the worker checks the saved directory identity
+and complete inventory before switching catalog references. A failed move whose
+location cannot be verified keeps other media work paused until the saved job is
+resolved. No owner media is used in automated tests.
+
 The durable worker journals owned stages/output identities, prefers a hardlink,
 otherwise copies to a verified stage, and publishes with no-replace hardlinks.
 It verifies bytes before atomically switching all media/subtitle references and
@@ -113,9 +127,8 @@ failed job, with server verification. A changed review needs a fresh plan.
 There is no batch cancel/rollback API once queued. Failed operations retain valid
 canonical files and journal-owned stages/outputs for review rather than deleting
 uncertain data. Matching-stem NFO/artwork/attachments or unrelated registered
-sidecar locations block the operation. Unknown extras and empty folders remain;
-this milestone organizes registered videos and recognized subtitle companions,
-not whole arbitrary directory trees. Case-only renames are refused. Filesystems
+sidecar locations block the individual-file operation. Whole-folder reviews have
+the separate scope and limits above. Case-only renames are refused. Filesystems
 without safe hardlink publication cannot perform the operation. External programs
 modifying files are outside the app's process lock; any detected change stops
 work and retains uncertain files. Large copies require sufficient free space.
@@ -136,7 +149,8 @@ work and retains uncertain files. Large copies require sufficient free space.
 - GET/POST `/api/v1/organization/plans`: last 20 saved reviews/jobs; POST accepts
   explicit file_ids and optional target_library, or media_id and a required
   target_library for a complete registered-title review (1–100 files). The two
-  selections cannot be combined. Reviews have a 30-second preview budget.
+  selections cannot be combined. Add `whole_folder: true` to review the entire
+  title directory. Reviews have a 30-second preview budget.
 - GET `/api/v1/organization/plans/{id}`; POST its `/apply` with `{}` queues or
   resumes the exact saved job. There is no select-all-matching endpoint.
 - Existing-library POST accepts optional library_key; GET includes configured

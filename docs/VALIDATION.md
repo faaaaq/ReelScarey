@@ -9,7 +9,20 @@
   tests and the production build passed. A Docker image built with its Linux
   test suite, and a disposable read-only-root container passed health and setup
   state persistence across restart. Its container and temporary volumes were
-  removed. Whole-folder moves and unrelated extras remain unimplemented.
+  removed. At that point whole-folder moves and unrelated extras were not yet
+  implemented; the following section records later same-filesystem support.
+
+## Same-filesystem whole-folder moves
+
+- Linux tests review and move a disposable title folder with video, registered
+  subtitles, artwork, nested extras and an empty directory. They verify saved
+  paths, preserved seeding links, collision and changed-inventory refusal, and
+  recovery after an interrupted rename. A changed moved folder keeps media work
+  fenced until recovery; a safe failure before rename releases the fence.
+- The full Docker build passed its frontend suite, Go tests and vet. Focused
+  Linux organization/API tests and organization race tests passed; a disposable
+  read-only-root container passed health and restart-persistence checks.
+  Cross-filesystem whole-folder moves remain unsupported.
 
 ## YouTube sourcing and subtitle sidecars (0.20 development)
 

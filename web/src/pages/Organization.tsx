@@ -53,6 +53,14 @@ type Plan = {
   files: Planned[];
   created_at: number;
   updated_at: number;
+  folder_move?: {
+    source: string;
+    destination: string;
+    inventory: {
+      directories: { path: string }[];
+      files: { source: string; size_bytes: number }[];
+    };
+  };
 };
 
 const templates = {
@@ -369,7 +377,7 @@ function Reorganize({ config }: { config: Config }) {
   useEffect(() => {
     if (plan?.state === "completed") files.reload();
   }, [plan?.state, files.reload]);
-  async function preview(wholeTitle = false) {
+  async function preview(wholeTitle = false, wholeFolder = false) {
     if (pending || (wholeTitle ? !mediaID || !target : !selected.length))
       return;
     setPending("preview");
@@ -385,7 +393,11 @@ function Reorganize({ config }: { config: Config }) {
         method: "POST",
         body: JSON.stringify(
           wholeTitle
-            ? { media_id: Number(mediaID), target_library: target }
+            ? {
+                media_id: Number(mediaID),
+                target_library: target,
+                ...(wholeFolder ? { whole_folder: true } : {}),
+              }
             : { file_ids: selected, target_library: target },
         ),
         signal: AbortSignal.any([
@@ -595,9 +607,8 @@ function Reorganize({ config }: { config: Config }) {
         {mediaID && (
           <>
             <p className="field-help">
-              Move all registered files for this title to the chosen collection
-              in one review (up to 100 files). Unregistered files and unrelated
-              extras are not moved.
+              Move registered files for this title in one review (up to 100
+              files), or choose an entire-folder review to include extras.
             </p>
             <Button
               variant="soft"
@@ -606,6 +617,18 @@ function Reorganize({ config }: { config: Config }) {
             >
               Review all files for this title
             </Button>{" "}
+            <Button
+              variant="soft"
+              disabled={!target || !!pending || running}
+              onClick={() => void preview(true, true)}
+            >
+              Review entire folder and extras
+            </Button>
+            <p className="field-help">
+              Moves the whole title folder with its existing names, including
+              artwork, unregistered files and empty folders. The source and
+              destination must be on the same filesystem.
+            </p>
           </>
         )}
         <Button
@@ -733,28 +756,56 @@ function Reorganize({ config }: { config: Config }) {
 }
 function PlanFiles({ plan }: { plan: Plan }) {
   return (
-    <ol className="organization-plan-files">
-      {plan.files.map((f) => (
-        <li key={f.media_file_id}>
-          <strong>
-            {f.title}
-            {f.unchanged ? " · unchanged" : ""}
-          </strong>
-          <div className="organization-path-change">
-            <code>{f.source}</code>
-            <span aria-label="to">→</span>
-            <code>{f.destination}</code>
-          </div>
-          {f.companions.map((c) => (
-            <div className="organization-path-change field-help" key={c.source}>
-              <code>{c.source}</code>
-              <span>→</span>
-              <code>{c.destination}</code>
+    <>
+      {plan.folder_move && (
+        <div>
+          <p>
+            Entire folder: <code>{plan.folder_move.source}</code> →{" "}
+            <code>{plan.folder_move.destination}</code>
+          </p>
+          <p>
+            Review every directory and file below. All contents move together.
+          </p>
+          <ul>
+            {plan.folder_move.inventory.directories.map((d) => (
+              <li key={d.path}>
+                Folder: <code>{d.path}</code>
+              </li>
+            ))}
+            {plan.folder_move.inventory.files.map((f) => (
+              <li key={f.source}>
+                <code>{f.source}</code> · {bytes(f.size_bytes)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <ol className="organization-plan-files">
+        {plan.files.map((f) => (
+          <li key={f.media_file_id}>
+            <strong>
+              {f.title}
+              {f.unchanged ? " · unchanged" : ""}
+            </strong>
+            <div className="organization-path-change">
+              <code>{f.source}</code>
+              <span aria-label="to">→</span>
+              <code>{f.destination}</code>
             </div>
-          ))}
-        </li>
-      ))}
-    </ol>
+            {f.companions.map((c) => (
+              <div
+                className="organization-path-change field-help"
+                key={c.source}
+              >
+                <code>{c.source}</code>
+                <span>→</span>
+                <code>{c.destination}</code>
+              </div>
+            ))}
+          </li>
+        ))}
+      </ol>
+    </>
   );
 }
 

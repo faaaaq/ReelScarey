@@ -101,6 +101,12 @@ type Plan struct {
 	Updated        int64         `json:"updated_at"`
 	Root           string        `json:"root"`
 	Phase          string        `json:"phase"`
+	FolderMove     *FolderMove   `json:"folder_move,omitempty"`
+}
+type FolderMove struct {
+	Source      string          `json:"source"`
+	Destination string          `json:"destination"`
+	Inventory   folderInventory `json:"inventory"`
 }
 type Service struct {
 	db   *sql.DB

@@ -18,7 +18,7 @@ import (
 // has reconciled its durable journal. Failed plans leave a valid canonical copy.
 func EnsureMediaAvailable(ctx context.Context, db *sql.DB) error {
 	var n int
-	if e := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state IN ('queued','running')`).Scan(&n); e != nil {
+	if e := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state IN ('queued','running') OR (state='failed' AND json_extract(snapshot,'$.folder_move') IS NOT NULL AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe'))`).Scan(&n); e != nil {
 		return e
 	}
 	if n != 0 {
@@ -41,6 +41,9 @@ func allFiles(p Plan) []Companion {
 	return out
 }
 func (s *Service) execute(ctx context.Context, p *Plan) error {
+	if p.FolderMove != nil {
+		return s.executeFolder(ctx, p)
+	}
 	root, _, e := s.openRoot(p.Root)
 	if e != nil {
 		return e

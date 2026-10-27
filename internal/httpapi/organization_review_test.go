@@ -176,6 +176,28 @@ func TestReviewOrganizationFileFiltersAreLiteralAndBounded(t *testing.T) {
 	}
 }
 
+func TestFolderReviewAPIRequiresExplicitTitleAndShowsExtras(t *testing.T) {
+	f := newOrganizationReviewFixture(t)
+	f.movie(t, 1, "Review film", "Movies/Film/film.mkv")
+	if err := os.WriteFile(filepath.Join(f.cfg.MediaDir, "Movies", "Film", "poster.jpg"), []byte("art"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{`{"whole_folder":true}`, `{"whole_folder":true,"media_id":1,"file_ids":[1],"target_library":"anime"}`} {
+		out := request(f.handler, "POST", "/api/v1/organization/plans", body, &f.session, true)
+		if out.Code != 400 {
+			t.Fatal("invalid folder selection accepted", out.Code, out.Body)
+		}
+	}
+	out := request(f.handler, "POST", "/api/v1/organization/plans", `{"whole_folder":true,"media_id":1,"target_library":"anime"}`, &f.session, true)
+	var p organization.Plan
+	if out.Code != 201 || json.Unmarshal(out.Body.Bytes(), &p) != nil || p.FolderMove == nil || !strings.Contains(out.Body.String(), "poster.jpg") {
+		t.Fatal("folder review omitted extras", out.Code, out.Body)
+	}
+	if _, err := os.Stat(filepath.Join(f.cfg.MediaDir, "Movies", "Film", "poster.jpg")); err != nil {
+		t.Fatal("review moved files", err)
+	}
+}
+
 func TestReviewOrganizationPreviewQueuesBeforeChangingFilesAndRetainsHistory(t *testing.T) {
 	f := newOrganizationReviewFixture(t)
 	source := "Movies/Original/first.mkv"

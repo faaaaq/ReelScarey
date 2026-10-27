@@ -61,7 +61,8 @@ collection, empty library_key restoring section inheritance. GET
 `/organization/plans` lists recent saved reviews/jobs or previews explicit 1–100
 file_ids and optional target_library. Alternatively, supply media_id and a required
 target_library to review all 1–100 registered files for that title; file_ids and
-media_id cannot be combined. GET `/organization/plans/{id}` reads it;
+media_id cannot be combined. Set whole_folder to true to review the entire
+title folder and extras (same-filesystem Linux moves only). GET `/organization/plans/{id}` reads it;
 POST `/organization/plans/{id}/apply` with `{}` queues/resumes that exact review.
 All paths above have the `/api/v1` prefix. Preview reads and verifies files but
 moves no media; apply runs a durable worker. Mutations require auth/CSRF/origin.
