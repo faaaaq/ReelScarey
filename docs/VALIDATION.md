@@ -9,7 +9,8 @@
 - Generated tests cover custom, movie and episode targets, exact review evidence,
   subtitle registration, missing language reporting, reservation conflicts,
   refusal to replace foreign files, changed sources, symlink/overlapping roots,
-  verified staging cleanup and recovery after a subtitle conflict and reopen.
+  verified staging cleanup, recovery after a subtitle conflict and reopen, and
+  reorganization of YouTube video and subtitle provenance together.
 - Public source metadata and creator-provided English VTT were retrieved for
   XTRA XG #84 (`boKAdg0BS-c`) and XG DAYS #30 (`limOfz2srCk`) without account
   credentials. In a disposable Linux container the XG DAYS video and English
@@ -26,7 +27,7 @@
 - The 0.20 Linux amd64/arm64 and Windows amd64 packages were built with the
   YouTube guide and their checksums verified. The extracted Windows package passes
   disposable startup, backup/restore and recovery smoke checks; arm64 was
-  cross-built but not run. Packages are retained in `dist/private-0.20.0-final2`.
+  cross-built but not run. Packages are retained in `dist/private-0.20.0-final3`.
 - Hosted workflow 40479132232 for the initial YouTube implementation passed
   all application, generated-media, package and read-only-container checks. Its
   final artifact upload still failed on GitHub storage quota after the approved

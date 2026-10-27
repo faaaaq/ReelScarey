@@ -24,6 +24,8 @@ publication; uncertain partial acquisition files are retained for inspection.
 If a copy is interrupted before its staged phase is recorded, an existing
 partial stage is left untouched and requires operator review rather than an
 automatic retry. Fully recorded stages can be verified and resumed.
+When a registered catalog video is reorganized, its YouTube provenance and
+subtitle journal paths move atomically with the video and sidecar references.
 
 The container image includes a pinned, checksum-verified yt-dlp release and
 FFmpeg, with a dedicated writable YouTube staging volume. The existing downloads

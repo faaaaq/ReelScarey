@@ -91,12 +91,24 @@ func (s *Service) execute(ctx context.Context, p *Plan) error {
 				if _, e = tx.ExecContext(ctx, `UPDATE media_files SET relative_path=? WHERE id=? AND relative_path=? AND sha256=?`, v.Destination, v.FileID, v.Source, v.SHA); e != nil {
 					return e
 				}
+				if _, e = tx.ExecContext(ctx, `UPDATE youtube_imports SET destination_path=? WHERE phase='committed' AND destination_path=? AND job_id IN (SELECT job_id FROM youtube_files WHERE media_file_id=?)`, v.Destination, v.Source, v.FileID); e != nil {
+					return e
+				}
+				if _, e = tx.ExecContext(ctx, `UPDATE youtube_files SET relative_path=? WHERE media_file_id=? AND relative_path=? AND sha256=?`, v.Destination, v.FileID, v.Source, v.SHA); e != nil {
+					return e
+				}
 			}
 			for _, c := range v.Companions {
 				if _, e = tx.ExecContext(ctx, `UPDATE subtitles SET relative_path=? WHERE media_file_id=? AND relative_path=?`, c.Destination, v.FileID, c.Source); e != nil {
 					return e
 				}
 				if _, e = tx.ExecContext(ctx, `UPDATE subtitle_imports SET destination=? WHERE media_file_id=? AND destination=? AND phase='committed'`, c.Destination, v.FileID, c.Source); e != nil {
+					return e
+				}
+				if _, e = tx.ExecContext(ctx, `UPDATE youtube_subtitle_imports SET destination_path=? WHERE phase='committed' AND destination_path=? AND job_id IN (SELECT job_id FROM youtube_files WHERE media_file_id=?)`, c.Destination, c.Source, v.FileID); e != nil {
+					return e
+				}
+				if _, e = tx.ExecContext(ctx, `UPDATE youtube_subtitle_files SET relative_path=? WHERE relative_path=? AND job_id IN (SELECT job_id FROM youtube_files WHERE media_file_id=?)`, c.Destination, c.Source, v.FileID); e != nil {
 					return e
 				}
 			}

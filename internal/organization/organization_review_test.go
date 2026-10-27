@@ -343,6 +343,66 @@ func TestReviewReorganizationPreservesHardlinkedDownloadAndSubtitleReferences(t 
 	}
 }
 
+func TestReorganizationUpdatesYouTubeVideoAndSubtitleProvenance(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	source := "Movies/Original/video.mkv"
+	body := []byte("owned video")
+	f.movie(t, 1, source, body)
+	subSource := "Movies/Original/video.en.vtt"
+	subBytes := []byte("WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nOwned\n")
+	if err := os.WriteFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(subSource)), subBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	videoHash := sha256.Sum256(body)
+	subHash := sha256.Sum256(subBytes)
+	videoSHA := hex.EncodeToString(videoHash[:])
+	subSHA := hex.EncodeToString(subHash[:])
+	queries := []struct {
+		q    string
+		args []any
+	}{
+		{`INSERT INTO youtube_reviews(id,video_id,video_title,channel,target_kind,media_id,target_snapshot,expires_at) VALUES('r','abcdefghijk','Video','','movie',1,'{}',9999999999)`, nil},
+		{`INSERT INTO youtube_jobs(id,review_id,video_id,video_title,channel,target_kind,media_id,target_snapshot,state,created_at,updated_at) VALUES('j','r','abcdefghijk','Video','','movie',1,'{}','completed',1,1)`, nil},
+		{`INSERT INTO youtube_files(job_id,media_file_id,video_id,title,relative_path,size_bytes,sha256,probe_json,imported_at) VALUES('j',1,'abcdefghijk','Video',?,?,?,'{}',1)`, []any{source, len(body), videoSHA}},
+		{`INSERT INTO youtube_imports(job_id,source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,probe_json,phase,updated_at) VALUES('j','source',?,'stage',?,1,?,'{}','committed',1)`, []any{source, len(body), videoSHA}},
+		{`INSERT INTO subtitles(media_file_id,language,variant,source,relative_path,sha256,updated_at) VALUES(1,'en','full','downloaded',?,?,1)`, []any{subSource, subSHA}},
+		{`INSERT INTO youtube_subtitle_files(job_id,language,relative_path,sha256,size_bytes) VALUES('j','en',?,?,?)`, []any{subSource, subSHA, len(subBytes)}},
+		{`INSERT INTO youtube_subtitle_imports(job_id,language,source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,phase) VALUES('j','en','source',?,'stage',?,1,?,'committed')`, []any{subSource, len(subBytes), subSHA}},
+	}
+	for _, v := range queries {
+		if _, err := f.db.Exec(v.q, v.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan, err := f.s.Preview(ctx, []int64{1}, "anime")
+	if err != nil || len(plan.Files) != 1 || len(plan.Files[0].Companions) != 1 {
+		t.Fatalf("preview: %+v %v", plan, err)
+	}
+	if _, err = f.s.Apply(ctx, plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.s.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var videoPath, videoJournal, subPath, subJournal string
+	if err = f.db.QueryRow(`SELECT relative_path FROM youtube_files WHERE job_id='j'`).Scan(&videoPath); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.db.QueryRow(`SELECT destination_path FROM youtube_imports WHERE job_id='j'`).Scan(&videoJournal); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.db.QueryRow(`SELECT relative_path FROM youtube_subtitle_files WHERE job_id='j' AND language='en'`).Scan(&subPath); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.db.QueryRow(`SELECT destination_path FROM youtube_subtitle_imports WHERE job_id='j' AND language='en'`).Scan(&subJournal); err != nil {
+		t.Fatal(err)
+	}
+	if videoPath != plan.Files[0].Destination || videoJournal != videoPath || subPath != plan.Files[0].Companions[0].Destination || subJournal != subPath {
+		t.Fatalf("provenance mismatch: %q %q %q %q", videoPath, videoJournal, subPath, subJournal)
+	}
+}
+
 func TestReviewInterruptedPublishedBatchRecoversWithoutAdoptingForeignOutput(t *testing.T) {
 	f := newReviewFixture(t)
 	ctx := context.Background()
