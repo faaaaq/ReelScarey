@@ -99,15 +99,20 @@ Alternatively, choose **Review entire folder and extras** to move one title
 directory with its existing names, nested extras, artwork and empty directories.
 The review lists every directory and file, hashes file contents, refuses links,
 shared registered titles and existing destinations, and rechecks the inventory
-before committing paths. This uses a Linux atomic no-replace rename and requires
-both collections to reside on the same filesystem. Titles whose registered files
+before committing paths. On one filesystem it uses a Linux atomic no-replace
+rename. Across filesystems it creates a journaled, verified copy on the target
+filesystem, publishes the complete folder without replacement, switches catalog
+paths and then removes verified original links. Existing seeding links remain.
+The destination needs enough free space for the copy. Titles whose registered files
 span separate title folders need individual file reviews. The inventory is
 limited to 2,000 entries and the review has a 30-second budget.
 
 If a restart interrupts a rename, the worker checks the saved directory identity
 and complete inventory before switching catalog references. A failed move whose
 location cannot be verified keeps other media work paused until the saved job is
-resolved. No owner media is used in automated tests.
+resolved. An unverified stage created immediately before a crash is retained for
+manual review rather than assumed to belong to the job. No owner media is used
+in automated tests.
 
 The durable worker journals owned stages/output identities, prefers a hardlink,
 otherwise copies to a verified stage, and publishes with no-replace hardlinks.

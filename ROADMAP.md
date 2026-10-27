@@ -11,11 +11,10 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
-- [ ] Move media physically between configured libraries, with a clear preview,
+- [x] Move media physically between configured libraries, with a clear preview,
   collision handling, safe transfer and recovery, and updated catalog paths.
   Registered videos and subtitles can be moved through a reviewed title or file
-  selection. Reviewed whole-folder moves include extras on the same filesystem;
-  cross-filesystem whole-folder moves remain open work.
+  selection. Reviewed whole-folder moves include extras across filesystems.
 - [ ] Provide non-admin accounts and a request system in which each user can
   configure their own IMDb, TMDb and Trakt import lists. Give administrators
   control over approval and importing, with clear request status for users.

@@ -626,8 +626,8 @@ function Reorganize({ config }: { config: Config }) {
             </Button>
             <p className="field-help">
               Moves the whole title folder with its existing names, including
-              artwork, unregistered files and empty folders. The source and
-              destination must be on the same filesystem.
+              artwork, unregistered files and empty folders. Across filesystems,
+              it verifies a staged copy before removing the original files.
             </p>
           </>
         )}

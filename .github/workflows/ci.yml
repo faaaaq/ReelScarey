@@ -24,6 +24,13 @@ jobs:
       - run: npm ci && npm run format:check && npm run check && npm test && npm run build
         working-directory: web
       - run: go test -race ./...
+      - name: Cross-filesystem folder move and recovery
+        run: |
+          fixture="$RUNNER_TEMP/reelscarey-cross-fixture"
+          mkdir -p "$fixture/media/Anime"
+          sudo mount -t tmpfs -o "uid=$(id -u),gid=$(id -g),size=32m" tmpfs "$fixture/media/Anime"
+          trap 'sudo umount "$fixture/media/Anime"' EXIT
+          REELSCAREY_TEST_CROSS_ROOT="$fixture" go test -race ./internal/organization -run '^TestCrossFilesystemFolderMove$' -count=1 -v -timeout=3m
       - run: go vet ./...
       - name: Known dependency vulnerabilities
         run: |

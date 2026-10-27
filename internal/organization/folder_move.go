@@ -2,6 +2,7 @@ package organization
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -301,6 +302,9 @@ func (s *Service) executeFolder(ctx context.Context, p *Plan) error {
 		return err
 	}
 	defer root.Close()
+	if p.FolderMove.Copy {
+		return s.executeCopiedFolder(ctx, root, p)
+	}
 	if p.Phase == "committed" {
 		_, err = s.db.ExecContext(ctx, `UPDATE organization_plans SET state='completed',message='',updated_at=unixepoch() WHERE id=?`, p.ID)
 		return err
@@ -336,7 +340,16 @@ func (s *Service) executeFolder(ctx context.Context, p *Plan) error {
 			return problem("destination_exists", "A destination folder appeared after review.")
 		}
 		if err = renameFolderNoReplace(root, p.FolderMove.Source, p.FolderMove.Destination); err != nil {
-			return err
+			var typed *Error
+			if !errors.As(err, &typed) || typed.Code != "cross_device" {
+				return err
+			}
+			p.FolderMove.Copy = true
+			p.FolderMove.Stage = path.Join(path.Dir(p.FolderMove.Destination), ".reelscarey-folder-"+p.ID)
+			if err = s.savePhase(ctx, p, "copying"); err != nil {
+				return err
+			}
+			return s.executeCopiedFolder(ctx, root, p)
 		}
 	}
 	// A moved directory must still have exactly the reviewed directory identities
@@ -349,6 +362,22 @@ func (s *Service) executeFolder(ctx context.Context, p *Plan) error {
 	if err = s.validateFolder(ctx, root, tx, *p, true); err != nil {
 		return err
 	}
+	if err = s.commitFolderReferences(ctx, tx, p); err != nil {
+		return err
+	}
+	p.Phase = "committed"
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE organization_plans SET snapshot=?,state='completed',message='',updated_at=unixepoch() WHERE id=?`, string(raw), p.ID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Service) commitFolderReferences(ctx context.Context, tx *sql.Tx, p *Plan) error {
+	var err error
 	for _, v := range p.Files {
 		if _, err = tx.ExecContext(ctx, `UPDATE media_files SET relative_path=? WHERE id=? AND relative_path=? AND sha256=?`, v.Destination, v.FileID, v.Source, v.SHA); err != nil {
 			return err
@@ -380,13 +409,5 @@ func (s *Service) executeFolder(ctx context.Context, p *Plan) error {
 	if _, err = tx.ExecContext(ctx, `INSERT INTO media_organization(media_id,library_key,revision) VALUES(?,?,1) ON CONFLICT(media_id) DO UPDATE SET library_key=excluded.library_key,revision=media_organization.revision+1`, p.EntireMediaID, p.TargetLibrary); err != nil {
 		return err
 	}
-	p.Phase = "committed"
-	raw, err := json.Marshal(p)
-	if err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE organization_plans SET snapshot=?,state='completed',message='',updated_at=unixepoch() WHERE id=?`, string(raw), p.ID); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }

@@ -59,8 +59,9 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   saved registration state.
 - [ ] A guided main-root migration. The main media directory is currently selected
   at deployment; changing it requires an offline complete-tree move.
-- [ ] Cross-filesystem whole-title folder moves. Reviewed same-filesystem moves
-  include NFO, artwork, attachments, nested extras and empty directories.
+- [x] Reviewed whole-title folder moves across filesystems, including NFO,
+  artwork, attachments, nested extras and empty directories. Large reviews are
+  bounded and an uncertain stage may require manual review.
 - [ ] Queued organization cancellation and rollback after apply. Failed saved
   jobs can be resumed with verification; there is no general batch rollback API.
 - [ ] Arbitrary-root browsing and automatic bulk metadata matching, if added with

@@ -62,7 +62,7 @@ func titleFolder(c Config, kind string, files []string) (string, error) {
 
 func inventoryFolder(ctx context.Context, root *os.Root, q query, folder string, mediaID int64) (folderInventory, error) {
 	var out folderInventory
-	if mediaID < 1 || !validRelative(folder) {
+	if mediaID < 1 || !validManagedRelative(folder) {
 		return out, problem("unsafe_path", "Choose a safe title folder inside a configured collection.")
 	}
 	if err := segments(root, folder, false); err != nil {
@@ -161,7 +161,7 @@ func inventoryFolder(ctx context.Context, root *os.Root, q query, folder string,
 				return err
 			}
 			child := path.Join(dir, name)
-			if !validRelative(child) || internalStageRE.MatchString(name) {
+			if !validManagedRelative(child) || internalStageRE.MatchString(name) || internalFolderStageRE.MatchString(name) {
 				return problem("unsafe_path", "The folder contains an unsafe or pending staging path.")
 			}
 			if len(out.Directories)+len(out.Files) >= 2000 {

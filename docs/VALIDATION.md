@@ -22,7 +22,18 @@
 - The full Docker build passed its frontend suite, Go tests and vet. Focused
   Linux organization/API tests and organization race tests passed; a disposable
   read-only-root container passed health and restart-persistence checks.
-  Cross-filesystem whole-folder moves remain unsupported.
+  At that point cross-filesystem whole-folder moves remained unsupported.
+
+## Cross-filesystem whole-folder moves
+
+- A disposable Linux container placed the destination collection on a separate
+  tmpfs, forcing a real cross-device move. The test verified video, artwork,
+  nested and empty directories, file/directory permissions, seeding links,
+  source cleanup, recovery after publication and recovery after partial cleanup.
+- Linux organization race tests passed with that cross-device fixture enabled.
+  The Docker build ran the full frontend and backend tests and static checks.
+  Unknown stages are retained for manual review; a reviewed folder inventory is
+  limited to 2,000 entries and 30 seconds.
 
 ## YouTube sourcing and subtitle sidecars (0.20 development)
 

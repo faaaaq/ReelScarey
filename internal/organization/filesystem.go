@@ -15,13 +15,20 @@ import (
 )
 
 var internalStageRE = regexp.MustCompile(`^\.reelscarey-organize-[a-f0-9]{32}-[0-9]+\.part$`)
+var internalFolderStageRE = regexp.MustCompile(`^\.reelscarey-folder-[a-f0-9]{32}$`)
+
+func validManagedRelative(name string) bool {
+	parts := strings.Split(name, "/")
+	for i, part := range parts {
+		if internalFolderStageRE.MatchString(part) || i == len(parts)-1 && internalStageRE.MatchString(part) {
+			parts[i] = "safe-stage"
+		}
+	}
+	return validRelative(strings.Join(parts, "/"))
+}
 
 func segments(root *os.Root, name string, missing bool) error {
-	publicName := name
-	if internalStageRE.MatchString(path.Base(name)) {
-		publicName = path.Join(path.Dir(name), "safe-stage")
-	}
-	if !validRelative(publicName) {
+	if !validManagedRelative(name) {
 		return problem("unsafe_path", "A media path is not a safe relative path.")
 	}
 	parts := strings.Split(name, "/")

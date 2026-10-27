@@ -107,6 +107,9 @@ type FolderMove struct {
 	Source      string          `json:"source"`
 	Destination string          `json:"destination"`
 	Inventory   folderInventory `json:"inventory"`
+	Copy        bool            `json:"copy,omitempty"`
+	Stage       string          `json:"stage,omitempty"`
+	StageID     string          `json:"stage_identity,omitempty"`
 }
 type Service struct {
 	db   *sql.DB

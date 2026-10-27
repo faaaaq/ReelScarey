@@ -4,9 +4,13 @@ package organization
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/faaaaq/ReelScarey/internal/config"
+	"github.com/faaaaq/ReelScarey/internal/database"
 )
 
 func TestFolderMoveIncludesExtrasAndRecoversAfterRename(t *testing.T) {
@@ -164,5 +168,229 @@ func TestFolderMoveReleasesFenceWhenStoppedBeforeRename(t *testing.T) {
 	}
 	if err = EnsureMediaAvailable(ctx, f.db); err != nil {
 		t.Fatal("safe pre-rename failure kept media fenced", err)
+	}
+}
+
+// The disposable test container mounts Anime on tmpfs and Movies on its
+// separate container filesystem, so Linux actually returns EXDEV.
+func TestCrossFilesystemFolderMove(t *testing.T) {
+	root := os.Getenv("REELSCAREY_TEST_CROSS_ROOT")
+	if root == "" {
+		t.Skip("requires the isolated cross-filesystem container")
+	}
+	ctx := context.Background()
+	cfg := config.Config{MediaDir: filepath.Join(root, "media"), DownloadsDir: filepath.Join(root, "downloads"), ConfigDir: filepath.Join(root, "config")}
+	for _, name := range []string{cfg.MediaDir, cfg.DownloadsDir, cfg.ConfigDir, filepath.Join(cfg.MediaDir, "Anime")} {
+		if err := os.MkdirAll(name, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db, err := database.Open(ctx, cfg.ConfigDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	f := reviewFixture{db: db, cfg: cfg, s: New(db, cfg)}
+	f.movie(t, 1, "Movies/Film/film.mkv", []byte("video on source filesystem"))
+	base := filepath.Join(cfg.MediaDir, "Movies", "Film")
+	if err = os.MkdirAll(filepath.Join(base, "extras", "empty"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(base, "extras", "poster.jpg"), []byte("art"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(filepath.Join(base, "extras"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	seed := filepath.Join(cfg.DownloadsDir, "seed.mkv")
+	if err = os.Link(filepath.Join(base, "film.mkv"), seed); err != nil {
+		t.Fatal(err)
+	}
+	p, err := f.s.PreviewFolder(ctx, 1, "anime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.s.Apply(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.s.Tick(ctx); err != nil {
+		t.Fatal("cross-filesystem copy failed", err)
+	}
+	finished, err := f.s.Plan(ctx, p.ID)
+	if err != nil || finished.State != "completed" || !finished.FolderMove.Copy {
+		t.Fatal("cross-filesystem job did not complete", finished, err)
+	}
+	dest := filepath.Join(cfg.MediaDir, filepath.FromSlash(finished.FolderMove.Destination))
+	if b, e := os.ReadFile(filepath.Join(dest, "extras", "poster.jpg")); e != nil || string(b) != "art" {
+		t.Fatal("extra missing", e)
+	}
+	if info, e := os.Stat(filepath.Join(dest, "extras", "empty")); e != nil || !info.IsDir() {
+		t.Fatal("empty directory missing", e)
+	}
+	if info, e := os.Stat(filepath.Join(dest, "extras")); e != nil || info.Mode().Perm() != 0700 {
+		t.Fatal("directory permissions changed", e)
+	}
+	if info, e := os.Stat(filepath.Join(dest, "extras", "poster.jpg")); e != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("file permissions changed", e)
+	}
+	if _, e := os.Stat(base); !os.IsNotExist(e) {
+		t.Fatal("old directory retained unexpectedly", e)
+	}
+	if b, e := os.ReadFile(seed); e != nil || string(b) != "video on source filesystem" {
+		t.Fatal("seeding source changed", e)
+	}
+	// Interrupt after the fully verified staging directory has been published,
+	// before the database is switched; the next worker must identify its own copy.
+	f.movie(t, 2, "Movies/Second/second.mkv", []byte("second video"))
+	p2, err := f.s.PreviewFolder(ctx, 2, "anime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.s.Apply(ctx, p2.ID); err != nil {
+		t.Fatal(err)
+	}
+	p2.FolderMove.Copy = true
+	p2.FolderMove.Stage = filepath.ToSlash(filepath.Join(filepath.Dir(p2.FolderMove.Destination), ".reelscarey-folder-"+p2.ID))
+	if err = f.s.savePhase(ctx, &p2, "copying"); err != nil {
+		t.Fatal(err)
+	}
+	r, _, err := f.s.openRoot(p2.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.s.copiedStage(ctx, r, &p2); err != nil {
+		r.Close()
+		t.Fatal(err)
+	}
+	if err = f.s.verifyCopiedFolder(ctx, r, p2, p2.FolderMove.Stage); err != nil {
+		r.Close()
+		t.Fatal(err)
+	}
+	if err = renameFolderNoReplace(r, p2.FolderMove.Stage, p2.FolderMove.Destination); err != nil {
+		r.Close()
+		t.Fatal(err)
+	}
+	r.Close()
+	if err = New(db, cfg).Tick(ctx); err != nil {
+		t.Fatal("published copy did not recover", err)
+	}
+	finished, err = f.s.Plan(ctx, p2.ID)
+	if err != nil || finished.State != "completed" {
+		t.Fatal("recovered copy did not complete", finished, err)
+	}
+	if _, err = os.Stat(filepath.Join(cfg.MediaDir, "Movies", "Second")); !os.IsNotExist(err) {
+		t.Fatal("recovered source not cleaned", err)
+	}
+	// Resume cleanup after the database switched and one source was removed.
+	f.movie(t, 3, "Movies/Third/third.mkv", []byte("third video"))
+	thirdRoot := filepath.Join(cfg.MediaDir, "Movies", "Third")
+	if err = os.WriteFile(filepath.Join(thirdRoot, "poster.jpg"), []byte("poster"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p3, err := f.s.PreviewFolder(ctx, 3, "anime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.s.Apply(ctx, p3.ID); err != nil {
+		t.Fatal(err)
+	}
+	p3.FolderMove.Copy = true
+	p3.FolderMove.Stage = filepath.ToSlash(filepath.Join(filepath.Dir(p3.FolderMove.Destination), ".reelscarey-folder-"+p3.ID))
+	if err = f.s.savePhase(ctx, &p3, "copying"); err != nil {
+		t.Fatal(err)
+	}
+	r, _, err = f.s.openRoot(p3.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.s.copiedStage(ctx, r, &p3); err != nil {
+		r.Close()
+		t.Fatal(err)
+	}
+	if err = renameFolderNoReplace(r, p3.FolderMove.Stage, p3.FolderMove.Destination); err != nil {
+		r.Close()
+		t.Fatal(err)
+	}
+	if err = f.s.verifyCopiedFolder(ctx, r, p3, p3.FolderMove.Destination); err != nil {
+		r.Close()
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		r.Close()
+		t.Fatal(err)
+	}
+	if err = f.s.commitFolderReferences(ctx, tx, &p3); err != nil {
+		tx.Rollback()
+		r.Close()
+		t.Fatal(err)
+	}
+	p3.Phase = "committed"
+	raw, err := json.Marshal(p3)
+	if err != nil {
+		tx.Rollback()
+		r.Close()
+		t.Fatal(err)
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE organization_plans SET snapshot=? WHERE id=?`, string(raw), p3.ID); err != nil {
+		tx.Rollback()
+		r.Close()
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		r.Close()
+		t.Fatal(err)
+	}
+	if err = r.Remove(filepath.FromSlash(p3.FolderMove.Inventory.Files[0].Source)); err != nil {
+		r.Close()
+		t.Fatal(err)
+	}
+	r.Close()
+	if err = New(db, cfg).Tick(ctx); err != nil {
+		t.Fatal("partial cleanup did not recover", err)
+	}
+	if _, err = os.Stat(thirdRoot); !os.IsNotExist(err) {
+		t.Fatal("partially cleaned folder remains", err)
+	}
+	// Unexpected contents in a stage are never published or removed.
+	f.movie(t, 4, "Movies/Fourth/fourth.mkv", []byte("fourth video"))
+	p4, err := f.s.PreviewFolder(ctx, 4, "anime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.s.Apply(ctx, p4.ID); err != nil {
+		t.Fatal(err)
+	}
+	p4.FolderMove.Copy = true
+	p4.FolderMove.Stage = filepath.ToSlash(filepath.Join(filepath.Dir(p4.FolderMove.Destination), ".reelscarey-folder-"+p4.ID))
+	if err = f.s.savePhase(ctx, &p4, "copying"); err != nil {
+		t.Fatal(err)
+	}
+	r, _, err = f.s.openRoot(p4.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.s.copiedStage(ctx, r, &p4); err != nil {
+		r.Close()
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(cfg.MediaDir, filepath.FromSlash(p4.FolderMove.Stage), "foreign.txt")
+	if err = os.WriteFile(foreign, []byte("foreign"), 0600); err != nil {
+		r.Close()
+		t.Fatal(err)
+	}
+	if err = f.s.verifyCopiedFolder(ctx, r, p4, p4.FolderMove.Stage); err == nil {
+		r.Close()
+		t.Fatal("foreign stage content accepted")
+	}
+	r.Close()
+	if err = New(db, cfg).Tick(ctx); err == nil {
+		t.Fatal("unexpected stage content was published")
+	}
+	if b, e := os.ReadFile(foreign); e != nil || string(b) != "foreign" {
+		t.Fatal("foreign stage content not retained", e)
+	}
+	if _, err = os.Stat(filepath.Join(cfg.MediaDir, "Movies", "Fourth", "fourth.mkv")); err != nil {
+		t.Fatal("original was removed", err)
 	}
 }
