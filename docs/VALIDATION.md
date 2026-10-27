@@ -14,10 +14,29 @@
   backup/restore and recovery checks. The first attempt could not connect to its
   own localhost listener in the restricted environment; the retry with local
   fixture access passed. The owner preview and media were not used.
-- Linux real-client, race and container acceptance have not been run: the
-  available Ubuntu WSL environment lacks Go, GCC, FFmpeg, qBittorrent-nox and
-  Docker. Generated-fixture tests do not substitute for those acceptance checks.
-  No owner accounts or media were used.
+- Ubuntu WSL was provisioned with Go 1.27.3, GCC, qBittorrent-nox, FFmpeg,
+  Docker/Compose and the isolated SABnzbd test runtime. Full `go test -race ./...`
+  passes. Both real Anime scheduler tests pass with race detection: the mapped
+  pack spans canonical special and two regular seasons, survives a policy/order
+  edit and reopen, requires file review, and retains seeding bytes after import.
+- Real disposable qBittorrent movie, TV and reviewed Anime pack regressions,
+  generated subtitle and existing-library checks, Anime organization, and real
+  SABnzbd movie and reviewed-TV imports pass with race detection. All media and
+  service profiles were generated for the tests; no owner accounts or media used.
+- Linux native and extracted-package startup, backup, restore and recovery smoke
+  pass. Linux amd64/arm64 and Windows amd64 packages build and checksums verify;
+  arm64 was cross-built only. Docker compose configuration, image build and
+  authenticated restart/persistence smoke pass. The point-in-time container
+  snapshot was 5.145 MiB, 0.10% CPU and 8 PIDs (512 MiB limit).
+- The existing Windows preview was upgraded to 0.19.0-dev after a verified offline
+  schema-14 backup at `data/preview/backups/before-mapped-anime-20261026-221813`.
+  The 0.18 executable was retained as `bin/reelscarey-before-mapped-anime.exe`.
+  Readiness, session state and local doctor checks passed after migration; no
+  owner media or private account was used as a test fixture.
+- Public AniList identity/title-search acceptance passes without credentials.
+  npm audit reports zero vulnerabilities. govulncheck v1.9.0 reports none in
+  called code or imported packages, with one advisory elsewhere in a required
+  module. Verified private packages are retained in `dist/private-0.19.0`.
 
 ## Anime provider identity and orders (0.18 development)
 

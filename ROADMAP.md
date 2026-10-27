@@ -255,12 +255,14 @@ See [Anime searches](docs/ANIME_SEARCH.md) and the consolidated
 See [Anime providers and order review](docs/ANIME_PROVIDER_ORDERS.md). Graphite/blue
 and deferred IPTorrents/XSpeeds account testing are retained.
 
-## 17 — Mapped Anime automation (in progress)
+## 17 — Mapped Anime automation
 - [x] Per-show approval of a saved order, with separate special and pack options,
   exact typed-label matching and bounded pack size.
 - [x] Recheck policy, mapping, monitoring and target availability before queueing;
   retain immutable evidence and require completed-file review.
-- [ ] Complete integrated acceptance and record the results in validation.
+- [x] Linux race, real-client generated-media regressions, native/package and
+  container acceptance pass; the preview is upgraded after a verified backup.
+  See [validation](docs/VALIDATION.md) for limits.
 
 ## Validation record
 

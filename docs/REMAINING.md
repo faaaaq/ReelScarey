@@ -76,7 +76,8 @@ separate.
   consecutive canonical episodes from one season.
 - [x] Automatic provider-mapped release matching, including separately opted-in
   specials and packs. Saving an external identity or order alone does not enable
-  automatic searches. Integrated acceptance remains in progress.
+  automatic searches. Linux generated-media and container acceptance is recorded
+  in [VALIDATION.md](VALIDATION.md).
 - [ ] AniDB or additional Anime identity/order providers and an explicit refresh
   workflow for already-linked AniList facts. Current linked identity facts are
   cached; remove/apply then relink to fetch again.
