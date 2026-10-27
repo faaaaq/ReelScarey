@@ -13,15 +13,20 @@ import (
 // AnimeSearchSnapshot is audit evidence captured with a searched candidate and
 // queued job. Import identity remains the immutable canonical download_targets.
 type AnimeSearchSnapshot struct {
-	Mode              string   `json:"mode"`
-	SearchTitle       string   `json:"search_title"`
-	CanonicalTitle    string   `json:"canonical_title"`
-	AlternateTitles   []string `json:"alternate_titles"`
-	PolicyRevision    int      `json:"policy_revision"`
-	CategoryRevision  int      `json:"category_revision"`
-	NumberingRevision int64    `json:"numbering_revision"`
-	AbsoluteNumber    *int     `json:"absolute_number,omitempty"`
-	Queries           []string `json:"queries"`
+	OrderRevision         int      `json:"order_revision,omitempty"`
+	ApprovedOrderRevision int      `json:"approved_order_revision,omitempty"`
+	IncludeSpecials       bool     `json:"include_specials,omitempty"`
+	AllowPacks            bool     `json:"allow_packs,omitempty"`
+	MaxPackEpisodes       int      `json:"max_pack_episodes,omitempty"`
+	Mode                  string   `json:"mode"`
+	SearchTitle           string   `json:"search_title"`
+	CanonicalTitle        string   `json:"canonical_title"`
+	AlternateTitles       []string `json:"alternate_titles"`
+	PolicyRevision        int      `json:"policy_revision"`
+	CategoryRevision      int      `json:"category_revision"`
+	NumberingRevision     int64    `json:"numbering_revision"`
+	AbsoluteNumber        *int     `json:"absolute_number,omitempty"`
+	Queries               []string `json:"queries"`
 }
 
 func (s *Service) SearchAnimeAutomatic(ctx context.Context, seriesID int64, season, episode int, includeAvailable bool) ([]Release, error) {
@@ -93,6 +98,9 @@ func validateAnimeSnapshot(ctx context.Context, tx *sql.Tx, v Candidate) error {
 		return nil
 	}
 	a := v.AnimeSearch
+	if a.Mode == "mapped" {
+		return validateMappedAnimeSnapshot(ctx, tx, v)
+	}
 	var category, title, mode, selected, raw string
 	var catRev, revision int
 	var numberRev int64

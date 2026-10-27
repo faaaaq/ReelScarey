@@ -114,10 +114,10 @@ export function AnimeOrder({ id }: { id: number }) {
       <h2>Anime identity & episode mapping</h2>
       <p className="field-help">
         Link the exact AniList entries and map release labels to saved episodes,
-        including specials. These choices support manual pack searches and
-        completed-file suggestions. Canonical TMDb identities, monitoring and
-        existing files stay unchanged. Automatic searching keeps its separate
-        settings.
+        including specials. These choices support reviewed automatic searches,
+        manual pack searches and completed-file suggestions. Canonical TMDb
+        identities, monitoring and existing files stay unchanged. Automatic
+        searching keeps its separate settings.
       </p>
       {!open ? (
         <Button
@@ -1160,10 +1160,10 @@ function AnimePack({ settings }: { settings: AnimeOrderSettings }) {
       <h3>Manual pack and special searches</h3>
       <p className="field-help">
         Choose 1–100 saved mappings and review the exact targets before
-        searching. This is manual work; automatic packs and specials are not
-        enabled. Completed files still need explicit mapping in Activity. A
-        shared file may cover only consecutive canonical episodes from one
-        season.
+        searching. Automatic mapped searches require separate approval in Anime
+        automatic searches. Completed files still need explicit mapping in
+        Activity. A shared file may cover only consecutive canonical episodes
+        from one season.
       </p>
       <label>
         Pack release query

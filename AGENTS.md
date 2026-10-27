@@ -53,7 +53,9 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   owns canonical profile decoding; use transaction-aware reads for snapshots.
   See docs/BULK_PROFILES.md.
 - internal/quality owns editable profiles, conservative release identity and ranking.
-  Anime automation is per-show opt-in and single-episode only. Explicit aliases
+  Anime automation is per-show opt-in. Season/absolute modes are single-episode;
+  mapped mode requires reviewed order consent, and specials and exact packs have
+  separate opt-ins. Explicit aliases
   never infer canonical ordering; strip identity labels before quality scoring.
   Fence query/policy/category/numbering changes inside queue reservations and
   retain immutable search evidence on jobs. See docs/ANIME_SEARCH.md.
@@ -61,7 +63,8 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   AniList title similarity/counts never infer canonical episodes. TMDb proposals
   require series group membership and exact loaded episode IDs. Cross-season
   Anime packs require explicit reviewed targets and immutable order snapshots;
-  automatic queues must reject these manual selections. Keep each shared file
+  automatic queues must reject these manual selections and use their own fenced
+  mapped cohorts. Keep each shared file
   consecutive within one canonical season. See docs/ANIME_PROVIDER_ORDERS.md.
 - internal/organization owns collection/naming rules, immutable import snapshots
   and reviewed registered-file reorganization journals. Keep canonical media and

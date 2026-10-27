@@ -231,13 +231,13 @@ and plain functional interface copy are retained.
   evidence and retained canonical IDs with mandatory file mapping review.
 - [x] Complete clean/native/browser/package/Linux application acceptance and preview upgrade;
   GitHub's final package upload is blocked by account artifact storage quota.
-- [ ] Automatic provider identity/order mapping, specials and batch/cross-season
-  matching remain future work. IPTorrents/XSpeeds account testing stays deferred.
+- [x] Provider-order matching is separately available through mapped mode below.
+  IPTorrents/XSpeeds account testing stays deferred.
 
 See [Anime searches](docs/ANIME_SEARCH.md) and the consolidated
 [remaining work](docs/REMAINING.md). Graphite/blue remains unchanged.
 
-## 16 — Anime provider identity and episode-order mapping (current)
+## 16 — Anime provider identity and episode-order mapping
 - [x] Reviewed scoped AniList identity links, cached offline facts and bounded
   public title search without credentials or title/count-based episode inference.
 - [x] TMDb series/group membership checks and exact-ID subgroup order proposals,
@@ -249,11 +249,18 @@ See [Anime searches](docs/ANIME_SEARCH.md) and the consolidated
 - [x] Complete clean/native/browser/package/Linux acceptance and preview upgrade.
   All application gates pass; account storage quota blocks GitHub artifact
   retention. Verified private installation packages remain available locally.
-- [ ] AniDB, automatic provider-order/special/pack matching, guided cached-identity
+- [ ] AniDB, guided cached-identity
   refresh and cross-season shared single-video mapping remain future extensions.
 
 See [Anime providers and order review](docs/ANIME_PROVIDER_ORDERS.md). Graphite/blue
 and deferred IPTorrents/XSpeeds account testing are retained.
+
+## 17 — Mapped Anime automation (in progress)
+- [x] Per-show approval of a saved order, with separate special and pack options,
+  exact typed-label matching and bounded pack size.
+- [x] Recheck policy, mapping, monitoring and target availability before queueing;
+  retain immutable evidence and require completed-file review.
+- [ ] Complete integrated acceptance and record the results in validation.
 
 ## Validation record
 

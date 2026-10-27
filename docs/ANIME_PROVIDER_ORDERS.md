@@ -127,7 +127,7 @@ per-file journal rules. Canonical organization uses each mapped file's own
 season. Torrent source bytes and seeding links remain preserved. Existing files
 are not replaced by this workflow.
 
-The version 0.17 per-show automatic Anime search remains unchanged: explicit
+The version 0.17 per-show season/absolute automatic Anime search remains: explicit
 opt-in, one regular non-special episode, and the existing season/absolute modes.
 Provider-order matching, specials and pack searches do not become automatic
 through saving an identity or order. There is no new inference from external
@@ -183,5 +183,5 @@ See [VALIDATION.md](VALIDATION.md) for the complete runs and environment limits.
 
 Owner IPTorrents and XSpeeds account tests remain deferred. Neither private
 accounts nor owner media are automated test fixtures. AniDB integration,
-automatic provider-mapped matching and broader one-file/cross-season behavior
+and broader one-file/cross-season behavior
 remain future work in [REMAINING.md](REMAINING.md).

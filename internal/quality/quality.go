@@ -33,14 +33,16 @@ type Summary struct {
 func (p Profile) Summary() Summary { return Summary{ID: p.ID, Name: p.Name, Revision: p.Revision} }
 
 type Target struct {
-	Title           string
-	Year            *int
-	Season, Episode int
-	TV              bool
-	Anime           bool
-	AnimeMode       string
-	AlternateTitles []string
-	AbsoluteNumber  *int
+	Title            string
+	Year             *int
+	Season, Episode  int
+	TV               bool
+	Anime            bool
+	AnimeMode        string
+	AlternateTitles  []string
+	AbsoluteNumber   *int
+	AnimeOrderTitle  string
+	AnimeOrderLabels []string
 }
 type Release struct {
 	Protocol  string
@@ -128,6 +130,9 @@ func identifyStandard(title string, t Target) bool {
 }
 func identityLabels(title string, t Target) (string, bool) {
 	if t.Anime && t.TV {
+		if t.AnimeMode == "mapped" {
+			return identifyMappedAnime(title, t)
+		}
 		return identifyAnime(title, t)
 	}
 	if !identifyStandard(title, t) {

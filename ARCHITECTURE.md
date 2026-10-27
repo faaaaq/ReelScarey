@@ -120,6 +120,10 @@ Transfer snapshots reviewed manual target sets and provider facts, permits packs
 across seasons through separate files, and rechecks the order inside reservations.
 Each shared file retains the same-season consecutive mapping constraint; ordinary
 automatic episode rules remain separate. See docs/ANIME_PROVIDER_ORDERS.md.
+Migration 015 adds explicit mapped-search consent, optional specials and bounded
+packs. Automation searches reviewed typed label cohorts and rechecks the exact
+order, policy and eligibility in the queue transaction. Completed downloads
+still require file mapping review. See docs/ANIME_SEARCH.md.
 Settings changes are atomic and carry a revision for optimistic concurrency.
 Media items share `kind` (movie/series), TMDb identity, title, year, monitored
 flag, and status. `(kind, tmdb_id)` is unique; a movie and series may have the

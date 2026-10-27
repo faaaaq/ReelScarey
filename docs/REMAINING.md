@@ -74,10 +74,9 @@ separate.
   selected canonical targets and separate files, immutable queued order evidence
   and mandatory file mapping. Each shared file remains bounded to at most twenty
   consecutive canonical episodes from one season.
-- [ ] Automatic provider-mapped release matching, including specials and packs.
-  Version 0.17 automation still searches one exact regular non-special episode
-  using explicit season/absolute settings; saving an external identity or order
-  does not authorize new automatic behavior.
+- [x] Automatic provider-mapped release matching, including separately opted-in
+  specials and packs. Saving an external identity or order alone does not enable
+  automatic searches. Integrated acceptance remains in progress.
 - [ ] AniDB or additional Anime identity/order providers and an explicit refresh
   workflow for already-linked AniList facts. Current linked identity facts are
   cached; remove/apply then relink to fetch again.
@@ -94,6 +93,13 @@ separate.
 
 ## Quality, subtitles and additional clients
 
+- [ ] YouTube sourcing for applicable catalog entries and custom items that do
+  not have a conventional movie/TV provider identity. Include reviewed channel,
+  series/playlist and individual-video selection, durable source identity,
+  metadata/organization choices and the existing verified import safeguards.
+  User-requested future test cases are XG's Xtra XG and XG Days. This follows the
+  current mapped Anime automation milestone; no YouTube download or account
+  testing has been performed yet.
 - [ ] Verified audio-language inspection and richer source/codec scoring; release
   language text currently supplies selection evidence only.
 - [ ] Additional subtitle providers, ASS-style provider downloads, subtitle

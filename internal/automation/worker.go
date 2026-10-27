@@ -37,7 +37,7 @@ const targetSQL = `SELECT key,media_id,episode_id,title,year,season,episode,prob
  UNION ALL
  SELECT printf('e:%020d',e.id),m.id,e.id,m.title,m.year,s.number,e.number,COALESCE(f.probe_json,''),COALESCE(a.profile_id,ss.default_profile_id),COALESCE(a.revision,0),m.category,COALESCE(ans.mode,'disabled'),COALESCE(ans.alternate_titles,'[]'),an.absolute_number,COALESCE(ans.revision,0),COALESCE(ans.search_title,''),m.category_revision,d.revision
  FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id JOIN series_details d ON d.media_id=m.id CROSS JOIN search_schedule ss LEFT JOIN item_automation a ON a.media_id=m.id LEFT JOIN episode_files ef ON ef.episode_id=e.id LEFT JOIN media_files f ON f.id=ef.media_file_id LEFT JOIN anime_search_settings ans ON ans.media_id=m.id LEFT JOIN anime_episode_numbers an ON an.episode_id=e.id
- WHERE m.monitored=1 AND (m.category='standard' OR (m.category='anime' AND s.number>0 AND ans.mode IN ('season','absolute'))) AND s.monitored=1 AND e.monitored=1 AND s.loaded_at<>'' AND length(e.air_date)=10 AND substr(e.air_date,1,4) BETWEEN '0001' AND '9999' AND date(e.air_date,'+0 days')=e.air_date AND e.air_date<=? AND NOT EXISTS(SELECT 1 FROM episode_downloads ed JOIN downloads d ON d.id=ed.download_id WHERE ed.episode_id=e.id AND d.state NOT IN ('completed','cancelled'))
+ WHERE m.monitored=1 AND (m.category='standard' OR (m.category='anime' AND ((s.number>0 AND ans.mode IN ('season','absolute')) OR (ans.mode='mapped' AND (s.number>0 OR ans.include_specials=1))))) AND s.monitored=1 AND e.monitored=1 AND s.loaded_at<>'' AND length(e.air_date)=10 AND substr(e.air_date,1,4) BETWEEN '0001' AND '9999' AND date(e.air_date,'+0 days')=e.air_date AND e.air_date<=? AND NOT EXISTS(SELECT 1 FROM episode_downloads ed JOIN downloads d ON d.id=ed.download_id WHERE ed.episode_id=e.id AND d.state NOT IN ('completed','cancelled'))
 )`
 
 func scanTarget(row interface{ Scan(...any) error }) (searchTarget, error) {
@@ -288,6 +288,8 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 	if e != nil {
 		return "", "", e
 	}
+	mappedSeen := map[string]bool{}
+	mappedQueued := map[int64]bool{}
 	for _, t := range targets {
 		if e = s.fence(ctx, c); e != nil {
 			return "", "", e
@@ -295,6 +297,18 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 		p, e := quality.New(s.db).Get(ctx, t.ProfileID)
 		if e != nil {
 			return "", "", e
+		}
+		if t.Anime && t.AnimeMode == "mapped" {
+			if t.EpisodeID != nil && mappedQueued[*t.EpisodeID] {
+				if e = s.record(ctx, c, t, "already_tracked", "This episode was included in a mapped pack queued earlier in this run.", nil, nil); e != nil {
+					return "", "", e
+				}
+				continue
+			}
+			if e = s.processMapped(ctx, c, t, p, mappedSeen, mappedQueued); e != nil {
+				return "", "", e
+			}
+			continue
 		}
 		if t.Anime && t.AnimeMode == "absolute" && t.AbsoluteNumber == nil {
 			if e = s.record(ctx, c, t, "needs_numbering", "Save an explicit absolute episode number in this show's Library section before automatic searching.", nil, nil); e != nil {

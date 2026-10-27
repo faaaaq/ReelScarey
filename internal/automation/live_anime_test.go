@@ -317,6 +317,367 @@ func TestRealAnimeAutomaticDownloadAndReviewedImport(t *testing.T) {
 	t.Log("PASS: scheduler matched explicit Anime absolute alias through bounded real Torznab HTTP queries, queued to isolated authenticated qBittorrent, survived opt-out/alias edits and restart, required reviewed canonical mapping, and FFprobe-verified generated media under Anime while preserving seeding bytes")
 }
 
+// This separate acceptance exercises mapped automation itself rather than the
+// permissive manual-pack search path. Every byte and service is disposable.
+func TestRealAnimeMappedAutomaticPackDownloadAndReviewedImport(t *testing.T) {
+	if os.Getenv("REELSCAREY_LIVE_ANIME") != "1" {
+		t.Skip("set REELSCAREY_LIVE_ANIME=1 with isolated qBittorrent and FFmpeg")
+	}
+	if runtime.GOOS != "linux" {
+		t.Skip("headless Linux integration")
+	}
+	for _, name := range []string{"qbittorrent-nox", "ffmpeg", "ffprobe"} {
+		if _, err := exec.LookPath(name); err != nil {
+			t.Fatal(name, err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	root := t.TempDir()
+	cfg := config.Config{ConfigDir: filepath.Join(root, "config"), MediaDir: filepath.Join(root, "media"), DownloadsDir: filepath.Join(root, "downloads")}
+	for _, dir := range []string{cfg.MediaDir, cfg.DownloadsDir} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db, err := database.Open(ctx, cfg.ConfigDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { db.Close() }()
+	client, password := startAnimeQBittorrent(t, ctx, cfg.DownloadsDir)
+	generated := filepath.Join(t.TempDir(), "owned.mp4")
+	if output, err := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=128x96:rate=10", "-t", "2", "-c:v", "mpeg4", "-movflags", "faststart", generated).CombinedOutput(); err != nil {
+		t.Fatal("generate owned mapped video", err, string(output))
+	}
+	data, err := os.ReadFile(generated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := []string{"[Owned] Mapped Story - 001.mp4", "[Owned] Mapped Story - 002.mp4", "[Owned] Mapped Story - 003.mp4"}
+	var metainfo []byte
+	var server *httptest.Server
+	initialized := make(chan struct{})
+	var queryMu sync.Mutex
+	queries := []string{}
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-initialized:
+		case <-r.Context().Done():
+			return
+		}
+		switch r.URL.Path {
+		case "/api":
+			if r.URL.Query().Get("apikey") != "owned-mapped-key" {
+				w.WriteHeader(401)
+				return
+			}
+			switch r.URL.Query().Get("t") {
+			case "caps":
+				fmt.Fprint(w, `<caps><limits max="10"/><searching><search available="yes" supportedParams="q"/></searching></caps>`)
+			case "search":
+				if r.URL.Query().Get("cat") != "5000" {
+					t.Error("mapped query lost TV category")
+				}
+				queryMu.Lock()
+				queries = append(queries, r.URL.Query().Get("q"))
+				queryMu.Unlock()
+				fmt.Fprintf(w, `<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><item><title>[Owned] Mapped Story - 001-003 [1080p] English WEB</title><guid>owned-mapped-pack</guid><enclosure url="%s/torrent" length="%d" type="application/x-bittorrent"/><torznab:attr name="seeders" value="5"/></item></channel></rss>`, server.URL, len(data)*3)
+			default:
+				w.WriteHeader(400)
+			}
+		case "/torrent":
+			w.Header().Set("Content-Type", "application/x-bittorrent")
+			_, _ = w.Write(metainfo)
+		case "/announce":
+			_, _ = w.Write(animeBencode(map[string]any{"interval": int64(60), "peers": ""}))
+		default:
+			for _, name := range names {
+				if r.URL.Path == "/owned-pack/"+name {
+					http.ServeContent(w, r, name, time.Unix(1700000000, 0), bytes.NewReader(data))
+					return
+				}
+			}
+			w.WriteHeader(404)
+		}
+	}))
+	defer server.Close()
+	all := bytes.Repeat(data, 3)
+	var pieces []byte
+	for start := 0; start < len(all); start += 16384 {
+		end := min(start+16384, len(all))
+		sum := sha1.Sum(all[start:end])
+		pieces = append(pieces, sum[:]...)
+	}
+	files := []any{}
+	for _, name := range names {
+		files = append(files, map[string]any{"length": int64(len(data)), "path": []any{name}})
+	}
+	metainfo = animeBencode(map[string]any{"announce": server.URL + "/announce", "url-list": server.URL + "/", "info": map[string]any{"name": "owned-pack", "files": files, "piece length": int64(16384), "pieces": string(pieces), "private": int64(1)}})
+	expectedHash, err := transfer.TorrentHash(metainfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	close(initialized)
+	secrets, err := securestore.New(ctx, db, cfg.ConfigDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := transfer.New(db, secrets, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
+	key := "owned-mapped-key"
+	if err = workflow.ConfigureIndexer(ctx, transfer.IndexerUpdate{URL: server.URL + "/api", APIKey: &key}); err != nil {
+		t.Fatal(err)
+	}
+	if err = workflow.ConfigureClient(ctx, transfer.ClientUpdate{URL: client.URL, Username: client.Username, Password: &password, DownloadPath: client.DownloadPath}); err != nil {
+		t.Fatal(err)
+	}
+	catalog := library.New(db)
+	seasons := []metadata.SeasonSummary{{TMDbID: 930010, Number: 0, Title: "Specials", EpisodeCount: 1}, {TMDbID: 930011, Number: 1, Title: "Season 1", EpisodeCount: 1}, {TMDbID: 930012, Number: 2, Title: "Season 2", EpisodeCount: 1}}
+	show, _, err := catalog.AddSeries(ctx, metadata.Series{Movie: metadata.Movie{TMDbID: 930000, Title: "Canonical Mapped Story"}, Seasons: seasons}, true, "anime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := []int64{}
+	for _, season := range seasons {
+		current, err := catalog.TVShow(ctx, show.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = catalog.SaveSeason(ctx, show.ID, metadata.Season{SeasonSummary: season, Episodes: []metadata.Episode{{TMDbID: 930100 + int64(season.Number), Number: 1, Title: season.Title + " owned episode", AirDate: "2000-01-01"}}}, current.Revision); err != nil {
+			t.Fatal(err)
+		}
+		view, err := catalog.TVSeason(ctx, show.ID, season.Number)
+		if err != nil || len(view.Episodes) != 1 {
+			t.Fatal(view, err)
+		}
+		ids = append(ids, view.Episodes[0].ID)
+	}
+	// Season zero is deliberately unmonitored by default. Enable it explicitly.
+	current, err := catalog.TVShow(ctx, show.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zero := 0
+	if err = catalog.MonitorTV(ctx, show.ID, current.Revision, &zero, nil, true); err != nil {
+		t.Fatal(err)
+	}
+	current, err = catalog.TVShow(ctx, show.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	one := 1
+	if err = catalog.MonitorTV(ctx, show.ID, current.Revision, &zero, &one, true); err != nil {
+		t.Fatal(err)
+	}
+	order, err := catalog.AnimeOrder(ctx, show.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := []library.AnimeOrderEntry{}
+	for n, id := range ids {
+		entries = append(entries, library.AnimeOrderEntry{EpisodeID: id, ReleaseTitle: "Mapped Story", Label: strconv.Itoa(n + 1)})
+	}
+	review, err := catalog.ReviewAnimeOrder(ctx, show.ID, library.AnimeOrderUpdate{Revision: order.Revision, CategoryRevision: order.CategoryRevision, NumberingRevision: order.NumberingRevision, Entries: entries}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err = catalog.ApplyAnimeOrder(ctx, show.ID, review.ReviewID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := catalog.AnimeSearch(ctx, show.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err = catalog.SaveAnimeSearch(ctx, show.ID, library.AnimeSearchUpdate{Revision: policy.Revision, CategoryRevision: policy.CategoryRevision, NumberingRevision: policy.NumberingRevision, Mode: "mapped", IncludeSpecials: true, AllowPacks: true, MaxPackEpisodes: 3, OrderRevision: order.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := quality.New(db).Get(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile.Language = "english"
+	if _, err = quality.New(db).Save(ctx, profile); err != nil {
+		t.Fatal(err)
+	}
+	automatic := New(db, workflow)
+	schedule, err := automatic.Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = automatic.Update(ctx, Update{Enabled: true, Mode: "download", Interval: 15, Batch: 10, DefaultProfile: 1, Revision: schedule.Revision}); err != nil {
+		t.Fatal(err)
+	}
+	if processed, err := automatic.ProcessNext(ctx); err != nil || !processed {
+		t.Fatal("mapped scheduler did not run", processed, err)
+	}
+	page, err := workflow.List(ctx, 1)
+	if err != nil || page.Total != 1 || len(page.Items) != 1 {
+		runs, _ := automatic.Runs(ctx)
+		t.Fatal("mapped automatic pack missing", page, runs, err)
+	}
+	job := page.Items[0]
+	if job.Hash != expectedHash || job.AnimeSearch == nil || job.AnimeSearch.Mode != "mapped" || job.AnimeSearch.PolicyRevision != policy.Revision || job.AnimeOrder == nil || job.AnimeOrder.Revision != order.Revision || len(job.Targets) != 3 {
+		t.Fatal("queued mapped evidence incomplete", job)
+	}
+	for n, target := range job.Targets {
+		if target.EpisodeID != ids[n] || target.Season != n || target.Number != 1 {
+			t.Fatal("queued canonical mapping changed", target, n)
+		}
+	}
+	queryMu.Lock()
+	queried := len(queries)
+	queryMu.Unlock()
+	if queried == 0 {
+		t.Fatal("scheduler bypassed real Torznab HTTP")
+	}
+	// A second scheduled run while reservations exist cannot create a second job.
+	if err = automatic.Request(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = automatic.ProcessNext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err = db.QueryRow(`SELECT COUNT(*) FROM downloads`).Scan(&count); err != nil || count != 1 {
+		t.Fatal("mapped scheduler duplicated reserved cohort", count, err)
+	}
+	policy, err = catalog.AnimeSearch(ctx, show.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = catalog.SaveAnimeSearch(ctx, show.ID, library.AnimeSearchUpdate{Revision: policy.Revision, CategoryRevision: policy.CategoryRevision, NumberingRevision: policy.NumberingRevision, Mode: "disabled", MaxPackEpisodes: 20}); err != nil {
+		t.Fatal(err)
+	}
+	order, err = catalog.AnimeOrder(ctx, show.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for n := range entries {
+		entries[n].ReleaseTitle = "Future Changed Source"
+		entries[n].Label = strconv.Itoa(n + 11)
+	}
+	review, err = catalog.ReviewAnimeOrder(ctx, show.ID, library.AnimeOrderUpdate{Revision: order.Revision, CategoryRevision: order.CategoryRevision, NumberingRevision: order.NumberingRevision, Entries: entries}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = catalog.ApplyAnimeOrder(ctx, show.ID, review.ReviewID); err != nil {
+		t.Fatal(err)
+	}
+	reopen := func() {
+		t.Helper()
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+		var err error
+		db, err = database.Open(ctx, cfg.ConfigDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		secrets, err := securestore.New(ctx, db, cfg.ConfigDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		workflow = transfer.New(db, secrets, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
+	}
+	reopen()
+	reviewed := false
+	for ctx.Err() == nil {
+		if _, err = db.ExecContext(ctx, `UPDATE downloads SET next_run=0 WHERE id=?`, job.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = workflow.ProcessNext(ctx); err != nil {
+			t.Fatal(err)
+		}
+		state, err := workflow.Job(ctx, job.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state.AnimeOrder == nil || state.AnimeOrder.Revision != job.AnimeOrder.Revision || state.AnimeSearch == nil || state.AnimeSearch.Mode != "mapped" || state.AnimeSearch.PolicyRevision != job.AnimeSearch.PolicyRevision {
+			t.Fatal("queued mapped snapshots lost after edit/reopen", state)
+		}
+		if state.State == "completed" {
+			if !reviewed {
+				t.Fatal("automatic mapped pack imported without review")
+			}
+			break
+		}
+		if state.State == "blocked" && state.ErrorCode == "map_episodes" {
+			if reviewed {
+				t.Fatal("confirmed mapped review lost after reopen")
+			}
+			if err = db.QueryRow(`SELECT COUNT(*) FROM media_files WHERE download_id=?`, job.ID).Scan(&count); err != nil || count != 0 {
+				t.Fatal("mapped pack imported before confirmation", count, err)
+			}
+			if len(state.Choices) != 3 {
+				t.Fatal("mapped pack did not produce three file choices", state)
+			}
+			mapping := transfer.TVMappingUpdate{}
+			for _, choice := range state.Choices {
+				found := false
+				for n, name := range names {
+					if strings.HasSuffix(choice.Name, "/"+name) || choice.Name == name {
+						if len(choice.Suggestions) != 1 || choice.Suggestions[0] != ids[n] {
+							t.Fatal("old queued source labels not retained", choice)
+						}
+						mapping.Files = append(mapping.Files, transfer.TVMapping{FileIndex: choice.Index, EpisodeIDs: []int64{ids[n]}})
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Fatal("unrecognized generated mapped file", choice)
+				}
+			}
+			if err = workflow.ConfirmTVMapping(ctx, job.ID, mapping); err != nil {
+				t.Fatal(err)
+			}
+			reviewed = true
+			reopen()
+			continue
+		}
+		if state.State == "blocked" || state.State == "failed" {
+			t.Fatal("mapped automatic workflow requires attention", state.ErrorCode, state.ErrorMessage)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(300 * time.Millisecond):
+		}
+	}
+	if ctx.Err() != nil {
+		t.Fatal(ctx.Err())
+	}
+	if err = db.QueryRow(`SELECT COUNT(*) FROM media_files WHERE download_id=?`, job.ID).Scan(&count); err != nil || count != 3 {
+		t.Fatal("wrong mapped import count", count, err)
+	}
+	for n, id := range ids {
+		var relative, raw string
+		if err = db.QueryRow(`SELECT f.relative_path,f.probe_json FROM media_files f JOIN episode_files ef ON ef.media_file_id=f.id WHERE f.download_id=? AND ef.episode_id=?`, job.ID, id).Scan(&relative, &raw); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(relative, "Anime/TV Shows/") || !strings.Contains(relative, fmt.Sprintf("S%02dE01", n)) {
+			t.Fatal("mapped canonical organization wrong", relative, n)
+		}
+		var probe transfer.Probe
+		if err = json.Unmarshal([]byte(raw), &probe); err != nil || probe.Width != 128 || probe.Height != 96 || probe.Codec == "" || probe.Duration <= 0 {
+			t.Fatal("mapped import lacks real FFprobe evidence", probe, err)
+		}
+		for _, name := range []string{filepath.Join(cfg.MediaDir, filepath.FromSlash(relative)), filepath.Join(cfg.DownloadsDir, "ReelScarey", job.ID, "owned-pack", names[n])} {
+			saved, err := os.ReadFile(name)
+			if err != nil || !bytes.Equal(saved, data) {
+				t.Fatal("mapped import changed or removed owned bytes", name, err)
+			}
+		}
+	}
+	torrent, err := transfer.NewQBittorrent().Find(ctx, client, job.Hash)
+	if err != nil || torrent == nil || torrent.Progress < 1 {
+		t.Fatal("mapped seeding torrent removed or changed", err)
+	}
+	t.Log("PASS: actual scheduler matched explicit mapped numeric cohort including S00/S01/S02, queued one real isolated qBittorrent pack, retained policy/order across opt-out+mapping edits and reopen, required per-file confirmation, FFprobe-verified each canonical import and preserved generated seeding bytes")
+}
+
 func startAnimeQBittorrent(t *testing.T, ctx context.Context, downloads string) (transfer.ClientConfig, string) {
 	t.Helper()
 	profile := t.TempDir()
@@ -375,6 +736,14 @@ func startAnimeQBittorrent(t *testing.T, ctx context.Context, downloads string) 
 
 func animeBencode(v any) []byte {
 	switch x := v.(type) {
+	case []any:
+		var out bytes.Buffer
+		out.WriteByte('l')
+		for _, v := range x {
+			out.Write(animeBencode(v))
+		}
+		out.WriteByte('e')
+		return out.Bytes()
 	case string:
 		return append([]byte(strconv.Itoa(len(x))+":"), []byte(x)...)
 	case int64:

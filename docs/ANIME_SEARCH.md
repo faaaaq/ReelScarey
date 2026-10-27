@@ -1,4 +1,4 @@
-# Automatic Anime episode searches (0.17 development)
+# Automatic Anime episode searches
 
 ## Enable a show explicitly
 
@@ -13,12 +13,14 @@ global schedule, change monitoring or alter existing downloads/files.
 | Off | The Anime show is excluded from automatic episode searches. |
 | Season and episode | The saved canonical TMDb season/episode, such as S02E01. |
 | Absolute episode number | The explicit number saved for that canonical episode in Library section. No number is inferred from season order. |
+| Saved mappings | Explicit release titles and typed episode labels from the reviewed provider order. |
 
 Global Automation settings still determine scheduled versus requested one-off
 runs and search-only versus download mode. Parent show, season and episode
 monitoring, loaded metadata, valid released dates, active reservations and quality
-profiles remain applicable. Specials (season zero) are excluded from automatic
-Anime searches. Anime movies continue through the ordinary movie workflow.
+profiles remain applicable. Season and absolute modes exclude specials. Mapped
+mode can include specials and packs only with separate per-show consent. Anime
+movies continue through the ordinary movie workflow.
 
 Otherwise eligible absolute-mode episodes without a saved number produce
 **needs_numbering** in the run results, without contacting indexers or queueing
@@ -50,7 +52,27 @@ The numeric variants share a ten-second search budget. Responses are interleaved
 source selections are deduplicated, and at most 200 candidates are retained for
 the episode. Searches use the existing enabled indexers and TV category. No
 provider identity, language, genre or filename automatically creates an alias.
-AniDB/AniList identity and external alternate-order lookup are not introduced.
+Provider identity and reviewed orders are covered separately in
+[Anime provider orders](ANIME_PROVIDER_ORDERS.md).
+
+## Saved mappings, specials and packs
+
+Save and review an Anime order first, then select saved mappings in the automatic
+search editor. Saving this policy approves the current order revision. If the
+order changes, automation reports that it needs review until the settings are
+saved again. Saving an identity or order alone never enables automation.
+
+Mapped queries use the saved release title and typed labels, rather than the
+season/absolute query title or alternate titles. Specials and packs have separate
+switches; the pack limit is 2–100 episodes, defaulting to 20. A pack must cover
+the complete saved group for one normalized release title and label family,
+with consecutive labels and every member eligible. If it cannot, eligible
+single episodes can still be searched. Explicit exact range endpoints are needed
+to match a pack; a title-only result or an ambiguous range is not enough.
+Episodes must remain loaded, monitored, released, missing and unreserved.
+Saved mappings identify canonical targets; provider titles and counts never infer
+an episode order. Search evidence and the reviewed order are saved with queued
+jobs, and completed files still require explicit mapping review.
 
 ## Conservative single-episode matching
 
@@ -77,7 +99,7 @@ release-group tag do not establish technical evidence. Version suffixes v1–v99
 do not change episode identity. A bare year or common resolution number requires
 an explicit dash when used as an absolute episode label.
 
-Ranges, repeated episode labels, extra unlabelled numbers, malformed brackets,
+In season and absolute modes, ranges, repeated episode labels, extra unlabelled numbers, malformed brackets,
 packs and special-content qualifiers such as OVA, OAD, specials, recap or extras
 are refused for automatic selection. Recognized technical bit-depth/audio-channel
 labels and complete bracketed checksums do not become extra episode numbers.
@@ -124,7 +146,9 @@ GET returns:
 ```text
 media_id, canonical_title, category, revision, category_revision,
 numbering_revision, mode, search_title, alternate_titles,
-loaded_count, ready_count, missing_number_count
+loaded_count, ready_count, missing_number_count, order_revision,
+approved_order_revision, include_specials, allow_packs, max_pack_episodes,
+mapped_count, missing_mapping_count
 ```
 
 An absent per-show policy reads as revision 0, disabled, with no alternate titles.
@@ -132,7 +156,8 @@ PUT accepts only:
 
 ```text
 revision, category_revision, numbering_revision,
-mode, search_title, alternate_titles
+mode, search_title, alternate_titles, order_revision, include_specials,
+allow_packs, max_pack_episodes
 ```
 
 Invalid fields return 400, unavailable non-Anime/non-series writes return 409,
@@ -140,8 +165,8 @@ stale revisions return 409 and missing titles return 404. Existing series policy
 reads may remain available after reclassification; writes require the Anime
 section. Classification and absolute numbering retain their separate editor/API.
 
-Additive migration 013 creates `anime_search_settings` and adds the download audit
-snapshot. Schema becomes 13. It does not modify previous migration files, rename
+Migration 013 creates `anime_search_settings` and the download audit snapshot;
+migration 015 adds mapped-search consent and options. Neither renames
 media, replace credentials or opt existing shows into searches. Graphite/blue and
 plain functional copy are retained. IPTorrents/XSpeeds account testing remains
 deferred.

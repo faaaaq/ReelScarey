@@ -209,8 +209,11 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 	if e = validateAnimeSnapshot(ctx, tx, v); e != nil {
 		return Job{}, false, e
 	}
+	if e = validateMappedAnimeRelease(v); e != nil {
+		return Job{}, false, e
+	}
 	if v.AnimeOrder != nil {
-		if guard != nil {
+		if guard != nil && (v.AnimeSearch == nil || v.AnimeSearch.Mode != "mapped") {
 			return Job{}, false, problem("manual_anime_selection", "Reviewed Anime packs and specials require a manual download choice.")
 		}
 		if !orderMatchesTargets(v.AnimeOrder, v.MovieID, v.Targets) {

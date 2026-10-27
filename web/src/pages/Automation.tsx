@@ -279,7 +279,10 @@ function ScheduleForm({
           <p className="field-help">
             Only released, monitored movies and loaded, selected TV episodes are
             searched. Targets rotate between runs. Unknown dates wait for
-            metadata.
+            metadata. Anime shows require individual consent in their automatic
+            search settings. Saved provider mappings can include approved
+            specials and explicit range packs; every selected episode must
+            qualify.
           </p>
           {form.mode === "download" && (
             <p className="automation-notice">

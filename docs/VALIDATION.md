@@ -1,5 +1,24 @@
 # Validation record — 2026-10-26
 
+## Mapped Anime automation (0.19 development)
+
+- Clean frontend installation, format and TypeScript checks, all 119 interface
+  tests and the production build pass. An initial test failed on stale explanatory
+  copy; its assertion was updated and the suite rerun. The build retains the
+  large JavaScript chunk advisory.
+- Full Go tests, vet and native build pass after the frontend build, with
+  disposable fixture access. The first full run exposed an outdated backup schema
+  assertion; it was updated for migration 015 before rerunning the suite. A
+  restricted run also failed environment-dependent localhost and hard-link checks.
+- Disposable Windows native smoke passes startup/restart, embedded UI, auth,
+  backup/restore and recovery checks. The first attempt could not connect to its
+  own localhost listener in the restricted environment; the retry with local
+  fixture access passed. The owner preview and media were not used.
+- Linux real-client, race and container acceptance have not been run: the
+  available Ubuntu WSL environment lacks Go, GCC, FFmpeg, qBittorrent-nox and
+  Docker. Generated-fixture tests do not substitute for those acceptance checks.
+  No owner accounts or media were used.
+
 ## Anime provider identity and orders (0.18 development)
 
 - Independent provider/library/API/migration checks pass for GraphQL variables,

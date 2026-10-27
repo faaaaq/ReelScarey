@@ -14,8 +14,8 @@ TMDb group/subgroup proposals; exact payloads are in
 POST `/releases/anime-pack` explicitly searches 1–100 saved mapped episode IDs
 including specials and mixed seasons, against order_revision. Existing download
 selection/import review remains required. Paths have the `/api/v1` prefix;
-mutations require authentication, CSRF and same origin. This does not enable
-automatic special/pack matching or modify existing absolute aliases.
+mutations require authentication, CSRF and same origin. Saving an order alone
+does not enable automatic matching or modify existing absolute aliases.
 
 ## Anime and organization
 
@@ -26,8 +26,11 @@ GET/PUT `/library/items/{id}/anime` reads/saves explicit section and absolute
 aliases against category/show revisions; strict maximum 512 KiB/5000 entries.
 GET/PUT `/library/items/{id}/anime-search` reads/saves per-show opt-in search
 policy. PUT uses revision/category_revision/numbering_revision, mode
-(disabled/season/absolute), search_title (empty follows canonical) and up to eight
-alternate_titles. Titles are bounded to 200 UTF-8 bytes; enabled query titles to
+(disabled/season/absolute/mapped), search_title (empty follows canonical) and up to eight
+alternate_titles. Mapped mode additionally reviews order_revision and accepts
+include_specials, allow_packs and max_pack_episodes (2–100; default 20). GET
+returns the current and approved order revisions, these options, mapped_count and
+missing_mapping_count. A changed order requires renewed approval. Titles are bounded to 200 UTF-8 bytes; enabled query titles to
 180. Strict ordinary 16 KiB JSON, authentication, CSRF and origin checks apply.
 Stale revisions return 409; invalid input returns 400. Only Anime shows can save
 policies; existing shows remain disabled. Returned loaded/ready/missing counts
