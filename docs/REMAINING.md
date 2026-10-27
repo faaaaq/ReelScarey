@@ -114,6 +114,19 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   required by later workflows; current downloads/searches already use durable
   leases and recovery.
 
+## Requests and Discord
+
+- [ ] Continuous IMDb list synchronization and private IMDb, TMDb and Trakt
+  lists. Public TMDb/Trakt lists sync automatically; IMDb CSV imports are manual
+  snapshots. Provider access and limits are described in [REQUESTS.md](REQUESTS.md).
+- [ ] Live acceptance with owner-selected provider lists and a Discord webhook.
+  Existing validation uses isolated provider/Discord fixtures only.
+- [ ] Discord companion bot: authenticated commands, user linkage, signed
+  interactions, replay protection, interactive release selection and messages
+  to the administrator for requests made in the application. Only unconnected
+  signature and selection-token checks exist; no bot endpoint or credentials
+  are enabled.
+
 ## Deployment and public release
 
 - [ ] Restore GitHub artifact retention capacity if hosted artifacts are needed.

@@ -1,5 +1,23 @@
 # REST API — media catalog, downloads, imports, automation and operations
 
+## Request accounts and notifications
+
+Administrator GET/POST `/api/v1/request-accounts` lists or creates accounts;
+PUT `/api/v1/request-accounts/{id}` enables/disables one. GET `/api/v1/requests`
+lists requests; POST `/api/v1/requests/{id}/approve` or `/decline` reviews a
+request. Approval adds the exact TMDb title to the catalog and is retryable.
+
+Only requester sessions can use `/api/v1/requester/requests`, the search paths
+`/api/v1/requester/search/movies` and `/series`, or `/api/v1/requester/lists`.
+Lists use POST to create, DELETE `/{id}` to remove and POST `/{id}/refresh` to
+schedule a check. POST `/api/v1/requester/imdb-csv` accepts a bounded CSV
+snapshot. `/api/v1/requester/discord` provides write-only webhook PUT, status
+GET and DELETE; POST `/api/v1/requester/requests/{id}/notification/retry`
+explicitly retries an uncertain delivery. PUT `/api/v1/requester/password`
+changes the requester's password and revokes their sessions. Requesters are denied all other
+administrator APIs. Authenticated mutations require CSRF and same origin. See
+[request accounts and limits](REQUESTS.md).
+
 ## YouTube sourcing
 
 Authenticated POST `/api/v1/youtube/inspect` accepts `{url}` for a bounded

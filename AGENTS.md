@@ -22,6 +22,13 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   preferences, internal/database owns SQLite and versioned SQL migrations.
 - internal/auth owns the single administrator, password hashes and sessions;
   internal/securestore owns encrypted credentials and local key files.
+- Request accounts have separate hashed sessions. The HTTP boundary must deny
+  them all administrator APIs by default and expose only explicitly scoped
+  requester routes. Request/list/notification reads and writes must bind to the
+  resolved account, never an account ID supplied by a requester. Persist and
+  validate encrypted Discord webhooks and Trakt client IDs with the existing key.
+  List fetches use fixed provider hosts and fence changes made during a fetch.
+  Ambiguous Discord delivery is never silently retried. See docs/REQUESTS.md.
 - internal/metadata owns TMDb normalization and its MovieProvider/SeriesProvider boundaries.
 - internal/transfer owns Torznab/qBittorrent adapters, encrypted integration
   settings, release selections, leased download jobs, TV episode reservations/

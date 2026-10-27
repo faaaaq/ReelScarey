@@ -209,6 +209,7 @@ Lost administrator password? See the local stdin-based recovery procedure in
 
 - [Architecture and entity model](ARCHITECTURE.md)
 - [Roadmap and acceptance criteria](ROADMAP.md)
+- [Request accounts, import lists and Discord notifications](docs/REQUESTS.md)
 - [REST API](docs/API.md)
 - [Authentication and secret operations](docs/AUTHENTICATION.md)
 - [Contributor rules](AGENTS.md)

@@ -25,6 +25,8 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/operations"
 	"github.com/faaaaq/ReelScarey/internal/organization"
+	"github.com/faaaaq/ReelScarey/internal/requests"
+	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"github.com/faaaaq/ReelScarey/internal/settings"
 	"github.com/faaaaq/ReelScarey/internal/subtitle"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
@@ -46,6 +48,9 @@ type Server struct {
 	subtitle         *subtitle.Service
 	operations       *operations.Service
 	organization     *organization.Service
+	requests         *requests.Store
+	discord          *requests.Discord
+	requestLists     *requests.Lists
 	animeProvider    metadata.AnimeProvider
 	youtube          *youtube.Store
 	youtubeInspector YouTubeInspector
@@ -59,6 +64,7 @@ type Dependencies struct {
 	Subtitle         *subtitle.Service
 	AnimeProvider    metadata.AnimeProvider
 	YouTubeInspector YouTubeInspector
+	Secrets          *securestore.Store
 }
 
 type YouTubeInspector interface {
@@ -71,6 +77,11 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	s.youtubeInspector = deps.YouTubeInspector
 	s.operations = operations.New(db, cfg)
 	s.organization = organization.New(db, cfg)
+	s.requests = requests.New(db)
+	if deps.Secrets != nil {
+		s.discord = requests.NewDiscord(db, deps.Secrets)
+		s.requestLists = requests.NewLists(db, deps.Secrets)
+	}
 	s.animeProvider = deps.AnimeProvider
 	if s.animeProvider == nil {
 		s.animeProvider = metadata.NewAniList()
@@ -146,6 +157,20 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/auth/setup", method(http.MethodPost, s.authSetup))
 	mux.HandleFunc("/api/v1/auth/login", method(http.MethodPost, s.authLogin))
 	mux.HandleFunc("/api/v1/auth/logout", method(http.MethodPost, s.authLogout))
+	mux.HandleFunc("/api/v1/request-accounts", s.requestAccounts)
+	mux.HandleFunc("/api/v1/request-accounts/{id}", method(http.MethodPut, s.requestAccountState))
+	mux.HandleFunc("/api/v1/requester/search/movies", method(http.MethodGet, s.searchMovies))
+	mux.HandleFunc("/api/v1/requester/search/series", method(http.MethodGet, s.searchSeries))
+	mux.HandleFunc("/api/v1/requester/requests", s.requesterRequests)
+	mux.HandleFunc("/api/v1/requester/discord", s.requesterDiscord)
+	mux.HandleFunc("/api/v1/requester/password", method(http.MethodPut, s.requesterPassword))
+	mux.HandleFunc("/api/v1/requester/lists", s.requesterLists)
+	mux.HandleFunc("/api/v1/requester/lists/{id}", method(http.MethodDelete, s.requesterDeleteList))
+	mux.HandleFunc("/api/v1/requester/lists/{id}/refresh", method(http.MethodPost, s.requesterRefreshList))
+	mux.HandleFunc("/api/v1/requester/imdb-csv", method(http.MethodPost, s.requesterIMDbCSV))
+	mux.HandleFunc("/api/v1/requester/requests/{id}/notification/retry", method(http.MethodPost, s.requesterRetryNotification))
+	mux.HandleFunc("/api/v1/requests", method(http.MethodGet, s.adminRequests))
+	mux.HandleFunc("/api/v1/requests/{id}/{action}", method(http.MethodPost, s.requestAction))
 	mux.HandleFunc("/api/v1/providers/tmdb", s.tmdbSettings)
 	mux.HandleFunc("/api/v1/providers/tmdb/test", method(http.MethodPost, s.tmdbTest))
 	mux.HandleFunc("/api/v1/metadata/movies", method(http.MethodGet, s.searchMovies))
@@ -368,7 +393,7 @@ func (s *Server) sameOrigin(r *http.Request) bool {
 
 func frontend(assets fs.FS) http.HandlerFunc {
 	files := http.FileServer(http.FS(assets))
-	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/anime": true, "/organization": true, "/search": true, "/releases": true, "/activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true, "/import": true, "/wanted": true, "/calendar": true}
+	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/anime": true, "/organization": true, "/search": true, "/releases": true, "/activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true, "/import": true, "/wanted": true, "/calendar": true, "/requests": true}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")

@@ -18,8 +18,13 @@ Historical native and package results below remain as records of past work.
 - [ ] Provide non-admin accounts and a request system in which each user can
   configure their own IMDb, TMDb and Trakt import lists. Give administrators
   control over approval and importing, with clear request status for users.
+  Request accounts, approval, public TMDb/Trakt synchronization and one-time
+  IMDb CSV imports are implemented. Automatic IMDb synchronization, private
+  lists and broader provider acceptance remain open.
 - [ ] Add built-in Discord webhook notifications. Let users supply their own
   webhook information and receive notifications when their requests are fulfilled.
+  Per-user encrypted webhooks and durable fulfillment notifications are
+  implemented; live owner-service acceptance remains open.
 - [ ] Make unmatched files easy to discover and review for matching or registration.
 - [ ] Integrate Emby play activity so users can see what is actually being watched.
 - [ ] Make per-series release preferences easy to set beyond a quality profile,

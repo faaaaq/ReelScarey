@@ -126,6 +126,59 @@ func TestPasswordResetAndBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRequestAccountsHaveIsolatedRevocableSessions(t *testing.T) {
+	ctx := context.Background()
+	s, db, _, code := authFixture(t)
+	admin, err := s.Setup(ctx, "admin", "admin-test-password", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := s.CreateRequestAccount(ctx, "viewer", "viewer-test-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.CreateRequestAccount(ctx, "ADMIN", "viewer-test-password"); !errors.Is(err, ErrAccountExists) {
+		t.Fatal("admin name collision accepted", err)
+	}
+	session, err := s.Login(ctx, "viewer", "viewer-test-password")
+	if err != nil || session.Role != "requester" || session.AccountID != a.ID {
+		t.Fatal("requester login failed", session, err)
+	}
+	var hash string
+	if err = db.QueryRow(`SELECT token_hash FROM request_sessions WHERE account_id=?`, a.ID).Scan(&hash); err != nil || hash == session.Token {
+		t.Fatal("requester session token stored in plaintext", err)
+	}
+	resolved, err := s.Resolve(ctx, session.Token)
+	if err != nil || resolved.Role != "requester" || resolved.AccountID != a.ID {
+		t.Fatal("requester session changed identity", resolved, err)
+	}
+	if err = s.ChangeRequestPassword(ctx, a.ID, "wrong-current-password", "new-viewer-password"); !errors.Is(err, ErrUnauthorized) {
+		t.Fatal("incorrect current password accepted", err)
+	}
+	if err = s.ChangeRequestPassword(ctx, a.ID, "viewer-test-password", "new-viewer-password"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Resolve(ctx, session.Token); !errors.Is(err, ErrUnauthorized) {
+		t.Fatal("password change retained session", err)
+	}
+	session, err = s.Login(ctx, "viewer", "new-viewer-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SetRequestAccountDisabled(ctx, a.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Resolve(ctx, session.Token); !errors.Is(err, ErrUnauthorized) {
+		t.Fatal("disabled requester session survived", err)
+	}
+	if _, err = s.Login(ctx, "viewer", "new-viewer-password"); !errors.Is(err, ErrUnauthorized) {
+		t.Fatal("disabled requester could log in", err)
+	}
+	if current, err := s.Resolve(ctx, admin.Token); err != nil || current.Role != "admin" {
+		t.Fatal("requester disable affected admin", err)
+	}
+}
 func TestLimiterAndHashWorkBound(t *testing.T) {
 	s, _, _, _ := authFixture(t)
 	for range 10 {

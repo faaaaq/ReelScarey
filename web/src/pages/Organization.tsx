@@ -56,6 +56,7 @@ type Plan = {
   folder_move?: {
     source: string;
     destination: string;
+    stage?: string;
     inventory: {
       directories: { path: string }[];
       files: { source: string; size_bytes: number }[];
@@ -763,6 +764,11 @@ function PlanFiles({ plan }: { plan: Plan }) {
             Entire folder: <code>{plan.folder_move.source}</code> →{" "}
             <code>{plan.folder_move.destination}</code>
           </p>
+          {plan.folder_move.stage && (
+            <p className="field-help">
+              Saved staging folder: <code>{plan.folder_move.stage}</code>
+            </p>
+          )}
           <p>
             Review every directory and file below. All contents move together.
           </p>

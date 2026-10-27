@@ -125,6 +125,8 @@ export type Session = {
   username: string;
   csrf_token: string;
   expires_at: number;
+  role?: "admin" | "requester";
+  account_id?: number;
 };
 export type AuthStatus = {
   setup_required: boolean;

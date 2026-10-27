@@ -21,6 +21,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/instance"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/organization"
+	"github.com/faaaaq/ReelScarey/internal/requests"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"github.com/faaaaq/ReelScarey/internal/subtitle"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
@@ -112,12 +113,28 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
 	workerCtx, workerCancel := context.WithCancel(ctx)
+	listsDone := make(chan struct{})
+	go func() {
+		defer close(listsDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			requests.NewLists(db, secretStore).Run(workerCtx)
+		}
+	}()
+	defer func() { workerCancel(); <-listsDone }()
+	discordDone := make(chan struct{})
+	go func() {
+		defer close(discordDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			requests.NewDiscord(db, secretStore).Run(workerCtx)
+		}
+	}()
+	defer func() { workerCancel(); <-discordDone }()
 	youtubeDone := make(chan struct{})
 	go func() {
 		defer close(youtubeDone)

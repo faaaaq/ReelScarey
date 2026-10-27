@@ -31,6 +31,7 @@ internal/quality/    conservative identity, profile persistence and release rank
 internal/automation/ persistent scheduled searches, audit history and policy fences
 internal/subtitle/   provider, track preferences, registered-media jobs and sidecars
 internal/youtube/    reviewed public source inspection, acquisition and imports
+internal/requests/  requester-owned requests, list imports and webhook delivery
 internal/instance/   OS config ownership and maintenance locks
 internal/maintenance/ verified offline config snapshots and new-folder restores
 internal/operations/ explicit installation checks, setup and recovery review

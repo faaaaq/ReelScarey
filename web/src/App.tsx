@@ -46,6 +46,7 @@ import { ExistingLibrary } from "./pages/ExistingLibrary";
 import { Planning } from "./pages/Planning";
 import { Organization } from "./pages/Organization";
 import { YouTube } from "./pages/YouTube";
+import { AdminRequests, RequesterHome } from "./pages/Requests";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -64,9 +65,14 @@ const navigation = [
 export default function App() {
   return (
     <AuthGate>
-      <AppShell />
+      <RoleApp />
     </AuthGate>
   );
+}
+
+function RoleApp() {
+  const { session } = useAuth();
+  return session.role === "requester" ? <RequesterHome /> : <AppShell />;
 }
 
 function AppShell() {
@@ -138,6 +144,10 @@ function AppShell() {
         <div className="sidebar-bottom">
           <p className="nav-label">Manage</p>
           <nav aria-label="Administration">
+            <NavLink to="/requests">
+              <ListFilter size={19} strokeWidth={1.7} />
+              <span>Requests</span>
+            </NavLink>
             <NavLink to="/import">
               <FolderSearch size={19} strokeWidth={1.7} />
               <span>Import library</span>
@@ -194,6 +204,7 @@ function AppShell() {
               element={<Library key="anime" kind="anime" />}
             />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/requests" element={<AdminRequests />} />
             <Route path="/organization" element={<Organization />} />
             <Route path="/indexers" element={<Indexers />} />
             <Route path="/import" element={<ExistingLibrary />} />

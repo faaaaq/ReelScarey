@@ -1,5 +1,26 @@
 # Validation record — 2026-10-27
 
+## Request accounts, import lists and webhook notifications
+
+- Isolated tests cover requester session persistence and revocation, denial of
+  administrator APIs, account ownership, approval and duplicate retries. A
+  disposable Docker container confirmed requester login, denial of administrator
+  settings and account persistence across restart.
+- Provider fixtures cover public TMDb and Trakt list imports, encrypted Trakt
+  settings, per-user ownership and rejection of an in-flight result after a list
+  is changed. IMDb CSV and exact TMDb ID resolution have fixture coverage;
+  unmatched batches are rejected without partial imports. The public IMDb export
+  URL returned HTTP 202 without usable list data from this environment; CSV
+  upload is one-time, not a live subscription. Private lists remain unsupported.
+- Fake Discord transport tests cover encrypted webhook storage, movie and fully
+  monitored TV availability, no notification before fulfillment, uncertain
+  delivery and explicit retry. No real webhook or user account was contacted.
+  The companion bot is not implemented; only its unconnected signature verifier
+  and user-bound selection-token checks have tests.
+- Full Go tests and vet, formatting, TypeScript and all 125 interface tests pass;
+  the Docker image built with Linux application tests. The request/login changes
+  are not yet deployed to an owner installation.
+
 ## Reviewed title moves between collections
 
 - Whole-title review captures up to 100 registered files and rejects a changed

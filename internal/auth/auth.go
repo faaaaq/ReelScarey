@@ -20,12 +20,13 @@ import (
 )
 
 var (
-	ErrUnauthorized = errors.New("The username or password is incorrect.")
-	ErrSetupClosed  = errors.New("The administrator account has already been created.")
-	ErrSetupToken   = errors.New("The setup code is incorrect. Read setup-token from your config folder.")
-	ErrPassword     = errors.New("Use a password of at least 12 characters and at most 256 bytes.")
-	ErrUsername     = errors.New("Use a username of 3–40 letters, numbers, underscores or hyphens.")
-	ErrBusy         = errors.New("Too many authentication attempts. Wait a minute and try again.")
+	ErrUnauthorized  = errors.New("The username or password is incorrect.")
+	ErrSetupClosed   = errors.New("The administrator account has already been created.")
+	ErrSetupToken    = errors.New("The setup code is incorrect. Read setup-token from your config folder.")
+	ErrPassword      = errors.New("Use a password of at least 12 characters and at most 256 bytes.")
+	ErrUsername      = errors.New("Use a username of 3–40 letters, numbers, underscores or hyphens.")
+	ErrBusy          = errors.New("Too many authentication attempts. Wait a minute and try again.")
+	ErrAccountExists = errors.New("That username is already in use.")
 )
 
 const SessionLifetime = 24 * time.Hour
@@ -37,6 +38,8 @@ type Session struct {
 	Token     string `json:"-"`
 	CSRFToken string `json:"csrf_token"`
 	ExpiresAt int64  `json:"expires_at"`
+	Role      string `json:"role"`
+	AccountID int64  `json:"account_id,omitempty"`
 }
 type attempt struct {
 	count int
@@ -179,8 +182,10 @@ func (s *Service) Login(ctx context.Context, username, password string) (Session
 	if err != nil {
 		return Session{}, err
 	}
-	valid := verifyPassword(encoded, password)
-	if !valid || subtle.ConstantTimeCompare([]byte(storedUser), []byte(username)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(storedUser), []byte(username)) != 1 {
+		return s.loginRequester(ctx, username, password)
+	}
+	if !verifyPassword(encoded, password) {
 		return Session{}, ErrUnauthorized
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -223,7 +228,7 @@ func issue(ctx context.Context, tx *sql.Tx, username string) (Session, error) {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at <= ? OR token_hash IN (SELECT token_hash FROM sessions ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET 9)", now); err != nil {
 		return Session{}, err
 	}
-	session := Session{Username: username, Token: token, CSRFToken: CSRF(token), ExpiresAt: time.Now().Add(SessionLifetime).Unix()}
+	session := Session{Username: username, Token: token, CSRFToken: CSRF(token), ExpiresAt: time.Now().Add(SessionLifetime).Unix(), Role: "admin"}
 	_, err := tx.ExecContext(ctx, "INSERT INTO sessions(token_hash, expires_at, created_at) VALUES (?, ?, ?)", digest(token), session.ExpiresAt, now)
 	return session, err
 }
@@ -235,7 +240,16 @@ func (s *Service) Resolve(ctx context.Context, token string) (Session, error) {
 	var session Session
 	err := s.db.QueryRowContext(ctx, "SELECT a.username, s.expires_at FROM sessions s CROSS JOIN admin_account a WHERE s.token_hash = ? AND s.expires_at > ?", digest(token), time.Now().Unix()).Scan(&session.Username, &session.ExpiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Session{}, ErrUnauthorized
+		err = s.db.QueryRowContext(ctx, `SELECT a.id,a.username,s.expires_at FROM request_sessions s JOIN request_accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires_at>? AND a.disabled=0`, digest(token), time.Now().Unix()).Scan(&session.AccountID, &session.Username, &session.ExpiresAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			return Session{}, ErrUnauthorized
+		}
+		if err != nil {
+			return Session{}, err
+		}
+		session.Role = "requester"
+	} else if err == nil {
+		session.Role = "admin"
 	}
 	if err != nil {
 		return Session{}, err
@@ -246,8 +260,18 @@ func (s *Service) Resolve(ctx context.Context, token string) (Session, error) {
 }
 
 func (s *Service) Logout(ctx context.Context, token string) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash = ?", digest(token))
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash = ?", digest(token)); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM request_sessions WHERE token_hash = ?", digest(token)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ResetPassword is used by the owner's local CLI. It revokes every session.
@@ -277,6 +301,9 @@ func (s *Service) ResetPassword(ctx context.Context, password string) error {
 		return errors.New("create the administrator account before resetting its password")
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM sessions"); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM request_sessions"); err != nil {
 		return err
 	}
 	return tx.Commit()

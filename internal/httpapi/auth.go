@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 )
@@ -53,8 +54,16 @@ func (s *Server) security(next http.Handler) http.Handler {
 			s.internal(w, "session_lookup", err)
 			return
 		}
+		if session.Role != "admin" && session.Role != "requester" {
+			fail(w, 403, "invalid_role", "This session is not authorized.")
+			return
+		}
 		if mutation && subtle.ConstantTimeCompare([]byte(session.CSRFToken), []byte(r.Header.Get("X-CSRF-Token"))) != 1 {
 			fail(w, 403, "csrf_required", "Reload the application before trying again.")
+			return
+		}
+		if session.Role == "requester" && r.URL.Path != "/api/v1/auth/logout" && !(path.Clean(r.URL.Path) == r.URL.Path && strings.HasPrefix(r.URL.Path, "/api/v1/requester/")) {
+			fail(w, 403, "administrator_required", "This action is available only to the administrator.")
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, session)))

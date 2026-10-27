@@ -151,9 +151,18 @@ func (s *Service) copiedStage(ctx context.Context, root *os.Root, p *Plan) error
 		if err = segments(root, name, false); err != nil {
 			return err
 		}
+		before, e := root.Lstat(filepath.FromSlash(name))
+		if e != nil || !before.IsDir() {
+			return problem("staging_conflict", "A staged directory changed and was retained.")
+		}
 		target, e := root.Open(filepath.FromSlash(name))
 		if e != nil {
 			return e
+		}
+		actual, e := target.Stat()
+		if e != nil || !actual.IsDir() || !os.SameFile(before, actual) {
+			target.Close()
+			return problem("staging_conflict", "A staged directory changed and was retained.")
 		}
 		e = target.Chmod(info.Mode().Perm())
 		target.Close()

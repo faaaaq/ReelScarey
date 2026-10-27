@@ -45,7 +45,7 @@ func rawFixture(t *testing.T, provider metadata.MovieProvider) (http.Handler, *s
 	if provider == nil {
 		provider = metadata.NewTMDb()
 	}
-	return New(db, config.Config{ConfigDir: dir, MediaDir: "/media", DownloadsDir: "/downloads", PublicURL: "http://example.com"}, slog.New(slog.NewTextHandler(io.Discard, nil)), assets, "test", Dependencies{Auth: authService, Metadata: metadata.New(store, provider)}), db, authService, base64.RawURLEncoding.EncodeToString(code)
+	return New(db, config.Config{ConfigDir: dir, MediaDir: "/media", DownloadsDir: "/downloads", PublicURL: "http://example.com"}, slog.New(slog.NewTextHandler(io.Discard, nil)), assets, "test", Dependencies{Auth: authService, Metadata: metadata.New(store, provider), Secrets: store}), db, authService, base64.RawURLEncoding.EncodeToString(code)
 }
 
 func fixture(t *testing.T) (http.Handler, *sql.DB) {
@@ -62,6 +62,37 @@ func fixture(t *testing.T) (http.Handler, *sql.DB) {
 }
 
 const validSettings = `{"library_name":"Cinema","movie_folder":"Movies","series_folder":"TV","revision":1}`
+
+func TestRequesterCannotAccessAdministratorAPIs(t *testing.T) {
+	h, _, service, code := rawFixture(t, nil)
+	ctx := context.Background()
+	if _, err := service.Setup(ctx, "admin", "admin-test-password", code); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateRequestAccount(ctx, "viewer", "viewer-test-password"); err != nil {
+		t.Fatal(err)
+	}
+	session, err := service.Login(ctx, "viewer", "viewer-test-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, route := range []struct{ method, path, body string }{
+		{"GET", "/api/v1/settings", ""}, {"GET", "/api/v1/library", ""}, {"GET", "/api/v1/indexers", ""},
+		{"POST", "/api/v1/automation/run", "{}"}, {"PUT", "/api/v1/settings", validSettings},
+		{"GET", "/api/v1/requester/../settings", ""},
+	} {
+		req := httptest.NewRequest(route.method, route.path, strings.NewReader(route.body))
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: session.Token})
+		req.Header.Set("X-CSRF-Token", session.CSRFToken)
+		req.Header.Set("Origin", "http://example.com")
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 403 {
+			t.Fatalf("requester accessed %s: %d %s", route.path, rec.Code, rec.Body)
+		}
+	}
+}
 
 func TestAPIInputBoundaries(t *testing.T) {
 	for _, test := range []struct {
