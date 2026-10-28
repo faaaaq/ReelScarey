@@ -342,6 +342,20 @@ func (s *Server) organizationRollback(w http.ResponseWriter, r *http.Request) {
 	send(w, 201, out)
 }
 
+func (s *Server) organizationCancel(w http.ResponseWriter, r *http.Request) {
+	if !decodeJSON(w, r, &struct{}{}) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	out, err := s.organization.CancelQueued(ctx, r.PathValue("id"))
+	if err != nil {
+		s.organizationError(w, err)
+		return
+	}
+	send(w, 200, out)
+}
+
 func (s *Server) organizationRecoverReplacement(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &struct{}{}) {
 		return

@@ -15,6 +15,7 @@ import (
 type Probe struct {
 	Subtitles []SubtitleStream `json:"subtitle_streams"`
 	Audio     []AudioStream    `json:"audio_streams"`
+	Title     *string          `json:"embedded_title"`
 	Codec     string           `json:"codec"`
 	Width     int              `json:"width"`
 	Height    int              `json:"height"`
@@ -53,7 +54,7 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 	defer file.Seek(0, 0)
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", "pipe", "-probesize", "16777216", "-analyzeduration", "10000000", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags=language,title", "-of", "json", "-i", "pipe:0")
+	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", "pipe", "-probesize", "16777216", "-analyzeduration", "10000000", "-show_entries", "format=duration:format_tags=title:stream=codec_type,codec_name,width,height:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags=language,title", "-of", "json", "-i", "pipe:0")
 	hideProbeWindow(cmd)
 	var output limitedBuffer
 	output.max = 64 << 10
@@ -69,6 +70,9 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 	var raw struct {
 		Format struct {
 			Duration string `json:"duration"`
+			Tags     struct {
+				Title string `json:"title"`
+			} `json:"tags"`
 		} `json:"format"`
 		Streams []struct {
 			Type        string `json:"codec_type"`
@@ -105,7 +109,8 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 	}
 	for _, stream := range raw.Streams {
 		if stream.Type == "video" && stream.Codec != "" && stream.Codec != "unknown" && stream.Width > 0 && stream.Height > 0 && stream.Width <= 32768 && stream.Height <= 32768 && stream.Disposition.Attached == 0 {
-			return Probe{Codec: stream.Codec, Width: stream.Width, Height: stream.Height, Duration: duration, Subtitles: subtitles, Audio: audio}, nil
+			title := raw.Format.Tags.Title
+			return Probe{Codec: stream.Codec, Width: stream.Width, Height: stream.Height, Duration: duration, Subtitles: subtitles, Audio: audio, Title: &title}, nil
 		}
 	}
 	return Probe{}, problem("invalid_media", "The selected file has no usable video stream.")

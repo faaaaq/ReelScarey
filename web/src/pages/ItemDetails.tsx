@@ -53,6 +53,7 @@ export type LocalDetails = {
       duration_seconds: number;
       audio_streams?:
         { codec: string; language: string; title: string }[] | null;
+      embedded_title?: string | null;
     };
   }[];
   history: {
@@ -462,6 +463,26 @@ export function ItemInformation({
                         .join(" · ")}
                     </p>
                     <p>
+                      {file.probe.embedded_title == null
+                        ? "Embedded title has not been inspected yet."
+                        : file.probe.embedded_title === ""
+                          ? "No embedded title was reported."
+                          : `Embedded title: ${file.probe.embedded_title}`}
+                    </p>
+                    {data.item.kind === "movie" &&
+                      file.probe.embedded_title &&
+                      file.probe.embedded_title.trim().toLocaleLowerCase() !==
+                        data.item.title.trim().toLocaleLowerCase() && (
+                        <p className="field-help">
+                          The embedded title differs from the saved movie title:{" "}
+                          {data.item.title}.
+                        </p>
+                      )}
+                    <p className="field-help">
+                      Organizing files does not yet change their embedded
+                      titles.
+                    </p>
+                    <p>
                       {file.probe.audio_streams == null
                         ? "Audio tags have not been inspected yet."
                         : file.probe.audio_streams.length === 0
@@ -469,7 +490,7 @@ export function ItemInformation({
                           : `Embedded audio tags: ${file.probe.audio_streams.map((stream) => [stream.language && stream.language !== "und" ? stream.language : "language unknown", stream.codec, stream.title].filter(Boolean).join(" · ")).join(", ")}`}
                     </p>
                     <p className="field-help">
-                      Language tags come from the file and may be missing or
+                      Embedded tags come from the file and may be missing or
                       inaccurate. Rechecking reads the entire file.
                     </p>
                     <Button
@@ -479,7 +500,7 @@ export function ItemInformation({
                     >
                       {inspecting === file.id
                         ? "Inspecting…"
-                        : "Inspect audio tags"}
+                        : "Inspect embedded tags"}
                     </Button>
                     {inspectionError?.id === file.id && (
                       <p role="alert" className="form-error">

@@ -50,21 +50,25 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 
 ## Media management and organization
 
+- [ ] Safely update embedded movie and episode titles during reviewed organization,
+  preserving streams, chapters, attachments, sidecars, seeding sources and rollback.
+  Embedded titles can be inspected, but organization does not yet rewrite them.
+
 - [ ] Connect downloaded upgrades to versioned replacement and support YouTube
   provenance. Explicitly reviewed discovered-file replacements retain independent
   previous versions and support reviewed rollback; upgrade searches remain suggestions.
 - [x] Bulk season and episode monitoring. Select up to 100 seasons per show or
   100 loaded episodes per season for an atomic, revision-checked update.
 - [ ] Reviewed catalog/media removal with clear file-deletion choices.
-- [ ] Broader filesystem-health inspection and batch reporting. Individual registered
-  files can be checked against their saved checksum from Organize library.
+- [x] Filesystem-health inspection of registered files. Organize library can
+  check selected files on one page, reporting missing, changed and unsafe paths.
 - [ ] A guided main-root migration. The main media directory is currently selected
   at deployment; changing it requires an offline complete-tree move.
 - [x] Reviewed whole-title folder moves across filesystems, including NFO,
   artwork, attachments, nested extras and empty directories. Large reviews are
   bounded and an uncertain stage may require manual review.
-- [ ] Queued organization cancellation and rollback after apply. Failed saved
-  jobs can be resumed with verification; there is no general batch rollback API.
+- [ ] General organization rollback after apply. Unstarted queued jobs can be
+  cancelled back to review; failed jobs with file work require verified recovery.
 - [ ] Arbitrary-root browsing and automatic bulk metadata matching, if added with
   explicit scope and identity review. Current discovery stays within configured
   collections and registration requires a reviewed match.

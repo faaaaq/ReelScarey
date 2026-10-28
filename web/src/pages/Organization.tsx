@@ -364,6 +364,10 @@ function Reorganize({ config }: { config: Config }) {
       : null,
   );
   const [health, setHealth] = useState<Record<number, string>>({});
+  const [healthProgress, setHealthProgress] = useState({
+    completed: 0,
+    total: 0,
+  });
   const [selected, setSelected] = useState<number[]>([]),
     [target, setTarget] = useState("");
   const [plan, setPlan] = useState<Plan>(),
@@ -376,6 +380,7 @@ function Reorganize({ config }: { config: Config }) {
     request.current?.abort();
     setPending("");
     setSelected([]);
+    setHealth({});
     setPlan(undefined);
     setReviewed(false);
     setStale(false);
@@ -395,12 +400,16 @@ function Reorganize({ config }: { config: Config }) {
   }, [history.data]);
   useEffect(() => {
     if (plan?.state === "completed") {
+      setHealth({});
       files.reload();
       if (versionsFile) versions.reload();
     }
   }, [plan?.state, files.reload, versionsFile, versions.reload]);
   async function checkHealth(fileID: number) {
     if (pending) return;
+    const controller = new AbortController();
+    request.current?.abort();
+    request.current = controller;
     setPending(`health-${fileID}`);
     setHealth((current) => {
       const next = { ...current };
@@ -411,13 +420,63 @@ function Reorganize({ config }: { config: Config }) {
     try {
       const result = await api<{ status: string }>(
         `/organization/files/${fileID}/health`,
-        { method: "POST", body: "{}" },
+        { method: "POST", body: "{}", signal: controller.signal },
       );
-      setHealth((current) => ({ ...current, [fileID]: result.status }));
+      if (!controller.signal.aborted)
+        setHealth((current) => ({ ...current, [fileID]: result.status }));
     } catch (e) {
-      setError(messageFor(e));
+      if (!controller.signal.aborted) setError(messageFor(e));
     } finally {
-      setPending("");
+      if (request.current === controller) {
+        request.current = null;
+        setPending("");
+      }
+    }
+  }
+  async function checkSelectedHealth() {
+    if (pending || !selected.length) return;
+    const ids = [...selected];
+    const controller = new AbortController();
+    request.current?.abort();
+    request.current = controller;
+    setPending("batch-health");
+    setError("");
+    setHealthProgress({ completed: 0, total: ids.length });
+    setHealth((current) => {
+      const next = { ...current };
+      ids.forEach((id) => delete next[id]);
+      return next;
+    });
+    let failures = 0;
+    try {
+      for (const id of ids) {
+        if (controller.signal.aborted) break;
+        try {
+          const result = await api<{ status: string }>(
+            `/organization/files/${id}/health`,
+            { method: "POST", body: "{}", signal: controller.signal },
+          );
+          if (controller.signal.aborted) break;
+          setHealth((current) => ({ ...current, [id]: result.status }));
+        } catch {
+          if (controller.signal.aborted) break;
+          failures++;
+          setHealth((current) => ({ ...current, [id]: "error" }));
+        }
+        setHealthProgress((current) => ({
+          ...current,
+          completed: current.completed + 1,
+        }));
+      }
+      if (!controller.signal.aborted && failures)
+        setError(
+          `${failures} file ${failures === 1 ? "check could" : "checks could"} not be completed. Try those files individually for details.`,
+        );
+    } finally {
+      if (request.current === controller) {
+        request.current = null;
+        setPending("");
+      }
     }
   }
   async function reviewReplacement() {
@@ -571,6 +630,26 @@ function Reorganize({ config }: { config: Config }) {
       setPending("");
     }
   }
+  async function cancelQueued(saved: Plan) {
+    if (pending) return;
+    setPending("cancel");
+    setError("");
+    try {
+      setPlan(
+        await api<Plan>(`/organization/plans/${saved.id}/cancel`, {
+          method: "POST",
+          body: "{}",
+        }),
+      );
+      setReviewed(false);
+      history.reload();
+    } catch (e) {
+      setError(messageFor(e));
+      history.reload();
+    } finally {
+      setPending("");
+    }
+  }
   function filter(nextPage: number, nextQuery = query) {
     setParams({
       ...(mediaID ? { media_id: mediaID } : {}),
@@ -700,7 +779,9 @@ function Reorganize({ config }: { config: Config }) {
                           ? "File is missing from its registered path."
                           : health[file.id] === "unsafe"
                             ? "File path cannot be safely inspected."
-                            : "File differs from its saved checksum or changed during inspection."}
+                            : health[file.id] === "error"
+                              ? "The integrity check could not be completed."
+                              : "File differs from its saved checksum or changed during inspection."}
                     </p>
                   )}
                 </div>
@@ -720,6 +801,27 @@ function Reorganize({ config }: { config: Config }) {
               pages={Math.ceil(files.data.total / files.data.limit)}
               onPage={filter}
             />
+            <p className="field-help">
+              Integrity results describe the moment each file was checked. Each
+              check reads the full file and can take a while.
+            </p>
+            <Button
+              variant="soft"
+              disabled={!selected.length || !!pending || running}
+              onClick={() => void checkSelectedHealth()}
+            >
+              Check selected files ({selected.length})
+            </Button>{" "}
+            {pending === "batch-health" && (
+              <>
+                <span role="status">
+                  Checked {healthProgress.completed} of {healthProgress.total}.
+                </span>{" "}
+                <Button variant="soft" onClick={() => request.current?.abort()}>
+                  Stop checking
+                </Button>
+              </>
+            )}
           </>
         )}
         {versionsFile && (
@@ -877,6 +979,15 @@ function Reorganize({ config }: { config: Config }) {
             </p>
           )}
           <PlanFiles plan={plan} />
+          {plan.state === "queued" && plan.phase === "planned" && (
+            <Button
+              variant="soft"
+              disabled={!!pending}
+              onClick={() => void cancelQueued(plan)}
+            >
+              Cancel queued job
+            </Button>
+          )}
           {plan.state === "review" && (
             <>
               <label>
@@ -932,6 +1043,15 @@ function Reorganize({ config }: { config: Config }) {
               </summary>
               <p>{p.message}</p>
               <PlanFiles plan={p} />
+              {p.state === "queued" && p.phase === "planned" && (
+                <Button
+                  variant="soft"
+                  disabled={!!pending}
+                  onClick={() => void cancelQueued(p)}
+                >
+                  Cancel queued job
+                </Button>
+              )}
               {p.state === "completed" &&
                 p.replacement &&
                 !p.replacement.recovering && (

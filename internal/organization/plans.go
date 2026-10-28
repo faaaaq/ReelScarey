@@ -499,3 +499,68 @@ func (s *Service) savePhase(ctx context.Context, p *Plan, phase string) error {
 	_, e = s.db.ExecContext(ctx, `UPDATE organization_plans SET snapshot=?,updated_at=unixepoch() WHERE id=?`, string(raw), p.ID)
 	return e
 }
+
+// CancelQueued returns an unstarted job to review. Jobs with any journaled
+// output or a moved folder must instead finish or use their recovery flow.
+func (s *Service) CancelQueued(ctx context.Context, id string) (Plan, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	unlock := ReadMedia()
+	defer unlock()
+	p, e := s.Plan(ctx, id)
+	if e != nil {
+		return p, e
+	}
+	if p.State != "queued" || p.Phase != "planned" {
+		return p, problem("invalid_selection", "Only a queued job that has not started can be cancelled.")
+	}
+	root, _, e := s.openRoot(p.Root)
+	if e != nil {
+		return p, e
+	}
+	defer root.Close()
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return p, e
+	}
+	defer tx.Rollback()
+	var outputs int
+	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_outputs WHERE plan_id=?`, id).Scan(&outputs); e != nil {
+		return p, e
+	}
+	if outputs != 0 {
+		return p, problem("work_pending", "This job has saved file work and must be resumed.")
+	}
+	if p.FolderMove != nil {
+		src, err := folderExists(root, p.FolderMove.Source)
+		if err != nil {
+			return p, err
+		}
+		dst, err := folderExists(root, p.FolderMove.Destination)
+		if err != nil {
+			return p, err
+		}
+		if !src || dst || p.FolderMove.Copy || p.FolderMove.Stage != "" {
+			return p, problem("work_pending", "This folder job may have started and must be resumed.")
+		}
+		if e = s.validateFolder(ctx, root, tx, p, false); e != nil {
+			return p, e
+		}
+	}
+	res, e := tx.ExecContext(ctx, `UPDATE organization_plans SET state='review',message='Queue cancelled before file changes.',updated_at=unixepoch() WHERE id=? AND state='queued'`, id)
+	if e != nil {
+		return p, e
+	}
+	n, e := res.RowsAffected()
+	if e != nil {
+		return p, e
+	}
+	if n != 1 {
+		return p, problem("work_pending", "The job started and must be resumed.")
+	}
+	if _, e = tx.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'organization',?,'Library organization','queue cancelled')`, id); e != nil { return p, e }
+	if e = tx.Commit(); e != nil {
+		return p, e
+	}
+	return s.Plan(ctx, id)
+}

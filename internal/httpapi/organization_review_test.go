@@ -102,6 +102,7 @@ func TestReviewOrganizationAPISecuritySettingsAndExactSelections(t *testing.T) {
 		{"POST", "/api/v1/organization/plans/missing/rollback", `{}`},
 		{"POST", "/api/v1/organization/plans/missing/recover-replacement", `{}`},
 		{"POST", "/api/v1/organization/plans/missing/apply", `{}`},
+		{"POST", "/api/v1/organization/plans/missing/cancel", `{}`},
 		{"PUT", "/api/v1/library/items/1/organization", `{"library_key":"anime","revision":0}`},
 	} {
 		if out := request(f.handler, endpoint.method, endpoint.path, endpoint.body, nil, false); out.Code != 401 {

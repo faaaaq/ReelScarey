@@ -639,3 +639,97 @@ func TestReviewCancelledProcessingRetainsQueuedPlanForRestart(t *testing.T) {
 		t.Fatal("cancellation lost durable intent", finished, err)
 	}
 }
+
+func TestCancelOnlyUnstartedQueuedOrganization(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	rel := "Movies/Original/movie.mkv"
+	f.movie(t, 1, rel, []byte("unchanged"))
+	p, e := f.s.Preview(ctx, []int64{1}, "anime")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	cancelled, e := f.s.CancelQueued(ctx, p.ID)
+	if e != nil || cancelled.State != "review" {
+		t.Fatal(cancelled, e)
+	}
+	if e = EnsureMediaAvailable(ctx, f.db); e != nil {
+		t.Fatal(e)
+	}
+	data, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(rel)))
+	if e != nil || string(data) != "unchanged" {
+		t.Fatal(string(data), e)
+	}
+	if _, e = f.s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.db.Exec(`INSERT INTO organization_outputs(plan_id,destination,stage) VALUES(?,?,?)`, p.ID, "owned-output", "owned-stage"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.CancelQueued(ctx, p.ID); e == nil {
+		t.Fatal("journaled job was cancelled")
+	}
+	var state string
+	if e = f.db.QueryRow(`SELECT state FROM organization_plans WHERE id=?`, p.ID).Scan(&state); e != nil || state != "queued" {
+		t.Fatal(state, e)
+	}
+}
+
+func TestCancelRefusesFolderThatMayAlreadyHaveMoved(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	f.movie(t, 1, "Movies/Original/movie.mkv", []byte("unchanged"))
+	p, e := f.s.PreviewFolder(ctx, 1, "anime")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	src := filepath.Join(f.cfg.MediaDir, filepath.FromSlash(p.FolderMove.Source))
+	dst := filepath.Join(f.cfg.MediaDir, filepath.FromSlash(p.FolderMove.Destination))
+	if e = os.MkdirAll(filepath.Dir(dst), 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e = os.Rename(src, dst); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.CancelQueued(ctx, p.ID); e == nil {
+		t.Fatal("already moved folder job was cancelled")
+	}
+	if e = EnsureMediaAvailable(ctx, f.db); e == nil {
+		t.Fatal("potentially moved folder was not reserved")
+	}
+}
+
+func TestCancelCannotRaceAJobThatStarted(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	f.movie(t, 1, "Movies/Original/movie.mkv", []byte("unchanged"))
+	p, e := f.s.Preview(ctx, []int64{1}, "anime")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	finished := make(chan error, 1)
+	f.s.link = func(root *os.Root, old, new string) error { close(started); <-release; return root.Link(old, new) }
+	go func() { finished <- f.s.Tick(ctx) }()
+	<-started
+	cancelled := make(chan error, 1)
+	other := New(f.db, f.cfg)
+	go func() { _, err := other.CancelQueued(ctx, p.ID); cancelled <- err }()
+	close(release)
+	if e = <-finished; e != nil {
+		t.Fatal(e)
+	}
+	if e = <-cancelled; e == nil {
+		t.Fatal("cancellation succeeded after the worker started")
+	}
+}

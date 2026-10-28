@@ -159,6 +159,7 @@ describe("indexers and library details", () => {
               ...file.probe,
               ...(inspected
                 ? {
+                    embedded_title: "Wrong fixture title",
                     audio_streams: [
                       { language: "jpn", codec: "aac", title: "" },
                     ],
@@ -171,9 +172,15 @@ describe("indexers and library details", () => {
     mount("/movies/1");
     await screen.findByText("Audio tags have not been inspected yet.");
     await userEvent.click(
-      screen.getByRole("button", { name: "Inspect audio tags" }),
+      screen.getByRole("button", { name: "Inspect embedded tags" }),
     );
     await screen.findByText("Embedded audio tags: jpn · aac");
+    expect(
+      screen.getByText("Embedded title: Wrong fixture title"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/embedded title differs from the saved movie title/i),
+    ).toBeVisible();
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/library/files/2/inspect",
       expect.objectContaining({ method: "POST", body: "{}" }),

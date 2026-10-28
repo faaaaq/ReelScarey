@@ -11,6 +11,10 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
+- [ ] Update embedded movie and TV titles while organizing and renaming media,
+  with verified copies and recovery that preserve streams and seeding sources.
+  Current embedded titles can be inspected; they are not yet rewritten.
+
 - [x] Move media physically between configured libraries, with a clear preview,
   collision handling, safe transfer and recovery, and updated catalog paths.
   Registered videos and subtitles can be moved through a reviewed title or file

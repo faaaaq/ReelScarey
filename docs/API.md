@@ -555,3 +555,12 @@ includes bounded `audio_streams` with codec, embedded language tag and title.
 Existing registrations made before audio inspection can use this operation; the
 check reads the whole file. Tags describe file metadata and do not prove the
 spoken language. A changed file is rejected without updating its saved facts.
+
+`POST /organization/plans/{id}/cancel` with `{}` returns a queued job to
+review only if no file work has started. It refuses journaled outputs or a
+folder that may already have moved; those jobs must follow recovery instead.
+
+`embedded_title` in the inspected file's probe is its container title tag; null
+means it has not been inspected with this version and an empty string means no
+title was reported. Inspection does not edit the file or rewrite tags. Safe
+metadata updates during organization remain planned.

@@ -154,6 +154,102 @@ async function selectFirstAndReview() {
 }
 
 describe("Reviewed library organization", () => {
+  it("can cancel a queued job before file work starts", async () => {
+    const { fetch } = setup((url, options, fixture) => {
+      if (url.endsWith("/apply") && options?.method === "POST")
+        return Response.json({
+          ...fixture.plan([41]),
+          state: "queued",
+          phase: "planned",
+        });
+      if (url.endsWith("/cancel") && options?.method === "POST")
+        return Response.json({
+          ...fixture.plan([41]),
+          phase: "planned",
+          message: "Queue cancelled before file changes.",
+        });
+    });
+    mount();
+    const review = await selectFirstAndReview();
+    await userEvent.click(
+      within(review).getByRole("checkbox", {
+        name: "I reviewed all paths and subtitle changes",
+      }),
+    );
+    await userEvent.click(
+      within(review).getByRole("button", { name: "Apply reviewed changes" }),
+    );
+    await userEvent.click(
+      await within(review).findByRole("button", { name: "Cancel queued job" }),
+    );
+    expect(
+      await within(review).findByText("Queue cancelled before file changes."),
+    ).toBeVisible();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/organization/plans/plan-1/cancel",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+  it("stops a batch without starting the remaining file checks", async () => {
+    const { fetch } = setup((url, options) => {
+      if (url.endsWith("/files/41/health"))
+        return new Promise<Response>((_, reject) => {
+          options?.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Stopped", "AbortError")),
+            { once: true },
+          );
+        });
+    });
+    mount();
+    await userEvent.click(
+      await screen.findByRole("checkbox", {
+        name: "Select all files on this page",
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Check selected files (2)" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Stop checking" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Check selected files (2)" }),
+      ).toBeEnabled(),
+    );
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith("/files/42/health")),
+    ).toBe(false);
+  });
+  it("checks the selected files sequentially and reports their separate results", async () => {
+    const { fetch } = setup((url, options) => {
+      if (options?.method === "POST" && url.endsWith("/files/41/health"))
+        return Response.json({ status: "verified" });
+      if (options?.method === "POST" && url.endsWith("/files/42/health"))
+        return Response.json({ status: "missing" });
+    });
+    mount();
+    await userEvent.click(
+      await screen.findByRole("checkbox", {
+        name: "Select all files on this page",
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Check selected files (2)" }),
+    );
+    expect(
+      await screen.findByText("File matches its saved checksum."),
+    ).toBeVisible();
+    expect(
+      await screen.findByText("File is missing from its registered path."),
+    ).toBeVisible();
+    const checks = fetch.mock.calls.filter(([url]) => url.endsWith("/health"));
+    expect(checks.map(([url]) => url)).toEqual([
+      "/api/v1/organization/files/41/health",
+      "/api/v1/organization/files/42/health",
+    ]);
+  });
   it("finds saved versions for a selected file and reviews a restore", async () => {
     const savedReplacement = {
       title: "First feature",

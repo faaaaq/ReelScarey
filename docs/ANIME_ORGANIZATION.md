@@ -129,8 +129,9 @@ prevents two app instances owning the same configuration. Publication and cleanu
 are separate recoverable phases; the UI shows recent jobs and can resume a saved
 failed job, with server verification. A changed review needs a fresh plan.
 
-There is no batch cancel/rollback API once queued. Failed operations retain valid
-canonical files and journal-owned stages/outputs for review rather than deleting
+A queued job can be returned to review only before file work has started. There
+is no general rollback for an applied organization batch. Failed operations retain
+valid canonical files and journal-owned stages/outputs for review rather than deleting
 uncertain data. Matching-stem NFO/artwork/attachments or unrelated registered
 sidecar locations block the individual-file operation. Whole-folder reviews have
 the separate scope and limits above. Case-only renames are refused. Filesystems
@@ -196,3 +197,7 @@ path becomes empty, retry the saved job or choose **Restore original after
 interruption**. Restoration refuses an occupied path and keeps the library
 reserved while the result is uncertain. Include retained versions in media-root
 migrations and backups.
+
+On **Organize library**, select files on the current page and choose **Check
+selected files** to inspect them one at a time. Each result is a point-in-time
+checksum check; the batch can be stopped, and completed results remain visible.

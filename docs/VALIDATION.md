@@ -1095,3 +1095,25 @@ See AUTHENTICATION.md for first setup, password recovery and key backup.
   updates matching YouTube provenance, and does not prevent a reviewed rollback.
 - The interface test checks explicit reinspection and the displayed embedded tag.
   Tags are metadata and do not establish the language actually spoken.
+
+## 2026-10-28: selected-file health checks
+
+- The interface checks selected registered files one at a time, reports each
+  result and stops without starting the remaining checks when cancelled. The
+  selection and cancellation paths have frontend tests; the underlying checksum
+  and missing/changed-file checks use disposable filesystem fixtures.
+
+## 2026-10-28: cancellation of unstarted organization jobs
+
+- Tests cover returning a queued job to review without changing media and
+  refusing cancellation when output is journaled or a folder may have moved.
+  The interface offers cancellation only while the job is queued and planned.
+
+## 2026-10-28: embedded-title inspection
+
+- Real FFmpeg generated disposable MP4 and Matroska videos with an intentionally
+  incorrect embedded title and Japanese audio tag; FFprobe returned those tags.
+  The details interface displays the title and flags differences from a saved
+  movie title. Existing files can be explicitly re-inspected with checksum checks.
+- This is inspection only. Safe embedded metadata rewriting during organization
+  remains open; no existing media tags were edited by this work.
