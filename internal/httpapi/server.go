@@ -409,7 +409,7 @@ func (s *Server) sameOrigin(r *http.Request) bool {
 
 func frontend(assets fs.FS) http.HandlerFunc {
 	files := http.FileServer(http.FS(assets))
-	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/anime": true, "/organization": true, "/search": true, "/releases": true, "/activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true, "/import": true, "/wanted": true, "/calendar": true, "/requests": true}
+	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/anime": true, "/youtube": true, "/organization": true, "/search": true, "/releases": true, "/activity": true, "/watch-activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true, "/import": true, "/wanted": true, "/calendar": true, "/requests": true}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")

@@ -97,7 +97,7 @@ export function WatchActivity() {
             <TextField.Root
               value={url}
               onChange={(e) => setURL(e.target.value)}
-            placeholder="http://emby:8096/emby"
+              placeholder="http://emby:8096/emby"
               required
             />
           </label>

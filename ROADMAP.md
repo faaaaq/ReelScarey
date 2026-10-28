@@ -44,7 +44,8 @@ Historical native and package results below remain as records of past work.
   acceptance remains open.
 - [ ] Add an accessible history/notification tray along the edge of the interface,
   with a compact timeline of events, timestamps and a way to see more, inspired
-  by the supplied reference image.
+  by the supplied reference image. A compact tray shows current download statuses;
+  a full event timeline and other notification types remain open.
 
 ## 1 — Foundation
 - [x] Go server, structured logging, graceful shutdown and validated environment

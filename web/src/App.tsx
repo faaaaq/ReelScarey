@@ -48,6 +48,7 @@ import { Organization } from "./pages/Organization";
 import { YouTube } from "./pages/YouTube";
 import { AdminRequests, RequesterHome } from "./pages/Requests";
 import { WatchActivity } from "./pages/WatchActivity";
+import { HistoryTray } from "./components/HistoryTray";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -189,6 +190,9 @@ function AppShell() {
       </aside>
       <main id="main-content" tabIndex={-1}>
         <div className="page-content">
+          <div className="history-tray-trigger">
+            <HistoryTray />
+          </div>
           <Routes>
             <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="/" element={<Dashboard />} />

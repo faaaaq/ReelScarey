@@ -4,8 +4,8 @@
 
 Linux container tests cover unmatched scan counts, encrypted Emby settings and
 bounded playback fixtures, title-folder naming and preservation of existing
-files, and TMDb movie collection responses. The full frontend suite passed 129
-tests. A real Emby server, owner media and real TMDb collection acceptance have
+files, TMDb movie collection responses and the recent-download tray. The full
+frontend suite passed 130 tests. A real Emby server, owner media and real TMDb collection acceptance have
 not been exercised. Emby results are on-demand latest-play snapshots, not a
 complete history. Windows-hosted tests requiring Linux filesystem operations or
 local test sockets failed under the restricted development environment; Linux

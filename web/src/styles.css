@@ -2612,3 +2612,8 @@ dd {
     grid-template-columns: 1fr;
   }
 }
+.history-tray-trigger {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
