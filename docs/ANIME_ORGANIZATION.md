@@ -202,9 +202,10 @@ On **Organize library**, select files on the current page and choose **Check
 selected files** to inspect them one at a time. Each result is a point-in-time
 checksum check; the batch can be stopped, and completed results remain visible.
 
-A single selected MP4 or Matroska file can include **Also update this file’s
-embedded title after organization** in its review. The move finishes first, then
-a durable second job creates and verifies the metadata-only copy and retains a
-rollback version. The saved movie title or canonical series/episode labels supply
-the title. Whole-folder and multi-file moves do not automatically update tags.
+Selected MP4 or Matroska files, a whole title, or a whole folder can include
+**Also update embedded titles after organization** in the review. The move
+finishes first, then durable jobs sequentially create and verify metadata-only
+copies and retain a rollback version for each registered video. The saved movie
+title or canonical series/episode labels supply the titles. Folder extras are
+preserved and are not retagged.
 A separate embedded-title review is also available for an individual file.

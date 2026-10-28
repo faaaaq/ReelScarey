@@ -563,9 +563,9 @@ folder that may already have moved; those jobs must follow recovery instead.
 `embedded_title` in the inspected file's probe is its container title tag; null
 means it has not been inspected with this version and an empty string means no
 title was reported. Inspection does not edit the file or rewrite tags. A separate reviewed
-embedded-title update is available; a single-file organization review may also
-request it with `update_embedded_title: true`. Batch and folder moves do not yet
-automatically update embedded titles.
+embedded-title update is available; selected-file, whole-title and whole-folder
+organization reviews can request it with `update_embedded_title: true`. Updates
+run sequentially after the move, retaining a rollback copy for each video.
 
 `POST /organization/embedded-title` with `media_file_id` creates a review of a
 catalog-derived movie or episode title for a registered MP4 or Matroska video.
