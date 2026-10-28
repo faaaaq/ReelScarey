@@ -50,13 +50,14 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 
 ## Media management and organization
 
-- [ ] Versioned replacement imports with reviewed recovery/rollback. Existing
-  files currently remain protected; resolution upgrades are suggestions.
-- [ ] Bulk season/episode preference edits beyond existing parent monitoring and
-  quality-profile batches.
+- [ ] Connect downloaded upgrades to versioned replacement and support YouTube
+  provenance. Explicitly reviewed discovered-file replacements retain independent
+  previous versions and support reviewed rollback; upgrade searches remain suggestions.
+- [x] Bulk season and episode monitoring. Select up to 100 seasons per show or
+  100 loaded episodes per season for an atomic, revision-checked update.
 - [ ] Reviewed catalog/media removal with clear file-deletion choices.
-- [ ] Filesystem-health inspection that distinguishes missing/changed files from
-  saved registration state.
+- [ ] Broader filesystem-health inspection and batch reporting. Individual registered
+  files can be checked against their saved checksum from Organize library.
 - [ ] A guided main-root migration. The main media directory is currently selected
   at deployment; changing it requires an offline complete-tree move.
 - [x] Reviewed whole-title folder moves across filesystems, including NFO,

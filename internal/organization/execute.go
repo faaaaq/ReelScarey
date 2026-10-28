@@ -17,8 +17,17 @@ import (
 // EnsureMediaAvailable keeps normal workers out until interrupted organization
 // has reconciled its durable journal. Failed plans leave a valid canonical copy.
 func EnsureMediaAvailable(ctx context.Context, db *sql.DB) error {
+	return ensureMediaAvailable(ctx, db)
+}
+
+// EnsureMediaAvailableTx fences a media reservation in the caller's write transaction.
+func EnsureMediaAvailableTx(ctx context.Context, tx *sql.Tx) error {
+	return ensureMediaAvailable(ctx, tx)
+}
+
+func ensureMediaAvailable(ctx context.Context, db query) error {
 	var n int
-	if e := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state IN ('queued','running') OR (state='failed' AND json_extract(snapshot,'$.folder_move') IS NOT NULL AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe'))`).Scan(&n); e != nil {
+	if e := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state IN ('queued','running') OR (state='failed' AND (json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe'))`).Scan(&n); e != nil {
 		return e
 	}
 	if n != 0 {
@@ -41,6 +50,9 @@ func allFiles(p Plan) []Companion {
 	return out
 }
 func (s *Service) execute(ctx context.Context, p *Plan) error {
+	if p.Replacement != nil {
+		return s.executeReplacement(ctx, p)
+	}
 	if p.FolderMove != nil {
 		return s.executeFolder(ctx, p)
 	}

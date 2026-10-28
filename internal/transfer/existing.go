@@ -173,6 +173,9 @@ func (s *Service) StartLibraryScan(ctx context.Context, kind string, collection 
 		return LibraryScan{}, e
 	}
 	defer tx.Rollback()
+	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+		return LibraryScan{}, e
+	}
 	var active int
 	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_scans WHERE state IN ('queued','scanning')`).Scan(&active); e != nil {
 		return LibraryScan{}, e
@@ -211,11 +214,18 @@ func (s *Service) CancelLibraryScan(ctx context.Context, id string) error {
 	return nil
 }
 func (s *Service) RemoveLibraryScan(ctx context.Context, id string) error {
+	defer organization.ReadMedia()()
+	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
+		return e
+	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
+	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+		return e
+	}
 	var active int
 	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM library_scans WHERE id=? AND (state IN ('queued','scanning') OR lease_until>=unixepoch()))+(SELECT COUNT(*) FROM library_scan_files WHERE scan_id=? AND (state IN ('queued','verifying') OR lease_until>=unixepoch()))`, id, id).Scan(&active); e != nil {
 		return e
@@ -330,7 +340,19 @@ func (s *Service) DiscoveredFiles(ctx context.Context, id string, page int, stat
 	return out, rows.Err()
 }
 func (s *Service) SkipDiscovered(ctx context.Context, id string) error {
-	res, e := s.db.ExecContext(ctx, `UPDATE library_scan_files SET state='skipped',message='Skipped during review.',updated_at=unixepoch() WHERE id=? AND state IN ('review','blocked') AND lease_until<unixepoch()`, id)
+	defer organization.ReadMedia()()
+	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
+		return e
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+		return e
+	}
+	res, e := tx.ExecContext(ctx, `UPDATE library_scan_files SET state='skipped',message='Skipped during review.',updated_at=unixepoch() WHERE id=? AND state IN ('review','blocked') AND lease_until<unixepoch()`, id)
 	if e != nil {
 		return e
 	}
@@ -338,7 +360,7 @@ func (s *Service) SkipDiscovered(ctx context.Context, id string) error {
 	if n != 1 {
 		return problem("scan_busy", "Only unregistered files awaiting review can be skipped.")
 	}
-	return nil
+	return tx.Commit()
 }
 
 type ExistingRegistration struct {
@@ -348,6 +370,10 @@ type ExistingRegistration struct {
 }
 
 func (s *Service) RegisterDiscovered(ctx context.Context, id string, in ExistingRegistration) error {
+	defer organization.ReadMedia()()
+	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
+		return e
+	}
 	if !in.Reviewed || in.MediaID < 1 || len(in.Episodes) > 20 {
 		return problem("invalid_mapping", "Review the title and episode match before adding this file.")
 	}
@@ -356,6 +382,9 @@ func (s *Service) RegisterDiscovered(ctx context.Context, id string, in Existing
 		return e
 	}
 	defer tx.Rollback()
+	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+		return e
+	}
 	f, e := scanDiscovered(tx.QueryRowContext(ctx, `SELECT `+discoveredColumns+` FROM library_scan_files WHERE id=?`, id))
 	if e != nil {
 		return e

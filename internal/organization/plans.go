@@ -247,7 +247,7 @@ func readPlan(ctx context.Context, q query, id string) (Plan, error) {
 	return p, nil
 }
 func (s *Service) Plans(ctx context.Context) ([]Plan, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT id FROM organization_plans ORDER BY created_at DESC,id DESC LIMIT 20`)
+	rows, e := s.db.QueryContext(ctx, `SELECT id FROM organization_plans ORDER BY CASE WHEN state IN ('queued','running') OR (state='failed' AND (json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')) THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT 20`)
 	if e != nil {
 		return nil, e
 	}
@@ -290,6 +290,9 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 	if p.State != "review" && p.State != "failed" {
 		return p, problem("invalid_selection", "Review a saved plan before applying.")
 	}
+	if p.Phase == "failed_safe" {
+		return p, problem("plan_stale", "This stopped job is safe but cannot be resumed. Create a new review.")
+	}
 	root, _, e := s.openRoot(p.Root)
 	if e != nil {
 		return p, e
@@ -301,7 +304,9 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 	}
 	defer tx.Rollback()
 	if p.Phase == "planned" {
-		if p.FolderMove != nil {
+		if p.Replacement != nil {
+			e = s.validateReplacement(ctx, root, tx, p)
+		} else if p.FolderMove != nil {
 			src, err := folderExists(root, p.FolderMove.Source)
 			if err != nil {
 				return p, err
@@ -322,7 +327,7 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 		}
 	}
 	var count int
-	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE (state IN ('queued','running') OR (state='failed' AND json_extract(snapshot,'$.folder_move') IS NOT NULL AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe'))) AND id<>?`, id).Scan(&count); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE (state IN ('queued','running') OR (state='failed' AND (json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe'))) AND id<>?`, id).Scan(&count); e != nil {
 		return p, e
 	}
 	if count != 0 {
@@ -463,6 +468,16 @@ func (s *Service) Tick(ctx context.Context) error {
 	}
 	e = s.execute(ctx, &p)
 	if e != nil {
+		if p.Replacement != nil && (p.Phase == "planned" || p.Phase == "prepared") {
+			if root, _, err := s.openRoot(p.Root); err == nil {
+				// No source deletion occurs in these phases. Avoid an unbounded
+				// checksum during shutdown while confirming the original path is intact.
+				if checkSource(context.WithoutCancel(ctx), root, p.Replacement.Original, false) == nil {
+					_ = s.savePhase(context.WithoutCancel(ctx), &p, "failed_safe")
+				}
+				root.Close()
+			}
+		}
 		if p.FolderMove != nil && s.folderStillAtSource(p) {
 			_ = s.savePhase(context.WithoutCancel(ctx), &p, "failed_safe")
 		}

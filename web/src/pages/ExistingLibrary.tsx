@@ -459,6 +459,15 @@ function ScanReview({
                     </Button>
                   </>
                 )}
+                {item.state === "review" && (
+                  <Button asChild variant="soft">
+                    <Link
+                      to={`/organization?replacement_source=${encodeURIComponent(item.id)}`}
+                    >
+                      Replace a registered file
+                    </Link>
+                  </Button>
+                )}
                 {item.state === "registered" && item.media_id && (
                   <Link
                     className="text-link"

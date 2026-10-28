@@ -269,3 +269,87 @@ func (s *Server) organizationFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	send(w, 200, map[string]any{"items": items, "total": total, "page": page, "limit": 50})
 }
+
+func (s *Server) organizationFileHealth(w http.ResponseWriter, r *http.Request) {
+	id, ok := tvID(w, r)
+	if !ok || !decodeJSON(w, r, &struct{}{}) {
+		return
+	}
+	// A checksum reads the entire file and can take longer than ordinary requests.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Minute))
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Minute)
+	defer cancel()
+	out, err := s.organization.CheckFileHealth(ctx, id)
+	if err != nil {
+		s.organizationError(w, err)
+		return
+	}
+	send(w, 200, out)
+}
+
+func (s *Server) organizationReplacement(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		id, err := strconv.ParseInt(r.URL.Query().Get("media_file_id"), 10, 64)
+		if err != nil || id < 1 {
+			fail(w, 400, "invalid_selection", "Choose a registered file.")
+			return
+		}
+		out, err := s.organization.ReplacementVersions(r.Context(), id)
+		if err != nil {
+			s.organizationError(w, err)
+			return
+		}
+		send(w, 200, map[string]any{"items": out})
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "GET, POST")
+		fail(w, 405, "method_not_allowed", "Use GET or POST.")
+		return
+	}
+	var in struct {
+		FileID     int64  `json:"media_file_id"`
+		ScanFileID string `json:"scan_file_id"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	if in.FileID < 1 || in.ScanFileID == "" {
+		fail(w, 400, "invalid_selection", "Select one registered file and one discovered source.")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	out, err := s.organization.PreviewReplacement(ctx, in.FileID, in.ScanFileID)
+	if err != nil {
+		s.organizationError(w, err)
+		return
+	}
+	send(w, 201, out)
+}
+
+func (s *Server) organizationRollback(w http.ResponseWriter, r *http.Request) {
+	if !decodeJSON(w, r, &struct{}{}) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	out, err := s.organization.PreviewRollback(ctx, r.PathValue("id"))
+	if err != nil {
+		s.organizationError(w, err)
+		return
+	}
+	send(w, 201, out)
+}
+
+func (s *Server) organizationRecoverReplacement(w http.ResponseWriter, r *http.Request) {
+	if !decodeJSON(w, r, &struct{}{}) {
+		return
+	}
+	out, err := s.organization.RecoverReplacement(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.organizationError(w, err)
+		return
+	}
+	send(w, 200, out)
+}

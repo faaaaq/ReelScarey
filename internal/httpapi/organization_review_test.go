@@ -96,6 +96,10 @@ func TestReviewOrganizationAPISecuritySettingsAndExactSelections(t *testing.T) {
 		{"GET", "/api/v1/library/items/1/organization", ""},
 		{"PUT", "/api/v1/organization", `{}`},
 		{"POST", "/api/v1/organization/plans", `{"file_ids":[1]}`},
+		{"POST", "/api/v1/organization/replacements", `{"media_file_id":1,"scan_file_id":"candidate"}`},
+		{"GET", "/api/v1/organization/replacements?media_file_id=1", ""},
+		{"POST", "/api/v1/organization/plans/missing/rollback", `{}`},
+		{"POST", "/api/v1/organization/plans/missing/recover-replacement", `{}`},
 		{"POST", "/api/v1/organization/plans/missing/apply", `{}`},
 		{"PUT", "/api/v1/library/items/1/organization", `{"library_key":"anime","revision":0}`},
 	} {

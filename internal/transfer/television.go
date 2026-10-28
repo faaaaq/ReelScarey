@@ -121,7 +121,7 @@ func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode 
 	return out, tx.Commit()
 }
 func (s *Service) targets(ctx context.Context, id string) ([]TVTarget, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT t.episode_id,t.tmdb_id,t.season_number,t.episode_number,t.title,t.skipped,EXISTS(SELECT 1 FROM episode_files ef JOIN media_files mf ON mf.id=ef.media_file_id WHERE ef.episode_id=t.episode_id AND mf.download_id=t.download_id),t.absolute_number FROM download_targets t WHERE t.download_id=? ORDER BY t.season_number,t.episode_number`, id)
+	rows, e := s.db.QueryContext(ctx, `SELECT t.episode_id,t.tmdb_id,t.season_number,t.episode_number,t.title,t.skipped,(EXISTS(SELECT 1 FROM episode_files ef JOIN media_files mf ON mf.id=ef.media_file_id WHERE ef.episode_id=t.episode_id AND mf.download_id=t.download_id) OR EXISTS(SELECT 1 FROM download_mappings dm JOIN import_operations io ON io.download_id=dm.download_id AND io.file_index=dm.file_index AND io.phase='committed' WHERE dm.download_id=t.download_id AND dm.episode_id=t.episode_id)),t.absolute_number FROM download_targets t WHERE t.download_id=? ORDER BY t.season_number,t.episode_number`, id)
 	if e != nil {
 		return nil, e
 	}

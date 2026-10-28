@@ -94,3 +94,68 @@ func TestTVChoicesSurviveRefreshPauseAndReopen(t *testing.T) {
 		t.Fatal("failed edit changed revision")
 	}
 }
+
+func TestBulkEpisodeMonitoringIsAtomicAndRevisionFenced(t *testing.T) {
+	ctx := context.Background()
+	db, e := database.Open(ctx, t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	s := New(db)
+	show := metadata.Series{Movie: metadata.Movie{TMDbID: 42, Title: "Batch show"}, Seasons: []metadata.SeasonSummary{{TMDbID: 44, Number: 1, Title: "Season 1", EpisodeCount: 3}}}
+	item, _, e := s.AddSeries(ctx, show, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	detail, e := s.TVShow(ctx, item.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	season := metadata.Season{SeasonSummary: show.Seasons[0], Episodes: []metadata.Episode{{TMDbID: 45, Number: 1, Title: "One"}, {TMDbID: 46, Number: 2, Title: "Two"}, {TMDbID: 47, Number: 3, Title: "Three"}}}
+	if e = s.SaveSeason(ctx, item.ID, season, detail.Revision); e != nil {
+		t.Fatal(e)
+	}
+	saved, e := s.TVSeason(ctx, item.ID, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	ids := []int64{saved.Episodes[0].ID, saved.Episodes[2].ID}
+	if e = s.MonitorEpisodes(ctx, item.ID, saved.Revision, 1, []int64{ids[0], 999999}, false); !errors.Is(e, sql.ErrNoRows) {
+		t.Fatal("missing ID accepted", e)
+	}
+	if e = s.MonitorEpisodes(ctx, item.ID, saved.Revision, 1, []int64{ids[0], ids[0]}, false); !errors.Is(e, ErrMonitoringInput) {
+		t.Fatal("duplicate accepted", e)
+	}
+	check, e := s.TVSeason(ctx, item.ID, 1)
+	if e != nil || check.Revision != saved.Revision || !check.Episodes[0].Monitored {
+		t.Fatal("rejected batch changed state", check, e)
+	}
+	if e = s.MonitorEpisodes(ctx, item.ID, saved.Revision, 1, ids, false); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.MonitorEpisodes(ctx, item.ID, saved.Revision, 1, ids, true); !errors.Is(e, ErrRevision) {
+		t.Fatal("stale revision accepted", e)
+	}
+	check, e = s.TVSeason(ctx, item.ID, 1)
+	if e != nil || check.Episodes[0].Monitored || !check.Episodes[1].Monitored || check.Episodes[2].Monitored {
+		t.Fatal("selection was not preserved", check, e)
+	}
+	seasonID := check.Season.ID
+	if e = s.MonitorSeasons(ctx, item.ID, check.Revision, []int64{seasonID, 999999}, false); !errors.Is(e, sql.ErrNoRows) {
+		t.Fatal("missing season accepted", e)
+	}
+	if e = s.MonitorSeasons(ctx, item.ID, check.Revision, []int64{seasonID, seasonID}, false); !errors.Is(e, ErrMonitoringInput) {
+		t.Fatal("duplicate season accepted", e)
+	}
+	if e = s.MonitorSeasons(ctx, item.ID, check.Revision, []int64{seasonID}, false); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.MonitorSeasons(ctx, item.ID, check.Revision, []int64{seasonID}, true); !errors.Is(e, ErrRevision) {
+		t.Fatal("stale season batch accepted", e)
+	}
+	check, e = s.TVSeason(ctx, item.ID, 1)
+	if e != nil || check.Season.Monitored || check.Episodes[0].Monitored || !check.Episodes[1].Monitored || check.Episodes[2].Monitored {
+		t.Fatal("season batch changed episode choices", check, e)
+	}
+}

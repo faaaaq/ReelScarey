@@ -523,3 +523,28 @@ manual queueing. Upgrade suggestions cannot queue replacement downloads.
 Automation uses the shared transfer service and a transaction-bound policy check;
 there is no public bypass for automatic submissions. See AUTOMATION.md for
 identity/ranking rules, date eligibility, retries and filesystem guarantees.
+
+Reviewed replacement endpoints: `POST /organization/replacements` accepts
+`media_file_id` and `scan_file_id`, returning an organization review. The
+existing `POST /organization/plans/{id}/apply` queues the reviewed job.
+`POST /organization/plans/{id}/rollback` creates a review that restores a
+completed replacement's prior version; apply that review separately.
+`POST /organization/plans/{id}/recover-replacement` queues recovery of an
+interrupted job's retained original when the registered path is empty. All
+require authenticated administrator sessions and CSRF protection. Source paths
+are derived from discovered IDs rather than accepted from clients.
+
+`PUT /library/series/{id}/seasons/{number}/episodes/monitor` accepts the
+current show `revision`, a `monitored` boolean and 1–100 distinct explicit
+`episode_ids` belonging to that loaded season. The update is atomic and uses
+the same show revision fence as individual episode edits; it does not move or
+delete media files.
+
+`PUT /library/series/{id}/seasons/monitor` accepts the current show `revision`,
+a `monitored` boolean and 1–100 distinct `season_ids` belonging to that show.
+It updates the selected seasons atomically without changing their episode choices.
+
+`POST /organization/files/{id}/health` with `{}` checks one registered file's
+saved size and SHA-256, without changing it. Results are `verified`, `missing`,
+`changed`, or `unsafe`. A check reads the full file and is cancellable; only
+one such check runs at a time.

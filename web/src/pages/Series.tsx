@@ -39,6 +39,7 @@ export function Series() {
 function SeriesView({ initial }: { initial: TVSeries }) {
   const [show, setShow] = useState(initial);
   const [selected, setSelected] = useState<number>();
+  const [selectedSeasons, setSelectedSeasons] = useState<number[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -47,6 +48,8 @@ function SeriesView({ initial }: { initial: TVSeries }) {
     path: string,
     method: "PUT" | "POST",
     monitored?: boolean,
+    episodeIDs?: number[],
+    seasonIDs?: number[],
   ) {
     if (pending) return;
     setPending(true);
@@ -57,9 +60,12 @@ function SeriesView({ initial }: { initial: TVSeries }) {
         body: JSON.stringify({
           revision: show.revision,
           ...(monitored === undefined ? {} : { monitored }),
+          ...(episodeIDs === undefined ? {} : { episode_ids: episodeIDs }),
+          ...(seasonIDs === undefined ? {} : { season_ids: seasonIDs }),
         }),
       });
       setShow(out);
+      setSelectedSeasons([]);
       setAttempt((n) => n + 1);
     } catch (e) {
       setError(messageFor(e));
@@ -151,6 +157,74 @@ function SeriesView({ initial }: { initial: TVSeries }) {
         </div>
       )}
       <h2 className="series-heading">Seasons</h2>
+      {!!show.seasons.length && (
+        <div className="system-panel">
+          <p className="field-help">
+            Select up to 100 seasons to change their monitoring together.
+            Episode choices stay saved.
+          </p>
+          <Button
+            variant="soft"
+            disabled={pending || !show.monitored}
+            onClick={() =>
+              setSelectedSeasons(
+                show.seasons.slice(0, 100).map((season) => season.id),
+              )
+            }
+          >
+            {show.seasons.length > 100
+              ? "Select first 100 seasons"
+              : "Select all seasons"}
+          </Button>{" "}
+          <Button
+            variant="soft"
+            disabled={pending || !selectedSeasons.length}
+            onClick={() => setSelectedSeasons([])}
+          >
+            Clear season selection
+          </Button>{" "}
+          <Button
+            variant="soft"
+            disabled={pending || !show.monitored || !selectedSeasons.length}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Monitor ${selectedSeasons.length} selected seasons?`,
+                )
+              )
+                void update(
+                  "/seasons/monitor",
+                  "PUT",
+                  true,
+                  undefined,
+                  selectedSeasons,
+                );
+            }}
+          >
+            Monitor selected seasons ({selectedSeasons.length})
+          </Button>{" "}
+          <Button
+            variant="soft"
+            disabled={pending || !show.monitored || !selectedSeasons.length}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Stop monitoring ${selectedSeasons.length} selected seasons?`,
+                )
+              )
+                void update(
+                  "/seasons/monitor",
+                  "PUT",
+                  false,
+                  undefined,
+                  selectedSeasons,
+                );
+            }}
+          >
+            Unmonitor selected seasons ({selectedSeasons.length})
+          </Button>
+        </div>
+      )}
       {!show.monitored && (
         <p className="field-help">
           Monitoring is paused for this show. Your season and episode selections
@@ -165,6 +239,28 @@ function SeriesView({ initial }: { initial: TVSeries }) {
             <section className="panel season-card" key={season.id}>
               <div className="season-header">
                 <div>
+                  <label>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select season ${season.title}`}
+                      checked={selectedSeasons.includes(season.id)}
+                      disabled={
+                        pending ||
+                        !show.monitored ||
+                        (!selectedSeasons.includes(season.id) &&
+                          selectedSeasons.length >= 100)
+                      }
+                      onChange={(event) => {
+                        const checked = event.target.checked;
+                        setSelectedSeasons((current) =>
+                          checked
+                            ? [...current, season.id]
+                            : current.filter((id) => id !== season.id),
+                        );
+                      }}
+                    />{" "}
+                    Select for batch
+                  </label>
                   <h3>{season.title}</h3>
                   <p>
                     {season.episode_count} episodes
@@ -246,8 +342,10 @@ function SeasonEpisodes({
     path: string,
     method: "PUT" | "POST",
     monitored?: boolean,
+    episodeIDs?: number[],
   ) => Promise<void>;
 }) {
+  const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
   const resource = useResource<TVSeasonDetails>(
     `/library/series/${show.id}/seasons/${season.number}`,
   );
@@ -286,56 +384,158 @@ function SeasonEpisodes({
             </p>
           )}
           {resource.data.episodes.length > 0 && (
-            <ul className="episode-list">
-              {resource.data.episodes.map((e) => (
-                <li key={e.id}>
-                  <div>
-                    <h4>{`S${String(season.number).padStart(2, "0")}E${String(e.number).padStart(2, "0")} · ${e.title}`}</h4>
-                    <p className="field-help">
-                      {e.air_date || "Air date unknown"}
-                      {e.runtime_minutes ? ` · ${e.runtime_minutes} min` : ""}
-                    </p>
-                    {e.overview && <p>{e.overview}</p>}
-                    <Badge color={e.available ? "green" : "gray"}>
-                      {e.available
-                        ? "Available"
-                        : e.air_date &&
-                            e.air_date > new Date().toLocaleDateString("en-CA")
-                          ? "Upcoming"
-                          : "Not imported"}
-                    </Badge>
-                    {e.file_path && (
-                      <p className="field-help episode-path">{e.file_path}</p>
-                    )}
-                    {!e.available && (
-                      <p>
-                        <Link
-                          className="text-link"
-                          to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}`}
-                        >
-                          Find episode releases
-                        </Link>
+            <div>
+              <p className="field-help">
+                Select up to 100 episodes to change their monitoring together.
+                Existing files stay in place.
+              </p>
+              <Button
+                variant="soft"
+                disabled={pending || !show.monitored || !season.monitored}
+                onClick={() =>
+                  setSelectedEpisodes(
+                    resource
+                      .data!.episodes.slice(0, 100)
+                      .map((episode) => episode.id),
+                  )
+                }
+              >
+                {resource.data.episodes.length > 100
+                  ? "Select first 100 episodes"
+                  : "Select all episodes"}
+              </Button>{" "}
+              <Button
+                variant="soft"
+                disabled={pending || !selectedEpisodes.length}
+                onClick={() => setSelectedEpisodes([])}
+              >
+                Clear selection
+              </Button>{" "}
+              <Button
+                variant="soft"
+                disabled={
+                  pending ||
+                  !show.monitored ||
+                  !season.monitored ||
+                  !selectedEpisodes.length
+                }
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Monitor ${selectedEpisodes.length} selected episodes?`,
+                    )
+                  )
+                    void update(
+                      `/seasons/${season.number}/episodes/monitor`,
+                      "PUT",
+                      true,
+                      selectedEpisodes,
+                    );
+                }}
+              >
+                Monitor selected ({selectedEpisodes.length})
+              </Button>{" "}
+              <Button
+                variant="soft"
+                disabled={
+                  pending ||
+                  !show.monitored ||
+                  !season.monitored ||
+                  !selectedEpisodes.length
+                }
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Stop monitoring ${selectedEpisodes.length} selected episodes?`,
+                    )
+                  )
+                    void update(
+                      `/seasons/${season.number}/episodes/monitor`,
+                      "PUT",
+                      false,
+                      selectedEpisodes,
+                    );
+                }}
+              >
+                Unmonitor selected ({selectedEpisodes.length})
+              </Button>
+              <ul className="episode-list">
+                {resource.data.episodes.map((e) => (
+                  <li key={e.id}>
+                    <div>
+                      <label>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select episode ${e.number}: ${e.title}`}
+                          checked={selectedEpisodes.includes(e.id)}
+                          disabled={
+                            pending ||
+                            !show.monitored ||
+                            !season.monitored ||
+                            (!selectedEpisodes.includes(e.id) &&
+                              selectedEpisodes.length >= 100)
+                          }
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            setSelectedEpisodes((current) =>
+                              checked
+                                ? [...current, e.id]
+                                : current.filter((id) => id !== e.id),
+                            );
+                          }}
+                        />{" "}
+                        Select for batch
+                      </label>
+                      <h4>{`S${String(season.number).padStart(2, "0")}E${String(e.number).padStart(2, "0")} · ${e.title}`}</h4>
+                      <p className="field-help">
+                        {e.air_date || "Air date unknown"}
+                        {e.runtime_minutes ? ` · ${e.runtime_minutes} min` : ""}
                       </p>
-                    )}
-                  </div>
-                  <label className="monitor-choice">
-                    <Switch
-                      aria-label={`Monitor episode ${e.number}: ${e.title}`}
-                      checked={e.monitored}
-                      disabled={pending || !show.monitored || !season.monitored}
-                      onCheckedChange={(v) =>
-                        void update(
-                          `/seasons/${season.number}/episodes/${e.number}/monitor`,
-                          "PUT",
-                          v,
-                        )
-                      }
-                    />{" "}
-                    Monitor
-                  </label>
-                </li>
-              ))}
-            </ul>
+                      {e.overview && <p>{e.overview}</p>}
+                      <Badge color={e.available ? "green" : "gray"}>
+                        {e.available
+                          ? "Available"
+                          : e.air_date &&
+                              e.air_date >
+                                new Date().toLocaleDateString("en-CA")
+                            ? "Upcoming"
+                            : "Not imported"}
+                      </Badge>
+                      {e.file_path && (
+                        <p className="field-help episode-path">{e.file_path}</p>
+                      )}
+                      {!e.available && (
+                        <p>
+                          <Link
+                            className="text-link"
+                            to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}`}
+                          >
+                            Find episode releases
+                          </Link>
+                        </p>
+                      )}
+                    </div>
+                    <label className="monitor-choice">
+                      <Switch
+                        aria-label={`Monitor episode ${e.number}: ${e.title}`}
+                        checked={e.monitored}
+                        disabled={
+                          pending || !show.monitored || !season.monitored
+                        }
+                        onCheckedChange={(v) =>
+                          void update(
+                            `/seasons/${season.number}/episodes/${e.number}/monitor`,
+                            "PUT",
+                            v,
+                          )
+                        }
+                      />{" "}
+                      Monitor
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </>
       )}

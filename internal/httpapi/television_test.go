@@ -44,7 +44,7 @@ func TestTVProtectedCanonicalCatalogAndMonitoring(t *testing.T) {
 			t.Fatal("unprotected TV read", path, out.Code)
 		}
 	}
-	for _, v := range []struct{ method, path, body string }{{"POST", "/api/v1/library/series", `{"tmdb_id":42}`}, {"POST", "/api/v1/library/series/1/refresh", `{"revision":1}`}, {"POST", "/api/v1/library/series/1/seasons/1/refresh", `{"revision":1}`}, {"PUT", "/api/v1/library/series/1/monitor", `{"monitored":false,"revision":1}`}, {"PUT", "/api/v1/library/series/1/seasons/1/monitor", `{"monitored":false,"revision":1}`}, {"PUT", "/api/v1/library/series/1/seasons/1/episodes/1/monitor", `{"monitored":false,"revision":1}`}} {
+	for _, v := range []struct{ method, path, body string }{{"POST", "/api/v1/library/series", `{"tmdb_id":42}`}, {"POST", "/api/v1/library/series/1/refresh", `{"revision":1}`}, {"POST", "/api/v1/library/series/1/seasons/1/refresh", `{"revision":1}`}, {"PUT", "/api/v1/library/series/1/monitor", `{"monitored":false,"revision":1}`}, {"PUT", "/api/v1/library/series/1/seasons/1/monitor", `{"monitored":false,"revision":1}`}, {"PUT", "/api/v1/library/series/1/seasons/monitor", `{"monitored":false,"revision":1,"season_ids":[1]}`}, {"PUT", "/api/v1/library/series/1/seasons/1/episodes/1/monitor", `{"monitored":false,"revision":1}`}, {"PUT", "/api/v1/library/series/1/seasons/1/episodes/monitor", `{"monitored":false,"revision":1,"episode_ids":[1]}`}} {
 		if out := request(handler, v.method, v.path, v.body, &session, false); out.Code != 403 {
 			t.Fatal("TV CSRF missing", v.path, out.Code)
 		}
@@ -102,6 +102,28 @@ func TestTVProtectedCanonicalCatalogAndMonitoring(t *testing.T) {
 	out = request(handler, "GET", base+"/seasons/1", "", &session, false)
 	if out.Code != 200 || !strings.Contains(out.Body.String(), "Pilot") || !strings.Contains(out.Body.String(), `"monitored":false`) {
 		t.Fatal("cached episodes unavailable", out.Code, out.Body)
+	}
+	var saved library.TVSeasonDetails
+	if e = json.Unmarshal(out.Body.Bytes(), &saved); e != nil || len(saved.Episodes) != 1 {
+		t.Fatal(out.Body, e)
+	}
+	batch := fmt.Sprintf(`{"revision":%d,"monitored":true,"episode_ids":[%d]}`, saved.Revision, saved.Episodes[0].ID)
+	out = request(handler, "PUT", base+"/seasons/1/episodes/monitor", batch, &session, true)
+	if out.Code != 200 {
+		t.Fatal("batch monitoring failed", out.Code, out.Body)
+	}
+	out = request(handler, "PUT", base+"/seasons/1/episodes/monitor", batch, &session, true)
+	if out.Code != 409 {
+		t.Fatal("stale batch accepted", out.Code, out.Body)
+	}
+	seasonBatch := fmt.Sprintf(`{"revision":%d,"monitored":false,"season_ids":[%d]}`, saved.Revision+1, saved.Season.ID)
+	out = request(handler, "PUT", base+"/seasons/monitor", seasonBatch, &session, true)
+	if out.Code != 200 {
+		t.Fatal("season batch failed", out.Code, out.Body)
+	}
+	out = request(handler, "PUT", base+"/seasons/monitor", seasonBatch, &session, true)
+	if out.Code != 409 {
+		t.Fatal("stale season batch accepted", out.Code, out.Body)
 	}
 	out = request(handler, "GET", "/series/"+fmt.Sprint(added.Item.ID), "", nil, false)
 	if out.Code != 200 || !strings.Contains(out.Body.String(), "<!doctype html>") {

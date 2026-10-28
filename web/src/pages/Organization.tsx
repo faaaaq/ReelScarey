@@ -53,6 +53,16 @@ type Plan = {
   files: Planned[];
   created_at: number;
   updated_at: number;
+  replacement?: {
+    title: string;
+    media_file_id: number;
+    restores_plan?: string;
+    recovering?: boolean;
+    original: { source: string; size_bytes: number };
+    incoming: { source: string; size_bytes: number };
+    backup: string;
+    episodes: { id: number; season: number; number: number; title: string }[];
+  };
   folder_move?: {
     source: string;
     destination: string;
@@ -342,10 +352,18 @@ function Reorganize({ config }: { config: Config }) {
     [input, setInput] = useState(params.get("query") ?? "");
   const query = params.get("query") ?? "",
     page = Number(params.get("page") ?? 1),
-    mediaID = params.get("media_id") ?? "";
+    mediaID = params.get("media_id") ?? "",
+    replacementSource = params.get("replacement_source") ?? "";
   const path = `/organization/files?page=${page}&query=${encodeURIComponent(query)}${mediaID ? `&media_id=${encodeURIComponent(mediaID)}` : ""}`;
   const files = useResource<Files>(path),
     history = useLiveResource<{ items: Plan[] }>("/organization/plans", 5000);
+  const [versionsFile, setVersionsFile] = useState<number>();
+  const versions = useResource<{ items: Plan[] }>(
+    versionsFile
+      ? `/organization/replacements?media_file_id=${versionsFile}`
+      : null,
+  );
+  const [health, setHealth] = useState<Record<number, string>>({});
   const [selected, setSelected] = useState<number[]>([]),
     [target, setTarget] = useState("");
   const [plan, setPlan] = useState<Plan>(),
@@ -376,8 +394,101 @@ function Reorganize({ config }: { config: Config }) {
     });
   }, [history.data]);
   useEffect(() => {
-    if (plan?.state === "completed") files.reload();
-  }, [plan?.state, files.reload]);
+    if (plan?.state === "completed") {
+      files.reload();
+      if (versionsFile) versions.reload();
+    }
+  }, [plan?.state, files.reload, versionsFile, versions.reload]);
+  async function checkHealth(fileID: number) {
+    if (pending) return;
+    setPending(`health-${fileID}`);
+    setHealth((current) => {
+      const next = { ...current };
+      delete next[fileID];
+      return next;
+    });
+    setError("");
+    try {
+      const result = await api<{ status: string }>(
+        `/organization/files/${fileID}/health`,
+        { method: "POST", body: "{}" },
+      );
+      setHealth((current) => ({ ...current, [fileID]: result.status }));
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending("");
+    }
+  }
+  async function reviewReplacement() {
+    if (pending || selected.length !== 1 || !replacementSource) return;
+    setPending("replacement");
+    setError("");
+    setReviewed(false);
+    setPlan(undefined);
+    setStale(false);
+    try {
+      setPlan(
+        await api<Plan>("/organization/replacements", {
+          method: "POST",
+          body: JSON.stringify({
+            media_file_id: selected[0],
+            scan_file_id: replacementSource,
+          }),
+        }),
+      );
+      history.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending("");
+    }
+  }
+  async function reviewRollback(saved: Plan) {
+    if (pending) return;
+    setPending("rollback");
+    setError("");
+    setReviewed(false);
+    setPlan(undefined);
+    setStale(false);
+    try {
+      setPlan(
+        await api<Plan>(`/organization/plans/${saved.id}/rollback`, {
+          method: "POST",
+          body: "{}",
+        }),
+      );
+      history.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending("");
+    }
+  }
+  async function recoverReplacement(saved: Plan) {
+    if (
+      pending ||
+      !window.confirm(
+        "Restore the retained original? The app will only restore it if its registered path is empty.",
+      )
+    )
+      return;
+    setPending("recover");
+    setError("");
+    try {
+      setPlan(
+        await api<Plan>(`/organization/plans/${saved.id}/recover-replacement`, {
+          method: "POST",
+          body: "{}",
+        }),
+      );
+      history.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending("");
+    }
+  }
   async function preview(wholeTitle = false, wholeFolder = false) {
     if (pending || (wholeTitle ? !mediaID || !target : !selected.length))
       return;
@@ -463,6 +574,7 @@ function Reorganize({ config }: { config: Config }) {
   function filter(nextPage: number, nextQuery = query) {
     setParams({
       ...(mediaID ? { media_id: mediaID } : {}),
+      ...(replacementSource ? { replacement_source: replacementSource } : {}),
       ...(nextQuery ? { query: nextQuery } : {}),
       page: String(nextPage),
     });
@@ -475,7 +587,8 @@ function Reorganize({ config }: { config: Config }) {
           Review up to 50 files from this page. The plan checks video identity,
           subtitles, conflicts and current naming rules. Downloads and seeding
           sources stay in place. Unrelated extras and empty folders are
-          retained.
+          retained. File integrity checks read the entire file and can take a
+          while.
         </p>
         <form
           className="movie-search-form"
@@ -535,32 +648,62 @@ function Reorganize({ config }: { config: Config }) {
             )}
             <div className="organization-files">
               {files.data.items.map((file) => (
-                <label key={file.id} className="organization-file">
-                  <input
-                    type="checkbox"
-                    disabled={!!pending}
-                    aria-label={`Select file ${file.id}: ${file.title}`}
-                    checked={selected.includes(file.id)}
-                    onChange={(e) => {
-                      setSelected((current) =>
-                        e.target.checked
-                          ? [...current, file.id]
-                          : current.filter((id) => id !== file.id),
-                      );
-                      setPlan(undefined);
-                      setReviewed(false);
-                    }}
-                  />
-                  <span>
-                    <strong>{file.title}</strong>
-                    <span className="field-help">
-                      {file.category === "anime" ? "Anime · " : ""}
-                      {file.kind === "movie" ? "Movie" : "Episode file"} ·{" "}
-                      {bytes(file.size_bytes)}
+                <div key={file.id}>
+                  <label className="organization-file">
+                    <input
+                      type="checkbox"
+                      disabled={!!pending}
+                      aria-label={`Select file ${file.id}: ${file.title}`}
+                      checked={selected.includes(file.id)}
+                      onChange={(e) => {
+                        setSelected((current) =>
+                          e.target.checked
+                            ? [...current, file.id]
+                            : current.filter((id) => id !== file.id),
+                        );
+                        setPlan(undefined);
+                        setReviewed(false);
+                      }}
+                    />
+                    <span>
+                      <strong>{file.title}</strong>
+                      <span className="field-help">
+                        {file.category === "anime" ? "Anime · " : ""}
+                        {file.kind === "movie"
+                          ? "Movie"
+                          : "Episode file"} · {bytes(file.size_bytes)}
+                      </span>
+                      <code>{file.path}</code>
                     </span>
-                    <code>{file.path}</code>
-                  </span>
-                </label>
+                  </label>
+                  <Button
+                    variant="soft"
+                    disabled={!!pending}
+                    onClick={() => checkHealth(file.id)}
+                  >
+                    {pending === `health-${file.id}`
+                      ? "Checking…"
+                      : "Check file integrity"}
+                  </Button>
+                  <Button
+                    variant="soft"
+                    disabled={!!pending}
+                    onClick={() => setVersionsFile(file.id)}
+                  >
+                    Show saved versions
+                  </Button>
+                  {health[file.id] && (
+                    <p role="status">
+                      {health[file.id] === "verified"
+                        ? "File matches its saved checksum."
+                        : health[file.id] === "missing"
+                          ? "File is missing from its registered path."
+                          : health[file.id] === "unsafe"
+                            ? "File path cannot be safely inspected."
+                            : "File differs from its saved checksum or changed during inspection."}
+                    </p>
+                  )}
+                </div>
               ))}
             </div>
             {!files.data.items.length && (
@@ -578,6 +721,55 @@ function Reorganize({ config }: { config: Config }) {
               onPage={filter}
             />
           </>
+        )}
+        {versionsFile && (
+          <div className="system-panel">
+            <h3>Saved versions for file {versionsFile}</h3>
+            <RequestState
+              loading={versions.loading}
+              error={versions.error}
+              retry={versions.reload}
+            />
+            {versions.data?.items
+              .filter((item) => !item.replacement?.recovering)
+              .map((item) => (
+                <div key={item.id}>
+                  <p>
+                    {new Date(item.updated_at * 1000).toLocaleString()} ·{" "}
+                    {item.replacement?.title}
+                  </p>
+                  <Button
+                    variant="soft"
+                    disabled={!!pending || running}
+                    onClick={() => void reviewRollback(item)}
+                  >
+                    Review restore previous version
+                  </Button>
+                </div>
+              ))}
+            {versions.data &&
+              !versions.data.items.filter(
+                (item) => !item.replacement?.recovering,
+              ).length && <p>No saved versions.</p>}
+          </div>
+        )}
+        {replacementSource && (
+          <div className="system-panel">
+            <p>
+              Select exactly one registered file to replace with the discovered
+              video. The source must have the same file extension and media
+              type.
+            </p>
+            <Button
+              disabled={selected.length !== 1 || !!pending || running}
+              onClick={() => void reviewReplacement()}
+            >
+              Review replacement
+            </Button>{" "}
+            <Button asChild variant="soft">
+              <Link to="/import">Choose another source</Link>
+            </Button>
+          </div>
         )}
         <fieldset disabled={!!pending}>
           <label>
@@ -673,15 +865,17 @@ function Reorganize({ config }: { config: Config }) {
                       ? "Completed"
                       : "Needs attention")}
           </p>
-          <p className="field-help">
-            {plan.files.filter((f) => !f.unchanged).length}{" "}
-            {plan.files.filter((f) => !f.unchanged).length === 1
-              ? "file"
-              : "files"}{" "}
-            {plan.state === "completed" ? "changed" : "in this plan"};{" "}
-            {plan.files.filter((f) => f.unchanged).length} unchanged. Subtitles
-            listed below move with their video.
-          </p>
+          {!plan.replacement && (
+            <p className="field-help">
+              {plan.files.filter((f) => !f.unchanged).length}{" "}
+              {plan.files.filter((f) => !f.unchanged).length === 1
+                ? "file"
+                : "files"}{" "}
+              {plan.state === "completed" ? "changed" : "in this plan"};{" "}
+              {plan.files.filter((f) => f.unchanged).length} unchanged.
+              Subtitles listed below move with their video.
+            </p>
+          )}
           <PlanFiles plan={plan} />
           {plan.state === "review" && (
             <>
@@ -730,13 +924,38 @@ function Reorganize({ config }: { config: Config }) {
           .map((p) => (
             <details className="organization-job" key={p.id}>
               <summary>
-                {p.state} · {p.files.length}{" "}
-                {p.files.length === 1 ? "file" : "files"} ·{" "}
-                {new Date(p.updated_at * 1000).toLocaleString()}
+                {p.state} ·{" "}
+                {p.replacement
+                  ? "replacement"
+                  : `${p.files.length} ${p.files.length === 1 ? "file" : "files"}`}{" "}
+                · {new Date(p.updated_at * 1000).toLocaleString()}
               </summary>
               <p>{p.message}</p>
               <PlanFiles plan={p} />
-              {p.state === "failed" && (
+              {p.state === "completed" &&
+                p.replacement &&
+                !p.replacement.recovering && (
+                  <Button
+                    variant="soft"
+                    disabled={!!pending || running}
+                    onClick={() => void reviewRollback(p)}
+                  >
+                    Review restore previous version
+                  </Button>
+                )}
+              {p.state === "failed" &&
+                p.replacement &&
+                !p.replacement.recovering &&
+                (p.phase === "archived" || p.phase === "removed") && (
+                  <Button
+                    variant="soft"
+                    disabled={!!pending || running}
+                    onClick={() => void recoverReplacement(p)}
+                  >
+                    Restore original after interruption
+                  </Button>
+                )}
+              {p.state === "failed" && p.phase !== "failed_safe" && (
                 <Button
                   variant="soft"
                   disabled={!!pending || running}
@@ -758,6 +977,41 @@ function Reorganize({ config }: { config: Config }) {
 function PlanFiles({ plan }: { plan: Plan }) {
   return (
     <>
+      {plan.replacement && (
+        <div>
+          <p>
+            <strong>{plan.replacement.title}</strong>
+          </p>
+          <p>
+            Current file: <code>{plan.replacement.original.source}</code> (
+            {bytes(plan.replacement.original.size_bytes)})
+          </p>
+          <p>
+            Incoming file: <code>{plan.replacement.incoming.source}</code> (
+            {bytes(plan.replacement.incoming.size_bytes)})
+          </p>
+          <p>
+            Retained version: <code>{plan.replacement.backup}</code>
+          </p>
+          {!!plan.replacement.episodes?.length && (
+            <p>
+              This file covers:{" "}
+              {plan.replacement.episodes
+                .map(
+                  (episode) =>
+                    `S${String(episode.season).padStart(2, "0")}E${String(episode.number).padStart(2, "0")} ${episode.title}`,
+                )
+                .join(", ")}
+            </p>
+          )}
+          <p>
+            The source remains in place. Existing external subtitles remain
+            alongside the video, but their timing may differ. The incoming
+            file’s sidecars are not imported. The previous video is retained for
+            a reviewed restore.
+          </p>
+        </div>
+      )}
       {plan.folder_move && (
         <div>
           <p>

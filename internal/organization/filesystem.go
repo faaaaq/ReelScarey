@@ -16,11 +16,12 @@ import (
 
 var internalStageRE = regexp.MustCompile(`^\.reelscarey-organize-[a-f0-9]{32}-[0-9]+\.part$`)
 var internalFolderStageRE = regexp.MustCompile(`^\.reelscarey-folder-[a-f0-9]{32}$`)
+var internalVersionRE = regexp.MustCompile(`^\.reelscarey-version-[a-f0-9]{32}$`)
 
 func validManagedRelative(name string) bool {
 	parts := strings.Split(name, "/")
 	for i, part := range parts {
-		if internalFolderStageRE.MatchString(part) || i == len(parts)-1 && internalStageRE.MatchString(part) {
+		if internalFolderStageRE.MatchString(part) || i == 0 && part == ".reelscarey-versions" || i == len(parts)-1 && (internalStageRE.MatchString(part) || internalVersionRE.MatchString(part)) {
 			parts[i] = "safe-stage"
 		}
 	}

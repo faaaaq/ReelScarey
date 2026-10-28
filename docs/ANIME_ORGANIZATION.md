@@ -167,3 +167,32 @@ section/absolute aliases; 012 introduces organization config, assignments,
 immutable job snapshots and durable plan/output journals. Existing IDs, paths,
 credentials and monitoring survive the schema-10→12 upgrade. Graphite/blue and
 plain functional copy remain. IPTorrents/XSpeeds account testing stays deferred.
+
+A registered file can be checked from **Organize library**. The check reads the
+entire file and compares its SHA-256 with the saved registration; it reports a
+missing file, changed content, or an unsafe path without changing the catalog or
+media. Results are point-in-time, and a large file may take a long time to read.
+This check is an inspection only.
+
+## Reviewed video replacement and restore
+
+An unregistered video found by a configured library scan can replace one
+registered movie or episode file after explicit review. Choose **Replace a
+registered file** on the discovered file, select one registered target, and
+review both paths and every episode covered. The source must have the same media
+type and file extension. YouTube-sourced registered files and direct replacement
+from downloads are not yet supported.
+
+The job verifies both files and the incoming video, makes independent copies, and
+keeps the prior video under `.reelscarey-versions` in the media root. This can
+require space for two full copies; retained versions are not automatically
+removed. The selected source, torrent sources and existing external subtitles
+are retained. Existing subtitles may be out of sync with the new video; incoming
+sidecars are not imported. Embedded subtitle facts are refreshed.
+
+Completed replacement jobs offer a reviewed restore of the prior version; the
+current version is retained in turn. If a swap is interrupted after the original
+path becomes empty, retry the saved job or choose **Restore original after
+interruption**. Restoration refuses an occupied path and keeps the library
+reserved while the result is uncertain. Include retained versions in media-root
+migrations and backups.

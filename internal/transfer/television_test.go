@@ -129,6 +129,20 @@ func TestTVMultiEpisodeImportReopenAndSourceRetention(t *testing.T) {
 			if e = f.db.QueryRow(`SELECT COUNT(*) FROM episode_downloads`).Scan(&count); e != nil || count != 0 {
 				t.Fatal("finished reservations retained", count, e)
 			}
+			// Replacement changes the current file's provenance, but completed
+			// download history must still report its imported episode mappings.
+			if _, e = f.db.Exec(`UPDATE media_files SET download_id=NULL,file_index=-1,origin='existing' WHERE series_id=?`, id); e != nil {
+				t.Fatal(e)
+			}
+			historical, e := f.s.targets(ctx, j.ID)
+			if e != nil || len(historical) != 3 {
+				t.Fatal(historical, e)
+			}
+			for _, target := range historical {
+				if !target.Imported {
+					t.Fatal("completed import disappeared from history", historical)
+				}
+			}
 		})
 	}
 }

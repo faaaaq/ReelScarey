@@ -154,6 +154,99 @@ async function selectFirstAndReview() {
 }
 
 describe("Reviewed library organization", () => {
+  it("finds saved versions for a selected file and reviews a restore", async () => {
+    const savedReplacement = {
+      title: "First feature",
+      media_file_id: 41,
+      original: { source: "Old/First feature.mkv", size_bytes: 1000000 },
+      incoming: { source: "Incoming/new.mkv", size_bytes: 2000000 },
+      backup: ".reelscarey-versions/example",
+      episodes: [],
+    };
+    const { fetch } = setup((url, options, fixture) => {
+      if (url.includes("/organization/replacements?media_file_id=41"))
+        return Response.json({
+          items: [
+            {
+              ...fixture.plan([], "old-version"),
+              state: "completed",
+              replacement: savedReplacement,
+            },
+          ],
+        });
+      if (url.endsWith("/old-version/rollback") && options?.method === "POST")
+        return Response.json({
+          ...fixture.plan([], "restore"),
+          replacement: savedReplacement,
+        });
+    });
+    mount();
+    const buttons = await screen.findAllByRole("button", {
+      name: "Show saved versions",
+    });
+    await userEvent.click(buttons[0]);
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Review restore previous version",
+      }),
+    );
+    const review = await screen.findByRole("region", {
+      name: "Organization review",
+    });
+    expect(within(review).getByText(/Incoming\/new.mkv/)).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/organization/plans/old-version/rollback",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+  it("requires a selected registered file and an explicit review for replacement", async () => {
+    const { fetch } = setup((url, options, fixture) => {
+      if (
+        url.endsWith("/organization/replacements") &&
+        options?.method === "POST"
+      ) {
+        return Response.json({
+          ...fixture.plan([]),
+          replacement: {
+            title: "First feature",
+            media_file_id: 41,
+            original: { source: "Old/First feature.mkv", size_bytes: 1000000 },
+            incoming: { source: "Incoming/new.mkv", size_bytes: 2000000 },
+            backup: ".reelscarey-versions/example",
+          },
+        });
+      }
+    });
+    mount("/organization?replacement_source=candidate-1");
+    const review = await screen.findByRole("button", {
+      name: "Review replacement",
+    });
+    expect(review).toBeDisabled();
+    await userEvent.click(
+      await screen.findByRole("checkbox", {
+        name: "Select file 41: First feature",
+      }),
+    );
+    await userEvent.click(review);
+    const panel = await screen.findByRole("region", {
+      name: "Organization review",
+    });
+    expect(within(panel).getByText(/Incoming\/new.mkv/)).toBeInTheDocument();
+    expect(within(panel).getByText(/timing may differ/)).toBeInTheDocument();
+    expect(
+      within(panel).getByRole("button", { name: "Apply reviewed changes" }),
+    ).toBeDisabled();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/organization/replacements",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          media_file_id: 41,
+          scan_file_id: "candidate-1",
+        }),
+      }),
+    );
+  });
   it("shows all folder contents before a whole-folder move", async () => {
     const { fetch } = setup((url, options, fixture) => {
       if (url.endsWith("/organization/plans") && options?.method === "POST")

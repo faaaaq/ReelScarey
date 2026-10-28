@@ -1,6 +1,7 @@
 package organization
 
 import (
+	"context"
 	"database/sql"
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"os"
@@ -102,6 +103,7 @@ type Plan struct {
 	Root           string        `json:"root"`
 	Phase          string        `json:"phase"`
 	FolderMove     *FolderMove   `json:"folder_move,omitempty"`
+	Replacement    *Replacement  `json:"replacement,omitempty"`
 }
 type FolderMove struct {
 	Source      string          `json:"source"`
@@ -112,10 +114,15 @@ type FolderMove struct {
 	StageID     string          `json:"stage_identity,omitempty"`
 }
 type Service struct {
-	db   *sql.DB
-	cfg  config.Config
-	mu   sync.Mutex
-	link func(*os.Root, string, string) error
+	db       *sql.DB
+	cfg      config.Config
+	mu       sync.Mutex
+	healthMu sync.Mutex
+	link     func(*os.Root, string, string) error
+	probe    func(context.Context, *os.File) (string, error)
 }
 
 func New(db *sql.DB, cfg config.Config) *Service { return &Service{db: db, cfg: cfg} }
+
+// SetProbe supplies the media verifier used by replacement workers.
+func (s *Service) SetProbe(probe func(context.Context, *os.File) (string, error)) { s.probe = probe }

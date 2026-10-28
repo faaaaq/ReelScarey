@@ -1068,3 +1068,21 @@ Follow README.md to build the UI before Go, then run `go test ./...`,
 and removes only its own temporary config directory. `scripts/container-smoke.mjs`
 is intended exclusively for the disposable `reelscarey-ci` container in CI.
 See AUTHENTICATION.md for first setup, password recovery and key backup.
+
+## 2026-10-28: reviewed replacements and bulk monitoring
+
+- Linux disposable-file tests cover reviewed replacement and rollback, preserved
+  independent seeding/source copies, shared episode mappings, external subtitles,
+  symlink rejection, stale source selection, occupied destinations, interruption
+  recovery, and replacement activity events. A generated-video test used real
+  FFmpeg and the production FFprobe adapter, including restore after reopening.
+- Atomic batch season and episode monitoring tests cover explicit selections,
+  missing or duplicate IDs, revision conflicts, and preservation of episode
+  choices. Frontend tests exercise selection, confirmation and review.
+- The Docker build passed frontend formatting, type checking, 140 frontend tests,
+  all backend tests and `go vet`. Linux race checks passed for the modified
+  library, organization, transfer and HTTP services. A disposable container
+  passed startup, authentication, settings persistence and restart checks.
+- Live owner media and accounts were not used. Downloaded upgrade imports,
+  YouTube-sourced replacements, broader removal and other open items remain in
+  [REMAINING.md](REMAINING.md); Emby live acceptance remains deferred.

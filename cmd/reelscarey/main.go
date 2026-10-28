@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -98,6 +99,14 @@ func run(logger *slog.Logger) error {
 	automationService := automation.New(db, transferService)
 	subtitleService := subtitle.New(db, secretStore, cfg, subtitle.NewOpenSubtitles())
 	organizationService := organization.New(db, cfg)
+	organizationService.SetProbe(func(ctx context.Context, f *os.File) (string, error) {
+		result, err := (transfer.FFprobe{}).Probe(ctx, f)
+		if err != nil {
+			return "", err
+		}
+		data, err := json.Marshal(result)
+		return string(data), err
+	})
 	botService := discordbot.New(db, secretStore, metadataService, transferService)
 	embyMonitor := emby.NewMonitor(db, emby.New(secretStore))
 	youtubePath := os.Getenv("REELSCAREY_YTDLP_PATH")

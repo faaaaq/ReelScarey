@@ -91,6 +91,113 @@ function setup(
 }
 
 describe("TV catalog and monitoring", () => {
+  it("applies monitoring to selected seasons after confirmation", async () => {
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
+    const fetch = setup((url, options) => {
+      if (url.endsWith("/library/series/7")) return Response.json(show);
+      if (url.endsWith("/seasons/monitor") && options?.method === "PUT")
+        return Response.json({ ...show, revision: 2 });
+    });
+    mount("/series/7");
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: "Select season Season 1" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Unmonitor selected seasons (1)" }),
+    );
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/v1/library/series/7/seasons/monitor",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({
+            revision: 1,
+            monitored: false,
+            season_ids: [8],
+          }),
+        }),
+      ),
+    );
+  });
+  it("confirms and applies monitoring to only selected episodes", async () => {
+    const current = {
+      ...structuredClone(show),
+      seasons: [
+        {
+          ...show.seasons[0],
+          loaded_at: "2026-10-22",
+          known_episodes: 2,
+          selected_episodes: 2,
+        },
+      ],
+    };
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
+    const fetch = setup((url, options) => {
+      if (url.endsWith("/library/series/7")) return Response.json(current);
+      if (url.endsWith("/seasons/1"))
+        return Response.json({
+          season: current.seasons[0],
+          revision: current.revision,
+          series_monitored: true,
+          episodes: [
+            {
+              id: 9,
+              tmdb_id: 45,
+              number: 1,
+              title: "Pilot",
+              overview: "",
+              air_date: "",
+              runtime_minutes: null,
+              monitored: true,
+              effective_monitored: true,
+            },
+            {
+              id: 10,
+              tmdb_id: 46,
+              number: 2,
+              title: "Second",
+              overview: "",
+              air_date: "",
+              runtime_minutes: null,
+              monitored: true,
+              effective_monitored: true,
+            },
+          ],
+        });
+      if (url.endsWith("/episodes/monitor") && options?.method === "PUT")
+        return Response.json({ ...current, revision: 2 });
+    });
+    mount("/series/7");
+    await screen.findByRole("heading", { name: "Test TV series" });
+    await userEvent.click(
+      screen.getByRole("button", { name: "View episodes" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: "Select episode 2: Second" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Unmonitor selected (1)" }),
+    );
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/v1/library/series/7/seasons/1/episodes/monitor",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({
+            revision: 1,
+            monitored: false,
+            episode_ids: [10],
+          }),
+        }),
+      ),
+    );
+  });
   it("searches TV separately and saves a show with the chosen monitoring preference", async () => {
     const fetch = setup((url, options) => {
       if (url.includes("/metadata/series?"))

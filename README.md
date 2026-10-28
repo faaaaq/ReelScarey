@@ -53,13 +53,14 @@ and playlists, mapped to existing movies/episodes or named custom collections.
 Selected creator or automatic subtitles are reviewed and imported as VTT sidecars
 with the video. See [YouTube sourcing](docs/YOUTUBE.md) for setup and limits.
 
-Not implemented: replacement/upgrade imports, audio-language verification,
-or full production hardening. Automation starts paused and defaults to
+Reviewed replacements can use discovered unregistered files and retain the prior
+version for restoration. Downloaded upgrade imports, audio-language verification,
+and full production hardening remain unimplemented. Automation starts paused and defaults to
 search results for review; automatic downloads require explicit selection of that
 mode. There is no arbitrary existing-library scanner; subtitle checks inspect
 only media already registered by ReelScarey imports.
 FFprobe verifies completed video files before import. Sources remain in place
-for seeding; existing library files are never overwritten.
+for seeding; replacements require explicit review and retain the previous video.
 
 ## Run with Docker
 

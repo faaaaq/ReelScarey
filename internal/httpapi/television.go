@@ -241,3 +241,63 @@ func (s *Server) monitorTV(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sendSeries(w, r, id)
 }
+
+func (s *Server) monitorEpisodes(w http.ResponseWriter, r *http.Request) {
+	id, ok := tvID(w, r)
+	if !ok {
+		return
+	}
+	season, ok := tvNumber(w, r, "number", 0, 10000)
+	if !ok {
+		return
+	}
+	var body struct {
+		Monitored  *bool   `json:"monitored"`
+		Revision   int64   `json:"revision"`
+		EpisodeIDs []int64 `json:"episode_ids"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if body.Monitored == nil || body.Revision < 1 {
+		fail(w, 400, "invalid_monitoring", "Choose episode IDs, a preference and the current revision.")
+		return
+	}
+	if err := s.library.MonitorEpisodes(r.Context(), id, body.Revision, season, body.EpisodeIDs, *body.Monitored); err != nil {
+		if errors.Is(err, library.ErrMonitoringInput) {
+			fail(w, 400, "invalid_monitoring", "Choose 1–100 distinct episode IDs from this season.")
+			return
+		}
+		s.tvError(w, err)
+		return
+	}
+	s.sendSeries(w, r, id)
+}
+
+func (s *Server) monitorSeasons(w http.ResponseWriter, r *http.Request) {
+	id, ok := tvID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Monitored *bool   `json:"monitored"`
+		Revision  int64   `json:"revision"`
+		SeasonIDs []int64 `json:"season_ids"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if body.Monitored == nil || body.Revision < 1 {
+		fail(w, 400, "invalid_monitoring", "Choose season IDs, a preference and the current revision.")
+		return
+	}
+	if err := s.library.MonitorSeasons(r.Context(), id, body.Revision, body.SeasonIDs, *body.Monitored); err != nil {
+		if errors.Is(err, library.ErrMonitoringInput) {
+			fail(w, 400, "invalid_monitoring", "Choose 1–100 distinct season IDs from this show.")
+			return
+		}
+		s.tvError(w, err)
+		return
+	}
+	s.sendSeries(w, r, id)
+}

@@ -283,3 +283,78 @@ func (s *Store) MonitorTV(ctx context.Context, id, revision int64, season *int, 
 	}
 	return tx.Commit()
 }
+
+// MonitorEpisodes updates only the explicitly selected episode IDs in one
+// season, under the same series revision fence used by individual edits.
+func (s *Store) MonitorEpisodes(ctx context.Context, id, revision int64, season int, episodeIDs []int64, monitored bool) error {
+	if len(episodeIDs) < 1 || len(episodeIDs) > 100 || revision < 1 {
+		return ErrMonitoringInput
+	}
+	seen := make(map[int64]bool, len(episodeIDs))
+	for _, episodeID := range episodeIDs {
+		if episodeID < 1 || seen[episodeID] {
+			return ErrMonitoringInput
+		}
+		seen[episodeID] = true
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	for _, episodeID := range episodeIDs {
+		var n int
+		if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE e.id=? AND s.series_id=? AND s.number=? AND s.loaded_at<>''`, episodeID, id, season).Scan(&n); e != nil {
+			return e
+		}
+		if n != 1 {
+			return sql.ErrNoRows
+		}
+	}
+	if e = bumpSeries(ctx, tx, id, revision); e != nil {
+		return e
+	}
+	for _, episodeID := range episodeIDs {
+		if _, e = tx.ExecContext(ctx, `UPDATE episodes SET monitored=? WHERE id=?`, monitored, episodeID); e != nil {
+			return e
+		}
+	}
+	return tx.Commit()
+}
+
+// MonitorSeasons changes explicit season choices without altering episode choices.
+func (s *Store) MonitorSeasons(ctx context.Context, id, revision int64, seasonIDs []int64, monitored bool) error {
+	if len(seasonIDs) < 1 || len(seasonIDs) > 100 || revision < 1 {
+		return ErrMonitoringInput
+	}
+	seen := make(map[int64]bool, len(seasonIDs))
+	for _, seasonID := range seasonIDs {
+		if seasonID < 1 || seen[seasonID] {
+			return ErrMonitoringInput
+		}
+		seen[seasonID] = true
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	for _, seasonID := range seasonIDs {
+		var count int
+		if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM seasons WHERE id=? AND series_id=?`, seasonID, id).Scan(&count); e != nil {
+			return e
+		}
+		if count != 1 {
+			return sql.ErrNoRows
+		}
+	}
+	if e = bumpSeries(ctx, tx, id, revision); e != nil {
+		return e
+	}
+	for _, seasonID := range seasonIDs {
+		if _, e = tx.ExecContext(ctx, `UPDATE seasons SET monitored=? WHERE id=?`, monitored, seasonID); e != nil {
+			return e
+		}
+	}
+	return tx.Commit()
+}
