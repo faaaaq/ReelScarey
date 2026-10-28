@@ -98,6 +98,7 @@ func TestReviewOrganizationAPISecuritySettingsAndExactSelections(t *testing.T) {
 		{"POST", "/api/v1/organization/plans", `{"file_ids":[1]}`},
 		{"POST", "/api/v1/organization/replacements", `{"media_file_id":1,"scan_file_id":"candidate"}`},
 		{"GET", "/api/v1/organization/replacements?media_file_id=1", ""},
+		{"POST", "/api/v1/library/files/1/inspect", `{}`},
 		{"POST", "/api/v1/organization/plans/missing/rollback", `{}`},
 		{"POST", "/api/v1/organization/plans/missing/recover-replacement", `{}`},
 		{"POST", "/api/v1/organization/plans/missing/apply", `{}`},

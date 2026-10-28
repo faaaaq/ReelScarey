@@ -26,6 +26,7 @@ type Service struct {
 	adapters    map[string]Indexer
 	configMu    sync.Mutex
 	healthMu    sync.RWMutex
+	probeMu     sync.Mutex
 	legacyError string
 	importer    *Importer
 }

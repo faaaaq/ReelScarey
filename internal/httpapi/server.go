@@ -124,6 +124,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/import-files/{id}/register", method(http.MethodPost, s.existingRegister))
 	mux.HandleFunc("/api/v1/library/import-files/{id}/skip", method(http.MethodPost, s.existingSkip))
 	mux.HandleFunc("/api/v1/library/items/{id}", method(http.MethodGet, s.itemDetails))
+	mux.HandleFunc("/api/v1/library/files/{id}/inspect", method(http.MethodPost, s.inspectMediaFile))
 	mux.HandleFunc("/api/v1/library/items/{id}/anime", s.animeSettings)
 	mux.HandleFunc("/api/v1/library/items/{id}/anime-search", s.animeSearchSettings)
 	mux.HandleFunc("/api/v1/metadata/anime", method(http.MethodGet, s.searchAnimeIdentities))

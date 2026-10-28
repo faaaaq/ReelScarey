@@ -1,11 +1,14 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
 )
 
@@ -27,7 +30,7 @@ func (s *Server) transferError(w http.ResponseWriter, err error) {
 		switch e.Code {
 		case "invalid_settings", "invalid_search", "invalid_file", "invalid_release", "unsupported_torrent", "unsupported_nzb", "unsafe_path", "invalid_mapping", "invalid_scan", "too_many_episodes", "invalid_anime_selection":
 			status = 400
-		case "revision_conflict", "indexer_not_configured", "client_not_configured", "active_downloads", "release_expired", "movie_busy", "download_busy", "duplicate_hash", "episode_busy", "episode_changed", "episodes_not_loaded", "no_episode_targets", "mapping_locked", "scan_busy", "scan_history_full", "duplicate_file", "source_changed", "anime_order_changed":
+		case "revision_conflict", "indexer_not_configured", "client_not_configured", "active_downloads", "release_expired", "movie_busy", "media_busy", "download_busy", "duplicate_hash", "episode_busy", "episode_changed", "episodes_not_loaded", "no_episode_targets", "mapping_locked", "scan_busy", "scan_history_full", "duplicate_file", "source_changed", "anime_order_changed":
 			status = 409
 		case "movie_not_found":
 			status = 404
@@ -36,6 +39,30 @@ func (s *Server) transferError(w http.ResponseWriter, err error) {
 		return
 	}
 	s.internal(w, "movie_workflow", err)
+}
+
+func (s *Server) inspectMediaFile(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	id, ok := tvID(w, r)
+	if !ok || !decodeJSON(w, r, &struct{}{}) {
+		return
+	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Minute))
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Minute)
+	defer cancel()
+	out, err := s.transfer.RefreshMediaProbe(ctx, id)
+	if err != nil {
+		var org *organization.Error
+		if errors.As(err, &org) {
+			s.organizationError(w, err)
+		} else {
+			s.transferError(w, err)
+		}
+		return
+	}
+	send(w, 200, out)
 }
 func integrationName(r *http.Request) (string, bool) {
 	name := r.PathValue("name")

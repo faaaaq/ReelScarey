@@ -79,6 +79,9 @@ func TestReplacementAndRollbackKeepBothVersionsAndSource(t *testing.T) {
 	if e != nil || p.State != "completed" {
 		t.Fatal(p, e)
 	}
+	if _, e = f.db.Exec(`UPDATE media_files SET probe_json='{"audio_streams":[]}' WHERE id=1`); e != nil {
+		t.Fatal(e)
+	}
 	back, e := f.s.PreviewRollback(ctx, p.ID)
 	if e != nil {
 		t.Fatal(e)

@@ -548,3 +548,10 @@ It updates the selected seasons atomically without changing their episode choice
 saved size and SHA-256, without changing it. Results are `verified`, `missing`,
 `changed`, or `unsafe`. A check reads the full file and is cancellable; only
 one such check runs at a time.
+
+`POST /library/files/{id}/inspect` with `{}` verifies the registered video's
+saved checksum, runs FFprobe and updates its saved stream facts. The response
+includes bounded `audio_streams` with codec, embedded language tag and title.
+Existing registrations made before audio inspection can use this operation; the
+check reads the whole file. Tags describe file metadata and do not prove the
+spoken language. A changed file is rejected without updating its saved facts.

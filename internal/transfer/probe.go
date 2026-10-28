@@ -14,10 +14,16 @@ import (
 
 type Probe struct {
 	Subtitles []SubtitleStream `json:"subtitle_streams"`
+	Audio     []AudioStream    `json:"audio_streams"`
 	Codec     string           `json:"codec"`
 	Width     int              `json:"width"`
 	Height    int              `json:"height"`
 	Duration  float64          `json:"duration_seconds"`
+}
+type AudioStream struct {
+	Codec    string `json:"codec"`
+	Language string `json:"language"`
+	Title    string `json:"title"`
 }
 type SubtitleStream struct {
 	Language        string `json:"language"`
@@ -88,14 +94,18 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 		return Probe{}, problem("invalid_media", "The movie's duration could not be verified.")
 	}
 	subtitles := []SubtitleStream{}
+	audio := []AudioStream{}
 	for _, stream := range raw.Streams {
 		if stream.Type == "subtitle" && len(subtitles) < 100 {
 			subtitles = append(subtitles, SubtitleStream{Language: stream.Tags.Language, Title: stream.Tags.Title, Forced: stream.Disposition.Forced != 0, HearingImpaired: stream.Disposition.Hearing != 0})
 		}
+		if stream.Type == "audio" && len(audio) < 100 {
+			audio = append(audio, AudioStream{Codec: stream.Codec, Language: stream.Tags.Language, Title: stream.Tags.Title})
+		}
 	}
 	for _, stream := range raw.Streams {
 		if stream.Type == "video" && stream.Codec != "" && stream.Codec != "unknown" && stream.Width > 0 && stream.Height > 0 && stream.Width <= 32768 && stream.Height <= 32768 && stream.Disposition.Attached == 0 {
-			return Probe{Codec: stream.Codec, Width: stream.Width, Height: stream.Height, Duration: duration, Subtitles: subtitles}, nil
+			return Probe{Codec: stream.Codec, Width: stream.Width, Height: stream.Height, Duration: duration, Subtitles: subtitles, Audio: audio}, nil
 		}
 	}
 	return Probe{}, problem("invalid_media", "The selected file has no usable video stream.")

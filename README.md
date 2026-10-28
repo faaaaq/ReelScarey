@@ -54,7 +54,7 @@ Selected creator or automatic subtitles are reviewed and imported as VTT sidecar
 with the video. See [YouTube sourcing](docs/YOUTUBE.md) for setup and limits.
 
 Reviewed replacements can use discovered unregistered files and retain the prior
-version for restoration. Downloaded upgrade imports, audio-language verification,
+version for restoration. Downloaded upgrade imports, spoken-language verification,
 and full production hardening remain unimplemented. Automation starts paused and defaults to
 search results for review; automatic downloads require explicit selection of that
 mode. There is no arbitrary existing-library scanner; subtitle checks inspect

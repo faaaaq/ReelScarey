@@ -51,6 +51,8 @@ export type LocalDetails = {
       width: number;
       height: number;
       duration_seconds: number;
+      audio_streams?:
+        { codec: string; language: string; title: string }[] | null;
     };
   }[];
   history: {
@@ -110,8 +112,29 @@ export function ItemInformation({
     metadata_updated_at: number;
   }>();
   const [busy, setBusy] = useState(false);
+  const [inspecting, setInspecting] = useState<number>();
+  const [inspectionError, setInspectionError] = useState<{
+    id: number;
+    message: string;
+  }>();
   const [error, setError] = useState("");
   const attempted = useRef(false);
+  async function inspectFile(fileID: number) {
+    if (inspecting) return;
+    setInspecting(fileID);
+    setInspectionError(undefined);
+    try {
+      await api(`/library/files/${fileID}/inspect`, {
+        method: "POST",
+        body: "{}",
+      });
+      resource.reload();
+    } catch (e) {
+      setInspectionError({ id: fileID, message: messageFor(e) });
+    } finally {
+      setInspecting(undefined);
+    }
+  }
   async function refresh() {
     if (busy) return;
     setBusy(true);
@@ -438,6 +461,31 @@ export function ItemInformation({
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
+                    <p>
+                      {file.probe.audio_streams == null
+                        ? "Audio tags have not been inspected yet."
+                        : file.probe.audio_streams.length === 0
+                          ? "No audio streams were reported."
+                          : `Embedded audio tags: ${file.probe.audio_streams.map((stream) => [stream.language && stream.language !== "und" ? stream.language : "language unknown", stream.codec, stream.title].filter(Boolean).join(" · ")).join(", ")}`}
+                    </p>
+                    <p className="field-help">
+                      Language tags come from the file and may be missing or
+                      inaccurate. Rechecking reads the entire file.
+                    </p>
+                    <Button
+                      variant="soft"
+                      disabled={!!inspecting}
+                      onClick={() => void inspectFile(file.id)}
+                    >
+                      {inspecting === file.id
+                        ? "Inspecting…"
+                        : "Inspect audio tags"}
+                    </Button>
+                    {inspectionError?.id === file.id && (
+                      <p role="alert" className="form-error">
+                        {inspectionError.message}
+                      </p>
+                    )}
                     <p>
                       {file.origin === "existing"
                         ? "Existing file"

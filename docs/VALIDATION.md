@@ -1086,3 +1086,12 @@ See AUTHENTICATION.md for first setup, password recovery and key backup.
 - Live owner media and accounts were not used. Downloaded upgrade imports,
   YouTube-sourced replacements, broader removal and other open items remain in
   [REMAINING.md](REMAINING.md); Emby live acceptance remains deferred.
+
+## 2026-10-28: embedded audio tags
+
+- Real FFmpeg generated a disposable video with Japanese audio metadata;
+  FFprobe returned its audio codec and language tag. Fixture tests verify
+  reinspection detects content changes, preserves prior facts on failure,
+  updates matching YouTube provenance, and does not prevent a reviewed rollback.
+- The interface test checks explicit reinspection and the displayed embedded tag.
+  Tags are metadata and do not establish the language actually spoken.

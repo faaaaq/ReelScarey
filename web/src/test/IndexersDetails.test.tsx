@@ -138,6 +138,47 @@ const local = {
   ],
 };
 describe("indexers and library details", () => {
+  it("inspects and displays embedded audio language tags", async () => {
+    let inspected = false;
+    const fetch = setup((url, options) => {
+      if (
+        url.endsWith("/library/files/2/inspect") &&
+        options?.method === "POST"
+      ) {
+        inspected = true;
+        return Response.json({
+          audio_streams: [{ language: "jpn", codec: "aac", title: "" }],
+        });
+      }
+      if (url.includes("/library/items/1?"))
+        return Response.json({
+          ...local,
+          files: local.files.map((file) => ({
+            ...file,
+            probe: {
+              ...file.probe,
+              ...(inspected
+                ? {
+                    audio_streams: [
+                      { language: "jpn", codec: "aac", title: "" },
+                    ],
+                  }
+                : {}),
+            },
+          })),
+        });
+    });
+    mount("/movies/1");
+    await screen.findByText("Audio tags have not been inspected yet.");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Inspect audio tags" }),
+    );
+    await screen.findByText("Embedded audio tags: jpn · aac");
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/library/files/2/inspect",
+      expect.objectContaining({ method: "POST", body: "{}" }),
+    );
+  });
   it("adds a public NYAA source without credentials and uses CSRF", async () => {
     let items: Indexer[] = [];
     const fetch = setup((url, options) => {

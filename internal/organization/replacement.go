@@ -197,7 +197,8 @@ func (s *Service) PreviewRollback(ctx context.Context, planID string) (Plan, err
 		return Plan{}, e
 	}
 	expected := previous.After
-	expected.Path = before.Path // reviewed organization may have moved the file
+	expected.Path = before.Path   // reviewed organization may have moved the file
+	expected.Probe = before.Probe // a verified reinspection may refresh stream facts
 	if mediaID != previous.MediaID || !reflect.DeepEqual(before, expected) {
 		return Plan{}, problem("revision_conflict", "The current file no longer matches this replacement. Review the latest version instead.")
 	}

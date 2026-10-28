@@ -108,8 +108,9 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   See [YouTube sourcing](YOUTUBE.md) and [validation](VALIDATION.md) for limits.
 - [ ] Automatic channel/playlist subscriptions, bulk video acquisition and richer
   subtitle selection remain future work.
-- [ ] Verified audio-language inspection and richer source/codec scoring; release
-  language text currently supplies selection evidence only.
+- [ ] Richer source/codec scoring and language verification beyond embedded tags.
+  Imported files expose audio stream tags; older files can be explicitly inspected.
+  Tags may be absent or inaccurate, and release text still supplies selection evidence.
 - [ ] Additional subtitle providers, ASS-style provider downloads, subtitle
   replacement/resynchronization and per-show language overrides. Existing styled
   subtitle companions can be detected/preserved during organization; that is a
