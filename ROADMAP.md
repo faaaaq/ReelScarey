@@ -28,15 +28,16 @@ Historical native and package results below remain as records of past work.
 - [x] Make unmatched files easy to discover and review for matching or registration.
   Configured-folder scans show unresolved and blocked counts and open to matching review.
 - [ ] Integrate Emby play activity so users can see what is actually being watched.
-  An on-demand, per-user recent-play snapshot is implemented; continuous event
-  history and acceptance against a real Emby server remain open.
+  On-demand snapshots and opt-in recording of observed playback sessions are
+  implemented; live acceptance and complete server-side history remain open.
 - [x] Make per-series release preferences easy to set beyond a quality profile,
   including codecs such as H.264/H.265 and release groups such as Obscure/Megusta.
   These rules apply to scheduled searches and require explicit release labels;
   manual searches are unrestricted.
 - [ ] Show related franchise titles on a title's detail page, inspired by Mydia's
   presentation, with clear links and library status. TMDb movie collections can
-  be loaded from movie details; broader TV and cross-media franchises remain open.
+  be loaded from movie details; explicit mutual links connect saved movies and
+  TV shows. Automatic cross-media franchise discovery remains open.
 - [x] Offer to create the destination folder when adding a title, before media
   is fetched, so files can be placed there manually.
 - [ ] Add a Discord companion bot that accepts requests, searches and replies
@@ -46,8 +47,9 @@ Historical native and package results below remain as records of past work.
   acceptance remains open.
 - [ ] Add an accessible history/notification tray along the edge of the interface,
   with a compact timeline of events, timestamps and a way to see more, inspired
-  by the supplied reference image. A compact tray shows current download statuses;
-  a full event timeline and other notification types remain open.
+  by the supplied reference image. The tray and paginated timeline record key
+  state changes from installation of the timeline; historical reconstruction and
+  events outside the documented set remain open.
 
 ## 1 — Foundation
 - [x] Go server, structured logging, graceful shutdown and validated environment

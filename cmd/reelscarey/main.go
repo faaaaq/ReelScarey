@@ -18,6 +18,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/discordbot"
+	"github.com/faaaaq/ReelScarey/internal/emby"
 	"github.com/faaaaq/ReelScarey/internal/httpapi"
 	"github.com/faaaaq/ReelScarey/internal/instance"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
@@ -98,6 +99,7 @@ func run(logger *slog.Logger) error {
 	subtitleService := subtitle.New(db, secretStore, cfg, subtitle.NewOpenSubtitles())
 	organizationService := organization.New(db, cfg)
 	botService := discordbot.New(db, secretStore, metadataService, transferService)
+	embyMonitor := emby.NewMonitor(db, emby.New(secretStore))
 	youtubePath := os.Getenv("REELSCAREY_YTDLP_PATH")
 	if youtubePath == "" {
 		youtubePath = "yt-dlp"
@@ -196,6 +198,14 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 	defer func() { workerCancel(); <-subtitleDone }()
+	embyDone := make(chan struct{})
+	go func() {
+		defer close(embyDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			embyMonitor.Run(workerCtx)
+		}
+	}()
+	defer func() { workerCancel(); <-embyDone }()
 	organizationDone := make(chan struct{})
 	go func() {
 		defer close(organizationDone)

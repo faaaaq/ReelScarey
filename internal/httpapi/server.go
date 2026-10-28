@@ -55,6 +55,7 @@ type Server struct {
 	requestLists     *requests.Lists
 	bot              *discordbot.Service
 	emby             *emby.Service
+	embyMonitor      *emby.Monitor
 	animeProvider    metadata.AnimeProvider
 	youtube          *youtube.Store
 	youtubeInspector YouTubeInspector
@@ -86,6 +87,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	s.requests = requests.New(db)
 	if deps.Secrets != nil {
 		s.emby = emby.New(deps.Secrets)
+		s.embyMonitor = emby.NewMonitor(db, s.emby)
 		s.discord = requests.NewDiscord(db, deps.Secrets)
 		s.requestLists = requests.NewLists(db, deps.Secrets)
 	}
@@ -101,6 +103,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/system/checks", s.installationChecks)
 	mux.HandleFunc("/api/v1/system/recovery/resume", method(http.MethodPost, s.resumeRecovery))
 	mux.HandleFunc("/api/v1/dashboard", method(http.MethodGet, s.dashboard))
+	mux.HandleFunc("/api/v1/events", method(http.MethodGet, s.activityEvents))
 	mux.HandleFunc("/api/v1/wanted", method(http.MethodGet, s.planning))
 	mux.HandleFunc("/api/v1/calendar", method(http.MethodGet, s.planning))
 	mux.HandleFunc("/api/v1/library", method(http.MethodGet, s.listLibrary))
@@ -132,6 +135,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/settings", s.handleSettings)
 	mux.HandleFunc("/api/v1/emby", s.embySettings)
 	mux.HandleFunc("/api/v1/emby/activity", method(http.MethodGet, s.embyActivity))
+	mux.HandleFunc("/api/v1/emby/monitor", s.embyMonitorSettings)
+	mux.HandleFunc("/api/v1/emby/history", method(http.MethodGet, s.embyHistory))
 	mux.HandleFunc("/api/v1/organization", s.organizationSettings)
 	mux.HandleFunc("/api/v1/organization/files", method(http.MethodGet, s.organizationFiles))
 	mux.HandleFunc("/api/v1/organization/plans", s.organizationPlans)
@@ -140,6 +145,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/items/{id}/organization", s.organizationAssignment)
 	mux.HandleFunc("/api/v1/library/items/{id}/create-folder", method(http.MethodPost, s.createTitleFolder))
 	mux.HandleFunc("/api/v1/library/items/{id}/collection", method(http.MethodGet, s.movieCollection))
+	mux.HandleFunc("/api/v1/library/items/{id}/related", s.relatedTitles)
 	mux.HandleFunc("/api/v1/subtitles/preferences", s.subtitlePreferences)
 	mux.HandleFunc("/api/v1/providers/opensubtitles", s.subtitleProvider)
 	mux.HandleFunc("/api/v1/providers/opensubtitles/test", method(http.MethodPost, s.subtitleProviderTest))
@@ -410,7 +416,7 @@ func (s *Server) sameOrigin(r *http.Request) bool {
 
 func frontend(assets fs.FS) http.HandlerFunc {
 	files := http.FileServer(http.FS(assets))
-	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/anime": true, "/youtube": true, "/organization": true, "/search": true, "/releases": true, "/activity": true, "/watch-activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true, "/import": true, "/wanted": true, "/calendar": true, "/requests": true}
+	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/anime": true, "/youtube": true, "/organization": true, "/search": true, "/releases": true, "/activity": true, "/timeline": true, "/watch-activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true, "/import": true, "/wanted": true, "/calendar": true, "/requests": true}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")

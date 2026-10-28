@@ -68,7 +68,7 @@ func TestExistingLibraryAPIAuthenticationReviewAndPathBoundaries(t *testing.T) {
 			t.Fatal("unprotected discovery", path, out.Code)
 		}
 	}
-	for _, path := range []string{"/api/v1/emby", "/api/v1/emby/activity"} {
+	for _, path := range []string{"/api/v1/emby", "/api/v1/emby/activity", "/api/v1/emby/monitor", "/api/v1/emby/history", "/api/v1/events", "/api/v1/library/items/1/related"} {
 		if out := request(handler, "GET", path, "", nil, false); out.Code != 401 {
 			t.Fatal("unprotected Emby API", path, out.Code)
 		}

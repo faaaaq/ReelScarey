@@ -11,15 +11,15 @@ describe("recent activity tray", () => {
       Response.json({
         items: [
           {
-            id: "abc",
-            movie_title: "Fixture movie",
+            id: 1,
+            object_id: "abc",
+            kind: "download",
+            title: "Fixture movie",
             state: "completed",
-            updated_at: 1700000000,
+            occurred_at: 1700000000,
           },
         ],
-        total: 1,
-        page: 1,
-        limit: 20,
+        next: null,
       }),
     );
     vi.stubGlobal("fetch", fetch);
@@ -34,7 +34,7 @@ describe("recent activity tray", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Recent activity" }),
     );
-    expect(await screen.findByText("In library")).toBeVisible();
+    expect(await screen.findByText("Download · completed")).toBeVisible();
     expect(screen.getByRole("link", { name: "Fixture movie" })).toHaveAttribute(
       "href",
       "/activity?job=abc",

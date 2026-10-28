@@ -49,6 +49,7 @@ import { YouTube } from "./pages/YouTube";
 import { AdminRequests, RequesterHome } from "./pages/Requests";
 import { WatchActivity } from "./pages/WatchActivity";
 import { HistoryTray } from "./components/HistoryTray";
+import { Timeline } from "./pages/Timeline";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -227,6 +228,7 @@ function AppShell() {
             <Route path="/releases" element={<Releases />} />
             <Route path="/activity" element={<DownloadActivity />} />
             <Route path="/watch-activity" element={<WatchActivity />} />
+            <Route path="/timeline" element={<Timeline />} />
             <Route path="/automation" element={<Automation />} />
             <Route path="/subtitles" element={<Subtitles />} />
             <Route

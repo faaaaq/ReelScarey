@@ -14,6 +14,15 @@ Administrator GET/PUT/DELETE `/api/v1/emby` reads connection status, saves
 an empty key on PUT retains it only for the same URL. GET `/api/v1/emby/activity`
 fetches a bounded recent-play snapshot from the configured server. It is not a
 complete event history; see [Emby activity](EMBY.md).
+GET/PUT `/api/v1/emby/monitor` controls opt-in recording with a revision, and
+GET `/api/v1/emby/history` reads the most recent 200 observed sessions. Polling
+can miss short plays; uncertain gaps are explicitly marked.
+
+Administrator GET `/api/v1/events?before={id}` returns up to 50 recorded state
+changes and a cursor for older entries. Recording begins with migration 027;
+older actions are not reconstructed. GET/POST/DELETE
+`/api/v1/library/items/{id}/related` reads or changes explicit mutual links
+between saved titles; writes accept `{other_id}` and require CSRF.
 
 POST `/api/v1/library/items/{id}/create-folder` with `{}` creates the saved
 title's configured destination folder without moving or replacing files. GET

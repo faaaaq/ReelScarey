@@ -3,6 +3,7 @@ import { Button, TextField } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
+import { EmbyHistory } from "./EmbyHistory";
 
 type Settings = { url: string; configured: boolean };
 type Activity = {
@@ -85,6 +86,7 @@ export function WatchActivity() {
         error={settings.error}
         retry={settings.reload}
       />
+      <EmbyHistory />
       <section className="panel system-panel">
         <h2>Emby connection</h2>
         <p>

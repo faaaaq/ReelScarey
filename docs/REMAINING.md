@@ -70,9 +70,9 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 
 ## Anime, metadata and media-server coverage
 
-- [ ] Live acceptance of the Emby recent-play snapshot and any continuous
-  playback event history. The current read-only view shows each user's latest
-  play state for up to 100 items, not a complete event history.
+- [ ] Live acceptance of Emby activity with the owner's server. Opt-in polling
+  records observed playback sessions; short plays and monitoring gaps can be
+  missed and are not represented as complete server-side event history.
 
 - [x] AniList identity links and owner-reviewed release-order labels, with
   read-only TMDb group/subgroup proposals joined to exact canonical episode IDs.
@@ -130,6 +130,13 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   interactive selections and administrator notifications have fixture coverage.
 
 ## Deployment and public release
+
+- [ ] Broader event coverage and historical reconstruction. The timeline records
+  title adds/monitoring/file registration, downloads, YouTube, requests,
+  notifications, automation, scans, organization, subtitle jobs and observed
+  Emby sessions from migration 027 onward; it does not reconstruct older events.
+- [ ] Automatic cross-media franchise discovery. Explicit links between saved
+  movies and shows and TMDb movie collections are available now.
 
 - [x] Remove standalone package and artifact upload steps from CI; Docker is the
   supported deployment target.

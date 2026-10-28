@@ -5,6 +5,12 @@ stale edits and a rule change fencing an in-flight automatic selection. Existing
 automatic and mapped-Anime suites passed on Linux; owner indexer acceptance is
 still needed.
 
+Emby monitor fixtures cover paused-by-default operation, observed sessions,
+upstream failures, invalid responses, uncertain gaps and stale setting writes.
+Cross-media relationship fixtures cover explicit, mutual, idempotent links.
+Timeline fixtures cover recorded events and cursor pagination. These do not
+replace testing against a real Emby server or a representative media library.
+
 ## Unmatched review, Emby snapshots, title folders and movie collections
 
 Linux container tests cover unmatched scan counts, encrypted Emby settings and

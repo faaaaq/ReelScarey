@@ -2,23 +2,12 @@ import { useState } from "react";
 import { Button, Dialog } from "@radix-ui/themes";
 import { Clock3 } from "lucide-react";
 import { Link } from "react-router-dom";
-import type { DownloadPage } from "../api";
 import { useResource } from "../useResource";
 import { RequestState } from "../components";
-
-const states: Record<string, string> = {
-  queued: "Queued",
-  submitting: "Sending to download client",
-  downloading: "Downloading",
-  importing: "Importing",
-  blocked: "Needs attention",
-  failed: "Retry needed",
-  completed: "In library",
-  cancelled: "Tracking stopped",
-};
+import { EventRow, type EventPage } from "../pages/Timeline";
 export function HistoryTray() {
   const [open, setOpen] = useState(false);
-  const history = useResource<DownloadPage>(open ? "/downloads?page=1" : null);
+  const history = useResource<EventPage>(open ? "/events" : null);
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger>
@@ -27,10 +16,9 @@ export function HistoryTray() {
         </Button>
       </Dialog.Trigger>
       <Dialog.Content maxWidth="420px">
-        <Dialog.Title>Recent download activity</Dialog.Title>
+        <Dialog.Title>Recent activity</Dialog.Title>
         <Dialog.Description>
-          Latest status of downloads started in ReelScarey. Open Activity for
-          details and recovery actions.
+          Recent recorded changes across your library and connected services.
         </Dialog.Description>
         <RequestState
           loading={history.loading}
@@ -40,28 +28,21 @@ export function HistoryTray() {
         {history.data &&
           (history.data.items.length ? (
             <div className="file-details-list">
-              {history.data.items.slice(0, 8).map((job) => (
-                <article className="discovery-file" key={job.id}>
-                  <strong>{states[job.state] ?? job.state}</strong>
-                  <p>
-                    <Link
-                      to={`/activity?job=${job.id}`}
-                      onClick={() => setOpen(false)}
-                    >
-                      {job.movie_title || job.title}
-                    </Link>
-                  </p>
-                  <p>{new Date(job.updated_at * 1000).toLocaleString()}</p>
-                </article>
+              {history.data.items.slice(0, 8).map((event) => (
+                <EventRow
+                  key={event.id}
+                  event={event}
+                  onNavigate={() => setOpen(false)}
+                />
               ))}
             </div>
           ) : (
-            <p>No downloads yet.</p>
+            <p>No events recorded yet.</p>
           ))}
         <div className="import-actions">
           <Button asChild variant="soft">
-            <Link to="/activity" onClick={() => setOpen(false)}>
-              View all activity
+            <Link to="/timeline" onClick={() => setOpen(false)}>
+              View event timeline
             </Link>
           </Button>
           <Dialog.Close>
