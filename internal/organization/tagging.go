@@ -29,6 +29,23 @@ func embeddedTitle(title string, episodes []Episode) string {
 	return title + " - " + number
 }
 
+func reviewedEmbeddedTitle(v PlannedFile) (string, error) {
+	ext := strings.ToLower(path.Ext(v.Source))
+	if ext != ".mkv" && ext != ".mp4" && ext != ".m4v" {
+		return "", problem("invalid_selection", "Embedded title updates support MP4 and Matroska files.")
+	}
+	for i := 1; i < len(v.Episodes); i++ {
+		if v.Episodes[i].Season != v.Episodes[0].Season || v.Episodes[i].Number != v.Episodes[i-1].Number+1 {
+			return "", problem("invalid_selection", "Review the episode mapping before updating this file's embedded title.")
+		}
+	}
+	value := embeddedTitle(v.Snapshot.Content.Title, v.Episodes)
+	if value == "" || len(value) > 1024 || strings.ContainsAny(value, "\x00\r\n") {
+		return "", problem("invalid_selection", "The saved title cannot be safely embedded.")
+	}
+	return value, nil
+}
+
 // PreviewEmbeddedTitle creates a durable reviewed replacement using a verified
 // metadata-only copy. It never accepts client-supplied paths or title text.
 func (s *Service) PreviewEmbeddedTitle(ctx context.Context, fileID int64) (Plan, error) {

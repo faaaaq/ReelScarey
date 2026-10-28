@@ -376,8 +376,8 @@ function Reorganize({ config }: { config: Config }) {
     [target, setTarget] = useState("");
   const [updateEmbeddedTitle, setUpdateEmbeddedTitle] = useState(false);
   useEffect(() => {
-    if (selected.length === 0) setUpdateEmbeddedTitle(false);
-  }, [selected.length]);
+    if (selected.length === 0 && !mediaID) setUpdateEmbeddedTitle(false);
+  }, [selected.length, mediaID]);
   const [plan, setPlan] = useState<Plan>(),
     [pending, setPending] = useState(""),
     [error, setError] = useState(""),
@@ -597,6 +597,7 @@ function Reorganize({ config }: { config: Config }) {
                 media_id: Number(mediaID),
                 target_library: target,
                 ...(wholeFolder ? { whole_folder: true } : {}),
+                ...(updateEmbeddedTitle ? { update_embedded_title: true } : {}),
               }
             : {
                 file_ids: selected,
@@ -947,18 +948,18 @@ function Reorganize({ config }: { config: Config }) {
           <input
             type="checkbox"
             checked={updateEmbeddedTitle}
-            disabled={selected.length === 0 || !!pending}
+            disabled={(selected.length === 0 && !mediaID) || !!pending}
             onChange={(event) => {
               setUpdateEmbeddedTitle(event.target.checked);
               setPlan(undefined);
               setReviewed(false);
             }}
           />{" "}
-          Also update selected files’ embedded titles after organization
+          Also update embedded titles after organization
         </label>
         <p className="field-help">
-          Choose MP4 or Matroska files. ReelScarey will queue verified title
-          updates after the move and retain a rollback copy for each file.
+          Choose MP4 or Matroska files, or review an entire title folder. Each
+          verified title update retains a rollback copy.
         </p>
         {mediaID && (
           <>

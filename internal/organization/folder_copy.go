@@ -354,8 +354,7 @@ func (s *Service) cleanupCopiedFolder(ctx context.Context, root *os.Root, p *Pla
 			return problem("cleanup_pending", "An original directory is not empty or could not be removed; it was retained.")
 		}
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE organization_plans SET state='completed',message='',updated_at=unixepoch() WHERE id=?`, p.ID)
-	return err
+	return s.finishOrganization(ctx, p)
 }
 
 func (s *Service) verifyCopiedFile(ctx context.Context, root *os.Root, p Plan, source Companion) error {

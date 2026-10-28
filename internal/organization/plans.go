@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path"
 	"reflect"
 	"strings"
 	"time"
@@ -165,6 +164,13 @@ func (s *Service) PreviewTitle(ctx context.Context, mediaID int64, target string
 	return s.preview(ctx, nil, mediaID, target, false)
 }
 
+func (s *Service) PreviewTitleWithEmbeddedTitle(ctx context.Context, mediaID int64, target string) (Plan, error) {
+	if mediaID < 1 || target == "" {
+		return Plan{}, problem("invalid_selection", "Choose a title and a destination collection.")
+	}
+	return s.preview(ctx, nil, mediaID, target, true)
+}
+
 func titleFiles(ctx context.Context, q query, mediaID int64) ([]int64, error) {
 	rows, err := q.QueryContext(ctx, `SELECT id FROM media_files WHERE movie_id=? OR series_id=? ORDER BY id LIMIT 101`, mediaID, mediaID)
 	if err != nil {
@@ -223,18 +229,9 @@ func (s *Service) preview(ctx context.Context, ids []int64, mediaID int64, targe
 	embedded := ""
 	if updateTag {
 		for index, v := range files {
-			ext := strings.ToLower(path.Ext(v.Source))
-			if ext != ".mkv" && ext != ".mp4" && ext != ".m4v" {
-				return Plan{}, problem("invalid_selection", "Embedded title updates support MP4 and Matroska files.")
-			}
-			for i := 1; i < len(v.Episodes); i++ {
-				if v.Episodes[i].Season != v.Episodes[0].Season || v.Episodes[i].Number != v.Episodes[i-1].Number+1 {
-					return Plan{}, problem("invalid_selection", "Review the episode mapping before updating this file's embedded title.")
-				}
-			}
-			embedded = embeddedTitle(v.Snapshot.Content.Title, v.Episodes)
-			if embedded == "" || len(embedded) > 1024 || strings.ContainsAny(embedded, "\x00\r\n") {
-				return Plan{}, problem("invalid_selection", "The saved title cannot be safely embedded.")
+			embedded, e = reviewedEmbeddedTitle(v)
+			if e != nil {
+				return Plan{}, e
 			}
 			files[index].EmbeddedTitle = embedded
 		}

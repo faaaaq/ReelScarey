@@ -16,6 +16,14 @@ import (
 // PreviewFolder snapshots an entire title folder, without changing any files.
 // The review deliberately preserves its existing names and all nested extras.
 func (s *Service) PreviewFolder(ctx context.Context, mediaID int64, target string) (Plan, error) {
+	return s.previewFolder(ctx, mediaID, target, false)
+}
+
+func (s *Service) PreviewFolderWithEmbeddedTitle(ctx context.Context, mediaID int64, target string) (Plan, error) {
+	return s.previewFolder(ctx, mediaID, target, true)
+}
+
+func (s *Service) previewFolder(ctx context.Context, mediaID int64, target string, updateTag bool) (Plan, error) {
 	if mediaID < 1 || target == "" {
 		return Plan{}, problem("invalid_selection", "Choose a title and destination collection.")
 	}
@@ -62,6 +70,12 @@ func (s *Service) PreviewFolder(ctx context.Context, mediaID int64, target strin
 		v.Episodes, err = s.episodes(ctx, tx, fileID)
 		if err != nil {
 			return Plan{}, err
+		}
+		if updateTag {
+			v.EmbeddedTitle, err = reviewedEmbeddedTitle(v)
+			if err != nil {
+				return Plan{}, err
+			}
 		}
 		paths = append(paths, v.Source)
 		files = append(files, v)
@@ -148,7 +162,7 @@ func (s *Service) PreviewFolder(ctx context.Context, mediaID int64, target strin
 		}
 	}
 	now := time.Now().Unix()
-	p := Plan{ID: id(), State: "review", ConfigRevision: config.Revision, TargetLibrary: target, EntireMediaID: mediaID, Files: files, Created: now, Updated: now, Root: resolved, Phase: "planned", FolderMove: &FolderMove{Source: source, Destination: dest, Inventory: inventory}}
+	p := Plan{ID: id(), State: "review", ConfigRevision: config.Revision, TargetLibrary: target, EntireMediaID: mediaID, Files: files, Created: now, Updated: now, Root: resolved, Phase: "planned", UpdateEmbeddedTitle: updateTag, FolderMove: &FolderMove{Source: source, Destination: dest, Inventory: inventory}}
 	raw, err := json.Marshal(p)
 	if err != nil {
 		return Plan{}, err
@@ -306,8 +320,7 @@ func (s *Service) executeFolder(ctx context.Context, p *Plan) error {
 		return s.executeCopiedFolder(ctx, root, p)
 	}
 	if p.Phase == "committed" {
-		_, err = s.db.ExecContext(ctx, `UPDATE organization_plans SET state='completed',message='',updated_at=unixepoch() WHERE id=?`, p.ID)
-		return err
+		return s.finishOrganization(ctx, p)
 	}
 	src, err := folderExists(root, p.FolderMove.Source)
 	if err != nil {
@@ -370,10 +383,13 @@ func (s *Service) executeFolder(ctx context.Context, p *Plan) error {
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE organization_plans SET snapshot=?,state='completed',message='',updated_at=unixepoch() WHERE id=?`, string(raw), p.ID); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE organization_plans SET snapshot=?,updated_at=unixepoch() WHERE id=?`, string(raw), p.ID); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	return s.finishOrganization(ctx, p)
 }
 
 func (s *Service) commitFolderReferences(ctx context.Context, tx *sql.Tx, p *Plan) error {

@@ -171,7 +171,7 @@ describe("Reviewed library organization", () => {
     );
     await userEvent.click(
       screen.getByRole("checkbox", {
-        name: "Also update selected files’ embedded titles after organization",
+        name: "Also update embedded titles after organization",
       }),
     );
     await userEvent.click(

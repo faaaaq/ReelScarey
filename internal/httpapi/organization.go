@@ -151,7 +151,11 @@ func (s *Server) organizationPlans(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		var out organization.Plan
 		var e error
-		if in.UpdateEmbeddedTitle && (in.WholeFolder || in.MediaID != 0 || len(in.FileIDs) == 0) {
+		if in.UpdateEmbeddedTitle && in.WholeFolder && in.MediaID > 0 && len(in.FileIDs) == 0 {
+			out, e = s.organization.PreviewFolderWithEmbeddedTitle(ctx, in.MediaID, in.TargetLibrary)
+		} else if in.UpdateEmbeddedTitle && !in.WholeFolder && in.MediaID > 0 && len(in.FileIDs) == 0 {
+			out, e = s.organization.PreviewTitleWithEmbeddedTitle(ctx, in.MediaID, in.TargetLibrary)
+		} else if in.UpdateEmbeddedTitle && (in.WholeFolder || in.MediaID != 0 || len(in.FileIDs) == 0) {
 			fail(w, 400, "invalid_selection", "Choose registered files for an embedded title update during organization.")
 			return
 		} else if in.UpdateEmbeddedTitle {

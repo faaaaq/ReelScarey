@@ -80,6 +80,52 @@ func TestFolderMoveIncludesExtrasAndRecoversAfterRename(t *testing.T) {
 	}
 }
 
+func TestFolderMoveQueuesVerifiedTitleUpdate(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	f.movie(t, 1, "Movies/Film/film.mkv", []byte("video"))
+	if err := os.WriteFile(filepath.Join(f.cfg.MediaDir, "Movies", "Film", "poster.jpg"), []byte("art"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f.s.SetTagger(func(ctx context.Context, source, stage *os.File, extension, title string) (string, error) {
+		_, err := stage.WriteAt([]byte("tagged: "+title), 0)
+		return `{}`, err
+	})
+	p, err := f.s.PreviewFolderWithEmbeddedTitle(ctx, 1, "anime")
+	if err != nil || p.Files[0].EmbeddedTitle != "Review movie" {
+		t.Fatal(p, err)
+	}
+	if _, err = f.s.Apply(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.s.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.s.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(p.Files[0].Destination)))
+	if err != nil || string(b) != "tagged: Review movie" {
+		t.Fatal(string(b), err)
+	}
+	b, err = os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(p.FolderMove.Destination), "poster.jpg"))
+	if err != nil || string(b) != "art" {
+		t.Fatal("extra changed", err)
+	}
+	var child string
+	if err = f.db.QueryRow(`SELECT id FROM organization_plans WHERE json_extract(snapshot,'$.replacement.tag_parent')=?`, p.ID).Scan(&child); err != nil {
+		t.Fatal(err)
+	}
+	version, err := f.s.Plan(ctx, child)
+	if err != nil || version.State != "completed" {
+		t.Fatal(version, err)
+	}
+	b, err = os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(version.Replacement.Backup)))
+	if err != nil || string(b) != "video" {
+		t.Fatal("rollback copy", err)
+	}
+}
+
 func TestFolderMoveRejectsChangesAndDestinationConflict(t *testing.T) {
 	ctx := context.Background()
 	f := newReviewFixture(t)
