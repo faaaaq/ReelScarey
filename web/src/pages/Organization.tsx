@@ -53,11 +53,14 @@ type Plan = {
   files: Planned[];
   created_at: number;
   updated_at: number;
+  update_embedded_title?: boolean;
+  embedded_title?: string;
   replacement?: {
     title: string;
     media_file_id: number;
     restores_plan?: string;
     recovering?: boolean;
+    tag_title?: string;
     original: { source: string; size_bytes: number };
     incoming: { source: string; size_bytes: number };
     backup: string;
@@ -370,6 +373,10 @@ function Reorganize({ config }: { config: Config }) {
   });
   const [selected, setSelected] = useState<number[]>([]),
     [target, setTarget] = useState("");
+  const [updateEmbeddedTitle, setUpdateEmbeddedTitle] = useState(false);
+  useEffect(() => {
+    if (selected.length !== 1) setUpdateEmbeddedTitle(false);
+  }, [selected.length]);
   const [plan, setPlan] = useState<Plan>(),
     [pending, setPending] = useState(""),
     [error, setError] = useState(""),
@@ -503,6 +510,27 @@ function Reorganize({ config }: { config: Config }) {
       setPending("");
     }
   }
+  async function reviewEmbeddedTitle() {
+    if (pending || selected.length !== 1) return;
+    setPending("metadata");
+    setError("");
+    setReviewed(false);
+    setPlan(undefined);
+    setStale(false);
+    try {
+      setPlan(
+        await api<Plan>("/organization/embedded-title", {
+          method: "POST",
+          body: JSON.stringify({ media_file_id: selected[0] }),
+        }),
+      );
+      history.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending("");
+    }
+  }
   async function reviewRollback(saved: Plan) {
     if (pending) return;
     setPending("rollback");
@@ -569,7 +597,11 @@ function Reorganize({ config }: { config: Config }) {
                 target_library: target,
                 ...(wholeFolder ? { whole_folder: true } : {}),
               }
-            : { file_ids: selected, target_library: target },
+            : {
+                file_ids: selected,
+                target_library: target,
+                ...(updateEmbeddedTitle ? { update_embedded_title: true } : {}),
+              },
         ),
         signal: AbortSignal.any([
           controller.signal,
@@ -873,6 +905,17 @@ function Reorganize({ config }: { config: Config }) {
             </Button>
           </div>
         )}
+        <p className="field-help">
+          Choose one registered MP4 or Matroska file to review an embedded title
+          update using its saved movie or episode information.
+        </p>
+        <Button
+          variant="soft"
+          disabled={selected.length !== 1 || !!pending || running}
+          onClick={() => void reviewEmbeddedTitle()}
+        >
+          Review embedded title update
+        </Button>
         <fieldset disabled={!!pending}>
           <label>
             Destination collection
@@ -898,6 +941,23 @@ function Reorganize({ config }: { config: Config }) {
           Choosing another collection also sets it for these titles’ future
           imports after the batch commits. Unselected existing files retain
           their locations.
+        </p>
+        <label>
+          <input
+            type="checkbox"
+            checked={updateEmbeddedTitle}
+            disabled={selected.length !== 1 || !!pending}
+            onChange={(event) => {
+              setUpdateEmbeddedTitle(event.target.checked);
+              setPlan(undefined);
+              setReviewed(false);
+            }}
+          />{" "}
+          Also update this file’s embedded title after organization
+        </label>
+        <p className="field-help">
+          Choose one MP4 or Matroska file. ReelScarey will queue a verified
+          title update after the move and retain a rollback copy.
         </p>
         {mediaID && (
           <>
@@ -976,6 +1036,13 @@ function Reorganize({ config }: { config: Config }) {
               {plan.state === "completed" ? "changed" : "in this plan"};{" "}
               {plan.files.filter((f) => f.unchanged).length} unchanged.
               Subtitles listed below move with their video.
+            </p>
+          )}
+          {plan.update_embedded_title && (
+            <p>
+              After the file move, update the embedded title to{" "}
+              <strong>{plan.embedded_title}</strong> using a verified copy and
+              retain the previous version.
             </p>
           )}
           <PlanFiles plan={plan} />
@@ -1102,17 +1169,33 @@ function PlanFiles({ plan }: { plan: Plan }) {
           <p>
             <strong>{plan.replacement.title}</strong>
           </p>
+          {plan.replacement.tag_title && (
+            <p>
+              New embedded title: <strong>{plan.replacement.tag_title}</strong>
+            </p>
+          )}
           <p>
             Current file: <code>{plan.replacement.original.source}</code> (
             {bytes(plan.replacement.original.size_bytes)})
           </p>
-          <p>
-            Incoming file: <code>{plan.replacement.incoming.source}</code> (
-            {bytes(plan.replacement.incoming.size_bytes)})
-          </p>
-          <p>
-            Retained version: <code>{plan.replacement.backup}</code>
-          </p>
+          {!plan.replacement.tag_title && (
+            <p>
+              Incoming file: <code>{plan.replacement.incoming.source}</code> (
+              {bytes(plan.replacement.incoming.size_bytes)})
+            </p>
+          )}
+          {plan.replacement.tag_title ? (
+            <p>
+              A separate copy will be checked to ensure its streams, packets,
+              chapters and existing tags are preserved. The prior video will be
+              retained for a reviewed restore; seeding sources and external
+              subtitles remain in place.
+            </p>
+          ) : (
+            <p>
+              Retained version: <code>{plan.replacement.backup}</code>
+            </p>
+          )}
           {!!plan.replacement.episodes?.length && (
             <p>
               This file covers:{" "}

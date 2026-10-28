@@ -2,6 +2,7 @@ package organization
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -340,5 +341,303 @@ func TestReplacementPreservesSharedEpisodeMappingAndExternalSubtitle(t *testing.
 	b, e = os.ReadFile(subtitle)
 	if e != nil || string(b) != "subtitle" {
 		t.Fatal(string(b), e)
+	}
+}
+
+func TestReviewedEmbeddedTitleUsesVersionedCopyAndRollback(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	rel := "Movies/Original/movie.mkv"
+	f.movie(t, 1, rel, []byte("original video"))
+	seed := filepath.Join(f.cfg.DownloadsDir, "seeding.mkv")
+	if e := os.Link(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(rel)), seed); e != nil {
+		t.Fatal(e)
+	}
+	f.s.SetTagger(func(ctx context.Context, source, stage *os.File, extension, title string) (string, error) {
+		if title != "Review movie" || extension != ".mkv" {
+			t.Fatal(title, extension)
+		}
+		if e := stage.Truncate(0); e != nil {
+			return "", e
+		}
+		if _, e := stage.WriteAt([]byte("tagged video"), 0); e != nil {
+			return "", e
+		}
+		return `{"embedded_title":"Review movie"}`, nil
+	})
+	p, e := f.s.PreviewEmbeddedTitle(ctx, 1)
+	if e != nil || p.Replacement.TagTitle != "Review movie" {
+		t.Fatal(p, e)
+	}
+	if _, e = f.s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	current := filepath.Join(f.cfg.MediaDir, filepath.FromSlash(rel))
+	read := func(name, want string) {
+		t.Helper()
+		b, e := os.ReadFile(name)
+		if e != nil || string(b) != want {
+			t.Fatalf("%s: %q %v", name, b, e)
+		}
+	}
+	read(current, "tagged video")
+	read(seed, "original video")
+	read(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(p.Replacement.Backup)), "original video")
+	if _, e = os.Stat(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(p.Replacement.TagStage))); !errors.Is(e, os.ErrNotExist) {
+		t.Fatal("metadata stage not cleaned", e)
+	}
+	back, e := f.s.PreviewRollback(ctx, p.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, back.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	read(current, "original video")
+	read(seed, "original video")
+}
+
+func TestEmbeddedTitleRejectsStaleTitleAndUnsafeRewrite(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	rel := "Movies/Original/movie.mkv"
+	f.movie(t, 1, rel, []byte("original video"))
+	p, e := f.s.PreviewEmbeddedTitle(ctx, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.db.Exec(`UPDATE media_items SET title='Changed title' WHERE id=1`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, p.ID); e == nil {
+		t.Fatal("stale title accepted")
+	}
+	p, e = f.s.PreviewEmbeddedTitle(ctx, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	f.s.SetTagger(func(context.Context, *os.File, *os.File, string, string) (string, error) {
+		return "", errors.New("verification failed")
+	})
+	if _, e = f.s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e == nil {
+		t.Fatal("failed verifier accepted")
+	}
+	if e = EnsureMediaAvailable(ctx, f.db); e != nil {
+		t.Fatal("safe failure blocked media", e)
+	}
+	b, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(rel)))
+	if e != nil || string(b) != "original video" {
+		t.Fatal(string(b), e)
+	}
+}
+
+func addYouTubeProvenance(t *testing.T, f reviewFixture) {
+	t.Helper()
+	queries := []string{
+		`INSERT INTO youtube_reviews(id,video_id,video_title,channel,target_kind,media_id,target_snapshot,expires_at) VALUES('review','video','Video','Channel','movie',1,'{}',1)`,
+		`INSERT INTO youtube_jobs(id,review_id,video_id,video_title,channel,target_kind,media_id,target_snapshot,state,created_at,updated_at) VALUES('youtube','review','video','Video','Channel','movie',1,'{}','completed',1,1)`,
+		`INSERT INTO youtube_files(job_id,media_file_id,video_id,title,relative_path,size_bytes,sha256,probe_json,imported_at) SELECT 'youtube',id,'video','Video',relative_path,size_bytes,sha256,probe_json,1 FROM media_files WHERE id=1`,
+		`INSERT INTO youtube_subtitle_files(job_id,language,relative_path,sha256,size_bytes) VALUES('youtube','en','Movies/Film/Film.en.vtt','test',8)`,
+		`INSERT INTO youtube_subtitle_imports(job_id,language,source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,phase) VALUES('youtube','en','source','Movies/Film/Film.en.vtt','stage',8,1,'test','committed')`,
+		`INSERT INTO subtitles(media_file_id,language,variant,source,relative_path,sha256,updated_at) VALUES(1,'en','full','downloaded','Movies/Film/Film.en.vtt','test',1)`,
+	}
+	for _, q := range queries {
+		if _, e := f.db.Exec(q); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if e := os.WriteFile(filepath.Join(f.cfg.MediaDir, "Movies", "Film", "Film.en.vtt"), []byte("subtitle"), 0600); e != nil {
+		t.Fatal(e)
+	}
+}
+func TestYouTubeProvenanceRestoredAlongWithVideo(t *testing.T) {
+	ctx := context.Background()
+	f, _ := replacementFixture(t)
+	addYouTubeProvenance(t, f)
+	p, e := f.s.PreviewReplacement(ctx, 1, "candidate")
+	if e != nil || p.Replacement.BeforeYouTube == nil {
+		t.Fatal(p, e)
+	}
+	if _, e = f.s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var n int
+	if e = f.db.QueryRow(`SELECT COUNT(*) FROM youtube_files WHERE media_file_id=1`).Scan(&n); e != nil || n != 0 {
+		t.Fatal(n, e)
+	}
+	move, e := f.s.Preview(ctx, []int64{1}, "anime")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, move.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var subtitlePath, youtubeSubtitlePath, subtitleJournal string
+	if e = f.db.QueryRow(`SELECT s.relative_path,y.relative_path,i.destination_path FROM subtitles s JOIN youtube_subtitle_files y ON y.job_id='youtube' JOIN youtube_subtitle_imports i ON i.job_id=y.job_id AND i.language=y.language WHERE s.media_file_id=1 AND s.language='en'`).Scan(&subtitlePath, &youtubeSubtitlePath, &subtitleJournal); e != nil || subtitlePath != youtubeSubtitlePath || subtitlePath != subtitleJournal {
+		t.Fatal("subtitle provenance did not move", subtitlePath, youtubeSubtitlePath, subtitleJournal, e)
+	}
+	restore, e := f.s.PreviewRollback(ctx, p.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, restore.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.db.QueryRow(`SELECT COUNT(*) FROM youtube_files WHERE media_file_id=1 AND job_id='youtube' AND video_id='video'`).Scan(&n); e != nil || n != 1 {
+		t.Fatal("YouTube source not restored", n, e)
+	}
+	b, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(subtitlePath)))
+	if e != nil || string(b) != "subtitle" {
+		t.Fatal("subtitle changed", string(b), e)
+	}
+}
+func TestYouTubeMetadataUpdateKeepsProvenanceAndRollback(t *testing.T) {
+	ctx := context.Background()
+	f, _ := replacementFixture(t)
+	addYouTubeProvenance(t, f)
+	f.s.SetTagger(func(ctx context.Context, source, stage *os.File, extension, title string) (string, error) {
+		if _, e := stage.WriteAt([]byte("tagged youtube"), 0); e != nil {
+			return "", e
+		}
+		return `{"embedded_title":"Review movie"}`, nil
+	})
+	p, e := f.s.PreviewEmbeddedTitle(ctx, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var actual, provenance string
+	if e = f.db.QueryRow(`SELECT m.sha256,y.sha256 FROM media_files m JOIN youtube_files y ON y.media_file_id=m.id WHERE m.id=1`).Scan(&actual, &provenance); e != nil || actual != provenance {
+		t.Fatal(actual, provenance, e)
+	}
+	back, e := f.s.PreviewRollback(ctx, p.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, back.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.db.QueryRow(`SELECT m.sha256,y.sha256 FROM media_files m JOIN youtube_files y ON y.media_file_id=m.id WHERE m.id=1`).Scan(&actual, &provenance); e != nil || actual != provenance {
+		t.Fatal(actual, provenance, e)
+	}
+}
+
+func TestYouTubeSubtitleHistoryFollowsFolderMoveBeforeRestore(t *testing.T) {
+	ctx := context.Background()
+	f, _ := replacementFixture(t)
+	addYouTubeProvenance(t, f)
+	replacement, e := f.s.PreviewReplacement(ctx, 1, "candidate")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, replacement.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	move, e := f.s.PreviewFolder(ctx, 1, "anime")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, move.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var a, b, c string
+	if e = f.db.QueryRow(`SELECT s.relative_path,y.relative_path,i.destination_path FROM subtitles s JOIN youtube_subtitle_files y ON y.job_id='youtube' JOIN youtube_subtitle_imports i ON i.job_id=y.job_id AND i.language=y.language WHERE s.media_file_id=1 AND s.language='en'`).Scan(&a, &b, &c); e != nil || a != b || a != c {
+		t.Fatal(a, b, c, e)
+	}
+	restore, e := f.s.PreviewRollback(ctx, replacement.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, restore.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var count int
+	if e = f.db.QueryRow(`SELECT COUNT(*) FROM youtube_files WHERE media_file_id=1 AND job_id='youtube'`).Scan(&count); e != nil || count != 1 {
+		t.Fatal(count, e)
+	}
+	data, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(a)))
+	if e != nil || string(data) != "subtitle" {
+		t.Fatal(string(data), e)
+	}
+}
+
+func TestEmbeddedTitleResumesVerifiedStageAfterRestart(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	rel := "Movies/Original/movie.mkv"
+	f.movie(t, 1, rel, []byte("original video"))
+	calls := 0
+	tag := func(ctx context.Context, source, stage *os.File, extension, title string) (string, error) {
+		calls++
+		if _, e := stage.WriteAt([]byte("tagged video"), 0); e != nil {
+			return "", e
+		}
+		return `{"embedded_title":"Review movie"}`, nil
+	}
+	f.s.SetTagger(tag)
+	p, e := f.s.PreviewEmbeddedTitle(ctx, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	root, _, e := f.s.openRoot(p.Root)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.prepareEmbeddedTitle(ctx, root, &p); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.savePhase(ctx, &p, "prepared"); e != nil {
+		t.Fatal(e)
+	}
+	root.Close()
+	restarted := New(f.db, f.cfg)
+	restarted.SetTagger(tag)
+	if e = restarted.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if calls != 1 {
+		t.Fatal("verified stage was regenerated after restart", calls)
+	}
+	content, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(rel)))
+	if e != nil || string(content) != "tagged video" {
+		t.Fatal(string(content), e)
 	}
 }

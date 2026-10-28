@@ -120,10 +120,10 @@ func (s *Service) execute(ctx context.Context, p *Plan) error {
 				if _, e = tx.ExecContext(ctx, `UPDATE subtitle_imports SET destination=? WHERE media_file_id=? AND destination=? AND phase='committed'`, c.Destination, v.FileID, c.Source); e != nil {
 					return e
 				}
-				if _, e = tx.ExecContext(ctx, `UPDATE youtube_subtitle_imports SET destination_path=? WHERE phase='committed' AND destination_path=? AND job_id IN (SELECT job_id FROM youtube_files WHERE media_file_id=?)`, c.Destination, c.Source, v.FileID); e != nil {
+				if _, e = tx.ExecContext(ctx, `UPDATE youtube_subtitle_imports SET destination_path=? WHERE phase='committed' AND destination_path=?`, c.Destination, c.Source); e != nil {
 					return e
 				}
-				if _, e = tx.ExecContext(ctx, `UPDATE youtube_subtitle_files SET relative_path=? WHERE relative_path=? AND job_id IN (SELECT job_id FROM youtube_files WHERE media_file_id=?)`, c.Destination, c.Source, v.FileID); e != nil {
+				if _, e = tx.ExecContext(ctx, `UPDATE youtube_subtitle_files SET relative_path=? WHERE relative_path=?`, c.Destination, c.Source); e != nil {
 					return e
 				}
 			}
@@ -183,8 +183,7 @@ func (s *Service) execute(ctx context.Context, p *Plan) error {
 			}
 		}
 	}
-	_, e = s.db.ExecContext(ctx, `UPDATE organization_plans SET state='completed',message='',updated_at=unixepoch() WHERE id=?`, p.ID)
-	return e
+	return s.finishOrganization(ctx, p)
 }
 func (s *Service) checkOutput(ctx context.Context, root *os.Root, q query, planID string, v Companion) error {
 	var saved string

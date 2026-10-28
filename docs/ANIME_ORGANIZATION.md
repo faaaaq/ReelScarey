@@ -181,8 +181,8 @@ An unregistered video found by a configured library scan can replace one
 registered movie or episode file after explicit review. Choose **Replace a
 registered file** on the discovered file, select one registered target, and
 review both paths and every episode covered. The source must have the same media
-type and file extension. YouTube-sourced registered files and direct replacement
-from downloads are not yet supported.
+type and file extension. A YouTube-origin target retains its source history for
+rollback. Direct replacement from downloads is not yet supported.
 
 The job verifies both files and the incoming video, makes independent copies, and
 keeps the prior video under `.reelscarey-versions` in the media root. This can
@@ -201,3 +201,10 @@ migrations and backups.
 On **Organize library**, select files on the current page and choose **Check
 selected files** to inspect them one at a time. Each result is a point-in-time
 checksum check; the batch can be stopped, and completed results remain visible.
+
+A single selected MP4 or Matroska file can include **Also update this file’s
+embedded title after organization** in its review. The move finishes first, then
+a durable second job creates and verifies the metadata-only copy and retains a
+rollback version. The saved movie title or canonical series/episode labels supply
+the title. Whole-folder and multi-file moves do not automatically update tags.
+A separate embedded-title review is also available for an individual file.

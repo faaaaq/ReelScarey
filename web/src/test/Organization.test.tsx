@@ -154,6 +154,93 @@ async function selectFirstAndReview() {
 }
 
 describe("Reviewed library organization", () => {
+  it("includes a reviewed title update with a single file move", async () => {
+    const { fetch } = setup((url, options, fixture) => {
+      if (url.endsWith("/organization/plans") && options?.method === "POST")
+        return Response.json({
+          ...fixture.plan([41]),
+          update_embedded_title: true,
+          embedded_title: "First feature",
+        });
+    });
+    mount();
+    await userEvent.click(
+      await screen.findByRole("checkbox", {
+        name: "Select file 41: First feature",
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole("checkbox", {
+        name: "Also update this file’s embedded title after organization",
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Review 1 selected file" }),
+    );
+    const review = await screen.findByRole("region", {
+      name: "Organization review",
+    });
+    expect(
+      within(review).getByText(
+        /After the file move, update the embedded title/,
+      ),
+    ).toBeVisible();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/organization/plans",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          file_ids: [41],
+          target_library: "",
+          update_embedded_title: true,
+        }),
+      }),
+    );
+  });
+  it("reviews the catalog-derived embedded title before queueing", async () => {
+    const { fetch } = setup((url, options, fixture) => {
+      if (
+        url.endsWith("/organization/embedded-title") &&
+        options?.method === "POST"
+      )
+        return Response.json({
+          ...fixture.plan([]),
+          phase: "planned",
+          replacement: {
+            title: "First feature",
+            tag_title: "First feature",
+            media_file_id: 41,
+            original: { source: "Old/First feature.mkv", size_bytes: 1000000 },
+            incoming: { source: "Old/First feature.mkv", size_bytes: 1000000 },
+            backup: ".reelscarey-versions/example",
+            episodes: [],
+          },
+        });
+    });
+    mount();
+    await userEvent.click(
+      await screen.findByRole("checkbox", {
+        name: "Select file 41: First feature",
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Review embedded title update" }),
+    );
+    const review = await screen.findByRole("region", {
+      name: "Organization review",
+    });
+    expect(within(review).getByText("New embedded title:")).toBeVisible();
+    expect(
+      within(review).getByRole("button", { name: "Apply reviewed changes" }),
+    ).toBeDisabled();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/organization/embedded-title",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ media_file_id: 41 }),
+      }),
+    );
+  });
   it("can cancel a queued job before file work starts", async () => {
     const { fetch } = setup((url, options, fixture) => {
       if (url.endsWith("/apply") && options?.method === "POST")

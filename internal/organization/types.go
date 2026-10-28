@@ -91,19 +91,21 @@ type PlannedFile struct {
 	Unchanged   bool        `json:"unchanged"`
 }
 type Plan struct {
-	ID             string        `json:"id"`
-	State          string        `json:"state"`
-	Message        string        `json:"message"`
-	ConfigRevision int           `json:"config_revision"`
-	TargetLibrary  string        `json:"target_library"`
-	EntireMediaID  int64         `json:"entire_media_id,omitempty"`
-	Files          []PlannedFile `json:"files"`
-	Created        int64         `json:"created_at"`
-	Updated        int64         `json:"updated_at"`
-	Root           string        `json:"root"`
-	Phase          string        `json:"phase"`
-	FolderMove     *FolderMove   `json:"folder_move,omitempty"`
-	Replacement    *Replacement  `json:"replacement,omitempty"`
+	ID                  string        `json:"id"`
+	State               string        `json:"state"`
+	Message             string        `json:"message"`
+	ConfigRevision      int           `json:"config_revision"`
+	TargetLibrary       string        `json:"target_library"`
+	EntireMediaID       int64         `json:"entire_media_id,omitempty"`
+	Files               []PlannedFile `json:"files"`
+	Created             int64         `json:"created_at"`
+	Updated             int64         `json:"updated_at"`
+	Root                string        `json:"root"`
+	Phase               string        `json:"phase"`
+	FolderMove          *FolderMove   `json:"folder_move,omitempty"`
+	Replacement         *Replacement  `json:"replacement,omitempty"`
+	UpdateEmbeddedTitle bool          `json:"update_embedded_title,omitempty"`
+	EmbeddedTitle       string        `json:"embedded_title,omitempty"`
 }
 type FolderMove struct {
 	Source      string          `json:"source"`
@@ -120,9 +122,14 @@ type Service struct {
 	healthMu sync.Mutex
 	link     func(*os.Root, string, string) error
 	probe    func(context.Context, *os.File) (string, error)
+	tag      func(context.Context, *os.File, *os.File, string, string) (string, error)
 }
 
 func New(db *sql.DB, cfg config.Config) *Service { return &Service{db: db, cfg: cfg} }
 
 // SetProbe supplies the media verifier used by replacement workers.
 func (s *Service) SetProbe(probe func(context.Context, *os.File) (string, error)) { s.probe = probe }
+
+func (s *Service) SetTagger(tag func(context.Context, *os.File, *os.File, string, string) (string, error)) {
+	s.tag = tag
+}

@@ -52,11 +52,12 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 
 - [ ] Safely update embedded movie and episode titles during reviewed organization,
   preserving streams, chapters, attachments, sidecars, seeding sources and rollback.
-  Embedded titles can be inspected, but organization does not yet rewrite them.
+  Reviewed MP4/Matroska updates preserve a rollback copy and can be queued
+  automatically after a single-file move. Batch and whole-folder updates remain open.
 
-- [ ] Connect downloaded upgrades to versioned replacement and support YouTube
-  provenance. Explicitly reviewed discovered-file replacements retain independent
-  previous versions and support reviewed rollback; upgrade searches remain suggestions.
+- [ ] Connect downloaded upgrades and newly acquired YouTube videos directly to
+  versioned replacement. Existing YouTube-origin files can be replaced and their
+  provenance restored; upgrade searches remain suggestions.
 - [x] Bulk season and episode monitoring. Select up to 100 seasons per show or
   100 loaded episodes per season for an atomic, revision-checked update.
 - [ ] Reviewed catalog/media removal with clear file-deletion choices.

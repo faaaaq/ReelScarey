@@ -1117,3 +1117,23 @@ See AUTHENTICATION.md for first setup, password recovery and key backup.
   movie title. Existing files can be explicitly re-inspected with checksum checks.
 - This is inspection only. Safe embedded metadata rewriting during organization
   remains open; no existing media tags were edited by this work.
+
+## 2026-10-28: verified embedded-title updates
+
+- Reviewed MP4/Matroska title updates use independent staging and retain the
+  previous video for rollback. A reviewed single-file organization can queue its
+  title update after the move; unfinished work is recoverable on restart.
+- Generated-video tests verified actual MP4 and Matroska title rewrites, packet
+  hashes and timing, multiple streams, subtitles, chapters and an attachment.
+  The MP4 workflow preserved an independent seeding source and restored the
+  original video. YouTube-origin replacement and rollback retained source
+  provenance and subtitle files in isolated fixtures.
+- A disposable read-only Docker container passed an authenticated single-file
+  move, verified title update, source retention and rollback. The local Compose
+  app was rebuilt and started with separate empty project media folders.
+- Whole-folder and multi-file automatic title updates, direct downloaded upgrades
+  and replacement from newly acquired YouTube videos remain open. No owner media
+  or live Emby server was used for these tests.
+- A generated Matroska TV episode also received its canonical series, season,
+  episode number and episode title after a reviewed move. Subtitle provenance
+  was checked across both individual-file and whole-folder moves before rollback.

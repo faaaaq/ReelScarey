@@ -733,3 +733,72 @@ func TestCancelCannotRaceAJobThatStarted(t *testing.T) {
 		t.Fatal("cancellation succeeded after the worker started")
 	}
 }
+
+func TestOrganizationQueuesApprovedEmbeddedTitleAfterMove(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	rel := "Movies/Original/movie.mkv"
+	f.movie(t, 1, rel, []byte("original video"))
+	seed := filepath.Join(f.cfg.DownloadsDir, "seeding.mkv")
+	if e := os.Link(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(rel)), seed); e != nil {
+		t.Fatal(e)
+	}
+	f.s.SetTagger(func(ctx context.Context, source, stage *os.File, extension, title string) (string, error) {
+		if title != "Review movie" {
+			t.Fatal(title)
+		}
+		if _, e := stage.WriteAt([]byte("tagged video"), 0); e != nil {
+			return "", e
+		}
+		return `{"embedded_title":"Review movie"}`, nil
+	})
+	p, e := f.s.PreviewWithEmbeddedTitle(ctx, []int64{1}, "anime")
+	if e != nil || !p.UpdateEmbeddedTitle || p.EmbeddedTitle != "Review movie" {
+		t.Fatal(p, e)
+	}
+	if _, e = f.s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var childID, state string
+	if e = f.db.QueryRow(`SELECT id,state FROM organization_plans WHERE json_extract(snapshot,'$.replacement.tag_parent')=?`, p.ID).Scan(&childID, &state); e != nil || state != "queued" {
+		t.Fatal(childID, state, e)
+	}
+	if e = EnsureMediaAvailable(ctx, f.db); e == nil {
+		t.Fatal("queued metadata update did not reserve media")
+	}
+	// Simulate interruption after the child review was saved but before the
+	// parent completion and child queue were committed together.
+	tx,e:=f.db.BeginTx(ctx,nil);if e!=nil{t.Fatal(e)}
+	if _,e=tx.Exec(`UPDATE organization_plans SET state='review' WHERE id=?`,childID);e!=nil{t.Fatal(e)}
+	if _,e=tx.Exec(`UPDATE organization_plans SET state='running' WHERE id=?`,p.ID);e!=nil{t.Fatal(e)}
+	if e=tx.Commit();e!=nil{t.Fatal(e)}
+	if e=f.s.Tick(ctx);e!=nil{t.Fatal(e)}
+	var childCount int
+	if e=f.db.QueryRow(`SELECT COUNT(*) FROM organization_plans WHERE json_extract(snapshot,'$.replacement.tag_parent')=?`,p.ID).Scan(&childCount);e!=nil||childCount!=1{t.Fatal("duplicate metadata child",childCount,e)}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var relAfter string
+	if e = f.db.QueryRow(`SELECT relative_path FROM media_files WHERE id=1`).Scan(&relAfter); e != nil {
+		t.Fatal(e)
+	}
+	data, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(relAfter)))
+	if e != nil || string(data) != "tagged video" {
+		t.Fatal(string(data), e)
+	}
+	data, e = os.ReadFile(seed)
+	if e != nil || string(data) != "original video" {
+		t.Fatal("seeding source changed", string(data), e)
+	}
+	child, e := f.s.Plan(ctx, childID)
+	if e != nil || child.State != "completed" {
+		t.Fatal(child, e)
+	}
+	old, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(child.Replacement.Backup)))
+	if e != nil || string(old) != "original video" {
+		t.Fatal(string(old), e)
+	}
+}

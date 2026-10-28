@@ -149,6 +149,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/organization/files/{id}/health", method(http.MethodPost, s.organizationFileHealth))
 	mux.HandleFunc("/api/v1/organization/plans", s.organizationPlans)
 	mux.HandleFunc("/api/v1/organization/replacements", s.organizationReplacement)
+	mux.HandleFunc("/api/v1/organization/embedded-title", method(http.MethodPost, s.organizationEmbeddedTitle))
 	mux.HandleFunc("/api/v1/organization/plans/{id}/rollback", method(http.MethodPost, s.organizationRollback))
 	mux.HandleFunc("/api/v1/organization/plans/{id}/recover-replacement", method(http.MethodPost, s.organizationRecoverReplacement))
 	mux.HandleFunc("/api/v1/organization/plans/{id}", method(http.MethodGet, s.organizationPlan))

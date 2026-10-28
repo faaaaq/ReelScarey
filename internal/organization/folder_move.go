@@ -395,10 +395,10 @@ func (s *Service) commitFolderReferences(ctx context.Context, tx *sql.Tx, p *Pla
 			if _, err = tx.ExecContext(ctx, `UPDATE subtitle_imports SET destination=? WHERE media_file_id=? AND destination=? AND phase='committed'`, sub.Destination, v.FileID, sub.Source); err != nil {
 				return err
 			}
-			if _, err = tx.ExecContext(ctx, `UPDATE youtube_subtitle_imports SET destination_path=? WHERE phase='committed' AND destination_path=? AND job_id IN (SELECT job_id FROM youtube_files WHERE media_file_id=?)`, sub.Destination, sub.Source, v.FileID); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE youtube_subtitle_imports SET destination_path=? WHERE phase='committed' AND destination_path=?`, sub.Destination, sub.Source); err != nil {
 				return err
 			}
-			if _, err = tx.ExecContext(ctx, `UPDATE youtube_subtitle_files SET relative_path=? WHERE relative_path=? AND job_id IN (SELECT job_id FROM youtube_files WHERE media_file_id=?)`, sub.Destination, sub.Source, v.FileID); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE youtube_subtitle_files SET relative_path=? WHERE relative_path=?`, sub.Destination, sub.Source); err != nil {
 				return err
 			}
 		}

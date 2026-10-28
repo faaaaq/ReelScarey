@@ -479,8 +479,14 @@ export function ItemInformation({
                         </p>
                       )}
                     <p className="field-help">
-                      Organizing files does not yet change their embedded
-                      titles.
+                      Embedded title changes can be reviewed in{" "}
+                      <Link
+                        className="text-link"
+                        to={`/organization?media_id=${id}`}
+                      >
+                        Organize library
+                      </Link>
+                      .
                     </p>
                     <p>
                       {file.probe.audio_streams == null

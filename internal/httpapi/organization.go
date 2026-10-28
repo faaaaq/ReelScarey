@@ -138,10 +138,11 @@ func (s *Server) organizationPlans(w http.ResponseWriter, r *http.Request) {
 		send(w, 200, map[string]any{"items": out})
 	case http.MethodPost:
 		var in struct {
-			FileIDs       []int64 `json:"file_ids"`
-			MediaID       int64   `json:"media_id"`
-			TargetLibrary string  `json:"target_library"`
-			WholeFolder   bool    `json:"whole_folder"`
+			FileIDs             []int64 `json:"file_ids"`
+			MediaID             int64   `json:"media_id"`
+			TargetLibrary       string  `json:"target_library"`
+			WholeFolder         bool    `json:"whole_folder"`
+			UpdateEmbeddedTitle bool    `json:"update_embedded_title"`
 		}
 		if !decodeJSON(w, r, &in) {
 			return
@@ -150,7 +151,12 @@ func (s *Server) organizationPlans(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		var out organization.Plan
 		var e error
-		if in.WholeFolder && (in.MediaID == 0 || len(in.FileIDs) != 0) {
+		if in.UpdateEmbeddedTitle && (in.WholeFolder || in.MediaID != 0 || len(in.FileIDs) != 1) {
+			fail(w, 400, "invalid_selection", "Choose one file for an embedded title update during organization.")
+			return
+		} else if in.UpdateEmbeddedTitle {
+			out, e = s.organization.PreviewWithEmbeddedTitle(ctx, in.FileIDs, in.TargetLibrary)
+		} else if in.WholeFolder && (in.MediaID == 0 || len(in.FileIDs) != 0) {
 			fail(w, 400, "invalid_selection", "Choose one title for a whole-folder review.")
 			return
 		} else if in.WholeFolder {
@@ -321,6 +327,27 @@ func (s *Server) organizationReplacement(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	out, err := s.organization.PreviewReplacement(ctx, in.FileID, in.ScanFileID)
+	if err != nil {
+		s.organizationError(w, err)
+		return
+	}
+	send(w, 201, out)
+}
+
+func (s *Server) organizationEmbeddedTitle(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		FileID int64 `json:"media_file_id"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	if in.FileID < 1 {
+		fail(w, 400, "invalid_selection", "Choose a registered file.")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	out, err := s.organization.PreviewEmbeddedTitle(ctx, in.FileID)
 	if err != nil {
 		s.organizationError(w, err)
 		return

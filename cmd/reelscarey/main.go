@@ -107,6 +107,18 @@ func run(logger *slog.Logger) error {
 		data, err := json.Marshal(result)
 		return string(data), err
 	})
+	organizationService.SetTagger(func(ctx context.Context, source, stage *os.File, extension, title string) (string, error) {
+		result, err := transfer.RewriteTitleVerified(ctx, source, stage, extension, title)
+		if err != nil {
+			var problem *transfer.Error
+			if errors.As(err, &problem) {
+				return "", &organization.Error{Code: problem.Code, Message: problem.Message}
+			}
+			return "", err
+		}
+		data, err := json.Marshal(result)
+		return string(data), err
+	})
 	botService := discordbot.New(db, secretStore, metadataService, transferService)
 	embyMonitor := emby.NewMonitor(db, emby.New(secretStore))
 	youtubePath := os.Getenv("REELSCAREY_YTDLP_PATH")

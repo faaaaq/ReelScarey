@@ -562,5 +562,15 @@ folder that may already have moved; those jobs must follow recovery instead.
 
 `embedded_title` in the inspected file's probe is its container title tag; null
 means it has not been inspected with this version and an empty string means no
-title was reported. Inspection does not edit the file or rewrite tags. Safe
-metadata updates during organization remain planned.
+title was reported. Inspection does not edit the file or rewrite tags. A separate reviewed
+embedded-title update is available; a single-file organization review may also
+request it with `update_embedded_title: true`. Batch and folder moves do not yet
+automatically update embedded titles.
+
+`POST /organization/embedded-title` with `media_file_id` creates a review of a
+catalog-derived movie or episode title for a registered MP4 or Matroska video.
+Applying the plan uses an independent staged copy, verifies stream metadata,
+packet data and timestamps, chapters and existing container tags, and retains
+the previous file for reviewed rollback. Unsupported or changed streams fail
+without replacing the original. YouTube-origin provenance is retained and
+restored with its corresponding version.

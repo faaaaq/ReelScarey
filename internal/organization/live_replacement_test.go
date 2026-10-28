@@ -123,3 +123,255 @@ func TestLiveReplacementWithFFprobe(t *testing.T) {
 		t.Fatal("original video not restored", e)
 	}
 }
+
+func TestLiveEmbeddedTitleAndRollback(t *testing.T) {
+	if os.Getenv("REELSCAREY_LIVE_REPLACEMENT") != "1" {
+		t.Skip("requires generated media and FFmpeg")
+	}
+	ctx := context.Background()
+	dir := t.TempDir()
+	cfg := config.Config{MediaDir: filepath.Join(dir, "media"), ConfigDir: filepath.Join(dir, "config"), DownloadsDir: filepath.Join(dir, "downloads")}
+	for _, v := range []string{cfg.MediaDir, cfg.DownloadsDir} {
+		if e := os.MkdirAll(v, 0700); e != nil {
+			t.Fatal(e)
+		}
+	}
+	db, e := database.Open(ctx, cfg.ConfigDir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	name := filepath.Join(cfg.MediaDir, "Movies", "Film", "Film.mp4")
+	if e = os.MkdirAll(filepath.Dir(name), 0700); e != nil {
+		t.Fatal(e)
+	}
+	cmd := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=128x96:r=10", "-f", "lavfi", "-i", "sine=frequency=1000", "-t", "1", "-c:v", "mpeg4", "-c:a", "aac", "-metadata", "title=Wrong Title", "-metadata:s:a:0", "language=jpn", "-movflags", "faststart", "-y", name)
+	if b, e := cmd.CombinedOutput(); e != nil {
+		t.Fatalf("generate: %v %s", e, b)
+	}
+	original, e := os.ReadFile(name)
+	if e != nil {
+		t.Fatal(e)
+	}
+	sum := sha256.Sum256(original)
+	if _, e = db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,status) VALUES(1,'movie',1,'Correct Title',2020,'available')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`INSERT INTO media_files(id,movie_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin,source_name) VALUES(1,1,'Movies/Film/Film.mp4',?,?,'{}',1,'existing','Film.mp4')`, len(original), hex.EncodeToString(sum[:])); e != nil {
+		t.Fatal(e)
+	}
+	seed := filepath.Join(cfg.DownloadsDir, "seed.mp4")
+	if e = os.Link(name, seed); e != nil {
+		t.Fatal(e)
+	}
+	s := organization.New(db, cfg)
+	s.SetTagger(func(ctx context.Context, source, stage *os.File, ext, title string) (string, error) {
+		p, e := transfer.RewriteTitleVerified(ctx, source, stage, ext, title)
+		if e != nil {
+			return "", e
+		}
+		b, e := json.Marshal(p)
+		return string(b), e
+	})
+	p, e := s.PreviewEmbeddedTitle(ctx, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	f, e := os.Open(name)
+	if e != nil {
+		t.Fatal(e)
+	}
+	info, e := (transfer.FFprobe{}).Probe(ctx, f)
+	f.Close()
+	if e != nil || info.Title == nil || *info.Title != "Correct Title" || len(info.Audio) != 1 || info.Audio[0].Language != "jpn" {
+		t.Fatal(info, e)
+	}
+	seeded, e := os.ReadFile(seed)
+	if e != nil || string(seeded) != string(original) {
+		t.Fatal("seeding source changed", e)
+	}
+	s = organization.New(db, cfg)
+	restore, e := s.PreviewRollback(ctx, p.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Apply(ctx, restore.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	restored, e := os.ReadFile(name)
+	if e != nil || string(restored) != string(original) {
+		t.Fatal("original was not restored", e)
+	}
+}
+
+func TestLiveOrganizationUpdatesEmbeddedTitle(t *testing.T) {
+	if os.Getenv("REELSCAREY_LIVE_REPLACEMENT") != "1" {
+		t.Skip("requires generated media and FFmpeg")
+	}
+	ctx := context.Background()
+	dir := t.TempDir()
+	cfg := config.Config{MediaDir: filepath.Join(dir, "media"), ConfigDir: filepath.Join(dir, "config"), DownloadsDir: filepath.Join(dir, "downloads")}
+	for _, v := range []string{cfg.MediaDir, cfg.DownloadsDir} {
+		if e := os.MkdirAll(v, 0700); e != nil {
+			t.Fatal(e)
+		}
+	}
+	db, e := database.Open(ctx, cfg.ConfigDir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	name := filepath.Join(cfg.MediaDir, "Movies", "Film", "Film.mp4")
+	if e = os.MkdirAll(filepath.Dir(name), 0700); e != nil {
+		t.Fatal(e)
+	}
+	cmd := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=128x96:r=10", "-t", "1", "-c:v", "mpeg4", "-metadata", "title=Wrong Title", "-movflags", "faststart", "-y", name)
+	if b, e := cmd.CombinedOutput(); e != nil {
+		t.Fatalf("generate: %v %s", e, b)
+	}
+	original, e := os.ReadFile(name)
+	if e != nil {
+		t.Fatal(e)
+	}
+	sum := sha256.Sum256(original)
+	if _, e = db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,status) VALUES(1,'movie',1,'Correct Title',2020,'available')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`INSERT INTO media_files(id,movie_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin,source_name) VALUES(1,1,'Movies/Film/Film.mp4',?,?,'{}',1,'existing','Film.mp4')`, len(original), hex.EncodeToString(sum[:])); e != nil {
+		t.Fatal(e)
+	}
+	seed := filepath.Join(cfg.DownloadsDir, "seed.mp4")
+	if e = os.Link(name, seed); e != nil {
+		t.Fatal(e)
+	}
+	s := organization.New(db, cfg)
+	s.SetTagger(func(ctx context.Context, source, stage *os.File, ext, title string) (string, error) {
+		p, e := transfer.RewriteTitleVerified(ctx, source, stage, ext, title)
+		if e != nil {
+			return "", e
+		}
+		b, e := json.Marshal(p)
+		return string(b), e
+	})
+	p, e := s.PreviewWithEmbeddedTitle(ctx, []int64{1}, "anime")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var rel string
+	if e = db.QueryRow(`SELECT relative_path FROM media_files WHERE id=1`).Scan(&rel); e != nil {
+		t.Fatal(e)
+	}
+	file, e := os.Open(filepath.Join(cfg.MediaDir, filepath.FromSlash(rel)))
+	if e != nil {
+		t.Fatal(e)
+	}
+	probe, e := (transfer.FFprobe{}).Probe(ctx, file)
+	file.Close()
+	if e != nil || probe.Title == nil || *probe.Title != "Correct Title" {
+		t.Fatal(probe, e)
+	}
+	data, e := os.ReadFile(seed)
+	if e != nil || string(data) != string(original) {
+		t.Fatal("seeding source changed", e)
+	}
+}
+
+func TestLiveSeriesOrganizationUpdatesEmbeddedTitle(t *testing.T) {
+	if os.Getenv("REELSCAREY_LIVE_REPLACEMENT") != "1" {
+		t.Skip("requires generated media and FFmpeg")
+	}
+	ctx := context.Background()
+	dir := t.TempDir()
+	cfg := config.Config{MediaDir: filepath.Join(dir, "media"), ConfigDir: filepath.Join(dir, "config"), DownloadsDir: filepath.Join(dir, "downloads")}
+	for _, v := range []string{cfg.MediaDir, cfg.DownloadsDir} {
+		if e := os.MkdirAll(v, 0700); e != nil {
+			t.Fatal(e)
+		}
+	}
+	db, e := database.Open(ctx, cfg.ConfigDir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	name := filepath.Join(cfg.MediaDir, "TV Shows", "Example", "Season 01", "episode.mkv")
+	if e = os.MkdirAll(filepath.Dir(name), 0700); e != nil {
+		t.Fatal(e)
+	}
+	cmd := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=128x96:r=10", "-t", "1", "-c:v", "mpeg4", "-metadata", "title=Wrong Episode", "-y", name)
+	if b, e := cmd.CombinedOutput(); e != nil {
+		t.Fatalf("generate: %v %s", e, b)
+	}
+	original, e := os.ReadFile(name)
+	if e != nil {
+		t.Fatal(e)
+	}
+	sum := sha256.Sum256(original)
+	queries := []string{`INSERT INTO media_items(id,kind,tmdb_id,title,year,status) VALUES(1,'series',1,'Example Show',2020,'available')`, `INSERT INTO series_details(media_id) VALUES(1)`, `INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count) VALUES(1,1,1,1,'Season','','',1)`, `INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date) VALUES(1,1,2,1,'Pilot','','')`}
+	for _, q := range queries {
+		if _, e = db.Exec(q); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if _, e = db.Exec(`INSERT INTO media_files(id,series_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin,source_name) VALUES(1,1,'TV Shows/Example/Season 01/episode.mkv',?,?,'{}',1,'existing','episode.mkv')`, len(original), hex.EncodeToString(sum[:])); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`INSERT INTO episode_files(episode_id,media_file_id) VALUES(1,1)`); e != nil {
+		t.Fatal(e)
+	}
+	s := organization.New(db, cfg)
+	s.SetTagger(func(ctx context.Context, source, stage *os.File, ext, title string) (string, error) {
+		p, e := transfer.RewriteTitleVerified(ctx, source, stage, ext, title)
+		if e != nil {
+			return "", e
+		}
+		b, e := json.Marshal(p)
+		return string(b), e
+	})
+	p, e := s.PreviewWithEmbeddedTitle(ctx, []int64{1}, "anime")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if p.EmbeddedTitle != "Example Show - S01E01 - Pilot" {
+		t.Fatal(p.EmbeddedTitle)
+	}
+	if _, e = s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var rel string
+	if e = db.QueryRow(`SELECT relative_path FROM media_files WHERE id=1`).Scan(&rel); e != nil {
+		t.Fatal(e)
+	}
+	f, e := os.Open(filepath.Join(cfg.MediaDir, filepath.FromSlash(rel)))
+	if e != nil {
+		t.Fatal(e)
+	}
+	probe, e := (transfer.FFprobe{}).Probe(ctx, f)
+	f.Close()
+	if e != nil || probe.Title == nil || *probe.Title != "Example Show - S01E01 - Pilot" {
+		t.Fatal(probe, e)
+	}
+}

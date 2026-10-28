@@ -2,6 +2,7 @@ package organization
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -15,18 +16,23 @@ import (
 // Replacement is a durable, reviewed swap. The original file is retained at
 // Backup and the discovered source is never removed.
 type Replacement struct {
-	FileID       int64               `json:"media_file_id"`
-	MediaID      int64               `json:"media_id"`
-	Title        string              `json:"title"`
-	ScanFileID   string              `json:"scan_file_id,omitempty"`
-	RestoresPlan string              `json:"restores_plan,omitempty"`
-	Recovering   bool                `json:"recovering,omitempty"`
-	Before       ReplacementMetadata `json:"before"`
-	After        ReplacementMetadata `json:"after"`
-	Original     Companion           `json:"original"`
-	Incoming     Companion           `json:"incoming"`
-	Backup       string              `json:"backup"`
-	Episodes     []Episode           `json:"episodes"`
+	FileID        int64               `json:"media_file_id"`
+	MediaID       int64               `json:"media_id"`
+	Title         string              `json:"title"`
+	ScanFileID    string              `json:"scan_file_id,omitempty"`
+	RestoresPlan  string              `json:"restores_plan,omitempty"`
+	Recovering    bool                `json:"recovering,omitempty"`
+	TagTitle      string              `json:"tag_title,omitempty"`
+	TagStage      string              `json:"tag_stage,omitempty"`
+	TagParent     string              `json:"tag_parent,omitempty"`
+	BeforeYouTube *YouTubeVersion     `json:"before_youtube,omitempty"`
+	AfterYouTube  *YouTubeVersion     `json:"after_youtube,omitempty"`
+	Before        ReplacementMetadata `json:"before"`
+	After         ReplacementMetadata `json:"after"`
+	Original      Companion           `json:"original"`
+	Incoming      Companion           `json:"incoming"`
+	Backup        string              `json:"backup"`
+	Episodes      []Episode           `json:"episodes"`
 }
 type ReplacementMetadata struct {
 	Path       string  `json:"path"`
@@ -38,6 +44,29 @@ type ReplacementMetadata struct {
 	ImportedAt int64   `json:"imported_at"`
 	Origin     string  `json:"origin"`
 	SourceName string  `json:"source_name"`
+}
+
+type YouTubeVersion struct {
+	JobID      string `json:"job_id"`
+	VideoID    string `json:"video_id"`
+	Title      string `json:"title"`
+	Path       string `json:"path"`
+	Size       int64  `json:"size_bytes"`
+	SHA        string `json:"sha256"`
+	Probe      string `json:"probe_json"`
+	ImportedAt int64  `json:"imported_at"`
+}
+
+func youtubeVersion(ctx context.Context, q query, fileID int64) (*YouTubeVersion, error) {
+	var v YouTubeVersion
+	err := q.QueryRowContext(ctx, `SELECT job_id,video_id,title,relative_path,size_bytes,sha256,probe_json,imported_at FROM youtube_files WHERE media_file_id=?`, fileID).Scan(&v.JobID, &v.VideoID, &v.Title, &v.Path, &v.Size, &v.SHA, &v.Probe, &v.ImportedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &v, nil
 }
 
 func replacementMetadata(ctx context.Context, q query, id int64) (ReplacementMetadata, int64, error) {
@@ -82,11 +111,18 @@ func (s *Service) PreviewReplacement(ctx context.Context, fileID int64, scanID s
 		return Plan{}, problem("invalid_selection", "Choose an unregistered discovered video of the same type and file extension.")
 	}
 	var count int
-	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM media_files WHERE relative_path=? COLLATE NOCASE)+(SELECT COUNT(*) FROM youtube_files WHERE media_file_id=?)`, scanPath, fileID).Scan(&count); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM media_files WHERE relative_path=? COLLATE NOCASE)+(SELECT COUNT(*) FROM youtube_files WHERE relative_path=? COLLATE NOCASE)`, scanPath, scanPath).Scan(&count); e != nil {
 		return Plan{}, e
 	}
 	if count != 0 {
-		return Plan{}, problem("invalid_selection", "The source is already registered or the current file has YouTube provenance; this replacement is not supported.")
+		return Plan{}, problem("invalid_selection", "The selected source is already registered.")
+	}
+	youtube, e := youtubeVersion(ctx, tx, fileID)
+	if e != nil {
+		return Plan{}, e
+	}
+	if youtube != nil && (youtube.Path != before.Path || youtube.Size != before.Size || youtube.SHA != before.SHA) {
+		return Plan{}, problem("revision_conflict", "YouTube provenance does not match the registered file.")
 	}
 	if e = idle(ctx, tx, mediaID, fileID); e != nil {
 		return Plan{}, e
@@ -112,7 +148,7 @@ func (s *Service) PreviewReplacement(ctx context.Context, fileID int64, scanID s
 	}
 	now := time.Now().Unix()
 	pid := id()
-	repl := &Replacement{FileID: fileID, MediaID: mediaID, Title: title, ScanFileID: scanID, Before: before, Original: old, Incoming: incoming, Backup: path.Join(".reelscarey-versions", ".reelscarey-version-"+pid), Episodes: eps}
+	repl := &Replacement{FileID: fileID, MediaID: mediaID, Title: title, ScanFileID: scanID, Before: before, BeforeYouTube: youtube, Original: old, Incoming: incoming, Backup: path.Join(".reelscarey-versions", ".reelscarey-version-"+pid), Episodes: eps}
 	p := Plan{ID: pid, State: "review", Root: resolved, Phase: "planned", Created: now, Updated: now, Files: []PlannedFile{}, Replacement: repl}
 	raw, e := json.Marshal(p)
 	if e != nil {
@@ -140,15 +176,24 @@ func (s *Service) validateReplacement(ctx context.Context, root *os.Root, q quer
 	if !reflect.DeepEqual(eps, r.Episodes) {
 		return problem("revision_conflict", "Episode mappings changed after review.")
 	}
+	if r.TagTitle != "" {
+		var title string
+		if e = q.QueryRowContext(ctx, `SELECT title FROM media_items WHERE id=?`, r.MediaID).Scan(&title); e != nil {
+			return e
+		}
+		if embeddedTitle(title, eps) != r.TagTitle {
+			return problem("revision_conflict", "The saved title changed after review.")
+		}
+	}
 	if e = idle(ctx, q, r.MediaID, r.FileID); e != nil {
 		return e
 	}
-	var count int
-	if e = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM youtube_files WHERE media_file_id=?`, r.FileID).Scan(&count); e != nil {
+	youtube, e := youtubeVersion(ctx, q, r.FileID)
+	if e != nil {
 		return e
 	}
-	if count != 0 {
-		return problem("invalid_selection", "Files with YouTube provenance cannot be replaced yet.")
+	if !reflect.DeepEqual(youtube, r.BeforeYouTube) {
+		return problem("revision_conflict", "YouTube provenance changed after review.")
 	}
 	if r.ScanFileID != "" {
 		var state string
@@ -158,6 +203,13 @@ func (s *Service) validateReplacement(ctx context.Context, root *os.Root, q quer
 		}
 		if state != "review" || name != r.Incoming.Source {
 			return problem("revision_conflict", "The discovered file changed after review.")
+		}
+		var registered int
+		if e = q.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM media_files WHERE relative_path=? COLLATE NOCASE)+(SELECT COUNT(*) FROM youtube_files WHERE relative_path=? COLLATE NOCASE)`, name, name).Scan(&registered); e != nil {
+			return e
+		}
+		if registered != 0 {
+			return problem("revision_conflict", "The discovered file was registered after review.")
 		}
 	}
 	if e = checkSource(ctx, root, r.Original, false); e != nil {
@@ -205,12 +257,21 @@ func (s *Service) PreviewRollback(ctx context.Context, planID string) (Plan, err
 	if e = idle(ctx, tx, mediaID, previous.FileID); e != nil {
 		return Plan{}, e
 	}
-	var n int
-	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM youtube_files WHERE media_file_id=?`, previous.FileID).Scan(&n); e != nil {
+	currentYouTube, e := youtubeVersion(ctx, tx, previous.FileID)
+	if e != nil {
 		return Plan{}, e
 	}
-	if n != 0 {
-		return Plan{}, problem("invalid_selection", "Files with YouTube provenance cannot be restored yet.")
+	var expectedYouTube *YouTubeVersion
+	if previous.AfterYouTube != nil {
+		copy := *previous.AfterYouTube
+		copy.Path = before.Path
+		if currentYouTube != nil {
+			copy.Probe = currentYouTube.Probe
+		}
+		expectedYouTube = &copy
+	}
+	if !reflect.DeepEqual(currentYouTube, expectedYouTube) {
+		return Plan{}, problem("revision_conflict", "The current YouTube provenance changed after replacement.")
 	}
 	original, e := inspect(root, before.Path)
 	if e != nil {
@@ -243,7 +304,13 @@ func (s *Service) PreviewRollback(ctx context.Context, planID string) (Plan, err
 	pid := id()
 	restored := previous.Before
 	restored.Path = before.Path
-	r := &Replacement{FileID: previous.FileID, MediaID: mediaID, Title: previous.Title, RestoresPlan: old.ID, Before: before, After: restored, Original: original, Incoming: incoming, Backup: path.Join(".reelscarey-versions", ".reelscarey-version-"+pid), Episodes: eps}
+	var restoredYouTube *YouTubeVersion
+	if previous.BeforeYouTube != nil {
+		copy := *previous.BeforeYouTube
+		copy.Path = before.Path
+		restoredYouTube = &copy
+	}
+	r := &Replacement{FileID: previous.FileID, MediaID: mediaID, Title: previous.Title, RestoresPlan: old.ID, Before: before, After: restored, BeforeYouTube: currentYouTube, AfterYouTube: restoredYouTube, Original: original, Incoming: incoming, Backup: path.Join(".reelscarey-versions", ".reelscarey-version-"+pid), Episodes: eps}
 	p := Plan{ID: pid, State: "review", Root: resolved, Phase: "planned", Created: now, Updated: now, Files: []PlannedFile{}, Replacement: r}
 	raw, e := json.Marshal(p)
 	if e != nil {
@@ -269,37 +336,46 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 		if e = checkSource(ctx, root, r.Original, true); e != nil {
 			return e
 		}
-		file, e := root.Open(filepath.FromSlash(r.Incoming.Source))
-		if e != nil {
-			return e
-		}
-		defer file.Close()
-		ident, e := identity(file)
-		if e != nil || ident != r.Incoming.Identity {
-			return problem("source_changed", "The incoming file changed during verification.")
-		}
-		digest, e := hash(ctx, file)
-		if e != nil {
-			return e
-		}
-		if r.RestoresPlan == "" {
-			if s.probe == nil {
-				return problem("ffprobe_missing", "The replacement verifier is unavailable. The original was not changed.")
+		if r.TagTitle != "" {
+			if e = s.prepareEmbeddedTitle(ctx, root, p); e != nil {
+				return e
 			}
-			probe, e := s.probe(ctx, file)
+		} else {
+			file, e := root.Open(filepath.FromSlash(r.Incoming.Source))
 			if e != nil {
 				return e
 			}
-			r.After = ReplacementMetadata{Path: r.Before.Path, Size: r.Incoming.Size, SHA: digest, Probe: probe, FileIndex: -1, ImportedAt: time.Now().Unix(), Origin: "existing", SourceName: path.Base(r.Incoming.Source)}
-		} else if digest != r.After.SHA {
-			return problem("source_changed", "The retained version no longer matches its saved checksum.")
+			defer file.Close()
+			ident, e := identity(file)
+			if e != nil || ident != r.Incoming.Identity {
+				return problem("source_changed", "The incoming file changed during verification.")
+			}
+			digest, e := hash(ctx, file)
+			if e != nil {
+				return e
+			}
+			if r.RestoresPlan == "" {
+				if s.probe == nil {
+					return problem("ffprobe_missing", "The replacement verifier is unavailable. The original was not changed.")
+				}
+				probe, e := s.probe(ctx, file)
+				if e != nil {
+					return e
+				}
+				r.After = ReplacementMetadata{Path: r.Before.Path, Size: r.Incoming.Size, SHA: digest, Probe: probe, FileIndex: -1, ImportedAt: time.Now().Unix(), Origin: "existing", SourceName: path.Base(r.Incoming.Source)}
+			} else if digest != r.After.SHA {
+				return problem("source_changed", "The retained version no longer matches its saved checksum.")
+			}
+			r.Incoming.SHA = digest
+			if digest == r.Before.SHA {
+				return problem("invalid_selection", "The selected file has the same contents as the registered version.")
+			}
+			if e = checkSource(ctx, root, r.Incoming, true); e != nil {
+				return e
+			}
 		}
-		r.Incoming.SHA = digest
-		if digest == r.Before.SHA {
+		if r.Incoming.SHA == r.Before.SHA {
 			return problem("invalid_selection", "The selected file has the same contents as the registered version.")
-		}
-		if e = checkSource(ctx, root, r.Incoming, true); e != nil {
-			return e
 		}
 		if e = s.savePhase(ctx, p, "prepared"); e != nil {
 			return e
@@ -391,6 +467,13 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 		if e = idle(ctx, tx, r.MediaID, r.FileID); e != nil {
 			return e
 		}
+		youtube, e := youtubeVersion(ctx, tx, r.FileID)
+		if e != nil {
+			return e
+		}
+		if !reflect.DeepEqual(youtube, r.BeforeYouTube) {
+			return problem("revision_conflict", "YouTube provenance changed during replacement.")
+		}
 		if e = s.checkOutput(ctx, root, tx, p.ID, backup); e != nil {
 			return e
 		}
@@ -400,6 +483,20 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 		a := r.After
 		if _, e = tx.ExecContext(ctx, `UPDATE media_files SET size_bytes=?,sha256=?,probe_json=?,download_id=?,file_index=?,imported_at=?,origin=?,source_name=? WHERE id=?`, a.Size, a.SHA, a.Probe, a.DownloadID, a.FileIndex, a.ImportedAt, a.Origin, a.SourceName, r.FileID); e != nil {
 			return e
+		}
+		if youtube != nil {
+			if _, e = tx.ExecContext(ctx, `DELETE FROM youtube_files WHERE media_file_id=?`, r.FileID); e != nil {
+				return e
+			}
+		}
+		if r.AfterYouTube != nil {
+			y := r.AfterYouTube
+			if y.Path != a.Path || y.Size != a.Size || y.SHA != a.SHA {
+				return problem("revision_conflict", "The restored YouTube provenance does not match the video.")
+			}
+			if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_files(job_id,media_file_id,video_id,title,relative_path,size_bytes,sha256,probe_json,imported_at) VALUES(?,?,?,?,?,?,?,?,?)`, y.JobID, r.FileID, y.VideoID, y.Title, y.Path, y.Size, y.SHA, y.Probe, y.ImportedAt); e != nil {
+				return e
+			}
 		}
 		if _, e = tx.ExecContext(ctx, `DELETE FROM subtitle_inspections WHERE media_file_id=?`, r.FileID); e != nil {
 			return e
@@ -414,6 +511,9 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 			return e
 		}
 		activity := "file replaced"
+		if r.TagTitle != "" && !r.Recovering {
+			activity = "embedded title updated"
+		}
 		if r.Recovering {
 			activity = "original file restored after interruption"
 		} else if r.RestoresPlan != "" {
@@ -459,6 +559,19 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 			f.Close()
 			if actual == saved {
 				_ = root.Remove(filepath.FromSlash(stage))
+			}
+		}
+	}
+	if r.TagStage != "" {
+		var saved string
+		if e = s.db.QueryRowContext(ctx, `SELECT identity FROM organization_outputs WHERE plan_id=? AND destination=?`, p.ID, r.TagStage).Scan(&saved); e != nil {
+			return e
+		}
+		if f, err := root.Open(filepath.FromSlash(r.TagStage)); err == nil {
+			actual, _ := identity(f)
+			f.Close()
+			if saved != "" && actual == saved {
+				_ = root.Remove(filepath.FromSlash(r.TagStage))
 			}
 		}
 	}
@@ -521,6 +634,13 @@ func (s *Service) RecoverReplacement(ctx context.Context, planID string) (Plan, 
 	if media != r.MediaID || !reflect.DeepEqual(before, r.Before) {
 		return p, problem("revision_conflict", "The registered file changed; the original was retained for review.")
 	}
+	youtube, e := youtubeVersion(ctx, tx, r.FileID)
+	if e != nil {
+		return p, e
+	}
+	if !reflect.DeepEqual(youtube, r.BeforeYouTube) {
+		return p, problem("revision_conflict", "YouTube provenance changed; the original was retained for review.")
+	}
 	eps, e := s.episodes(ctx, tx, r.FileID)
 	if e != nil {
 		return p, e
@@ -553,6 +673,7 @@ func (s *Service) RecoverReplacement(ctx context.Context, planID string) (Plan, 
 	backup.SHA = r.Before.SHA
 	r.Incoming = backup
 	r.After = r.Before
+	r.AfterYouTube = r.BeforeYouTube
 	r.ScanFileID = ""
 	r.Recovering = true
 	p.Phase = "removed"
