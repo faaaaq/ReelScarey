@@ -34,6 +34,8 @@ export type LibraryScan = {
   discovered: number;
   registered: number;
   queued: number;
+  needs_match: number;
+  needs_attention: number;
   examined: number;
   skipped: number;
 };
@@ -124,8 +126,8 @@ export function ExistingLibrary() {
   return (
     <>
       <PageHeading
-        title="Import existing library"
-        description="Discover videos in your configured media folders, review their identities, and add verified files where they already are."
+        title="Find unmatched files"
+        description="Scan your configured media folders for videos that are not registered, then review and match them without moving the files."
       />
       <RequestState
         loading={roots.loading}
@@ -239,7 +241,8 @@ export function ExistingLibrary() {
                 <option key={s.id} value={s.id}>
                   {s.kind === "movie" ? "Movies" : "TV"} ·{" "}
                   {new Date(s.created_at * 1000).toLocaleString()} ·{" "}
-                  {stateLabels[s.state] ?? s.state}
+                  {stateLabels[s.state] ?? s.state} · {s.needs_match ?? 0} need
+                  a match · {s.needs_attention ?? 0} need attention
                 </option>
               ))}
             </select>
@@ -274,7 +277,7 @@ function ScanReview({
   forgotten: () => void;
 }) {
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState("review");
   const [file, setFile] = useState<DiscoveredFile>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -333,6 +336,14 @@ function ScanReview({
             <div>
               <span>Waiting or verifying</span>
               <strong>{scan.queued}</strong>
+            </div>
+            <div>
+              <span>Need a match</span>
+              <strong>{scan.needs_match ?? 0}</strong>
+            </div>
+            <div>
+              <span>Need attention</span>
+              <strong>{scan.needs_attention ?? 0}</strong>
             </div>
           </div>
           <p className="field-help">

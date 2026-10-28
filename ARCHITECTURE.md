@@ -32,6 +32,7 @@ internal/automation/ persistent scheduled searches, audit history and policy fen
 internal/subtitle/   provider, track preferences, registered-media jobs and sidecars
 internal/youtube/    reviewed public source inspection, acquisition and imports
 internal/requests/  requester-owned requests, list imports and webhook delivery
+internal/emby/      encrypted Emby connection and read-only playback snapshots
 internal/instance/   OS config ownership and maintenance locks
 internal/maintenance/ verified offline config snapshots and new-folder restores
 internal/operations/ explicit installation checks, setup and recovery review

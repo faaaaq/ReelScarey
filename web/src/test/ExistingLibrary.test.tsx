@@ -32,6 +32,8 @@ const scan: LibraryScan = {
   discovered: 1,
   registered: 0,
   queued: 0,
+  needs_match: 1,
+  needs_attention: 0,
   examined: 1,
   skipped: 0,
 };

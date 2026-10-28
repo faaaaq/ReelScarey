@@ -22,6 +22,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/discordbot"
+	"github.com/faaaaq/ReelScarey/internal/emby"
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/operations"
@@ -53,6 +54,7 @@ type Server struct {
 	discord          *requests.Discord
 	requestLists     *requests.Lists
 	bot              *discordbot.Service
+	emby             *emby.Service
 	animeProvider    metadata.AnimeProvider
 	youtube          *youtube.Store
 	youtubeInspector YouTubeInspector
@@ -83,6 +85,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	s.organization = organization.New(db, cfg)
 	s.requests = requests.New(db)
 	if deps.Secrets != nil {
+		s.emby = emby.New(deps.Secrets)
 		s.discord = requests.NewDiscord(db, deps.Secrets)
 		s.requestLists = requests.NewLists(db, deps.Secrets)
 	}
@@ -127,12 +130,16 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/indexers/{id}/test", method(http.MethodPost, s.indexerTest))
 	mux.HandleFunc("/api/v1/indexers/{id}/enabled", method(http.MethodPut, s.indexerEnabled))
 	mux.HandleFunc("/api/v1/settings", s.handleSettings)
+	mux.HandleFunc("/api/v1/emby", s.embySettings)
+	mux.HandleFunc("/api/v1/emby/activity", method(http.MethodGet, s.embyActivity))
 	mux.HandleFunc("/api/v1/organization", s.organizationSettings)
 	mux.HandleFunc("/api/v1/organization/files", method(http.MethodGet, s.organizationFiles))
 	mux.HandleFunc("/api/v1/organization/plans", s.organizationPlans)
 	mux.HandleFunc("/api/v1/organization/plans/{id}", method(http.MethodGet, s.organizationPlan))
 	mux.HandleFunc("/api/v1/organization/plans/{id}/apply", method(http.MethodPost, s.organizationApply))
 	mux.HandleFunc("/api/v1/library/items/{id}/organization", s.organizationAssignment)
+	mux.HandleFunc("/api/v1/library/items/{id}/create-folder", method(http.MethodPost, s.createTitleFolder))
+	mux.HandleFunc("/api/v1/library/items/{id}/collection", method(http.MethodGet, s.movieCollection))
 	mux.HandleFunc("/api/v1/subtitles/preferences", s.subtitlePreferences)
 	mux.HandleFunc("/api/v1/providers/opensubtitles", s.subtitleProvider)
 	mux.HandleFunc("/api/v1/providers/opensubtitles/test", method(http.MethodPost, s.subtitleProviderTest))

@@ -47,6 +47,7 @@ import { Planning } from "./pages/Planning";
 import { Organization } from "./pages/Organization";
 import { YouTube } from "./pages/YouTube";
 import { AdminRequests, RequesterHome } from "./pages/Requests";
+import { WatchActivity } from "./pages/WatchActivity";
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -58,6 +59,7 @@ const navigation = [
   { path: "/calendar", name: "Calendar", icon: CalendarDays },
   { path: "/search", name: "Search", icon: Search },
   { path: "/activity", name: "Activity", icon: Activity },
+  { path: "/watch-activity", name: "Emby activity", icon: MonitorPlay },
   { path: "/automation", name: "Automation", icon: Clock3 },
   { path: "/subtitles", name: "Subtitles", icon: Captions },
 ];
@@ -150,7 +152,7 @@ function AppShell() {
             </NavLink>
             <NavLink to="/import">
               <FolderSearch size={19} strokeWidth={1.7} />
-              <span>Import library</span>
+              <span>Find unmatched files</span>
             </NavLink>
             <NavLink to="/organization">
               <FolderSearch size={19} strokeWidth={1.7} />
@@ -220,6 +222,7 @@ function AppShell() {
             <Route path="/search" element={<MovieSearch />} />
             <Route path="/releases" element={<Releases />} />
             <Route path="/activity" element={<DownloadActivity />} />
+            <Route path="/watch-activity" element={<WatchActivity />} />
             <Route path="/automation" element={<Automation />} />
             <Route path="/subtitles" element={<Subtitles />} />
             <Route

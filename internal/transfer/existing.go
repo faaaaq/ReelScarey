@@ -22,21 +22,23 @@ const maxDiscoveryDirs = 2000
 const maxDirectoryEntries = 20000
 
 type LibraryScan struct {
-	ID           string `json:"id"`
-	Kind         string `json:"kind"`
-	MediaRoot    string `json:"media_root"`
-	ResolvedRoot string `json:"-"`
-	Folder       string `json:"folder"`
-	State        string `json:"state"`
-	Message      string `json:"message"`
-	Created      int64  `json:"created_at"`
-	Updated      int64  `json:"updated_at"`
-	Discovered   int    `json:"discovered"`
-	Registered   int    `json:"registered"`
-	Queued       int    `json:"queued"`
-	Examined     int    `json:"examined"`
-	Skipped      int    `json:"skipped"`
-	owner        string
+	ID             string `json:"id"`
+	Kind           string `json:"kind"`
+	MediaRoot      string `json:"media_root"`
+	ResolvedRoot   string `json:"-"`
+	Folder         string `json:"folder"`
+	State          string `json:"state"`
+	Message        string `json:"message"`
+	Created        int64  `json:"created_at"`
+	Updated        int64  `json:"updated_at"`
+	Discovered     int    `json:"discovered"`
+	Registered     int    `json:"registered"`
+	Queued         int    `json:"queued"`
+	NeedsMatch     int    `json:"needs_match"`
+	NeedsAttention int    `json:"needs_attention"`
+	Examined       int    `json:"examined"`
+	Skipped        int    `json:"skipped"`
+	owner          string
 }
 
 const libraryScanColumns = `id,kind,media_root,resolved_root,folder,state,message,created_at,updated_at,lease_owner`
@@ -51,7 +53,7 @@ func (s *Service) LibraryScan(ctx context.Context, id string) (LibraryScan, erro
 	if e != nil {
 		return out, e
 	}
-	e = s.db.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(state='registered'),0),COALESCE(SUM(state IN ('queued','verifying')),0) FROM library_scan_files WHERE scan_id=?`, id).Scan(&out.Discovered, &out.Registered, &out.Queued)
+	e = s.db.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(state='registered'),0),COALESCE(SUM(state IN ('queued','verifying')),0),COALESCE(SUM(state='review'),0),COALESCE(SUM(state='blocked'),0) FROM library_scan_files WHERE scan_id=?`, id).Scan(&out.Discovered, &out.Registered, &out.Queued, &out.NeedsMatch, &out.NeedsAttention)
 	if e != nil {
 		return out, e
 	}

@@ -171,7 +171,9 @@ describe("authentication and movies", () => {
     expect(
       await within(dialog).findByText("A synopsis used only in tests."),
     ).toBeVisible();
-    await userEvent.click(within(dialog).getByRole("switch"));
+    await userEvent.click(
+      within(dialog).getByRole("switch", { name: "Monitor this movie" }),
+    );
     await userEvent.click(
       within(dialog).getByRole("button", { name: "Add movie" }),
     );
@@ -184,6 +186,45 @@ describe("authentication and movies", () => {
       monitored: false,
     });
     expect(sent?.[1]?.headers).toMatchObject({ "X-CSRF-Token": "test-csrf" });
+  });
+  it("optionally creates the added title folder and reports the location", async () => {
+    const fetch = setup((url) => {
+      if (url.endsWith("/library/movies"))
+        return Response.json(
+          { created: true, item: { ...movie, id: 42 } },
+          { status: 201 },
+        );
+      if (url.endsWith("/library/items/42/create-folder"))
+        return Response.json({ path: "/media/Movies/Fixture Movie" });
+    });
+    mount("/search");
+    await screen.findByLabelText("Movie title");
+    await userEvent.type(screen.getByLabelText("Movie title"), "Fixture");
+    await userEvent.click(screen.getByRole("button", { name: /^Search$/ }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "View details" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      await within(dialog).findByRole("switch", {
+        name: "Create the destination folder now",
+      }),
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Add movie" }),
+    );
+    expect(
+      await within(dialog).findByText(
+        "Folder ready: /media/Movies/Fixture Movie",
+      ),
+    ).toBeVisible();
+    expect(
+      fetch.mock.calls.some(
+        ([url, options]) =>
+          url.endsWith("/library/items/42/create-folder") &&
+          options?.method === "POST",
+      ),
+    ).toBe(true);
   });
   it("preserves search results and displays add failures without claiming success", async () => {
     setup((url) =>

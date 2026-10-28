@@ -25,13 +25,17 @@ Historical native and package results below remain as records of past work.
   webhook information and receive notifications when their requests are fulfilled.
   Per-user encrypted webhooks and durable fulfillment notifications are
   implemented; live owner-service acceptance remains open.
-- [ ] Make unmatched files easy to discover and review for matching or registration.
+- [x] Make unmatched files easy to discover and review for matching or registration.
+  Configured-folder scans show unresolved and blocked counts and open to matching review.
 - [ ] Integrate Emby play activity so users can see what is actually being watched.
+  An on-demand, per-user recent-play snapshot is implemented; continuous event
+  history and acceptance against a real Emby server remain open.
 - [ ] Make per-series release preferences easy to set beyond a quality profile,
   including codecs such as H.264/H.265 and release groups such as Obscure/Megusta.
 - [ ] Show related franchise titles on a title's detail page, inspired by Mydia's
-  presentation, with clear links and library status.
-- [ ] Offer to create the destination folder when adding a title, before media
+  presentation, with clear links and library status. TMDb movie collections can
+  be loaded from movie details; broader TV and cross-media franchises remain open.
+- [x] Offer to create the destination folder when adding a title, before media
   is fetched, so files can be placed there manually.
 - [ ] Add a Discord companion bot that accepts requests, searches and replies
   with interactive release-selection buttons. Notify the server administrator

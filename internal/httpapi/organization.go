@@ -34,6 +34,18 @@ func (s *Server) organizationError(w http.ResponseWriter, e error) {
 	}
 	s.internal(w, "organization", e)
 }
+func (s *Server) createTitleFolder(w http.ResponseWriter, r *http.Request) {
+	id, ok := tvID(w, r)
+	if !ok || !decodeJSON(w, r, &struct{}{}) {
+		return
+	}
+	name, err := s.organization.CreateTitleFolder(r.Context(), id)
+	if err != nil {
+		s.organizationError(w, err)
+		return
+	}
+	send(w, 200, map[string]string{"path": name})
+}
 func (s *Server) organizationSettings(w http.ResponseWriter, r *http.Request) {
 	var out organization.Config
 	var e error

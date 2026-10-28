@@ -77,6 +77,9 @@ func TestExistingMovieDiscoveryReviewedRegistrationAndRestart(t *testing.T) {
 	if page.Total != 1 || page.Items[0].State != "review" || page.Items[0].Hint != "Test Movie" {
 		t.Fatal(page)
 	}
+	if page.Scan.NeedsMatch != 1 || page.Scan.NeedsAttention != 0 {
+		t.Fatal("incorrect unmatched counts", page.Scan)
+	}
 	file := page.Items[0]
 	if e = f.s.RegisterDiscovered(ctx, file.ID, ExistingRegistration{MediaID: f.movie.ID}); e == nil {
 		t.Fatal("review bypassed")
@@ -87,6 +90,10 @@ func TestExistingMovieDiscoveryReviewedRegistrationAndRestart(t *testing.T) {
 	f.reopen(t)
 	if _, e = f.s.ProcessLibraryNext(ctx); e != nil {
 		t.Fatal(e)
+	}
+	updated, e := f.s.LibraryScan(ctx, scan.ID)
+	if e != nil || updated.NeedsMatch != 0 || updated.Registered != 1 {
+		t.Fatal("counts did not update", updated, e)
 	}
 	details, e := f.s.Details(ctx, f.movie.ID, 1)
 	if e != nil || details.FileCount != 1 || len(details.Files) != 1 || details.HistoryCount != 0 || details.Files[0].Origin != "existing" || details.Files[0].DownloadID != "" || details.Files[0].Path != name {

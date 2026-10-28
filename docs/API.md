@@ -1,5 +1,19 @@
 # REST API — media catalog, downloads, imports, automation and operations
 
+## Emby and title helpers
+
+Administrator GET/PUT/DELETE `/api/v1/emby` reads connection status, saves
+`{url,api_key}`, or removes the encrypted connection. GET never returns the key;
+an empty key on PUT retains it only for the same URL. GET `/api/v1/emby/activity`
+fetches a bounded recent-play snapshot from the configured server. It is not a
+complete event history; see [Emby activity](EMBY.md).
+
+POST `/api/v1/library/items/{id}/create-folder` with `{}` creates the saved
+title's configured destination folder without moving or replacing files. GET
+`/api/v1/library/items/{id}/collection` fetches the TMDb movie collection and
+returns matching local IDs and statuses when present. These endpoints require
+administrator authentication, with CSRF and same-origin checks for mutations.
+
 ## Request accounts and notifications
 
 Administrator GET/POST `/api/v1/request-accounts` lists or creates accounts;

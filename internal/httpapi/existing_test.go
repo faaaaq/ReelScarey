@@ -58,7 +58,7 @@ func TestExistingLibraryAPIAuthenticationReviewAndPathBoundaries(t *testing.T) {
 		t.Fatal(e)
 	}
 	workflow := transfer.New(db, store, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
-	handler := New(db, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), fstest.MapFS{"index.html": {Data: []byte("ReelScarey")}}, "test", Dependencies{Auth: accounts, Transfer: workflow})
+	handler := New(db, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), fstest.MapFS{"index.html": {Data: []byte("ReelScarey")}}, "test", Dependencies{Auth: accounts, Transfer: workflow, Secrets: store})
 	movie, _, e := library.New(db).AddMovie(ctx, metadata.Movie{TMDbID: 11, Title: "Owned movie"}, false)
 	if e != nil {
 		t.Fatal(e)
@@ -67,6 +67,20 @@ func TestExistingLibraryAPIAuthenticationReviewAndPathBoundaries(t *testing.T) {
 		if out := request(handler, "GET", path, "", nil, false); out.Code != 401 {
 			t.Fatal("unprotected discovery", path, out.Code)
 		}
+	}
+	for _, path := range []string{"/api/v1/emby", "/api/v1/emby/activity"} {
+		if out := request(handler, "GET", path, "", nil, false); out.Code != 401 {
+			t.Fatal("unprotected Emby API", path, out.Code)
+		}
+	}
+	if out := request(handler, "PUT", "/api/v1/emby", `{"url":"http://emby:8096","api_key":"private"}`, &session, false); out.Code != 403 {
+		t.Fatal("Emby settings missing CSRF", out.Code)
+	}
+	if out := request(handler, "PUT", "/api/v1/emby", `{"url":"http://emby:8096","api_key":"private"}`, &session, true); out.Code != 200 {
+		t.Fatal("Emby save", out.Code, out.Body)
+	}
+	if out := request(handler, "GET", "/api/v1/emby", "", &session, false); out.Code != 200 || strings.Contains(out.Body.String(), "private") {
+		t.Fatal("Emby key returned", out.Code, out.Body)
 	}
 	for _, op := range []struct{ method, path string }{{"POST", "/api/v1/library/imports"}, {"POST", "/api/v1/library/import-files/" + strings.Repeat("a", 32) + "/register"}, {"POST", "/api/v1/library/import-files/" + strings.Repeat("a", 32) + "/skip"}, {"POST", "/api/v1/library/imports/" + strings.Repeat("a", 32) + "/cancel"}, {"DELETE", "/api/v1/library/imports/" + strings.Repeat("a", 32)}} {
 		if out := request(handler, op.method, op.path, "{}", &session, false); out.Code != 403 {

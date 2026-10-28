@@ -70,6 +70,10 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 
 ## Anime, metadata and media-server coverage
 
+- [ ] Live acceptance of the Emby recent-play snapshot and any continuous
+  playback event history. The current read-only view shows each user's latest
+  play state for up to 100 items, not a complete event history.
+
 - [x] AniList identity links and owner-reviewed release-order labels, with
   read-only TMDb group/subgroup proposals joined to exact canonical episode IDs.
   Existing title/absolute aliases remain preserved. Provider identity alone

@@ -70,6 +70,7 @@ export function AddMovieButton({
   monitored = true,
   kind = "movie",
   category,
+  createFolder = false,
 }: {
   id: number;
   added: boolean;
@@ -77,22 +78,40 @@ export function AddMovieButton({
   monitored?: boolean;
   kind?: "movie" | "series";
   category?: "anime";
+  createFolder?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [folderMessage, setFolderMessage] = useState("");
   async function add() {
     if (pending) return;
     setPending(true);
     setError("");
     try {
-      await api(kind === "series" ? "/library/series" : "/library/movies", {
-        method: "POST",
-        body: JSON.stringify({
-          tmdb_id: id,
-          monitored,
-          ...(category ? { category } : {}),
-        }),
-      });
+      const result = await api<{ item: { id: number } }>(
+        kind === "series" ? "/library/series" : "/library/movies",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            tmdb_id: id,
+            monitored,
+            ...(category ? { category } : {}),
+          }),
+        },
+      );
+      if (createFolder) {
+        try {
+          const folder = await api<{ path: string }>(
+            `/library/items/${result.item.id}/create-folder`,
+            { method: "POST", body: "{}" },
+          );
+          setFolderMessage(`Folder ready: ${folder.path}`);
+        } catch (e) {
+          setFolderMessage(
+            `Title added, but the folder could not be created: ${messageFor(e)}`,
+          );
+        }
+      }
       onAdded(id);
     } catch (error) {
       setError(messageFor(error));
@@ -102,9 +121,12 @@ export function AddMovieButton({
   }
   if (added)
     return (
-      <Badge color="green" size="2">
-        <Check size={14} /> In library
-      </Badge>
+      <div>
+        <Badge color="green" size="2">
+          <Check size={14} /> In library
+        </Badge>
+        {folderMessage && <p role="status">{folderMessage}</p>}
+      </div>
     );
   return (
     <div>
@@ -141,6 +163,7 @@ export function MovieDetails({
     `/metadata/${kind === "series" ? "series" : "movies"}/${id}`,
   );
   const [monitored, setMonitored] = useState(true);
+  const [createFolder, setCreateFolder] = useState(false);
   return (
     <Dialog.Root
       open
@@ -188,6 +211,13 @@ export function MovieDetails({
                   <Switch checked={monitored} onCheckedChange={setMonitored} />{" "}
                   Monitor this {kind === "series" ? "show" : "movie"}
                 </label>
+                <label className="monitor-choice">
+                  <Switch
+                    checked={createFolder}
+                    onCheckedChange={setCreateFolder}
+                  />{" "}
+                  Create the destination folder now
+                </label>
                 <p className="field-help">
                   {kind === "series"
                     ? "Regular seasons start selected; specials start unselected. Choose seasons and episodes in your library, then find releases. Completed TV files need your mapping confirmation before import."
@@ -203,6 +233,7 @@ export function MovieDetails({
                 added={added}
                 onAdded={onAdded}
                 monitored={monitored}
+                createFolder={createFolder}
               />
               {added && (
                 <Button asChild variant="soft">

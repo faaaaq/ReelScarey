@@ -1,5 +1,16 @@
 # Validation record — 2026-10-27
 
+## Unmatched review, Emby snapshots, title folders and movie collections
+
+Linux container tests cover unmatched scan counts, encrypted Emby settings and
+bounded playback fixtures, title-folder naming and preservation of existing
+files, and TMDb movie collection responses. The full frontend suite passed 129
+tests. A real Emby server, owner media and real TMDb collection acceptance have
+not been exercised. Emby results are on-demand latest-play snapshots, not a
+complete history. Windows-hosted tests requiring Linux filesystem operations or
+local test sockets failed under the restricted development environment; Linux
+container tests are the deployment-relevant checks.
+
 The request and companion-bot changes have Linux container fixture coverage for
 IMDb via MDBList, signed Discord interactions, account linkage, request approval
 and release selection. The full frontend suite passed (126 tests). No live

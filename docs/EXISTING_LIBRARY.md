@@ -1,10 +1,16 @@
 # Existing-library import (0.10 development)
 
-Open **Import library** or **Import existing** from Movies/TV shows. This is a
+Open **Find unmatched files** or **Import existing** from Movies/TV shows. This is a
 reviewed, in-place registration workflow for media already inside the configured
 media root. It does not move, rename, copy, replace or delete media files.
 
 ## Prepare and discover
+
+When adding a movie or show from its search details, you can choose **Create the
+destination folder now**. ReelScarey uses the current library and naming rules;
+it leaves existing files untouched. Folder creation is a separate step after
+adding the title, so a permissions or naming error does not undo the add. A
+movie naming template must provide a separate title directory for this option.
 
 Mount the existing library inside `REELSCAREY_MEDIA_DIR`, then set the movie and
 TV folder names in Settings. The page displays the exact server paths it will
@@ -30,6 +36,9 @@ retaining previous results. It never silently labels a partial scan complete.
 Each directory is read in batches of 128 entries. Twenty scan histories are kept;
 forget a finished scan to make room. Forgetting review records never removes
 registered files or their catalog entries and refuses active verification work.
+Each scan shows counts of files needing a match and needing attention; the review
+opens to files needing a match. Counts are snapshots from that scan, not a live
+filesystem inventory. Run a new scan to discover later changes.
 
 ## Review the identity
 
