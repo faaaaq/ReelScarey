@@ -162,6 +162,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/automation/runs/{id}", method(http.MethodGet, s.automationResults))
 	mux.HandleFunc("/api/v1/automation/items", method(http.MethodGet, s.automationItems))
 	mux.HandleFunc("/api/v1/automation/items/{id}", method(http.MethodPut, s.automationAssign))
+	mux.HandleFunc("/api/v1/library/series/{id}/release-rules", s.seriesReleaseRules)
 	mux.HandleFunc("/api/v1/quality-profiles", s.qualityProfiles)
 	mux.HandleFunc("/api/v1/quality-profiles/{id}", method(http.MethodPut, s.qualityProfileUpdate))
 	mux.HandleFunc("/api/v1/auth/session", method(http.MethodGet, s.authSession))

@@ -2,6 +2,13 @@
 
 ## Emby and title helpers
 
+Administrator GET/PUT `/api/v1/library/series/{id}/release-rules` reads or saves
+the show's required codec (`""`, `h264`, or `h265`), release group and revision.
+Writes reject stale revisions. Rules apply in scheduled searches in addition to
+the assigned quality profile and are checked again when reserving a download.
+Manual searches are unaffected. Codec labels must be explicit; groups require a
+bracketed prefix or hyphenated suffix.
+
 Administrator GET/PUT/DELETE `/api/v1/emby` reads connection status, saves
 `{url,api_key}`, or removes the encrypted connection. GET never returns the key;
 an empty key on PUT retains it only for the same URL. GET `/api/v1/emby/activity`

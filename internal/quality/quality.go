@@ -33,16 +33,19 @@ type Summary struct {
 func (p Profile) Summary() Summary { return Summary{ID: p.ID, Name: p.Name, Revision: p.Revision} }
 
 type Target struct {
-	Title            string
-	Year             *int
-	Season, Episode  int
-	TV               bool
-	Anime            bool
-	AnimeMode        string
-	AlternateTitles  []string
-	AbsoluteNumber   *int
-	AnimeOrderTitle  string
-	AnimeOrderLabels []string
+	Title               string
+	Year                *int
+	Season, Episode     int
+	TV                  bool
+	Anime               bool
+	AnimeMode           string
+	AlternateTitles     []string
+	AbsoluteNumber      *int
+	AnimeOrderTitle     string
+	AnimeOrderLabels    []string
+	SeriesCodec         string
+	SeriesGroup         string
+	SeriesRulesRevision int
 }
 type Release struct {
 	Protocol  string
@@ -155,6 +158,24 @@ func Evaluate(p Profile, t Target, r Release) Decision {
 		reject("Title, year or episode identity does not match exactly.")
 	}
 	tokens := " " + Normalize(labels) + " "
+	if t.TV && t.SeriesCodec != "" {
+		aliases := []string{"x264", "h264", "h 264", "avc"}
+		if t.SeriesCodec == "h265" {
+			aliases = []string{"x265", "h265", "h 265", "hevc"}
+		}
+		matched := false
+		for _, alias := range aliases {
+			if strings.Contains(tokens, " "+alias+" ") {
+				matched = true
+			}
+		}
+		if !matched {
+			reject("Required codec not explicitly labeled: " + t.SeriesCodec)
+		}
+	}
+	if t.TV && t.SeriesGroup != "" && !matchesReleaseGroup(r.Title, t.SeriesGroup) {
+		reject("Required release group not explicitly labeled: " + t.SeriesGroup)
+	}
 	if t.TV {
 		for _, bad := range []string{"complete", "season", "pack", "batch"} {
 			if strings.Contains(tokens, " "+bad+" ") {

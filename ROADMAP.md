@@ -30,8 +30,10 @@ Historical native and package results below remain as records of past work.
 - [ ] Integrate Emby play activity so users can see what is actually being watched.
   An on-demand, per-user recent-play snapshot is implemented; continuous event
   history and acceptance against a real Emby server remain open.
-- [ ] Make per-series release preferences easy to set beyond a quality profile,
+- [x] Make per-series release preferences easy to set beyond a quality profile,
   including codecs such as H.264/H.265 and release groups such as Obscure/Megusta.
+  These rules apply to scheduled searches and require explicit release labels;
+  manual searches are unrestricted.
 - [ ] Show related franchise titles on a title's detail page, inspired by Mydia's
   presentation, with clear links and library status. TMDb movie collections can
   be loaded from movie details; broader TV and cross-media franchises remain open.

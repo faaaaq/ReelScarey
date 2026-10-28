@@ -12,6 +12,7 @@ import { PageHeading, RequestState } from "../components";
 import { Poster } from "../movieComponents";
 import { useResource } from "../useResource";
 import { ItemInformation } from "./ItemDetails";
+import { SeriesReleaseRules } from "./SeriesReleaseRules";
 
 export function Series() {
   const { id } = useParams();
@@ -132,6 +133,7 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           </a>
         </div>
       </section>
+      <SeriesReleaseRules id={show.id} />
       <ItemInformation
         key={`details-${show.id}-${show.revision}`}
         id={show.id}

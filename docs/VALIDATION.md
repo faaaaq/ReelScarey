@@ -1,5 +1,10 @@
 # Validation record — 2026-10-27
 
+Per-series release rule fixtures cover codec/group labels, stored revisions,
+stale edits and a rule change fencing an in-flight automatic selection. Existing
+automatic and mapped-Anime suites passed on Linux; owner indexer acceptance is
+still needed.
+
 ## Unmatched review, Emby snapshots, title folders and movie collections
 
 Linux container tests cover unmatched scan counts, encrypted Emby settings and

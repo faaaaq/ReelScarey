@@ -71,6 +71,13 @@ func makeMappedPlan(policy library.AnimeSearchSettings, order library.AnimeOrder
 		if !ok || t.NumberingRevision != policy.NumberingRevision || t.CategoryRevision != policy.CategoryRevision || t.AnimeRevision != policy.Revision || t.Probe != "" || !policy.IncludeSpecials && mappedSpecial(t.Season, entry.Label) || quality.Normalize(entry.ReleaseTitle) != quality.Normalize(plan.identity.AnimeOrderTitle) {
 			return plan, false
 		}
+		if len(plan.targets) == 0 {
+			plan.identity.SeriesCodec = t.SeriesCodec
+			plan.identity.SeriesGroup = t.SeriesGroup
+			plan.identity.SeriesRulesRevision = t.SeriesRulesRevision
+		} else if plan.identity.SeriesCodec != t.SeriesCodec || plan.identity.SeriesGroup != t.SeriesGroup || plan.identity.SeriesRulesRevision != t.SeriesRulesRevision {
+			return plan, false
+		}
 		plan.ids = append(plan.ids, entry.EpisodeID)
 		plan.targets = append(plan.targets, t)
 		plan.order.Entries = append(plan.order.Entries, entry)

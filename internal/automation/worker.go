@@ -30,20 +30,20 @@ type searchTarget struct {
 
 // Only released, effectively monitored items with no active reservation qualify.
 // TV metadata is loaded explicitly by the owner; the scheduler does not invent it.
-const targetSQL = `SELECT key,media_id,episode_id,title,year,season,episode,probe,profile_id,assignment_revision,category,anime_mode,alternate_titles,absolute_number,anime_revision,anime_search_title,category_revision,numbering_revision FROM (
- SELECT printf('m:%020d',m.id) AS key,m.id AS media_id,NULL AS episode_id,m.title,m.year,0 AS season,0 AS episode,COALESCE(f.probe_json,'') AS probe,COALESCE(a.profile_id,ss.default_profile_id) AS profile_id,COALESCE(a.revision,0) AS assignment_revision,m.category,'' AS anime_mode,'[]' AS alternate_titles,NULL AS absolute_number,0 AS anime_revision,'' AS anime_search_title,m.category_revision,0 AS numbering_revision
+const targetSQL = `SELECT key,media_id,episode_id,title,year,season,episode,probe,profile_id,assignment_revision,category,anime_mode,alternate_titles,absolute_number,anime_revision,anime_search_title,category_revision,numbering_revision,rule_codec,rule_group,rule_revision FROM (
+ SELECT printf('m:%020d',m.id) AS key,m.id AS media_id,NULL AS episode_id,m.title,m.year,0 AS season,0 AS episode,COALESCE(f.probe_json,'') AS probe,COALESCE(a.profile_id,ss.default_profile_id) AS profile_id,COALESCE(a.revision,0) AS assignment_revision,m.category,'' AS anime_mode,'[]' AS alternate_titles,NULL AS absolute_number,0 AS anime_revision,'' AS anime_search_title,m.category_revision,0 AS numbering_revision,'' AS rule_codec,'' AS rule_group,0 AS rule_revision
  FROM media_items m CROSS JOIN search_schedule ss LEFT JOIN item_automation a ON a.media_id=m.id LEFT JOIN media_files f ON f.movie_id=m.id
  WHERE m.kind='movie' AND m.monitored=1 AND length(m.release_date)=10 AND substr(m.release_date,1,4) BETWEEN '0001' AND '9999' AND date(m.release_date,'+0 days')=m.release_date AND m.release_date<=? AND NOT EXISTS(SELECT 1 FROM downloads d WHERE d.movie_id=m.id AND d.kind='movie' AND d.state NOT IN ('completed','cancelled'))
  UNION ALL
- SELECT printf('e:%020d',e.id),m.id,e.id,m.title,m.year,s.number,e.number,COALESCE(f.probe_json,''),COALESCE(a.profile_id,ss.default_profile_id),COALESCE(a.revision,0),m.category,COALESCE(ans.mode,'disabled'),COALESCE(ans.alternate_titles,'[]'),an.absolute_number,COALESCE(ans.revision,0),COALESCE(ans.search_title,''),m.category_revision,d.revision
- FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id JOIN series_details d ON d.media_id=m.id CROSS JOIN search_schedule ss LEFT JOIN item_automation a ON a.media_id=m.id LEFT JOIN episode_files ef ON ef.episode_id=e.id LEFT JOIN media_files f ON f.id=ef.media_file_id LEFT JOIN anime_search_settings ans ON ans.media_id=m.id LEFT JOIN anime_episode_numbers an ON an.episode_id=e.id
+ SELECT printf('e:%020d',e.id),m.id,e.id,m.title,m.year,s.number,e.number,COALESCE(f.probe_json,''),COALESCE(a.profile_id,ss.default_profile_id),COALESCE(a.revision,0),m.category,COALESCE(ans.mode,'disabled'),COALESCE(ans.alternate_titles,'[]'),an.absolute_number,COALESCE(ans.revision,0),COALESCE(ans.search_title,''),m.category_revision,d.revision,COALESCE(rr.codec,''),COALESCE(rr.release_group,''),COALESCE(rr.revision,0)
+ FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id JOIN series_details d ON d.media_id=m.id CROSS JOIN search_schedule ss LEFT JOIN item_automation a ON a.media_id=m.id LEFT JOIN episode_files ef ON ef.episode_id=e.id LEFT JOIN media_files f ON f.id=ef.media_file_id LEFT JOIN anime_search_settings ans ON ans.media_id=m.id LEFT JOIN anime_episode_numbers an ON an.episode_id=e.id LEFT JOIN series_release_rules rr ON rr.media_id=m.id
  WHERE m.monitored=1 AND (m.category='standard' OR (m.category='anime' AND ((s.number>0 AND ans.mode IN ('season','absolute')) OR (ans.mode='mapped' AND (s.number>0 OR ans.include_specials=1))))) AND s.monitored=1 AND e.monitored=1 AND s.loaded_at<>'' AND length(e.air_date)=10 AND substr(e.air_date,1,4) BETWEEN '0001' AND '9999' AND date(e.air_date,'+0 days')=e.air_date AND e.air_date<=? AND NOT EXISTS(SELECT 1 FROM episode_downloads ed JOIN downloads d ON d.id=ed.download_id WHERE ed.episode_id=e.id AND d.state NOT IN ('completed','cancelled'))
 )`
 
 func scanTarget(row interface{ Scan(...any) error }) (searchTarget, error) {
 	var t searchTarget
 	var category, aliases string
-	e := row.Scan(&t.Key, &t.MediaID, &t.EpisodeID, &t.Title, &t.Year, &t.Season, &t.Episode, &t.Probe, &t.ProfileID, &t.AssignmentRevision, &category, &t.AnimeMode, &aliases, &t.AbsoluteNumber, &t.AnimeRevision, &t.AnimeSearchTitle, &t.CategoryRevision, &t.NumberingRevision)
+	e := row.Scan(&t.Key, &t.MediaID, &t.EpisodeID, &t.Title, &t.Year, &t.Season, &t.Episode, &t.Probe, &t.ProfileID, &t.AssignmentRevision, &category, &t.AnimeMode, &aliases, &t.AbsoluteNumber, &t.AnimeRevision, &t.AnimeSearchTitle, &t.CategoryRevision, &t.NumberingRevision, &t.SeriesCodec, &t.SeriesGroup, &t.SeriesRulesRevision)
 	t.TV = t.EpisodeID != nil
 	t.Anime = t.TV && category == "anime"
 	if e == nil {

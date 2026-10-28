@@ -140,6 +140,36 @@ func (s *Server) automationAssign(w http.ResponseWriter, r *http.Request) {
 	}
 	send(w, 200, map[string]bool{"saved": true})
 }
+func (s *Server) seriesReleaseRules(w http.ResponseWriter, r *http.Request) {
+	if !s.automationReady(w) {
+		return
+	}
+	id, ok := tvID(w, r)
+	if !ok {
+		return
+	}
+	var out automation.SeriesRules
+	var e error
+	switch r.Method {
+	case http.MethodGet:
+		out, e = s.automation.SeriesRules(r.Context(), id)
+	case http.MethodPut:
+		var in automation.SeriesRules
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		out, e = s.automation.SaveSeriesRules(r.Context(), id, in)
+	default:
+		w.Header().Set("Allow", "GET, PUT")
+		fail(w, 405, "method_not_allowed", "Use GET or PUT.")
+		return
+	}
+	if e != nil {
+		s.automationError(w, e)
+		return
+	}
+	send(w, 200, out)
+}
 func (s *Server) qualityProfiles(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		v, e := quality.New(s.db).List(r.Context())
