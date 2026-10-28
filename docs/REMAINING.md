@@ -131,12 +131,10 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 
 ## Deployment and public release
 
-- [ ] Broader event coverage and historical reconstruction. The timeline records
-  title adds/monitoring/file registration, downloads, YouTube, requests,
-  notifications, automation, scans, organization, subtitle jobs and observed
-  Emby sessions from migration 027 onward; it does not reconstruct older events.
-- [ ] Automatic cross-media franchise discovery. Explicit links between saved
-  movies and shows and TMDb movie collections are available now.
+- [ ] Independently validate franchise associations and timeline behavior on a
+  representative owner library. Automatic discovery uses community-maintained
+  Wikidata statements and may be incomplete. The timeline backfills saved facts
+  but cannot reconstruct intermediate transitions that were never recorded.
 
 - [x] Remove standalone package and artifact upload steps from CI; Docker is the
   supported deployment target.

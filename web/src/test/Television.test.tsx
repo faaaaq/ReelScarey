@@ -65,6 +65,8 @@ function setup(
       });
     if (url.endsWith("/providers/tmdb"))
       return Response.json({ configured: true });
+    if (url.endsWith("/franchise"))
+      return Response.json({ source: "Wikidata", items: [], truncated: false });
     if (url.includes("/library/items/7?"))
       return Response.json({
         item: show,

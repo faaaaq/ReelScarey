@@ -28,23 +28,25 @@ func TestEventTimelineRecordsChangesAndPaginates(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	if _, e = db.Exec(`INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(1,'fixture','old','Older backfill','historical')`); e != nil {
+		t.Fatal(e)
+	}
 	s := &Server{db: db, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	res := httptest.NewRecorder()
 	s.activityEvents(res, httptest.NewRequest("GET", "/api/v1/events", nil))
 	var page struct {
 		Items []activityEvent `json:"items"`
-		Next  *int64          `json:"next"`
+		Next  *string         `json:"next"`
 	}
 	if e = json.Unmarshal(res.Body.Bytes(), &page); e != nil || res.Code != 200 || len(page.Items) != 50 || page.Next == nil {
 		t.Fatal(res.Code, page, e)
 	}
 	next := httptest.NewRecorder()
-	s.activityEvents(next, httptest.NewRequest("GET", "/api/v1/events?before="+jsonNumber(*page.Next), nil))
+	s.activityEvents(next, httptest.NewRequest("GET", "/api/v1/events?before="+*page.Next, nil))
 	var older struct {
 		Items []activityEvent `json:"items"`
 	}
-	if e = json.Unmarshal(next.Body.Bytes(), &older); e != nil || len(older.Items) != 6 || older.Items[0].ID >= page.Items[len(page.Items)-1].ID {
+	if e = json.Unmarshal(next.Body.Bytes(), &older); e != nil || len(older.Items) != 7 || older.Items[0].ID >= page.Items[len(page.Items)-1].ID || older.Items[len(older.Items)-1].Title != "Older backfill" {
 		t.Fatal(next.Code, older, e)
 	}
 }
-func jsonNumber(v int64) string { b, _ := json.Marshal(v); return string(b) }

@@ -1,5 +1,20 @@
 # Validation record — 2026-10-27
 
+## Automatic cross-media discovery and history expansion
+
+The Linux adapter successfully queried public Wikidata from both Star Wars movie
+TMDb ID 11 and TV ID 105971; each returned movie and TV associations. Isolated
+tests cover query identity, caching, ambiguous provider responses, exact local
+library matching, provider failures, and chronological history pagination.
+An upgrade fixture verifies historical creation/state backfill without inventing
+intermediate transitions. History tests check that encrypted credentials and
+private list identifiers are not copied to event descriptions. Owner-library
+acceptance and the completeness of community-maintained Wikidata remain open.
+The full Linux image build passed Go tests and vet, the complete frontend suite
+passed 136 tests, and targeted Linux race checks passed. A disposable Docker
+container passed the authenticated setup/restart smoke test, including event
+visibility and persistence; Compose configuration validation also passed.
+
 Per-series release rule fixtures cover codec/group labels, stored revisions,
 stale edits and a rule change fencing an in-flight automatic selection. Existing
 automatic and mapped-Anime suites passed on Linux; owner indexer acceptance is

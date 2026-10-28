@@ -13,6 +13,7 @@ import { AnimeOrder } from "./AnimeOrder";
 import { ItemOrganization } from "./Organization";
 import { MovieCollection } from "./MovieCollection";
 import { RelatedTitles } from "./RelatedTitles";
+import { AutomaticFranchise } from "./AutomaticFranchise";
 
 export type Information = {
   tagline: string;
@@ -528,6 +529,7 @@ export function ItemInformation({
           )}
           {data.item.category === "anime" && <AnimeOrder id={id} />}
           {data.item.kind === "movie" && <MovieCollection id={id} />}
+          <AutomaticFranchise id={id} />
           <RelatedTitles id={id} />
           <ItemOrganization id={id} />
           <Pagination

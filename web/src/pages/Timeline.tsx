@@ -13,7 +13,7 @@ export type Event = {
   title: string;
   state: string;
 };
-export type EventPage = { items: Event[]; next: number | null };
+export type EventPage = { items: Event[]; next: string | null };
 const typeNames: Record<string, string> = {
   title: "Title",
   download: "Download",
@@ -24,6 +24,13 @@ const typeNames: Record<string, string> = {
   playback: "Emby playback",
   automation: "Automation",
   scan: "Library scan",
+  related: "Related titles",
+  series_rules: "Show settings",
+  request_account: "Request account",
+  request_list: "Request list",
+  connection: "Connection",
+  indexer: "Indexer",
+  settings: "Settings",
 };
 export function EventRow({
   event,
@@ -41,6 +48,12 @@ export function EventRow({
     playback: "/watch-activity",
     automation: "/automation",
     scan: `/import?scan=${encodeURIComponent(event.object_id)}`,
+    series_rules: `/series/${encodeURIComponent(event.object_id)}`,
+    request_account: "/requests",
+    request_list: "/requests",
+    connection: "/settings",
+    indexer: "/indexers",
+    settings: "/settings",
   };
   const dest = paths[event.kind];
   return (
@@ -65,7 +78,7 @@ export function EventRow({
 export function Timeline() {
   const first = useResource<EventPage>("/events");
   const [more, setMore] = useState<Event[]>([]);
-  const [cursor, setCursor] = useState<number | null | undefined>();
+  const [cursor, setCursor] = useState<string | null | undefined>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const next = cursor === undefined ? first.data?.next : cursor;
@@ -90,8 +103,8 @@ export function Timeline() {
         description="Recorded changes across downloads, requests, playback and library tasks."
       />
       <p>
-        Events are recorded from the version that introduced this timeline;
-        earlier actions are not reconstructed.
+        Older saved creation times and last-known states are shown where
+        available. Earlier intermediate changes may be missing.
       </p>
       {first.loading && <p>Loading events…</p>}
       {(first.error || error) && (

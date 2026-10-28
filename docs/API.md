@@ -18,11 +18,17 @@ GET/PUT `/api/v1/emby/monitor` controls opt-in recording with a revision, and
 GET `/api/v1/emby/history` reads the most recent 200 observed sessions. Polling
 can miss short plays; uncertain gaps are explicitly marked.
 
-Administrator GET `/api/v1/events?before={id}` returns up to 50 recorded state
-changes and a cursor for older entries. Recording begins with migration 027;
-older actions are not reconstructed. GET/POST/DELETE
+Administrator GET `/api/v1/events?before={cursor}` returns up to 50 recorded state
+changes and an opaque chronological cursor for older entries. Migration 028
+backfills known creation times and last saved states without inventing
+intermediate actions. GET/POST/DELETE
 `/api/v1/library/items/{id}/related` reads or changes explicit mutual links
 between saved titles; writes accept `{other_id}` and require CSRF.
+GET `/api/v1/library/items/{id}/franchise` automatically discovers movie and
+TV relationships using Wikidata's explicit media-franchise statements and exact
+TMDb identifiers. It returns at most 200 provider records, marks truncation,
+and associates exact saved titles without modifying them. Provider data may be
+incomplete, community-edited or unavailable; results are suggestions.
 
 POST `/api/v1/library/items/{id}/create-folder` with `{}` creates the saved
 title's configured destination folder without moving or replacing files. GET

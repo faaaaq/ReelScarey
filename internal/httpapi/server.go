@@ -56,6 +56,7 @@ type Server struct {
 	bot              *discordbot.Service
 	emby             *emby.Service
 	embyMonitor      *emby.Monitor
+	franchises       metadata.FranchiseProvider
 	animeProvider    metadata.AnimeProvider
 	youtube          *youtube.Store
 	youtubeInspector YouTubeInspector
@@ -71,6 +72,7 @@ type Dependencies struct {
 	YouTubeInspector YouTubeInspector
 	Secrets          *securestore.Store
 	Bot              *discordbot.Service
+	Franchises       metadata.FranchiseProvider
 }
 
 type YouTubeInspector interface {
@@ -82,6 +84,10 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	s.youtube = youtube.NewStore(db)
 	s.youtubeInspector = deps.YouTubeInspector
 	s.bot = deps.Bot
+	s.franchises = deps.Franchises
+	if s.franchises == nil {
+		s.franchises = metadata.NewWikidataFranchises()
+	}
 	s.operations = operations.New(db, cfg)
 	s.organization = organization.New(db, cfg)
 	s.requests = requests.New(db)
@@ -146,6 +152,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/items/{id}/create-folder", method(http.MethodPost, s.createTitleFolder))
 	mux.HandleFunc("/api/v1/library/items/{id}/collection", method(http.MethodGet, s.movieCollection))
 	mux.HandleFunc("/api/v1/library/items/{id}/related", s.relatedTitles)
+	mux.HandleFunc("/api/v1/library/items/{id}/franchise", method(http.MethodGet, s.franchiseTitles))
 	mux.HandleFunc("/api/v1/subtitles/preferences", s.subtitlePreferences)
 	mux.HandleFunc("/api/v1/providers/opensubtitles", s.subtitleProvider)
 	mux.HandleFunc("/api/v1/providers/opensubtitles/test", method(http.MethodPost, s.subtitleProviderTest))

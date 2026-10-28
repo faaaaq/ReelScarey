@@ -34,10 +34,11 @@ Historical native and package results below remain as records of past work.
   including codecs such as H.264/H.265 and release groups such as Obscure/Megusta.
   These rules apply to scheduled searches and require explicit release labels;
   manual searches are unrestricted.
-- [ ] Show related franchise titles on a title's detail page, inspired by Mydia's
+- [x] Show related franchise titles on a title's detail page, inspired by Mydia's
   presentation, with clear links and library status. TMDb movie collections can
   be loaded from movie details; explicit mutual links connect saved movies and
-  TV shows. Automatic cross-media franchise discovery remains open.
+  TV shows. Automatic cross-media discovery uses Wikidata's explicit franchise
+  memberships and exact TMDb IDs, with provider limitations and local status shown.
 - [x] Offer to create the destination folder when adding a title, before media
   is fetched, so files can be placed there manually.
 - [ ] Add a Discord companion bot that accepts requests, searches and replies
@@ -45,11 +46,11 @@ Historical native and package results below remain as records of past work.
   with the same interactive information when a request is made in ReelScarey.
   Implemented with linked accounts and signed interactions; live Discord
   acceptance remains open.
-- [ ] Add an accessible history/notification tray along the edge of the interface,
+- [x] Add an accessible history/notification tray along the edge of the interface,
   with a compact timeline of events, timestamps and a way to see more, inspired
   by the supplied reference image. The tray and paginated timeline record key
-  state changes from installation of the timeline; historical reconstruction and
-  events outside the documented set remain open.
+  state changes and reconstruct available historical facts. Earlier intermediate
+  transitions that were not stored cannot be reconstructed.
 
 ## 1 — Foundation
 - [x] Go server, structured logging, graceful shutdown and validated environment

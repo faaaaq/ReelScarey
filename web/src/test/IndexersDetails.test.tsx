@@ -40,6 +40,8 @@ function setup(
           expires_at: 9999999999,
         },
       });
+    if (url.endsWith("/franchise"))
+      return Response.json({ source: "Wikidata", items: [], truncated: false });
     return (
       extra(url, options) ??
       Response.json(
