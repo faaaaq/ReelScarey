@@ -18,7 +18,7 @@ func TestRealFFprobeReadsEmbeddedAudioLanguage(t *testing.T) {
 	for _, extension := range []string{"mp4", "mkv"} {
 		t.Run(extension, func(t *testing.T) {
 			name := filepath.Join(t.TempDir(), "audio."+extension)
-			args := []string{"-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:r=10", "-f", "lavfi", "-i", "sine=frequency=1000", "-t", "0.5", "-c:v", "mpeg4", "-c:a", "aac", "-metadata", "title=Incorrect fixture title", "-metadata:s:a:0", "language=jpn"}
+			args := []string{"-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:r=10", "-f", "lavfi", "-i", "sine=frequency=1000", "-t", "0.5", "-c:v", "mpeg4", "-c:a", "aac", "-metadata", "title=Incorrect fixture title", "-metadata", "comment=Keep this comment", "-metadata:s:a:0", "language=jpn"}
 			if extension == "mp4" {
 				args = append(args, "-movflags", "faststart")
 			}
