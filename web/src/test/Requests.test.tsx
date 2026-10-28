@@ -4,8 +4,75 @@ import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import App from "../App";
+import { AdminRequests } from "../pages/Requests";
 
 describe("request accounts", () => {
+  it("lets an administrator configure the Discord bot and register commands", async () => {
+    let configured = false;
+    const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+      if (url.endsWith("/request-accounts"))
+        return Response.json({ items: [] });
+      if (url.endsWith("/requests")) return Response.json({ items: [] });
+      if (url.endsWith("/discord-bot/register"))
+        return Response.json({ registered: true });
+      if (url.endsWith("/discord-bot")) {
+        if (options?.method === "PUT") configured = true;
+        return Response.json({
+          configured,
+          application_id: "111111111111111111",
+          public_key: "a".repeat(64),
+          guild_id: "222222222222222222",
+          admin_user_id: "333333333333333333",
+          admin_channel_id: "444444444444444444",
+        });
+      }
+      return Response.json(
+        { error: { message: "unexpected" } },
+        { status: 404 },
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+    render(
+      <Theme>
+        <MemoryRouter>
+          <AdminRequests />
+        </MemoryRouter>
+      </Theme>,
+    );
+    await screen.findByRole("heading", { name: "Discord companion bot" });
+    await userEvent.type(
+      screen.getByLabelText("Application ID"),
+      "111111111111111111",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Application public key"),
+      "a".repeat(64),
+    );
+    await userEvent.type(
+      screen.getByLabelText("Server ID"),
+      "222222222222222222",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Administrator Discord user ID"),
+      "333333333333333333",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Administrator channel ID"),
+      "444444444444444444",
+    );
+    await userEvent.type(screen.getByLabelText("Bot token"), "b".repeat(60));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save bot settings" }),
+    );
+    expect(await screen.findByText(/Bot settings saved/)).toBeVisible();
+    expect(screen.getByLabelText("Bot token")).toHaveValue("");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Register commands" }),
+    );
+    expect(
+      await screen.findByText("Commands registered with Discord."),
+    ).toBeVisible();
+  });
   it("shows a request-only interface and submits a selected title", async () => {
     const fetch = vi.fn(async (url: string, options?: RequestInit) => {
       if (url.endsWith("/auth/session"))

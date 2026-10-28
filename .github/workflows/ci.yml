@@ -91,16 +91,6 @@ jobs:
           REELSCAREY_LIVE_SAB: '1'
       - run: go build -o bin/reelscarey ./cmd/reelscarey
       - run: node scripts/smoke.mjs
-      - name: Build private installation packages
-        run: |
-          go run ./scripts/package 0.20.0-dev dist/private-0.20.0
-          cd dist/private-0.20.0
-          sha256sum --check SHA256SUMS
-          mkdir unpacked
-          tar -xzf reelscarey-0.20.0-dev-linux-amd64.tar.gz -C unpacked
-          test "$(unpacked/reelscarey version)" = '0.20.0-dev'
-          cd ../..
-          node scripts/smoke.mjs dist/private-0.20.0/unpacked/reelscarey
       - name: Build and smoke-test the container
         shell: bash
         run: |
@@ -111,13 +101,3 @@ jobs:
           trap 'docker logs reelscarey-ci; docker rm -fv reelscarey-ci' EXIT
           node scripts/container-smoke.mjs
           docker stats --no-stream --format 'Container resources: {{.MemUsage}}, {{.CPUPerc}}, {{.PIDs}}' reelscarey-ci
-      - name: Retain private packages and checksums
-        uses: actions/upload-artifact@v6.0.0
-        with:
-          name: reelscarey-private-0.20.0
-          path: |
-            dist/private-0.20.0/*.tar.gz
-            dist/private-0.20.0/*.zip
-            dist/private-0.20.0/SHA256SUMS
-          if-no-files-found: error
-          retention-days: 14

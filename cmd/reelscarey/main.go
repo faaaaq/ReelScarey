@@ -17,6 +17,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/automation"
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
+	"github.com/faaaaq/ReelScarey/internal/discordbot"
 	"github.com/faaaaq/ReelScarey/internal/httpapi"
 	"github.com/faaaaq/ReelScarey/internal/instance"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
@@ -96,6 +97,7 @@ func run(logger *slog.Logger) error {
 	automationService := automation.New(db, transferService)
 	subtitleService := subtitle.New(db, secretStore, cfg, subtitle.NewOpenSubtitles())
 	organizationService := organization.New(db, cfg)
+	botService := discordbot.New(db, secretStore, metadataService, transferService)
 	youtubePath := os.Getenv("REELSCAREY_YTDLP_PATH")
 	if youtubePath == "" {
 		youtubePath = "yt-dlp"
@@ -113,12 +115,20 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore, Bot: botService}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
 	workerCtx, workerCancel := context.WithCancel(ctx)
+	botDone := make(chan struct{})
+	go func() {
+		defer close(botDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			botService.Run(workerCtx)
+		}
+	}()
+	defer func() { workerCancel(); <-botDone }()
 	listsDone := make(chan struct{})
 	go func() {
 		defer close(listsDone)

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
 import { useAuth } from "../auth";
@@ -15,8 +15,14 @@ type Request = {
   state: string;
   available: boolean;
   notification?: string;
+  bot_notice?: string;
 };
-type Account = { id: number; username: string; disabled: boolean };
+type Account = {
+  id: number;
+  username: string;
+  disabled: boolean;
+  discord_user_id?: string;
+};
 type Result = {
   tmdb_id: number;
   title: string;
@@ -154,8 +160,8 @@ export function RequesterHome() {
             <ul>
               {requests.data.items.map((item) => (
                 <li key={item.id}>
-                  {item.title} · {item.kind === "movie" ? "Movie" : "TV show"} ·{" "}
-                  {item.state}
+                  #{item.id} · {item.title} ·{" "}
+                  {item.kind === "movie" ? "Movie" : "TV show"} · {item.state}
                   {item.available ? " · Media available" : ""}
                   {item.notification
                     ? ` · Notification ${item.notification}`
@@ -255,7 +261,9 @@ function RequestLists({ onImported }: { onImported: () => void }) {
     "/requester/lists",
     15000,
   );
-  const [provider, setProvider] = useState<"tmdb" | "trakt">("tmdb"),
+  const [provider, setProvider] = useState<"tmdb" | "trakt" | "imdb_mdblist">(
+      "tmdb",
+    ),
     [owner, setOwner] = useState(""),
     [listID, setListID] = useState(""),
     [clientID, setClientID] = useState(""),
@@ -275,7 +283,7 @@ function RequestLists({ onImported }: { onImported: () => void }) {
           provider,
           owner: provider === "trakt" ? owner.trim() : "",
           list_id: listID.trim(),
-          client_id: provider === "trakt" ? clientID.trim() : "",
+          client_id: provider !== "tmdb" ? clientID.trim() : "",
         }),
       });
       setOwner("");
@@ -334,9 +342,9 @@ function RequestLists({ onImported }: { onImported: () => void }) {
     <section className="panel settings-form">
       <h2>Import lists</h2>
       <p>
-        Public TMDb and Trakt lists are checked automatically each day. Imported
-        titles are submitted for administrator review. Private lists are not
-        supported.
+        Public TMDb and Trakt lists and IMDb lists imported into MDBList are
+        checked automatically each day. Imported titles need administrator
+        review.
       </p>
       <form onSubmit={(e) => void add(e)}>
         <label>
@@ -344,10 +352,14 @@ function RequestLists({ onImported }: { onImported: () => void }) {
           <select
             value={provider}
             disabled={pending}
-            onChange={(e) => setProvider(e.target.value as "tmdb" | "trakt")}
+            onChange={(e) => {
+              setProvider(e.target.value as "tmdb" | "trakt" | "imdb_mdblist");
+              setClientID("");
+            }}
           >
             <option value="tmdb">TMDb</option>
             <option value="trakt">Trakt</option>
+            <option value="imdb_mdblist">IMDb via MDBList</option>
           </select>
         </label>
         {provider === "trakt" && (
@@ -363,16 +375,20 @@ function RequestLists({ onImported }: { onImported: () => void }) {
         <label>
           {provider === "trakt"
             ? "Trakt list slug or ID"
-            : "TMDb numeric list ID"}{" "}
+            : provider === "imdb_mdblist"
+              ? "MDBList external list ID"
+              : "TMDb numeric list ID"}{" "}
           <TextField.Root
             value={listID}
             onChange={(e) => setListID(e.target.value)}
             required
           />
         </label>
-        {provider === "trakt" && (
+        {provider !== "tmdb" && (
           <label>
-            Trakt application client ID{" "}
+            {provider === "trakt"
+              ? "Trakt application client ID"
+              : "MDBList API key"}{" "}
             <TextField.Root
               type="password"
               value={clientID}
@@ -381,6 +397,13 @@ function RequestLists({ onImported }: { onImported: () => void }) {
               required
             />
           </label>
+        )}
+        {provider === "imdb_mdblist" && (
+          <p>
+            First import your IMDb list into your MDBList account. MDBList
+            refreshes it on its account schedule; ReelScarey checks the MDBList
+            copy daily.
+          </p>
         )}
         <Button type="submit" disabled={pending}>
           Add list
@@ -395,7 +418,10 @@ function RequestLists({ onImported }: { onImported: () => void }) {
         <ul>
           {lists.data.items.map((l) => (
             <li key={l.id}>
-              {l.provider.toUpperCase()} · {l.owner ? `${l.owner}/` : ""}
+              {l.provider === "imdb_mdblist"
+                ? "IMDb via MDBList"
+                : l.provider.toUpperCase()}{" "}
+              · {l.owner ? `${l.owner}/` : ""}
               {l.list_id}
               {l.last_checked
                 ? ` · Checked ${new Date(l.last_checked * 1000).toLocaleString()}`
@@ -593,6 +619,22 @@ export function AdminRequests() {
       setPending(false);
     }
   }
+  async function retryNotice(id: number) {
+    if (pending) return;
+    setPending(true);
+    setError("");
+    try {
+      await api(`/discord-bot/notices/${id}/retry`, {
+        method: "POST",
+        body: "{}",
+      });
+      requests.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending(false);
+    }
+  }
   return (
     <>
       <PageHeading
@@ -649,11 +691,13 @@ export function AdminRequests() {
                 >
                   {a.disabled ? "Enable" : "Disable"}
                 </Button>
+                <DiscordLink account={a} saved={accounts.reload} />
               </li>
             ))}
           </ul>
         )}
       </section>
+      <BotSettings />
       <section className="panel">
         <h2>Requested titles</h2>
         <RequestState
@@ -668,6 +712,20 @@ export function AdminRequests() {
                 <li key={item.id}>
                   {item.title} · {item.username} · {item.state}
                   {item.available ? " · Media available" : ""}
+                  {item.bot_notice === "uncertain" && (
+                    <>
+                      {" "}
+                      · Discord notice uncertain{" "}
+                      <Button
+                        size="1"
+                        variant="soft"
+                        disabled={pending}
+                        onClick={() => void retryNotice(item.id)}
+                      >
+                        Retry notice (may duplicate)
+                      </Button>
+                    </>
+                  )}
                   {(item.state === "pending" || item.state === "approving") && (
                     <>
                       {" "}
@@ -703,5 +761,228 @@ export function AdminRequests() {
           ))}
       </section>
     </>
+  );
+}
+
+function DiscordLink({
+  account,
+  saved,
+}: {
+  account: Account;
+  saved: () => void;
+}) {
+  const [value, setValue] = useState(account.discord_user_id ?? ""),
+    [pending, setPending] = useState(false),
+    [error, setError] = useState("");
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (pending) return;
+    setPending(true);
+    setError("");
+    try {
+      await api(`/request-accounts/${account.id}/discord`, {
+        method: "PUT",
+        body: JSON.stringify({ discord_user_id: value.trim() }),
+      });
+      saved();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <form onSubmit={(e) => void save(e)}>
+      <label>
+        Discord user ID for {account.username}{" "}
+        <TextField.Root
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Optional"
+        />
+      </label>
+      <Button size="1" variant="soft" disabled={pending} type="submit">
+        Save Discord link
+      </Button>
+      {error && <span role="alert">{error}</span>}
+    </form>
+  );
+}
+
+type BotConfig = {
+  configured: boolean;
+  application_id: string;
+  public_key: string;
+  guild_id: string;
+  admin_user_id: string;
+  admin_channel_id: string;
+};
+function BotSettings() {
+  const config = useResource<BotConfig>("/discord-bot"),
+    [applicationID, setApplicationID] = useState(""),
+    [publicKey, setPublicKey] = useState(""),
+    [guildID, setGuildID] = useState(""),
+    [adminID, setAdminID] = useState(""),
+    [channelID, setChannelID] = useState(""),
+    [token, setToken] = useState(""),
+    [pending, setPending] = useState(false),
+    [error, setError] = useState(""),
+    [message, setMessage] = useState("");
+  useEffect(() => {
+    if (!config.data?.configured) return;
+    setApplicationID(config.data.application_id);
+    setPublicKey(config.data.public_key);
+    setGuildID(config.data.guild_id);
+    setAdminID(config.data.admin_user_id);
+    setChannelID(config.data.admin_channel_id);
+  }, [config.data]);
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (pending) return;
+    setPending(true);
+    setError("");
+    setMessage("");
+    try {
+      await api("/discord-bot", {
+        method: "PUT",
+        body: JSON.stringify({
+          application_id: applicationID.trim(),
+          public_key: publicKey.trim(),
+          guild_id: guildID.trim(),
+          admin_user_id: adminID.trim(),
+          admin_channel_id: channelID.trim(),
+          token: token.trim(),
+        }),
+      });
+      setToken("");
+      config.reload();
+      setMessage(
+        "Bot settings saved. Register the commands and configure Discord’s interaction URL.",
+      );
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending(false);
+    }
+  }
+  async function action(remove: boolean) {
+    if (pending) return;
+    setPending(true);
+    setError("");
+    setMessage("");
+    try {
+      await api(remove ? "/discord-bot" : "/discord-bot/register", {
+        method: remove ? "DELETE" : "POST",
+        ...(remove ? {} : { body: "{}" }),
+      });
+      config.reload();
+      setMessage(
+        remove ? "Bot disabled." : "Commands registered with Discord.",
+      );
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <section className="panel settings-form">
+      <h2>Discord companion bot</h2>
+      <p>
+        Requires a Discord application, bot token, and a public HTTPS address
+        for ReelScarey. Link each request account to its Discord user ID above.
+      </p>
+      <p>
+        Set the Discord interaction endpoint to{" "}
+        <code>{window.location.origin}/api/v1/discord/interactions</code> using
+        your public HTTPS address.
+      </p>
+      <RequestState
+        loading={config.loading}
+        error={config.error}
+        retry={config.reload}
+      />
+      {config.data?.configured && (
+        <p>
+          Bot configured for server {config.data.guild_id}. Saving new settings
+          requires the token again.
+        </p>
+      )}
+      <form onSubmit={(e) => void save(e)}>
+        <label>
+          Application ID{" "}
+          <TextField.Root
+            value={applicationID}
+            onChange={(e) => setApplicationID(e.target.value)}
+            required
+          />
+        </label>
+        <label>
+          Application public key{" "}
+          <TextField.Root
+            value={publicKey}
+            onChange={(e) => setPublicKey(e.target.value)}
+            required
+          />
+        </label>
+        <label>
+          Server ID{" "}
+          <TextField.Root
+            value={guildID}
+            onChange={(e) => setGuildID(e.target.value)}
+            required
+          />
+        </label>
+        <label>
+          Administrator Discord user ID{" "}
+          <TextField.Root
+            value={adminID}
+            onChange={(e) => setAdminID(e.target.value)}
+            required
+          />
+        </label>
+        <label>
+          Administrator channel ID{" "}
+          <TextField.Root
+            value={channelID}
+            onChange={(e) => setChannelID(e.target.value)}
+            required
+          />
+        </label>
+        <label>
+          Bot token{" "}
+          <TextField.Root
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            autoComplete="off"
+            required
+          />
+        </label>
+        <Button type="submit" disabled={pending}>
+          Save bot settings
+        </Button>
+      </form>
+      {config.data?.configured && (
+        <>
+          <Button
+            variant="soft"
+            disabled={pending}
+            onClick={() => void action(false)}
+          >
+            Register commands
+          </Button>{" "}
+          <Button
+            variant="soft"
+            disabled={pending}
+            onClick={() => void action(true)}
+          >
+            Disable bot
+          </Button>
+        </>
+      )}
+      {message && <p role="status">{message}</p>}
+      {error && <p role="alert">{error}</p>}
+    </section>
   );
 }

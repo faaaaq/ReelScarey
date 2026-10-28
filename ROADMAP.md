@@ -18,9 +18,9 @@ Historical native and package results below remain as records of past work.
 - [ ] Provide non-admin accounts and a request system in which each user can
   configure their own IMDb, TMDb and Trakt import lists. Give administrators
   control over approval and importing, with clear request status for users.
-  Request accounts, approval, public TMDb/Trakt synchronization and one-time
-  IMDb CSV imports are implemented. Automatic IMDb synchronization, private
-  lists and broader provider acceptance remain open.
+  Request accounts, approval, public TMDb/Trakt synchronization, automatic IMDb
+  synchronization via an MDBList account, and one-time IMDb CSV imports are
+  implemented. Private lists and broader provider acceptance remain open.
 - [ ] Add built-in Discord webhook notifications. Let users supply their own
   webhook information and receive notifications when their requests are fulfilled.
   Per-user encrypted webhooks and durable fulfillment notifications are
@@ -36,6 +36,8 @@ Historical native and package results below remain as records of past work.
 - [ ] Add a Discord companion bot that accepts requests, searches and replies
   with interactive release-selection buttons. Notify the server administrator
   with the same interactive information when a request is made in ReelScarey.
+  Implemented with linked accounts and signed interactions; live Discord
+  acceptance remains open.
 - [ ] Add an accessible history/notification tray along the edge of the interface,
   with a compact timeline of events, timestamps and a way to see more, inspired
   by the supplied reference image.

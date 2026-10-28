@@ -22,6 +22,7 @@ type Request struct {
 	State        string `json:"state"`
 	Available    bool   `json:"available"`
 	Notification string `json:"notification"`
+	BotNotice    string `json:"bot_notice"`
 	CreatedAt    int64  `json:"created_at"`
 	UpdatedAt    int64  `json:"updated_at"`
 }
@@ -29,13 +30,13 @@ type Store struct{ db *sql.DB }
 
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
-const selectRequest = `SELECT r.id,r.account_id,a.username,r.kind,r.tmdb_id,r.title,r.state,r.created_at,r.updated_at,EXISTS(SELECT 1 FROM media_items m JOIN media_files f ON COALESCE(f.movie_id,f.series_id)=m.id WHERE m.kind=r.kind AND m.tmdb_id=r.tmdb_id),COALESCE(n.state,'') FROM media_requests r JOIN request_accounts a ON a.id=r.account_id LEFT JOIN request_notifications n ON n.request_id=r.id`
+const selectRequest = `SELECT r.id,r.account_id,a.username,r.kind,r.tmdb_id,r.title,r.state,r.created_at,r.updated_at,EXISTS(SELECT 1 FROM media_items m JOIN media_files f ON COALESCE(f.movie_id,f.series_id)=m.id WHERE m.kind=r.kind AND m.tmdb_id=r.tmdb_id),COALESCE(n.state,''),COALESCE(b.state,'') FROM media_requests r JOIN request_accounts a ON a.id=r.account_id LEFT JOIN request_notifications n ON n.request_id=r.id LEFT JOIN discord_bot_notices b ON b.request_id=r.id`
 
 type scanner interface{ Scan(...any) error }
 
 func scan(row scanner) (Request, error) {
 	var v Request
-	err := row.Scan(&v.ID, &v.AccountID, &v.Username, &v.Kind, &v.TMDbID, &v.Title, &v.State, &v.CreatedAt, &v.UpdatedAt, &v.Available, &v.Notification)
+	err := row.Scan(&v.ID, &v.AccountID, &v.Username, &v.Kind, &v.TMDbID, &v.Title, &v.State, &v.CreatedAt, &v.UpdatedAt, &v.Available, &v.Notification, &v.BotNotice)
 	return v, err
 }
 

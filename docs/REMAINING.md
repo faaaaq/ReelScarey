@@ -116,22 +116,19 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 
 ## Requests and Discord
 
-- [ ] Continuous IMDb list synchronization and private IMDb, TMDb and Trakt
-  lists. Public TMDb/Trakt lists sync automatically; IMDb CSV imports are manual
-  snapshots. Provider access and limits are described in [REQUESTS.md](REQUESTS.md).
+- [ ] Direct continuous IMDb synchronization and private IMDb, TMDb and Trakt
+  lists. Public TMDb/Trakt and IMDb via MDBList sync automatically; IMDb CSV
+  imports are manual snapshots. Limits are described in [REQUESTS.md](REQUESTS.md).
 - [ ] Live acceptance with owner-selected provider lists and a Discord webhook.
   Existing validation uses isolated provider/Discord fixtures only.
-- [ ] Discord companion bot: authenticated commands, user linkage, signed
-  interactions, replay protection, interactive release selection and messages
-  to the administrator for requests made in the application. Only unconnected
-  signature and selection-token checks exist; no bot endpoint or credentials
-  are enabled.
+- [ ] Live Discord companion bot acceptance with an owner-configured application,
+  public HTTPS endpoint, linked accounts and download services. Signed commands,
+  interactive selections and administrator notifications have fixture coverage.
 
 ## Deployment and public release
 
-- [ ] Restore GitHub artifact retention capacity if hosted artifacts are needed.
-  The approved oldest artifact was removed, but quota still blocked the latest
-  uploads. See [VALIDATION.md](VALIDATION.md) for the recorded results.
+- [x] Remove standalone package and artifact upload steps from CI; Docker is the
+  supported deployment target.
 - [ ] Independent security review and broader accessibility acceptance.
 - [ ] Representative NAS/shared-storage filesystem and arm64 runtime acceptance.
   Cross-compiling an arm64 package does not establish runtime compatibility.

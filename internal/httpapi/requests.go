@@ -60,7 +60,12 @@ func (s *Server) requestAccountState(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid_account", "Choose whether the account is disabled.")
 		return
 	}
-	if err = s.auth.SetRequestAccountDisabled(r.Context(), id, *in.Disabled); errors.Is(err, sql.ErrNoRows) {
+	if s.bot != nil {
+		err = s.bot.DisableAccount(r.Context(), id, *in.Disabled)
+	} else {
+		err = s.auth.SetRequestAccountDisabled(r.Context(), id, *in.Disabled)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
 		fail(w, 404, "not_found", "Account not found.")
 		return
 	} else if err != nil {

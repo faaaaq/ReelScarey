@@ -20,6 +20,7 @@ import (
 var listSlug = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
 var listNumber = regexp.MustCompile(`^[1-9][0-9]{0,15}$`)
 var traktClientID = regexp.MustCompile(`^[A-Za-z0-9]{20,200}$`)
+var mdblistKey = regexp.MustCompile(`^[A-Za-z0-9_-]{16,256}$`)
 var ErrList = errors.New("Choose a valid public list and provider settings.")
 
 type ImportList struct {
@@ -62,7 +63,7 @@ func (s *Lists) All(ctx context.Context, account int64) ([]ImportList, error) {
 	return out, rows.Err()
 }
 func (s *Lists) Add(ctx context.Context, account int64, provider, owner, id, key string) (ImportList, error) {
-	if account < 1 || (provider != "tmdb" && provider != "trakt") || (provider == "tmdb" && (!listNumber.MatchString(id) || owner != "" || key != "")) || (provider == "trakt" && (!listSlug.MatchString(owner) || !listSlug.MatchString(id) || !traktClientID.MatchString(key))) {
+	if account < 1 || (provider != "tmdb" && provider != "trakt" && provider != "imdb_mdblist") || (provider == "tmdb" && (!listNumber.MatchString(id) || owner != "" || key != "")) || (provider == "trakt" && (!listSlug.MatchString(owner) || !listSlug.MatchString(id) || !traktClientID.MatchString(key))) || (provider == "imdb_mdblist" && (!listNumber.MatchString(id) || owner != "" || !mdblistKey.MatchString(key))) {
 		return ImportList{}, ErrList
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -135,6 +136,12 @@ func (s *Lists) Refresh(ctx context.Context, account, id int64) error {
 }
 
 func (s *Lists) fetch(ctx context.Context, provider, owner, id, key string) ([]listTitle, error) {
+	if provider == "imdb_mdblist" {
+		if owner != "" || !listNumber.MatchString(id) || !mdblistKey.MatchString(key) {
+			return nil, ErrList
+		}
+		return s.fetchIMDbMDBList(ctx, id, key)
+	}
 	if provider == "tmdb" {
 		if !listNumber.MatchString(id) || owner != "" || len(key) < 20 || len(key) > 4096 {
 			return nil, ErrList
@@ -290,7 +297,7 @@ func (s *Lists) Tick(ctx context.Context) (bool, error) {
 		plain, err = s.secrets.Open(fmt.Sprintf("request-list:%d", id), sealed)
 		key = string(plain)
 		if err != nil {
-			err = errors.New("Trakt list credentials could not be read.")
+			err = errors.New("List provider credentials could not be read.")
 		}
 	}
 	var titles []listTitle

@@ -80,6 +80,8 @@ func Validate(ctx context.Context, db *sql.DB, dir string) error {
 		{"indexers", `SELECT 'indexer:' || id,ciphertext FROM indexers`},
 		{"request_webhooks", `SELECT 'discord:' || account_id,ciphertext FROM request_webhooks`},
 		{"request_lists", `SELECT 'request-list:' || id,ciphertext FROM request_lists WHERE ciphertext IS NOT NULL`},
+		{"discord_bot_config", `SELECT 'discord-bot',ciphertext FROM discord_bot_config`},
+		{"discord_bot_jobs", `SELECT 'discord-job:' || id,ciphertext FROM discord_bot_jobs`},
 	} {
 		var exists int
 		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, item.table).Scan(&exists); err != nil {
@@ -136,7 +138,7 @@ func Validate(ctx context.Context, db *sql.DB, dir string) error {
 
 func open(ctx context.Context, db *sql.DB, dir string, create bool) (*Store, error) {
 	var count int
-	if err := db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM provider_secrets) + (SELECT COUNT(*) FROM integration_configs) + (SELECT COUNT(*) FROM release_candidates) + (SELECT COUNT(*) FROM downloads) + (SELECT COUNT(*) FROM indexers) + (SELECT COUNT(*) FROM request_webhooks) + (SELECT COUNT(*) FROM request_lists WHERE ciphertext IS NOT NULL)`).Scan(&count); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM provider_secrets) + (SELECT COUNT(*) FROM integration_configs) + (SELECT COUNT(*) FROM release_candidates) + (SELECT COUNT(*) FROM downloads) + (SELECT COUNT(*) FROM indexers) + (SELECT COUNT(*) FROM request_webhooks) + (SELECT COUNT(*) FROM request_lists WHERE ciphertext IS NOT NULL) + (SELECT COUNT(*) FROM discord_bot_config) + (SELECT COUNT(*) FROM discord_bot_jobs)`).Scan(&count); err != nil {
 		return nil, err
 	}
 	key, err := SecretFile(filepath.Join(dir, "secrets.key"), 32, create && count == 0)
@@ -156,7 +158,7 @@ func open(ctx context.Context, db *sql.DB, dir string, create bool) (*Store, err
 		if _, err := store.Get(ctx); err != nil {
 			return nil, err
 		}
-		rows, err := db.QueryContext(ctx, `SELECT 'config:' || name, ciphertext FROM integration_configs UNION ALL SELECT 'release', payload FROM release_candidates UNION ALL SELECT 'download', payload FROM downloads UNION ALL SELECT 'indexer:' || id,ciphertext FROM indexers UNION ALL SELECT 'discord:' || account_id,ciphertext FROM request_webhooks UNION ALL SELECT 'request-list:' || id,ciphertext FROM request_lists WHERE ciphertext IS NOT NULL`)
+		rows, err := db.QueryContext(ctx, `SELECT 'config:' || name, ciphertext FROM integration_configs UNION ALL SELECT 'release', payload FROM release_candidates UNION ALL SELECT 'download', payload FROM downloads UNION ALL SELECT 'indexer:' || id,ciphertext FROM indexers UNION ALL SELECT 'discord:' || account_id,ciphertext FROM request_webhooks UNION ALL SELECT 'request-list:' || id,ciphertext FROM request_lists WHERE ciphertext IS NOT NULL UNION ALL SELECT 'discord-bot',ciphertext FROM discord_bot_config UNION ALL SELECT 'discord-job:' || id,ciphertext FROM discord_bot_jobs`)
 		if err != nil {
 			return nil, err
 		}

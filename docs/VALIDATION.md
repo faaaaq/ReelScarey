@@ -1,5 +1,10 @@
 # Validation record — 2026-10-27
 
+The request and companion-bot changes have Linux container fixture coverage for
+IMDb via MDBList, signed Discord interactions, account linkage, request approval
+and release selection. The full frontend suite passed (126 tests). No live
+MDBList or Discord account was used; owner-service acceptance remains open.
+
 ## Request accounts, import lists and webhook notifications
 
 - Isolated tests cover requester session persistence and revocation, denial of
@@ -15,7 +20,7 @@
 - Fake Discord transport tests cover encrypted webhook storage, movie and fully
   monitored TV availability, no notification before fulfillment, uncertain
   delivery and explicit retry. No real webhook or user account was contacted.
-  The companion bot is not implemented; only its unconnected signature verifier
+  At that earlier point the companion bot was not implemented; only its unconnected signature verifier
   and user-bound selection-token checks have tests.
 - Full Go tests and vet, formatting, TypeScript and all 125 interface tests pass;
   the Docker image built with Linux application tests. The request/login changes

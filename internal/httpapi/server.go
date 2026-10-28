@@ -21,6 +21,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/automation"
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
+	"github.com/faaaaq/ReelScarey/internal/discordbot"
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/operations"
@@ -51,6 +52,7 @@ type Server struct {
 	requests         *requests.Store
 	discord          *requests.Discord
 	requestLists     *requests.Lists
+	bot              *discordbot.Service
 	animeProvider    metadata.AnimeProvider
 	youtube          *youtube.Store
 	youtubeInspector YouTubeInspector
@@ -65,6 +67,7 @@ type Dependencies struct {
 	AnimeProvider    metadata.AnimeProvider
 	YouTubeInspector YouTubeInspector
 	Secrets          *securestore.Store
+	Bot              *discordbot.Service
 }
 
 type YouTubeInspector interface {
@@ -75,6 +78,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle}
 	s.youtube = youtube.NewStore(db)
 	s.youtubeInspector = deps.YouTubeInspector
+	s.bot = deps.Bot
 	s.operations = operations.New(db, cfg)
 	s.organization = organization.New(db, cfg)
 	s.requests = requests.New(db)
@@ -159,6 +163,11 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/auth/logout", method(http.MethodPost, s.authLogout))
 	mux.HandleFunc("/api/v1/request-accounts", s.requestAccounts)
 	mux.HandleFunc("/api/v1/request-accounts/{id}", method(http.MethodPut, s.requestAccountState))
+	mux.HandleFunc("/api/v1/request-accounts/{id}/discord", method(http.MethodPut, s.requestAccountDiscord))
+	mux.HandleFunc("/api/v1/discord-bot", s.discordBotSettings)
+	mux.HandleFunc("/api/v1/discord-bot/register", method(http.MethodPost, s.discordBotRegister))
+	mux.HandleFunc("/api/v1/discord-bot/notices/{id}/retry", method(http.MethodPost, s.discordBotRetryNotice))
+	mux.HandleFunc("/api/v1/discord/interactions", s.discordInteraction)
 	mux.HandleFunc("/api/v1/requester/search/movies", method(http.MethodGet, s.searchMovies))
 	mux.HandleFunc("/api/v1/requester/search/series", method(http.MethodGet, s.searchSeries))
 	mux.HandleFunc("/api/v1/requester/requests", s.requesterRequests)

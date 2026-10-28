@@ -30,6 +30,10 @@ func (s *Server) security(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if r.URL.Path == "/api/v1/discord/interactions" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		mutation := r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS"
 		if mutation && !s.sameOrigin(r) {
 			fail(w, 403, "cross_origin", "Use the ReelScarey application origin for this action.")

@@ -9,10 +9,11 @@ import (
 )
 
 type RequestAccount struct {
-	ID        int64  `json:"id"`
-	Username  string `json:"username"`
-	Disabled  bool   `json:"disabled"`
-	CreatedAt int64  `json:"created_at"`
+	ID            int64  `json:"id"`
+	Username      string `json:"username"`
+	Disabled      bool   `json:"disabled"`
+	CreatedAt     int64  `json:"created_at"`
+	DiscordUserID string `json:"discord_user_id"`
 }
 
 func (s *Service) CreateRequestAccount(ctx context.Context, username, password string) (RequestAccount, error) {
@@ -69,7 +70,7 @@ func (s *Service) CreateRequestAccount(ctx context.Context, username, password s
 }
 
 func (s *Service) RequestAccounts(ctx context.Context) ([]RequestAccount, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,username,disabled,created_at FROM request_accounts ORDER BY username COLLATE NOCASE,id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,username,disabled,created_at,COALESCE(discord_user_id,'') FROM request_accounts ORDER BY username COLLATE NOCASE,id`)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +78,7 @@ func (s *Service) RequestAccounts(ctx context.Context) ([]RequestAccount, error)
 	items := []RequestAccount{}
 	for rows.Next() {
 		var a RequestAccount
-		if err = rows.Scan(&a.ID, &a.Username, &a.Disabled, &a.CreatedAt); err != nil {
+		if err = rows.Scan(&a.ID, &a.Username, &a.Disabled, &a.CreatedAt, &a.DiscordUserID); err != nil {
 			return nil, err
 		}
 		items = append(items, a)
