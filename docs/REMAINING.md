@@ -53,7 +53,8 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 - [ ] Safely update embedded movie and episode titles during reviewed organization,
   preserving streams, chapters, attachments, sidecars, seeding sources and rollback.
   Reviewed MP4/Matroska updates preserve a rollback copy and can be queued
-  automatically after a single-file move. Batch and whole-folder updates remain open.
+  automatically after selected-file moves, with one rollback copy per file.
+  Whole-folder updates remain open.
 
 - [ ] Connect downloaded upgrades and newly acquired YouTube videos directly to
   versioned replacement. Existing YouTube-origin files can be replaced and their

@@ -214,36 +214,47 @@ func (s *Service) finishOrganization(ctx context.Context, p *Plan) error {
 		_, e := s.db.ExecContext(ctx, `UPDATE organization_plans SET state='completed',message='',updated_at=unixepoch() WHERE id=?`, p.ID)
 		return e
 	}
-	if len(p.Files) != 1 || p.EmbeddedTitle == "" {
+	if len(p.Files) < 1 || len(p.Files) > 100 {
 		return problem("invalid_selection", "This saved embedded-title review is invalid.")
 	}
-	var childID string
-	e := s.db.QueryRowContext(ctx, `SELECT id FROM organization_plans WHERE json_extract(snapshot,'$.replacement.tag_parent')=? ORDER BY rowid LIMIT 1`, p.ID).Scan(&childID)
-	if errors.Is(e, sql.ErrNoRows) {
-		var child Plan
-		child, e = s.previewEmbeddedTitle(ctx, p.Files[0].FileID, p.ID)
-		if e == nil {
-			childID = child.ID
+	children := make([]string, 0, len(p.Files))
+	for _, file := range p.Files {
+		approvedTitle := file.EmbeddedTitle
+		if approvedTitle == "" && len(p.Files) == 1 {
+			approvedTitle = p.EmbeddedTitle
 		}
-	}
-	if e != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
+		if approvedTitle == "" {
+			return problem("invalid_selection", "The approved embedded title is missing.")
 		}
-		var typed *Error
-		if !errors.As(e, &typed) && !errors.Is(e, sql.ErrNoRows) {
+		var childID string
+		e := s.db.QueryRowContext(ctx, `SELECT id FROM organization_plans WHERE json_extract(snapshot,'$.replacement.tag_parent')=? AND json_extract(snapshot,'$.replacement.media_file_id')=? ORDER BY rowid LIMIT 1`, p.ID, file.FileID).Scan(&childID)
+		if errors.Is(e, sql.ErrNoRows) {
+			var child Plan
+			child, e = s.previewEmbeddedTitle(ctx, file.FileID, p.ID)
+			if e == nil {
+				childID = child.ID
+			}
+		}
+		if e != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			var typed *Error
+			if !errors.As(e, &typed) && !errors.Is(e, sql.ErrNoRows) {
+				return e
+			}
+			_, err := s.db.ExecContext(ctx, `UPDATE organization_plans SET state='completed',message='File organization completed; the embedded title update could not be queued. Review it separately.',updated_at=unixepoch() WHERE id=?`, p.ID)
+			return err
+		}
+		child, e := s.Plan(ctx, childID)
+		if e != nil {
 			return e
 		}
-		_, err := s.db.ExecContext(ctx, `UPDATE organization_plans SET state='completed',message='File organization completed; the embedded title update could not be queued. Review it separately.',updated_at=unixepoch() WHERE id=?`, p.ID)
-		return err
-	}
-	child, e := s.Plan(ctx, childID)
-	if e != nil {
-		return e
-	}
-	if child.Replacement == nil || child.Replacement.TagParent != p.ID || child.Replacement.TagTitle != p.EmbeddedTitle || child.State != "review" {
-		_, err := s.db.ExecContext(ctx, `UPDATE organization_plans SET state='completed',message='File organization completed; the saved title changed. Review an embedded title update separately.',updated_at=unixepoch() WHERE id=?`, p.ID)
-		return err
+		if child.Replacement == nil || child.Replacement.TagParent != p.ID || child.Replacement.TagTitle != approvedTitle || child.State != "review" {
+			_, err := s.db.ExecContext(ctx, `UPDATE organization_plans SET state='completed',message='File organization completed; the saved title changed. Review an embedded title update separately.',updated_at=unixepoch() WHERE id=?`, p.ID)
+			return err
+		}
+		children = append(children, child.ID)
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -261,16 +272,18 @@ func (s *Service) finishOrganization(ctx context.Context, p *Plan) error {
 	if parentCount != 1 {
 		return problem("revision_conflict", "The organization job changed before the title update was queued.")
 	}
-	result, e := tx.ExecContext(ctx, `UPDATE organization_plans SET state='queued',message='',updated_at=unixepoch() WHERE id=? AND state='review'`, child.ID)
-	if e != nil {
-		return e
-	}
-	n, e := result.RowsAffected()
-	if e != nil {
-		return e
-	}
-	if n != 1 {
-		return problem("revision_conflict", "The embedded title review changed before queueing.")
+	if len(children) > 0 {
+		result, e := tx.ExecContext(ctx, `UPDATE organization_plans SET state='queued',message='',updated_at=unixepoch() WHERE id=? AND state='review'`, children[0])
+		if e != nil {
+			return e
+		}
+		n, e := result.RowsAffected()
+		if e != nil {
+			return e
+		}
+		if n != 1 {
+			return problem("revision_conflict", "The embedded title review changed before queueing.")
+		}
 	}
 	return tx.Commit()
 }

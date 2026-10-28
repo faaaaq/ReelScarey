@@ -171,7 +171,7 @@ describe("Reviewed library organization", () => {
     );
     await userEvent.click(
       screen.getByRole("checkbox", {
-        name: "Also update this file’s embedded title after organization",
+        name: "Also update selected files’ embedded titles after organization",
       }),
     );
     await userEvent.click(
@@ -181,9 +181,7 @@ describe("Reviewed library organization", () => {
       name: "Organization review",
     });
     expect(
-      within(review).getByText(
-        /After the file move, update the embedded title/,
-      ),
+      within(review).getByText(/After the file move, update embedded titles/),
     ).toBeVisible();
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/organization/plans",

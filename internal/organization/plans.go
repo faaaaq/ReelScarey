@@ -153,9 +153,6 @@ func (s *Service) Preview(ctx context.Context, ids []int64, target string) (Plan
 }
 
 func (s *Service) PreviewWithEmbeddedTitle(ctx context.Context, ids []int64, target string) (Plan, error) {
-	if len(ids) != 1 {
-		return Plan{}, problem("invalid_selection", "Choose one file to update its embedded title during organization.")
-	}
 	return s.preview(ctx, ids, 0, target, true)
 }
 
@@ -225,19 +222,24 @@ func (s *Service) preview(ctx context.Context, ids []int64, mediaID int64, targe
 	}
 	embedded := ""
 	if updateTag {
-		v := files[0]
-		ext := strings.ToLower(path.Ext(v.Source))
-		if ext != ".mkv" && ext != ".mp4" && ext != ".m4v" {
-			return Plan{}, problem("invalid_selection", "Embedded title updates support MP4 and Matroska files.")
-		}
-		for i := 1; i < len(v.Episodes); i++ {
-			if v.Episodes[i].Season != v.Episodes[0].Season || v.Episodes[i].Number != v.Episodes[i-1].Number+1 {
-				return Plan{}, problem("invalid_selection", "Review the episode mapping before updating this file's embedded title.")
+		for index, v := range files {
+			ext := strings.ToLower(path.Ext(v.Source))
+			if ext != ".mkv" && ext != ".mp4" && ext != ".m4v" {
+				return Plan{}, problem("invalid_selection", "Embedded title updates support MP4 and Matroska files.")
 			}
+			for i := 1; i < len(v.Episodes); i++ {
+				if v.Episodes[i].Season != v.Episodes[0].Season || v.Episodes[i].Number != v.Episodes[i-1].Number+1 {
+					return Plan{}, problem("invalid_selection", "Review the episode mapping before updating this file's embedded title.")
+				}
+			}
+			embedded = embeddedTitle(v.Snapshot.Content.Title, v.Episodes)
+			if embedded == "" || len(embedded) > 1024 || strings.ContainsAny(embedded, "\x00\r\n") {
+				return Plan{}, problem("invalid_selection", "The saved title cannot be safely embedded.")
+			}
+			files[index].EmbeddedTitle = embedded
 		}
-		embedded = embeddedTitle(v.Snapshot.Content.Title, v.Episodes)
-		if embedded == "" || len(embedded) > 1024 || strings.ContainsAny(embedded, "\x00\r\n") {
-			return Plan{}, problem("invalid_selection", "The saved title cannot be safely embedded.")
+		if len(files) != 1 {
+			embedded = ""
 		}
 	}
 	c, e := s.config(ctx, tx)
@@ -476,6 +478,13 @@ func (s *Service) Tick(ctx context.Context) error {
 	defer s.mu.Unlock()
 	mediaGate.Lock()
 	defer mediaGate.Unlock()
+	var unresolved int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state='failed' AND (json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')`).Scan(&unresolved); err != nil {
+		return err
+	}
+	if unresolved != 0 {
+		return nil
+	}
 	var id string
 	e := s.db.QueryRowContext(ctx, `SELECT id FROM organization_plans WHERE state IN ('queued','running') ORDER BY created_at LIMIT 1`).Scan(&id)
 	if errors.Is(e, sql.ErrNoRows) {

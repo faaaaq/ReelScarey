@@ -575,8 +575,20 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 			}
 		}
 	}
-	_, e = s.db.ExecContext(ctx, `UPDATE organization_plans SET state='completed',message='',updated_at=unixepoch() WHERE id=?`, p.ID)
-	return e
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	if _, e = tx.ExecContext(ctx, `UPDATE organization_plans SET state='completed',message='',updated_at=unixepoch() WHERE id=?`, p.ID); e != nil {
+		return e
+	}
+	if r.TagParent != "" && !r.Recovering {
+		if _, e = tx.ExecContext(ctx, `UPDATE organization_plans SET state='queued',message='',updated_at=unixepoch() WHERE id=(SELECT id FROM organization_plans WHERE state='review' AND json_extract(snapshot,'$.replacement.tag_parent')=? ORDER BY rowid LIMIT 1)`, r.TagParent); e != nil {
+			return e
+		}
+	}
+	return tx.Commit()
 }
 
 // A retained version and a replacement must not share an inode with a download

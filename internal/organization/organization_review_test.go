@@ -771,13 +771,26 @@ func TestOrganizationQueuesApprovedEmbeddedTitleAfterMove(t *testing.T) {
 	}
 	// Simulate interruption after the child review was saved but before the
 	// parent completion and child queue were committed together.
-	tx,e:=f.db.BeginTx(ctx,nil);if e!=nil{t.Fatal(e)}
-	if _,e=tx.Exec(`UPDATE organization_plans SET state='review' WHERE id=?`,childID);e!=nil{t.Fatal(e)}
-	if _,e=tx.Exec(`UPDATE organization_plans SET state='running' WHERE id=?`,p.ID);e!=nil{t.Fatal(e)}
-	if e=tx.Commit();e!=nil{t.Fatal(e)}
-	if e=f.s.Tick(ctx);e!=nil{t.Fatal(e)}
+	tx, e := f.db.BeginTx(ctx, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = tx.Exec(`UPDATE organization_plans SET state='review' WHERE id=?`, childID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = tx.Exec(`UPDATE organization_plans SET state='running' WHERE id=?`, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = tx.Commit(); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
 	var childCount int
-	if e=f.db.QueryRow(`SELECT COUNT(*) FROM organization_plans WHERE json_extract(snapshot,'$.replacement.tag_parent')=?`,p.ID).Scan(&childCount);e!=nil||childCount!=1{t.Fatal("duplicate metadata child",childCount,e)}
+	if e = f.db.QueryRow(`SELECT COUNT(*) FROM organization_plans WHERE json_extract(snapshot,'$.replacement.tag_parent')=?`, p.ID).Scan(&childCount); e != nil || childCount != 1 {
+		t.Fatal("duplicate metadata child", childCount, e)
+	}
 	if e = f.s.Tick(ctx); e != nil {
 		t.Fatal(e)
 	}
@@ -800,5 +813,48 @@ func TestOrganizationQueuesApprovedEmbeddedTitleAfterMove(t *testing.T) {
 	old, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(child.Replacement.Backup)))
 	if e != nil || string(old) != "original video" {
 		t.Fatal(string(old), e)
+	}
+}
+
+func TestBulkOrganizationQueuesIndependentTitleUpdates(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	f.movie(t, 1, "Movies/First/movie.mkv", []byte("first original"))
+	f.movie(t, 2, "Movies/Second/movie.mkv", []byte("second original"))
+	if _, err := f.db.Exec(`UPDATE media_items SET title='Another movie' WHERE id=2`); err != nil {
+		t.Fatal(err)
+	}
+	f.s.SetTagger(func(ctx context.Context, source, stage *os.File, extension, title string) (string, error) {
+		_, err := stage.WriteAt([]byte("updated: "+title), 0)
+		return `{}`, err
+	})
+	p, err := f.s.PreviewWithEmbeddedTitle(ctx, []int64{1, 2}, "anime")
+	if err != nil || len(p.Files) != 2 || p.Files[0].EmbeddedTitle != "Review movie" || p.Files[1].EmbeddedTitle != "Another movie" {
+		t.Fatal(p, err)
+	}
+	if _, err = f.s.Apply(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.s.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var queued int
+	if err = f.db.QueryRow(`SELECT COUNT(*) FROM organization_plans WHERE state='queued' AND json_extract(snapshot,'$.replacement.tag_parent')=?`, p.ID).Scan(&queued); err != nil || queued != 1 {
+		t.Fatal(queued, err)
+	}
+	for i := 0; i < 2; i++ {
+		if err = f.s.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var completed int
+	if err = f.db.QueryRow(`SELECT COUNT(*) FROM organization_plans WHERE state='completed' AND json_extract(snapshot,'$.replacement.tag_parent')=?`, p.ID).Scan(&completed); err != nil || completed != 2 {
+		t.Fatal(completed, err)
+	}
+	for _, file := range p.Files {
+		data, err := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(file.Destination)))
+		if err != nil || string(data) != "updated: "+file.EmbeddedTitle {
+			t.Fatal(file.FileID, string(data), err)
+		}
 	}
 }

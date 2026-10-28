@@ -76,19 +76,20 @@ type Companion struct {
 	Identity    string `json:"identity"`
 }
 type PlannedFile struct {
-	FileID      int64       `json:"media_file_id"`
-	MediaID     int64       `json:"media_id"`
-	Title       string      `json:"title"`
-	Source      string      `json:"source"`
-	Destination string      `json:"destination"`
-	Size        int64       `json:"size_bytes"`
-	Mtime       int64       `json:"mtime"`
-	SHA         string      `json:"sha256"`
-	Identity    string      `json:"identity"`
-	Snapshot    Snapshot    `json:"naming_snapshot"`
-	Episodes    []Episode   `json:"episodes"`
-	Companions  []Companion `json:"companions"`
-	Unchanged   bool        `json:"unchanged"`
+	EmbeddedTitle string      `json:"embedded_title,omitempty"`
+	FileID        int64       `json:"media_file_id"`
+	MediaID       int64       `json:"media_id"`
+	Title         string      `json:"title"`
+	Source        string      `json:"source"`
+	Destination   string      `json:"destination"`
+	Size          int64       `json:"size_bytes"`
+	Mtime         int64       `json:"mtime"`
+	SHA           string      `json:"sha256"`
+	Identity      string      `json:"identity"`
+	Snapshot      Snapshot    `json:"naming_snapshot"`
+	Episodes      []Episode   `json:"episodes"`
+	Companions    []Companion `json:"companions"`
+	Unchanged     bool        `json:"unchanged"`
 }
 type Plan struct {
 	ID                  string        `json:"id"`

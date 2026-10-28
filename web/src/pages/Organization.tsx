@@ -38,6 +38,7 @@ type File = {
 type Files = { items: File[]; page: number; total: number; limit: number };
 type Planned = {
   media_file_id: number;
+  embedded_title?: string;
   title: string;
   source: string;
   destination: string;
@@ -375,7 +376,7 @@ function Reorganize({ config }: { config: Config }) {
     [target, setTarget] = useState("");
   const [updateEmbeddedTitle, setUpdateEmbeddedTitle] = useState(false);
   useEffect(() => {
-    if (selected.length !== 1) setUpdateEmbeddedTitle(false);
+    if (selected.length === 0) setUpdateEmbeddedTitle(false);
   }, [selected.length]);
   const [plan, setPlan] = useState<Plan>(),
     [pending, setPending] = useState(""),
@@ -946,18 +947,18 @@ function Reorganize({ config }: { config: Config }) {
           <input
             type="checkbox"
             checked={updateEmbeddedTitle}
-            disabled={selected.length !== 1 || !!pending}
+            disabled={selected.length === 0 || !!pending}
             onChange={(event) => {
               setUpdateEmbeddedTitle(event.target.checked);
               setPlan(undefined);
               setReviewed(false);
             }}
           />{" "}
-          Also update this file’s embedded title after organization
+          Also update selected files’ embedded titles after organization
         </label>
         <p className="field-help">
-          Choose one MP4 or Matroska file. ReelScarey will queue a verified
-          title update after the move and retain a rollback copy.
+          Choose MP4 or Matroska files. ReelScarey will queue verified title
+          updates after the move and retain a rollback copy for each file.
         </p>
         {mediaID && (
           <>
@@ -1040,9 +1041,8 @@ function Reorganize({ config }: { config: Config }) {
           )}
           {plan.update_embedded_title && (
             <p>
-              After the file move, update the embedded title to{" "}
-              <strong>{plan.embedded_title}</strong> using a verified copy and
-              retain the previous version.
+              After the file move, update embedded titles using verified copies
+              and retain each previous version.
             </p>
           )}
           <PlanFiles plan={plan} />
@@ -1255,6 +1255,9 @@ function PlanFiles({ plan }: { plan: Plan }) {
               <span aria-label="to">→</span>
               <code>{f.destination}</code>
             </div>
+            {f.embedded_title && (
+              <p className="field-help">Embedded title: {f.embedded_title}</p>
+            )}
             {f.companions.map((c) => (
               <div
                 className="organization-path-change field-help"

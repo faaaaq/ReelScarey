@@ -14,7 +14,7 @@ Historical native and package results below remain as records of past work.
 - [ ] Update embedded movie and TV titles while organizing and renaming media,
   with verified copies and recovery that preserve streams and seeding sources.
   Reviewed MP4 and Matroska updates preserve streams and rollback copies, and
-  can follow a single-file move automatically. Batch and whole-folder moves remain open.
+  can follow selected-file moves automatically. Whole-folder moves remain open.
 
 - [x] Move media physically between configured libraries, with a clear preview,
   collision handling, safe transfer and recovery, and updated catalog paths.
