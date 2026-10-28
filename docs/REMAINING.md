@@ -1,5 +1,7 @@
 # Remaining project work
 
+The current milestone queue is summarized in [MILESTONES.md](../MILESTONES.md).
+
 This checklist consolidates the open work after version 0.18's Anime provider
 identity, reviewed order and manual special/multi-season pack implementation.
 Earlier milestone sections in [ROADMAP.md](../ROADMAP.md) also record historical
