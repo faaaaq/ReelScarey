@@ -54,6 +54,11 @@ Behavior, commands and bounds: [Storage](STORAGE.md), [workload checks](WORKLOAD
 - The final image repeats the complete storage and backup/restore rehearsals and
   the previously completed seven-feature container regression. Final focused race
   checks for storage, maintenance/recovery, quality, HTTP and commands also pass.
+- Delivery is tracked in [pull request #3](https://github.com/faaaaq/ReelScarey/pull/3)
+  against primary `codex/foundation`. Hosted run `40906762719` did not start:
+  GitHub reports failed recent account payments or a spending limit requiring an
+  increase. Hosted CI is not recorded as passed. Repository rules, statuses and
+  billing settings were not changed; local/container checks passed independently.
 
 ## Version 0.22 — seven completed follow-through features
 
