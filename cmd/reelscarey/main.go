@@ -16,6 +16,7 @@ import (
 
 	"github.com/faaaaq/ReelScarey/internal/auth"
 	"github.com/faaaaq/ReelScarey/internal/automation"
+	"github.com/faaaaq/ReelScarey/internal/backups"
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/discordbot"
@@ -32,7 +33,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.20.0-dev"
+var version = "0.21.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -70,28 +71,56 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer ownership.Close()
-	guard, err := instance.Guard(cfg.ConfigDir, true)
+	guard, err := instance.Guard(cfg.ConfigDir, false)
 	if err != nil {
 		return err
 	}
-	defer guard.Close()
-	if err = instance.CheckStart(cfg.ConfigDir); err != nil {
-		return err
+	defer func() { guard.Close() }()
+	for {
+		apply, done := context.WithTimeout(context.Background(), 10*time.Minute)
+		err = backups.ApplyPending(apply, cfg, version)
+		done()
+		if err != nil {
+			return err
+		}
+		if err = instance.CheckStart(cfg.ConfigDir); err != nil {
+			return err
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+		guard.Close()
+		guard, err = instance.Guard(cfg.ConfigDir, true)
+		if err != nil {
+			return err
+		}
+		restart, err := serve(ctx, cfg, logger)
+		if err != nil || !restart {
+			return err
+		}
+		guard.Close()
+		guard, err = instance.Guard(cfg.ConfigDir, false)
+		if err != nil {
+			return err
+		}
 	}
+}
+
+func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, error) {
 	startup, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	db, err := database.Open(startup, cfg.ConfigDir)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer db.Close()
 	authService, err := auth.New(startup, db, cfg.ConfigDir)
 	if err != nil {
-		return err
+		return false, err
 	}
 	secretStore, err := securestore.New(startup, db, cfg.ConfigDir)
 	if err != nil {
-		return err
+		return false, err
 	}
 	cancel()
 	metadataService := metadata.New(secretStore, metadata.NewTMDb())
@@ -136,14 +165,27 @@ func run(logger *slog.Logger) error {
 	}
 	assets, err := web.Assets()
 	if err != nil {
-		return err
+		return false, err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore, Bot: botService}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	restart := make(chan struct{}, 1)
+	backupService, err := backups.New(ctx, db, cfg, version, func() {
+		select {
+		case restart <- struct{}{}:
+		default:
+		}
+	})
+	if err != nil {
+		return false, err
+	}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore, Bot: botService, Backups: backupService}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
-		return fmt.Errorf("listen: %w", err)
+		return false, fmt.Errorf("listen: %w", err)
 	}
 	workerCtx, workerCancel := context.WithCancel(ctx)
+	backupDone := make(chan struct{})
+	go func() { defer close(backupDone); backupService.Run(workerCtx, logger) }()
+	defer func() { workerCancel(); <-backupDone }()
 	botDone := make(chan struct{})
 	go func() {
 		defer close(botDone)
@@ -243,18 +285,28 @@ func run(logger *slog.Logger) error {
 	select {
 	case err := <-failed:
 		if errors.Is(err, http.ErrServerClosed) {
-			return nil
+			return false, nil
 		}
-		return err
+		return false, err
+	case <-restart:
+		logger.Info("closing active work for reviewed configuration restore")
+		workerCancel()
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		if err := server.Shutdown(shutdown); err != nil {
+			_ = server.Close()
+			return false, err
+		}
+		return true, nil
 	case <-ctx.Done():
 		logger.Info("shutting down")
 		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdown); err != nil {
 			_ = server.Close()
-			return err
+			return false, err
 		}
-		return nil
+		return false, nil
 	}
 }
 

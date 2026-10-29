@@ -1,4 +1,30 @@
-# Validation record — 2026-10-28
+# Validation record — 2026-10-29
+
+## Configuration and library database backup manager
+
+- Schema 31 adds the persistent paused backup schedule. Live WAL snapshots,
+  encrypted provider preservation, ZIP upload/download, strict archive/path/size
+  checks, stale review fencing, retention protections and both session types are
+  covered by isolated backend/API tests. Due scheduling honors recovery hold.
+- Interrupted restore tests simulate each boundary while old configuration files
+  move aside and new files publish; every case recovers the latest previous
+  settings and matching key. Restore closes HTTP, workers and SQLite, excludes
+  maintenance commands, saves a verified safety archive, checks the new state and
+  reopens with worker review required. Temporary copies are cleaned conservatively.
+- All 155 frontend tests pass, including schedule/CSRF, manual job controls,
+  upload verification failures, explicit restore consent and deletion review.
+  Backend tests/static checks and targeted race checks pass in Linux containers.
+  The complete Docker build repeats frontend/backend/static verification.
+- The actual read-only, network-isolated container rehearsal verifies manual
+  backup, ZIP download/upload, stale digest rejection, controlled restart,
+  original session revocation, restored catalog/settings, retained safety backup,
+  paused schedules, critical installation checks, explicit recovery resume and
+  deletion. Its first run caught a missing `/backups` deep route; that is fixed,
+  covered by a regression check and passes the repeated complete rehearsal.
+  A test-only setup-code encoding mistake was also corrected. The repeatable
+  `scripts/backup-container-smoke.sh` uses fresh temporary volumes and is in CI.
+  No owner account, provider connection or media was used as a test fixture.
+
 
 ## Running-container upgrade and repository cleanup
 

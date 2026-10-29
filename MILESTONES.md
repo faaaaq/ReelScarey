@@ -1,11 +1,15 @@
 # ReelScarey milestones
 
-This is the current work queue, updated 2026-10-28. Docker is the supported
+This is the current work queue, updated 2026-10-29. Docker is the supported
 deployment. Checked boxes mean implemented; live acceptance is tracked separately.
 See [ROADMAP.md](ROADMAP.md) for the broader roadmap, [remaining work](docs/REMAINING.md)
 for limits, and [validation](docs/VALIDATION.md) for evidence.
 
 ## Before feature-complete live testing
+
+- [x] Administration backup/restore manager for configuration and the catalog:
+  live snapshots, schedules, retention, ZIP download/upload, safety backups,
+  controlled restart and interrupted-restore rollback. Media backups stay separate.
 
 - [x] Connect downloaded movie and TV upgrades to reviewed replacement and
   rollback, preserving download/seeding sources and provenance.

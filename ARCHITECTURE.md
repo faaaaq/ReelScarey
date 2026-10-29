@@ -35,6 +35,7 @@ internal/requests/  requester-owned requests, list imports and webhook delivery
 internal/emby/      encrypted Emby connection and read-only playback snapshots
 internal/instance/   OS config ownership and maintenance locks
 internal/maintenance/ verified offline config snapshots and new-folder restores
+internal/backups/    live ZIP snapshots, persisted schedules, retention, restore journal
 internal/operations/ explicit installation checks, setup and recovery review
 internal/httpapi/    REST handlers, middleware, frontend serving
 web/src/             application, pages, reusable UI, API client
@@ -44,6 +45,12 @@ docs/                API and operational documentation
 ```
 
 ## Data model
+
+Migration 031 adds the paused-by-default singleton `backup_schedule`. Backup ZIPs
+and strict sidecar metadata live in a separate persistent volume. The composition
+root owns the controlled restart: it drains HTTP, joins every worker and closes
+SQLite before applying a durable, rollback-capable configuration file journal.
+See [backup design and recovery](docs/BACKUPS.md).
 
 Implemented tables: `schema_migrations`, singleton `settings`, `media_items`,
 singleton `admin_account`, `sessions`, `provider_secrets`, `integration_configs`,

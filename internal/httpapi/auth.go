@@ -30,6 +30,11 @@ func (s *Server) security(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if s.backups != nil && s.backups.Restoring() && r.Method != "GET" && r.Method != "HEAD" {
+			w.Header().Set("Retry-After", "5")
+			fail(w, 503, "restore_restarting", "The reviewed restore is restarting ReelScarey. Wait a moment, then sign in again.")
+			return
+		}
 		if r.URL.Path == "/api/v1/discord/interactions" {
 			next.ServeHTTP(w, r)
 			return

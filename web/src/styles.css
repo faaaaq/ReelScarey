@@ -2617,3 +2617,69 @@ dd {
   justify-content: flex-end;
   margin-bottom: 0.75rem;
 }
+.backup-scope,
+.backup-path {
+  overflow-wrap: anywhere;
+}
+.backup-heading,
+.backup-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.backup-heading {
+  justify-content: space-between;
+}
+.backup-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.backup-fields > label,
+.backup-confirm {
+  display: block;
+  margin: 14px 0;
+}
+.backup-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 18px;
+}
+.backup-grid label {
+  display: grid;
+  gap: 8px;
+}
+.backup-grid input {
+  width: 100%;
+  min-width: 0;
+  background: var(--gray-2);
+  color: var(--gray-12);
+  border: 1px solid var(--gray-7);
+  border-radius: 5px;
+  padding: 8px;
+  font: inherit;
+}
+.backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 0;
+  border-top: 1px solid var(--gray-6);
+}
+.backup-row p {
+  margin: 8px 0 0;
+}
+@media (max-width: 750px) {
+  .backup-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .backup-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}

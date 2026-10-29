@@ -239,6 +239,14 @@ func Backup(ctx context.Context, cfg config.Config, destination, version string)
 	if e = instance.CheckStart(cfg.ConfigDir); e != nil {
 		return empty, e
 	}
+	return BackupOwned(ctx, cfg, destination, version)
+}
+
+// BackupOwned is for the server that already holds the config ownership lock.
+// SQLite snapshots committed WAL data while other connections remain open. The
+// encryption key is immutable for the lifetime of that configuration.
+func BackupOwned(ctx context.Context, cfg config.Config, destination, version string) (Manifest, error) {
+	var empty Manifest
 	dest, e := newDestination(cfg, destination, false)
 	if e != nil {
 		return empty, e
@@ -510,6 +518,8 @@ func pauseRestored(ctx context.Context, dir string) error {
 	defer tx.Rollback()
 	for _, q := range []struct{ table, sql string }{
 		{"sessions", `DELETE FROM sessions`},
+		{"request_sessions", `DELETE FROM request_sessions`},
+		{"backup_schedule", `UPDATE backup_schedule SET enabled=0,running=0,next_run=0,last_error='',revision=revision+1`},
 		{"search_schedule", `UPDATE search_schedule SET enabled=0,requested=0,lease_owner='',lease_until=0,revision=revision+1,state='paused',message='Restored backup: review settings before enabling searches.'`},
 		{"subtitle_preferences", `UPDATE subtitle_preferences SET enabled=0,revision=revision+1`},
 		{"subtitle_jobs", `UPDATE subtitle_jobs SET requested=0,lease_owner='',lease_until=0,state='paused',message='Restored backup: review settings before resuming.'`},

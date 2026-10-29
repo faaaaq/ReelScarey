@@ -48,4 +48,13 @@ func TestExclusiveOwnershipAndSharedAdministration(t *testing.T) {
 	if CheckStart(dir) == nil {
 		t.Fatal("incomplete restore could start")
 	}
+	if e = os.Remove(filepath.Join(dir, ".restore-in-progress")); e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(filepath.Join(dir, ".restore-request.json"), []byte("pending"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if CheckStart(dir) == nil {
+		t.Fatal("administration bypassed pending restore")
+	}
 }

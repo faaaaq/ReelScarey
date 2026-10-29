@@ -16,6 +16,7 @@ type Config struct {
 	ConfigDir    string
 	MediaDir     string
 	DownloadsDir string
+	BackupsDir   string
 	LogLevel     string
 	PublicURL    string
 }
@@ -38,6 +39,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		ConfigDir:    value("REELSCAREY_CONFIG_DIR", "./data/config"),
 		MediaDir:     value("REELSCAREY_MEDIA_DIR", media),
 		DownloadsDir: value("REELSCAREY_DOWNLOADS_DIR", downloads),
+		BackupsDir:   value("REELSCAREY_BACKUPS_DIR", filepath.Join(value("REELSCAREY_CONFIG_DIR", "./data/config"), "..", "backups")),
 		LogLevel:     value("REELSCAREY_LOG_LEVEL", "info"),
 		PublicURL:    value("REELSCAREY_PUBLIC_URL", ""),
 	}
@@ -54,6 +56,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		path *string
 	}{
 		{"REELSCAREY_CONFIG_DIR", &c.ConfigDir}, {"REELSCAREY_MEDIA_DIR", &c.MediaDir}, {"REELSCAREY_DOWNLOADS_DIR", &c.DownloadsDir},
+		{"REELSCAREY_BACKUPS_DIR", &c.BackupsDir},
 	} {
 		if strings.ContainsRune(*entry.path, 0) {
 			return Config{}, fmt.Errorf("%s contains an invalid character", entry.name)

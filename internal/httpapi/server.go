@@ -19,6 +19,7 @@ import (
 
 	"github.com/faaaaq/ReelScarey/internal/auth"
 	"github.com/faaaaq/ReelScarey/internal/automation"
+	"github.com/faaaaq/ReelScarey/internal/backups"
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/discordbot"
@@ -60,6 +61,7 @@ type Server struct {
 	animeProvider    metadata.AnimeProvider
 	youtube          *youtube.Store
 	youtubeInspector YouTubeInspector
+	backups          *backups.Service
 }
 
 type Dependencies struct {
@@ -73,6 +75,7 @@ type Dependencies struct {
 	Secrets          *securestore.Store
 	Bot              *discordbot.Service
 	Franchises       metadata.FranchiseProvider
+	Backups          *backups.Service
 }
 
 type YouTubeInspector interface {
@@ -82,6 +85,7 @@ type YouTubeInspector interface {
 func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string, deps Dependencies) http.Handler {
 	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle}
 	s.youtube = youtube.NewStore(db)
+	s.backups = deps.Backups
 	s.youtubeInspector = deps.YouTubeInspector
 	s.bot = deps.Bot
 	s.franchises = deps.Franchises
@@ -108,6 +112,13 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/setup", method(http.MethodGet, s.setupGuide))
 	mux.HandleFunc("/api/v1/system/checks", s.installationChecks)
 	mux.HandleFunc("/api/v1/system/recovery/resume", method(http.MethodPost, s.resumeRecovery))
+	mux.HandleFunc("/api/v1/system/backups", s.backupCollection)
+	mux.HandleFunc("/api/v1/system/backups/schedule", method(http.MethodPut, s.backupSchedule))
+	mux.HandleFunc("/api/v1/system/backups/upload", method(http.MethodPost, s.backupUpload))
+	mux.HandleFunc("/api/v1/system/backups/{id}", method(http.MethodDelete, s.backupDelete))
+	mux.HandleFunc("/api/v1/system/backups/{id}/download", method(http.MethodGet, s.backupDownload))
+	mux.HandleFunc("/api/v1/system/backups/{id}/preview", method(http.MethodPost, s.backupPreview))
+	mux.HandleFunc("/api/v1/system/backups/{id}/restore", method(http.MethodPost, s.backupRestore))
 	mux.HandleFunc("/api/v1/dashboard", method(http.MethodGet, s.dashboard))
 	mux.HandleFunc("/api/v1/events", method(http.MethodGet, s.activityEvents))
 	mux.HandleFunc("/api/v1/wanted", method(http.MethodGet, s.planning))
@@ -435,6 +446,7 @@ func (s *Server) sameOrigin(r *http.Request) bool {
 func frontend(assets fs.FS) http.HandlerFunc {
 	files := http.FileServer(http.FS(assets))
 	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/anime": true, "/youtube": true, "/organization": true, "/search": true, "/releases": true, "/activity": true, "/timeline": true, "/watch-activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true, "/import": true, "/wanted": true, "/calendar": true, "/requests": true}
+	routes["/backups"] = true
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")

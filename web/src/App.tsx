@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import {
   Activity,
+  Archive,
   CheckCircle2,
   Captions,
   Clapperboard,
@@ -64,6 +65,9 @@ const Setup = lazy(() =>
 );
 const SystemChecks = lazy(() =>
   import("./pages/System").then((m) => ({ default: m.SystemChecks })),
+);
+const Backups = lazy(() =>
+  import("./pages/Backups").then((m) => ({ default: m.Backups })),
 );
 const Indexers = lazy(() =>
   import("./pages/Indexers").then((m) => ({ default: m.Indexers })),
@@ -155,7 +159,7 @@ function AppShell() {
   const location = useLocation();
   useEffect(() => {
     setMenuOpen(false);
-    document.title = `${location.pathname === "/organization" ? "Organize library" : location.pathname === "/setup" ? "Setup" : location.pathname === "/system" ? "System checks" : location.pathname.startsWith("/series/") ? "TV show" : location.pathname.startsWith("/movies/") ? "Movie details" : location.pathname === "/import" ? "Import library" : location.pathname === "/indexers" ? "Indexers" : location.pathname === "/settings" ? "Settings" : location.pathname === "/releases" ? "Releases" : (navigation.find((item) => item.path === location.pathname)?.name ?? "Page")} · ReelScarey`;
+    document.title = `${location.pathname === "/backups" ? "Backups" : location.pathname === "/organization" ? "Organize library" : location.pathname === "/setup" ? "Setup" : location.pathname === "/system" ? "System checks" : location.pathname.startsWith("/series/") ? "TV show" : location.pathname.startsWith("/movies/") ? "Movie details" : location.pathname === "/import" ? "Import library" : location.pathname === "/indexers" ? "Indexers" : location.pathname === "/settings" ? "Settings" : location.pathname === "/releases" ? "Releases" : (navigation.find((item) => item.path === location.pathname)?.name ?? "Page")} · ReelScarey`;
   }, [location.pathname]);
   useEffect(() => {
     function close(event: KeyboardEvent) {
@@ -233,10 +237,14 @@ function AppShell() {
               <Settings2 size={19} strokeWidth={1.7} />
               <span>Settings</span>
             </NavLink>
+            <NavLink to="/backups">
+              <Archive size={19} strokeWidth={1.7} />
+              <span>Backups</span>
+            </NavLink>
           </nav>
           <div className="account-control">
             <span>
-              {session.username} <small>v0.20</small>
+              {session.username} <small>v0.21</small>
             </span>
             <button onClick={() => void logout()} disabled={signingOut}>
               <LogOut size={15} />
@@ -280,6 +288,7 @@ function AppShell() {
             <Route path="/movies/:id" element={<ItemDetails />} />
             <Route path="/setup" element={<Setup />} />
             <Route path="/system" element={<SystemChecks />} />
+            <Route path="/backups" element={<Backups />} />
             <Route path="/series/:id" element={<Series />} />
             <Route path="/search" element={<MovieSearch />} />
             <Route path="/releases" element={<Releases />} />

@@ -111,6 +111,7 @@ review. No existing file is replaced. This feature works independently of Torzna
 See [subtitle setup and safety limits](docs/SUBTITLES.md).
 
 The named `reelscarey_config` volume persists the database under `/config`.
+The private `reelscarey_backups` volume stores managed snapshots under `/backups`.
 Change `MEDIA_PATH` and `DOWNLOADS_PATH` in `.env` for your host folders; they map
 to `/media` (writable for imports) and `/downloads` (read-only to preserve torrent
 sources). The host download folder must contain the same files as qBittorrent's
@@ -162,6 +163,7 @@ the application. Mount a remote qBittorrent's downloads locally before importing
 | `REELSCAREY_CONFIG_DIR` | `./data/config` | SQLite directory (created if absent) |
 | `REELSCAREY_MEDIA_DIR` | `/media` | Media root |
 | `REELSCAREY_DOWNLOADS_DIR` | `/downloads` | Download root |
+| `REELSCAREY_BACKUPS_DIR` | sibling `backups` beside config; `/backups` in Docker | Separate private snapshot directory; parent must exist |
 | `REELSCAREY_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 | `REELSCAREY_PUBLIC_URL` | empty | Explicit browser origin for another hostname or HTTPS reverse proxy |
 
@@ -172,7 +174,7 @@ then use Secure. Arbitrary forwarded headers are not trusted. Authentication is
 implemented; a full production security review remains on the roadmap.
 
 Relative paths resolve against the working directory. Docker explicitly sets
-the three paths to `/config`, `/media`, and `/downloads`. UI preferences are stored
+the paths to `/config`, `/media`, `/downloads`, and `/backups`. UI preferences are stored
 in SQLite and survive process restarts. Folder preferences control the next
 import's destination; saving a preference does not create or scan folders.
 Structured JSON logs go to standard output.
@@ -207,7 +209,14 @@ standalone packaging tools. Interface pages load on demand; an old browser tab
 offers a reload action if a page chunk changed during an upgrade. For a named
 build, set `REELSCAREY_VERSION` in `.env` before `docker compose build`.
 
-Stop ReelScarey, then use `reelscarey backup NEW_FOLDER` and
+Open **Backups** to create live snapshots, configure schedules and retention,
+download/upload ZIPs and review a restore. A restore saves a verified safety
+backup, closes active work, restarts the app and holds workers for review.
+Schedules start paused. Manual, uploaded and safety backups remain until deleted;
+scheduled backups follow the configured count/age limits. Media files and host
+configuration need their own backups. See the [backup manager guide](docs/BACKUPS.md).
+
+For offline recovery, stop ReelScarey, then use `reelscarey backup NEW_FOLDER` and
 `reelscarey backup-check BACKUP_FOLDER` to create and verify a consistent config
 snapshot. `reelscarey restore BACKUP_FOLDER NEW_CONFIG_FOLDER` refuses existing
 folders, revokes sessions and holds background workers for review. See the full

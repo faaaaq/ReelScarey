@@ -1,0 +1,451 @@
+package backups
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
+
+	"github.com/faaaaq/ReelScarey/internal/config"
+	"github.com/faaaaq/ReelScarey/internal/database"
+	"github.com/faaaaq/ReelScarey/internal/maintenance"
+	"github.com/faaaaq/ReelScarey/internal/securestore"
+)
+
+type Review struct {
+	Archive       Archive `json:"archive"`
+	Movies        int     `json:"movies"`
+	Series        int     `json:"series"`
+	Files         int     `json:"registered_files"`
+	Administrator string  `json:"administrator"`
+}
+
+func (s *Service) Preview(ctx context.Context, archiveID string) (Review, error) {
+	var review Review
+	if !s.op.TryLock() {
+		return review, ErrBusy
+	}
+	defer s.op.Unlock()
+	a, dir, e := s.inspect(ctx, archiveID)
+	if e != nil {
+		return review, e
+	}
+	defer os.RemoveAll(dir)
+	db, e := database.OpenExisting(ctx, filepath.Join(dir, "reelscarey.db"), true)
+	if e != nil {
+		return review, e
+	}
+	defer db.Close()
+	review.Archive = a
+	for _, q := range []struct {
+		sql    string
+		target *int
+	}{{`SELECT COUNT(*) FROM media_items WHERE kind='movie'`, &review.Movies}, {`SELECT COUNT(*) FROM media_items WHERE kind='series'`, &review.Series}, {`SELECT COUNT(*) FROM media_files`, &review.Files}} {
+		if e = db.QueryRowContext(ctx, q.sql).Scan(q.target); e != nil {
+			return review, e
+		}
+	}
+	e = db.QueryRowContext(ctx, `SELECT COALESCE((SELECT username FROM admin_account LIMIT 1),'')`).Scan(&review.Administrator)
+	return review, e
+}
+
+type pendingRestore struct {
+	Format   int                `json:"format"`
+	ID       string             `json:"id"`
+	Phase    string             `json:"phase"`
+	Files    []maintenance.File `json:"files"`
+	Original []string           `json:"original"`
+}
+
+var switchedFiles = []string{"reelscarey.db", "reelscarey.db-wal", "reelscarey.db-shm", "secrets.key", "setup-token", "recovery-mode"}
+
+func jsonDecode(b []byte, v any) error {
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	if e := d.Decode(v); e != nil {
+		return e
+	}
+	if d.Decode(&struct{}{}) != io.EOF {
+		return errors.New("unexpected restore data")
+	}
+	return nil
+}
+func syncDir(root *os.Root) error {
+	f, e := root.Open(".")
+	if e != nil {
+		return e
+	}
+	defer f.Close()
+	e = f.Sync()
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	return e
+}
+func replaceJSON(root *os.Root, name string, v any) error {
+	tmp := ".journal-" + id()
+	if e := persist(root, tmp, v); e != nil {
+		return e
+	}
+	defer root.Remove(tmp)
+	if e := root.Rename(tmp, name); e != nil {
+		return e
+	}
+	return syncDir(root)
+}
+func measureFile(root *os.Root, name string) (maintenance.File, error) {
+	f, e := regular(root, name, MaxArchive)
+	if e != nil {
+		return maintenance.File{}, e
+	}
+	defer f.Close()
+	h := sha256.New()
+	n, e := io.Copy(h, f)
+	return maintenance.File{Name: name, Size: n, SHA: hex.EncodeToString(h.Sum(nil))}, e
+}
+
+func (s *Service) PrepareRestore(ctx context.Context, archiveID, digest, confirmation string) error {
+	if confirmation != "RESTORE" {
+		return ErrConfirmation
+	}
+	if s.restart == nil {
+		return errors.New("controlled restart is unavailable")
+	}
+	if !s.op.TryLock() {
+		return ErrBusy
+	}
+	queued := false
+	defer func() {
+		if !queued {
+			s.op.Unlock()
+		}
+	}()
+	a, dir, e := s.inspect(ctx, archiveID)
+	if e != nil {
+		return e
+	}
+	defer os.RemoveAll(dir)
+	if digest != a.SHA {
+		return ErrChanged
+	}
+	request := pendingRestore{Format: 1, ID: id(), Phase: "prepared", Files: []maintenance.File{}}
+	ready := filepath.Join(s.dir, ".restore-ready-"+request.ID)
+	defer func() {
+		if !queued {
+			if parent, e := os.OpenRoot(s.dir); e == nil {
+				cleanupRestoreDir(parent, filepath.Base(ready))
+				parent.Close()
+			}
+		}
+	}()
+	if _, e = maintenance.Restore(ctx, s.cfg, dir, ready); e != nil {
+		return e
+	}
+	// Upgrade only the private candidate, before accepting the restore. A failed
+	// migration cannot change the active configuration.
+	db, e := database.Open(ctx, ready)
+	if e != nil {
+		return e
+	}
+	_, e = db.ExecContext(ctx, `UPDATE backup_schedule SET enabled=0,running=0,next_run=0,revision=revision+1`)
+	e = errors.Join(e, db.Close())
+	if e != nil {
+		return e
+	}
+	root, e := os.OpenRoot(ready)
+	if e != nil {
+		return e
+	}
+	defer root.Close()
+	for _, name := range []string{"reelscarey.db", "secrets.key", "setup-token"} {
+		f, e := measureFile(root, name)
+		if errors.Is(e, os.ErrNotExist) {
+			continue
+		}
+		if e != nil {
+			return e
+		}
+		request.Files = append(request.Files, f)
+	}
+	active, e := os.OpenRoot(s.cfg.ConfigDir)
+	if e != nil {
+		return e
+	}
+	defer active.Close()
+	if e = persist(active, ".restore-request.json", request); e != nil {
+		return e
+	}
+	if e = syncDir(active); e != nil {
+		return e
+	}
+	s.restoring.Store(true)
+	queued = true
+	s.restart()
+	return nil
+}
+
+// Cleanup only the exact regular files generated by this restore. Unexpected
+// entries and links are preserved for inspection, never recursively deleted.
+func cleanupRestoreDir(parent *os.Root, name string) {
+	info, e := parent.Lstat(name)
+	if e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return
+	}
+	dir, e := parent.OpenRoot(name)
+	if e != nil {
+		return
+	}
+	defer dir.Close()
+	f, e := dir.Open(".")
+	if e != nil {
+		return
+	}
+	entries, e := f.ReadDir(20)
+	f.Close()
+	if e != nil && e != io.EOF {
+		return
+	}
+	allowed := append(slices.Clone(switchedFiles), ".instance.lock", ".maintenance.lock", ".restore-in-progress")
+	for _, entry := range entries {
+		if !slices.Contains(allowed, entry.Name()) || !entry.Type().IsRegular() {
+			return
+		}
+	}
+	for _, entry := range entries {
+		if dir.Remove(entry.Name()) != nil {
+			return
+		}
+	}
+	dir.Close()
+	_ = parent.Remove(name)
+	_ = syncDir(parent)
+}
+
+func readPending(root *os.Root) (pendingRestore, error) {
+	var p pendingRestore
+	f, e := regular(root, ".restore-request.json", 8192)
+	if e != nil {
+		return p, e
+	}
+	defer f.Close()
+	b, e := io.ReadAll(io.LimitReader(f, 8193))
+	if e != nil {
+		return p, e
+	}
+	if e = jsonDecode(b, &p); e != nil {
+		return p, e
+	}
+	if p.Format != 1 || !validID.MatchString(p.ID) || !slices.Contains([]string{"prepared", "applying", "committed"}, p.Phase) || len(p.Files) < 1 || len(p.Files) > 3 || len(p.Original) > len(switchedFiles) {
+		return p, errors.New("invalid restore journal; active data was preserved")
+	}
+	seen := map[string]bool{}
+	for _, f := range p.Files {
+		if !slices.Contains([]string{"reelscarey.db", "secrets.key", "setup-token"}, f.Name) || seen[f.Name] || f.Size <= 0 || f.Size > MaxArchive || len(f.SHA) != 64 {
+			return p, errors.New("invalid restore file journal")
+		}
+		seen[f.Name] = true
+	}
+	if !seen["reelscarey.db"] {
+		return p, errors.New("restore journal has no database")
+	}
+	seen = map[string]bool{}
+	for _, name := range p.Original {
+		if !slices.Contains(switchedFiles, name) || seen[name] {
+			return p, errors.New("invalid rollback journal")
+		}
+		seen[name] = true
+	}
+	return p, nil
+}
+
+func rollback(root *os.Root, p pendingRestore) error {
+	previous := ".restore-previous-" + p.ID
+	for _, name := range switchedFiles {
+		_, e := root.Lstat(filepath.Join(previous, name))
+		if e == nil {
+			if info, e := root.Lstat(name); e == nil {
+				if !info.Mode().IsRegular() {
+					return errors.New("rollback found a foreign file; recovery stopped")
+				}
+				if e = root.Remove(name); e != nil {
+					return e
+				}
+			} else if !errors.Is(e, os.ErrNotExist) {
+				return e
+			}
+			if e = root.Rename(filepath.Join(previous, name), name); e != nil {
+				return e
+			}
+		} else if !errors.Is(e, os.ErrNotExist) {
+			return e
+		} else if !slices.Contains(p.Original, name) {
+			if info, e := root.Lstat(name); e == nil {
+				if !info.Mode().IsRegular() {
+					return errors.New("rollback found a foreign file")
+				}
+				if e = root.Remove(name); e != nil {
+					return e
+				}
+			} else if !errors.Is(e, os.ErrNotExist) {
+				return e
+			}
+		}
+	}
+	return syncDir(root)
+}
+
+// ApplyPending runs only after HTTP requests, workers and SQLite have closed,
+// with the process ownership lock held. A crash before the commit marker rolls
+// back the file switch at the next startup. Prior files and the safety ZIP stay
+// available; no media path is ever part of this journal.
+func ApplyPending(ctx context.Context, cfg config.Config, version string) error {
+	root, e := os.OpenRoot(cfg.ConfigDir)
+	if e != nil {
+		return e
+	}
+	defer root.Close()
+	p, e := readPending(root)
+	if errors.Is(e, os.ErrNotExist) {
+		return nil
+	}
+	if e != nil {
+		return e
+	}
+	finish := func(message string) error {
+		if e := replaceJSON(root, "restore-result.json", struct {
+			Message string `json:"message"`
+		}{message}); e != nil {
+			return e
+		}
+		if e := root.Remove(".restore-request.json"); e != nil {
+			return e
+		}
+		if e := syncDir(root); e != nil {
+			return e
+		}
+		cleanupRestoreDir(root, ".restore-previous-"+p.ID)
+		if dir, e := storage(cfg); e == nil {
+			if parent, e := os.OpenRoot(dir); e == nil {
+				cleanupRestoreDir(parent, ".restore-ready-"+p.ID)
+				parent.Close()
+			}
+		}
+		return nil
+	}
+	if p.Phase == "committed" {
+		return finish("Restore completed. Sign in with the restored administrator account and review System checks before resuming work.")
+	}
+	if p.Phase == "applying" {
+		if e = rollback(root, p); e != nil {
+			return e
+		}
+		return finish("An interrupted restore was rolled back. The previous configuration and library database were recovered.")
+	}
+	dir, e := storage(cfg)
+	if e != nil {
+		return e
+	}
+	s := &Service{cfg: cfg, dir: dir, version: version}
+	if _, e = s.create(ctx, "pre_restore"); e != nil {
+		return finish("Restore cancelled because the safety backup could not be created. The current configuration was preserved.")
+	}
+	ready, e := os.OpenRoot(filepath.Join(dir, ".restore-ready-"+p.ID))
+	if e != nil {
+		return finish("Restore cancelled because its prepared snapshot is missing. The current configuration was preserved.")
+	}
+	defer ready.Close()
+	for _, want := range p.Files {
+		actual, e := measureFile(ready, want.Name)
+		if e != nil || actual != want {
+			return finish("Restore cancelled because its prepared snapshot changed. The current configuration was preserved.")
+		}
+	}
+	previous := ".restore-previous-" + p.ID
+	if e = root.Mkdir(previous, 0700); e != nil {
+		return e
+	}
+	for _, name := range switchedFiles {
+		if info, e := root.Lstat(name); e == nil {
+			if !info.Mode().IsRegular() {
+				return errors.New("restore refuses a non-regular configuration file")
+			}
+			p.Original = append(p.Original, name)
+		} else if !errors.Is(e, os.ErrNotExist) {
+			return e
+		}
+	}
+	p.Phase = "applying"
+	if e = replaceJSON(root, ".restore-request.json", p); e != nil {
+		return e
+	}
+	apply := func() error {
+		for _, name := range p.Original {
+			if e := root.Rename(name, filepath.Join(previous, name)); e != nil {
+				return e
+			}
+		}
+		prior, e := root.OpenRoot(previous)
+		if e != nil {
+			return e
+		}
+		e = syncDir(prior)
+		prior.Close()
+		if e != nil {
+			return e
+		}
+		if e = syncDir(root); e != nil {
+			return e
+		}
+		for _, want := range p.Files {
+			in, e := regular(ready, want.Name, MaxArchive)
+			if e != nil {
+				return e
+			}
+			out, e := root.OpenFile(want.Name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+			if e != nil {
+				in.Close()
+				return e
+			}
+			h := sha256.New()
+			n, ce := io.Copy(io.MultiWriter(out, h), io.LimitReader(in, want.Size+1))
+			e = errors.Join(ce, out.Sync(), out.Close(), in.Close())
+			if e != nil || n != want.Size || hex.EncodeToString(h.Sum(nil)) != want.SHA {
+				return errors.New("restored file failed verification")
+			}
+		}
+		if e := persist(root, "recovery-mode", map[string]int{"format": 1}); e != nil {
+			return e
+		}
+		db, e := database.Open(ctx, cfg.ConfigDir)
+		if e != nil {
+			return e
+		}
+		_, e = database.Inspect(ctx, db)
+		if e == nil {
+			e = securestore.Validate(ctx, db, cfg.ConfigDir)
+		}
+		e = errors.Join(e, db.Close())
+		if e != nil {
+			return e
+		}
+		if e = syncDir(root); e != nil {
+			return e
+		}
+		p.Phase = "committed"
+		return replaceJSON(root, ".restore-request.json", p)
+	}
+	if e = apply(); e != nil {
+		if re := rollback(root, p); re != nil {
+			return errors.Join(e, re)
+		}
+		return finish("Restore failed verification and was rolled back. The previous configuration and library database were recovered.")
+	}
+	return finish("Restore completed. Sign in with the restored administrator account and review System checks before resuming work.")
+}

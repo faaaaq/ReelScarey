@@ -28,7 +28,7 @@ func TestMigrationRejectsForeignKeyDamageBeforeCommit(t *testing.T) {
 	if e = db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name='invalid_reference'`).Scan(&n); e != nil || n != 0 {
 		t.Fatal("failed migration was not rolled back", n, e)
 	}
-	if version, e := Version(ctx, db); e != nil || version != 30 {
+	if version, e := Version(ctx, db); e != nil || version != 31 {
 		t.Fatal("invalid migration ledger", version, e)
 	}
 }

@@ -15,7 +15,7 @@ COPY internal/ ./internal/
 COPY web/embed.go ./web/embed.go
 COPY --from=frontend /src/web/dist ./web/dist
 RUN go test ./... && go vet ./...
-ARG VERSION=0.20.0-dev
+ARG VERSION=0.21.0-dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/reelscarey ./cmd/reelscarey
 
 FROM debian:bookworm-slim AS youtube-tools
@@ -30,20 +30,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 reelscarey \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin reelscarey \
-    && mkdir -p /config /media /downloads /youtube-staging \
-    && chown 10001:10001 /config /media /downloads /youtube-staging
+    && mkdir -p /config /media /downloads /youtube-staging /backups \
+    && chown 10001:10001 /config /media /downloads /youtube-staging /backups
 COPY --from=youtube-tools /opt/reelscarey-yt-dlp /opt/reelscarey-yt-dlp
 COPY --from=backend /out/reelscarey /usr/local/bin/reelscarey
 ENV REELSCAREY_LISTEN_ADDR=0.0.0.0:8787 \
     REELSCAREY_CONFIG_DIR=/config \
     REELSCAREY_MEDIA_DIR=/media \
     REELSCAREY_DOWNLOADS_DIR=/downloads \
+    REELSCAREY_BACKUPS_DIR=/backups \
     REELSCAREY_LOG_LEVEL=info \
     PYTHONDONTWRITEBYTECODE=1 \
     REELSCAREY_YTDLP_PATH=/opt/reelscarey-yt-dlp/bin/yt-dlp \
     REELSCAREY_YOUTUBE_STAGING_DIR=/youtube-staging/work
 USER 10001:10001
 EXPOSE 8787
-VOLUME ["/config", "/media", "/downloads", "/youtube-staging"]
+VOLUME ["/config", "/media", "/downloads", "/youtube-staging", "/backups"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["/usr/local/bin/reelscarey", "healthcheck"]
 ENTRYPOINT ["/usr/local/bin/reelscarey"]

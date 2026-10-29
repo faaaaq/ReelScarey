@@ -250,8 +250,36 @@ CSRF/origin validation. They never return credentials or contact providers.
 Reports contain checked_at (Unix seconds), checks (id/title/state/message,
 optional free_bytes) and resources (heap_bytes, go_memory_bytes, goroutines,
 logical_cpus). Go memory is not total process/container RSS. Checks are snapshots,
-not persistent monitoring; reports reset on restart. Backup/restore is local CLI
-only; there is no web endpoint accepting arbitrary filesystem backup paths.
+not persistent monitoring; reports reset on restart. The administrator backup
+manager uses opaque server-issued archive IDs, never client filesystem paths.
+
+## Configuration and database backups
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/api/v1/system/backups` | Archives, persistent schedule/status, storage directory, size limit, recovery state and restore result; no credentials; no-store |
+| POST | `/api/v1/system/backups` | `{}`; queue a live manual snapshot; 202 started; 409 if another backup operation owns the manager |
+| PUT | `/api/v1/system/backups/schedule` | `{enabled,interval_days,keep_count,keep_days,revision}`; compare revision and persist; returns current state |
+| POST | `/api/v1/system/backups/upload` | Raw `application/zip`, up to 512 MiB; bounded extraction and full snapshot verification before 201 archive metadata |
+| GET | `/api/v1/system/backups/{id}/download` | Private ZIP attachment; administrator only; no-store |
+| DELETE | `/api/v1/system/backups/{id}` | Remove that managed archive; refuses conflicting operations and foreign file types |
+| POST | `/api/v1/system/backups/{id}/preview` | `{}`; verify archive and return manifest, digest, movie/show/file counts and restored administrator |
+| POST | `/api/v1/system/backups/{id}/restore` | `{sha256,confirmation:"RESTORE"}`; verify reviewed digest, prepare candidate and request controlled restart; 202 restarting |
+
+Scheduling starts disabled; intervals are 1–30 days, count 1–100 and age 1–365
+days. Retention covers scheduled archives and preserves the newest. Manual,
+uploaded and pre-restore snapshots require explicit deletion. Status timestamps
+are Unix seconds; archive manifests retain their original RFC3339 timestamp,
+application version and schema. SHA-256 describes the complete stored ZIP.
+Schedule running/last attempt/success/error survive restarts; interrupted jobs
+report incomplete status. Invalid archives/settings use 400 `backup_refused`;
+busy operations use 409 `backup_busy`; stale settings/digests use 409
+`backup_changed`. Mutations during the restore restart use
+503 `restore_restarting`. Upload/preview/restore can take longer than ordinary
+requests. Restore drains active work and closes SQLite, saves a safety snapshot,
+uses a crash-recoverable file-switch journal, revokes both session types and
+restarts with workers held. It never changes media, host mounts or environment.
+See [backup behavior and recovery limits](BACKUPS.md).
 
 ## Common behavior
 

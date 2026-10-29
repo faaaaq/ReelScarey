@@ -11,6 +11,11 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
+- [x] Sonarr/Radarr-style configuration/library database backup manager: live
+  snapshots, paused-by-default schedules, count/age retention, ZIP download/upload,
+  verified review, pre-restore safety copy, controlled restart and interrupted
+  switch rollback. Media files and host deployment settings remain separate.
+
 - [x] Update embedded movie and TV titles while organizing and renaming media,
   with verified copies and recovery that preserve streams and seeding sources.
   Reviewed MP4/M4V, Matroska, MOV, AVI and WebM updates preserve streams and rollback copies, and

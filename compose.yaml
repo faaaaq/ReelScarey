@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        VERSION: ${REELSCAREY_VERSION:-0.20.0-dev}
+        VERSION: ${REELSCAREY_VERSION:-0.21.0-dev}
     image: reelscarey:local
     restart: unless-stopped
     init: true
@@ -16,6 +16,7 @@ services:
       REELSCAREY_CONFIG_DIR: /config
       REELSCAREY_MEDIA_DIR: /media
       REELSCAREY_DOWNLOADS_DIR: /downloads
+      REELSCAREY_BACKUPS_DIR: /backups
       REELSCAREY_YOUTUBE_STAGING_DIR: /youtube-staging/work
       REELSCAREY_LOG_LEVEL: ${REELSCAREY_LOG_LEVEL:-info}
       REELSCAREY_PUBLIC_URL: ${REELSCAREY_PUBLIC_URL:-}
@@ -24,6 +25,7 @@ services:
       - ${MEDIA_PATH:-./media}:/media:rw
       - ${DOWNLOADS_PATH:-./downloads}:/downloads:ro
       - reelscarey_youtube_staging:/youtube-staging
+      - reelscarey_backups:/backups
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -35,3 +37,4 @@ services:
 volumes:
   reelscarey_config:
   reelscarey_youtube_staging:
+  reelscarey_backups:

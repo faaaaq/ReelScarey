@@ -34,6 +34,14 @@ downloads are checked for read access. `reelscarey doctor` provides the same
 report locally and exits nonzero if attention is needed. Provider live tests
 remain on their settings pages. Results are snapshots, not background monitors.
 
+## Administration backup interface
+
+Open **Backups** for live snapshots, scheduling, retention, ZIP download/upload
+and a verified restore with a safety snapshot and controlled restart. See the
+[backup manager guide](BACKUPS.md) for scope, limits and interruption recovery.
+Video/subtitle/download files and host deployment settings need separate backups.
+The offline procedures below remain available when the app cannot start.
+
 ## Verified offline backup
 
 Stop the app first (including older builds which do not participate in the new

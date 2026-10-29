@@ -4,6 +4,7 @@
 /config/
 /media/
 /downloads/
+/backups/
 /web/node_modules/
 /web/dist/
 /web/coverage/

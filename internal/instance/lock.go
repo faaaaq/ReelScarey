@@ -57,9 +57,9 @@ func (l *Lock) Close() error {
 	return errors.Join(e, ce)
 }
 func CheckStart(dir string) error {
-	for _, name := range []string{".restore-in-progress", ".backup-in-progress", "backup-manifest.json"} {
+	for _, name := range []string{".restore-in-progress", ".restore-request.json", ".backup-in-progress", "backup-manifest.json"} {
 		if _, e := os.Lstat(filepath.Join(dir, name)); e == nil {
-			return errors.New("config directory contains a backup or incomplete restore; restore into a new directory before starting")
+			return errors.New("config directory contains a backup or pending restore; finish the restore through the server or use verified offline recovery")
 		} else if !errors.Is(e, os.ErrNotExist) {
 			return errors.New("config directory could not be checked")
 		}

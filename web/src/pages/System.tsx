@@ -271,18 +271,18 @@ export function SystemChecks() {
       <section className="panel system-panel">
         <h2>Back up and recover</h2>
         <p>
-          Stop ReelScarey before a backup. The local backup tools verify the
-          database and its matching encryption key. Backups contain credentials
-          and account data; store them privately. Media and torrent files need a
-          separate backup.
+          Create, schedule, download and restore verified configuration and
+          library database backups. Backups contain credentials and account
+          data; store them privately. Media and download files need a separate
+          backup.
         </p>
         <p>
-          Use the backup and recovery guide in <code>docs/OPERATIONS.md</code>{" "}
-          from the project or installation package. Restore always creates a new
-          folder, revokes sessions and pauses jobs for review.
+          Restore saves a safety backup, restarts the app, revokes sessions and
+          holds background work for review. Offline backup tools are also
+          available in the operations guide.
         </p>
         <Button asChild variant="soft">
-          <Link to="/setup">View setup checklist</Link>
+          <Link to="/backups">Manage backups</Link>
         </Button>
       </section>
     </>
