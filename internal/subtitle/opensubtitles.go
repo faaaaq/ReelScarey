@@ -327,7 +327,7 @@ func (o *OpenSubtitles) Fetch(ctx context.Context, c Credentials, candidate Cand
 	payload := map[string]any{"file_id": candidate.FileID}
 	// Omit conversion when preserving styled/original files. Never flatten ASS
 	// or SSA styling through an intermediate SRT conversion.
-	if format == "srt" {
+	if format == "srt" && subtitleExtension(candidate.FileName) != ".srt" {
 		payload["sub_format"] = "srt"
 	}
 	var raw struct {

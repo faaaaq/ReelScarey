@@ -93,6 +93,27 @@ func TestOriginalFormatRankingAndProviderRequestAvoidConversion(t *testing.T) {
 	}
 }
 
+func TestSRTOutputExplicitlyConvertsAStyledSource(t *testing.T) {
+	p := protocol(t, func(r *http.Request) *http.Response {
+		if r.URL.Path == "/api/v1/login" {
+			return response(200, `{"token":"fixture-token","base_url":"api.opensubtitles.com"}`)
+		}
+		if r.URL.Path == "/api/v1/download" {
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			if body["sub_format"] != "srt" || len(body) != 2 {
+				t.Fatal("SRT conversion not explicit", body)
+			}
+			return response(200, `{"link":"https://dl.opensubtitles.com/owned"}`)
+		}
+		return response(200, validSRT)
+	})
+	d, e := p.Fetch(context.Background(), testCredentials, Candidate{FileID: 45, FileName: "Owned.ass", Format: "srt"})
+	if e != nil || string(d.Content) != validSRT {
+		t.Fatal(d, e)
+	}
+}
+
 func TestStyledProviderImportsAndRecoveriesKeepFormatAndQuota(t *testing.T) {
 	for _, format := range []string{"ass", "ssa", "vtt"} {
 		t.Run(format, func(t *testing.T) {

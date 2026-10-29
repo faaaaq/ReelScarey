@@ -22,7 +22,7 @@ func TestRealSubtitleOriginalFormats(t *testing.T) {
 	if os.Getenv("REELSCAREY_LIVE_SUBTITLES") != "1" {
 		t.Skip("set REELSCAREY_LIVE_SUBTITLES=1 for generated format-preserving imports")
 	}
-	for _, format := range []string{"ass", "ssa", "vtt"} {
+	for _, format := range []string{"srt", "ass", "ssa", "vtt"} {
 		t.Run(format, func(t *testing.T) {
 			f := setup(t)
 			ctx := context.Background()
@@ -38,6 +38,9 @@ func TestRealSubtitleOriginalFormats(t *testing.T) {
 				t.Fatal(e)
 			}
 			body := validASS
+			if format == "srt" {
+				body = validSRT
+			}
 			if format == "ssa" {
 				body = validSSA
 			}
@@ -90,7 +93,7 @@ func TestRealSubtitleOriginalFormats(t *testing.T) {
 			if e != nil || string(actual) != body {
 				t.Fatal("provider styles changed", e)
 			}
-			if b, e := exec.Command("ffprobe", "-v", "error", "-show_entries", "stream=codec_name", "-of", "json", path).CombinedOutput(); e != nil || (!bytes.Contains(b, []byte(`"ass"`)) && !bytes.Contains(b, []byte(`"webvtt"`))) {
+			if b, e := exec.Command("ffprobe", "-v", "error", "-show_entries", "stream=codec_name", "-of", "json", path).CombinedOutput(); e != nil || (!bytes.Contains(b, []byte(`"ass"`)) && !bytes.Contains(b, []byte(`"webvtt"`)) && !bytes.Contains(b, []byte(`"subrip"`))) {
 				t.Fatal("real subtitle parser rejected output", e, string(b))
 			}
 			after, e := os.ReadFile(f.video)

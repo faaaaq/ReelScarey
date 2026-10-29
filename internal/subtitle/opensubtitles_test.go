@@ -96,7 +96,7 @@ func TestOpenSubtitlesContractAndCredentialIsolation(t *testing.T) {
 		case "/api/v1/download":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			if r.Method != "POST" || body["file_id"] != float64(45) || body["sub_format"] != "srt" {
+			if r.Method != "POST" || body["file_id"] != float64(45) || len(body) != 1 {
 				t.Fatal(body)
 			}
 			return response(200, `{"link":"https://dl.opensubtitles.com/download/private-signed-link","remaining":3,"reset_time_utc":"`+time.Now().Add(time.Hour).UTC().Format(time.RFC3339)+`"}`)
