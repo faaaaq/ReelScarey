@@ -88,7 +88,9 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - internal/subtitle owns registered-media inspections, OpenSubtitles credentials/
   protocol, language/track preferences, leased jobs and journaled sidecar storage.
   Providers receive canonical metadata/hash only, never local paths. Existing
-  video/sidecars must not be replaced; automatic selections require provider
+  video/sidecars must not be replaced by provider downloads; reviewed local
+  sidecar edits must retain a verified previous version and journal publication
+  and rollback while excluding ordinary media workers. Automatic selections require provider
   identity and hash/exact original-release evidence. Uncertain timing needs review.
 - internal/youtube owns explicit public source review, durable acquisition and
   reviewed journaled video/subtitle imports. Preserve canonical target IDs,

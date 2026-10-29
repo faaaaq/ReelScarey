@@ -51,12 +51,14 @@ for limits, and [validation](docs/VALIDATION.md) for evidence.
 ## Later and optional scope
 
 - [ ] Live Emby reporting/acceptance, explicitly deferred by the owner.
-- [ ] Guided main-root migration; arbitrary-root browsing and bulk matching.
-- [ ] More Anime providers and order refresh, broader release grammars and
+- [x] Reviewed bulk matching, metadata refresh/calendar enrichment, AniList fact
+  refresh, per-show subtitles, reviewed subtitle edits/rollback, YouTube
+  subscriptions/bulk acquisition and source/codec/Usenet age rules. See below.
+- [ ] Guided main-root migration and arbitrary-root browsing.
+- [ ] More Anime providers, broader release grammars and
   single-file cross-season mappings.
-- [ ] Automatic metadata refresh, richer calendar data, YouTube subscriptions
-  and bulk acquisition, additional subtitle providers and resynchronization.
-- [ ] Richer quality/language scoring, more download clients and Usenet retention.
+- [ ] Additional subtitle providers, OCR, translation and automatic alignment.
+- [ ] Language verification beyond stream tags and more download clients.
 - [ ] NAS/shared-storage and ARM runtime acceptance, sustained load and broader
   accessibility/security review. Public distribution also needs signed releases
   and an owner-selected license.
