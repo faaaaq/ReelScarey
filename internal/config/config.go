@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,7 +16,9 @@ type Config struct {
 	ConfigDir    string
 	MediaDir     string
 	DownloadsDir string
+	BackupsDir   string
 	LogLevel     string
+	PublicURL    string
 }
 
 func Load() (Config, error) { return FromEnv(os.Getenv) }
@@ -36,7 +39,9 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		ConfigDir:    value("REELSCAREY_CONFIG_DIR", "./data/config"),
 		MediaDir:     value("REELSCAREY_MEDIA_DIR", media),
 		DownloadsDir: value("REELSCAREY_DOWNLOADS_DIR", downloads),
+		BackupsDir:   value("REELSCAREY_BACKUPS_DIR", filepath.Join(value("REELSCAREY_CONFIG_DIR", "./data/config"), "..", "backups")),
 		LogLevel:     value("REELSCAREY_LOG_LEVEL", "info"),
+		PublicURL:    value("REELSCAREY_PUBLIC_URL", ""),
 	}
 	_, port, err := net.SplitHostPort(c.ListenAddr)
 	if err != nil {
@@ -51,6 +56,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		path *string
 	}{
 		{"REELSCAREY_CONFIG_DIR", &c.ConfigDir}, {"REELSCAREY_MEDIA_DIR", &c.MediaDir}, {"REELSCAREY_DOWNLOADS_DIR", &c.DownloadsDir},
+		{"REELSCAREY_BACKUPS_DIR", &c.BackupsDir},
 	} {
 		if strings.ContainsRune(*entry.path, 0) {
 			return Config{}, fmt.Errorf("%s contains an invalid character", entry.name)
@@ -65,6 +71,13 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	case "debug", "info", "warn", "error":
 	default:
 		return Config{}, fmt.Errorf("REELSCAREY_LOG_LEVEL must be debug, info, warn, or error")
+	}
+	if c.PublicURL != "" {
+		u, err := url.Parse(c.PublicURL)
+		if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+			return Config{}, fmt.Errorf("REELSCAREY_PUBLIC_URL must be an http or https origin without a path, credentials or query")
+		}
+		c.PublicURL = strings.TrimSuffix(u.String(), "/")
 	}
 	return c, nil
 }

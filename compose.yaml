@@ -3,10 +3,12 @@ services:
     build:
       context: .
       args:
-        VERSION: 0.1.0-dev
+        VERSION: ${REELSCAREY_VERSION:-0.21.0-dev}
     image: reelscarey:local
     restart: unless-stopped
     init: true
+    stop_grace_period: 60s
+    pids_limit: 256
     ports:
       - "127.0.0.1:${REELSCAREY_PORT:-8787}:8787"
     environment:
@@ -14,11 +16,16 @@ services:
       REELSCAREY_CONFIG_DIR: /config
       REELSCAREY_MEDIA_DIR: /media
       REELSCAREY_DOWNLOADS_DIR: /downloads
+      REELSCAREY_BACKUPS_DIR: /backups
+      REELSCAREY_YOUTUBE_STAGING_DIR: /youtube-staging/work
       REELSCAREY_LOG_LEVEL: ${REELSCAREY_LOG_LEVEL:-info}
+      REELSCAREY_PUBLIC_URL: ${REELSCAREY_PUBLIC_URL:-}
     volumes:
       - reelscarey_config:/config
-      - ${MEDIA_PATH:-./media}:/media:ro
+      - ${MEDIA_PATH:-./media}:/media:rw
       - ${DOWNLOADS_PATH:-./downloads}:/downloads:ro
+      - reelscarey_youtube_staging:/youtube-staging
+      - reelscarey_backups:/backups
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -29,3 +36,5 @@ services:
 
 volumes:
   reelscarey_config:
+  reelscarey_youtube_staging:
+  reelscarey_backups:

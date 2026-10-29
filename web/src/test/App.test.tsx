@@ -31,6 +31,18 @@ function mount(path = "/") {
 }
 function setupFetch(save?: (body: unknown) => Response) {
   const mock = vi.fn(async (url: string, options?: RequestInit) => {
+    if (url.endsWith("/auth/session"))
+      return Response.json({
+        setup_required: false,
+        authenticated: true,
+        session: {
+          username: "testadmin",
+          csrf_token: "test-csrf",
+          expires_at: 9999999999,
+        },
+      });
+    if (url.endsWith("/providers/tmdb"))
+      return Response.json({ configured: false, updated_at: "" });
     if (options?.method === "PUT")
       return (
         save?.(JSON.parse(String(options.body))) ??
@@ -43,7 +55,7 @@ function setupFetch(save?: (body: unknown) => Response) {
     if (url.endsWith("/settings")) return Response.json(settings);
     if (url.endsWith("/system")) return Response.json(system);
     if (url.includes("/library"))
-      return Response.json({ items: [], limit: 100 });
+      return Response.json({ items: [], limit: 24, total: 0, page: 1 });
     return Response.json({
       library_name: "My library",
       counts: { movies: 0, series: 0 },
@@ -61,16 +73,14 @@ describe("foundation UI", () => {
     expect(
       await screen.findByRole("heading", { name: "My library" }),
     ).toBeVisible();
-    expect(await screen.findByText("Connected")).toBeVisible();
+    expect(await screen.findByText(/^Connected ·/)).toBeVisible();
     await userEvent.click(screen.getByRole("link", { name: /^Movies$/ }));
+    expect(await screen.findByText("No movies in the library")).toBeVisible();
+    expect(screen.getByRole("link", { name: /Add movies/i })).toBeVisible();
     expect(
-      await screen.findByText("Your first feature is still to come."),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: /add movie/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      fetch.mock.calls.some(([url]) => url === "/api/v1/library?kind=movie"),
+      fetch.mock.calls.some(
+        ([url]) => url === "/api/v1/library?kind=movie&page=1",
+      ),
     ).toBe(true);
   });
 

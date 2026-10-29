@@ -1,0 +1,216 @@
+package library
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/faaaaq/ReelScarey/internal/metadata"
+)
+
+var ErrPlanningInput = errors.New("Choose valid planning filters, a page from 1–100000 and a calendar month in YYYY-MM format.")
+
+type PlanningFilter struct {
+	Kind, Status, Query, Month string
+	OnlyMonitored              bool
+	Page                       int
+}
+type PlanningEntry struct {
+	Kind             string `json:"kind"`
+	MediaID          int64  `json:"media_id"`
+	EpisodeID        *int64 `json:"episode_id"`
+	Title            string `json:"title"`
+	Year             *int   `json:"year"`
+	EpisodeTitle     string `json:"episode_title"`
+	Season           *int   `json:"season"`
+	Episode          *int   `json:"episode"`
+	Date             string `json:"date"`
+	Monitored        bool   `json:"monitored"`
+	MonitoringReason string `json:"monitoring_reason"`
+	Available        bool   `json:"available"`
+	Status           string `json:"status"`
+	DownloadID       string `json:"download_id"`
+	DownloadState    string `json:"download_state"`
+	Protocol         string `json:"protocol"`
+	PosterURL        string `json:"poster_url"`
+}
+type PlanningCounts struct {
+	Missing     int `json:"missing"`
+	Upcoming    int `json:"upcoming"`
+	Undated     int `json:"undated"`
+	Downloading int `json:"downloading"`
+	Attention   int `json:"attention"`
+	Available   int `json:"available"`
+}
+type PlanningCoverage struct {
+	UnloadedSeasons int `json:"unloaded_seasons"`
+	Undated         int `json:"undated"`
+}
+type PlanningPage struct {
+	Items         []PlanningEntry  `json:"items"`
+	Counts        PlanningCounts   `json:"counts"`
+	Coverage      PlanningCoverage `json:"coverage"`
+	Total         int              `json:"total"`
+	Page          int              `json:"page"`
+	Limit         int              `json:"limit"`
+	AsOfDate      string           `json:"as_of_date"`
+	Month         string           `json:"month"`
+	Kind          string           `json:"kind"`
+	Status        string           `json:"status"`
+	Query         string           `json:"query"`
+	OnlyMonitored bool             `json:"monitored_only"`
+}
+
+// These are catalog facts, not a disk scan or download eligibility assertion.
+// EXISTS avoids multiplying shared episode files or multi-target downloads.
+const planningCTE = `WITH clock AS (SELECT ? AS today), raw AS (
+ SELECT m.kind,m.id AS media_id,NULL AS episode_id,m.title,m.year,'' AS episode_title,NULL AS season,NULL AS episode,m.release_date AS raw_date,m.poster_path,
+ m.monitored AS monitored,CASE WHEN m.monitored=0 THEN 'Movie monitoring is paused.' ELSE '' END AS monitoring_reason,
+ EXISTS(SELECT 1 FROM media_files f WHERE f.movie_id=m.id) AS available,
+ COALESCE((SELECT d.id FROM downloads d WHERE d.movie_id=m.id AND d.kind='movie' AND d.state NOT IN ('completed','cancelled') ORDER BY d.created_at DESC,d.id DESC LIMIT 1),'') AS download_id
+ FROM media_items m WHERE m.kind='movie'
+ UNION ALL
+ SELECT m.kind,m.id,e.id,m.title,m.year,e.title,s.number,e.number,e.air_date,m.poster_path,
+ (m.monitored=1 AND s.monitored=1 AND e.monitored=1),
+ CASE WHEN m.monitored=0 THEN 'Show monitoring is paused.' WHEN s.monitored=0 THEN 'Season monitoring is paused.' WHEN e.monitored=0 THEN 'Episode is not monitored.' ELSE '' END,
+ EXISTS(SELECT 1 FROM episode_files ef WHERE ef.episode_id=e.id),
+ COALESCE((SELECT d.id FROM episode_downloads ed JOIN downloads d ON d.id=ed.download_id WHERE ed.episode_id=e.id AND d.state NOT IN ('completed','cancelled') ORDER BY d.created_at DESC,d.id DESC LIMIT 1),'')
+ FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id WHERE s.loaded_at<>'' AND m.kind='series'
+), normalized AS (
+ SELECT r.*,CASE WHEN length(raw_date)=10 AND substr(raw_date,1,4) BETWEEN '0001' AND '9999' AND date(raw_date,'+0 days')=raw_date THEN raw_date ELSE '' END AS date,
+ COALESCE(d.state,'') AS download_state,COALESCE(d.protocol,'') AS protocol
+ FROM raw r LEFT JOIN downloads d ON d.id=r.download_id
+), entries AS (
+ SELECT n.*,CASE WHEN available THEN 'available' WHEN download_id<>'' THEN CASE WHEN download_state IN ('blocked','failed') THEN 'attention' ELSE 'downloading' END WHEN date='' THEN 'undated' WHEN date>clock.today THEN 'upcoming' ELSE 'missing' END AS status
+ FROM normalized n CROSS JOIN clock
+), filtered AS (
+ SELECT * FROM entries WHERE (?='all' OR kind=?) AND (?=0 OR monitored=1) AND (title LIKE ? ESCAPE '\' OR episode_title LIKE ? ESCAPE '\')
+) `
+
+func planningText(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "%", `\%`)
+	s = strings.ReplaceAll(s, "_", `\_`)
+	return "%" + s + "%"
+}
+func (s *Store) Wanted(ctx context.Context, f PlanningFilter, now time.Time) (PlanningPage, error) {
+	return s.planning(ctx, f, now, false)
+}
+func (s *Store) Calendar(ctx context.Context, f PlanningFilter, now time.Time) (PlanningPage, error) {
+	return s.planning(ctx, f, now, true)
+}
+func (s *Store) planning(ctx context.Context, f PlanningFilter, now time.Time, calendar bool) (PlanningPage, error) {
+	if len(f.Query) > 200 || !utf8.ValidString(f.Query) || strings.ContainsFunc(f.Query, unicode.IsControl) {
+		return PlanningPage{}, ErrPlanningInput
+	}
+	f.Query = strings.TrimSpace(f.Query)
+	if f.Kind == "" {
+		f.Kind = "all"
+	}
+	if f.Status == "" {
+		f.Status = "missing"
+		if calendar {
+			f.Status = "all"
+		}
+	}
+	if f.Page == 0 {
+		f.Page = 1
+	}
+	validStatus := f.Status == "all" || f.Status == "missing" || f.Status == "upcoming" || f.Status == "undated" || f.Status == "downloading" || f.Status == "attention" || (calendar && f.Status == "available")
+	if !validStatus || (f.Kind != "all" && f.Kind != "movie" && f.Kind != "series") || f.Page < 1 || f.Page > 100000 || len(f.Query) > 200 || !utf8.ValidString(f.Query) || strings.ContainsFunc(f.Query, unicode.IsControl) || (!calendar && f.Month != "") {
+		return PlanningPage{}, ErrPlanningInput
+	}
+	monthEnd := ""
+	if calendar {
+		if f.Month == "" {
+			f.Month = now.UTC().Format("2006-01")
+		}
+		month, e := time.Parse("2006-01", f.Month)
+		if e != nil || len(f.Month) != 7 || month.Year() < 1 || month.Year() > 9999 {
+			return PlanningPage{}, ErrPlanningInput
+		}
+		monthEnd = month.AddDate(0, 1, -1).Format(time.DateOnly)
+	}
+	out := PlanningPage{Items: []PlanningEntry{}, Page: f.Page, Limit: 50, AsOfDate: now.UTC().Format(time.DateOnly), Month: f.Month, Kind: f.Kind, Status: f.Status, Query: f.Query, OnlyMonitored: f.OnlyMonitored}
+	match := planningText(f.Query)
+	args := []any{out.AsOfDate, f.Kind, f.Kind, f.OnlyMonitored, match, match}
+	scope := ` WHERE available=0`
+	if calendar {
+		scope = ` WHERE date>=? AND date<=?`
+		args = append(args, f.Month+"-01", monthEnd)
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return out, e
+	}
+	defer tx.Rollback()
+	rows, e := tx.QueryContext(ctx, planningCTE+`SELECT status,COUNT(*) FROM filtered`+scope+` GROUP BY status`, args...)
+	if e != nil {
+		return out, e
+	}
+	for rows.Next() {
+		var status string
+		var n int
+		if e = rows.Scan(&status, &n); e != nil {
+			rows.Close()
+			return out, e
+		}
+		switch status {
+		case "missing":
+			out.Counts.Missing = n
+		case "upcoming":
+			out.Counts.Upcoming = n
+		case "undated":
+			out.Counts.Undated = n
+		case "downloading":
+			out.Counts.Downloading = n
+		case "attention":
+			out.Counts.Attention = n
+		case "available":
+			out.Counts.Available = n
+		}
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return out, e
+	}
+	if e = tx.QueryRowContext(ctx, planningCTE+`SELECT COUNT(*) FROM filtered WHERE status='undated'`, args[:6]...).Scan(&out.Coverage.Undated); e != nil {
+		return out, e
+	}
+	if f.Kind != "movie" {
+		e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM seasons s JOIN media_items m ON m.id=s.series_id WHERE s.loaded_at='' AND (?=0 OR (m.monitored=1 AND s.monitored=1)) AND m.title LIKE ? ESCAPE '\'`, f.OnlyMonitored, match).Scan(&out.Coverage.UnloadedSeasons)
+		if e != nil {
+			return out, e
+		}
+	}
+	selected := scope + ` AND (?='all' OR status=?)`
+	selectedArgs := append(append([]any{}, args...), f.Status, f.Status)
+	if e = tx.QueryRowContext(ctx, planningCTE+`SELECT COUNT(*) FROM filtered`+selected, selectedArgs...).Scan(&out.Total); e != nil {
+		return out, e
+	}
+	selectedArgs = append(selectedArgs, out.Limit, (out.Page-1)*out.Limit)
+	rows, e = tx.QueryContext(ctx, planningCTE+`SELECT kind,media_id,episode_id,title,year,episode_title,season,episode,date,monitored,monitoring_reason,available,status,download_id,download_state,protocol,poster_path FROM filtered`+selected+` ORDER BY date='',date,title COLLATE NOCASE,media_id,COALESCE(episode_id,0) LIMIT ? OFFSET ?`, selectedArgs...)
+	if e != nil {
+		return out, e
+	}
+	for rows.Next() {
+		var v PlanningEntry
+		var poster string
+		if e = rows.Scan(&v.Kind, &v.MediaID, &v.EpisodeID, &v.Title, &v.Year, &v.EpisodeTitle, &v.Season, &v.Episode, &v.Date, &v.Monitored, &v.MonitoringReason, &v.Available, &v.Status, &v.DownloadID, &v.DownloadState, &v.Protocol, &poster); e != nil {
+			rows.Close()
+			return out, e
+		}
+		v.PosterURL = metadata.PosterURL(poster)
+		out.Items = append(out.Items, v)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return out, e
+	}
+	return out, tx.Commit()
+}

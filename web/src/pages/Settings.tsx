@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
+import { Link, useLocation } from "react-router-dom";
 import { CheckCircle2, FolderOpen, Save, Server } from "lucide-react";
 import {
   api,
@@ -10,8 +11,11 @@ import {
 } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
+import { TMDbSettings } from "./TMDbSettings";
+import { IntegrationSettings } from "./IntegrationSettings";
 
 export function Settings() {
+  const location = useLocation();
   const settings = useResource<LibrarySettings>("/settings");
   const system = useResource<System>("/system");
   const [form, setForm] = useState<SettingsUpdate>();
@@ -19,12 +23,40 @@ export function Settings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const ready =
+    !settings.loading &&
+    !system.loading &&
+    !settings.error &&
+    !system.error &&
+    !!form &&
+    !!system.data;
+  useEffect(() => {
+    if (
+      ready &&
+      ["#tmdb", "#torznab", "#qbittorrent", "#sabnzbd"].includes(location.hash)
+    ) {
+      document
+        .getElementById(location.hash.slice(1))
+        ?.scrollIntoView({ block: "start" });
+    }
+  }, [ready, location.hash]);
 
   useEffect(() => {
     if (settings.data) {
-      const { library_name, movie_folder, series_folder, revision } =
-        settings.data;
-      const value = { library_name, movie_folder, series_folder, revision };
+      const {
+        library_name,
+        movie_folder,
+        series_folder,
+        episode_naming,
+        revision,
+      } = settings.data;
+      const value = {
+        library_name,
+        movie_folder,
+        series_folder,
+        episode_naming,
+        revision,
+      };
       setForm(value);
       setSaved(value);
       setError("");
@@ -55,6 +87,7 @@ export function Settings() {
         library_name: result.library_name,
         movie_folder: result.movie_folder,
         series_folder: result.series_folder,
+        episode_naming: result.episode_naming,
         revision: result.revision,
       };
       setForm(value);
@@ -70,10 +103,19 @@ export function Settings() {
   return (
     <>
       <PageHeading
-        eyebrow="MAKE YOURSELF AT HOME"
         title="Settings"
-        description="A few simple preferences. One place to keep them."
+        description="Library folders, naming and service connections."
       />
+      <section className="panel organization-root">
+        <h2>Media organization</h2>
+        <p>
+          Configure Movies, TV Shows, Anime and custom collections; choose
+          naming presets or review existing file changes.
+        </p>
+        <Link className="text-link" to="/organization">
+          Open folders, naming & reorganization
+        </Link>
+      </section>
       <RequestState
         loading={settings.loading || system.loading}
         error={settings.error || system.error}
@@ -138,9 +180,26 @@ export function Settings() {
                   aria-describedby="folder-help"
                 />
                 <p className="field-help" id="folder-help">
-                  Separate folder names under your media root. Use letters,
-                  numbers, spaces, hyphens, or underscores. Saved for the future
-                  import workflow; folders are not created yet.
+                  Default folder names before organization rules are saved.
+                  Organize library controls configured collection destinations.
+                  Saving preferences alone creates no folders.
+                </p>
+                <label htmlFor="episode-naming">TV episode names</label>
+                <select
+                  id="episode-naming"
+                  value={form.episode_naming ?? "standard"}
+                  onChange={(e) => update("episode_naming", e.target.value)}
+                >
+                  <option value="standard">Show - S01E01</option>
+                  <option value="with-title">
+                    Show - S01E01 - Episode title
+                  </option>
+                </select>
+                <p className="field-help">
+                  The Current ReelScarey naming preset uses this episode-name
+                  choice. Other presets and custom paths are in Organize
+                  library. Multi-episode files use S01E01-E02. Existing files
+                  and queued import plans keep their names.
                 </p>
               </fieldset>
               {error && (
@@ -205,19 +264,29 @@ export function Settings() {
                   <Badge color="green">Database connected</Badge>
                 </div>
               </section>
+              <TMDbSettings />
               <section className="panel settings-info">
-                <Badge color="gray">Coming in the movie workflow</Badge>
-                <h2 className="mt-4">Connect the rest of your library</h2>
+                <h2>Indexers</h2>
                 <p>
-                  Metadata, indexers, and download clients will get real
-                  connection tests and clear status here as their integrations
-                  are built.
+                  Manage direct IPTorrents, XSpeeds, NYAA, private feeds and
+                  multiple Torznab and Newznab connections.
                 </p>
-                <div className="provider-labels">
-                  <span>TMDb</span>
-                  <span>Torznab</span>
-                  <span>qBittorrent</span>
-                </div>
+                <Link className="text-link" to="/indexers">
+                  Manage indexers
+                </Link>
+              </section>
+              <IntegrationSettings kind="torznab" />
+              <IntegrationSettings kind="qbittorrent" />
+              <IntegrationSettings kind="sabnzbd" />
+              <section className="panel settings-info">
+                <h2>Subtitle providers</h2>
+                <p>
+                  Manage OpenSubtitles, language preferences and automatic
+                  downloads for imported movies and episodes.
+                </p>
+                <Link className="text-link" to="/subtitles">
+                  Open subtitle settings
+                </Link>
               </section>
             </div>
           </div>

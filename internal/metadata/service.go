@@ -1,0 +1,57 @@
+package metadata
+
+import (
+	"context"
+	"github.com/faaaaq/ReelScarey/internal/securestore"
+)
+
+type Service struct {
+	secrets  *securestore.Store
+	provider MovieProvider
+}
+
+func New(secrets *securestore.Store, provider MovieProvider) *Service {
+	return &Service{secrets: secrets, provider: provider}
+}
+func (s *Service) Status(ctx context.Context) (bool, string, error) { return s.secrets.Status(ctx) }
+func (s *Service) Configure(ctx context.Context, token string) error {
+	if !ValidToken(token) {
+		return &Error{Code: "tmdb_invalid_token", Message: "Enter a valid TMDb API Read Access Token."}
+	}
+	if err := s.provider.Validate(ctx, token); err != nil {
+		return err
+	}
+	return s.secrets.Set(ctx, token)
+}
+func (s *Service) Remove(ctx context.Context) error { return s.secrets.Delete(ctx) }
+func (s *Service) Test(ctx context.Context) error {
+	token, err := s.token(ctx)
+	if err != nil {
+		return err
+	}
+	return s.provider.Validate(ctx, token)
+}
+func (s *Service) token(ctx context.Context) (string, error) {
+	token, err := s.secrets.Get(ctx)
+	if err != nil {
+		return "", err
+	}
+	if token == "" {
+		return "", ErrNotConfigured
+	}
+	return token, nil
+}
+func (s *Service) Search(ctx context.Context, query string, page int) (Results, error) {
+	token, err := s.token(ctx)
+	if err != nil {
+		return Results{}, err
+	}
+	return s.provider.Search(ctx, token, query, page)
+}
+func (s *Service) Movie(ctx context.Context, id int64) (Movie, error) {
+	token, err := s.token(ctx)
+	if err != nil {
+		return Movie{}, err
+	}
+	return s.provider.Movie(ctx, token, id)
+}

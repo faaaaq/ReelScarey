@@ -11,6 +11,10 @@ import (
 )
 
 func TestValidation(t *testing.T) {
+	badNaming := Update{LibraryName: "Cinema", MovieFolder: "Movies", SeriesFolder: "TV", EpisodeNaming: "../../unsafe", Revision: 1}
+	if badNaming.Validate() == nil {
+		t.Fatal("invalid TV naming accepted")
+	}
 	for _, value := range []string{"../Movies", "/media/Movies", `C:\Movies`, ".", "..", "CON", "com1", "NUL", "Movies/Other", "", strings.Repeat("A", 81)} {
 		t.Run(value, func(t *testing.T) {
 			in := Update{LibraryName: "Cinema", MovieFolder: value, SeriesFolder: "TV", Revision: 1}
@@ -28,6 +32,24 @@ func TestValidation(t *testing.T) {
 	in := Update{LibraryName: " Cinema ", MovieFolder: " Movies ", SeriesFolder: "movies", Revision: 1}
 	if in.Validate() == nil {
 		t.Fatal("case-insensitive folder collision accepted")
+	}
+}
+
+func TestEpisodeNamingPersistsAcrossLegacyUpdates(t *testing.T) {
+	ctx := context.Background()
+	db, e := database.Open(ctx, t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	s := New(db)
+	out, e := s.Update(ctx, Update{LibraryName: "Cinema", MovieFolder: "Movies", SeriesFolder: "TV", EpisodeNaming: "with-title", Revision: 1})
+	if e != nil || out.EpisodeNaming != "with-title" {
+		t.Fatal(out, e)
+	}
+	out, e = s.Update(ctx, Update{LibraryName: "Cinema", MovieFolder: "Movies", SeriesFolder: "TV", Revision: out.Revision})
+	if e != nil || out.EpisodeNaming != "with-title" {
+		t.Fatal("omitted naming reset existing preference", out, e)
 	}
 }
 
