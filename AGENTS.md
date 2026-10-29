@@ -100,6 +100,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   sidecar edits must retain a verified previous version and journal publication
   and rollback while excluding ordinary media workers. Automatic selections require provider
   identity and hash/exact original-release evidence. Uncertain timing needs review.
+  SRT remains the default provider output. Original-format ASS/SSA/VTT must keep
+  styles/cues, use bounded format-aware validation and retain the journaled
+  extension across settings changes/restarts. Never consume quota again for
+  journaled bytes or overwrite an existing track. See docs/SUBTITLES.md.
 - internal/youtube owns explicit public source review, durable acquisition and
   reviewed journaled video/subtitle imports. Preserve canonical target IDs,
   no-overwrite publication, source evidence and shared transfer reservations;

@@ -220,5 +220,12 @@ func (s *Service) selected(ctx context.Context, j Job, p Preferences, c Credenti
 	if generation != c.Generation || revision != p.Revision || sha != m.SHA || expires < s.now().Unix() || !candidate.CanDownload || !slices.Contains(p.Tracks, candidate.Track) {
 		return candidate, problem("candidate_expired", "The subtitle choice or its preferences changed. Search again before downloading.")
 	}
+	// Previously reviewed candidates without a format were always SRT.
+	if candidate.Format == "" {
+		candidate.Format = "srt"
+	}
+	if candidate.Format != candidateFormat(p, candidate) {
+		return candidate, problem("candidate_expired", "The subtitle format choice changed. Search and review again.")
+	}
 	return candidate, nil
 }

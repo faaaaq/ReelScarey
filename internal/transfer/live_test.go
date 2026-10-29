@@ -149,6 +149,9 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 	allData := data
 	if tv {
 		videoNames = []string{"Owned.S01E01-E02.mp4", "Owned.S01E03.mp4"}
+		if named {
+			videoNames = []string{"Owned.Season 1 Ep 1-Ep 2.mp4", "Owned.S01EP03.mp4"}
+		}
 		if pack {
 			videoNames = []string{"Pack Story - SP01.mp4", "Pack Story - 001.mp4", "Pack Story Part 2 - 001v2.mp4"}
 		}

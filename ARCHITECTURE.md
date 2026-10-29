@@ -88,6 +88,12 @@ fence defaults, profile revisions and credentials after release fetches. NZBGet
 uses positional authenticated JSON-RPC and the same Usenet reconciliation,
 reservations and importer. See docs/DOWNLOAD_CLIENTS.md.
 
+Migration 039 adds the global subtitle output preference, defaulting existing
+installations to SRT. Original ASS/SSA/VTT selections retain their extension in
+the immutable destination journal. The same content/format checks and importer
+serve manual and automatic choices; pending bytes recover independently of later
+format changes. OpenSubtitles conversion is omitted for styled original files.
+
 Wanted and Calendar are transactionally consistent read models owned by library,
 combining movie/loaded-episode metadata, registration existence and active target
 reservations. HTTP owns strict filter validation and a five-second read budget;
@@ -182,7 +188,6 @@ Planned entities (design, **not implemented schema**):
 
 | Entity | Relationships and invariants |
 | --- | --- |
-| download_clients | Named qBittorrent/SABnzbd/NZBGet metadata; encrypted integration configurations; explicit per-protocol defaults and immutable job bindings |
 | jobs | Future arbitrary job types; searches and downloads already have durable leases/retries |
 
 Media file paths are never derived from untrusted release names without

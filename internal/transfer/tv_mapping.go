@@ -12,7 +12,6 @@ import (
 	"strings"
 )
 
-var episodeToken = regexp.MustCompile(`(?i)S[0-9]{1,4}E[0-9]{1,5}(?:E[0-9]{1,5})*(?:-E?[0-9]{1,5})?|[0-9]{1,4}x[0-9]{1,5}(?:-[0-9]{1,5})?`)
 var absoluteToken = regexp.MustCompile(`(?i)(?:^| - )([0-9]{1,6})(?:-([0-9]{1,6}))?(?:v[1-9][0-9]*)?`)
 
 // Absolute filename labels are hints only, and only refer to explicitly saved
@@ -60,55 +59,13 @@ func suggestedAbsoluteEpisodes(name string, targets []TVTarget) []int64 {
 
 // Suggestions never authorize an import. Every mapping requires owner review.
 func suggestedEpisodes(name string, targets []TVTarget) []int64 {
-	tokens := episodeToken.FindAllString(strings.ToUpper(path.Base(strings.ReplaceAll(name, "\\", "/"))), -1)
-	if len(tokens) == 0 {
-		base := path.Base(strings.ReplaceAll(name, "\\", "/"))
-		if season, episode, _, _, ok := quality.EpisodeLabel(base); ok {
-			tokens = []string{fmt.Sprintf("S%dE%d", season, episode)}
-		} else {
-			return suggestedAbsoluteEpisodes(name, targets)
-		}
-	}
-	if len(tokens) != 1 {
-		return nil
-	}
-	token := tokens[0]
-	var season int
-	var rest string
-	if strings.HasPrefix(token, "S") {
-		parts := strings.SplitN(token[1:], "E", 2)
-		season, _ = strconv.Atoi(parts[0])
-		rest = parts[1]
-	} else {
-		parts := strings.SplitN(token, "X", 2)
-		season, _ = strconv.Atoi(parts[0])
-		rest = parts[1]
-	}
-	numbers := []int{}
-	if strings.Contains(rest, "-") {
-		parts := strings.Split(rest, "-")
-		if len(parts) != 2 || strings.Contains(parts[0], "E") {
+	base := path.Base(strings.ReplaceAll(name, "\\", "/"))
+	season, numbers, _, _, ok := quality.EpisodeSpan(base)
+	if !ok {
+		if quality.HasEpisodeLabel(base) {
 			return nil
 		}
-		start, _ := strconv.Atoi(parts[0])
-		end, _ := strconv.Atoi(strings.TrimPrefix(parts[1], "E"))
-		if start < 1 || end < start || end-start >= 20 {
-			return nil
-		}
-		for n := start; n <= end; n++ {
-			numbers = append(numbers, n)
-		}
-	} else {
-		for _, raw := range strings.Split(rest, "E") {
-			n, e := strconv.Atoi(raw)
-			if e != nil || n < 1 {
-				return nil
-			}
-			numbers = append(numbers, n)
-		}
-	}
-	if len(numbers) == 0 || len(numbers) > 20 {
-		return nil
+		return suggestedAbsoluteEpisodes(name, targets)
 	}
 	out := []int64{}
 	for i, n := range numbers {

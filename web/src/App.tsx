@@ -271,7 +271,7 @@ function AppShell() {
           </nav>
           <div className="account-control">
             <span>
-              {session.username} <small>v0.24</small>
+              {session.username} <small>v0.25</small>
             </span>
             <button onClick={() => void logout()} disabled={signingOut}>
               <LogOut size={15} />

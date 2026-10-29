@@ -48,7 +48,7 @@ func runRealNZBGet(t *testing.T, binary string, tv bool) {
 	}
 	names := []string{"Owned.Movie.mp4"}
 	if tv {
-		names = []string{"Owned.Show.S01E01-E02.mp4", "Owned.Show.S01E03.mp4"}
+		names = []string{"Owned.Show.Season 1 Episodes 1-2.mp4", "Owned.Show.Season 1 Episodes 3.mp4"}
 	}
 	articles := map[string][]byte{}
 	nzb := `<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">`
@@ -215,6 +215,9 @@ HealthCheck=pause
 		if current.ErrorCode == "map_episodes" {
 			if !tv || len(current.Choices) != 2 {
 				t.Fatal("unexpected TV review", current)
+			}
+			if len(current.Choices[0].Suggestions) != 2 || len(current.Choices[1].Suggestions) != 1 {
+				t.Fatal("expanded filename hints missing", current.Choices)
 			}
 			var count int
 			f.db.QueryRow(`SELECT COUNT(*) FROM media_files WHERE download_id=?`, job.ID).Scan(&count)

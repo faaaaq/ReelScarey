@@ -55,7 +55,8 @@ const file: SubtitleFile = {
       language: "en",
       variant: "forced",
       release: "Other cut",
-      file_name: "fixture.en.forced.srt",
+      file_name: "fixture.en.forced.ass",
+      format: "ass",
       hearing_impaired: false,
       hash_match: false,
       trusted: false,
@@ -115,6 +116,28 @@ function mount() {
   );
 }
 describe("subtitles", () => {
+  it("saves original subtitle format explicitly while retaining SRT as the default", async () => {
+    const fetch = setup();
+    mount();
+    await screen.findByRole("button", { name: "Save subtitle preferences" });
+    expect(
+      screen.getByRole("combobox", { name: /Download format/ }),
+    ).toHaveValue("srt");
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: /Download format/ }),
+      "original",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save subtitle preferences" }),
+    );
+    await screen.findByText("Subtitle preferences saved.");
+    const call = fetch.mock.calls.find(([, o]) => o?.method === "PUT");
+    expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({
+      download_format: "original",
+      revision: 1,
+      enabled: false,
+    });
+  });
   it("starts with separate English full, signs and forced tracks and saves without Torznab", async () => {
     const fetch = setup();
     mount();
@@ -212,6 +235,7 @@ describe("subtitles", () => {
     const button = await screen.findByRole("button", {
       name: "Download subtitle",
     });
+    expect(screen.getByText(/Output: ASS/)).toBeVisible();
     expect(button).toBeDisabled();
     await userEvent.click(
       screen.getByLabelText(

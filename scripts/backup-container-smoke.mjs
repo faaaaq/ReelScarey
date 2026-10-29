@@ -48,6 +48,8 @@ assert.equal(JSON.stringify(client).includes(clientBody.password), false)
 const { password: _secret, ...clientUpdate } = clientBody
 const enabledClient = await json(`/download-clients/${client.id}`, { method: 'PUT', body: JSON.stringify({ ...clientUpdate, enabled: true, revision: client.revision }) })
 await json('/download-clients/defaults', { method: 'PUT', body: JSON.stringify({ torrent: client.id, usenet: '', revision: 1 }) })
+const subtitlePreferences = (await json('/subtitles/preferences')).preferences
+await json('/subtitles/preferences', { method: 'PUT', body: JSON.stringify({ ...subtitlePreferences, download_format: 'original' }) })
 let settings = await json('/settings')
 settings = await json('/settings', { method: 'PUT', body: JSON.stringify({ library_name: 'Backup fixture cinema', movie_folder: settings.movie_folder, series_folder: settings.series_folder, episode_naming: settings.episode_naming, revision: settings.revision }) })
 const metadata = await json('/system/metadata-refresh')
@@ -93,6 +95,7 @@ cookie = ''; csrf = ''
 await signIn('/auth/login', credentials)
 settings = await json('/settings')
 assert.equal(settings.library_name, 'Backup fixture cinema')
+assert.equal((await json('/subtitles/preferences')).preferences.download_format, 'original')
 const restoredClients = await json('/download-clients')
 assert.equal(restoredClients.items.length, 1)
 assert.equal(restoredClients.items[0].id, client.id)

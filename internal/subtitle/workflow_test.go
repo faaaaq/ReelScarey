@@ -25,6 +25,7 @@ import (
 const validSRT = "1\n00:00:01,000 --> 00:00:03,000\nGenerated subtitle fixture.\n"
 
 type fixtureProvider struct {
+	content             []byte
 	searches, downloads int
 	searchErr, fetchErr error
 	matches             []Candidate
@@ -96,7 +97,11 @@ func (p *fixtureProvider) Fetch(context.Context, Credentials, Candidate) (Downlo
 	if p.onFetch != nil {
 		p.onFetch()
 	}
-	return Download{Content: []byte(validSRT), Remaining: p.remaining, ResetAt: time.Now().Add(24 * time.Hour).Unix()}, p.fetchErr
+	content := p.content
+	if content == nil {
+		content = []byte(validSRT)
+	}
+	return Download{Content: content, Remaining: p.remaining, ResetAt: time.Now().Add(24 * time.Hour).Unix()}, p.fetchErr
 }
 
 type fixtureProbe struct{ streams []transfer.SubtitleStream }
