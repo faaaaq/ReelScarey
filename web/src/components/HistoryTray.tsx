@@ -4,7 +4,7 @@ import { Clock3 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useResource } from "../useResource";
 import { RequestState } from "../components";
-import { EventRow, type EventPage } from "../pages/Timeline";
+import { EventRow, type EventPage } from "./EventRow";
 export function HistoryTray() {
   const [open, setOpen] = useState(false);
   const history = useResource<EventPage>(open ? "/events" : null);

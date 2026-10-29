@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   Activity,
   CheckCircle2,
@@ -29,27 +29,74 @@ import {
   useLocation,
 } from "react-router-dom";
 import { PageHeading } from "./components";
-import { Dashboard } from "./pages/Dashboard";
-import { Library } from "./pages/Library";
-import { Settings } from "./pages/Settings";
-import { Search as MovieSearch } from "./pages/Search";
-import { AuthGate, useAuth } from "./auth";
-import { Activity as DownloadActivity } from "./pages/Activity";
-import { Releases } from "./pages/Releases";
-import { Series } from "./pages/Series";
-import { Automation } from "./pages/Automation";
-import { Subtitles } from "./pages/Subtitles";
-import { Setup, SystemChecks } from "./pages/System";
-import { Indexers } from "./pages/Indexers";
-import { ItemDetails } from "./pages/ItemDetails";
-import { ExistingLibrary } from "./pages/ExistingLibrary";
-import { Planning } from "./pages/Planning";
-import { Organization } from "./pages/Organization";
-import { YouTube } from "./pages/YouTube";
-import { AdminRequests, RequesterHome } from "./pages/Requests";
-import { WatchActivity } from "./pages/WatchActivity";
+import { PageLoadBoundary } from "./components/PageLoadBoundary";
 import { HistoryTray } from "./components/HistoryTray";
-import { Timeline } from "./pages/Timeline";
+import { AuthGate, useAuth } from "./auth";
+const Dashboard = lazy(() =>
+  import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })),
+);
+const Library = lazy(() =>
+  import("./pages/Library").then((m) => ({ default: m.Library })),
+);
+const Settings = lazy(() =>
+  import("./pages/Settings").then((m) => ({ default: m.Settings })),
+);
+const MovieSearch = lazy(() =>
+  import("./pages/Search").then((m) => ({ default: m.Search })),
+);
+const DownloadActivity = lazy(() =>
+  import("./pages/Activity").then((m) => ({ default: m.Activity })),
+);
+const Releases = lazy(() =>
+  import("./pages/Releases").then((m) => ({ default: m.Releases })),
+);
+const Series = lazy(() =>
+  import("./pages/Series").then((m) => ({ default: m.Series })),
+);
+const Automation = lazy(() =>
+  import("./pages/Automation").then((m) => ({ default: m.Automation })),
+);
+const Subtitles = lazy(() =>
+  import("./pages/Subtitles").then((m) => ({ default: m.Subtitles })),
+);
+const Setup = lazy(() =>
+  import("./pages/System").then((m) => ({ default: m.Setup })),
+);
+const SystemChecks = lazy(() =>
+  import("./pages/System").then((m) => ({ default: m.SystemChecks })),
+);
+const Indexers = lazy(() =>
+  import("./pages/Indexers").then((m) => ({ default: m.Indexers })),
+);
+const ItemDetails = lazy(() =>
+  import("./pages/ItemDetails").then((m) => ({ default: m.ItemDetails })),
+);
+const ExistingLibrary = lazy(() =>
+  import("./pages/ExistingLibrary").then((m) => ({
+    default: m.ExistingLibrary,
+  })),
+);
+const Planning = lazy(() =>
+  import("./pages/Planning").then((m) => ({ default: m.Planning })),
+);
+const Organization = lazy(() =>
+  import("./pages/Organization").then((m) => ({ default: m.Organization })),
+);
+const YouTube = lazy(() =>
+  import("./pages/YouTube").then((m) => ({ default: m.YouTube })),
+);
+const AdminRequests = lazy(() =>
+  import("./pages/Requests").then((m) => ({ default: m.AdminRequests })),
+);
+const RequesterHome = lazy(() =>
+  import("./pages/Requests").then((m) => ({ default: m.RequesterHome })),
+);
+const WatchActivity = lazy(() =>
+  import("./pages/WatchActivity").then((m) => ({ default: m.WatchActivity })),
+);
+const Timeline = lazy(() =>
+  import("./pages/Timeline").then((m) => ({ default: m.Timeline })),
+);
 
 const navigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
@@ -69,7 +116,17 @@ const navigation = [
 export default function App() {
   return (
     <AuthGate>
-      <RoleApp />
+      <PageLoadBoundary>
+        <Suspense
+          fallback={
+            <div role="status" className="panel">
+              Loading…
+            </div>
+          }
+        >
+          <RoleApp />
+        </Suspense>
+      </PageLoadBoundary>
     </AuthGate>
   );
 }

@@ -5,12 +5,15 @@ security review and the owner's license decision remain release gates.
 
 ## First run and storage
 
-Source builds require Go 1.27.3 or newer for the standard-library security fixes.
-Use the container instructions in README or extract the package matching your
-OS and CPU. Native installs need FFprobe/FFmpeg on PATH for media validation;
-packages contain the application and embedded UI, not those external tools.
-Run `reelscarey version` to confirm the build. Configure the environment variables
-from README before launching the executable with no arguments.
+Docker Compose runs the complete application in one non-root container. The Go
+server embeds the built React UI; FFmpeg, FFprobe and pinned yt-dlp are included.
+Use the Compose instructions in README. Config and YouTube staging use persistent
+volumes; media and download locations are separate host mounts. No host Go, Node,
+Python or FFmpeg installation is required for deployment.
+
+Run `docker compose exec reelscarey reelscarey version` to identify a running
+build. Build-time source tools and disposable native regression tests are only
+for development; standalone installation packages are no longer produced.
 
 Keep the configuration directory on local storage with reliable SQLite locking.
 Use separate config, media and download roots. Give only the app's OS account
@@ -41,7 +44,10 @@ reelscarey backup /private-backups/reelscarey-2026-10-23
 reelscarey backup-check /private-backups/reelscarey-2026-10-23
 ```
 
-On Windows use `reelscarey.exe` and an absolute Windows folder path. The destination
+For Docker, run maintenance commands in a temporary container using the same
+configuration volume after stopping the application. Mount a private backup
+parent at /backups, writable by UID 10001 for creation and read-only for checking.
+The destination
 parent must exist and the destination folder must be new. Backup uses SQLite's
 consistent snapshot operation to include committed WAL data, then verifies the
 migration ledger, database integrity and every encrypted record. It writes a
@@ -50,6 +56,16 @@ database, matching secrets.key and any remaining initial setup-token are copied.
 Media, downloaded torrents, environment variables and reverse-proxy settings
 need their own backups. Limits: 32 GiB database, 1 KiB key/setup files, 10 minutes
 per command. Do not put backups inside config, media or downloads.
+
+For example, after preparing a private host backup parent writable by UID 10001:
+
+```sh
+docker compose stop reelscarey
+docker compose run --rm --no-deps -v /srv/reelscarey-backups:/backups reelscarey backup /backups/before-upgrade
+docker compose run --rm --no-deps -v /srv/reelscarey-backups:/backups:ro reelscarey backup-check /backups/before-upgrade
+# Start the current build again, or proceed to the upgrade after verification.
+docker compose up -d --no-build reelscarey
+```
 
 Backups include password hashes and decryptable provider credentials. Encrypt
 and access-control the storage and transport, keep an off-device copy and test
@@ -103,20 +119,29 @@ use the retained old build with its own compatible stopped config snapshot in a
 separate folder. New-format recovery holds require 0.8+; do not point older builds
 at restored jobs until those jobs have been isolated and reviewed manually.
 
-Private CI produces Linux amd64/arm64 tarballs and a Windows amd64 zip with
-SHA256SUMS. Verify the checksum before extracting into a new installation folder.
-Linux amd64 and Windows execution are tested; arm64 is cross-built and needs
-on-device validation. The container is built/tested separately. To reproduce:
+Deployment builds one runtime image through Dockerfile. Node and Go build stages
+and pip/setuptools never ship in that runtime. CI retains disposable binary
+regressions for backup/recovery, then verifies the actual container. Tests and
+operational recovery commands remain part of the source repository.
 
-```text
-cd web
-npm ci
-npm run build
-cd ..
-go run ./scripts/package 0.8.0-dev dist/private-0.8.0
+Set `REELSCAREY_VERSION` in `.env` when creating a named build. To upgrade:
+
+```sh
+# First stop the app and create/check an offline backup as described above.
+docker compose build reelscarey
+docker compose up -d --no-build reelscarey
+docker compose exec reelscarey reelscarey version
+docker compose exec reelscarey reelscarey healthcheck
+docker compose logs --tail=50 reelscarey
 ```
 
-Output folders must be new; only whitelisted binaries/docs/dependency manifests
-are packaged. No local config, secrets or media are included. No public release
-is published automatically. Dependency licenses remain their authors' property;
-the project itself awaits the owner's license choice.
+The container has a read-only root filesystem, a bounded temporary directory,
+no extra capabilities, an init process, a PID limit and a graceful stop budget.
+Retain the previous image plus its compatible verified database backup for
+rollback; never point an older image at a newer schema. Restarting or rebuilding
+must preserve the named config and staging volumes. Do not use `down -v` for an
+upgrade. Backups and retained media versions are runtime data, not repository
+cleanup targets.
+
+No public release is published automatically. Dependency licenses remain their
+authors' property; the project itself awaits the owner's license choice.

@@ -1,5 +1,50 @@
 # Validation record — 2026-10-28
 
+## Running-container upgrade and repository cleanup
+
+- The original running image and its stopped schema-28 configuration were
+  retained before deployment. The offline backup contains the database, matching
+  encryption key and setup token; separately checksummed archives retain staging,
+  media/download folders and private deployment settings. The first rehearsal
+  correctly refused supplementary archives beside the configuration manifest;
+  the clean configuration snapshots were separated and reverified. Final snapshot:
+  `data/backups/before-single-container-upgrade-c1ae459/configuration-final`.
+- A private restore with networking disabled migrated the real snapshot to schema
+  30, passed integrity/foreign-key checks, preserved key/setup bytes and fetched
+  all 35 web assets before and after restart. Its temporary container/volume were
+  removed. This did not contact owner providers or download services.
+- The running Compose service now uses `0.20.0-c1ae459-optimized`, schema 30,
+  the same persistent volumes and read-only download mount. Sixteen table contents
+  match the final pre-upgrade backup; the encryption key and setup token match.
+  Controlled restart, readiness, Docker health and all nine local doctor checks
+  pass. The installation had no administrator/catalog/integrations before upgrade
+  and still requires first-run setup; no fixture account was created in it.
+- Windows reachability exposed the WSL host exiting after its command finished.
+  The hidden, idempotent `scripts/start-docker-wsl.ps1` launcher now keeps Docker's
+  WSL host alive. Repeated Windows readiness checks pass beyond the previous idle
+  shutdown interval. The launcher is a Docker-host convenience, not a native app
+  build or another application container. It must be run again after Windows
+  reboot; no Windows automatic-start task was installed.
+- All 150 frontend tests, type checks and production build pass, including failed
+  lazy-chunk recovery. Main JavaScript falls from 618.58 KB to 276.31 KB (gzip:
+  172.62 KB to 87.42 KB); pages load on demand. Shared event rendering was moved
+  out of Timeline to avoid pulling that page into the entry bundle.
+- The final Docker build passes frontend and full Go test/vet gates. Runtime
+  FFmpeg/FFprobe and pinned yt-dlp pass execution checks; Node, Go, pip and
+  setuptools are excluded. The yt-dlp environment falls from 51 MiB to 27 MiB;
+  Docker's inspected image-size metric falls from 240,653,394 to 230,147,880 bytes.
+  Required graphics/media dependencies were retained after package simulation
+  showed removing them would also remove FFmpeg.
+- Disposable instances of the optimized image pass authenticated setup/restart,
+  session/preference persistence, generated metadata update/version rollback,
+  move undo and both catalog-removal choices. Runtime data and sources remain
+  preserved. The deployed instance also serves all 35 assets after restart.
+- Removed the obsolete standalone packager and 1,193,932,593 bytes of generated
+  bin/dist output, plus eleven root-level test outputs. Operational/development
+  tests, prior data subfolders and all verified backups remain. Only the active
+  repository was cleaned; sibling projects and system-wide Docker caches were
+  not pruned. Docker backend copies only required source and embedded web assets.
+
 ## Remaining implementation milestones — schema 30
 
 - Final formatting, TypeScript, all 149 UI tests and production build pass;

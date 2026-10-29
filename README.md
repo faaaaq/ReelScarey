@@ -119,9 +119,18 @@ as UID/GID 10001; if you replace the config volume with a bind mount, give that
 user read/write access. `docker compose down` keeps the database; adding `-v`
 deletes the named volume and its data.
 
+## Windows Docker host
+
+On Windows with Docker Engine installed inside WSL rather than Docker Desktop,
+run `./scripts/start-docker-wsl.ps1` after building the image. It starts the one
+Compose service and keeps its WSL host alive in a hidden background process.
+Pass `-Distribution NAME` for a different Docker-equipped distribution. Re-run
+after a Windows reboot; the launcher does not install a Windows startup task.
+Docker Desktop and continuously running Linux Docker hosts do not need it.
+
 ## Local development
 
-Requires Go 1.27+ and Node 24.12+ (24.x). Build the frontend before compiling Go,
+Requires Go 1.27.3+ and Node 24.12+ (24.x). Build the frontend before compiling Go,
 because frontend assets are embedded in the executable. These commands are for
 development; Docker is the sole supported deployment target.
 
@@ -191,6 +200,12 @@ smoke test. `reelscarey healthcheck` checks database readiness with a timeout.
 `GET /healthz` reports process liveness; `GET /readyz` checks SQLite.
 
 ## Backup and restore
+
+The application, embedded web interface, FFmpeg/FFprobe and pinned YouTube tool
+run in a single non-root container. Runtime images exclude Node, Go, pip and
+standalone packaging tools. Interface pages load on demand; an old browser tab
+offers a reload action if a page chunk changed during an upgrade. For a named
+build, set `REELSCAREY_VERSION` in `.env` before `docker compose build`.
 
 Stop ReelScarey, then use `reelscarey backup NEW_FOLDER` and
 `reelscarey backup-check BACKUP_FOLDER` to create and verify a consistent config

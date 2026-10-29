@@ -3,10 +3,12 @@ services:
     build:
       context: .
       args:
-        VERSION: 0.20.0-dev
+        VERSION: ${REELSCAREY_VERSION:-0.20.0-dev}
     image: reelscarey:local
     restart: unless-stopped
     init: true
+    stop_grace_period: 60s
+    pids_limit: 256
     ports:
       - "127.0.0.1:${REELSCAREY_PORT:-8787}:8787"
     environment:
