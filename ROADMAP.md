@@ -538,3 +538,15 @@ YouTube subscriptions and bulk acquisition, source/codec scoring with Usenet age
 filters, and reviewed bulk metadata matching. See [feature behavior and bounds](docs/SEVEN_FEATURES.md).
 Provider credentials, private-service acceptance and the license still require
 owner decisions or access where listed in the remaining-work record.
+
+## Version 0.23 storage and reliability
+
+The Storage page browses media/download folders and up to eight explicitly
+mounted read-only roots. A guided offline CLI reviews and copies the main media
+tree, creates a verified configuration backup, retains originals, refuses
+replacement and requires activation of the new mount before workers resume.
+See [storage behavior and commands](docs/STORAGE.md). Standard TV matching now
+also accepts explicit 1x02, spaced S01 E02 and Season 1 Episode 2 labels while
+rejecting ambiguous or multi-episode automatic selections. No database migration
+or runtime dependency is added. [Workload checks](docs/WORKLOAD.md) define the
+repeatable constrained container budget and its limits.

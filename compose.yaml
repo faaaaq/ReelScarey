@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        VERSION: ${REELSCAREY_VERSION:-0.22.0-dev}
+        VERSION: ${REELSCAREY_VERSION:-0.23.0-dev}
     image: reelscarey:local
     restart: unless-stopped
     init: true
@@ -19,6 +19,7 @@ services:
       REELSCAREY_BACKUPS_DIR: /backups
       REELSCAREY_YOUTUBE_STAGING_DIR: /youtube-staging/work
       REELSCAREY_LOG_LEVEL: ${REELSCAREY_LOG_LEVEL:-info}
+      REELSCAREY_BROWSE_ROOTS: ${REELSCAREY_BROWSE_ROOTS:-}
       REELSCAREY_PUBLIC_URL: ${REELSCAREY_PUBLIC_URL:-}
     volumes:
       - reelscarey_config:/config

@@ -2617,6 +2617,31 @@ dd {
   justify-content: flex-end;
   margin-bottom: 0.75rem;
 }
+.storage-breadcrumbs {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.storage-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.storage-table th,
+.storage-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--gray-6);
+}
+.storage-table caption {
+  text-align: left;
+  padding: 8px 0;
+  color: var(--gray-11);
+}
+.storage-digest {
+  overflow-wrap: anywhere;
+}
 .bulk-video-list {
   max-height: 360px;
   overflow-y: auto;

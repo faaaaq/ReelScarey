@@ -70,6 +70,9 @@ const SystemChecks = lazy(() =>
 const Backups = lazy(() =>
   import("./pages/Backups").then((m) => ({ default: m.Backups })),
 );
+const Storage = lazy(() =>
+  import("./pages/Storage").then((m) => ({ default: m.Storage })),
+);
 const MetadataRefresh = lazy(() =>
   import("./pages/MetadataRefresh").then((m) => ({
     default: m.MetadataRefresh,
@@ -256,10 +259,14 @@ function AppShell() {
               <RefreshCw size={19} strokeWidth={1.7} />
               <span>Metadata refresh</span>
             </NavLink>
+            <NavLink to="/storage">
+              <FolderSearch size={18} />
+              <span>Storage</span>
+            </NavLink>
           </nav>
           <div className="account-control">
             <span>
-              {session.username} <small>v0.22</small>
+              {session.username} <small>v0.23</small>
             </span>
             <button onClick={() => void logout()} disabled={signingOut}>
               <LogOut size={15} />
@@ -308,6 +315,7 @@ function AppShell() {
             <Route path="/setup" element={<Setup />} />
             <Route path="/system" element={<SystemChecks />} />
             <Route path="/backups" element={<Backups />} />
+            <Route path="/storage" element={<Storage />} />
             <Route path="/metadata-refresh" element={<MetadataRefresh />} />
             <Route path="/series/:id" element={<Series />} />
             <Route path="/search" element={<MovieSearch />} />

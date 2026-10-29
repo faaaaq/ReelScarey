@@ -83,7 +83,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   honor durable pending organization reservations. Avoid nested read locks.
   Publish without replacement, verify journal output ownership, switch subtitle
   and media references atomically, then clean up verified old library links.
-  Main-root changes remain offline deployment migrations. See
+  Main-root changes remain offline deployment migrations. Use the reviewed
+  maintenance copy/activation flow; retain originals, verified configuration
+  backups and startup/recovery barriers. Storage browsing is bounded, read-only
+  and restricted to explicitly mounted roots. See docs/STORAGE.md and
   docs/ANIME_ORGANIZATION.md for scope and safety limits.
 - internal/subtitle owns registered-media inspections, OpenSubtitles credentials/
   protocol, language/track preferences, leased jobs and journaled sidecar storage.
