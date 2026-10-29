@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -218,6 +219,46 @@ func TestRejectUnsafeArchivesAndChangedBytes(t *testing.T) {
 	}
 	if _, _, e := s.Open("../other"); e == nil {
 		t.Fatal("path accepted as ID")
+	}
+}
+
+func TestZIPDirectoryIsBoundedBeforeReadingEntryMetadata(t *testing.T) {
+	var b bytes.Buffer
+	z := zip.NewWriter(&b)
+	for _, name := range []string{"reelscarey.db", "backup-manifest.json"} {
+		f, _ := z.Create(name)
+		_, _ = f.Write([]byte("fixture"))
+	}
+	_ = z.Close()
+	valid := b.Bytes()
+	end := bytes.LastIndex(valid, []byte{'P', 'K', 5, 6})
+	for _, kind := range []string{"valid", "many_entries", "oversized_directory", "extra_tail", "different_disk"} {
+		t.Run(kind, func(t *testing.T) {
+			data := bytes.Clone(valid)
+			switch kind {
+			case "many_entries":
+				binary.LittleEndian.PutUint16(data[end+8:], 65535)
+				binary.LittleEndian.PutUint16(data[end+10:], 65535)
+			case "oversized_directory":
+				binary.LittleEndian.PutUint32(data[end+12:], 1<<30)
+			case "extra_tail":
+				data = append(data, 'x')
+			case "different_disk":
+				binary.LittleEndian.PutUint16(data[end+4:], 1)
+			}
+			f, e := os.CreateTemp(t.TempDir(), "zip-")
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer f.Close()
+			if _, e = f.Write(data); e != nil {
+				t.Fatal(e)
+			}
+			e = boundedDirectory(f, int64(len(data)))
+			if (e == nil) != (kind == "valid") {
+				t.Fatal(kind, e)
+			}
+		})
 	}
 }
 

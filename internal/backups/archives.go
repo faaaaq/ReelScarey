@@ -4,9 +4,11 @@ package backups
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -229,6 +231,9 @@ func unpack(ctx context.Context, f *os.File, dest string) (maintenance.Manifest,
 	if e != nil {
 		return empty, e
 	}
+	if e = boundedDirectory(f, info.Size()); e != nil {
+		return empty, e
+	}
 	z, e := zip.NewReader(f, info.Size())
 	if e != nil {
 		return empty, errors.New("upload must be a ReelScarey ZIP backup")
@@ -281,6 +286,41 @@ func unpack(ctx context.Context, f *os.File, dest string) (maintenance.Manifest,
 		}
 	}
 	return maintenance.Verify(ctx, dest)
+}
+
+// Bound the central directory before archive/zip allocates entry metadata. The
+// interface format fits ordinary single-disk ZIP; ZIP64 is unnecessary below
+// 512 MiB. This also rejects a forged small entry count hiding a huge directory.
+func boundedDirectory(f *os.File, size int64) error {
+	const maximum = int64(65535 + 22)
+	n := size
+	if n > maximum {
+		n = maximum
+	}
+	if n < 22 {
+		return errors.New("backup ZIP directory is missing")
+	}
+	tail := make([]byte, int(n))
+	if _, e := f.ReadAt(tail, size-n); e != nil {
+		return e
+	}
+	for i := len(tail) - 22; i >= 0; i-- {
+		if !bytes.Equal(tail[i:i+4], []byte{'P', 'K', 5, 6}) {
+			continue
+		}
+		end := tail[i:]
+		if int(binary.LittleEndian.Uint16(end[20:22])) != len(end)-22 {
+			continue
+		}
+		disk, centralDisk := binary.LittleEndian.Uint16(end[4:6]), binary.LittleEndian.Uint16(end[6:8])
+		count, total := binary.LittleEndian.Uint16(end[8:10]), binary.LittleEndian.Uint16(end[10:12])
+		span, offset := int64(binary.LittleEndian.Uint32(end[12:16])), int64(binary.LittleEndian.Uint32(end[16:20]))
+		if disk != 0 || centralDisk != 0 || count != total || total < 2 || total > 4 || span > 65536 || offset+span != size-n+int64(i) {
+			return errors.New("backup ZIP directory exceeds the supported bounds")
+		}
+		return nil
+	}
+	return errors.New("backup ZIP directory is invalid")
 }
 
 func (s *Service) inspect(ctx context.Context, archiveID string) (Archive, string, error) {

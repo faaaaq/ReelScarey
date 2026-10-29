@@ -13,7 +13,7 @@
   reopens with worker review required. Temporary copies are cleaned conservatively.
 - All 155 frontend tests pass, including schedule/CSRF, manual job controls,
   upload verification failures, explicit restore consent and deletion review.
-  Backend tests/static checks and targeted race checks pass in Linux containers.
+  Backend tests/static checks and race checks pass in Linux containers.
   The complete Docker build repeats frontend/backend/static verification.
 - The actual read-only, network-isolated container rehearsal verifies manual
   backup, ZIP download/upload, stale digest rejection, controlled restart,
@@ -24,6 +24,26 @@
   A test-only setup-code encoding mistake was also corrected. The repeatable
   `scripts/backup-container-smoke.sh` uses fresh temporary volumes and is in CI.
   No owner account, provider connection or media was used as a test fixture.
+
+### Running installation and GitHub integration
+
+- The previous image is retained as `reelscarey:before-backup-manager-20261029`.
+  The stopped schema-30 configuration was backed up and independently verified
+  before replacing the container. Final private snapshot:
+  `data/backups/before-backup-manager-20261029/configuration-final`.
+- The running single-container app is `0.21.0-backups`, schema 31, with a separate
+  persistent `/backups` volume. All 71 pre-existing tables match the final backup;
+  encryption-key and setup-token bytes match. Full SQLite integrity, foreign-key
+  checks, Windows readiness, the `/backups` deep link and all nine doctor checks
+  pass. Backup storage is writable by the non-root app and scheduling is paused.
+  The existing first-run setup state is preserved; no fixture account was created.
+- GitHub's default branch is `codex/foundation`. Its existing Docker publishing
+  workflow was merged into the feature history and preserved. The complete app
+  and milestone history are tracked in pull request #1. GitHub Actions run
+  `40836943861` could not start: the account reports failed billing payments or a
+  spending limit. This is not recorded as a passing hosted check. The separate
+  Entire status also reports no reviewer approval; no findings block the change.
+  Repository rules and external status checks were not modified.
 
 
 ## Running-container upgrade and repository cleanup
