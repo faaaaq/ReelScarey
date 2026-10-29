@@ -14,7 +14,7 @@ var standardLabel = regexp.MustCompile(`(?i)(?:s(?:eason)?[ ._-]*([0-9]{1,4})[ .
 var chainLabel = regexp.MustCompile(`(?i)^[ ._]*e(?:p(?:isode)?s?)?[ ._-]*([0-9]{1,5})`)
 var rangeLabel = regexp.MustCompile(`(?i)^[ ._]*-[ ._]*(?:(e(?:p(?:isode)?s?)?)[ ._-]*)?([0-9]{1,5})`)
 var extraStandardLabel = regexp.MustCompile(`(?i)^[ ._,+&/\-]*(?:s(?:eason)?[ ._-]*[0-9]|e(?:p(?:isode)?s?)?[ ._-]*[0-9]|x[0-9]|(?:and|to)[ ._-]+[0-9])`)
-var remainingEpisodeLabel = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:s(?:eason)?[ ._-]*[0-9]{1,4}|e(?:p(?:isode)?s?)?[ ._-]*[0-9]{1,5}|x[0-9]{1,5})(?:$|[^a-z0-9])`)
+var remainingEpisodeLabel = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:s(?:eason)?[ ._-]*[0-9]{1,4}|e(?:p(?:isode)?s?)?[ ._-]*[0-9]{1,5}|x[0-9]{1,2})(?:$|[^a-z0-9])`)
 
 func HasEpisodeLabel(title string) bool { return standardLabel.MatchString(title) }
 

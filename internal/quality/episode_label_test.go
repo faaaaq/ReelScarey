@@ -48,7 +48,7 @@ func TestEpisodeSpansAreBoundedHintsAndNeverAutomaticPacks(t *testing.T) {
 			t.Fatal("resolution confused with range", label)
 		}
 	}
-	for _, title := range []string{"Owned S01E01-1080p-E02", "Owned S01EP01 WEB Ep 2", "Owned S01E01-E03 1080p E04", "Owned S01E01 WEB S02"} {
+	for _, title := range []string{"Owned S01E01-1080p-E02", "Owned S01EP01 WEB Ep 2", "Owned S01E01-E03 1080p E04", "Owned S01E01 WEB S02", "Owned S01E01 WEB x02"} {
 		if _, _, _, _, ok := EpisodeSpan(title); ok {
 			t.Fatal("unconsumed episode evidence accepted", title)
 		}
