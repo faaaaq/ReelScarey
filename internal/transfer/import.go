@@ -71,6 +71,16 @@ func safeRelative(name string) (string, error) {
 	}
 	return name, nil
 }
+func mapJobSource(j Job, save, file, remote string) (string, error) {
+	relative, e := MapSource(save, file, remote)
+	if e != nil {
+		return "", e
+	}
+	if j.clientLocal != "" {
+		relative = j.clientLocal + "/" + relative
+	}
+	return safeRelative(relative)
+}
 func MapSource(save, file, remote string) (string, error) {
 	base, e := remoteRoot(remote)
 	if e != nil {

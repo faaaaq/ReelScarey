@@ -83,11 +83,15 @@ type IndexerConfig struct {
 	Generation    string `json:"generation"`
 }
 type ClientConfig struct {
-	URL          string `json:"url"`
-	Username     string `json:"username"`
-	Password     string `json:"password"`
-	DownloadPath string `json:"download_path"`
-	APIKey       string `json:"api_key,omitempty"`
+	LocalFolder                       string `json:"local_folder,omitempty"`
+	URL                               string `json:"url"`
+	Username                          string `json:"username"`
+	Password                          string `json:"password"`
+	DownloadPath                      string `json:"download_path"`
+	APIKey                            string `json:"api_key,omitempty"`
+	profileKey, kind, label           string
+	profileRevision, defaultsRevision int
+	ciphertext                        []byte
 }
 type Release struct {
 	Protocol    string `json:"protocol,omitempty"`

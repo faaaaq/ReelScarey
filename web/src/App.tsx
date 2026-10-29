@@ -73,6 +73,11 @@ const Backups = lazy(() =>
 const Storage = lazy(() =>
   import("./pages/Storage").then((m) => ({ default: m.Storage })),
 );
+const DownloadClients = lazy(() =>
+  import("./pages/DownloadClients").then((m) => ({
+    default: m.DownloadClients,
+  })),
+);
 const MetadataRefresh = lazy(() =>
   import("./pages/MetadataRefresh").then((m) => ({
     default: m.MetadataRefresh,
@@ -266,7 +271,7 @@ function AppShell() {
           </nav>
           <div className="account-control">
             <span>
-              {session.username} <small>v0.23</small>
+              {session.username} <small>v0.24</small>
             </span>
             <button onClick={() => void logout()} disabled={signingOut}>
               <LogOut size={15} />
@@ -316,6 +321,7 @@ function AppShell() {
             <Route path="/system" element={<SystemChecks />} />
             <Route path="/backups" element={<Backups />} />
             <Route path="/storage" element={<Storage />} />
+            <Route path="/download-clients" element={<DownloadClients />} />
             <Route path="/metadata-refresh" element={<MetadataRefresh />} />
             <Route path="/series/:id" element={<Series />} />
             <Route path="/search" element={<MovieSearch />} />

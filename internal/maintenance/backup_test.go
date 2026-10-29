@@ -49,6 +49,14 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	if e = secrets.SetNamed(ctx, "opensubtitles", []byte(`{"api_key":"fixture-private-key"}`)); e != nil {
 		t.Fatal(e)
 	}
+	clientID := strings.Repeat("a", 32)
+	if _, e = db.Exec(`INSERT INTO download_clients(id,name,kind,enabled,created_at,updated_at) VALUES(?,'Owned NZBGet','nzbget',1,1,1); UPDATE download_client_preferences SET usenet=?`, clientID, clientID); e != nil {
+		t.Fatal(e)
+	}
+	clientConfig := []byte(`{"url":"http://owned.invalid","username":"fixture","password":"private-nzbget-password","download_path":"/completed","local_folder":"nzbget"}`)
+	if e = secrets.SetNamed(ctx, "download-client:"+clientID, clientConfig); e != nil {
+		t.Fatal(e)
+	}
 	indexerCipher, e := secrets.Seal("indexer:fixture", []byte(`{"cookie":"fixture-session"}`))
 	if e != nil {
 		t.Fatal(e)
@@ -65,7 +73,7 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	if e != nil {
 		t.Fatal(e)
 	}
-	if m.Schema != 37 || len(m.Files) != 2 {
+	if m.Schema != 38 || len(m.Files) != 2 {
 		t.Fatal(m)
 	}
 	if _, e = Verify(ctx, backup); e != nil {
@@ -97,6 +105,13 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	saved, e := securestore.New(ctx, restored, dest)
 	if e != nil {
 		t.Fatal(e)
+	}
+	if got, e := saved.GetNamed(ctx, "download-client:"+clientID); e != nil || !bytes.Equal(got, clientConfig) {
+		t.Fatal("restored client credentials changed", e)
+	}
+	var restoredDefault string
+	if e = restored.QueryRow(`SELECT usenet FROM download_client_preferences`).Scan(&restoredDefault); e != nil || restoredDefault != clientID {
+		t.Fatal("restored default changed", e)
 	}
 	b, e := saved.GetNamed(ctx, "opensubtitles")
 	if e != nil || !bytes.Contains(b, []byte("fixture-private-key")) {

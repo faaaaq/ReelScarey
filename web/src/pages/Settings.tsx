@@ -277,6 +277,16 @@ export function Settings() {
               </section>
               <IntegrationSettings kind="torznab" />
               <IntegrationSettings kind="qbittorrent" />
+              <section className="panel settings-info">
+                <h2>Download clients</h2>
+                <p>
+                  Manage named qBittorrent, SABnzbd and NZBGet connections,
+                  separate folder mappings and defaults for future jobs.
+                </p>
+                <Link className="text-link" to="/download-clients">
+                  Manage download clients
+                </Link>
+              </section>
               <IntegrationSettings kind="sabnzbd" />
               <section className="panel settings-info">
                 <h2>Subtitle providers</h2>

@@ -40,6 +40,12 @@ func TestRealQBittorrentTVDownloadAndImport(t *testing.T) {
 func TestRealQBittorrentAnimeOrderPackDownloadAndImport(t *testing.T) {
 	runRealQBittorrent(t, true, true)
 }
+func TestRealQBittorrentNamedClientDownloadAndImport(t *testing.T) {
+	runRealQBittorrent(t, false, false, true)
+}
+func TestRealQBittorrentNamedClientTVDownloadAndImport(t *testing.T) {
+	runRealQBittorrent(t, true, false, true)
+}
 func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 	if os.Getenv("REELSCAREY_LIVE_QBT") != "1" {
 		t.Skip("set REELSCAREY_LIVE_QBT=1 with qbittorrent-nox and FFmpeg installed")
@@ -53,6 +59,7 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 		}
 	}
 	pack := len(providerOrder) > 0 && providerOrder[0]
+	named := len(providerOrder) > 1 && providerOrder[1]
 	var f *workflowFixture
 	var packID int64
 	var packEpisodeIDs []int64
@@ -104,6 +111,13 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 	}()
 	qbt := NewQBittorrent()
 	client := ClientConfig{URL: fmt.Sprintf("http://127.0.0.1:%d", port), Username: "ciadmin", Password: password, DownloadPath: filepath.ToSlash(f.cfg.DownloadsDir)}
+	if named {
+		client.LocalFolder = "named-qbt"
+		client.DownloadPath = filepath.ToSlash(filepath.Join(f.cfg.DownloadsDir, client.LocalFolder))
+		if e = os.MkdirAll(client.DownloadPath, 0755); e != nil {
+			t.Fatal(e)
+		}
+	}
 	ready := false
 	for start := time.Now(); time.Since(start) < 20*time.Second; {
 		if _, e = qbt.Test(ctx, client); e == nil {
@@ -229,7 +243,26 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 	if e = f.s.ConfigureIndexer(ctx, IndexerUpdate{URL: server.URL + "/api", APIKey: &apiKey}); e != nil {
 		t.Fatal(e)
 	}
-	if e = f.s.ConfigureClient(ctx, ClientUpdate{URL: client.URL, Username: client.Username, Password: &password, DownloadPath: client.DownloadPath}); e != nil {
+	var defaults ClientDefaults
+	if named {
+		saved, err := f.s.SaveDownloadClient(ctx, DownloadClientUpdate{Name: "Owned torrent", Kind: "qbittorrent", URL: client.URL, Username: client.Username, Password: &password, DownloadPath: client.DownloadPath, LocalFolder: client.LocalFolder})
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved, err = f.s.SaveDownloadClient(ctx, DownloadClientUpdate{ID: saved.ID, Name: saved.Name, Kind: saved.Kind, Enabled: true, Revision: saved.Revision, URL: client.URL, Username: client.Username, DownloadPath: client.DownloadPath, LocalFolder: client.LocalFolder})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defaults, err = f.s.ClientDefaults(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defaults.Torrent = saved.ID
+		defaults, err = f.s.SaveClientDefaults(ctx, defaults)
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else if e = f.s.ConfigureClient(ctx, ClientUpdate{URL: client.URL, Username: client.Username, Password: &password, DownloadPath: client.DownloadPath}); e != nil {
 		t.Fatal(e)
 	}
 	var results []Release
@@ -254,6 +287,15 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 	job, created, e := f.s.Queue(ctx, results[0].ID)
 	if e != nil || !created {
 		t.Fatal("queue", e)
+	}
+	if named {
+		if job.ClientKey != defaults.Torrent || job.ClientKind != "qbittorrent" {
+			t.Fatal("named binding missing")
+		}
+		defaults.Torrent = ""
+		if _, e = f.s.SaveClientDefaults(ctx, defaults); e != nil {
+			t.Fatal(e)
+		}
 	}
 	if pack {
 		changed := append([]library.AnimeOrderEntry{}, packOrder.Entries...)
@@ -378,7 +420,7 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 		}
 	}
 	for _, name := range videoNames {
-		source := filepath.Join(f.cfg.DownloadsDir, "ReelScarey", job.ID)
+		source := filepath.Join(client.DownloadPath, "ReelScarey", job.ID)
 		if tv {
 			source = filepath.Join(source, "tv-fixture")
 		}

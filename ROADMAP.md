@@ -550,3 +550,12 @@ also accepts explicit 1x02, spaced S01 E02 and Season 1 Episode 2 labels while
 rejecting ambiguous or multi-episode automatic selections. No database migration
 or runtime dependency is added. [Workload checks](docs/WORKLOAD.md) define the
 repeatable constrained container budget and its limits.
+
+## Version 0.24 download clients
+
+Named qBittorrent, SABnzbd and NZBGet connections now have tested, paused
+creation, explicit enablement and per-protocol defaults. Jobs retain their
+original client and local folder mapping across default changes and restarts.
+Credentials use the existing encrypted backup/restore path. NZBGet reconciles
+uncertain submissions without resubmitting and shares reviewed TV mapping and
+verified import/source retention. See [Download clients](docs/DOWNLOAD_CLIENTS.md).

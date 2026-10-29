@@ -121,7 +121,7 @@ func (s *Service) process(ctx context.Context, j Job) error {
 	if j.Protocol == "usenet" {
 		return s.processUsenet(ctx, j)
 	}
-	c, err := s.clientConfig(ctx)
+	c, err := s.boundClient(ctx, j)
 	if err != nil {
 		return err
 	}
@@ -240,7 +240,7 @@ func (s *Service) processCompleted(ctx context.Context, j Job, savePath string, 
 		}
 		return problem("choose_file", "This download contains more than one movie file. Choose the correct file to import.")
 	}
-	source, err := MapSource(savePath, chosen.Name, remoteRoot)
+	source, err := mapJobSource(j, savePath, chosen.Name, remoteRoot)
 	if err != nil {
 		return err
 	}

@@ -40,6 +40,11 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   separate namespace. Uncertain SABnzbd submissions must reconcile, never
   automatically resubmit. Only completed post-processing in an exact dedicated
   mapped output folder may supply import candidates.
+  Named qBittorrent/SABnzbd/NZBGet connections start paused and require explicit
+  per-protocol defaults. Fence the selected profile/default/credential snapshot
+  inside queue reservations. Existing jobs retain their client and remote/local
+  folder mapping; default changes must never reroute them. Uncertain NZBGet
+  submissions reconcile without resubmitting. See docs/DOWNLOAD_CLIENTS.md.
 - internal/library owns the shared catalog, TV seasons/episodes and revision-checked monitoring. Future providers live in
   their feature modules behind narrow, consumer-owned interfaces.
   It also owns read-only Wanted/Calendar projections. Reads must not scan disk,

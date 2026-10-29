@@ -175,9 +175,10 @@ function JobCard({ job, reload }: { job: DownloadJob; reload: () => void }) {
       </div>
       <p className="release-title">{job.title}</p>
       <p className="field-help">
-        {job.protocol === "usenet"
-          ? "Usenet · SABnzbd"
-          : "Torrent · qBittorrent"}
+        {job.client_label ??
+          (job.protocol === "usenet"
+            ? "Usenet · SABnzbd"
+            : "Torrent · qBittorrent")}
         {job.client_id ? ` · ${job.client_id}` : ""}
       </p>
       {job.state !== "cancelled" && (

@@ -228,6 +228,9 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
 		return Job{}, false, e
 	}
+	if e = validateSelectedClient(ctx, tx, client); e != nil {
+		return Job{}, false, e
+	}
 	if e = validateAnimeSnapshot(ctx, tx, v); e != nil {
 		return Job{}, false, e
 	}
@@ -278,6 +281,9 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO download_tv(download_id,series_tmdb_id,series_title,series_year,season_number,series_folder,naming) VALUES(?,?,?,?,?,?,?)`, id, show.TMDbID, show.Title, show.Year, v.Targets[0].Season, prefs.SeriesFolder, prefs.EpisodeNaming); e != nil {
+		return Job{}, false, e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE downloads SET client_key=?,client_kind=?,client_label=?,client_download_root=?,client_local_folder=? WHERE id=?`, client.profileKey, client.kind, client.label, client.DownloadPath, client.LocalFolder, id); e != nil {
 		return Job{}, false, e
 	}
 	seen := map[int64]bool{}

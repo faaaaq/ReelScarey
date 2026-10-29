@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
+import { createServer } from 'node:http'
 
 assert.equal(process.env.REELSCAREY_BACKUP_SMOKE, '1', 'Explicit disposable-test opt-in is required')
 const base = 'http://127.0.0.1:18787'
@@ -29,6 +30,24 @@ const first = await json('/auth/session')
 assert.equal(first.setup_required, true)
 const setupToken = (await readFile('/fixture/setup-token', 'utf8')).trim()
 await signIn('/auth/setup', { ...credentials, setup_token: setupToken }, 201)
+// Own loopback protocol fixture, reachable only inside the disposable test's
+// shared network namespace. Real-client/media acceptance runs separately.
+const clientServer = createServer((req, res) => {
+  if (req.url === '/api/v2/auth/login') {
+    res.setHeader('Set-Cookie', 'SID=backup-fixture; Path=/')
+    res.end('Ok.')
+  } else if (req.url === '/api/v2/app/webapiVersion') res.end('2.8.3')
+  else { res.statusCode = 404; res.end() }
+})
+await new Promise(resolve => clientServer.listen(0, '127.0.0.1', resolve))
+clientServer.unref()
+const clientBody = { name: 'Retained backup client', kind: 'qbittorrent', url: `http://127.0.0.1:${clientServer.address().port}`, username: 'fixture', password: 'private-disposable-client-password', download_path: '/completed', local_folder: 'owned-client' }
+const client = await json('/download-clients', { method: 'POST', body: JSON.stringify(clientBody) }, 201)
+assert.equal(client.enabled, false)
+assert.equal(JSON.stringify(client).includes(clientBody.password), false)
+const { password: _secret, ...clientUpdate } = clientBody
+const enabledClient = await json(`/download-clients/${client.id}`, { method: 'PUT', body: JSON.stringify({ ...clientUpdate, enabled: true, revision: client.revision }) })
+await json('/download-clients/defaults', { method: 'PUT', body: JSON.stringify({ torrent: client.id, usenet: '', revision: 1 }) })
 let settings = await json('/settings')
 settings = await json('/settings', { method: 'PUT', body: JSON.stringify({ library_name: 'Backup fixture cinema', movie_folder: settings.movie_folder, series_folder: settings.series_folder, episode_naming: settings.episode_naming, revision: settings.revision }) })
 const metadata = await json('/system/metadata-refresh')
@@ -74,6 +93,14 @@ cookie = ''; csrf = ''
 await signIn('/auth/login', credentials)
 settings = await json('/settings')
 assert.equal(settings.library_name, 'Backup fixture cinema')
+const restoredClients = await json('/download-clients')
+assert.equal(restoredClients.items.length, 1)
+assert.equal(restoredClients.items[0].id, client.id)
+assert.equal(restoredClients.items[0].revision, enabledClient.revision)
+assert.equal(restoredClients.items[0].local_folder, 'owned-client')
+assert.equal(restoredClients.defaults.torrent, client.id)
+assert.equal(JSON.stringify(restoredClients).includes(clientBody.password), false)
+await json(`/download-clients/${client.id}/test`, { method: 'POST', body: '{}' })
 state = await json('/system/backups')
 assert.equal(state.recovery_pending, true)
 assert.equal(state.schedule.enabled, false)
@@ -98,3 +125,4 @@ assert.equal((await json('/system/backups')).recovery_pending, false)
 await json(`/system/backups/${uploaded.id}`, { method: 'DELETE' })
 assert.equal((await json('/system/backups')).archives.length, 2)
 console.log(JSON.stringify({ backup: 'verified', upload: 'verified', restore: 'restarted', sessions: 'revoked', catalog: 'preserved', safety_backup: 'retained', schedules: 'paused', recovery_review: 'passed', assets: 'served' }))
+clientServer.close()
