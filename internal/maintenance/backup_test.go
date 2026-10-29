@@ -64,7 +64,7 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	if _, e = db.Exec(`INSERT INTO indexers(id,name,kind,enabled,generation,ciphertext,updated_at) VALUES('fixture','Fixture','iptorrents',1,'one',?,1)`, indexerCipher); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec(`UPDATE settings SET library_name='Recovered cinema'; UPDATE subtitle_preferences SET enabled=1; UPDATE search_schedule SET enabled=1`); e != nil {
+	if _, e = db.Exec(`UPDATE settings SET library_name='Recovered cinema'; UPDATE subtitle_preferences SET enabled=1,download_format='original'; UPDATE search_schedule SET enabled=1`); e != nil {
 		t.Fatal(e)
 	}
 	root := filepath.Dir(cfg.ConfigDir)
@@ -73,7 +73,7 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	if e != nil {
 		t.Fatal(e)
 	}
-	if m.Schema != 38 || len(m.Files) != 2 {
+	if m.Schema != 39 || len(m.Files) != 2 {
 		t.Fatal(m)
 	}
 	if _, e = Verify(ctx, backup); e != nil {
@@ -137,6 +137,10 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	}
 	if e = restored.QueryRow(`SELECT enabled FROM subtitle_preferences`).Scan(&enabled); e != nil || enabled {
 		t.Fatal(enabled, e)
+	}
+	var format string
+	if e = restored.QueryRow(`SELECT download_format FROM subtitle_preferences`).Scan(&format); e != nil || format != "original" {
+		t.Fatal("restored subtitle format changed", e)
 	}
 	if !instance.RecoveryPending(dest) {
 		t.Fatal("restored jobs were not held for review")

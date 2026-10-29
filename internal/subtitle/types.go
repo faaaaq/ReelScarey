@@ -81,6 +81,7 @@ type Episode struct {
 	Season, Number int
 }
 type Candidate struct {
+	Format     string `json:"format"`
 	ID         string `json:"id"`
 	FileID     int64  `json:"file_id"`
 	SubtitleID string `json:"subtitle_id"`

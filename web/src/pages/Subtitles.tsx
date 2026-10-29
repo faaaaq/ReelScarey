@@ -12,6 +12,7 @@ export type SubtitleTrack = {
   variant: "full" | "signs" | "forced";
 };
 export type SubtitlePreferences = {
+  download_format?: "srt" | "original";
   enabled: boolean;
   tracks: SubtitleTrack[];
   hearing_impaired: "any" | "exclude" | "prefer";
@@ -35,6 +36,7 @@ type PreferenceResponse = {
   languages: Language[];
 };
 export type SubtitleCandidate = SubtitleTrack & {
+  format?: string;
   id: string;
   file_id: number;
   release: string;
@@ -309,6 +311,28 @@ function PreferenceForm({
           </Button>
         </div>
         <div className="automation-form-grid">
+          <label>
+            Download format
+            <select
+              value={form.download_format ?? "srt"}
+              onChange={(e) => {
+                setForm({
+                  ...form,
+                  download_format: e.target.value as "srt" | "original",
+                });
+                setSuccess(false);
+              }}
+            >
+              <option value="srt">SRT (compatible text)</option>
+              <option value="original">
+                Keep original SRT, VTT, ASS or SSA
+              </option>
+            </select>
+            <span className="field-help">
+              Original format preserves provider styles. Existing sidecars and
+              staged imports keep their format.
+            </span>
+          </label>
           <label>
             Automatic timing match
             <select
@@ -881,6 +905,8 @@ function Candidate({
         {languages.find((l) => l.code === c.language)?.name ?? c.language} ·{" "}
         {variantName[c.variant]}
         {c.hearing_impaired ? " · SDH" : ""} · {c.file_name}
+        {" · Output: "}
+        {(c.format ?? "srt").toUpperCase() || "Unsupported"}
       </p>
       {c.reasons.length > 0 && (
         <ul>

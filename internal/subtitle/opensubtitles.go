@@ -127,13 +127,20 @@ func (o *OpenSubtitles) api(ctx context.Context, c Credentials, host, token, met
 }
 func resetTime(b []byte) int64 {
 	var r struct {
-		Reset int64  `json:"reset_time"`
-		UTC   string `json:"reset_time_utc"`
+		Reset json.RawMessage `json:"reset_time"`
+		UTC   string          `json:"reset_time_utc"`
 	}
 	_ = json.Unmarshal(b, &r)
 	now := time.Now().Unix()
-	if r.Reset > now && r.Reset <= now+3*86400 {
-		return r.Reset
+	var reset int64
+	if json.Unmarshal(r.Reset, &reset) != nil {
+		var value string
+		if json.Unmarshal(r.Reset, &value) == nil {
+			reset, _ = strconv.ParseInt(value, 10, 64)
+		}
+	}
+	if reset > now && reset <= now+3*86400 {
+		return reset
 	}
 	for _, format := range []string{time.RFC3339, "2006-01-02T15:04:05.000Z", "2006-01-02 15:04:05 MST"} {
 		if t, e := time.Parse(format, r.UTC); e == nil && t.Unix() > now {
@@ -310,13 +317,26 @@ func downloadURL(raw string) (*url.URL, error) {
 func (o *OpenSubtitles) Fetch(ctx context.Context, c Credentials, candidate Candidate) (Download, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	var raw struct {
-		Link      string `json:"link"`
-		Remaining *int   `json:"remaining"`
-		Reset     int64  `json:"reset_time"`
-		ResetUTC  string `json:"reset_time_utc"`
+	format := candidate.Format
+	if format == "" {
+		format = "srt"
 	}
-	if e := o.authorized(ctx, c, http.MethodPost, "/download", map[string]any{"file_id": candidate.FileID, "sub_format": "srt"}, &raw); e != nil {
+	if !supportedSubtitleFormat(format) || (format != "srt" && subtitleExtension(candidate.FileName) != "."+format) {
+		return Download{}, problem("invalid_subtitle", "The selected subtitle format is unsupported or no longer matches its original file.")
+	}
+	payload := map[string]any{"file_id": candidate.FileID}
+	// Omit conversion when preserving styled/original files. Never flatten ASS
+	// or SSA styling through an intermediate SRT conversion.
+	if format == "srt" && subtitleExtension(candidate.FileName) != ".srt" {
+		payload["sub_format"] = "srt"
+	}
+	var raw struct {
+		Link      string          `json:"link"`
+		Remaining *int            `json:"remaining"`
+		Reset     json.RawMessage `json:"reset_time"`
+		ResetUTC  string          `json:"reset_time_utc"`
+	}
+	if e := o.authorized(ctx, c, http.MethodPost, "/download", payload, &raw); e != nil {
 		return Download{}, e
 	}
 	link, e := downloadURL(raw.Link)

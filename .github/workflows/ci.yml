@@ -55,7 +55,7 @@ jobs:
         env:
           REELSCAREY_LIVE_QBT: '1'
       - name: Generated subtitle media and embedded track detection
-        run: go test -race ./internal/subtitle -run TestRealSubtitleMedia -count=1 -v -timeout=2m
+        run: go test -race ./internal/subtitle -run 'TestRealSubtitle(Media|OriginalFormats)' -count=1 -v -timeout=3m
         env:
           REELSCAREY_LIVE_SUBTITLES: '1'
       - name: Automatic Anime matching and reviewed real-client import

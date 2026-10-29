@@ -70,6 +70,9 @@ func runRealSAB(t *testing.T, tv bool, named ...bool) {
 	names := []string{"Owned.Movie.mp4"}
 	if tv {
 		names = []string{"Owned.Show.S01E01-E02.mp4", "Owned.Show.S01E03.mp4"}
+		if len(named) > 0 && named[0] {
+			names = []string{"Owned.Show.S01 E01 - E02.mp4", "Owned.Show.Season 1 Ep 3.mp4"}
+		}
 	}
 	articles := map[string][]byte{}
 	nzb := `<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">`
@@ -271,6 +274,9 @@ retention = 0
 		if current.ErrorCode == "map_episodes" {
 			if !tv || len(current.Choices) != 2 {
 				t.Fatal("unexpected TV review")
+			}
+			if len(current.Choices[0].Suggestions) != 2 || len(current.Choices[1].Suggestions) != 1 {
+				t.Fatal("reviewed filename hints missing", current.Choices)
 			}
 			var count int
 			if e = f.db.QueryRow(`SELECT COUNT(*) FROM media_files WHERE download_id=?`, j.ID).Scan(&count); e != nil || count != 0 {

@@ -95,9 +95,13 @@ func TestSubtitlesAPIAuthCSRFRevisionsAndWriteOnlyCredentials(t *testing.T) {
 		t.Fatal(result)
 	}
 	result.Preferences.Enabled = true
+	result.Preferences.DownloadFormat = "original"
 	body, _ := json.Marshal(result.Preferences)
 	if w = request("PUT", "/subtitles/preferences", string(body), true, true); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"download_format":"original"`) {
+		t.Fatal("format not saved", w.Body.String())
 	}
 	if w = request("PUT", "/subtitles/preferences", string(body), true, true); w.Code != 409 {
 		t.Fatal("stale preferences accepted", w.Code)

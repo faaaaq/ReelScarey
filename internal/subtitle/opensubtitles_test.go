@@ -4,12 +4,35 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestQuotaResetAcceptsDocumentedTextAndUTCWithoutLosingDownload(t *testing.T) {
+	until := time.Now().Add(7 * time.Hour).UTC().Truncate(time.Second)
+	p := protocol(t, func(r *http.Request) *http.Response {
+		if r.URL.Path == "/api/v1/login" {
+			return response(200, `{"token":"fixture-token","base_url":"api.opensubtitles.com"}`)
+		}
+		if r.URL.Path == "/api/v1/download" {
+			return response(200, fmt.Sprintf(`{"link":"https://dl.opensubtitles.com/owned","remaining":4,"reset_time":"07 hours and 00 minutes","reset_time_utc":%q}`, until.Format(time.RFC3339)))
+		}
+		return response(200, validSRT)
+	})
+	got, e := p.Fetch(context.Background(), testCredentials, Candidate{FileID: 45})
+	if e != nil || got.ResetAt != until.Unix() || got.Remaining == nil || *got.Remaining != 4 || string(got.Content) != validSRT {
+		t.Fatal(got, e)
+	}
+	for _, value := range []string{fmt.Sprint(until.Unix()), fmt.Sprintf("%q", fmt.Sprint(until.Unix()))} {
+		if resetTime([]byte(`{"reset_time":`+value+`}`)) != until.Unix() {
+			t.Fatal("numeric reset rejected")
+		}
+	}
+}
 
 type roundTrip func(*http.Request) (*http.Response, error)
 
@@ -73,7 +96,7 @@ func TestOpenSubtitlesContractAndCredentialIsolation(t *testing.T) {
 		case "/api/v1/download":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			if r.Method != "POST" || body["file_id"] != float64(45) || body["sub_format"] != "srt" {
+			if r.Method != "POST" || body["file_id"] != float64(45) || len(body) != 1 {
 				t.Fatal(body)
 			}
 			return response(200, `{"link":"https://dl.opensubtitles.com/download/private-signed-link","remaining":3,"reset_time_utc":"`+time.Now().Add(time.Hour).UTC().Format(time.RFC3339)+`"}`)

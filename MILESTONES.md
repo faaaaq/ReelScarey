@@ -64,6 +64,10 @@ for limits, and [validation](docs/VALIDATION.md) for evidence.
 - [ ] More Anime providers, broader release grammars and
   single-file cross-season mappings.
 - [ ] Additional subtitle providers, OCR, translation and automatic alignment.
+- [x] Original ASS/SSA/VTT provider subtitles, style-preserving recovery and
+  reviewed edits/rollback. SRT remains the default.
+- [x] More explicit single-episode TV labels and bounded consecutive filename
+  range/chain suggestions, sharing one parser and retaining mandatory review.
 - [x] Named qBittorrent/SABnzbd/NZBGet clients, per-protocol defaults and saved
   per-job folder mappings. See [Download clients](docs/DOWNLOAD_CLIENTS.md).
 - [ ] Language verification beyond stream tags and additional client protocols.

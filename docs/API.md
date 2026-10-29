@@ -723,3 +723,19 @@ Credentials are never returned. Save/test have bounded connection timeouts.
 Download rows additionally expose client_key, client_kind and client_label.
 Each new job stores its original remote root and local folder privately. See
 [Download clients](DOWNLOAD_CLIENTS.md) for mounting and Usenet category setup.
+
+## Subtitle output format and expanded episode labels (0.25)
+
+`GET/PUT /api/v1/subtitles/preferences` now includes `download_format`: `srt`
+(default, including omitted legacy writes) or `original`. Original format permits
+SRT, VTT, ASS and SSA provider files. Candidate responses expose `format` for the
+output extension. Format changes carry the existing preference revision and
+invalidate unused reviews. Already journaled imports retain their destination
+and recover without another provider request. Existing CSRF, administrator,
+provider-generation, media-hash and lease checks apply.
+
+Standard TV identity labels additionally accept S01EP02, S01 Episode 02 and
+Season 1 Ep 2. File-review suggestions accept bounded consecutive spaced and
+long-form ranges/chains. These hints never authorize import or turn packs into
+single-episode automatic downloads. Cross-season single-file mappings and
+inferred date/absolute numbering remain unsupported.

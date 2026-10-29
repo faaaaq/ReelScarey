@@ -238,9 +238,19 @@ func TestTVFilenameSuggestionsAreConservative(t *testing.T) {
 			t.Fatal(v.name, got)
 		}
 	}
-	for _, name := range []string{"Show.S01 E02.mkv", "Show.Season 1 Episode 2.mkv"} {
+	for _, name := range []string{"Show.S01 E02.mkv", "Show.Season 1 Episode 2.mkv", "Show.S01EP02.mkv", "Show.Season 1 Ep 2.mkv"} {
 		if got := suggestedEpisodes(name, targets); len(got) != 1 || got[0] != 2 {
 			t.Fatal(name, got)
+		}
+	}
+	for _, name := range []string{"Show.S01 E01 - E03.mkv", "Show.Season 1 Episodes 1-3.mkv", "Show.S01 Ep 1 Ep 2 Ep 3.mkv"} {
+		if got := suggestedEpisodes(name, targets); len(got) != 3 {
+			t.Fatal(name, got)
+		}
+	}
+	for _, name := range []string{"Show.AS01E01.mkv", "Show.S01E01-E03 E04.mkv", "Show.S01E01E02-E03.mkv", "Show.S01 Ep01 x02.mkv", "Show.S01E01 and 02.mkv"} {
+		if got := suggestedEpisodes(name, targets); len(got) != 0 {
+			t.Fatal("unsafe mapping hint", name, got)
 		}
 	}
 }

@@ -39,15 +39,23 @@ func (s *Service) pending(ctx context.Context, id int64, t Track) (*importPlan, 
 	}
 	return &p, nil
 }
-func destination(m media, t Track) string {
+func destination(m media, t Track, formats ...string) string {
+	format := "srt"
+	if len(formats) > 0 && formats[0] != "" {
+		format = formats[0]
+	}
 	suffix := "." + t.Language
 	if t.Variant != "full" {
 		suffix += "." + t.Variant
 	}
-	return strings.TrimSuffix(m.Path, path.Ext(m.Path)) + suffix + ".srt"
+	return strings.TrimSuffix(m.Path, path.Ext(m.Path)) + suffix + "." + format
 }
 func (s *Service) plan(ctx context.Context, m media, c Candidate, body []byte) (importPlan, error) {
-	if !validTrack(c.Track) || len(body) == 0 || len(body) > MaxSubtitle {
+	format := c.Format
+	if format == "" {
+		format = "srt"
+	}
+	if !validTrack(c.Track) || !supportedSubtitleFormat(format) || len(body) == 0 || len(body) > MaxSubtitle {
 		return importPlan{}, problem("invalid_subtitle", "The selected subtitle track or content is invalid.")
 	}
 	if old, e := s.pending(ctx, m.ID, c.Track); e != nil {
@@ -60,7 +68,7 @@ func (s *Service) plan(ctx context.Context, m media, c Candidate, body []byte) (
 	}
 	sum := sha256.Sum256(body)
 	id := transfer.ID()
-	p := importPlan{ID: id, Track: c.Track, FileID: c.FileID, Destination: destination(m, c.Track), Stage: ".reelscarey-sub-" + id + ".part", SHA: hex.EncodeToString(sum[:]), Size: int64(len(body)), Content: body, Phase: "planned"}
+	p := importPlan{ID: id, Track: c.Track, FileID: c.FileID, Destination: destination(m, c.Track, format), Stage: ".reelscarey-sub-" + id + ".part", SHA: hex.EncodeToString(sum[:]), Size: int64(len(body)), Content: body, Phase: "planned"}
 	_, e := s.db.ExecContext(ctx, `INSERT INTO subtitle_imports(id,media_file_id,language,variant,provider_file_id,destination,stage_name,sha256,size_bytes,content,phase,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,'planned',?) ON CONFLICT(media_file_id,language,variant) DO UPDATE SET id=excluded.id,provider_file_id=excluded.provider_file_id,destination=excluded.destination,stage_name=excluded.stage_name,sha256=excluded.sha256,size_bytes=excluded.size_bytes,content=excluded.content,phase='planned',updated_at=excluded.updated_at WHERE subtitle_imports.phase='committed'`, id, m.ID, c.Language, c.Variant, c.FileID, p.Destination, p.Stage, p.SHA, p.Size, body, s.now().Unix())
 	return p, e
 }
@@ -79,7 +87,8 @@ func (s *Service) phase(ctx context.Context, j Job, p importPlan, phase string) 
 	return tx.Commit()
 }
 func (s *Service) publish(ctx context.Context, j Job, m media, o *openedMedia, generation string, p importPlan) error {
-	if !validTrack(p.Track) || !local(p.Destination) || p.Destination != destination(m, p.Track) || path.Base(p.Stage) != p.Stage || p.Stage != ".reelscarey-sub-"+p.ID+".part" || p.Size <= 0 || p.Size > MaxSubtitle || len(p.Content) != int(p.Size) {
+	format := strings.TrimPrefix(subtitleExtension(p.Destination), ".")
+	if !validTrack(p.Track) || !supportedSubtitleFormat(format) || !local(p.Destination) || p.Destination != destination(m, p.Track, format) || path.Base(p.Stage) != p.Stage || p.Stage != ".reelscarey-sub-"+p.ID+".part" || p.Size <= 0 || p.Size > MaxSubtitle || len(p.Content) != int(p.Size) {
 		return problem("invalid_subtitle", "The saved subtitle import plan is invalid.")
 	}
 	sum := sha256.Sum256(p.Content)

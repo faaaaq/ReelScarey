@@ -34,6 +34,16 @@ func ShiftTimedText(body []byte, extension string, offsetMS int) ([]byte, int, e
 		return bad()
 	}
 	lines := strings.Split(string(body), "\n")
+	vttTimes := map[int]bool{}
+	if ext == ".vtt" {
+		indices, ok := vttCueLines(lines)
+		if !ok {
+			return bad()
+		}
+		for _, i := range indices {
+			vttTimes[i] = true
+		}
+	}
 	count := 0
 	events := false
 	startIndex, endIndex := -1, -1
@@ -67,6 +77,9 @@ func ShiftTimedText(body []byte, extension string, offsetMS int) ([]byte, int, e
 	for i, line := range lines {
 		if len(line) > 65536 {
 			return bad()
+		}
+		if ext == ".vtt" && !vttTimes[i] {
+			continue
 		}
 		if ext == ".ass" || ext == ".ssa" {
 			trim := strings.TrimSpace(line)

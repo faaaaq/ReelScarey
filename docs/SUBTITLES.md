@@ -92,12 +92,29 @@ file and waits before the next. The provider charges its `/download` request;
 failures after that request can still consume allowance. There is no promise of
 exactly-once provider charging across an interruption before bytes are journaled.
 
-New downloads request SRT, accept at most 4 MiB of UTF-8 text, normalize BOM/CRLF
-and validate timed cues against video duration with a three-minute tolerance.
-HTML/error pages, VTT responses to an SRT request, malformed timestamps and empty
-cues are rejected. Conversion to SRT does not preserve ASS styling, fonts or
-positioning. Existing ASS sidecars are retained; downloading styled ASS is future
-scope.
+New downloads default to SRT. **Download format → Keep original SRT, VTT, ASS
+or SSA** preserves a supported provider file's format, styling and positioning.
+This applies to both manual and automatic selections and does not replace
+existing tracks. Unsupported original extensions require SRT conversion or a
+different selection. The candidate shows its output format before review.
+
+Files remain bounded to 4 MiB of UTF-8 text. BOM/CRLF are normalized; cue text,
+timestamps, ASS/SSA style/event fields and VTT style/comment blocks are retained.
+Timed cues are checked against video duration with a three-minute tolerance.
+HTML/error pages, format mismatches, malformed timestamps, missing event fields
+and empty cues are rejected. Keeping original styled files omits the provider's
+conversion flag; a converted/mislabeled response is rejected rather than saved
+under the wrong extension. External font files are not downloaded. The protocol
+follows the [official download contract](https://ai.opensubtitles.com/api-docs).
+Quota resets accept numeric epochs or the documented human-readable reset plus
+UTC timestamp. Account/CDN failures can still consume provider allowance.
+
+Changing the format preference invalidates unconsumed candidate reviews. An
+already journaled import retains its original extension/content and recovers
+without consuming quota again. Backups preserve this preference and all pending
+journals. Imported ASS/SSA/VTT can use the existing reviewed timing, replacement
+and retained-version rollback tools. SRT conversion can discard styling; choose
+original format when those details matter.
 
 Verified content is journaled before a private staging file is written and synced
 in the video's folder. Exclusive same-folder hardlink publication refuses overwrite;

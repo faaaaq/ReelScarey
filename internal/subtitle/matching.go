@@ -14,7 +14,11 @@ func rank(p Preferences, t Target, in []Candidate) []Candidate {
 		}
 		seen[c.FileID] = true
 		c.Reasons = []string{}
+		c.Format = candidateFormat(p, c)
 		reject := func(message string) { c.Reasons = append(c.Reasons, message) }
+		if c.Format == "" {
+			reject("The original file is not a supported SRT, VTT, ASS or SSA subtitle. Choose SRT output to request conversion.")
+		}
 		if !c.Identity {
 			reject("The provider did not confirm this movie or episode identity.")
 		}

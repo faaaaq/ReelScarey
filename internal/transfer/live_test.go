@@ -149,6 +149,9 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 	allData := data
 	if tv {
 		videoNames = []string{"Owned.S01E01-E02.mp4", "Owned.S01E03.mp4"}
+		if named {
+			videoNames = []string{"Owned.Season 1 Ep 1-Ep 2.mp4", "Owned.S01EP03.mp4"}
+		}
 		if pack {
 			videoNames = []string{"Pack Story - SP01.mp4", "Pack Story - 001.mp4", "Pack Story Part 2 - 001v2.mp4"}
 		}
@@ -163,6 +166,14 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 	releaseBody := make(chan struct{})
 	started := make(chan struct{})
 	var first sync.Once
+	ownedPaths := map[string]bool{}
+	for _, name := range videoNames {
+		prefix := "/"
+		if tv {
+			prefix = "/tv-fixture/"
+		}
+		ownedPaths[prefix+name] = true
+	}
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-initialized
 		switch r.URL.Path {
@@ -196,7 +207,11 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 			_, _ = w.Write(metainfo)
 		case "/announce":
 			_, _ = w.Write(bencode(map[string]any{"interval": int64(60), "peers": ""}))
-		case "/fixture.mp4", "/tv-fixture/Owned.S01E01-E02.mp4", "/tv-fixture/Owned.S01E03.mp4", "/tv-fixture/Pack Story - SP01.mp4", "/tv-fixture/Pack Story - 001.mp4", "/tv-fixture/Pack Story Part 2 - 001v2.mp4":
+		default:
+			if !ownedPaths[r.URL.Path] {
+				w.WriteHeader(404)
+				return
+			}
 			first.Do(func() { close(started) })
 			select {
 			case <-releaseBody:
@@ -204,8 +219,6 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 				return
 			}
 			http.ServeContent(w, r, "fixture.mp4", time.Now(), bytes.NewReader(data))
-		default:
-			w.WriteHeader(404)
 		}
 	}))
 	defer server.Close()

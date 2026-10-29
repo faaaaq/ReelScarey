@@ -110,8 +110,8 @@ func suggestedOrderEpisodes(name string, targets []TVTarget, snapshot *library.A
 	}
 	// Canonical SxxExx fallback requires its own exact catalog title and a single
 	// unambiguous canonical token. It cannot override a recognized provider order.
-	where := episodeToken.FindStringIndex(base)
-	if where == nil || quality.Normalize(base[:where[0]]) != quality.Normalize(canonicalTitle) {
+	_, _, start, _, ok := quality.EpisodeSpan(base)
+	if !ok || quality.Normalize(base[:start]) != quality.Normalize(canonicalTitle) {
 		return nil
 	}
 	return suggestedEpisodes(base, targets)

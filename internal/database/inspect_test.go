@@ -22,7 +22,7 @@ func TestInspectionNeverCreatesAndRejectsMigrationDrift(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer db.Close()
-	if v, e := Inspect(ctx, db); e != nil || v != 38 {
+	if v, e := Inspect(ctx, db); e != nil || v != 39 {
 		t.Fatal(v, e)
 	}
 	if _, e = db.Exec(`UPDATE schema_migrations SET checksum='drift' WHERE version=1`); e != nil {

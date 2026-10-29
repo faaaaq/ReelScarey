@@ -559,3 +559,14 @@ original client and local folder mapping across default changes and restarts.
 Credentials use the existing encrypted backup/restore path. NZBGet reconciles
 uncertain submissions without resubmitting and shares reviewed TV mapping and
 verified import/source retention. See [Download clients](docs/DOWNLOAD_CLIENTS.md).
+
+## Version 0.25 subtitle formats and release labels
+
+The existing subtitle provider can retain original SRT, VTT, ASS and SSA files,
+including styling, with explicit preference and bounded timing validation.
+Pending imports keep their original format through restart and settings changes;
+reviewed edits and rollback preserve styled payloads. SRT remains the default.
+See [Subtitles](docs/SUBTITLES.md). More explicit TV labels share a conservative
+parser across ranking, discovery hints and reviewed file mappings. Ordinary
+automation still requires a single canonical episode; range/chain suggestions
+remain manual and bounded to twenty consecutive episodes in one season.

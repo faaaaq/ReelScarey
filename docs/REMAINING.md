@@ -110,6 +110,9 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   requires manual search/review. No arbitrary filename or season-order inference.
 - [x] Standard TV 1x02, spaced S01 E02 and Season 1 Episode 2 labels, with exact
   title/year/season/episode checks and no automatic range/pack interpretation.
+- [x] Explicit S01EP02, S01 Episode 02 and Season 1 Ep 2 labels plus bounded
+  consecutive long-form/spaced range/chained filename suggestions. Mapping still
+  requires review; ordinary automation accepts only a single canonical episode.
 - [ ] Acceptance of naming presets with real Plex, Emby and Jellyfin scans on
   representative libraries. Documented naming conventions are implemented; they
   are not proof of every server/version's identification behavior.
@@ -129,9 +132,10 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   Tags may be absent or inaccurate, and release text still supplies selection evidence.
 - [x] Per-show subtitle overrides and reviewed sidecar replacement, timing shifts
   and retained-version rollback for SRT/VTT/ASS/SSA.
-- [ ] Additional subtitle providers and ASS-style provider downloads. Existing styled
-  subtitle companions can be detected/preserved during organization; that is a
-  different capability from provider download support.
+- [x] Styled ASS/SSA and VTT provider downloads with explicit original-format
+  preference, bounded cue validation, format-preserving recovery and reviewed
+  edits/rollback. SRT remains the default. See [Subtitles](SUBTITLES.md).
+- [ ] Additional subtitle providers, OCR, translation and automatic alignment.
 - [x] Usenet retention and propagation filters with explicit publication evidence.
 - [x] Multiple named qBittorrent/SABnzbd clients and NZBGet support, explicit
   per-protocol defaults and immutable per-job folder mappings. See

@@ -280,9 +280,7 @@ var hintQuality = regexp.MustCompile(`(?i)\b(?:2160p|1080p|720p|480p|bluray|bdri
 func discoveryHint(name, kind string) string {
 	base := strings.TrimSuffix(path.Base(name), path.Ext(name))
 	if kind == "series" {
-		if token := episodeToken.FindStringIndex(base); token != nil {
-			base = base[:token[0]]
-		} else if _, _, start, _, ok := quality.EpisodeLabel(base); ok {
+		if _, _, start, _, ok := quality.EpisodeSpan(base); ok {
 			base = base[:start]
 		}
 	}

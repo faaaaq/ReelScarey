@@ -30,6 +30,7 @@ func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, p Provider) 
 }
 
 type Preferences struct {
+	DownloadFormat  string  `json:"download_format"`
 	Enabled         bool    `json:"enabled"`
 	Tracks          []Track `json:"tracks"`
 	HearingImpaired string  `json:"hearing_impaired"`
@@ -42,13 +43,16 @@ type Preferences struct {
 func (s *Service) Preferences(ctx context.Context) (Preferences, error) {
 	var p Preferences
 	var tracks string
-	e := s.db.QueryRowContext(ctx, `SELECT enabled,tracks,hearing_impaired,match_policy,interval_minutes,only_monitored,revision FROM subtitle_preferences WHERE id=1`).Scan(&p.Enabled, &tracks, &p.HearingImpaired, &p.MatchPolicy, &p.Interval, &p.OnlyMonitored, &p.Revision)
+	e := s.db.QueryRowContext(ctx, `SELECT enabled,tracks,hearing_impaired,match_policy,interval_minutes,only_monitored,revision,download_format FROM subtitle_preferences WHERE id=1`).Scan(&p.Enabled, &tracks, &p.HearingImpaired, &p.MatchPolicy, &p.Interval, &p.OnlyMonitored, &p.Revision, &p.DownloadFormat)
 	if e == nil {
 		e = json.Unmarshal([]byte(tracks), &p.Tracks)
 	}
 	return p, e
 }
 func validatePreferences(p Preferences) error {
+	if p.DownloadFormat != "" && p.DownloadFormat != "srt" && p.DownloadFormat != "original" {
+		return problem("invalid_preferences", "Choose SRT or keep the supported original subtitle format.")
+	}
 	if len(p.Tracks) == 0 || len(p.Tracks) > 9 || p.Interval < 60 || p.Interval > 10080 || !slices.Contains([]string{"any", "exclude", "prefer"}, p.HearingImpaired) || !slices.Contains([]string{"hash", "hash_or_release"}, p.MatchPolicy) {
 		return problem("invalid_preferences", "Choose 1–9 language/track combinations, an interval of 60–10080 minutes, and supported matching/hearing preferences.")
 	}
@@ -67,6 +71,9 @@ func validatePreferences(p Preferences) error {
 	return nil
 }
 func (s *Service) SavePreferences(ctx context.Context, p Preferences) (Preferences, error) {
+	if p.DownloadFormat == "" {
+		p.DownloadFormat = "srt"
+	}
 	if e := validatePreferences(p); e != nil {
 		return p, e
 	}
@@ -76,7 +83,7 @@ func (s *Service) SavePreferences(ctx context.Context, p Preferences) (Preferenc
 		return p, e
 	}
 	defer tx.Rollback()
-	r, e := tx.ExecContext(ctx, `UPDATE subtitle_preferences SET enabled=?,tracks=?,hearing_impaired=?,match_policy=?,interval_minutes=?,only_monitored=?,revision=revision+1 WHERE id=1 AND revision=?`, p.Enabled, string(b), p.HearingImpaired, p.MatchPolicy, p.Interval, p.OnlyMonitored, p.Revision)
+	r, e := tx.ExecContext(ctx, `UPDATE subtitle_preferences SET enabled=?,tracks=?,hearing_impaired=?,match_policy=?,interval_minutes=?,only_monitored=?,download_format=?,revision=revision+1 WHERE id=1 AND revision=?`, p.Enabled, string(b), p.HearingImpaired, p.MatchPolicy, p.Interval, p.OnlyMonitored, p.DownloadFormat, p.Revision)
 	if e != nil {
 		return p, e
 	}

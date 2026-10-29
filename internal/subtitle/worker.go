@@ -265,7 +265,7 @@ func (s *Service) process(ctx context.Context, j Job, p Preferences) (string, st
 		if e = s.quota(ctx, c, download); e != nil {
 			return "", "", e
 		}
-		content, e := normalizeSRT(download.Content, o.probe.Duration)
+		content, e := normalizeProviderSubtitle(download.Content, chosen.Format, o.probe.Duration)
 		if e != nil {
 			return "", "", e
 		}
