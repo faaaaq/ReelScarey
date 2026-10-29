@@ -51,6 +51,16 @@
 
 Feature scope and bounds: [SEVEN_FEATURES.md](SEVEN_FEATURES.md).
 
+### GitHub delivery
+
+The implementation and deployment evidence are in pull request
+[#2](https://github.com/faaaaq/ReelScarey/pull/2), targeting the repository's
+primary `codex/foundation` branch. Hosted application-check run `40846711182`
+did not start: GitHub reports failed recent account payments or a spending limit
+requiring an increase. This is not a passing hosted check. The local/container
+results above are independent evidence. No repository rules, external statuses
+or billing settings were changed.
+
 ## Configuration and library database backup manager
 
 - Schema 31 adds the persistent paused backup schedule. Live WAL snapshots,
