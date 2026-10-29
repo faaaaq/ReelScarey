@@ -1,5 +1,5 @@
 
-name: Publish ScareyBox to Docker Hub
+name: Publish ReelScarey to Docker Hub
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout ScareyBox
+      - name: Checkout ReelScarey
         uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
@@ -29,4 +29,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: $&#123;&#123; vars.DOCKERHUB_USERNAME &#125;&#125;/scareybox:latest
+          tags: $&#123;&#123; vars.DOCKERHUB_USERNAME &#125;&#125;/reelscarey:latest
