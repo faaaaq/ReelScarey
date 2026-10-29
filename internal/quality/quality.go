@@ -12,16 +12,17 @@ import (
 )
 
 type Profile struct {
-	ID            int64  `json:"id"`
-	Name          string `json:"name"`
-	Qualities     []int  `json:"qualities"`
-	Cutoff        int    `json:"cutoff"`
-	Language      string `json:"language"`
-	MinSeeders    int    `json:"min_seeders"`
-	MaxSizeGiB    int    `json:"max_size_gib"`
-	RequiredTerms string `json:"required_terms"`
-	RejectedTerms string `json:"rejected_terms"`
-	Revision      int    `json:"revision"`
+	ID            int64   `json:"id"`
+	Name          string  `json:"name"`
+	Qualities     []int   `json:"qualities"`
+	Cutoff        int     `json:"cutoff"`
+	Language      string  `json:"language"`
+	MinSeeders    int     `json:"min_seeders"`
+	MaxSizeGiB    int     `json:"max_size_gib"`
+	RequiredTerms string  `json:"required_terms"`
+	RejectedTerms string  `json:"rejected_terms"`
+	Revision      int     `json:"revision"`
+	Scoring       Scoring `json:"scoring"`
 }
 
 type Summary struct {
@@ -52,20 +53,29 @@ type Release struct {
 	ID, Title string
 	Size      int64
 	Seeders   *int
+	Published string
+	Now       int64
 }
 type Decision struct {
-	ID       string   `json:"release_id"`
-	Title    string   `json:"title"`
-	Quality  int      `json:"quality"`
-	Language string   `json:"language"`
-	Score    int      `json:"score"`
-	Eligible bool     `json:"eligible"`
-	Reasons  []string `json:"reasons"`
+	ID             string   `json:"release_id"`
+	Title          string   `json:"title"`
+	Quality        int      `json:"quality"`
+	Language       string   `json:"language"`
+	Score          int      `json:"score"`
+	Eligible       bool     `json:"eligible"`
+	Reasons        []string `json:"reasons"`
+	Source         string   `json:"source"`
+	Codec          string   `json:"codec"`
+	AgeDays        *float64 `json:"age_days"`
+	ScoringReasons []string `json:"scoring_reasons"`
 }
 
 var Languages = []string{"any", "english", "french", "german", "spanish", "italian", "japanese", "korean", "chinese"}
 
 func Validate(p Profile) error {
+	if e := validateScoring(p.Scoring); e != nil {
+		return e
+	}
 	if strings.TrimSpace(p.Name) == "" || len(p.Name) > 60 || strings.ContainsFunc(p.Name, unicode.IsControl) {
 		return fmt.Errorf("Use a profile name with 1–60 characters.")
 	}
@@ -262,6 +272,7 @@ func Evaluate(p Profile, t Target, r Release) Decision {
 	if r.Protocol != "usenet" && r.Seeders != nil {
 		d.Score += min(*r.Seeders, 99)
 	}
+	scoreEvidence(p.Scoring, r, tokens, &d)
 	d.Eligible = len(d.Reasons) == 0
 	return d
 }

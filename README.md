@@ -257,3 +257,13 @@ four applications that inspired its scope.
 See [indexers and title details](docs/INDEXERS_DETAILS.md) for direct tracker setup, cached cast/credits/trailers and local file/release history.
 
 Import existing movies and TV videos through **Import library**: review canonical matches and register verified files in their current locations. See [existing-library import](docs/EXISTING_LIBRARY.md) for mounting, limits and safety checks.
+
+## Version 0.22 follow-through
+
+All seven follow-through features are implemented: scheduled metadata refresh
+and richer calendar facts, reviewed refresh of linked AniList identities,
+per-show subtitle preferences, reviewed subtitle timing/replacement/rollback,
+YouTube subscriptions and bulk acquisition, source/codec scoring with Usenet age
+filters, and reviewed bulk metadata matching. See [feature behavior and bounds](docs/SEVEN_FEATURES.md).
+Provider credentials, private-service acceptance and the license still require
+owner decisions or access where listed in the remaining-work record.

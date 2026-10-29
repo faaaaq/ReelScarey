@@ -161,7 +161,7 @@ func (s *Service) guard(c claim, t searchTarget, p quality.Profile) transfer.Que
 		if t.Anime && (v.AnimeSearch == nil || v.AnimeSearch.PolicyRevision != t.AnimeRevision) {
 			return ErrLease
 		}
-		d := quality.Evaluate(p, current.Target, quality.Release{ID: v.ID, Title: v.Title, Size: v.Size, Seeders: v.Seeders, Protocol: v.Protocol})
+		d := quality.Evaluate(p, current.Target, quality.Release{ID: v.ID, Title: v.Title, Size: v.Size, Seeders: v.Seeders, Protocol: v.Protocol, Published: v.Published, Now: s.now().Unix()})
 		if !d.Eligible {
 			return ErrLease
 		}
@@ -360,7 +360,7 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 		}
 		candidates := make([]quality.Release, 0, len(releases))
 		for _, r := range releases {
-			candidates = append(candidates, quality.Release{ID: r.ID, Title: r.Title, Size: r.Size, Seeders: r.Seeders, Protocol: r.Protocol})
+			candidates = append(candidates, quality.Release{ID: r.ID, Title: r.Title, Size: r.Size, Seeders: r.Seeders, Protocol: r.Protocol, Published: r.Published, Now: s.now().Unix()})
 		}
 		decisions := quality.Rank(p, t.Target, candidates)
 		if c.Mode == "download" && current == 0 {

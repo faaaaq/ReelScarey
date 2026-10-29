@@ -466,6 +466,33 @@ function OrderEditor({
   return (
     <div className="settings-form">
       <h3>Linked AniList entries</h3>
+      <Button
+        variant="soft"
+        disabled={locked || dirty || !initial.identities.length}
+        onClick={() =>
+          void (async () => {
+            setBusy("refresh");
+            invalidate();
+            try {
+              setReview(
+                await api<Review>(path + "/refresh", {
+                  method: "POST",
+                  body: JSON.stringify({ revision: initial.revision }),
+                  signal: AbortSignal.timeout(75000),
+                }),
+              );
+            } catch (e) {
+              setError(messageFor(e));
+            } finally {
+              setBusy("");
+            }
+          })()
+        }
+      >
+        {busy === "refresh"
+          ? "Refreshing AniList…"
+          : "Review refreshed AniList details"}
+      </Button>
       {initial.numbering_revision === 0 && (
         <p className="field-help">
           This Anime film supports identity links only. Episode-order mapping

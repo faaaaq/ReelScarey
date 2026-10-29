@@ -180,6 +180,32 @@ async function mapSpecial(label = "SP1", title = "Anime special") {
 }
 
 describe("Reviewed Anime identity, order and pack workflow", () => {
+  it("reviews refreshed AniList facts without applying or changing canonical mappings", async () => {
+    const fetch = setup((url, _options, state) =>
+      url.endsWith("/refresh")
+        ? Response.json({
+            review_id: "refresh-review",
+            settings: {
+              ...state,
+              identities: [{ ...identity(), title: "Fresh AniList facts" }],
+            },
+            expires_at: Math.floor(Date.now() / 1000) + 600,
+          })
+        : undefined,
+    );
+    await open();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Review refreshed AniList details" }),
+    );
+    const review = await screen.findByRole("region", {
+      name: "Review Anime identity and episode changes",
+    });
+    expect(within(review).getByText(/Fresh AniList facts/)).toBeVisible();
+    expect(fetch.mock.calls.some(([, o]) => o?.method === "PUT")).toBe(false);
+    expect(
+      screen.getByRole("button", { name: "Save reviewed Anime mapping" }),
+    ).toBeDisabled();
+  });
   it("offers identity-only links for Anime films without TV group requests", async () => {
     const initial = fixture();
     initial.numbering_revision = 0;

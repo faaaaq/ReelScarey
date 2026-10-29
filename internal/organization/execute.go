@@ -26,6 +26,23 @@ func EnsureMediaAvailableTx(ctx context.Context, tx *sql.Tx) error {
 }
 
 func ensureMediaAvailable(ctx context.Context, db query) error {
+	if e := ensureOrganizationAvailable(ctx, db); e != nil {
+		return e
+	}
+	var n int
+	if e := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM subtitle_edits WHERE state IN ('queued','running') OR (state='blocked' AND phase<>'planned' AND phase<>'committed')`).Scan(&n); e != nil {
+		return e
+	}
+	if n > 0 {
+		return problem("subtitle_busy", "A reviewed subtitle edit is using the library. Finish or recover it before other media work.")
+	}
+	return nil
+}
+
+func EnsureOrganizationAvailable(ctx context.Context, db *sql.DB) error {
+	return ensureOrganizationAvailable(ctx, db)
+}
+func ensureOrganizationAvailable(ctx context.Context, db query) error {
 	var n int
 	if e := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state IN ('queued','running') OR (state='failed' AND (((json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')) OR (json_extract(snapshot,'$.removal') IS NOT NULL AND json_extract(snapshot,'$.phase')<>'failed_safe')))`).Scan(&n); e != nil {
 		return e

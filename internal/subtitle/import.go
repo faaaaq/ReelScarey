@@ -260,7 +260,7 @@ func (s *Service) commit(ctx context.Context, j Job, m media, o *openedMedia, ge
 		return e
 	}
 	var tracks string
-	if e = tx.QueryRowContext(ctx, `SELECT tracks FROM subtitle_preferences WHERE id=1`).Scan(&tracks); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT tracks FROM subtitle_overrides WHERE media_id=?),(SELECT tracks FROM subtitle_preferences WHERE id=1))`, m.MediaID).Scan(&tracks); e != nil {
 		return e
 	}
 	var wanted []Track

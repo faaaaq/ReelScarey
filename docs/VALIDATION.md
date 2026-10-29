@@ -1,5 +1,66 @@
 # Validation record — 2026-10-29
 
+## Version 0.22 — seven completed follow-through features
+
+- All 163 frontend tests, formatting, type checks and the production build pass.
+  Full Go tests, vet and race tests pass in Linux containers. The final Docker
+  build independently repeats the frontend/backend/static gates and embeds the
+  tested UI. No runtime service or dependency was added.
+- New tests cover metadata pause/revision fences and canonical-ID preservation;
+  immutable AniList refresh/apply; effective per-show tracks; SRT/VTT/ASS/SSA
+  timing and reviewed replacement/rollback, interrupted publication and foreign
+  output preservation; subscription baselines, deduplication and pause fences;
+  atomic YouTube bulk queues; source/codec ranking and Usenet age evidence; and
+  complete-batch matching with stale catalog/source/reservation rejection.
+  Requester denial, CSRF and direct web routes are covered at the HTTP boundary.
+- The actual read-only, network-isolated feature container uses generated FFmpeg
+  video and a clearly isolated inspection-only YouTube fixture. It verifies
+  paused metadata scheduling/provider waiting, non-Anime refresh rejection,
+  per-show preference save/reset, completed subtitle timing/rollback/upload,
+  persisted scoring, source baselines, reviewed bulk queues and reviewed bulk
+  registration. Video hashes, retained original subtitles, SQLite integrity and
+  foreign keys pass independent checks. A fixture category assumption was
+  corrected before the successful complete repeat. Real AniList refresh facts
+  use provider contract tests; this fixture does not prove public YouTube downloads.
+- The backup container rehearsal passes manual backup, ZIP download/upload,
+  stale-digest refusal, controlled restart, session revocation, catalog/settings
+  restoration, retained safety backup and recovery review. It now backs up
+  enabled metadata and YouTube schedules and verifies both restore paused.
+- Generated-media integration regressions pass for subtitle inspection,
+  organization, existing-library registration, reviewed YouTube imports and
+  FFprobe audio-language tags. Real isolated authenticated qBittorrent movie,
+  TV and Anime packs pass; both automatic Anime schedulers preserve review gates
+  and generated seeding sources. Real SABnzbd was not rerun for this change.
+
+### Live container upgrade
+
+- Old image retained as `reelscarey:before-seven-features-20261029`. A fresh
+  stopped schema-31 backup was created and independently checked with the new
+  image at `data/backups/before-seven-features-20261029/configuration-final`.
+  Private deployment settings are saved beside it; original backups are retained.
+- The running single-container app is now `0.22.0-seven-features`, schema 37.
+  All 72 pre-existing non-ledger tables match the final backup using their original
+  columns; previous migration rows and key/setup bytes match. Integrity and
+  foreign-key checks pass. New schedules are paused and first-run setup remains
+  required. No fixture account or media was created in the live installation.
+- Controlled restart, Windows localhost readiness and all six relevant direct
+  web routes pass. All nine installation checks are ready. The container retains
+  the existing volumes, read-only root/download mount, non-root UID 10001,
+  dropped capabilities and persistent WSL host launcher. Observed idle memory
+  after restart was approximately 10 MiB; this is not a sustained-load benchmark.
+
+Feature scope and bounds: [SEVEN_FEATURES.md](SEVEN_FEATURES.md).
+
+### GitHub delivery
+
+The implementation and deployment evidence are in pull request
+[#2](https://github.com/faaaaq/ReelScarey/pull/2), targeting the repository's
+primary `codex/foundation` branch. Hosted application-check run `40846711182`
+did not start: GitHub reports failed recent account payments or a spending limit
+requiring an increase. This is not a passing hosted check. The local/container
+results above are independent evidence. No repository rules, external statuses
+or billing settings were changed.
+
 ## Configuration and library database backup manager
 
 - Schema 31 adds the persistent paused backup schedule. Live WAL snapshots,

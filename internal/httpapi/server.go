@@ -62,6 +62,7 @@ type Server struct {
 	youtube          *youtube.Store
 	youtubeInspector YouTubeInspector
 	backups          *backups.Service
+	metadataRefresh  *automation.MetadataRefresher
 }
 
 type Dependencies struct {
@@ -76,6 +77,7 @@ type Dependencies struct {
 	Bot              *discordbot.Service
 	Franchises       metadata.FranchiseProvider
 	Backups          *backups.Service
+	MetadataRefresh  *automation.MetadataRefresher
 }
 
 type YouTubeInspector interface {
@@ -86,6 +88,10 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle}
 	s.youtube = youtube.NewStore(db)
 	s.backups = deps.Backups
+	s.metadataRefresh = deps.MetadataRefresh
+	if s.metadataRefresh == nil && deps.Metadata != nil {
+		s.metadataRefresh = automation.NewMetadataRefresher(db, deps.Metadata)
+	}
 	s.youtubeInspector = deps.YouTubeInspector
 	s.bot = deps.Bot
 	s.franchises = deps.Franchises
@@ -111,6 +117,11 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/system", method(http.MethodGet, s.system))
 	mux.HandleFunc("/api/v1/setup", method(http.MethodGet, s.setupGuide))
 	mux.HandleFunc("/api/v1/system/checks", s.installationChecks)
+	mux.HandleFunc("/api/v1/system/metadata-refresh", s.metadataRefreshSettings)
+	mux.HandleFunc("/api/v1/library/series/{id}/subtitles", s.showSubtitlePreferences)
+	mux.HandleFunc("/api/v1/subtitles/files/{id}/edits", s.subtitleEdits)
+	mux.HandleFunc("/api/v1/subtitles/edits/{id}/{action}", method(http.MethodPost, s.subtitleEditAction))
+	mux.HandleFunc("/api/v1/system/metadata-refresh/run", method(http.MethodPost, s.metadataRefreshRun))
 	mux.HandleFunc("/api/v1/system/recovery/resume", method(http.MethodPost, s.resumeRecovery))
 	mux.HandleFunc("/api/v1/system/backups", s.backupCollection)
 	mux.HandleFunc("/api/v1/system/backups/schedule", method(http.MethodPut, s.backupSchedule))
@@ -131,6 +142,9 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/imports", s.existingCollection)
 	mux.HandleFunc("/api/v1/library/imports/catalog", method(http.MethodGet, s.existingCatalog))
 	mux.HandleFunc("/api/v1/library/imports/{id}", s.existingScan)
+	mux.HandleFunc("/api/v1/library/imports/{id}/matches/suggest", method(http.MethodPost, s.bulkMatchSuggestions))
+	mux.HandleFunc("/api/v1/library/imports/{id}/matches/review", method(http.MethodPost, s.bulkMatchReview))
+	mux.HandleFunc("/api/v1/library/imports/{id}/matches/apply", method(http.MethodPost, s.bulkMatchApply))
 	mux.HandleFunc("/api/v1/library/imports/{id}/cancel", method(http.MethodPost, s.existingCancel))
 	mux.HandleFunc("/api/v1/library/import-files/{id}/register", method(http.MethodPost, s.existingRegister))
 	mux.HandleFunc("/api/v1/library/import-files/{id}/skip", method(http.MethodPost, s.existingSkip))
@@ -141,6 +155,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/metadata/anime", method(http.MethodGet, s.searchAnimeIdentities))
 	mux.HandleFunc("/api/v1/library/items/{id}/anime-order", s.animeOrderSettings)
 	mux.HandleFunc("/api/v1/library/items/{id}/anime-order/preview", method(http.MethodPost, s.reviewAnimeOrder))
+	mux.HandleFunc("/api/v1/library/items/{id}/anime-order/refresh", method(http.MethodPost, s.refreshAnimeIdentities))
 	mux.HandleFunc("/api/v1/library/items/{id}/anime-order/sources", method(http.MethodGet, s.animeOrderSources))
 	mux.HandleFunc("/api/v1/library/items/{id}/anime-order/propose", method(http.MethodPost, s.proposeAnimeOrder))
 	mux.HandleFunc("/api/v1/releases/anime-pack", method(http.MethodPost, s.searchAnimePack))
@@ -182,6 +197,10 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/subtitles/candidates/{id}/download", method(http.MethodPost, s.subtitleDownload))
 	mux.HandleFunc("/api/v1/automation", s.automationSettings)
 	mux.HandleFunc("/api/v1/youtube/inspect", method(http.MethodPost, s.youtubeInspect))
+	mux.HandleFunc("/api/v1/youtube/bulk/review", method(http.MethodPost, s.youtubeBulkReview))
+	mux.HandleFunc("/api/v1/youtube/bulk/queue", method(http.MethodPost, s.youtubeBulkQueue))
+	mux.HandleFunc("/api/v1/youtube/subscriptions", s.youtubeSubscriptions)
+	mux.HandleFunc("/api/v1/youtube/subscriptions/{id}", s.youtubeSubscription)
 	mux.HandleFunc("/api/v1/youtube/collections", s.youtubeCollections)
 	mux.HandleFunc("/api/v1/youtube/reviews", method(http.MethodPost, s.youtubeReview))
 	mux.HandleFunc("/api/v1/youtube/reviews/{id}/queue", method(http.MethodPost, s.youtubeQueue))
@@ -447,6 +466,8 @@ func frontend(assets fs.FS) http.HandlerFunc {
 	files := http.FileServer(http.FS(assets))
 	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/anime": true, "/youtube": true, "/organization": true, "/search": true, "/releases": true, "/activity": true, "/timeline": true, "/watch-activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true, "/import": true, "/wanted": true, "/calendar": true, "/requests": true}
 	routes["/backups"] = true
+	routes["/metadata-refresh"] = true
+	routes["/youtube/subscriptions"] = true
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")

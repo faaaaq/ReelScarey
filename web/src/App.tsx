@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import {
   Activity,
   Archive,
+  RefreshCw,
   CheckCircle2,
   Captions,
   Clapperboard,
@@ -68,6 +69,16 @@ const SystemChecks = lazy(() =>
 );
 const Backups = lazy(() =>
   import("./pages/Backups").then((m) => ({ default: m.Backups })),
+);
+const MetadataRefresh = lazy(() =>
+  import("./pages/MetadataRefresh").then((m) => ({
+    default: m.MetadataRefresh,
+  })),
+);
+const YouTubeSubscriptions = lazy(() =>
+  import("./pages/YouTubeSubscriptions").then((m) => ({
+    default: m.YouTubeSubscriptions,
+  })),
 );
 const Indexers = lazy(() =>
   import("./pages/Indexers").then((m) => ({ default: m.Indexers })),
@@ -241,10 +252,14 @@ function AppShell() {
               <Archive size={19} strokeWidth={1.7} />
               <span>Backups</span>
             </NavLink>
+            <NavLink to="/metadata-refresh">
+              <RefreshCw size={19} strokeWidth={1.7} />
+              <span>Metadata refresh</span>
+            </NavLink>
           </nav>
           <div className="account-control">
             <span>
-              {session.username} <small>v0.21</small>
+              {session.username} <small>v0.22</small>
             </span>
             <button onClick={() => void logout()} disabled={signingOut}>
               <LogOut size={15} />
@@ -263,6 +278,10 @@ function AppShell() {
             <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="/" element={<Dashboard />} />
             <Route path="/youtube" element={<YouTube />} />
+            <Route
+              path="/youtube/subscriptions"
+              element={<YouTubeSubscriptions />}
+            />
             <Route
               path="/movies"
               element={<Library key="movie" kind="movie" />}
@@ -289,6 +308,7 @@ function AppShell() {
             <Route path="/setup" element={<Setup />} />
             <Route path="/system" element={<SystemChecks />} />
             <Route path="/backups" element={<Backups />} />
+            <Route path="/metadata-refresh" element={<MetadataRefresh />} />
             <Route path="/series/:id" element={<Series />} />
             <Route path="/search" element={<MovieSearch />} />
             <Route path="/releases" element={<Releases />} />

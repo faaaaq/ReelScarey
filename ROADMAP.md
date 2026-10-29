@@ -148,8 +148,9 @@ temporary libraries only. Never use unauthorized content as test material.
 - [x] Owner reports OpenSubtitles connected through private settings.
 - [ ] Owner-library subtitle download acceptance awaits imported media; it is
   separate from the completed connection and generated-media tests.
-- [ ] Additional providers, arbitrary-library scanning, ASS-style downloads,
-  subtitle replacement/resynchronization and per-show language overrides remain future scope.
+- [x] Per-show language/track overrides and reviewed sidecar timing, replacement
+  and retained-version rollback. See [current behavior](docs/SEVEN_FEATURES.md).
+- [ ] Additional providers, arbitrary-library scanning and ASS-style downloads.
 
 ## 6 — Production hardening
 - [x] Guided setup checklist with optional/deferred Torznab and real settings links.
@@ -191,8 +192,9 @@ recorded in [validation](docs/VALIDATION.md).
 - [x] Genuine existing-file provenance, preserved migration references and shared
   availability/quality/subtitle consumers without fabricated download history.
 - [ ] Owner-library acceptance is separate from generated/disposable tests.
-- [ ] Copy/move/rename, arbitrary-root browsing, automatic bulk matching and
-  replacement/reassignment remain future scope.
+- [x] Reviewed bulk metadata suggestions and in-place registration within configured collections.
+- [ ] Arbitrary-root browsing and automatic identity selection remain outside scope.
+  Later milestones implement reviewed organization and versioned replacement.
 
 IPTorrents and XSpeeds account acceptance remains explicitly deferred by the owner.
 See [existing-library workflow](docs/EXISTING_LIBRARY.md).
@@ -209,7 +211,8 @@ See [existing-library workflow](docs/EXISTING_LIBRARY.md).
 - [x] Generated-video real SABnzbd/NNTP/FFprobe movie and TV tests on Windows.
 - [x] Final Linux race/container/package and real SABnzbd acceptance.
 - [ ] Owner Newznab/SABnzbd/shared-mount acceptance requires private setup.
-- [ ] Retention scoring, multiple SABnzbd clients and NZBGet remain future scope.
+- [x] Usenet retention/propagation filters and explained source/codec scoring.
+- [ ] Multiple SABnzbd clients and NZBGet remain future scope.
 
 See [Usenet setup and limits](docs/USENET.md). IPTorrents and XSpeeds account
 testing remains deferred.
@@ -223,8 +226,9 @@ testing remains deferred.
   explicit undated/unloaded metadata coverage without forecasting episodes.
 - [x] Invalid catalog dates cannot authorize automated provider searches.
 - [x] Complete browser/native/package/Linux acceptance for the application head.
-- [ ] Calendar uses cached metadata; broadcasts, filesystem-health checks,
-  automatic metadata refresh and replacement imports remain future scope.
+- [x] Scheduled metadata refresh with preserved canonical identities and local
+  runtime/status/freshness calendar facts. Later milestones add file checks and replacements.
+- [ ] Exact broadcast scheduling requires provider data beyond cached release dates.
 
 See [planning behavior and limits](docs/PLANNING.md). IPTorrents and XSpeeds
 account testing remains deferred.
@@ -524,3 +528,13 @@ TV imports require reviewed mappings. The
 passed all UI/race/static checks, real disposable movie/TV qBittorrent downloads,
 native smoke and Docker build/authenticated restart persistence. Full evidence
 is in [validation](docs/VALIDATION.md); owner Torznab/shared-mount acceptance is deferred.
+
+## Version 0.22 follow-through
+
+All seven follow-through features are implemented: scheduled metadata refresh
+and richer calendar facts, reviewed refresh of linked AniList identities,
+per-show subtitle preferences, reviewed subtitle timing/replacement/rollback,
+YouTube subscriptions and bulk acquisition, source/codec scoring with Usenet age
+filters, and reviewed bulk metadata matching. See [feature behavior and bounds](docs/SEVEN_FEATURES.md).
+Provider credentials, private-service acceptance and the license still require
+owner decisions or access where listed in the remaining-work record.

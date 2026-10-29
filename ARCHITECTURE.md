@@ -375,3 +375,13 @@ download mounts are read-only to preserve sources; media is writable for imports
 Persistent host folders must be accessible to UID/GID 10001 (or an explicit
 Compose user override). One process must own a given config directory; SQLite
 should be on local storage, not a network filesystem.
+
+## Version 0.22 follow-through
+
+All seven follow-through features are implemented: scheduled metadata refresh
+and richer calendar facts, reviewed refresh of linked AniList identities,
+per-show subtitle preferences, reviewed subtitle timing/replacement/rollback,
+YouTube subscriptions and bulk acquisition, source/codec scoring with Usenet age
+filters, and reviewed bulk metadata matching. See [feature behavior and bounds](docs/SEVEN_FEATURES.md).
+Provider credentials, private-service acceptance and the license still require
+owner decisions or access where listed in the remaining-work record.

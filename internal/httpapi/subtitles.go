@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/subtitle"
 )
 
@@ -17,6 +18,11 @@ func (s *Server) subtitleReady(w http.ResponseWriter) bool {
 	return true
 }
 func (s *Server) subtitleError(w http.ResponseWriter, err error) {
+	var org *organization.Error
+	if errors.As(err, &org) {
+		s.organizationError(w, err)
+		return
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		fail(w, 404, "not_found", "This registered media file or subtitle job does not exist.")
 		return
@@ -27,7 +33,7 @@ func (s *Server) subtitleError(w http.ResponseWriter, err error) {
 		switch p.Code {
 		case "invalid_preferences", "invalid_credentials", "review_required", "invalid_subtitle":
 			status = 400
-		case "subtitle_busy", "revision_conflict", "candidate_expired", "provider_not_configured", "provider_changed", "pending_import":
+		case "subtitle_busy", "revision_conflict", "candidate_expired", "provider_not_configured", "provider_changed", "pending_import", "source_changed", "output_exists":
 			status = 409
 		case "provider_quota", "provider_rate_limit":
 			status = 429
@@ -64,6 +70,37 @@ func (s *Server) subtitlePreferences(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", "GET, PUT")
 		fail(w, 405, "method_not_allowed", "Use GET or PUT.")
 	}
+}
+
+func (s *Server) showSubtitlePreferences(w http.ResponseWriter, r *http.Request) {
+	if !s.subtitleReady(w) {
+		return
+	}
+	id, ok := tvID(w, r)
+	if !ok {
+		return
+	}
+	var out subtitle.ShowPreferences
+	var e error
+	switch r.Method {
+	case "GET":
+		out, e = s.subtitle.ShowPreferences(r.Context(), id)
+	case "PUT", "DELETE":
+		var in subtitle.ShowPreferenceUpdate
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		out, e = s.subtitle.SaveShowPreferences(r.Context(), id, in, r.Method == "DELETE")
+	default:
+		w.Header().Set("Allow", "GET, PUT, DELETE")
+		fail(w, 405, "method_not_allowed", "Use GET, PUT or DELETE.")
+		return
+	}
+	if e != nil {
+		s.subtitleError(w, e)
+		return
+	}
+	send(w, 200, out)
 }
 func (s *Server) subtitleProvider(w http.ResponseWriter, r *http.Request) {
 	if !s.subtitleReady(w) {

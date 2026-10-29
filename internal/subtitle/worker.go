@@ -29,6 +29,9 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 	}
 }
 func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
+	if processed, e := s.ProcessEdit(ctx); processed || e != nil {
+		return processed, e
+	}
 	defer organization.ReadMedia()()
 	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
 		return false, e
@@ -47,7 +50,7 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 	if e != nil {
 		return false, e
 	}
-	p, e = s.Preferences(ctx)
+	p, e = s.filePreferences(ctx, j.MediaFileID)
 	if e != nil {
 		return true, e
 	}

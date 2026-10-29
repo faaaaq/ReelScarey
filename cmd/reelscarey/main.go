@@ -33,7 +33,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.21.0-dev"
+var version = "0.22.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -126,6 +126,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	metadataService := metadata.New(secretStore, metadata.NewTMDb())
 	transferService := transfer.New(db, secretStore, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
 	automationService := automation.New(db, transferService)
+	metadataRefresh := automation.NewMetadataRefresher(db, metadataService)
 	subtitleService := subtitle.New(db, secretStore, cfg, subtitle.NewOpenSubtitles())
 	organizationService := organization.New(db, cfg)
 	organizationService.SetProbe(func(ctx context.Context, f *os.File) (string, error) {
@@ -177,12 +178,28 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if err != nil {
 		return false, err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore, Bot: botService, Backups: backupService}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return false, fmt.Errorf("listen: %w", err)
 	}
 	workerCtx, workerCancel := context.WithCancel(ctx)
+	subscriptionsDone := make(chan struct{})
+	go func() {
+		defer close(subscriptionsDone)
+		if youtubeInspector != nil && waitRecovery(workerCtx, cfg.ConfigDir) {
+			youtube.NewStore(db).RunSubscriptions(workerCtx, youtubeInspector, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-subscriptionsDone }()
+	metadataDone := make(chan struct{})
+	go func() {
+		defer close(metadataDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			metadataRefresh.Run(workerCtx, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-metadataDone }()
 	backupDone := make(chan struct{})
 	go func() { defer close(backupDone); backupService.Run(workerCtx, logger) }()
 	defer func() { workerCancel(); <-backupDone }()

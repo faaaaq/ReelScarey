@@ -51,12 +51,14 @@ for limits, and [validation](docs/VALIDATION.md) for evidence.
 ## Later and optional scope
 
 - [ ] Live Emby reporting/acceptance, explicitly deferred by the owner.
-- [ ] Guided main-root migration; arbitrary-root browsing and bulk matching.
-- [ ] More Anime providers and order refresh, broader release grammars and
+- [x] Reviewed bulk matching, metadata refresh/calendar enrichment, AniList fact
+  refresh, per-show subtitles, reviewed subtitle edits/rollback, YouTube
+  subscriptions/bulk acquisition and source/codec/Usenet age rules. See below.
+- [ ] Guided main-root migration and arbitrary-root browsing.
+- [ ] More Anime providers, broader release grammars and
   single-file cross-season mappings.
-- [ ] Automatic metadata refresh, richer calendar data, YouTube subscriptions
-  and bulk acquisition, additional subtitle providers and resynchronization.
-- [ ] Richer quality/language scoring, more download clients and Usenet retention.
+- [ ] Additional subtitle providers, OCR, translation and automatic alignment.
+- [ ] Language verification beyond stream tags and more download clients.
 - [ ] NAS/shared-storage and ARM runtime acceptance, sustained load and broader
   accessibility/security review. Public distribution also needs signed releases
   and an owner-selected license.
@@ -64,3 +66,13 @@ for limits, and [validation](docs/VALIDATION.md) for evidence.
 The app currently runs locally with empty project media and download folders;
 configure mounts before testing against an actual library. The checklist does not
 claim owner-service acceptance or completion of unimplemented features.
+
+## Version 0.22 follow-through
+
+All seven follow-through features are implemented: scheduled metadata refresh
+and richer calendar facts, reviewed refresh of linked AniList identities,
+per-show subtitle preferences, reviewed subtitle timing/replacement/rollback,
+YouTube subscriptions and bulk acquisition, source/codec scoring with Usenet age
+filters, and reviewed bulk metadata matching. See [feature behavior and bounds](docs/SEVEN_FEATURES.md).
+Provider credentials, private-service acceptance and the license still require
+owner decisions or access where listed in the remaining-work record.

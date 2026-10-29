@@ -85,7 +85,7 @@ func (s *Service) discover(ctx context.Context, p Preferences) error {
 func (s *Service) claim(ctx context.Context) (Job, error) {
 	now := s.now().Unix()
 	owner := transfer.ID()
-	row := s.db.QueryRowContext(ctx, `UPDATE subtitle_jobs SET lease_owner=?,lease_until=?,revision=(SELECT revision FROM subtitle_preferences WHERE id=1),mode=CASE WHEN requested=1 THEN mode ELSE 'automatic' END,selected_candidate=CASE WHEN requested=1 THEN selected_candidate ELSE '' END,state='running',message='Checking subtitle tracks.',updated_at=? WHERE id=(SELECT j.id FROM subtitle_jobs j CROSS JOIN subtitle_preferences p WHERE j.state NOT IN ('blocked','cancelled','paused') AND j.next_run<=? AND j.lease_until<? AND (j.requested=1 OR (p.enabled=1 AND (p.only_monitored=0 OR `+stringsForAlias(monitoredSQL)+`))) ORDER BY j.next_run,j.created_at,j.id LIMIT 1) RETURNING `+jobColumns, owner, now+60, now, now, now)
+	row := s.db.QueryRowContext(ctx, `UPDATE subtitle_jobs SET lease_owner=?,lease_until=?,revision=(SELECT revision FROM subtitle_preferences WHERE id=1),mode=CASE WHEN requested=1 THEN mode ELSE 'automatic' END,selected_candidate=CASE WHEN requested=1 THEN selected_candidate ELSE '' END,state='running',message='Checking subtitle tracks.',updated_at=? WHERE id=(SELECT j.id FROM subtitle_jobs j CROSS JOIN subtitle_preferences p WHERE j.state NOT IN ('blocked','cancelled','paused') AND j.next_run<=? AND j.lease_until<? AND (j.requested=1 OR (p.enabled=1 AND COALESCE((SELECT o.enabled FROM subtitle_overrides o JOIN media_files mf ON o.media_id=COALESCE(mf.movie_id,mf.series_id) WHERE mf.id=j.media_file_id),1)=1 AND (p.only_monitored=0 OR `+stringsForAlias(monitoredSQL)+`))) ORDER BY j.next_run,j.created_at,j.id LIMIT 1) RETURNING `+jobColumns, owner, now+60, now, now, now)
 	return scanJob(row)
 }
 func stringsForAlias(query string) string {
@@ -95,7 +95,7 @@ func (s *Service) request(ctx context.Context, fileID int64, mode, selected stri
 	if _, e := s.media(ctx, fileID); e != nil {
 		return e
 	}
-	p, e := s.Preferences(ctx)
+	p, e := s.filePreferences(ctx, fileID)
 	if e != nil {
 		return e
 	}
@@ -146,7 +146,7 @@ func (s *Service) Select(ctx context.Context, id string, reviewed bool) error {
 	if e != nil {
 		return e
 	}
-	p, e := s.Preferences(ctx)
+	p, e := s.filePreferences(ctx, fileID)
 	if e != nil {
 		return e
 	}
@@ -174,7 +174,7 @@ func (s *Service) fence(ctx context.Context, tx *sql.Tx, j Job, generation strin
 		row = tx.QueryRowContext
 	}
 	var valid int
-	e := row(ctx, `SELECT COUNT(*) FROM subtitle_jobs j CROSS JOIN subtitle_preferences p WHERE j.id=? AND j.lease_owner=? AND j.lease_until>=? AND j.revision=? AND p.revision=? AND (j.requested=1 OR (p.enabled=1 AND (p.only_monitored=0 OR `+stringsForAlias(monitoredSQL)+`)))`, j.ID, j.owner, s.now().Unix(), j.Revision, j.Revision).Scan(&valid)
+	e := row(ctx, `SELECT COUNT(*) FROM subtitle_jobs j CROSS JOIN subtitle_preferences p WHERE j.id=? AND j.lease_owner=? AND j.lease_until>=? AND j.revision=? AND p.revision=? AND (j.requested=1 OR (p.enabled=1 AND COALESCE((SELECT o.enabled FROM subtitle_overrides o JOIN media_files mf ON o.media_id=COALESCE(mf.movie_id,mf.series_id) WHERE mf.id=j.media_file_id),1)=1 AND (p.only_monitored=0 OR `+stringsForAlias(monitoredSQL)+`)))`, j.ID, j.owner, s.now().Unix(), j.Revision, j.Revision).Scan(&valid)
 	if e != nil {
 		return e
 	}

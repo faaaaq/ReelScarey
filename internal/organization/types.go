@@ -14,6 +14,13 @@ var mediaGate sync.RWMutex
 // One application owns a configuration directory through the OS instance lock.
 func ReadMedia() func() { mediaGate.RLock(); return mediaGate.RUnlock }
 
+// WriteMedia serializes reviewed sidecar edits with organization and ordinary
+// media workers. Durable reservations supply the corresponding crash barrier.
+func WriteMedia() func() { mediaGate.Lock(); return mediaGate.Unlock }
+
+// FileIdentity reuses the platform-specific identity used by organization journals.
+func FileIdentity(f *os.File) (string, error) { return identity(f) }
+
 type Error struct {
 	Code    string
 	Message string
