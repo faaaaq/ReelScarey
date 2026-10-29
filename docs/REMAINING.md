@@ -69,8 +69,8 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   recognized subtitles to retained trash. Permanent trash purging is not provided.
 - [x] Filesystem-health inspection of registered files. Organize library can
   check selected files on one page, reporting missing, changed and unsafe paths.
-- [ ] A guided main-root migration. The main media directory is currently selected
-  at deployment; changing it requires an offline complete-tree move.
+- [x] Guided offline main-root migration with reviewed full-tree inventory,
+  verified safety backup, resumable copy, retained originals and mount activation.
 - [x] Reviewed whole-title folder moves across filesystems, including NFO,
   artwork, attachments, nested extras and empty directories. Large reviews are
   bounded and an uncertain stage may require manual review.
@@ -79,7 +79,8 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   versions must be restored first; failed jobs still require verified recovery.
 - [x] Bulk metadata suggestions and atomic reviewed registration within configured
   collections. Suggestions never choose identities automatically.
-- [ ] Arbitrary-root browsing. Discovery stays within configured collections.
+- [x] Read-only browsing of additional explicitly mounted roots. Discovery and
+  registration stay within configured library collections; see [Storage](STORAGE.md).
 
 ## Anime, metadata and media-server coverage
 
@@ -107,6 +108,8 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   not arbitrary franchise flattening or inferred canonical season offsets.
 - [ ] Broader release grammar support where conservative matching currently
   requires manual search/review. No arbitrary filename or season-order inference.
+- [x] Standard TV 1x02, spaced S01 E02 and Season 1 Episode 2 labels, with exact
+  title/year/season/episode checks and no automatic range/pack interpretation.
 - [ ] Acceptance of naming presets with real Plex, Emby and Jellyfin scans on
   representative libraries. Documented naming conventions are implemented; they
   are not proof of every server/version's identification behavior.
@@ -159,8 +162,11 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 - [ ] Independent security review and broader accessibility acceptance.
 - [ ] Representative NAS/shared-storage filesystem and arm64 runtime acceptance.
   Cross-compiling an arm64 package does not establish runtime compatibility.
-- [ ] Sustained workload/resource budgets. Container snapshots are point-in-time
-  evidence rather than a long-running capacity measurement.
+- [ ] Representative production workload/resource sizing. The repeatable bounded
+  read/write scenario in [WORKLOAD.md](WORKLOAD.md) does not establish long-term
+  capacity on owner hardware, shares or large media operations.
+- [x] Five-minute constrained container read/write baseline, latency/memory/process
+  budgets and post-workload restart/integrity checks; see [validation](VALIDATION.md).
 - [ ] Signed container release provenance and a public distribution process.
 - [ ] Owner license selection before public distribution.
 

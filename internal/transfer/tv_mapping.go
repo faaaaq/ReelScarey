@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/faaaaq/ReelScarey/internal/quality"
 	"path"
 	"regexp"
 	"sort"
@@ -61,7 +62,12 @@ func suggestedAbsoluteEpisodes(name string, targets []TVTarget) []int64 {
 func suggestedEpisodes(name string, targets []TVTarget) []int64 {
 	tokens := episodeToken.FindAllString(strings.ToUpper(path.Base(strings.ReplaceAll(name, "\\", "/"))), -1)
 	if len(tokens) == 0 {
-		return suggestedAbsoluteEpisodes(name, targets)
+		base := path.Base(strings.ReplaceAll(name, "\\", "/"))
+		if season, episode, _, _, ok := quality.EpisodeLabel(base); ok {
+			tokens = []string{fmt.Sprintf("S%dE%d", season, episode)}
+		} else {
+			return suggestedAbsoluteEpisodes(name, targets)
+		}
 	}
 	if len(tokens) != 1 {
 		return nil

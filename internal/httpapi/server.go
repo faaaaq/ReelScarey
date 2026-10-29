@@ -117,6 +117,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/system", method(http.MethodGet, s.system))
 	mux.HandleFunc("/api/v1/setup", method(http.MethodGet, s.setupGuide))
 	mux.HandleFunc("/api/v1/system/checks", s.installationChecks)
+	mux.HandleFunc("/api/v1/system/storage", method(http.MethodGet, s.storageBrowser))
+	mux.HandleFunc("/api/v1/system/storage/migration", method(http.MethodGet, s.storageMigration))
 	mux.HandleFunc("/api/v1/system/metadata-refresh", s.metadataRefreshSettings)
 	mux.HandleFunc("/api/v1/library/series/{id}/subtitles", s.showSubtitlePreferences)
 	mux.HandleFunc("/api/v1/subtitles/files/{id}/edits", s.subtitleEdits)
@@ -466,6 +468,7 @@ func frontend(assets fs.FS) http.HandlerFunc {
 	files := http.FileServer(http.FS(assets))
 	routes := map[string]bool{"/": true, "/login": true, "/movies": true, "/series": true, "/anime": true, "/youtube": true, "/organization": true, "/search": true, "/releases": true, "/activity": true, "/timeline": true, "/watch-activity": true, "/automation": true, "/subtitles": true, "/settings": true, "/setup": true, "/system": true, "/indexers": true, "/import": true, "/wanted": true, "/calendar": true, "/requests": true}
 	routes["/backups"] = true
+	routes["/storage"] = true
 	routes["/metadata-refresh"] = true
 	routes["/youtube/subscriptions"] = true
 	return func(w http.ResponseWriter, r *http.Request) {

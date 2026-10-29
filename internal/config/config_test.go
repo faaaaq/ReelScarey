@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -34,5 +35,28 @@ func TestDefaultsAndValidation(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("invalid log level accepted")
+	}
+}
+func TestBrowseRootsRequireBoundedNamedAbsoluteFolders(t *testing.T) {
+	for _, raw := range []string{`null`, `[]`, `{"media":"/archive"}`, `{"private":"relative"}`, `{"Bad Name":"/archive"}`} {
+		if _, e := FromEnv(func(key string) string {
+			if key == "REELSCAREY_BROWSE_ROOTS" {
+				return raw
+			}
+			return ""
+		}); e == nil {
+			t.Fatal(raw)
+		}
+	}
+	dir := t.TempDir()
+	raw := fmt.Sprintf(`{"archive":%q}`, dir)
+	cfg, e := FromEnv(func(key string) string {
+		if key == "REELSCAREY_BROWSE_ROOTS" {
+			return raw
+		}
+		return ""
+	})
+	if e != nil || cfg.BrowseRoots["archive"] != dir {
+		t.Fatal(cfg, e)
 	}
 }

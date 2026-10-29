@@ -54,12 +54,18 @@ for limits, and [validation](docs/VALIDATION.md) for evidence.
 - [x] Reviewed bulk matching, metadata refresh/calendar enrichment, AniList fact
   refresh, per-show subtitles, reviewed subtitle edits/rollback, YouTube
   subscriptions/bulk acquisition and source/codec/Usenet age rules. See below.
-- [ ] Guided main-root migration and arbitrary-root browsing.
+- [x] Guided offline main-root migration with verified backup/copy, resumable
+  publication, retained originals, mount activation and recovery review.
+- [x] Read-only browsing of media/downloads and explicitly mounted extra roots.
+- [x] Additional explicit standard-TV release labels: 1x02, spaced S01 E02 and
+  Season 1 Episode 2, preserving single-episode and ambiguity checks.
+- [x] Five-minute constrained container read/write workload and restart budget:
+  1,000 synthetic titles, eight readers, settings writes and sampled resources.
 - [ ] More Anime providers, broader release grammars and
   single-file cross-season mappings.
 - [ ] Additional subtitle providers, OCR, translation and automatic alignment.
 - [ ] Language verification beyond stream tags and more download clients.
-- [ ] NAS/shared-storage and ARM runtime acceptance, sustained load and broader
+- [ ] NAS/shared-storage and ARM runtime acceptance and broader
   accessibility/security review. Public distribution also needs signed releases
   and an owner-selected license.
 
@@ -76,3 +82,10 @@ YouTube subscriptions and bulk acquisition, source/codec scoring with Usenet age
 filters, and reviewed bulk metadata matching. See [feature behavior and bounds](docs/SEVEN_FEATURES.md).
 Provider credentials, private-service acceptance and the license still require
 owner decisions or access where listed in the remaining-work record.
+
+## Version 0.23 storage and reliability follow-through
+
+See [Storage](docs/STORAGE.md) for the read-only folder browser and guided offline
+disk migration. The latter retains the container media path, original disk and
+catalog IDs. [Workload checks](docs/WORKLOAD.md) define a repeatable constrained
+container scenario; representative hardware and long-term capacity remain separate.

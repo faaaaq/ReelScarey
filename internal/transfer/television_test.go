@@ -238,6 +238,11 @@ func TestTVFilenameSuggestionsAreConservative(t *testing.T) {
 			t.Fatal(v.name, got)
 		}
 	}
+	for _, name := range []string{"Show.S01 E02.mkv", "Show.Season 1 Episode 2.mkv"} {
+		if got := suggestedEpisodes(name, targets); len(got) != 1 || got[0] != 2 {
+			t.Fatal(name, got)
+		}
+	}
 }
 
 func TestTVActiveReservationsAndCancelledResumeConflicts(t *testing.T) {

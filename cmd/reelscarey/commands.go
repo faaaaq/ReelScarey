@@ -21,9 +21,31 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 )
 
-const usage = "usage: reelscarey [version|healthcheck|setup-token|reset-password|doctor|backup NEW_FOLDER|backup-check BACKUP_FOLDER|restore BACKUP_FOLDER NEW_CONFIG_FOLDER]"
+const usage = "usage: reelscarey [version|healthcheck|setup-token|reset-password|doctor|backup NEW_FOLDER|backup-check BACKUP_FOLDER|restore BACKUP_FOLDER NEW_CONFIG_FOLDER|media-root-plan NEW_FOLDER|media-root-copy DIGEST|media-root-activate DIGEST|media-root-cancel DIGEST]"
 
 func command(ctx context.Context, cfg config.Config, args []string) error {
+	if len(args) == 2 && strings.HasPrefix(args[0], "media-root-") {
+		ctx, cancel := context.WithTimeout(ctx, 24*time.Hour)
+		defer cancel()
+		var p maintenance.RootMigration
+		var e error
+		switch args[0] {
+		case "media-root-plan":
+			p, e = maintenance.PlanMediaRoot(ctx, cfg, args[1])
+		case "media-root-copy":
+			p, e = maintenance.CopyMediaRoot(ctx, cfg, args[1], version)
+		case "media-root-activate":
+			p, e = maintenance.ActivateMediaRoot(ctx, cfg, args[1])
+		case "media-root-cancel":
+			p, e = maintenance.CancelMediaRoot(ctx, cfg, args[1])
+		default:
+			return errors.New(usage)
+		}
+		if e != nil {
+			return e
+		}
+		return json.NewEncoder(os.Stdout).Encode(p.Status())
+	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	switch {

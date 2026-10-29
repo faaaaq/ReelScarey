@@ -1,5 +1,39 @@
 # Validation record — 2026-10-29
 
+## Version 0.23 — storage and release-label follow-through
+
+- The guided main-root migration and folder browser are implemented without a
+  database migration or new runtime dependency. Standard TV matching accepts
+  explicit 1x02, spaced S01 E02 and Season 1 Episode 2 labels, preserving exact
+  identity, single-episode and pack/range rejection. Manual suggestions remain
+  subject to the existing canonical mapping review.
+- All 165 frontend tests, formatting/type/build gates and the full Linux backend
+  test/vet/race suite pass. New tests exercise mounted-scope browsing, pagination,
+  links, traversal, protected paths, bounded listings, cancellation and unchanged
+  files; API requester denial/read-only methods; migration ownership, reviewed
+  digests, verified backup, source changes, foreign destinations, interruption,
+  mount activation, idempotence and ordinary recovery resume.
+- The read-only Docker storage rehearsal uses separate disposable config/media/
+  backup/target volumes and generated FFmpeg video. It verifies external-folder
+  browsing, authenticated settings/catalog retention, offline copy and retry,
+  old-mount activation rejection, pending-startup blocking, actual mount change,
+  completed activation, explicit recovery resume and container restart. All
+  original media/subtitle bytes and copied video hashes match; integrity and
+  foreign-key checks pass. The live installation is never used as a fixture.
+- The five-minute constrained workload completes 22,686 authenticated reads and
+  60 revision-checked settings writes against 1,000 generated catalog titles with
+  eight concurrent readers and no failures. Read p95/p99 are 17/27 ms. Across 72
+  resource samples, working memory peaks at 41.54 MiB and finishes at 13.39 MiB;
+  peak process count is 14. Limits are one CPU, 384 MiB and 128 processes. Restart,
+  preserved catalog and SQLite integrity/relationships pass. This defined shared-
+  host test is separate from NAS/ARM and representative production sizing.
+- Integration testing caught and corrected an import-journal table reference and
+  a top-level publication helper assumption. The migration recovery marker uses
+  the existing reviewed-resume format; idempotent activation does not reintroduce
+  a hold after review. The complete Docker rehearsal passes after these fixes.
+
+Behavior, commands and bounds: [Storage](STORAGE.md), [workload checks](WORKLOAD.md).
+
 ## Version 0.22 — seven completed follow-through features
 
 - All 163 frontend tests, formatting, type checks and the production build pass.

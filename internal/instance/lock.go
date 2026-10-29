@@ -57,6 +57,18 @@ func (l *Lock) Close() error {
 	return errors.Join(e, ce)
 }
 func CheckStart(dir string) error {
+	if e := CheckMaintenanceStart(dir); e != nil {
+		return e
+	}
+	if _, e := os.Lstat(filepath.Join(dir, ".media-root-copy-in-progress")); !errors.Is(e, os.ErrNotExist) {
+		return errors.New("a media-root migration is pending; finish media-root-activate or media-root-cancel offline before starting")
+	}
+	return nil
+}
+
+// CheckMaintenanceStart excludes restore/backup switches while allowing the
+// migration command that owns the media-root recovery marker to resume.
+func CheckMaintenanceStart(dir string) error {
 	for _, name := range []string{".restore-in-progress", ".restore-request.json", ".backup-in-progress", "backup-manifest.json"} {
 		if _, e := os.Lstat(filepath.Join(dir, name)); e == nil {
 			return errors.New("config directory contains a backup or pending restore; finish the restore through the server or use verified offline recovery")

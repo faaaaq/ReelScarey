@@ -681,3 +681,18 @@ Quality profile JSON adds `scoring` with `sources`, `codecs`, `preferred_terms`,
 `max_usenet_age_days` and `min_usenet_age_minutes`. Existing profile revisions
 fence these rules. Calendar entries add `runtime_minutes`, `series_status` and
 `metadata_updated_at`; reads do not initiate refreshes.
+## Version 0.23 storage routes
+
+`GET /system/storage?root=media&path=Movies&page=1` lists a bounded mounted folder.
+Only root/path/page query keys are supported. The reply contains roots, selected
+root/path, items (name/path/kind/size_bytes/modified_at), total/page/limit. Kinds are
+file, directory or blocked; file contents and mutations are unavailable. Hidden,
+linked, protected and escaped paths are refused. The maximum is 10,000 entries,
+100 per page; unavailable/invalid folders return 400 and excessive folders 409.
+
+`GET /system/storage/migration` returns the saved offline migration summary:
+state, digest, source/destination, file/directory counts, bytes, safety backup and
+temporary-copy folder. A missing plan returns state=none; an invalid plan returns
+409. Both routes require an administrator; requester accounts are denied. There
+is no live migration mutation API. Offline commands and bounds are documented in
+[STORAGE.md](STORAGE.md).

@@ -108,7 +108,6 @@ func Normalize(s string) string {
 	return strings.Join(strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }), " ")
 }
 
-var episodeCode = regexp.MustCompile(`(?i)s([0-9]{1,2})e([0-9]{1,3})(?:e[0-9]+|[- ]+e?[0-9]+)?`)
 var extraEpisode = regexp.MustCompile(`(?i)^[^a-z0-9]*(?:e[0-9]{1,3}|[0-9]{1,3})(?:[^a-z0-9]|$)`)
 
 func identifyStandard(title string, t Target) bool {
@@ -124,21 +123,11 @@ func identifyStandard(title string, t Target) bool {
 		want := base + " " + strconv.Itoa(*t.Year)
 		return n == want || strings.HasPrefix(n, want+" ")
 	}
-	matches := episodeCode.FindAllStringSubmatchIndex(title, -1)
-	if len(matches) != 1 {
+	s, e, start, _, ok := EpisodeLabel(title)
+	if !ok || s != t.Season || e != t.Episode {
 		return false
 	}
-	m := matches[0]
-	s, _ := strconv.Atoi(title[m[2]:m[3]])
-	e, _ := strconv.Atoi(title[m[4]:m[5]])
-	// Automatic searches deliberately accept one exact episode, never a pack/range.
-	if s != t.Season || e != t.Episode || m[1] != m[5] {
-		return false
-	}
-	if extraEpisode.MatchString(title[m[1]:]) {
-		return false
-	}
-	prefix := Normalize(title[:m[0]])
+	prefix := Normalize(title[:start])
 	return prefix == base || (t.Year != nil && prefix == base+" "+strconv.Itoa(*t.Year))
 }
 func identityLabels(title string, t Target) (string, bool) {
@@ -152,8 +141,8 @@ func identityLabels(title string, t Target) (string, bool) {
 		return title, false
 	}
 	if t.TV {
-		m := episodeCode.FindStringIndex(title)
-		return title[m[1]:], true
+		_, _, _, end, _ := EpisodeLabel(title)
+		return title[end:], true
 	}
 	n := Normalize(title)
 	prefix := Normalize(t.Title) + " " + strconv.Itoa(*t.Year)

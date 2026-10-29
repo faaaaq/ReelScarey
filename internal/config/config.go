@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -19,6 +20,7 @@ type Config struct {
 	BackupsDir   string
 	LogLevel     string
 	PublicURL    string
+	BrowseRoots  map[string]string
 }
 
 func Load() (Config, error) { return FromEnv(os.Getenv) }
@@ -42,6 +44,17 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		BackupsDir:   value("REELSCAREY_BACKUPS_DIR", filepath.Join(value("REELSCAREY_CONFIG_DIR", "./data/config"), "..", "backups")),
 		LogLevel:     value("REELSCAREY_LOG_LEVEL", "info"),
 		PublicURL:    value("REELSCAREY_PUBLIC_URL", ""),
+	}
+	if raw := strings.TrimSpace(getenv("REELSCAREY_BROWSE_ROOTS")); raw != "" {
+		if len(raw) > 8192 || json.Unmarshal([]byte(raw), &c.BrowseRoots) != nil || c.BrowseRoots == nil || len(c.BrowseRoots) > 8 {
+			return Config{}, fmt.Errorf("REELSCAREY_BROWSE_ROOTS must be a JSON object of at most eight named absolute folders")
+		}
+		for name, dir := range c.BrowseRoots {
+			if name == "" || len(name) > 40 || name == "media" || name == "downloads" || strings.IndexFunc(name, func(r rune) bool { return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') }) >= 0 || !filepath.IsAbs(dir) || strings.ContainsRune(dir, 0) {
+				return Config{}, fmt.Errorf("Browse roots require distinct lowercase names and absolute folder paths")
+			}
+			c.BrowseRoots[name] = filepath.Clean(dir)
+		}
 	}
 	_, port, err := net.SplitHostPort(c.ListenAddr)
 	if err != nil {
