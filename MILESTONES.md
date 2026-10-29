@@ -11,14 +11,17 @@ for limits, and [validation](docs/VALIDATION.md) for evidence.
   rollback, preserving download/seeding sources and provenance.
 - [ ] Connect newly acquired YouTube videos and selected subtitles to reviewed
   replacement and rollback, preserving both versions and source provenance.
-- [ ] Support embedded-title updates for additional video containers; MP4,
-  M4V and Matroska are supported for selected files and whole-folder moves.
+- [x] Support embedded-title updates for MOV, AVI and WebM in addition to MP4,
+  M4V and Matroska, with reviewed rollback. Every rewrite must preserve packets,
+  timing, streams, chapters and non-title metadata; incompatible combinations
+  are rejected. Transport streams cannot store these container title tags.
 - [ ] Complete direct continuous IMDb list synchronization and private IMDb,
   TMDb and Trakt lists. Public TMDb/Trakt lists work; automatic IMDb sync uses
   MDBList and IMDb CSV is a one-time import.
 - [ ] Add reviewed catalog/media removal with explicit file-deletion choices.
-- [ ] Add general rollback for completed organization moves; versioned media
-  replacement and metadata title updates already have reviewed rollback.
+- [x] Add reviewed path rollback for completed file/title/folder organization
+  moves, preserving current preferences for future imports. Modified media must
+  first return to its previous version; occupied destinations are never replaced.
 - [ ] Test the completed workflows with generated media and isolated services,
   including interruption, collision, recovery and Docker restart behavior.
 

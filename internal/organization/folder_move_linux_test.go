@@ -285,6 +285,32 @@ func TestCrossFilesystemFolderMove(t *testing.T) {
 	if b, e := os.ReadFile(seed); e != nil || string(b) != "video on source filesystem" {
 		t.Fatal("seeding source changed", e)
 	}
+	undo, err := f.s.PreviewRollback(ctx, p.ID)
+	if err != nil {
+		t.Fatal("review cross-filesystem undo", err)
+	}
+	if _, err = f.s.Apply(ctx, undo.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = New(db, cfg).Tick(ctx); err != nil {
+		t.Fatal("cross-filesystem undo", err)
+	}
+	undone, err := f.s.Plan(ctx, undo.ID)
+	if err != nil || undone.State != "completed" || !undone.FolderMove.Copy {
+		t.Fatal(undone, err)
+	}
+	for name, want := range map[string]string{"film.mkv": "video on source filesystem", "extras/poster.jpg": "art"} {
+		b, e := os.ReadFile(filepath.Join(base, name))
+		if e != nil || string(b) != want {
+			t.Fatal(name, e)
+		}
+	}
+	if _, err = os.Stat(filepath.Join(base, "extras", "empty")); err != nil {
+		t.Fatal(err)
+	}
+	if b, e := os.ReadFile(seed); e != nil || string(b) != "video on source filesystem" {
+		t.Fatal("undo changed seeding", e)
+	}
 	// Interrupt after the fully verified staging directory has been published,
 	// before the database is switched; the next worker must identify its own copy.
 	f.movie(t, 2, "Movies/Second/second.mkv", []byte("second video"))

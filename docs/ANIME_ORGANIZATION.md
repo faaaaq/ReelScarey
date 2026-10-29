@@ -202,10 +202,30 @@ On **Organize library**, select files on the current page and choose **Check
 selected files** to inspect them one at a time. Each result is a point-in-time
 checksum check; the batch can be stopped, and completed results remain visible.
 
-Selected MP4 or Matroska files, a whole title, or a whole folder can include
+Selected MP4, M4V, Matroska, MOV, AVI or WebM files, a whole title, or a whole folder can include
 **Also update embedded titles after organization** in the review. The move
 finishes first, then durable jobs sequentially create and verify metadata-only
 copies and retain a rollback version for each registered video. The saved movie
 title or canonical series/episode labels supply the titles. Folder extras are
 preserved and are not retagged.
 A separate embedded-title review is also available for an individual file.
+
+MOV, AVI and WebM use their own container muxers; M4V uses its iPod-compatible
+muxer to retain its existing brand metadata. Rewrites preserve original timestamps
+and refuse any change to packets, streams, chapters or non-title metadata. Format
+support does not guarantee every codec combination can be rewritten: generated
+AVI/AAC and WebM/Opus fixtures change packet timing and are rejected without
+changing the original. AVI does not retain audio language labels in the fixture.
+Transport streams (TS/M2TS) have no supported container title tag and remain
+unavailable for this operation. Rollback copies and torrent seeding sources are
+preserved for all supported formats.
+
+Completed file, title and folder moves offer **Review undo move** in Recent
+organization jobs. This creates a new reviewed job returning videos and subtitle
+references to the saved original paths. Folder rollback includes the current
+reviewed extras and empty directories, using the same verified copying and
+recovery when crossing filesystems. Current collection assignments and naming
+preferences remain in force for future imports. Occupied destinations, changed
+episode mappings or changed registered media refuse rollback. If embedded titles
+or video versions changed after the move, restore those versions first. No
+existing file is overwritten; undoing an undo also requires a new review.

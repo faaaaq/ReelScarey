@@ -1,4 +1,38 @@
-# Validation record — 2026-10-27
+# Validation record — 2026-10-28
+
+## Verification, additional title containers and organization undo
+
+- Baseline frontend formatting, types, 146 tests and production build pass.
+  The final interface passes formatting, types, all 147 tests and production
+  build, including the explicit undo-review gate. The existing bundle-size
+  advisory remains. No frontend dependency was added.
+- The complete Linux Go suite, vet and Docker image build pass. The full Linux
+  race suite passed before the move-undo addition; organization and HTTP API race
+  regressions passed after it. Generated-media tests run with race detection in
+  the runtime image, separately from build tests that lack FFmpeg.
+- MP4, M4V, Matroska, MOV, AVI/PCM and WebM/Vorbis generated fixtures pass
+  verified title updates and version rollback, preserving original seeding bytes.
+  Matroska chapters, subtitles and attachment tests pass. M4V uses the compatible
+  muxer and existing brand metadata; the previous MP4 muxer failed this fixture.
+  AVI/AAC and WebM/Opus timing-changing rewrites are rejected and leave their
+  originals unchanged. TS/M2TS title tags remain unsupported.
+- Reviewed selected-file and whole-folder undo tests pass with collision refusal,
+  subtitle reference restoration, retained seeding sources, unchanged future
+  collection preferences and recreated-service recovery. A real separate tmpfs
+  mount verifies cross-filesystem folder undo with extras and empty directories,
+  alongside existing partial-copy/publication/recovery regressions, with races
+  enabled. These use generated files and disposable database roots only.
+- A fresh read-only-root application container passes authenticated setup,
+  frontend, health and preference/session restart persistence. A second disposable
+  container passes a generated movie move, verified title update, version rollback
+  and reviewed path undo across an actual container restart through the HTTP API.
+  Both containers and their temporary volumes were removed. The running owner
+  application, its mounts and private services were not changed.
+- Restricted Windows checks cannot complete localhost and hardlink-dependent
+  backend tests. The supported Linux container checks above are the acceptance
+  evidence. Download/YouTube replacement, private/direct IMDb list sync and
+  reviewed catalog removal remain implementation work in MILESTONES.md; live
+  owner-service acceptance remains separate. This is not project completion.
 
 ## Automatic cross-media discovery and history expansion
 

@@ -125,6 +125,12 @@ func TestLiveReplacementWithFFprobe(t *testing.T) {
 }
 
 func TestLiveEmbeddedTitleAndRollback(t *testing.T) {
+	for _, ext := range []string{"mp4", "m4v", "mkv", "mov", "avi", "webm"} {
+		t.Run(ext, func(t *testing.T) { liveEmbeddedTitleAndRollback(t, ext) })
+	}
+}
+
+func liveEmbeddedTitleAndRollback(t *testing.T, ext string) {
 	if os.Getenv("REELSCAREY_LIVE_REPLACEMENT") != "1" {
 		t.Skip("requires generated media and FFmpeg")
 	}
@@ -141,11 +147,23 @@ func TestLiveEmbeddedTitleAndRollback(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer db.Close()
-	name := filepath.Join(cfg.MediaDir, "Movies", "Film", "Film.mp4")
+	rel := "Movies/Film/Film." + ext
+	name := filepath.Join(cfg.MediaDir, filepath.FromSlash(rel))
 	if e = os.MkdirAll(filepath.Dir(name), 0700); e != nil {
 		t.Fatal(e)
 	}
-	cmd := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=128x96:r=10", "-f", "lavfi", "-i", "sine=frequency=1000", "-t", "1", "-c:v", "mpeg4", "-c:a", "aac", "-metadata", "title=Wrong Title", "-metadata:s:a:0", "language=jpn", "-movflags", "faststart", "-y", name)
+	video, audio := "mpeg4", "aac"
+	if ext == "avi" {
+		audio = "pcm_s16le"
+	}
+	if ext == "webm" {
+		video, audio = "libvpx-vp9", "libvorbis"
+	}
+	args := []string{"-v", "error", "-f", "lavfi", "-i", "color=c=red:s=128x96:r=10", "-f", "lavfi", "-i", "sine=frequency=1000", "-t", "1", "-c:v", video, "-c:a", audio, "-metadata", "title=Wrong Title", "-metadata:s:a:0", "language=jpn"}
+	if ext == "mp4" || ext == "m4v" || ext == "mov" {
+		args = append(args, "-movflags", "faststart")
+	}
+	cmd := exec.Command("ffmpeg", append(args, "-y", name)...)
 	if b, e := cmd.CombinedOutput(); e != nil {
 		t.Fatalf("generate: %v %s", e, b)
 	}
@@ -157,7 +175,7 @@ func TestLiveEmbeddedTitleAndRollback(t *testing.T) {
 	if _, e = db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,status) VALUES(1,'movie',1,'Correct Title',2020,'available')`); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec(`INSERT INTO media_files(id,movie_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin,source_name) VALUES(1,1,'Movies/Film/Film.mp4',?,?,'{}',1,'existing','Film.mp4')`, len(original), hex.EncodeToString(sum[:])); e != nil {
+	if _, e = db.Exec(`INSERT INTO media_files(id,movie_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin,source_name) VALUES(1,1,?,?,?,'{}',1,'existing',?)`, rel, len(original), hex.EncodeToString(sum[:]), "Film."+ext); e != nil {
 		t.Fatal(e)
 	}
 	seed := filepath.Join(cfg.DownloadsDir, "seed.mp4")
@@ -189,7 +207,7 @@ func TestLiveEmbeddedTitleAndRollback(t *testing.T) {
 	}
 	info, e := (transfer.FFprobe{}).Probe(ctx, f)
 	f.Close()
-	if e != nil || info.Title == nil || *info.Title != "Correct Title" || len(info.Audio) != 1 || info.Audio[0].Language != "jpn" {
+	if e != nil || info.Title == nil || *info.Title != "Correct Title" || len(info.Audio) != 1 || (ext != "avi" && info.Audio[0].Language != "jpn") {
 		t.Fatal(info, e)
 	}
 	seeded, e := os.ReadFile(seed)

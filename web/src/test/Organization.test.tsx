@@ -335,6 +335,41 @@ describe("Reviewed library organization", () => {
       "/api/v1/organization/files/42/health",
     ]);
   });
+  it("requires review before undoing a completed file move", async () => {
+    const { fetch } = setup((url, options, fixture) => {
+      if (url.endsWith("/organization/plans") && !options?.method)
+        return Response.json({
+          items: [
+            { ...fixture.plan([41], "completed-move"), state: "completed" },
+          ],
+        });
+      if (url.endsWith("/completed-move/rollback"))
+        return Response.json({
+          ...fixture.plan([41], "inverse"),
+          restores_plan: "completed-move",
+        });
+    });
+    mount();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Review undo move" }),
+    );
+    const review = await screen.findByRole("region", {
+      name: "Organization review",
+    });
+    expect(
+      within(review).getByText(/Current collection and naming preferences/),
+    ).toBeVisible();
+    expect(
+      within(review).getByRole("button", { name: "Apply reviewed changes" }),
+    ).toBeDisabled();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/organization/plans/completed-move/rollback",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith("/inverse/apply")),
+    ).toBe(false);
+  });
   it("finds saved versions for a selected file and reviews a restore", async () => {
     const savedReplacement = {
       title: "First feature",

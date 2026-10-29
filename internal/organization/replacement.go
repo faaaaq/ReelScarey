@@ -230,6 +230,9 @@ func (s *Service) PreviewRollback(ctx context.Context, planID string) (Plan, err
 	if e != nil {
 		return Plan{}, e
 	}
+	if old.State == "completed" && old.Replacement == nil {
+		return s.previewMoveRollback(ctx, old)
+	}
 	if old.State != "completed" || old.Replacement == nil {
 		return Plan{}, problem("invalid_selection", "Choose a completed replacement to restore.")
 	}

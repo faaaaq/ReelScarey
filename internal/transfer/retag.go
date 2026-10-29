@@ -162,7 +162,7 @@ func retagInspect(ctx context.Context, f *os.File) (retagResult, error) {
 }
 
 // RewriteTitleVerified writes only to a caller-created independent staging file.
-// It supports MP4 and Matroska and rejects remuxes that change media packets,
+// It supports MP4, Matroska, MOV, AVI and WebM and rejects remuxes that change media packets,
 // stream facts, chapters or existing non-title container tags.
 func RewriteTitleVerified(ctx context.Context, source, stage *os.File, extension, title string) (Probe, error) {
 	if strings.TrimSpace(title) == "" || len(title) > 1024 || strings.ContainsAny(title, "\x00\r\n") {
@@ -172,10 +172,18 @@ func RewriteTitleVerified(ctx context.Context, source, stage *os.File, extension
 	switch strings.ToLower(extension) {
 	case ".mkv":
 		mux = "matroska"
-	case ".mp4", ".m4v":
+	case ".mp4":
 		mux = "mp4"
+	case ".m4v":
+		mux = "ipod"
+	case ".mov":
+		mux = "mov"
+	case ".avi":
+		mux = "avi"
+	case ".webm":
+		mux = "webm"
 	default:
-		return Probe{}, problem("unsupported_media", "Embedded title updates currently support Matroska and MP4 files.")
+		return Probe{}, problem("unsupported_media", "Embedded title updates support MP4, Matroska, MOV, AVI and WebM files.")
 	}
 	a, e := source.Stat()
 	if e != nil {
@@ -198,7 +206,14 @@ func RewriteTitleVerified(ctx context.Context, source, stage *os.File, extension
 	if _, e = source.Seek(0, 0); e != nil {
 		return Probe{}, e
 	}
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-nostdin", "-v", "error", "-protocol_whitelist", "pipe", "-i", "pipe:0", "-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-c", "copy", "-metadata", "title="+title, "-f", mux, "-y", "/proc/self/fd/3")
+	args := []string{"-nostdin", "-v", "error", "-copyts", "-protocol_whitelist", "pipe", "-i", "pipe:0", "-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-c", "copy", "-metadata", "title=" + title, "-f", mux, "-avoid_negative_ts", "disabled"}
+	if mux == "mp4" || mux == "mov" || mux == "ipod" {
+		if brand := before.Manifest.Format.Tags["major_brand"]; brand != "" {
+			args = append(args, "-brand", brand)
+		}
+	}
+	args = append(args, "-y", "/proc/self/fd/3")
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	hideProbeWindow(cmd)
 	cmd.Stdin = source
 	cmd.ExtraFiles = []*os.File{stage}

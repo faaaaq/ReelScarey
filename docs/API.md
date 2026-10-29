@@ -568,9 +568,19 @@ organization reviews can request it with `update_embedded_title: true`. Updates
 run sequentially after the move, retaining a rollback copy for each video.
 
 `POST /organization/embedded-title` with `media_file_id` creates a review of a
-catalog-derived movie or episode title for a registered MP4 or Matroska video.
+catalog-derived movie or episode title for a registered MP4, M4V, Matroska, MOV, AVI or WebM video.
+Every rewrite must preserve packet timing and non-title metadata; unsupported
+codec combinations fail safely. TS/M2TS title tags remain unsupported.
+
 Applying the plan uses an independent staged copy, verifies stream metadata,
 packet data and timestamps, chapters and existing container tags, and retains
 the previous file for reviewed rollback. Unsupported or changed streams fail
 without replacing the original. YouTube-origin provenance is retained and
 restored with its corresponding version.
+
+POST `/api/v1/organization/plans/{id}/rollback` with `{}` also accepts completed
+file/title/folder moves. It returns a 201 review plan with `restores_plan` and
+inverse paths, without moving files. Apply requires the normal explicit review.
+Current collection and naming preferences remain unchanged for future imports.
+Changed registered versions/mappings and occupied original paths are rejected;
+whole-folder reviews include current extras and use the existing copy journal.

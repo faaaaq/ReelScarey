@@ -11,11 +11,11 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
-- [ ] Update embedded movie and TV titles while organizing and renaming media,
+- [x] Update embedded movie and TV titles while organizing and renaming media,
   with verified copies and recovery that preserve streams and seeding sources.
-  Reviewed MP4 and Matroska updates preserve streams and rollback copies, and
+  Reviewed MP4/M4V, Matroska, MOV, AVI and WebM updates preserve streams and rollback copies, and
   can follow selected-file and whole-folder moves automatically. Other video
-  containers remain unsupported for embedded-title updates.
+  containers and rewrites that alter packet timing remain unsupported for embedded-title updates.
 
 - [x] Move media physically between configured libraries, with a clear preview,
   collision handling, safe transfer and recovery, and updated catalog paths.

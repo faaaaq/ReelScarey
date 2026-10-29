@@ -31,8 +31,8 @@ func embeddedTitle(title string, episodes []Episode) string {
 
 func reviewedEmbeddedTitle(v PlannedFile) (string, error) {
 	ext := strings.ToLower(path.Ext(v.Source))
-	if ext != ".mkv" && ext != ".mp4" && ext != ".m4v" {
-		return "", problem("invalid_selection", "Embedded title updates support MP4 and Matroska files.")
+	if ext != ".mkv" && ext != ".mp4" && ext != ".m4v" && ext != ".mov" && ext != ".avi" && ext != ".webm" {
+		return "", problem("invalid_selection", "Embedded title updates support MP4, Matroska, MOV, AVI and WebM files.")
 	}
 	for i := 1; i < len(v.Episodes); i++ {
 		if v.Episodes[i].Season != v.Episodes[0].Season || v.Episodes[i].Number != v.Episodes[i-1].Number+1 {
@@ -74,8 +74,8 @@ func (s *Service) previewEmbeddedTitle(ctx context.Context, fileID int64, parent
 		return Plan{}, e
 	}
 	ext := strings.ToLower(path.Ext(before.Path))
-	if ext != ".mkv" && ext != ".mp4" && ext != ".m4v" {
-		return Plan{}, problem("invalid_selection", "Embedded title updates currently support MP4 and Matroska files.")
+	if ext != ".mkv" && ext != ".mp4" && ext != ".m4v" && ext != ".mov" && ext != ".avi" && ext != ".webm" {
+		return Plan{}, problem("invalid_selection", "Embedded title updates currently support MP4, Matroska, MOV, AVI and WebM files.")
 	}
 	var title string
 	if e = tx.QueryRowContext(ctx, `SELECT title FROM media_items WHERE id=?`, mediaID).Scan(&title); e != nil {

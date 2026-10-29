@@ -52,11 +52,12 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 
 ## Media management and organization
 
-- [ ] Safely update embedded movie and episode titles during reviewed organization,
+- [x] Safely update embedded movie and episode titles during reviewed organization,
   preserving streams, chapters, attachments, sidecars, seeding sources and rollback.
-  Reviewed MP4/Matroska updates preserve a rollback copy and can be queued
+  Reviewed MP4/M4V, Matroska, MOV, AVI and WebM updates preserve a rollback copy and can be queued
   automatically after selected-file and whole-folder moves, with one rollback
-  copy per registered video. Additional container formats remain unsupported.
+  copy per registered video. Rewrites that change stream or packet facts are
+  rejected; TS/M2TS container title tags remain unsupported.
 
 - [ ] Connect downloaded upgrades and newly acquired YouTube videos directly to
   versioned replacement. Existing YouTube-origin files can be replaced and their
@@ -71,8 +72,9 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 - [x] Reviewed whole-title folder moves across filesystems, including NFO,
   artwork, attachments, nested extras and empty directories. Large reviews are
   bounded and an uncertain stage may require manual review.
-- [ ] General organization rollback after apply. Unstarted queued jobs can be
-  cancelled back to review; failed jobs with file work require verified recovery.
+- [x] Reviewed path rollback for completed organization moves, including whole
+  folders and extras. Current future-import preferences are preserved. Changed
+  versions must be restored first; failed jobs still require verified recovery.
 - [ ] Arbitrary-root browsing and automatic bulk metadata matching, if added with
   explicit scope and identity review. Current discovery stays within configured
   collections and registration requires a reviewed match.

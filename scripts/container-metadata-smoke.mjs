@@ -73,4 +73,20 @@ for (let i = 0; i < 150; i++) {
 assert.equal(restored?.state, 'completed')
 assert.equal(run('sha256sum', `/media/${path}`).split(' ')[0], before)
 assert.equal(run('sha256sum', '/downloads/seeding.mp4').split(' ')[0], before)
-console.log('PASS: real container move, verified embedded title, retained source, and rollback')
+const undoMove = await api(`/organization/plans/${plan.id}/rollback`, { method: 'POST', body: '{}' })
+assert.equal(undoMove.restores_plan, plan.id)
+assert.equal(undoMove.files[0].destination, 'Movies/Fixture/Film.mp4')
+await api(`/organization/plans/${undoMove.id}/apply`, { method: 'POST', body: '{}' })
+execFileSync('docker', ['restart', container])
+await ready()
+let undone
+for (let i = 0; i < 150; i++) {
+  undone = await api(`/organization/plans/${undoMove.id}`)
+  if (undone.state === 'failed') throw new Error(`Move undo failed: ${undone.message}`)
+  if (undone.state === 'completed') break
+  await delay(400)
+}
+assert.equal(undone?.state, 'completed')
+assert.equal(run('sha256sum', '/media/Movies/Fixture/Film.mp4').split(' ')[0], before)
+assert.equal(run('sha256sum', '/downloads/seeding.mp4').split(' ')[0], before)
+console.log('PASS: real container move, verified embedded title, retained source, version rollback and reviewed move undo across restart')

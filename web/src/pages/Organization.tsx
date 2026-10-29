@@ -47,6 +47,7 @@ type Planned = {
   companions: { source: string; destination: string; size_bytes: number }[];
 };
 type Plan = {
+  restores_plan?: string;
   id: string;
   state: string;
   phase: string;
@@ -908,8 +909,9 @@ function Reorganize({ config }: { config: Config }) {
           </div>
         )}
         <p className="field-help">
-          Choose one registered MP4 or Matroska file to review an embedded title
-          update using its saved movie or episode information.
+          Choose one registered MP4, M4V, Matroska, MOV, AVI or WebM file to
+          review an embedded title update using its saved movie or episode
+          information.
         </p>
         <Button
           variant="soft"
@@ -958,8 +960,8 @@ function Reorganize({ config }: { config: Config }) {
           Also update embedded titles after organization
         </label>
         <p className="field-help">
-          Choose MP4 or Matroska files, or review an entire title folder. Each
-          verified title update retains a rollback copy.
+          Choose MP4, M4V, Matroska, MOV, AVI or WebM files, or review an entire
+          title folder. Each verified title update retains a rollback copy.
         </p>
         {mediaID && (
           <>
@@ -1046,6 +1048,12 @@ function Reorganize({ config }: { config: Config }) {
               and retain each previous version.
             </p>
           )}
+          {plan.restores_plan && (
+            <p>
+              Restore the reviewed paths from this move. Current collection and
+              naming preferences for future imports are preserved.
+            </p>
+          )}
           <PlanFiles plan={plan} />
           {plan.state === "queued" && plan.phase === "planned" && (
             <Button
@@ -1121,14 +1129,17 @@ function Reorganize({ config }: { config: Config }) {
                 </Button>
               )}
               {p.state === "completed" &&
-                p.replacement &&
-                !p.replacement.recovering && (
+                (p.replacement
+                  ? !p.replacement.recovering
+                  : p.files.length > 0) && (
                   <Button
                     variant="soft"
                     disabled={!!pending || running}
                     onClick={() => void reviewRollback(p)}
                   >
-                    Review restore previous version
+                    {p.replacement
+                      ? "Review restore previous version"
+                      : "Review undo move"}
                   </Button>
                 )}
               {p.state === "failed" &&

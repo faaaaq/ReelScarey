@@ -422,8 +422,10 @@ func (s *Service) commitFolderReferences(ctx context.Context, tx *sql.Tx, p *Pla
 			return err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO media_organization(media_id,library_key,revision) VALUES(?,?,1) ON CONFLICT(media_id) DO UPDATE SET library_key=excluded.library_key,revision=media_organization.revision+1`, p.EntireMediaID, p.TargetLibrary); err != nil {
-		return err
+	if p.TargetLibrary != "" {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO media_organization(media_id,library_key,revision) VALUES(?,?,1) ON CONFLICT(media_id) DO UPDATE SET library_key=excluded.library_key,revision=media_organization.revision+1`, p.EntireMediaID, p.TargetLibrary); err != nil {
+			return err
+		}
 	}
 	return nil
 }
