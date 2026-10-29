@@ -14,6 +14,9 @@ import { Pagination } from "../movieComponents";
 import { useResource } from "../useResource";
 
 export type PlanningEntry = {
+  runtime_minutes?: number | null;
+  series_status?: string;
+  metadata_updated_at?: number;
   kind: "movie" | "series";
   media_id: number;
   episode_id: number | null;
@@ -452,6 +455,13 @@ function PlanningCard({
         {entry.monitoring_reason && (
           <p className="field-help">{entry.monitoring_reason}</p>
         )}
+        <p className="field-help">
+          {entry.runtime_minutes ? `${entry.runtime_minutes} min · ` : ""}
+          {entry.series_status ? `${entry.series_status} · ` : ""}
+          {entry.metadata_updated_at
+            ? `Metadata refreshed ${new Date(entry.metadata_updated_at * 1000).toLocaleString()}`
+            : "Saved catalog metadata"}
+        </p>
       </div>
       <div className="planning-row-actions">
         {entry.download_id ? (

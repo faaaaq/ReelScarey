@@ -237,11 +237,21 @@ func (s *Store) Queue(ctx context.Context, reviewID string) (Job, error) {
 	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
 		return Job{}, e
 	}
+	job, e := s.queueTx(ctx, tx, reviewID)
+	if e != nil {
+		return Job{}, e
+	}
+	if e = tx.Commit(); e != nil {
+		return Job{}, e
+	}
+	return job, nil
+}
+func (s *Store) queueTx(ctx context.Context, tx *sql.Tx, reviewID string) (Job, error) {
 	var v Video
 	var t Target
 	var snap string
 	var expiry, consumed int64
-	e = tx.QueryRowContext(ctx, `SELECT video_id,video_title,channel,target_kind,COALESCE(collection_id,0),COALESCE(media_id,0),COALESCE(episode_id,0),target_snapshot,expires_at,consumed_at FROM youtube_reviews WHERE id=?`, reviewID).Scan(&v.ID, &v.Title, &v.Channel, &t.Kind, &t.CollectionID, &t.MediaID, &t.EpisodeID, &snap, &expiry, &consumed)
+	e := tx.QueryRowContext(ctx, `SELECT video_id,video_title,channel,target_kind,COALESCE(collection_id,0),COALESCE(media_id,0),COALESCE(episode_id,0),target_snapshot,expires_at,consumed_at FROM youtube_reviews WHERE id=?`, reviewID).Scan(&v.ID, &v.Title, &v.Channel, &t.Kind, &t.CollectionID, &t.MediaID, &t.EpisodeID, &snap, &expiry, &consumed)
 	if e != nil || expiry < time.Now().Unix() || consumed != 0 {
 		return Job{}, ErrChanged
 	}
@@ -282,10 +292,42 @@ func (s *Store) Queue(ctx context.Context, reviewID string) (Job, error) {
 	if n != 1 {
 		return Job{}, ErrChanged
 	}
-	if e = tx.Commit(); e != nil {
-		return Job{}, e
-	}
 	return Job{ID: key, Video: v, Target: t, State: "queued", CreatedAt: now, UpdatedAt: now}, nil
+}
+
+// QueueBulk applies the complete reviewed selection or none of it. Every item
+// uses the existing target snapshot, collision and acquisition reservations.
+func (s *Store) QueueBulk(ctx context.Context, reviewIDs []string) ([]Job, error) {
+	if len(reviewIDs) < 1 || len(reviewIDs) > 25 {
+		return nil, ErrInput
+	}
+	seen := map[string]bool{}
+	for _, v := range reviewIDs {
+		if len(v) != 32 || seen[v] {
+			return nil, ErrInput
+		}
+		seen[v] = true
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return nil, e
+	}
+	defer tx.Rollback()
+	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+		return nil, e
+	}
+	jobs := []Job{}
+	for _, v := range reviewIDs {
+		job, e := s.queueTx(ctx, tx, v)
+		if e != nil {
+			return nil, e
+		}
+		jobs = append(jobs, job)
+	}
+	if e = tx.Commit(); e != nil {
+		return nil, e
+	}
+	return jobs, nil
 }
 func scanJob(row interface{ Scan(...any) error }) (Job, error) {
 	var j Job

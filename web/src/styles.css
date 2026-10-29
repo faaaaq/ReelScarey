@@ -2617,6 +2617,19 @@ dd {
   justify-content: flex-end;
   margin-bottom: 0.75rem;
 }
+.bulk-video-list {
+  max-height: 360px;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+}
+.bulk-video-list label {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  overflow-wrap: anywhere;
+}
 .backup-scope,
 .backup-path {
   overflow-wrap: anywhere;

@@ -385,6 +385,15 @@ func (s *Service) RegisterDiscovered(ctx context.Context, id string, in Existing
 	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
 		return e
 	}
+	if e = s.registerDiscoveredTx(ctx, tx, id, in, false); e != nil {
+		return e
+	}
+	return tx.Commit()
+}
+func (s *Service) registerDiscoveredTx(ctx context.Context, tx *sql.Tx, id string, in ExistingRegistration, dryRun bool) error {
+	if !in.Reviewed || in.MediaID < 1 || len(in.Episodes) > 20 {
+		return mappingError()
+	}
 	f, e := scanDiscovered(tx.QueryRowContext(ctx, `SELECT `+discoveredColumns+` FROM library_scan_files WHERE id=?`, id))
 	if e != nil {
 		return e
@@ -455,6 +464,9 @@ func (s *Service) RegisterDiscovered(ctx context.Context, id string, in Existing
 	if e != nil {
 		return e
 	}
+	if dryRun {
+		return nil
+	}
 	res, e := tx.ExecContext(ctx, `UPDATE library_scan_files SET state='queued',media_id=?,targets=?,message='Waiting for file verification.',updated_at=unixepoch() WHERE id=? AND state IN ('review','blocked') AND lease_until<unixepoch()`, in.MediaID, string(payload), id)
 	if e != nil {
 		return e
@@ -463,7 +475,7 @@ func (s *Service) RegisterDiscovered(ctx context.Context, id string, in Existing
 	if n != 1 {
 		return problem("scan_busy", "The file is still finishing a step. Reload and try again.")
 	}
-	return tx.Commit()
+	return nil
 }
 func existingTargetFree(ctx context.Context, tx *sql.Tx, id int64, kind string, targets []TVTarget) error {
 	var count int

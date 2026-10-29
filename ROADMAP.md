@@ -524,3 +524,13 @@ TV imports require reviewed mappings. The
 passed all UI/race/static checks, real disposable movie/TV qBittorrent downloads,
 native smoke and Docker build/authenticated restart persistence. Full evidence
 is in [validation](docs/VALIDATION.md); owner Torznab/shared-mount acceptance is deferred.
+
+## Version 0.22 follow-through
+
+All seven follow-through features are implemented: scheduled metadata refresh
+and richer calendar facts, reviewed refresh of linked AniList identities,
+per-show subtitle preferences, reviewed subtitle timing/replacement/rollback,
+YouTube subscriptions and bulk acquisition, source/codec scoring with Usenet age
+filters, and reviewed bulk metadata matching. See [feature behavior and bounds](docs/SEVEN_FEATURES.md).
+Provider credentials, private-service acceptance and the license still require
+owner decisions or access where listed in the remaining-work record.

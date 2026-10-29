@@ -166,6 +166,54 @@ func (s *Server) reviewAnimeOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	send(w, 200, out)
 }
+
+// Refresh facts through the same immutable review/apply protocol as an identity
+// edit. Provider counts and titles never authorize changes to canonical order.
+func (s *Server) refreshAnimeIdentities(w http.ResponseWriter, r *http.Request) {
+	id, ok := tvID(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		Revision int `json:"revision"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 70*time.Second)
+	defer cancel()
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(75 * time.Second))
+	old, e := s.library.AnimeOrder(ctx, id)
+	if e != nil {
+		s.animeOrderError(w, e)
+		return
+	}
+	if old.Revision != in.Revision {
+		s.animeOrderError(w, library.ErrAnimeOrderRevision)
+		return
+	}
+	identities := []metadata.AnimeIdentity{}
+	ids := []int64{}
+	for _, link := range old.Identities {
+		fresh, e := s.animeProvider.Anime(ctx, link.ID)
+		if e != nil {
+			s.providerError(w, e)
+			return
+		}
+		if fresh.ID != link.ID || fresh.Provider != "anilist" {
+			fail(w, 502, "invalid_identity", "AniList returned a different identity; saved links were preserved.")
+			return
+		}
+		identities = append(identities, fresh)
+		ids = append(ids, link.ID)
+	}
+	out, e := s.library.ReviewAnimeOrder(ctx, id, library.AnimeOrderUpdate{Revision: old.Revision, CategoryRevision: old.CategoryRevision, NumberingRevision: old.NumberingRevision, ProviderIDs: ids, Entries: old.Entries}, identities)
+	if e != nil {
+		s.animeOrderError(w, e)
+		return
+	}
+	send(w, 200, out)
+}
 func (s *Server) animeOrderSources(w http.ResponseWriter, r *http.Request) {
 	id, ok := tvID(w, r)
 	if !ok {

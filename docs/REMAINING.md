@@ -77,9 +77,9 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 - [x] Reviewed path rollback for completed organization moves, including whole
   folders and extras. Current future-import preferences are preserved. Changed
   versions must be restored first; failed jobs still require verified recovery.
-- [ ] Arbitrary-root browsing and automatic bulk metadata matching, if added with
-  explicit scope and identity review. Current discovery stays within configured
-  collections and registration requires a reviewed match.
+- [x] Bulk metadata suggestions and atomic reviewed registration within configured
+  collections. Suggestions never choose identities automatically.
+- [ ] Arbitrary-root browsing. Discovery stays within configured collections.
 
 ## Anime, metadata and media-server coverage
 
@@ -99,9 +99,9 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   specials and packs. Saving an external identity or order alone does not enable
   automatic searches. Linux generated-media and container acceptance is recorded
   in [VALIDATION.md](VALIDATION.md).
-- [ ] AniDB or additional Anime identity/order providers and an explicit refresh
-  workflow for already-linked AniList facts. Current linked identity facts are
-  cached; remove/apply then relink to fetch again.
+- [x] Explicit reviewed refresh of already-linked AniList facts, preserving saved
+  episode mappings and canonical identities.
+- [ ] AniDB or additional Anime identity/order providers.
 - [ ] One-file cross-season Anime mappings, broader extras and unsupported release
   grammars. Current multi-season support applies to separate reviewed files,
   not arbitrary franchise flattening or inferred canonical season offsets.
@@ -110,24 +110,27 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 - [ ] Acceptance of naming presets with real Plex, Emby and Jellyfin scans on
   representative libraries. Documented naming conventions are implemented; they
   are not proof of every server/version's identification behavior.
-- [ ] Automatic metadata refresh and richer calendar/broadcast information.
-  Wanted/Calendar currently project saved metadata and registration facts.
+- [x] Paused-by-default metadata refresh schedules and richer local calendar facts.
+  Calendar shows cached runtime, series status and metadata freshness.
 
 ## Quality, subtitles and additional clients
 
 - [x] Reviewed YouTube source inspection and individual-video acquisition for
   existing movies/episodes and custom collections, with selected VTT subtitles.
   See [YouTube sourcing](YOUTUBE.md) and [validation](VALIDATION.md) for limits.
-- [ ] Automatic channel/playlist subscriptions, bulk video acquisition and richer
-  subtitle selection remain future work.
-- [ ] Richer source/codec scoring and language verification beyond embedded tags.
+- [x] Paused channel/playlist subscriptions and reviewed bulk video acquisition,
+  with explicit subtitle options and final import review.
+- [x] Ordered source/codec scoring and preferred release terms.
+- [ ] Language verification beyond embedded tags.
   Imported files expose audio stream tags; older files can be explicitly inspected.
   Tags may be absent or inaccurate, and release text still supplies selection evidence.
-- [ ] Additional subtitle providers, ASS-style provider downloads, subtitle
-  replacement/resynchronization and per-show language overrides. Existing styled
+- [x] Per-show subtitle overrides and reviewed sidecar replacement, timing shifts
+  and retained-version rollback for SRT/VTT/ASS/SSA.
+- [ ] Additional subtitle providers and ASS-style provider downloads. Existing styled
   subtitle companions can be detected/preserved during organization; that is a
   different capability from provider download support.
-- [ ] Usenet retention scoring, multiple SABnzbd clients and NZBGet support.
+- [x] Usenet retention and propagation filters with explicit publication evidence.
+- [ ] Multiple SABnzbd clients and NZBGet support.
 - [ ] More general multi-client management and arbitrary durable job types if
   required by later workflows; current downloads/searches already use durable
   leases and recovery.

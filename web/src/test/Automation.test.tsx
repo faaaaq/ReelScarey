@@ -96,6 +96,47 @@ function setup(
   return fetch;
 }
 describe("automation", () => {
+  it("saves ordered source and codec preferences with Usenet retention limits", async () => {
+    let sent: unknown;
+    setup((url, o) => {
+      if (url.endsWith("/quality-profiles/1") && o?.method === "PUT") {
+        sent = JSON.parse(String(o.body));
+        return Response.json({ ...profile, revision: 2 });
+      }
+      return undefined;
+    });
+    mount();
+    await screen.findByText("Searches are waiting for an indexer.");
+    await userEvent.type(
+      screen.getByLabelText("Preferred sources, in order"),
+      "remux,webdl",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Preferred codecs, in order"),
+      "h265,h264",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Preferred release terms"),
+      "proper",
+    );
+    await userEvent.clear(
+      screen.getByLabelText("Usenet retention (days; 0 disables)"),
+    );
+    await userEvent.type(
+      screen.getByLabelText("Usenet retention (days; 0 disables)"),
+      "3000",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    expect(sent).toMatchObject({
+      scoring: {
+        sources: ["remux", "webdl"],
+        codecs: ["h265", "h264"],
+        preferred_terms: "proper",
+        max_usenet_age_days: 3000,
+        min_usenet_age_minutes: 0,
+      },
+    });
+  });
   it("lets Torznab wait while saving an opt-in download schedule", async () => {
     const fetch = setup();
     mount();

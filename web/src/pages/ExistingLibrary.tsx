@@ -21,6 +21,7 @@ import { Pagination } from "../movieComponents";
 import { useLiveResource } from "../useLiveResource";
 import { useResource } from "../useResource";
 import { bytes } from "./Releases";
+import { BulkMatching } from "./BulkMatching";
 
 export type LibraryScan = {
   id: string;
@@ -421,6 +422,19 @@ function ScanReview({
           <option value="skipped">Skipped</option>
         </select>
       </label>
+      {result.data && (
+        <BulkMatching
+          key={`${id}-${page}-${filter}`}
+          scanID={id}
+          kind={result.data.scan.kind}
+          files={result.data.items}
+          reload={() => {
+            result.reload();
+            changed();
+          }}
+          match={setFile}
+        />
+      )}
       {result.data?.items.length ? (
         <div className="file-details-list panel system-panel">
           {result.data.items.map((item) => (

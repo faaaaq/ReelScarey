@@ -41,6 +41,12 @@ func idle(ctx context.Context, q query, mediaID, fileID int64) error {
 }
 func idleExcept(ctx context.Context, q query, mediaID, fileID int64, kind, job string) error {
 	var n int
+	if e := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM subtitle_edits WHERE media_file_id=? AND (state IN ('queued','running') OR (state='blocked' AND phase<>'planned' AND phase<>'committed'))`, fileID).Scan(&n); e != nil {
+		return e
+	}
+	if n > 0 {
+		return problem("media_busy", "Finish or recover the reviewed subtitle edit before organizing this file.")
+	}
 	e := q.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM downloads WHERE movie_id=? AND id<>? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM subtitle_jobs WHERE media_file_id=? AND (lease_until>=unixepoch() OR (requested=1 AND state IN ('queued','running','retrying','waiting_provider'))))+(SELECT COUNT(*) FROM subtitle_imports WHERE media_file_id=? AND phase<>'committed')+(SELECT COUNT(*) FROM youtube_jobs WHERE media_id=? AND id<>? AND state NOT IN ('completed','cancelled','failed'))+(SELECT COUNT(*) FROM youtube_imports i JOIN youtube_jobs j ON j.id=i.job_id WHERE j.media_id=? AND j.id<>? AND i.phase<>'committed')`, mediaID, map[bool]string{true: job}[kind == "download"], fileID, fileID, mediaID, map[bool]string{true: job}[kind == "youtube"], mediaID, map[bool]string{true: job}[kind == "youtube"]).Scan(&n)
 	if e != nil {
 		return e

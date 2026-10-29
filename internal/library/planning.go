@@ -19,23 +19,26 @@ type PlanningFilter struct {
 	Page                       int
 }
 type PlanningEntry struct {
-	Kind             string `json:"kind"`
-	MediaID          int64  `json:"media_id"`
-	EpisodeID        *int64 `json:"episode_id"`
-	Title            string `json:"title"`
-	Year             *int   `json:"year"`
-	EpisodeTitle     string `json:"episode_title"`
-	Season           *int   `json:"season"`
-	Episode          *int   `json:"episode"`
-	Date             string `json:"date"`
-	Monitored        bool   `json:"monitored"`
-	MonitoringReason string `json:"monitoring_reason"`
-	Available        bool   `json:"available"`
-	Status           string `json:"status"`
-	DownloadID       string `json:"download_id"`
-	DownloadState    string `json:"download_state"`
-	Protocol         string `json:"protocol"`
-	PosterURL        string `json:"poster_url"`
+	Kind              string `json:"kind"`
+	MediaID           int64  `json:"media_id"`
+	EpisodeID         *int64 `json:"episode_id"`
+	Title             string `json:"title"`
+	Year              *int   `json:"year"`
+	EpisodeTitle      string `json:"episode_title"`
+	Season            *int   `json:"season"`
+	Episode           *int   `json:"episode"`
+	Date              string `json:"date"`
+	Monitored         bool   `json:"monitored"`
+	MonitoringReason  string `json:"monitoring_reason"`
+	Available         bool   `json:"available"`
+	Status            string `json:"status"`
+	DownloadID        string `json:"download_id"`
+	DownloadState     string `json:"download_state"`
+	Protocol          string `json:"protocol"`
+	PosterURL         string `json:"poster_url"`
+	RuntimeMinutes    *int   `json:"runtime_minutes"`
+	SeriesStatus      string `json:"series_status"`
+	MetadataUpdatedAt int64  `json:"metadata_updated_at"`
 }
 type PlanningCounts struct {
 	Missing     int `json:"missing"`
@@ -211,6 +214,12 @@ func (s *Store) planning(ctx context.Context, f PlanningFilter, now time.Time, c
 	rows.Close()
 	if e != nil {
 		return out, e
+	}
+	for i := range out.Items {
+		v := &out.Items[i]
+		if e = tx.QueryRowContext(ctx, `SELECT CASE WHEN ? IS NOT NULL THEN (SELECT runtime_minutes FROM episodes WHERE id=?) ELSE (SELECT runtime_minutes FROM media_items WHERE id=?) END,COALESCE((SELECT series_status FROM series_details WHERE media_id=?),''),MAX(COALESCE((SELECT last_success FROM metadata_refresh_state WHERE media_id=?),0),COALESCE((SELECT updated_at FROM media_enrichment WHERE media_id=?),0))`, v.EpisodeID, v.EpisodeID, v.MediaID, v.MediaID, v.MediaID, v.MediaID).Scan(&v.RuntimeMinutes, &v.SeriesStatus, &v.MetadataUpdatedAt); e != nil {
+			return out, e
+		}
 	}
 	return out, tx.Commit()
 }

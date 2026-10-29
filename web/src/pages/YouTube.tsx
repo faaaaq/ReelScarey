@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
+import { YouTubeBulk } from "./YouTubeBulk";
 
 type Entry = {
   kind: "video" | "playlist";
@@ -260,6 +261,11 @@ export function YouTube() {
         title="YouTube"
         description="Inspect a video, playlist or channel and choose where a video belongs."
       />
+      <p>
+        <a href="/youtube/subscriptions">
+          Manage channel and playlist subscriptions
+        </a>
+      </p>
       {error && (
         <p className="error-box" role="alert">
           {error}
@@ -607,6 +613,24 @@ export function YouTube() {
           )}
         </section>
       )}
+      {inspection &&
+        kind === "custom" &&
+        inspection.source.kind !== "video" && (
+          <YouTubeBulk
+            key={`${inspection.source.url}-${collection}-${subtitleLanguages}-${automaticSubtitles}`}
+            url={inspection.source.url}
+            entries={inspection.entries}
+            collectionID={Number(collection)}
+            subtitles={{
+              languages: subtitleLanguages
+                .split(",")
+                .map((v) => v.trim())
+                .filter(Boolean),
+              automatic: automaticSubtitles,
+            }}
+            reload={jobs.reload}
+          />
+        )}
       <section className="panel settings-form" aria-label="YouTube downloads">
         <h2>YouTube downloads</h2>
         <Button variant="soft" disabled={!!busy} onClick={jobs.reload}>

@@ -114,3 +114,5 @@ jobs:
           REELSCAREY_SMOKE_URL=http://127.0.0.1:18788 REELSCAREY_SMOKE_CONTAINER=reelscarey-meta-ci node scripts/container-metadata-smoke.mjs
       - name: Container backup, upload, restore and recovery
         run: bash scripts/backup-container-smoke.sh reelscarey:ci
+      - name: Container feature schedules, subtitle edits and reviewed bulk operations
+        run: bash scripts/seven-feature-container-smoke.sh reelscarey:ci

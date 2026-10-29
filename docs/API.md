@@ -654,3 +654,30 @@ write-only `access_token`; Trakt also needs `client_id` and owner/list slug. Tok
 are encrypted per list, bound to the resolved account, sent only to fixed provider
 hosts and omitted from responses/events. Expired tokens fail with a visible
 generic error. Public providers and existing credential formats remain compatible.
+
+## Version 0.22 additions
+
+All routes below require an administrator. Mutations require the existing CSRF
+header and same-origin checks. Domain reviews expire after 30 minutes and stale
+snapshots return conflicts. See [behavior and limits](SEVEN_FEATURES.md).
+
+| Route | Methods | Contract |
+| --- | --- | --- |
+| `/system/metadata-refresh` | GET, PUT | Schedule fields: enabled, interval_hours, batch_size, only_monitored, revision. |
+| `/system/metadata-refresh/run` | POST | Empty object requests one bounded pass; busy requests conflict. |
+| `/library/items/{id}/anime-order/refresh` | POST | Current revision creates a fresh-facts order review; existing apply route commits it. |
+| `/library/series/{id}/subtitles` | GET, PUT, DELETE | Show preferences with override revision and global_revision; DELETE returns to inheritance. |
+| `/subtitles/files/{id}/edits` | GET, POST | History or review: language, variant, action offset/replace/rollback plus offset_ms/content/previous_edit_id. |
+| `/subtitles/edits/{id}/{apply\|retry}` | POST | Reviewed apply queues the journaled edit; retry resumes a blocked operation. |
+| `/youtube/bulk/review` | POST | source_url, video_ids, target, subtitles; returns individual immutable reviews. |
+| `/youtube/bulk/queue` | POST | review_ids and reviewed=true; atomically queues at most 25. |
+| `/youtube/subscriptions` | GET, POST, PUT | Paused creation or revision-checked updates; acquire mode requires initialized baseline and reviewed=true. |
+| `/youtube/subscriptions/{id}` | GET, POST, DELETE | Entry history, revision-checked check request, or subscription deletion. |
+| `/library/imports/{id}/matches/suggest` | POST | file_ids and optional include_provider; bounded suggestions only. |
+| `/library/imports/{id}/matches/review` | POST | Explicit items: file_id, media_id, episode_ids; returns review_id. |
+| `/library/imports/{id}/matches/apply` | POST | review_id and reviewed=true atomically queue verified in-place registration. |
+
+Quality profile JSON adds `scoring` with `sources`, `codecs`, `preferred_terms`,
+`max_usenet_age_days` and `min_usenet_age_minutes`. Existing profile revisions
+fence these rules. Calendar entries add `runtime_minutes`, `series_status` and
+`metadata_updated_at`; reads do not initiate refreshes.

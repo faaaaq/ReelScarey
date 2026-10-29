@@ -18,6 +18,13 @@ export type Profile = {
   required_terms: string;
   rejected_terms: string;
   revision: number;
+  scoring?: {
+    sources: string[] | null;
+    codecs: string[] | null;
+    preferred_terms: string;
+    max_usenet_age_days: number;
+    min_usenet_age_minutes: number;
+  };
 };
 export type Schedule = {
   enabled: boolean;
@@ -62,6 +69,10 @@ type Result = {
     score: number;
     eligible: boolean;
     reasons: string[];
+    source?: string;
+    codec?: string;
+    age_days?: number | null;
+    scoring_reasons?: string[];
   }[];
 };
 type Assignment = {
@@ -437,6 +448,22 @@ function RunResults({ id }: { id: string }) {
                     {d.language} · {d.eligible ? "Matches profile" : "Excluded"}{" "}
                     · Score {d.score}
                   </p>
+                  {(d.source || d.codec) && (
+                    <p className="field-help">
+                      {d.source ?? "Unknown source"} ·{" "}
+                      {d.codec ?? "Unknown codec"}
+                      {d.age_days != null
+                        ? ` · ${d.age_days.toFixed(1)} days old`
+                        : ""}
+                    </p>
+                  )}
+                  {!!d.scoring_reasons?.length && (
+                    <ul>
+                      {d.scoring_reasons.map((reason, i) => (
+                        <li key={i}>{reason}</li>
+                      ))}
+                    </ul>
+                  )}
                   {d.reasons.length > 0 && (
                     <ul>
                       {d.reasons.map((reason, i) => (
@@ -530,6 +557,12 @@ function ProfileForm({
   saved: (p: Profile) => void;
 }) {
   const [form, setForm] = useState(profile);
+  const [sourceOrderText, setSourceOrderText] = useState(
+    (profile.scoring?.sources ?? []).join(","),
+  );
+  const [codecOrderText, setCodecOrderText] = useState(
+    (profile.scoring?.codecs ?? []).join(","),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -661,7 +694,110 @@ function ProfileForm({
               onChange={(e) => set("rejected_terms", e.target.value)}
             />
           </label>
+          <label>
+            Preferred sources, in order
+            <TextField.Root
+              value={sourceOrderText}
+              placeholder="remux,bluray,webdl,webrip,hdtv,dvd"
+              onChange={(e) => {
+                setSourceOrderText(e.target.value);
+                set("scoring", {
+                  codecs: [],
+                  preferred_terms: "",
+                  max_usenet_age_days: 0,
+                  min_usenet_age_minutes: 0,
+                  ...form.scoring,
+                  sources: e.target.value
+                    .split(",")
+                    .map((v) => v.trim())
+                    .filter(Boolean),
+                });
+              }}
+            />
+          </label>
+          <label>
+            Preferred codecs, in order
+            <TextField.Root
+              value={codecOrderText}
+              placeholder="av1,h265,h264"
+              onChange={(e) => {
+                setCodecOrderText(e.target.value);
+                set("scoring", {
+                  sources: [],
+                  preferred_terms: "",
+                  max_usenet_age_days: 0,
+                  min_usenet_age_minutes: 0,
+                  ...form.scoring,
+                  codecs: e.target.value
+                    .split(",")
+                    .map((v) => v.trim())
+                    .filter(Boolean),
+                });
+              }}
+            />
+          </label>
+          <label>
+            Preferred release terms
+            <TextField.Root
+              maxLength={200}
+              value={form.scoring?.preferred_terms ?? ""}
+              onChange={(e) =>
+                set("scoring", {
+                  sources: [],
+                  codecs: [],
+                  max_usenet_age_days: 0,
+                  min_usenet_age_minutes: 0,
+                  ...form.scoring,
+                  preferred_terms: e.target.value,
+                })
+              }
+            />
+          </label>
+          <label>
+            Usenet retention (days; 0 disables)
+            <input
+              type="number"
+              min={0}
+              max={10000}
+              value={form.scoring?.max_usenet_age_days ?? 0}
+              onChange={(e) =>
+                set("scoring", {
+                  sources: [],
+                  codecs: [],
+                  preferred_terms: "",
+                  min_usenet_age_minutes: 0,
+                  ...form.scoring,
+                  max_usenet_age_days: Number(e.target.value),
+                })
+              }
+            />
+          </label>
+          <label>
+            Usenet propagation delay (minutes)
+            <input
+              type="number"
+              min={0}
+              max={10080}
+              value={form.scoring?.min_usenet_age_minutes ?? 0}
+              onChange={(e) =>
+                set("scoring", {
+                  sources: [],
+                  codecs: [],
+                  preferred_terms: "",
+                  max_usenet_age_days: 0,
+                  ...form.scoring,
+                  min_usenet_age_minutes: Number(e.target.value),
+                })
+              }
+            />
+          </label>
         </div>
+        <p className="field-help">
+          Source, codec and preferred-term bonuses rank eligible releases within
+          a resolution. They use release labels, not verified stream quality.
+          Usenet age filters reject unknown publication dates when enabled;
+          torrent ranking is unaffected by retention.
+        </p>
         <p className="field-help">
           Separate terms with commas. Every required term must match. Camera
           recordings, screeners, samples, ambiguous identities and unknown

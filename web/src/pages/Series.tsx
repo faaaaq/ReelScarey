@@ -13,6 +13,7 @@ import { Poster } from "../movieComponents";
 import { useResource } from "../useResource";
 import { ItemInformation } from "./ItemDetails";
 import { SeriesReleaseRules } from "./SeriesReleaseRules";
+import { ShowSubtitlePreferences } from "./ShowSubtitlePreferences";
 
 export function Series() {
   const { id } = useParams();
@@ -140,6 +141,7 @@ function SeriesView({ initial }: { initial: TVSeries }) {
         </div>
       </section>
       <SeriesReleaseRules id={show.id} />
+      <ShowSubtitlePreferences id={show.id} />
       <ItemInformation
         key={`details-${show.id}-${show.revision}`}
         id={show.id}

@@ -61,15 +61,16 @@ type SavedTrack struct {
 	Updated int64  `json:"updated_at"`
 }
 type FileView struct {
-	ID         int64        `json:"id"`
-	MediaID    int64        `json:"media_id"`
-	Kind       string       `json:"kind"`
-	Title      string       `json:"title"`
-	Path       string       `json:"path"`
-	Episodes   string       `json:"episodes"`
-	Tracks     []SavedTrack `json:"tracks"`
-	Job        *Job         `json:"job"`
-	Candidates []Candidate  `json:"candidates,omitempty"`
+	ID           int64        `json:"id"`
+	MediaID      int64        `json:"media_id"`
+	Kind         string       `json:"kind"`
+	Title        string       `json:"title"`
+	Path         string       `json:"path"`
+	Episodes     string       `json:"episodes"`
+	Tracks       []SavedTrack `json:"tracks"`
+	Job          *Job         `json:"job"`
+	Candidates   []Candidate  `json:"candidates,omitempty"`
+	WantedTracks []Track      `json:"wanted_tracks"`
 }
 
 func (s *Service) File(ctx context.Context, id int64, withCandidates bool) (FileView, error) {
@@ -78,6 +79,11 @@ func (s *Service) File(ctx context.Context, id int64, withCandidates bool) (File
 		return FileView{}, e
 	}
 	v := FileView{ID: id, MediaID: m.MediaID, Kind: m.Kind, Title: m.Title, Path: m.Path, Tracks: []SavedTrack{}}
+	prefs, e := s.effectivePreferences(ctx, m.MediaID)
+	if e != nil {
+		return v, e
+	}
+	v.WantedTracks = prefs.Tracks
 	if len(m.Episodes) > 0 {
 		first := m.Episodes[0]
 		v.Episodes = fmt.Sprintf("S%02dE%02d", first.Season, first.Number)

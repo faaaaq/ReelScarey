@@ -5,6 +5,7 @@ import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { Pagination } from "../movieComponents";
 import { useLiveResource } from "../useLiveResource";
+import { SubtitleEdits } from "./SubtitleEdits";
 
 export type SubtitleTrack = {
   language: string;
@@ -69,6 +70,7 @@ export type SubtitleFile = {
     updated_at: number;
   };
   candidates?: SubtitleCandidate[];
+  wanted_tracks?: SubtitleTrack[];
 };
 const variantName: Record<SubtitleTrack["variant"], string> = {
   full: "Full subtitles",
@@ -687,7 +689,8 @@ function FileCard({
     file.job &&
     (file.job.state === "running" ||
       (file.job.requested && ["queued", "retrying"].includes(file.job.state)));
-  const available = wanted.filter((t) =>
+  const desired = file.wanted_tracks ?? wanted;
+  const available = desired.filter((t) =>
     file.tracks.some(
       (v) =>
         v.language === t.language &&
@@ -718,11 +721,12 @@ function FileCard({
           {file.title}
           {file.episodes && ` · ${file.episodes}`}
         </h2>
-        <Badge color={available === wanted.length ? "green" : "gray"}>
-          {available} of {wanted.length} tracks available
+        <Badge color={available === desired.length ? "green" : "gray"}>
+          {available} of {desired.length} tracks available
         </Badge>
       </div>
       <p className="subtitle-path">{file.path}</p>
+      <SubtitleEdits fileID={file.id} tracks={file.tracks} reload={reload} />
       {file.job && (
         <div className="subtitle-job">
           <strong>{readable(file.job.state)}</strong>

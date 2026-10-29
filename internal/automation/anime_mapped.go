@@ -173,7 +173,7 @@ func (s *Service) processMapped(ctx context.Context, c claim, seed searchTarget,
 			if _, exists := byRelease[r.ID]; exists {
 				continue
 			}
-			d := quality.Evaluate(profile, plan.identity, quality.Release{ID: r.ID, Title: r.Title, Size: r.Size, Seeders: r.Seeders, Protocol: r.Protocol})
+			d := quality.Evaluate(profile, plan.identity, quality.Release{ID: r.ID, Title: r.Title, Size: r.Size, Seeders: r.Seeders, Protocol: r.Protocol, Published: r.Published, Now: s.now().Unix()})
 			byRelease[r.ID] = plan
 			releases[r.ID] = r
 			decisions = append(decisions, d)
@@ -335,7 +335,7 @@ func (s *Service) mappedGuard(c claim, plan mappedPlan, profile quality.Profile)
 		if e = library.ValidateAnimeOrderSnapshot(ctx, tx, v.AnimeOrder); e != nil {
 			return ErrLease
 		}
-		d := quality.Evaluate(profile, plan.identity, quality.Release{ID: v.ID, Title: v.Title, Size: v.Size, Seeders: v.Seeders, Protocol: v.Protocol})
+		d := quality.Evaluate(profile, plan.identity, quality.Release{ID: v.ID, Title: v.Title, Size: v.Size, Seeders: v.Seeders, Protocol: v.Protocol, Published: v.Published, Now: s.now().Unix()})
 		if !d.Eligible {
 			return ErrLease
 		}

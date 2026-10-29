@@ -64,3 +64,13 @@ for limits, and [validation](docs/VALIDATION.md) for evidence.
 The app currently runs locally with empty project media and download folders;
 configure mounts before testing against an actual library. The checklist does not
 claim owner-service acceptance or completion of unimplemented features.
+
+## Version 0.22 follow-through
+
+All seven follow-through features are implemented: scheduled metadata refresh
+and richer calendar facts, reviewed refresh of linked AniList identities,
+per-show subtitle preferences, reviewed subtitle timing/replacement/rollback,
+YouTube subscriptions and bulk acquisition, source/codec scoring with Usenet age
+filters, and reviewed bulk metadata matching. See [feature behavior and bounds](docs/SEVEN_FEATURES.md).
+Provider credentials, private-service acceptance and the license still require
+owner decisions or access where listed in the remaining-work record.
