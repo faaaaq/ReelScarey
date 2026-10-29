@@ -1476,3 +1476,63 @@ See AUTHENTICATION.md for first setup, password recovery and key backup.
 - Owner-service/NAS/proxy acceptance, extra provider protocols and the license
   remain separate work requiring appropriate access or decisions. No owner
   credentials, account or media was used for automated acceptance.
+
+## 2026-10-29: version 0.25 original subtitle formats and explicit TV labels
+
+- Added an opt-in original-format preference for provider SRT, VTT, ASS and SSA.
+  Existing installations keep SRT. Candidates display their output format;
+  unsupported originals, format mismatches and unsafe timing are rejected. ASS/
+  SSA event/style text and VTT styles/comments survive import, reviewed timing
+  edits and retained-version rollback. Original SRT also bypasses conversion;
+  SRT output explicitly requests conversion when its source is another format.
+  Provider quota resets accept numeric epochs, numeric strings and the documented
+  human-readable reset paired with a UTC timestamp.
+- Subtitle journals retain their original extension/content across preference
+  changes and reopen. Tests cover planned/staged/published recovery without
+  consuming quota again, preference changes during fetch, malformed event fields,
+  negative/invalid/overlong cues, preserved video bytes and byte-exact rollback.
+  Backups retain the format preference while restore pauses work for review.
+- Replaced the duplicate filename-token parser with bounded shared episode-span
+  parsing. Explicit S01EP02, S01 Episode 02 and Season 1 Ep 2 labels work with
+  exact title/year/canonical targets. Reviewed filename hints accept consecutive
+  spaced/long-form ranges and chains of at most twenty episodes in one season.
+  Multiple/conflicting labels, nonconsecutive/mixed ranges, cross-season labels
+  and hidden extra episode evidence are rejected; x264/x265 remain codec labels.
+  Ordinary automatic searches still select only a single canonical episode.
+- Frontend formatting/type checks, **168 tests in 34 files**, and production
+  build passed. Complete Linux backend race/static/build checks passed, followed
+  by final affected-package race checks after the final parser/provider changes.
+  The final Docker build passed all embedded frontend/backend gates.
+- Real FFmpeg videos and FFprobe verified original SRT/ASS/SSA/VTT imports,
+  subtitle readability, style preservation, source hashes and reopen. The real
+  OpenSubtitles adapter's HTTP serialization/parsing uses owned API/CDN protocol
+  fixtures; no owner account or quota is used. Real isolated qBittorrent,
+  SABnzbd 5.1.3 and NZBGet 26.3 movie/TV regressions passed under the race detector,
+  including expanded filenames, mandatory mapping review, application reopen,
+  saved named-client mappings and retained source bytes. The web seed serves only
+  its declared generated filenames. Existing Anime pack acceptance also passed.
+- Disposable Docker backup download/upload/restore preserved the original-format
+  preference and named encrypted clients. Existing seven-feature and storage
+  copy/activation/restart rehearsals passed. A one-minute constrained container
+  run completed **4,531 reads and 12 settings writes with zero failures**, p95
+  **18 ms**, p99 **27 ms**, peak sampled **41.89 MiB** and eight processes under a
+  1 CPU / 384 MiB / 128 process limit; restart/catalog/integrity checks passed.
+  This bounded run does not establish NAS, ARM or long-term production capacity.
+- Before replacement, retained image `reelscarey:before-subtitle-formats-20261029`
+  and verified schema-38 snapshots `configuration` and `configuration-final` in
+  private ignored `data/backups/before-subtitle-formats-20261029`, with the prior
+  deployment environment saved alongside them. The final snapshot was offline
+  and independently checked with the new application before image replacement.
+- Upgraded existing Compose volumes to **0.25.0-formats**, schema39. Compared all
+  prior columns in all **82 existing tables**, including the complete prior
+  migration ledger; all matched the final backup. Encryption key/setup state were
+  unchanged and the new format default is SRT. Integrity and foreign keys passed.
+  All **nine installation checks** passed before and after controlled restart.
+  Windows loopback/deep links and all **40 release assets** matched the build;
+  administrative routes remain protected and setup state remains unchanged.
+  The WSL host launcher remains running. Deployment uses the existing single
+  non-root container and read-only root, without adding runtime dependencies.
+- Owner-service acceptance, additional providers, language recognition, OCR/
+  alignment, broader release grammars, NAS/ARM validation and license selection
+  remain separate work. No owner media, private tracker or provider account was
+  used as a fixture.
