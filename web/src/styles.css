@@ -2642,6 +2642,14 @@ dd {
 .storage-digest {
   overflow-wrap: anywhere;
 }
+.client-card {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--gray-6);
+}
+.client-card summary {
+  cursor: pointer;
+  margin-bottom: 16px;
+}
 .bulk-video-list {
   max-height: 360px;
   overflow-y: auto;

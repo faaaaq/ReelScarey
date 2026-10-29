@@ -133,10 +133,11 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   subtitle companions can be detected/preserved during organization; that is a
   different capability from provider download support.
 - [x] Usenet retention and propagation filters with explicit publication evidence.
-- [ ] Multiple SABnzbd clients and NZBGet support.
-- [ ] More general multi-client management and arbitrary durable job types if
-  required by later workflows; current downloads/searches already use durable
-  leases and recovery.
+- [x] Multiple named qBittorrent/SABnzbd clients and NZBGet support, explicit
+  per-protocol defaults and immutable per-job folder mappings. See
+  [Download clients](DOWNLOAD_CLIENTS.md). Owner-service acceptance remains separate.
+- [ ] Additional client protocols or arbitrary durable job types if required by
+  later workflows; downloads/searches already use durable leases and recovery.
 
 ## Requests and Discord
 

@@ -32,13 +32,7 @@ func (s *Service) sabConfig(ctx context.Context) (ClientConfig, error) {
 	return c, e
 }
 func (s *Service) downloadConfig(ctx context.Context, protocol string) (ClientConfig, error) {
-	if protocol == "usenet" {
-		return s.sabConfig(ctx)
-	}
-	if protocol != "" && protocol != "torrent" {
-		return ClientConfig{}, problem("invalid_release", "The download protocol is unsupported.")
-	}
-	return s.clientConfig(ctx)
+	return s.selectedClient(ctx, protocol)
 }
 func (s *Service) sabStatus(ctx context.Context) (IntegrationStatus, error) {
 	c, e := s.sabConfig(ctx)
@@ -76,7 +70,7 @@ func (s *Service) ConfigureSAB(ctx context.Context, in SABUpdate) error {
 	}
 	if old.URL != "" && (old.URL != u.String() || old.DownloadPath != remote) {
 		var active int
-		if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE protocol='usenet' AND state NOT IN ('completed','cancelled')`).Scan(&active); e != nil {
+		if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE protocol='usenet' AND client_key='' AND state NOT IN ('completed','cancelled')`).Scan(&active); e != nil {
 			return e
 		}
 		if active > 0 {
@@ -98,10 +92,13 @@ func sourceInJob(j Job, source string) bool {
 	if j.Protocol == "usenet" {
 		prefix = "ReelScarey/reelscarey-" + j.ID + "/"
 	}
+	if j.clientLocal != "" {
+		prefix = j.clientLocal + "/" + prefix
+	}
 	return strings.HasPrefix(source, prefix)
 }
 func (s *Service) processUsenet(ctx context.Context, j Job) error {
-	c, e := s.sabConfig(ctx)
+	c, e := s.boundClient(ctx, j)
 	if e != nil {
 		return e
 	}
@@ -109,14 +106,21 @@ func (s *Service) processUsenet(ctx context.Context, j Job) error {
 		return problem("client_changed", "Restore the SABnzbd address used by this download before resuming tracking.")
 	}
 	tag := "reelscarey-" + j.ID
-	remote, e := s.sab.Find(ctx, c, j.ClientID, tag)
+	var adapter interface {
+		Find(context.Context, ClientConfig, string, string) (*SABJob, error)
+		Add(context.Context, ClientConfig, string, []byte) (string, error)
+	} = s.sab
+	if c.kind == "nzbget" {
+		adapter = s.nzbget
+	}
+	remote, e := adapter.Find(ctx, c, j.ClientID, tag)
 	if e != nil {
 		return e
 	}
 	if remote == nil {
 		if j.attempted != 0 || j.ClientID != "" {
 			if time.Now().Unix()-j.submittedAt > 90 {
-				return problem("usenet_submission_unknown", "The SABnzbd job is not visible. Restore its original name/category or history, then retry tracking. An uncertain NZB is never resubmitted automatically.")
+				return problem("usenet_submission_unknown", "The Usenet job is not visible. Restore its original name/category or history, then retry tracking. An uncertain NZB is never resubmitted automatically.")
 			}
 			return nil
 		}
@@ -135,7 +139,7 @@ func (s *Service) processUsenet(ctx context.Context, j Job) error {
 		if e = s.owned(ctx, j, `UPDATE downloads SET state='submitting',submission_attempted=1,submitted_at=unixepoch(),updated_at=unixepoch()`); e != nil {
 			return e
 		}
-		id, e := s.sab.Add(ctx, c, tag, p.NZB)
+		id, e := adapter.Add(ctx, c, tag, p.NZB)
 		if e != nil {
 			return e
 		}
@@ -145,7 +149,7 @@ func (s *Service) processUsenet(ctx context.Context, j Job) error {
 		return e
 	}
 	if remote.Failed {
-		return problem("client_download_error", "SABnzbd reports a failed download. Repair or retry that job in SABnzbd, retain its history, then retry tracking here.")
+		return problem("client_download_error", "The Usenet client reports a failed download. Repair or retry it there, retain its history, then retry tracking here.")
 	}
 	if !remote.Complete {
 		return nil
@@ -166,12 +170,12 @@ func (s *Service) processUsenet(ctx context.Context, j Job) error {
 		savePath = path.Dir(strings.ReplaceAll(remote.Storage, "\\", "/"))
 	}
 	if relative != jobRoot && single == "" {
-		return problem("path_mapping", "SABnzbd must finish in ReelScarey/reelscarey-<job id> under its configured completed folder. Check the reelscarey category folder and disable sorting/renaming for it.")
+		return problem("path_mapping", "The Usenet client must finish in ReelScarey/reelscarey-<job id> under its configured completed folder. Check the reelscarey category and disable sorting/renaming.")
 	}
 	var files []TorrentFile
 	if j.clientFiles != "" {
 		if remote.Storage != j.clientStorage {
-			return problem("source_changed", "SABnzbd's completed folder changed after file review. Restore the original completed folder.")
+			return problem("source_changed", "The Usenet completed folder changed after file review. Restore the original completed folder.")
 		}
 		if e = json.Unmarshal([]byte(j.clientFiles), &files); e != nil {
 			return e
@@ -182,21 +186,22 @@ func (s *Service) processUsenet(ctx context.Context, j Job) error {
 			if err != nil {
 				return err
 			}
-			err = segments(root, relative, false)
+			local := path.Join(j.clientLocal, relative)
+			err = segments(root, local, false)
 			var info os.FileInfo
 			if err == nil {
-				info, err = root.Lstat(filepath.FromSlash(relative))
+				info, err = root.Lstat(filepath.FromSlash(local))
 			}
 			root.Close()
 			if err != nil {
 				return err
 			}
 			if !info.Mode().IsRegular() || info.Size() <= 0 || !video(single) || extraVideo.MatchString(single) {
-				return problem("no_movie_file", "SABnzbd's completed output is not a supported regular video file.")
+				return problem("no_movie_file", "The Usenet output is not a supported regular video file.")
 			}
 			files = []TorrentFile{{Index: 0, Name: single, Size: info.Size(), Progress: 1, Priority: 1}}
 		} else {
-			files, e = s.usenetFiles(ctx, jobRoot)
+			files, e = s.usenetFiles(ctx, path.Join(j.clientLocal, jobRoot))
 		}
 		if e != nil {
 			return e

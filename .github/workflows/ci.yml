@@ -93,6 +93,17 @@ jobs:
           go test -race ./internal/transfer -run TestRealSABnzbd -count=1 -v -timeout=5m
         env:
           REELSCAREY_LIVE_SAB: '1'
+      - name: Install isolated NZBGet test runtime
+        run: |
+          curl --fail --location --retry 2 https://github.com/nzbgetcom/nzbget/releases/download/v26.3/nzbget-26.3-bin-linux.run -o "$RUNNER_TEMP/nzbget.run"
+          printf '%s  %s\n' '6a7f0519cf7deeb59cc1457c87d6efc7f28ef3dd17ed5ddc3be6a698a6093391' "$RUNNER_TEMP/nzbget.run" | sha256sum --check
+          sh "$RUNNER_TEMP/nzbget.run" --unpack --destdir "$RUNNER_TEMP/reelscarey-nzbget"
+      - name: Real NZBGet named client movie and reviewed TV imports
+        run: |
+          export REELSCAREY_NZBGET="$RUNNER_TEMP/reelscarey-nzbget/nzbget-x86_64"
+          go test -race ./internal/transfer -run TestRealNZBGet -count=1 -v -timeout=4m
+        env:
+          REELSCAREY_LIVE_NZBGET: '1'
       - run: go build -o bin/reelscarey ./cmd/reelscarey
       - run: node scripts/smoke.mjs
       - name: Build and smoke-test the container

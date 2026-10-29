@@ -152,7 +152,7 @@ func (s *Service) prepareTVMapping(ctx context.Context, j Job, choices []FileCho
 		return e
 	}
 	for n := range choices {
-		source, e := MapSource(savePath, choices[n].Name, remote)
+		source, e := mapJobSource(j, savePath, choices[n].Name, remote)
 		if e != nil {
 			return e
 		}

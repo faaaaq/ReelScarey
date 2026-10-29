@@ -1426,3 +1426,53 @@ See AUTHENTICATION.md for first setup, password recovery and key backup.
 - A generated Matroska TV episode also received its canonical series, season,
   episode number and episode title after a reviewed move. Subtitle provenance
   was checked across both individual-file and whole-folder moves before rollback.
+
+## 2026-10-29: version 0.24 named download clients and NZBGet
+
+- Implemented up to 32 named qBittorrent/SABnzbd/NZBGet connections, tested paused
+  creation, explicit enabled per-protocol defaults, encrypted credential retention,
+  revision checks and immutable per-job remote/local folder bindings. Existing
+  Settings clients and jobs retain their prior behavior. Schema 038 preserves
+  released migration checksums, encrypted legacy rows and connection-history
+  triggers. The upgrade test checks these facts without inventing connections.
+- Frontend formatting, TypeScript, all **167 tests in 34 files** and production
+  build passed. The complete Linux backend race suite, static checks and build
+  passed. New API tests cover administrator/requester boundaries, CSRF, paused
+  defaults, stale edits, secret omission/retention and reviewed deletion. Domain
+  tests cover client/default/credential changes during queue preparation,
+  source-folder containment and lost NZBGet append replies without resubmission.
+- Real disposable qBittorrent, SABnzbd 5.1.3 and NZBGet 26.3 passed movie and TV
+  downloads/imports under the race detector using FFmpeg-generated videos and
+  owned local torrent/web-seed or yEnc/NNTP fixtures. Named clients retain their
+  binding across changed defaults and application reopen. TV review, FFprobe
+  validation and unchanged source bytes are verified. Existing qBittorrent Anime
+  special/multi-season pack acceptance also passed. Test runtimes stay outside
+  the app image; NZBGet's CI download is pinned by SHA-256.
+- The final Docker build passed its frontend/backend gates. Disposable container
+  backup download/upload/restore preserved a named connection, its folder and
+  default, then successfully tested its restored encrypted credentials. Session
+  revocation, retained safety backup, paused schedules and recovery review passed.
+  Existing seven-feature and storage-copy/activation/restart rehearsals passed.
+- A one-minute constrained container run completed **4,552 reads and 12 settings
+  writes with zero failures**, p95 17 ms and p99 26 ms. Peak sampled memory was
+  39.19 MiB under a 1 CPU / 384 MiB / 128 process limit. Post-run catalog,
+  integrity and restart checks passed. This bounded local run is not NAS, ARM
+  or production-scale acceptance.
+- Before replacement, retained image `reelscarey:before-download-clients-20261029`
+  and two verified schema-37 configuration snapshots under the private ignored
+  `data/backups/before-download-clients-20261029` folder. `configuration-final`
+  was taken offline immediately before replacement; `deployment.env` retains
+  the previous private deployment settings. Both encryption key and setup state
+  remain unchanged. Existing media and download sources were not test fixtures.
+- Upgraded the existing Compose container/volumes to **0.24.0-clients**, schema38.
+  Compared all original columns in all **80 prior tables**, including the complete
+  prior migration ledger; all were unchanged. Integrity and foreign keys passed.
+  All **nine installation checks** passed before and after controlled restart.
+  Docker reports healthy, zero crash restarts, UID10001 and a read-only root.
+  Windows loopback routes and all **40 release assets** matched the built files;
+  first-run setup remained unchanged and administrative APIs remained protected.
+  The hidden WSL host launcher was verified directly on the host and remains
+  running; restricted process visibility is not evidence that it exited.
+- Owner-service/NAS/proxy acceptance, extra provider protocols and the license
+  remain separate work requiring appropriate access or decisions. No owner
+  credentials, account or media was used for automated acceptance.

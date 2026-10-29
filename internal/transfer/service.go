@@ -22,6 +22,7 @@ type Service struct {
 	cfg         config.Config
 	client      Client
 	sab         *SABnzbd
+	nzbget      *NZBGet
 	indexer     Indexer
 	adapters    map[string]Indexer
 	configMu    sync.Mutex
@@ -36,6 +37,7 @@ func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Clien
 	s.adapters = map[string]Indexer{"iptorrents": NewDirect("iptorrents"), "xspeeds": NewDirect("xspeeds"), "nyaa": NewDirect("nyaa"), "rss": NewDirect("rss")}
 	s.adapters["newznab"] = NewNewznab()
 	s.sab = NewSABnzbd()
+	s.nzbget = NewNZBGet()
 	s.importer = NewImporter(s)
 	return s
 }
@@ -76,6 +78,13 @@ func (s *Service) Status(ctx context.Context, name string) (IntegrationStatus, e
 		return s.sabStatus(ctx)
 	}
 	if name == "clients" {
+		d, e := s.ClientDefaults(ctx)
+		if e != nil {
+			return IntegrationStatus{}, e
+		}
+		if d.Torrent != "" || d.Usenet != "" {
+			return IntegrationStatus{Configured: true}, nil
+		}
 		a, e := s.Status(ctx, "qbittorrent")
 		if e != nil {
 			return a, e
@@ -182,7 +191,7 @@ func (s *Service) ConfigureClient(ctx context.Context, in ClientUpdate) error {
 	}
 	if old.URL != "" && (old.URL != u.String() || old.DownloadPath != remote) {
 		var active int
-		if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE protocol='torrent' AND state NOT IN ('completed','cancelled')`).Scan(&active); e != nil {
+		if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE protocol='torrent' AND client_key='' AND state NOT IN ('completed','cancelled')`).Scan(&active); e != nil {
 			return e
 		}
 		if active > 0 {
@@ -230,7 +239,7 @@ func (s *Service) Remove(ctx context.Context, name string) error {
 			protocol = "usenet"
 		}
 		var active int
-		if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE protocol=? AND state NOT IN ('completed','cancelled')`, protocol).Scan(&active); e != nil {
+		if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE protocol=? AND client_key='' AND state NOT IN ('completed','cancelled')`, protocol).Scan(&active); e != nil {
 			return e
 		}
 		if active > 0 {
@@ -417,6 +426,9 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard,
 	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
 		return Job{}, false, e
 	}
+	if e = validateSelectedClient(ctx, tx, client); e != nil {
+		return Job{}, false, e
+	}
 	if guard != nil {
 		if e = guard(ctx, tx, v); e != nil {
 			return Job{}, false, e
@@ -438,6 +450,9 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard,
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,indexer_name,protocol,organization_snapshot) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, v.IndexerName, protocol, string(namingJSON)); e != nil {
+		return Job{}, false, e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE downloads SET client_key=?,client_kind=?,client_label=?,client_download_root=?,client_local_folder=? WHERE id=?`, client.profileKey, client.kind, client.label, client.DownloadPath, client.LocalFolder, id); e != nil {
 		return Job{}, false, e
 	}
 	if replacementID > 0 {

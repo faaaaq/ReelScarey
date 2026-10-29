@@ -696,3 +696,30 @@ temporary-copy folder. A missing plan returns state=none; an invalid plan return
 409. Both routes require an administrator; requester accounts are denied. There
 is no live migration mutation API. Offline commands and bounds are documented in
 [STORAGE.md](STORAGE.md).
+## Named download clients (0.24)
+
+All routes require an administrator; writes require CSRF and same origin.
+Credentials are never returned. Save/test have bounded connection timeouts.
+
+- `GET /api/v1/download-clients` returns `{items,defaults,downloads_root}`. Items
+  include ID, name, kind, enabled, revision, URL, username, remote `download_path`,
+  relative `local_folder` and count of unfinished jobs. Defaults contain torrent
+  and Usenet client IDs (empty means the existing Settings connection), revision.
+- `POST /api/v1/download-clients` tests and creates a paused connection. Supply
+  name, kind (`qbittorrent`, `sabnzbd`, `nzbget`), URL, completed download_path,
+  optional local_folder, username/password or SABnzbd api_key. Creation revision
+  is zero and enabled must be false.
+- `PUT /api/v1/download-clients/{id}` tests and saves with the current revision;
+  kind is immutable. Omitted secrets retain saved values. Changing URL/username
+  requires entering the secret again. Enabling is explicit; default clients
+  cannot be paused, and unfinished jobs protect address/folder changes.
+- `PUT /api/v1/download-clients/defaults` compares revision and validates enabled
+  clients of the matching protocol. Empty explicitly chooses Settings.
+- `POST /api/v1/download-clients/{id}/test` accepts `{}` and tests saved settings.
+- `DELETE /api/v1/download-clients/{id}` requires `{revision,reviewed:true}` and
+  refuses default clients or clients with unfinished jobs (including stopped).
+  Completed history remains. It never deletes external jobs or source files.
+
+Download rows additionally expose client_key, client_kind and client_label.
+Each new job stores its original remote root and local folder privately. See
+[Download clients](DOWNLOAD_CLIENTS.md) for mounting and Usenet category setup.

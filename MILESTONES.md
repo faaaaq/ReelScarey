@@ -64,7 +64,9 @@ for limits, and [validation](docs/VALIDATION.md) for evidence.
 - [ ] More Anime providers, broader release grammars and
   single-file cross-season mappings.
 - [ ] Additional subtitle providers, OCR, translation and automatic alignment.
-- [ ] Language verification beyond stream tags and more download clients.
+- [x] Named qBittorrent/SABnzbd/NZBGet clients, per-protocol defaults and saved
+  per-job folder mappings. See [Download clients](docs/DOWNLOAD_CLIENTS.md).
+- [ ] Language verification beyond stream tags and additional client protocols.
 - [ ] NAS/shared-storage and ARM runtime acceptance and broader
   accessibility/security review. Public distribution also needs signed releases
   and an owner-selected license.

@@ -154,6 +154,9 @@ export type Release = {
   published_at: string;
 };
 export type DownloadJob = {
+  client_key?: string;
+  client_kind?: "qbittorrent" | "sabnzbd" | "nzbget";
+  client_label?: string;
   anime_search?: {
     mode: string;
     search_title: string;

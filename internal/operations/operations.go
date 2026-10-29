@@ -76,6 +76,18 @@ func (s *Service) Guide(ctx context.Context) (Guide, error) {
 			}
 			n += managed
 		}
+		if item.name == "qbittorrent" || item.name == "sabnzbd" {
+			protocol := "torrent"
+			if item.name == "sabnzbd" {
+				protocol = "usenet"
+			}
+			var managed int
+			if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM download_clients WHERE enabled=1 AND id=(SELECT CASE WHEN ?='torrent' THEN torrent ELSE usenet END FROM download_client_preferences WHERE id=1)`, protocol).Scan(&managed); e != nil {
+				return out, e
+			}
+			n += managed
+			item.href = "/download-clients"
+		}
 		message := "Optional for catalog setup. Connect when you are ready."
 		v := "optional"
 		if n > 0 {

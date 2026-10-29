@@ -43,7 +43,15 @@ func TestRealSABnzbdMovieAndTVImports(t *testing.T) {
 		t.Run(map[bool]string{false: "movie", true: "reviewed-TV"}[tv], func(t *testing.T) { runRealSAB(t, tv) })
 	}
 }
-func runRealSAB(t *testing.T, tv bool) {
+func TestRealSABnzbdNamedClientMovieAndTVImports(t *testing.T) {
+	if os.Getenv("REELSCAREY_LIVE_SAB") != "1" {
+		t.Skip("set REELSCAREY_LIVE_SAB=1 for isolated real-client acceptance")
+	}
+	for _, tv := range []bool{false, true} {
+		t.Run(map[bool]string{false: "movie", true: "reviewed-TV"}[tv], func(t *testing.T) { runRealSAB(t, tv, true) })
+	}
+}
+func runRealSAB(t *testing.T, tv bool, named ...bool) {
 	t.Helper()
 	f, id, targets := setupTV(t)
 	if !tv {
@@ -80,6 +88,16 @@ func runRealSAB(t *testing.T, tv bool) {
 	port := apiListener.Addr().(*net.TCPAddr).Port
 	apiListener.Close()
 	profile := t.TempDir()
+	completed := f.cfg.DownloadsDir
+	local := ""
+	managed := len(named) > 0 && named[0]
+	if managed {
+		local = "named-sab"
+		completed = filepath.Join(completed, local)
+		if e = os.MkdirAll(completed, 0755); e != nil {
+			t.Fatal(e)
+		}
+	}
 	key := ID()
 	t.Cleanup(func() {
 		if !t.Failed() {
@@ -129,7 +147,7 @@ connections = 1
 ssl = 0
 enable = 1
 retention = 0
-`, port, key, ID(), filepath.ToSlash(filepath.Join(profile, "incomplete")), filepath.ToSlash(f.cfg.DownloadsDir), filepath.ToSlash(filepath.Join(profile, "admin")), filepath.ToSlash(filepath.Join(profile, "logs")), nntp.Addr().(*net.TCPAddr).Port)
+`, port, key, ID(), filepath.ToSlash(filepath.Join(profile, "incomplete")), filepath.ToSlash(completed), filepath.ToSlash(filepath.Join(profile, "admin")), filepath.ToSlash(filepath.Join(profile, "logs")), nntp.Addr().(*net.TCPAddr).Port)
 	if e = os.WriteFile(configFile, []byte(ini), 0600); e != nil {
 		t.Fatal(e)
 	}
@@ -162,7 +180,7 @@ retention = 0
 			t.Error("test SABnzbd did not exit")
 		}
 	}()
-	c := ClientConfig{URL: fmt.Sprintf("http://127.0.0.1:%d", port), APIKey: key, DownloadPath: filepath.ToSlash(f.cfg.DownloadsDir)}
+	c := ClientConfig{URL: fmt.Sprintf("http://127.0.0.1:%d", port), APIKey: key, DownloadPath: filepath.ToSlash(completed), LocalFolder: local}
 	for start := time.Now(); ; {
 		if e = f.s.sab.Test(ctx, c); e == nil {
 			break
@@ -204,10 +222,38 @@ retention = 0
 	if _, e = f.s.SaveIndexer(ctx, "", ManagedIndexerUpdate{Name: "Owned Newznab fixture", Kind: "newznab", URL: indexer.URL + "/api", APIKey: &ikey, Enabled: true}); e != nil {
 		t.Fatal(e)
 	}
-	if e = f.s.ConfigureSAB(ctx, SABUpdate{URL: c.URL, APIKey: &key, DownloadPath: c.DownloadPath}); e != nil {
+	var defaults ClientDefaults
+	if managed {
+		saved, err := f.s.SaveDownloadClient(ctx, DownloadClientUpdate{Name: "Owned SAB", Kind: "sabnzbd", URL: c.URL, APIKey: &key, DownloadPath: c.DownloadPath, LocalFolder: local})
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved, err = f.s.SaveDownloadClient(ctx, DownloadClientUpdate{ID: saved.ID, Name: saved.Name, Kind: saved.Kind, URL: c.URL, DownloadPath: c.DownloadPath, LocalFolder: local, Enabled: true, Revision: saved.Revision})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defaults, err = f.s.ClientDefaults(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defaults.Usenet = saved.ID
+		defaults, err = f.s.SaveClientDefaults(ctx, defaults)
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else if e = f.s.ConfigureSAB(ctx, SABUpdate{URL: c.URL, APIKey: &key, DownloadPath: c.DownloadPath}); e != nil {
 		t.Fatal(e)
 	}
 	j := queueUsenet(t, f, id, tv)
+	if managed {
+		if j.ClientKey != defaults.Usenet || j.ClientKind != "sabnzbd" {
+			t.Fatal("missing named-client binding", j)
+		}
+		defaults.Usenet = ""
+		if _, e = f.s.SaveClientDefaults(ctx, defaults); e != nil {
+			t.Fatal(e)
+		}
+	}
 	f.s.importer.Prober = FFprobe{}
 	f.tick(t)
 	f.reopen(t)
@@ -255,7 +301,7 @@ retention = 0
 		t.Fatal("real import details", e)
 	}
 	for _, n := range names {
-		source := filepath.Join(f.cfg.DownloadsDir, "ReelScarey", "reelscarey-"+j.ID, n)
+		source := filepath.Join(completed, "ReelScarey", "reelscarey-"+j.ID, n)
 		body, e := os.ReadFile(source)
 		if e != nil || !bytes.Equal(body, data) {
 			t.Fatal("real completed source was changed", e)

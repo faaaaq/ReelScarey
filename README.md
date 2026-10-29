@@ -278,3 +278,7 @@ also accepts explicit 1x02, spaced S01 E02 and Season 1 Episode 2 labels while
 rejecting ambiguous or multi-episode automatic selections. No database migration
 or runtime dependency is added. [Workload checks](docs/WORKLOAD.md) define the
 repeatable constrained container budget and its limits.
+Named qBittorrent, SABnzbd and NZBGet connections are available under
+**Settings → Manage download clients**. New connections start paused; choose
+explicit defaults after reviewing folder mappings. See
+[Download clients](docs/DOWNLOAD_CLIENTS.md) for setup and safety limits.

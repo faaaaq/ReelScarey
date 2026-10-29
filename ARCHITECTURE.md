@@ -81,6 +81,13 @@ without automatic resubmission. Completed post-processing and exact dedicated
 mapped output are mandatory. No client deletion/script execution API exists.
 See docs/USENET.md.
 
+Migration 038 adds named download clients and per-protocol defaults while
+preserving legacy encrypted connections and connection-history triggers. New
+jobs snapshot the selected client and remote/local folder mapping; transactions
+fence defaults, profile revisions and credentials after release fetches. NZBGet
+uses positional authenticated JSON-RPC and the same Usenet reconciliation,
+reservations and importer. See docs/DOWNLOAD_CLIENTS.md.
+
 Wanted and Calendar are transactionally consistent read models owned by library,
 combining movie/loaded-episode metadata, registration existence and active target
 reservations. HTTP owns strict filter validation and a five-second read budget;
@@ -175,7 +182,7 @@ Planned entities (design, **not implemented schema**):
 
 | Entity | Relationships and invariants |
 | --- | --- |
-| download_clients | Future multi-client CRUD; one encrypted configuration per qBittorrent/SABnzbd exists now |
+| download_clients | Named qBittorrent/SABnzbd/NZBGet metadata; encrypted integration configurations; explicit per-protocol defaults and immutable job bindings |
 | jobs | Future arbitrary job types; searches and downloads already have durable leases/retries |
 
 Media file paths are never derived from untrusted release names without

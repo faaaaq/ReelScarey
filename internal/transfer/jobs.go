@@ -17,6 +17,9 @@ type FileChoice struct {
 	Size        int64   `json:"size_bytes"`
 }
 type Job struct {
+	ClientKey                  string `json:"client_key,omitempty"`
+	ClientKind                 string `json:"client_kind,omitempty"`
+	ClientLabel                string `json:"client_label,omitempty"`
 	Protocol                   string `json:"protocol"`
 	ClientID                   string `json:"client_id,omitempty"`
 	clientFiles, clientStorage string
@@ -46,19 +49,20 @@ type Job struct {
 	owner                      string
 	payload                    []byte
 	clientURL, savePath        string
+	clientRoot, clientLocal    string
 	attempted                  int
 	submittedAt                int64
 	organizationSnapshot       string
 }
 
-const jobColumns = `d.kind,d.id,d.movie_id,m.title,d.title,d.info_hash,d.state,d.progress,d.total_bytes,d.downloaded_bytes,d.client_state,d.selected_file,d.choices,d.attempts,d.error_code,d.error_message,d.created_at,d.updated_at,d.lease_owner,d.payload,d.client_url,d.save_path,d.submission_attempted,d.submitted_at,d.protocol,d.client_id,d.client_files,d.client_storage,d.organization_snapshot,d.anime_search_snapshot,d.anime_order_snapshot`
+const jobColumns = `d.kind,d.id,d.movie_id,m.title,d.title,d.info_hash,d.state,d.progress,d.total_bytes,d.downloaded_bytes,d.client_state,d.selected_file,d.choices,d.attempts,d.error_code,d.error_message,d.created_at,d.updated_at,d.lease_owner,d.payload,d.client_url,d.save_path,d.submission_attempted,d.submitted_at,d.protocol,d.client_id,d.client_files,d.client_storage,d.organization_snapshot,d.anime_search_snapshot,d.anime_order_snapshot,d.client_key,d.client_kind,d.client_label,d.client_download_root,d.client_local_folder`
 
 type scanner interface{ Scan(...any) error }
 
 func scanJob(row scanner) (Job, error) {
 	var j Job
 	var choices, anime, order string
-	e := row.Scan(&j.Kind, &j.ID, &j.MovieID, &j.MovieTitle, &j.Title, &j.Hash, &j.State, &j.Progress, &j.Total, &j.Downloaded, &j.ClientState, &j.Selected, &choices, &j.Attempts, &j.ErrorCode, &j.ErrorMessage, &j.Created, &j.Updated, &j.owner, &j.payload, &j.clientURL, &j.savePath, &j.attempted, &j.submittedAt, &j.Protocol, &j.ClientID, &j.clientFiles, &j.clientStorage, &j.organizationSnapshot, &anime, &order)
+	e := row.Scan(&j.Kind, &j.ID, &j.MovieID, &j.MovieTitle, &j.Title, &j.Hash, &j.State, &j.Progress, &j.Total, &j.Downloaded, &j.ClientState, &j.Selected, &choices, &j.Attempts, &j.ErrorCode, &j.ErrorMessage, &j.Created, &j.Updated, &j.owner, &j.payload, &j.clientURL, &j.savePath, &j.attempted, &j.submittedAt, &j.Protocol, &j.ClientID, &j.clientFiles, &j.clientStorage, &j.organizationSnapshot, &anime, &order, &j.ClientKey, &j.ClientKind, &j.ClientLabel, &j.clientRoot, &j.clientLocal)
 	if e == nil {
 		e = json.Unmarshal([]byte(choices), &j.Choices)
 	}
