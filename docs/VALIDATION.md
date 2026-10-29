@@ -34,6 +34,27 @@
 
 Behavior, commands and bounds: [Storage](STORAGE.md), [workload checks](WORKLOAD.md).
 
+### Live version 0.23 upgrade
+
+- The previous image is retained as `reelscarey:before-remaining-milestones-20261029`.
+  An early backup and fresh final stopped backup were created and independently
+  verified. Final snapshot:
+  `data/backups/before-remaining-milestones-20261029/configuration-final`.
+  The private deployment settings are retained beside it.
+- The live app now runs `0.23.0-storage`, schema 37, from the complete tested
+  image. All 80 existing tables including the migration ledger match the final
+  backup exactly; key and setup-token bytes match. No database migration was
+  needed. Integrity and foreign-key checks pass, and first-run setup remains
+  required. The running installation contains no acceptance fixtures.
+- Controlled restart, all nine installation checks, Windows readiness, seven
+  direct routes and all 39 referenced embedded assets pass. The persistent WSL
+  host process remains active. The same media/config/download/backup volumes,
+  read-only protections, UID 10001 and restart policy are retained. Deployment
+  version settings now agree with the running image.
+- The final image repeats the complete storage and backup/restore rehearsals and
+  the previously completed seven-feature container regression. Final focused race
+  checks for storage, maintenance/recovery, quality, HTTP and commands also pass.
+
 ## Version 0.22 — seven completed follow-through features
 
 - All 163 frontend tests, formatting, type checks and the production build pass.
