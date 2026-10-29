@@ -45,6 +45,10 @@ function ReleaseBrowser() {
   const indexer = useResource<IntegrationStatus>("/indexers/status");
   const client = useResource<IntegrationStatus>("/integrations/qbittorrent");
   const sab = useResource<IntegrationStatus>("/integrations/sabnzbd");
+  const replacementFiles = useResource<{
+    items: { id: number; path: string }[];
+  }>(`/organization/files?media_id=${movieID}`);
+  const [replacementID, setReplacementID] = useState("");
   const [input, setInput] = useState("");
   const [items, setItems] = useState<Release[]>();
   const [searching, setSearching] = useState(false);
@@ -69,7 +73,7 @@ function ReleaseBrowser() {
     try {
       const out = await api<{ items: Release[]; warnings?: string[] }>(
         tv
-          ? `/library/series/${movieID}/seasons/${season}/releases?${episode ? `episode=${episode}&` : ""}query=${encodeURIComponent(input.trim() || suggested)}`
+          ? `/library/series/${movieID}/seasons/${season}/releases?${replacementID ? `replacement_file_id=${replacementID}&` : ""}${episode ? `episode=${episode}&` : ""}query=${encodeURIComponent(input.trim() || suggested)}`
           : `/releases?movie_id=${movieID}&query=${encodeURIComponent(input.trim() || suggested)}`,
       );
       setItems(out.items);
@@ -87,7 +91,12 @@ function ReleaseBrowser() {
     try {
       await api("/downloads", {
         method: "POST",
-        body: JSON.stringify({ release_id: id }),
+        body: JSON.stringify({
+          release_id: id,
+          ...(replacementID
+            ? { replacement_file_id: Number(replacementID) }
+            : {}),
+        }),
       });
       navigate("/activity");
     } catch (e) {
@@ -119,6 +128,30 @@ function ReleaseBrowser() {
       <Link className="text-link" to={tv ? `/series/${movieID}` : "/movies"}>
         {tv ? "Back to show" : "Back to movies"}
       </Link>
+      {!!replacementFiles.data?.items.length && (
+        <section className="panel">
+          <label>
+            Download purpose{" "}
+            <select
+              value={replacementID}
+              onChange={(e) => setReplacementID(e.target.value)}
+            >
+              <option value="">
+                Normal import (existing files are protected)
+              </option>
+              {replacementFiles.data.items.map((f) => (
+                <option key={f.id} value={f.id}>
+                  Acquire replacement for {f.path}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p>
+            Replacement downloads are verified and retained for a separate
+            review. TV mapping must cover every episode in the selected file.
+          </p>
+        </section>
+      )}
       {!valid && (
         <p role="alert">
           Choose a valid {tv ? "episode or season" : "movie"} from your library

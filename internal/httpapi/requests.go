@@ -264,15 +264,16 @@ func (s *Server) requesterLists(w http.ResponseWriter, r *http.Request) {
 		send(w, 200, map[string]any{"items": items})
 	case http.MethodPost:
 		var in struct {
-			Provider string `json:"provider"`
-			Owner    string `json:"owner"`
-			ListID   string `json:"list_id"`
-			ClientID string `json:"client_id"`
+			Provider    string `json:"provider"`
+			Owner       string `json:"owner"`
+			ListID      string `json:"list_id"`
+			ClientID    string `json:"client_id"`
+			AccessToken string `json:"access_token"`
 		}
 		if !decodeJSON(w, r, &in) {
 			return
 		}
-		item, err := s.requestLists.Add(r.Context(), session.AccountID, in.Provider, in.Owner, in.ListID, in.ClientID)
+		item, err := s.requestLists.Add(r.Context(), session.AccountID, in.Provider, in.Owner, in.ListID, in.ClientID, in.AccessToken)
 		if errors.Is(err, requests.ErrList) {
 			fail(w, 400, "invalid_list", err.Error())
 			return

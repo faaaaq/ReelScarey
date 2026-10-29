@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import {
@@ -624,15 +625,25 @@ export function YouTube() {
               {job.state.replaceAll("_", " ")}
               {job.message ? ` · ${job.message}` : ""}
             </p>
-            {job.state === "awaiting_review" && (
-              <Button
-                variant="soft"
-                disabled={!!busy}
-                onClick={() => reviewImport(job)}
-              >
-                Review and import
-              </Button>
-            )}
+            {job.state === "awaiting_review" &&
+              job.message.includes("Review replacement") && (
+                <Link
+                  className="text-link"
+                  to={`/organization?acquisition_kind=youtube&acquisition_job=${job.id}`}
+                >
+                  Review acquired replacement
+                </Link>
+              )}
+            {job.state === "awaiting_review" &&
+              !job.message.includes("Review replacement") && (
+                <Button
+                  variant="soft"
+                  disabled={!!busy}
+                  onClick={() => reviewImport(job)}
+                >
+                  Review and import
+                </Button>
+              )}
             {["queued", "awaiting_review", "failed"].includes(job.state) && (
               <Button
                 variant="soft"

@@ -296,6 +296,24 @@ for exact format, matching, filesystem and recovery limits.
 
 ## Configuration and security
 
+Migrations 029–030 add `acquisition_replacements` and private list provider modes.
+Manual acquisitions bind the existing registered-file SHA and exact episode set
+inside their reservation transaction. Transfer and YouTube publish verified
+candidates into retained versions, then stop for a separate organization review.
+The existing organization replacement journal publishes independent copies and
+switches provenance/availability atomically, preserving canonical file IDs and
+episode associations. Existing automatic upgrade searches remain suggestions.
+Private list tokens are encrypted with the per-list securestore context and use
+fixed TMDb/Trakt origins. Rebuilding the list table restores its event triggers.
+
+Catalog removal is another immutable organization plan. A bounded foreign-key
+dependency closure captures row IDs and content hashes without exposing payloads.
+Apply compares the entire closure; commit deletes dependent rows in one deferred-
+constraint transaction. File removal uses journaled no-overwrite moves into
+retained trash, preserving client sources, extras and versions. Failed cleanup
+holds the media gate durably. No arbitrary SQL or filesystem path is accepted
+from the review client, and no permanent purge endpoint exists.
+
 Process environment controls bind address, browser origin, config location, and
 media/download roots. SQLite stores preferences, account state and encrypted
 provider credentials. All application API data requires authentication; only

@@ -7,22 +7,25 @@ for limits, and [validation](docs/VALIDATION.md) for evidence.
 
 ## Before feature-complete live testing
 
-- [ ] Connect downloaded movie and TV upgrades to reviewed replacement and
+- [x] Connect downloaded movie and TV upgrades to reviewed replacement and
   rollback, preserving download/seeding sources and provenance.
-- [ ] Connect newly acquired YouTube videos and selected subtitles to reviewed
+- [x] Connect newly acquired YouTube videos and selected subtitles to reviewed
   replacement and rollback, preserving both versions and source provenance.
 - [x] Support embedded-title updates for MOV, AVI and WebM in addition to MP4,
   M4V and Matroska, with reviewed rollback. Every rewrite must preserve packets,
   timing, streams, chapters and non-title metadata; incompatible combinations
   are rejected. Transport streams cannot store these container title tags.
-- [ ] Complete direct continuous IMDb list synchronization and private IMDb,
-  TMDb and Trakt lists. Public TMDb/Trakt lists work; automatic IMDb sync uses
-  MDBList and IMDb CSV is a one-time import.
-- [ ] Add reviewed catalog/media removal with explicit file-deletion choices.
+- [x] Private TMDb/Trakt list synchronization with encrypted, account-owned user
+  tokens. Expired tokens require replacement by the owner.
+- [ ] Direct continuous/private IMDb lists require a supported list feed.
+  IMDb's multi-step exports have no stable export URL. Automatic MDBList sync
+  and one-time IMDb CSV imports remain available.
+- [x] Reviewed catalog removal with keep-files or retained-trash choices.
+  Dependent catalog history is removed; client sources and backups are retained.
 - [x] Add reviewed path rollback for completed file/title/folder organization
   moves, preserving current preferences for future imports. Modified media must
   first return to its previous version; occupied destinations are never replaced.
-- [ ] Test the completed workflows with generated media and isolated services,
+- [x] Test the completed workflows with generated media and isolated services,
   including interruption, collision, recovery and Docker restart behavior.
 
 ## Already implemented; requires owner-service live acceptance

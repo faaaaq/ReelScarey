@@ -16,23 +16,26 @@ import (
 // Replacement is a durable, reviewed swap. The original file is retained at
 // Backup and the discovered source is never removed.
 type Replacement struct {
-	FileID        int64               `json:"media_file_id"`
-	MediaID       int64               `json:"media_id"`
-	Title         string              `json:"title"`
-	ScanFileID    string              `json:"scan_file_id,omitempty"`
-	RestoresPlan  string              `json:"restores_plan,omitempty"`
-	Recovering    bool                `json:"recovering,omitempty"`
-	TagTitle      string              `json:"tag_title,omitempty"`
-	TagStage      string              `json:"tag_stage,omitempty"`
-	TagParent     string              `json:"tag_parent,omitempty"`
-	BeforeYouTube *YouTubeVersion     `json:"before_youtube,omitempty"`
-	AfterYouTube  *YouTubeVersion     `json:"after_youtube,omitempty"`
-	Before        ReplacementMetadata `json:"before"`
-	After         ReplacementMetadata `json:"after"`
-	Original      Companion           `json:"original"`
-	Incoming      Companion           `json:"incoming"`
-	Backup        string              `json:"backup"`
-	Episodes      []Episode           `json:"episodes"`
+	AcquisitionSubtitles []AcquiredSubtitle  `json:"acquisition_subtitles,omitempty"`
+	AcquisitionKind      string              `json:"acquisition_kind,omitempty"`
+	AcquisitionJob       string              `json:"acquisition_job,omitempty"`
+	FileID               int64               `json:"media_file_id"`
+	MediaID              int64               `json:"media_id"`
+	Title                string              `json:"title"`
+	ScanFileID           string              `json:"scan_file_id,omitempty"`
+	RestoresPlan         string              `json:"restores_plan,omitempty"`
+	Recovering           bool                `json:"recovering,omitempty"`
+	TagTitle             string              `json:"tag_title,omitempty"`
+	TagStage             string              `json:"tag_stage,omitempty"`
+	TagParent            string              `json:"tag_parent,omitempty"`
+	BeforeYouTube        *YouTubeVersion     `json:"before_youtube,omitempty"`
+	AfterYouTube         *YouTubeVersion     `json:"after_youtube,omitempty"`
+	Before               ReplacementMetadata `json:"before"`
+	After                ReplacementMetadata `json:"after"`
+	Original             Companion           `json:"original"`
+	Incoming             Companion           `json:"incoming"`
+	Backup               string              `json:"backup"`
+	Episodes             []Episode           `json:"episodes"`
 }
 type ReplacementMetadata struct {
 	Path       string  `json:"path"`
@@ -162,6 +165,15 @@ func (s *Service) PreviewReplacement(ctx context.Context, fileID int64, scanID s
 
 func (s *Service) validateReplacement(ctx context.Context, root *os.Root, q query, p Plan) error {
 	r := p.Replacement
+	if r.After.Path != "" && r.After.Path != r.Before.Path {
+		exists, e := existsFolded(root, r.After.Path)
+		if e != nil {
+			return e
+		}
+		if exists {
+			return problem("destination_exists", "The replacement's new extension would use an occupied path. No file was overwritten.")
+		}
+	}
 	current, media, e := replacementMetadata(ctx, q, r.FileID)
 	if e != nil {
 		return e
@@ -176,6 +188,14 @@ func (s *Service) validateReplacement(ctx context.Context, root *os.Root, q quer
 	if !reflect.DeepEqual(eps, r.Episodes) {
 		return problem("revision_conflict", "Episode mappings changed after review.")
 	}
+	if r.AcquisitionKind != "" {
+		if e = acquisitionReady(ctx, q, r.AcquisitionKind, r.AcquisitionJob); e != nil {
+			return e
+		}
+		if e = validateAcquisitionTarget(ctx, q, r); e != nil {
+			return e
+		}
+	}
 	if r.TagTitle != "" {
 		var title string
 		if e = q.QueryRowContext(ctx, `SELECT title FROM media_items WHERE id=?`, r.MediaID).Scan(&title); e != nil {
@@ -185,7 +205,7 @@ func (s *Service) validateReplacement(ctx context.Context, root *os.Root, q quer
 			return problem("revision_conflict", "The saved title changed after review.")
 		}
 	}
-	if e = idle(ctx, q, r.MediaID, r.FileID); e != nil {
+	if e = idleExcept(ctx, q, r.MediaID, r.FileID, r.AcquisitionKind, r.AcquisitionJob); e != nil {
 		return e
 	}
 	youtube, e := youtubeVersion(ctx, q, r.FileID)
@@ -229,6 +249,9 @@ func (s *Service) PreviewRollback(ctx context.Context, planID string) (Plan, err
 	old, e := s.Plan(ctx, planID)
 	if e != nil {
 		return Plan{}, e
+	}
+	if old.Removal != nil {
+		return Plan{}, problem("invalid_selection", "Removed catalog entries must be added and registered again. Retained trash is not deleted.")
 	}
 	if old.State == "completed" && old.Replacement == nil {
 		return s.previewMoveRollback(ctx, old)
@@ -306,11 +329,11 @@ func (s *Service) PreviewRollback(ctx context.Context, planID string) (Plan, err
 	now := time.Now().Unix()
 	pid := id()
 	restored := previous.Before
-	restored.Path = before.Path
+	restored.Path = strings.TrimSuffix(before.Path, path.Ext(before.Path)) + path.Ext(previous.Before.Path)
 	var restoredYouTube *YouTubeVersion
 	if previous.BeforeYouTube != nil {
 		copy := *previous.BeforeYouTube
-		copy.Path = before.Path
+		copy.Path = restored.Path
 		restoredYouTube = &copy
 	}
 	r := &Replacement{FileID: previous.FileID, MediaID: mediaID, Title: previous.Title, RestoresPlan: old.ID, Before: before, After: restored, BeforeYouTube: currentYouTube, AfterYouTube: restoredYouTube, Original: original, Incoming: incoming, Backup: path.Join(".reelscarey-versions", ".reelscarey-version-"+pid), Episodes: eps}
@@ -339,6 +362,11 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 		if e = checkSource(ctx, root, r.Original, true); e != nil {
 			return e
 		}
+		if r.AcquisitionKind != "" {
+			if e = acquisitionReady(ctx, s.db, r.AcquisitionKind, r.AcquisitionJob); e != nil {
+				return e
+			}
+		}
 		if r.TagTitle != "" {
 			if e = s.prepareEmbeddedTitle(ctx, root, p); e != nil {
 				return e
@@ -365,7 +393,11 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 				if e != nil {
 					return e
 				}
-				r.After = ReplacementMetadata{Path: r.Before.Path, Size: r.Incoming.Size, SHA: digest, Probe: probe, FileIndex: -1, ImportedAt: time.Now().Unix(), Origin: "existing", SourceName: path.Base(r.Incoming.Source)}
+				if r.AcquisitionKind == "" {
+					r.After = ReplacementMetadata{Path: r.Before.Path, Size: r.Incoming.Size, SHA: digest, Probe: probe, FileIndex: -1, ImportedAt: time.Now().Unix(), Origin: "existing", SourceName: path.Base(r.Incoming.Source)}
+				} else if digest != r.Incoming.SHA {
+					return problem("source_changed", "The acquired source changed after review.")
+				}
 			} else if digest != r.After.SHA {
 				return problem("source_changed", "The retained version no longer matches its saved checksum.")
 			}
@@ -399,6 +431,14 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 		if e = s.publishReplacementCopy(ctx, root, *p, backup, 0); e != nil {
 			return e
 		}
+		for n, sub := range r.AcquisitionSubtitles {
+			if e = checkSource(ctx, root, sub.File, true); e != nil {
+				return e
+			}
+			if e = s.publishReplacementCopy(ctx, root, *p, sub.File, n+10); e != nil {
+				return e
+			}
+		}
 		if e = s.savePhase(ctx, p, "archived"); e != nil {
 			return e
 		}
@@ -428,7 +468,10 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 		}
 	}
 	incoming := r.Incoming
-	incoming.Destination = r.Original.Source
+	incoming.Destination = r.After.Path
+	if incoming.Destination == "" {
+		incoming.Destination = r.Original.Source
+	}
 	stageNumber := 1
 	if r.Recovering {
 		stageNumber = 2
@@ -467,7 +510,7 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 		if !reflect.DeepEqual(eps, r.Episodes) {
 			return problem("revision_conflict", "Episode mappings changed during replacement.")
 		}
-		if e = idle(ctx, tx, r.MediaID, r.FileID); e != nil {
+		if e = idleExcept(ctx, tx, r.MediaID, r.FileID, r.AcquisitionKind, r.AcquisitionJob); e != nil {
 			return e
 		}
 		youtube, e := youtubeVersion(ctx, tx, r.FileID)
@@ -484,7 +527,7 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 			return e
 		}
 		a := r.After
-		if _, e = tx.ExecContext(ctx, `UPDATE media_files SET size_bytes=?,sha256=?,probe_json=?,download_id=?,file_index=?,imported_at=?,origin=?,source_name=? WHERE id=?`, a.Size, a.SHA, a.Probe, a.DownloadID, a.FileIndex, a.ImportedAt, a.Origin, a.SourceName, r.FileID); e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE media_files SET relative_path=?,size_bytes=?,sha256=?,probe_json=?,download_id=?,file_index=?,imported_at=?,origin=?,source_name=? WHERE id=?`, a.Path, a.Size, a.SHA, a.Probe, a.DownloadID, a.FileIndex, a.ImportedAt, a.Origin, a.SourceName, r.FileID); e != nil {
 			return e
 		}
 		if youtube != nil {
@@ -498,6 +541,14 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 				return problem("revision_conflict", "The restored YouTube provenance does not match the video.")
 			}
 			if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_files(job_id,media_file_id,video_id,title,relative_path,size_bytes,sha256,probe_json,imported_at) VALUES(?,?,?,?,?,?,?,?,?)`, y.JobID, r.FileID, y.VideoID, y.Title, y.Path, y.Size, y.SHA, y.Probe, y.ImportedAt); e != nil {
+				return e
+			}
+		}
+		for _, sub := range r.AcquisitionSubtitles {
+			if e = s.checkOutput(ctx, root, tx, p.ID, sub.File); e != nil {
+				return e
+			}
+			if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_subtitle_files(job_id,language,relative_path,sha256,size_bytes) VALUES(?,?,?,?,?)`, r.AcquisitionJob, sub.Language, sub.File.Destination, sub.File.SHA, sub.File.Size); e != nil {
 				return e
 			}
 		}
@@ -534,6 +585,9 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 			if n != 1 {
 				return problem("revision_conflict", "The discovered source changed during replacement.")
 			}
+		}
+		if e = completeAcquisition(ctx, tx, r); e != nil {
+			return e
 		}
 		p.Phase = "committed"
 		raw, e := json.Marshal(p)
@@ -663,7 +717,7 @@ func (s *Service) RecoverReplacement(ctx context.Context, planID string) (Plan, 
 	if !reflect.DeepEqual(eps, r.Episodes) {
 		return p, problem("revision_conflict", "The episode mapping changed; the original was retained for review.")
 	}
-	if e = idle(ctx, tx, r.MediaID, r.FileID); e != nil {
+	if e = idleExcept(ctx, tx, r.MediaID, r.FileID, r.AcquisitionKind, r.AcquisitionJob); e != nil {
 		return p, e
 	}
 	var saved string

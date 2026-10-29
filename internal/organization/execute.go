@@ -27,7 +27,7 @@ func EnsureMediaAvailableTx(ctx context.Context, tx *sql.Tx) error {
 
 func ensureMediaAvailable(ctx context.Context, db query) error {
 	var n int
-	if e := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state IN ('queued','running') OR (state='failed' AND (json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe'))`).Scan(&n); e != nil {
+	if e := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state IN ('queued','running') OR (state='failed' AND (((json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')) OR (json_extract(snapshot,'$.removal') IS NOT NULL AND json_extract(snapshot,'$.phase')<>'failed_safe')))`).Scan(&n); e != nil {
 		return e
 	}
 	if n != 0 {
@@ -128,6 +128,11 @@ func (s *Service) execute(ctx context.Context, p *Plan) error {
 				}
 			}
 			if _, e = tx.ExecContext(ctx, `DELETE FROM subtitle_inspections WHERE media_file_id=?`, v.FileID); e != nil {
+				return e
+			}
+		}
+		if p.Removal != nil {
+			if e = deleteRemovalRows(ctx, tx, p.Removal); e != nil {
 				return e
 			}
 		}

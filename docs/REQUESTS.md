@@ -33,6 +33,21 @@ resolve unambiguously through TMDb before any requests are added. This is not a
 continuous IMDb list subscription. In this environment a public IMDb export
 endpoint returned HTTP 202 without list data; no access restrictions were bypassed.
 
+Private TMDb and Trakt lists can use a provider-issued user access token on the
+same fixed provider hosts and with the same account ownership and revision checks.
+Choose the private provider in Import lists. TMDb requires its list owner's user
+access token, rather than the administrator's application token. Trakt requires
+both the application client ID and a user token with access to the list. Tokens
+are encrypted with the existing instance key and are never returned in responses
+or history. Imported requests still need administrator approval. Expired/revoked
+tokens stop synchronization with a visible error; remove and add the list with a
+new token. OAuth enrollment/refresh is not automated in this milestone.
+
+Provider contracts: [TMDb private-list access](https://developer.themoviedb.org/v4/reference/list-details)
+and [Trakt user authentication](https://developer.trakt.tv/docs/authentication-oauth).
+Direct IMDb synchronization is not represented as working: IMDb staff describe
+the [multi-step export and lack of a single export URL](https://community-imdb.sprinklr.com/conversations/imdbcom/imdb-redesigns-listlike-pages/662a8541586efb2637c22757?commentId=66a0f5374a39ff190e711922).
+
 Users may enter their own Discord webhook URL. The URL is encrypted, write-only,
 and restricted to the canonical Discord webhook host. When an approved movie
 has a registered file, or all monitored regular seasons are loaded and their

@@ -147,6 +147,9 @@ func (s *Service) claim(ctx context.Context) (Job, error) {
 	return s.Job(ctx, id)
 }
 func (s *Service) Retry(ctx context.Context, id string) error {
+	if err := s.ensureReplacementMutation(ctx, id); err != nil {
+		return err
+	}
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
 	j, e := s.Job(ctx, id)
@@ -219,6 +222,9 @@ func (s *Service) SelectFile(ctx context.Context, id string, index int) error {
 	return nil
 }
 func (s *Service) Cancel(ctx context.Context, id string) error {
+	if err := s.ensureReplacementMutation(ctx, id); err != nil {
+		return err
+	}
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
 	j, e := s.Job(ctx, id)

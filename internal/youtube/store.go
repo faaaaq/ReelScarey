@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"regexp"
 	"strings"
 	"time"
@@ -134,7 +135,7 @@ func targetSnapshot(ctx context.Context, q queryer, t Target) (string, string, e
 			return "", "", ErrChanged
 		}
 		var count int
-		if e := q.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM media_files WHERE movie_id=?)+(SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))`, t.MediaID, t.MediaID).Scan(&count); e != nil {
+		if e := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled')`, t.MediaID).Scan(&count); e != nil {
 			return "", "", e
 		}
 		if count > 0 {
@@ -148,7 +149,7 @@ func targetSnapshot(ctx context.Context, q queryer, t Target) (string, string, e
 			return "", "", ErrChanged
 		}
 		var count int
-		if e := q.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM episode_files WHERE episode_id=?)+(SELECT COUNT(*) FROM episode_downloads WHERE episode_id=?)`, t.EpisodeID, t.EpisodeID).Scan(&count); e != nil {
+		if e := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM episode_downloads WHERE episode_id=?`, t.EpisodeID).Scan(&count); e != nil {
 			return "", "", e
 		}
 		if count > 0 {
@@ -157,11 +158,19 @@ func targetSnapshot(ctx context.Context, q queryer, t Target) (string, string, e
 	default:
 		return "", "", ErrInput
 	}
+	fileID, version, e := replacementTarget(ctx, q, t)
+	if e != nil {
+		return "", "", e
+	}
+	if fileID > 0 {
+		extra += " (replacement; original retained)"
+	}
 	raw, _ := json.Marshal(struct {
 		Target       Target
 		Title, Extra string
 		A, B         int64
-	}{t, title, extra, a, b})
+		FileVersion  string
+	}{t, title, extra, a, b, version})
 	label := title
 	if extra != "" {
 		label += " — " + extra
@@ -225,6 +234,9 @@ func (s *Store) Queue(ctx context.Context, reviewID string) (Job, error) {
 		return Job{}, e
 	}
 	defer tx.Rollback()
+	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+		return Job{}, e
+	}
 	var v Video
 	var t Target
 	var snap string
@@ -248,6 +260,19 @@ func (s *Store) Queue(ctx context.Context, reviewID string) (Job, error) {
 	_, e = tx.ExecContext(ctx, `INSERT INTO youtube_jobs(id,review_id,video_id,video_title,channel,target_kind,collection_id,media_id,episode_id,target_snapshot,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,'queued',?,?)`, key, reviewID, v.ID, v.Title, v.Channel, t.Kind, nullable(t.CollectionID), nullable(t.MediaID), nullable(t.EpisodeID), snap, now, now)
 	if e != nil {
 		return Job{}, ErrBusy
+	}
+	fileID, _, e := replacementTarget(ctx, tx, t)
+	if e != nil {
+		return Job{}, e
+	}
+	if fileID > 0 {
+		ids := []int64{}
+		if t.Kind == "episode" {
+			ids = append(ids, t.EpisodeID)
+		}
+		if e = organization.ReserveAcquisition(ctx, tx, "youtube", key, fileID, t.MediaID, ids); e != nil {
+			return Job{}, e
+		}
 	}
 	res, e := tx.ExecContext(ctx, `UPDATE youtube_reviews SET consumed_at=? WHERE id=? AND consumed_at=0 AND expires_at>=?`, now, reviewID, now)
 	if e != nil {
@@ -293,6 +318,16 @@ func (s *Store) Jobs(ctx context.Context) ([]Job, error) {
 // Cancel releases a target only before publication starts. Partial downloaded
 // bytes remain in their isolated attempt folder; importing jobs need recovery.
 func (s *Store) Cancel(ctx context.Context, jobID string) error {
+	var bound int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM acquisition_replacements WHERE source_kind='youtube' AND job_id=? AND plan_id<>''`, jobID).Scan(&bound); err != nil {
+		return err
+	}
+	if bound > 0 {
+		return ErrBusy
+	}
+	if err := organization.EnsureMediaAvailable(ctx, s.db); err != nil {
+		return err
+	}
 	res, err := s.db.ExecContext(ctx, `UPDATE youtube_jobs SET state='cancelled',message='Cancelled. Any isolated downloaded files were retained.',updated_at=unixepoch() WHERE id=? AND state IN ('queued','awaiting_review','failed')`, jobID)
 	if err != nil {
 		return err

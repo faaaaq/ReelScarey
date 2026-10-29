@@ -215,6 +215,10 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 		return p, problem("source_changed", "The source changed while it was being verified. Wait for the client and retry.")
 	}
 	var destination string
+	var replacement int
+	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM acquisition_replacements WHERE source_kind='download' AND job_id=?`, j.ID).Scan(&replacement); e != nil {
+		return p, e
+	}
 	if j.Kind == "series" {
 		destination, e = s.tvDestination(ctx, j, source)
 	} else if j.organizationSnapshot != "" {
@@ -248,6 +252,9 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 	b, e := json.Marshal(probe)
 	if e != nil {
 		return p, e
+	}
+	if replacement > 0 {
+		destination = path.Join(".reelscarey-versions", "acquired-"+j.stageID()+strings.ToLower(path.Ext(source)))
 	}
 	p = importPlan{Source: source, Destination: destination, Stage: ".reelscarey-" + j.stageID() + ".part", Size: size, Mtime: before.ModTime().UnixNano(), Hash: hash, Probe: string(b), Mode: "pending", Phase: "planned"}
 	result, e := s.db.ExecContext(ctx, `INSERT INTO import_operations(download_id,file_index,source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,probe_json,phase,updated_at) SELECT ?,?,?,?,?,?,?,?,?,'planned',unixepoch() WHERE EXISTS(SELECT 1 FROM downloads WHERE id=? AND lease_owner=? AND lease_until>=unixepoch())`, j.ID, j.importIndex(), p.Source, p.Destination, p.Stage, p.Size, p.Mtime, p.Hash, p.Probe, j.ID, j.owner)
@@ -551,6 +558,19 @@ func (i *Importer) commitPublished(ctx context.Context, j Job, p importPlan, fol
 	var owner string
 	if e = tx.QueryRowContext(ctx, `SELECT lease_owner FROM downloads WHERE id=? AND lease_until>=unixepoch()`, j.ID).Scan(&owner); e != nil || owner != j.owner {
 		return ErrLease
+	}
+	var replacement int
+	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM acquisition_replacements WHERE source_kind='download' AND job_id=?`, j.ID).Scan(&replacement); e != nil {
+		return e
+	}
+	if replacement > 0 {
+		if _, e = tx.ExecContext(ctx, `UPDATE acquisition_replacements SET source_path=?,size_bytes=?,sha256=?,probe_json=?,file_index=? WHERE source_kind='download' AND job_id=?`, p.Destination, p.Size, p.Hash, p.Probe, j.importIndex(), j.ID); e != nil {
+			return e
+		}
+		if e = tx.Commit(); e != nil {
+			return e
+		}
+		return problem("replacement_review", "Acquired video is verified and retained. Review its replacement in Organize library.")
 	}
 	if e = s.registerImport(ctx, tx, j, p); e != nil {
 		return e

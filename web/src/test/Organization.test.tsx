@@ -335,6 +335,67 @@ describe("Reviewed library organization", () => {
       "/api/v1/organization/files/42/health",
     ]);
   });
+  it("reviews catalog removal without applying it or silently deleting files", async () => {
+    const { fetch } = setup((url, _options, fixture) => {
+      if (url.endsWith("/organization/removal"))
+        return Response.json({
+          ...fixture.plan([], "removal"),
+          removal: {
+            media_id: 1,
+            title: "First feature",
+            mode: "keep",
+            paths: ["Old/First feature.mkv"],
+            affected_records: [{ table: "media_items", ids: [1] }],
+          },
+        });
+    });
+    mount("/organization?media_id=1");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Review catalog removal" }),
+    );
+    const review = await screen.findByRole("region", {
+      name: "Organization review",
+    });
+    expect(
+      within(review).getByText(/Keep all library files in place/),
+    ).toBeVisible();
+    expect(
+      within(review).getByRole("button", { name: "Apply reviewed changes" }),
+    ).toBeDisabled();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/organization/removal",
+      expect.objectContaining({
+        body: JSON.stringify({ media_id: 1, mode: "keep" }),
+      }),
+    );
+    expect(
+      fetch.mock.calls.some(([url]) => url.endsWith("/removal/apply")),
+    ).toBe(false);
+  });
+  it("loads an acquired replacement only after an explicit review action", async () => {
+    const { fetch } = setup((url, _options, fixture) => {
+      if (url.endsWith("/organization/acquisition"))
+        return Response.json(fixture.plan([41], "acquired"));
+    });
+    mount("/organization?acquisition_kind=download&acquisition_job=job-1");
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Review acquired replacement",
+      }),
+    );
+    const review = await screen.findByRole("region", {
+      name: "Organization review",
+    });
+    expect(
+      within(review).getByRole("button", { name: "Apply reviewed changes" }),
+    ).toBeDisabled();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/organization/acquisition",
+      expect.objectContaining({
+        body: JSON.stringify({ kind: "download", job_id: "job-1" }),
+      }),
+    );
+  });
   it("requires review before undoing a completed file move", async () => {
     const { fetch } = setup((url, options, fixture) => {
       if (url.endsWith("/organization/plans") && !options?.method)

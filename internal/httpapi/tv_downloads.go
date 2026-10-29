@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"github.com/faaaaq/ReelScarey/internal/transfer"
 	"net/http"
 	"strconv"
 )
@@ -26,7 +27,18 @@ func (s *Server) searchTVReleases(w http.ResponseWriter, r *http.Request) {
 		}
 		episode = n
 	}
-	out, e := s.transfer.SearchTV(r.Context(), id, season, episode, r.URL.Query().Get("query"))
+	var out []transfer.Release
+	var e error
+	if raw := r.URL.Query().Get("replacement_file_id"); raw != "" {
+		fileID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || fileID < 1 {
+			fail(w, 400, "invalid_file", "Choose a registered file.")
+			return
+		}
+		out, e = s.transfer.SearchTVReplacement(r.Context(), id, season, r.URL.Query().Get("query"), fileID)
+	} else {
+		out, e = s.transfer.SearchTV(r.Context(), id, season, episode, r.URL.Query().Get("query"))
+	}
 	if e != nil {
 		s.transferError(w, e)
 		return

@@ -1,5 +1,48 @@
 # Validation record — 2026-10-28
 
+## Remaining implementation milestones — schema 30
+
+- Final formatting, TypeScript, all 149 UI tests and production build pass;
+  reviews cover removal defaults and explicit acquired-replacement approval.
+  The existing bundle-size advisory remains. No new dependency was introduced.
+- Full Linux Go tests, vet and the complete race suite pass. Subsequent final
+  focused race regressions pass organization, transfer, YouTube, HTTP and requests.
+  The final Docker image builds with the complete frontend/Go/vet gates.
+  Schema assertions and backup/restore checks now cover 30 migrations; rebuilding
+  request lists preserves event triggers. The first regression run found the
+  missing triggers and old schema-count assertions, which were corrected.
+- Generated movie and shared-TV upgrades use real FFprobe with race detection.
+  Tests cover protected normal imports, acquisition without replacing the current
+  video, required separate review, exact shared-episode mappings, rejection of
+  partial mapping, changed container extension, retained client sources and
+  rollback of original download provenance. Existing independent-copy, changed
+  source, symlink, occupied-destination and interrupted-swap recovery tests pass.
+- Generated YouTube replacement passes real FFprobe with selected VTT publication,
+  separate replacement approval, retained original/acquisition bytes and restored
+  provenance after rollback. Acquisition transport is isolated fixture data, not
+  live YouTube network acceptance. Selected VTT copies are additive and remain
+  retained across rollback; subtitle timing correction is not implied.
+- Real disposable qBittorrent movie, TV and multi-season Anime pack regressions
+  pass on Linux using owned generated videos and private localhost profiles.
+  They preserve seeding data and reviewed mappings across reopen. Replacement
+  acquisition itself has generated-media/protocol-fixture evidence; no owner
+  download client, account or library was used.
+- Private TMDb/Trakt fixtures verify fixed hosts, user bearer tokens, encrypted
+  per-list storage, request-account isolation and actual periodic request imports.
+  Existing changed-list revision fences and public-provider regression tests pass.
+  Expired tokens require owner renewal; OAuth enrollment/refresh is not automated.
+  No live private list or provider account acceptance is claimed.
+- Disposable read-only-root containers pass authenticated setup, frontend,
+  health, persistent settings/sessions and actual restart checks. Generated media
+  moves, verified retagging, version rollback, move undo and catalog removal via
+  both keep-files and retained-trash choices pass through the application API;
+  client sources remain unchanged. Test containers/volumes were removed and the
+  running owner installation was not modified.
+- Direct continuous/private IMDb synchronization remains open: the official
+  multi-step export does not provide a stable list-export URL. Existing MDBList
+  synchronization and CSV snapshots remain available. Optional future scope and
+  owner-service/hardware/security acceptance are still tracked separately.
+
 ## Verification, additional title containers and organization undo
 
 - Baseline frontend formatting, types, 146 tests and production build pass.

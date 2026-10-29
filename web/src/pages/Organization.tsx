@@ -47,6 +47,13 @@ type Planned = {
   companions: { source: string; destination: string; size_bytes: number }[];
 };
 type Plan = {
+  removal?: {
+    media_id: number;
+    title: string;
+    mode: string;
+    paths: string[];
+    affected_records: { table: string; ids: number[] }[];
+  };
   restores_plan?: string;
   id: string;
   state: string;
@@ -58,6 +65,11 @@ type Plan = {
   update_embedded_title?: boolean;
   embedded_title?: string;
   replacement?: {
+    after?: { path: string };
+    acquisition_subtitles?: {
+      language: string;
+      file: { source: string; destination: string; size_bytes: number };
+    }[];
     title: string;
     media_file_id: number;
     restores_plan?: string;
@@ -376,6 +388,51 @@ function Reorganize({ config }: { config: Config }) {
   const [selected, setSelected] = useState<number[]>([]),
     [target, setTarget] = useState("");
   const [updateEmbeddedTitle, setUpdateEmbeddedTitle] = useState(false);
+  const acquisitionKind = params.get("acquisition_kind"),
+    acquisitionJob = params.get("acquisition_job");
+  async function reviewAcquisition() {
+    setPending("acquisition");
+    setError("");
+    setReviewed(false);
+    setStale(false);
+    try {
+      setPlan(
+        await api<Plan>("/organization/acquisition", {
+          method: "POST",
+          body: JSON.stringify({
+            kind: acquisitionKind,
+            job_id: acquisitionJob,
+          }),
+        }),
+      );
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending("");
+    }
+  }
+  const [removalMode, setRemovalMode] = useState("keep");
+  async function reviewRemoval() {
+    setPending("removal");
+    setError("");
+    setReviewed(false);
+    setStale(false);
+    try {
+      setPlan(
+        await api<Plan>("/organization/removal", {
+          method: "POST",
+          body: JSON.stringify({
+            media_id: Number(mediaID),
+            mode: removalMode,
+          }),
+        }),
+      );
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending("");
+    }
+  }
   useEffect(() => {
     if (selected.length === 0 && !mediaID) setUpdateEmbeddedTitle(false);
   }, [selected.length, mediaID]);
@@ -1009,6 +1066,21 @@ function Reorganize({ config }: { config: Config }) {
           </p>
         )}
       </section>
+      {acquisitionKind && acquisitionJob && (
+        <section className="panel">
+          <h2>Acquired replacement</h2>
+          <p>
+            Review the verified incoming video and retained previous version
+            before applying.
+          </p>
+          <Button
+            disabled={!!pending || running}
+            onClick={() => void reviewAcquisition()}
+          >
+            Review acquired replacement
+          </Button>
+        </section>
+      )}
       {plan && (
         <section
           className="panel system-panel"
@@ -1055,6 +1127,31 @@ function Reorganize({ config }: { config: Config }) {
             </p>
           )}
           <PlanFiles plan={plan} />
+          {plan.removal && (
+            <div role="note">
+              <h3>Remove {plan.removal.title} from the catalog</h3>
+              <p>
+                {plan.removal.mode === "keep"
+                  ? "Keep all library files in place."
+                  : "Move registered videos and recognized subtitle companions to retained .reelscarey-trash storage. Extras stay in place."}{" "}
+                Related download/import history and catalog associations will be
+                removed. Download-client sources and retained versions stay
+                untouched.
+              </p>
+              <p>
+                {plan.removal.affected_records.reduce(
+                  (n, r) => n + r.ids.length,
+                  0,
+                )}{" "}
+                affected records.
+              </p>
+              <ul>
+                {plan.removal.paths.map((path) => (
+                  <li key={path}>{path}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {plan.state === "queued" && plan.phase === "planned" && (
             <Button
               variant="soft"
@@ -1100,6 +1197,30 @@ function Reorganize({ config }: { config: Config }) {
         </section>
       )}
       <section className="panel system-panel">
+        {mediaID && (
+          <div>
+            <h2>Remove this title</h2>
+            <label>
+              Library files{" "}
+              <select
+                value={removalMode}
+                disabled={!!pending || running}
+                onChange={(e) => setRemovalMode(e.target.value)}
+              >
+                <option value="keep">Keep files in place</option>
+                <option value="trash">Remove to retained trash</option>
+              </select>
+            </label>
+            <Button
+              color="red"
+              variant="soft"
+              disabled={!!pending || running}
+              onClick={() => void reviewRemoval()}
+            >
+              Review catalog removal
+            </Button>
+          </div>
+        )}
         <h2>Recent organization jobs</h2>
         <RequestState
           loading={history.loading}
@@ -1129,6 +1250,7 @@ function Reorganize({ config }: { config: Config }) {
                 </Button>
               )}
               {p.state === "completed" &&
+                !p.removal &&
                 (p.replacement
                   ? !p.replacement.recovering
                   : p.files.length > 0) && (
@@ -1219,11 +1341,34 @@ function PlanFiles({ plan }: { plan: Plan }) {
                 .join(", ")}
             </p>
           )}
+          {plan.replacement.after?.path && (
+            <p>
+              Replacement destination:{" "}
+              <code>{plan.replacement.after.path}</code>
+            </p>
+          )}
+          {!!plan.replacement.acquisition_subtitles?.length && (
+            <div>
+              <p>
+                Selected YouTube subtitles are copied separately; existing
+                subtitles are preserved.
+              </p>
+              <ul>
+                {plan.replacement.acquisition_subtitles.map((s) => (
+                  <li key={s.language}>
+                    {s.language}: <code>{s.file.source}</code> →{" "}
+                    <code>{s.file.destination}</code> (
+                    {bytes(s.file.size_bytes)})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <p>
             The source remains in place. Existing external subtitles remain
             alongside the video, but their timing may differ. The incoming
-            file’s sidecars are not imported. The previous video is retained for
-            a reviewed restore.
+            file’s sidecars are imported only when explicitly listed above. The
+            previous video is retained for a reviewed restore.
           </p>
         </div>
       )}

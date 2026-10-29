@@ -97,6 +97,13 @@ func (s *Store) reviewImportTx(ctx context.Context, tx *sql.Tx, cfg config.Confi
 			return r, e
 		}
 	}
+	var replacement int
+	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM acquisition_replacements WHERE source_kind='youtube' AND job_id=?`, jobID).Scan(&replacement); e != nil {
+		return r, e
+	}
+	if replacement > 0 {
+		r.Destination = path.Join(".reelscarey-versions", "acquired-youtube-"+jobID+ext)
+	}
 	r.Subtitles = []SubtitleReview{}
 	rows, e := tx.QueryContext(ctx, `SELECT language,size_bytes,sha256 FROM youtube_subtitle_sources WHERE job_id=? ORDER BY language`, jobID)
 	if e != nil {
@@ -732,6 +739,25 @@ func (w *Worker) register(ctx context.Context, jobID, owner, dest string, size i
 	}
 	if current != snapshot {
 		return ErrChanged
+	}
+	var replacement int
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM acquisition_replacements WHERE source_kind='youtube' AND job_id=?`, jobID).Scan(&replacement); err != nil {
+		return err
+	}
+	if replacement > 0 {
+		if _, err = tx.ExecContext(ctx, `UPDATE acquisition_replacements SET source_path=?,size_bytes=?,sha256=?,probe_json=? WHERE source_kind='youtube' AND job_id=?`, dest, size, hash, probe, jobID); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE youtube_imports SET phase='committed' WHERE job_id=?`, jobID); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE youtube_subtitle_imports SET phase='committed' WHERE job_id=?`, jobID); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE youtube_jobs SET state='awaiting_review',message='Verified acquisition retained. Review replacement in Organize library.',lease_owner='',lease_until=0 WHERE id=?`, jobID); err != nil {
+			return err
+		}
+		return tx.Commit()
 	}
 	var fileID any
 	if t.Kind != "custom" {

@@ -373,6 +373,40 @@ func (s *Server) organizationRollback(w http.ResponseWriter, r *http.Request) {
 	send(w, 201, out)
 }
 
+func (s *Server) organizationRemoval(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		MediaID int64  `json:"media_id"`
+		Mode    string `json:"mode"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	out, err := s.organization.PreviewRemoval(ctx, in.MediaID, in.Mode)
+	if err != nil {
+		s.organizationError(w, err)
+		return
+	}
+	send(w, 201, out)
+}
+
+func (s *Server) organizationAcquisition(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Kind  string `json:"kind"`
+		JobID string `json:"job_id"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	out, err := s.organization.PreviewAcquisition(r.Context(), in.Kind, in.JobID)
+	if err != nil {
+		s.organizationError(w, err)
+		return
+	}
+	send(w, 201, out)
+}
+
 func (s *Server) organizationCancel(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &struct{}{}) {
 		return

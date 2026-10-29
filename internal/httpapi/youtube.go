@@ -7,10 +7,16 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/youtube"
 )
 
 func (s *Server) youtubeError(w http.ResponseWriter, err error) {
+	var org *organization.Error
+	if errors.As(err, &org) {
+		s.organizationError(w, err)
+		return
+	}
 	switch {
 	case errors.Is(err, youtube.ErrInput), errors.Is(err, youtube.ErrInvalidURL):
 		fail(w, 400, "invalid_youtube_source", err.Error())

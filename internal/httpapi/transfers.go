@@ -20,6 +20,11 @@ func (s *Server) transferReady(w http.ResponseWriter) bool {
 	return true
 }
 func (s *Server) transferError(w http.ResponseWriter, err error) {
+	var org *organization.Error
+	if errors.As(err, &org) {
+		s.organizationError(w, err)
+		return
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		fail(w, 404, "not_found", "This movie or download does not exist.")
 		return
@@ -188,7 +193,8 @@ func (s *Server) downloadCollection(w http.ResponseWriter, r *http.Request) {
 		send(w, 200, out)
 	case http.MethodPost:
 		var body struct {
-			ReleaseID string `json:"release_id"`
+			ReleaseID         string `json:"release_id"`
+			ReplacementFileID int64  `json:"replacement_file_id"`
 		}
 		if !decodeJSON(w, r, &body) {
 			return
@@ -197,7 +203,14 @@ func (s *Server) downloadCollection(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "invalid_release", "Choose a release from a current search.")
 			return
 		}
-		out, created, err := s.transfer.Queue(r.Context(), body.ReleaseID)
+		var out transfer.Job
+		var created bool
+		var err error
+		if body.ReplacementFileID > 0 {
+			out, created, err = s.transfer.QueueReplacement(r.Context(), body.ReleaseID, body.ReplacementFileID)
+		} else {
+			out, created, err = s.transfer.Queue(r.Context(), body.ReleaseID)
+		}
 		if err != nil {
 			s.transferError(w, err)
 			return

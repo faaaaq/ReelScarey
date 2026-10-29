@@ -59,12 +59,14 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   copy per registered video. Rewrites that change stream or packet facts are
   rejected; TS/M2TS container title tags remain unsupported.
 
-- [ ] Connect downloaded upgrades and newly acquired YouTube videos directly to
-  versioned replacement. Existing YouTube-origin files can be replaced and their
-  provenance restored; upgrade searches remain suggestions.
+- [x] Connect manually selected movie/TV upgrades and YouTube videos to reviewed
+  versioned replacement. Source provenance and canonical mappings survive rollback;
+  selected VTT subtitles are copied without replacing existing sidecars.
+  Automatic upgrade searches remain suggestions.
 - [x] Bulk season and episode monitoring. Select up to 100 seasons per show or
   100 loaded episodes per season for an atomic, revision-checked update.
-- [ ] Reviewed catalog/media removal with clear file-deletion choices.
+- [x] Reviewed catalog removal, keeping files or moving registered media and
+  recognized subtitles to retained trash. Permanent trash purging is not provided.
 - [x] Filesystem-health inspection of registered files. Organize library can
   check selected files on one page, reporting missing, changed and unsafe paths.
 - [ ] A guided main-root migration. The main media directory is currently selected
@@ -132,9 +134,10 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 
 ## Requests and Discord
 
-- [ ] Direct continuous IMDb synchronization and private IMDb, TMDb and Trakt
-  lists. Public TMDb/Trakt and IMDb via MDBList sync automatically; IMDb CSV
-  imports are manual snapshots. Limits are described in [REQUESTS.md](REQUESTS.md).
+- [x] Private TMDb/Trakt synchronization with encrypted per-user access tokens.
+- [ ] Direct continuous/private IMDb synchronization requires a supported list
+  feed. The multi-step export has no stable export URL. IMDb via MDBList syncs
+  automatically and CSV imports remain manual snapshots. See [REQUESTS.md](REQUESTS.md).
 - [ ] Live acceptance with owner-selected provider lists and a Discord webhook.
   Existing validation uses isolated provider/Discord fixtures only.
 - [ ] Live Discord companion bot acceptance with an owner-configured application,

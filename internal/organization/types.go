@@ -92,6 +92,7 @@ type PlannedFile struct {
 	Unchanged     bool        `json:"unchanged"`
 }
 type Plan struct {
+	Removal             *Removal      `json:"removal,omitempty"`
 	RestoresPlan        string        `json:"restores_plan,omitempty"`
 	ID                  string        `json:"id"`
 	State               string        `json:"state"`

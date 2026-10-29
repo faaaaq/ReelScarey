@@ -261,9 +261,10 @@ function RequestLists({ onImported }: { onImported: () => void }) {
     "/requester/lists",
     15000,
   );
-  const [provider, setProvider] = useState<"tmdb" | "trakt" | "imdb_mdblist">(
-      "tmdb",
-    ),
+  const [accessToken, setAccessToken] = useState("");
+  const [provider, setProvider] = useState<
+      "tmdb" | "trakt" | "imdb_mdblist" | "tmdb_private" | "trakt_private"
+    >("tmdb"),
     [owner, setOwner] = useState(""),
     [listID, setListID] = useState(""),
     [clientID, setClientID] = useState(""),
@@ -281,14 +282,16 @@ function RequestLists({ onImported }: { onImported: () => void }) {
         method: "POST",
         body: JSON.stringify({
           provider,
-          owner: provider === "trakt" ? owner.trim() : "",
+          access_token: provider.endsWith("_private") ? accessToken.trim() : "",
+          owner: provider.startsWith("trakt") ? owner.trim() : "",
           list_id: listID.trim(),
-          client_id: provider !== "tmdb" ? clientID.trim() : "",
+          client_id: !provider.startsWith("tmdb") ? clientID.trim() : "",
         }),
       });
       setOwner("");
       setListID("");
       setClientID("");
+      setAccessToken("");
       lists.reload();
       setMessage("List saved. New titles will be added as requests.");
     } catch (e) {
@@ -342,9 +345,9 @@ function RequestLists({ onImported }: { onImported: () => void }) {
     <section className="panel settings-form">
       <h2>Import lists</h2>
       <p>
-        Public TMDb and Trakt lists and IMDb lists imported into MDBList are
-        checked automatically each day. Imported titles need administrator
-        review.
+        Public or token-authorized private TMDb/Trakt lists and IMDb lists
+        imported into MDBList are checked automatically each day. Imported
+        titles need administrator review.
       </p>
       <form onSubmit={(e) => void add(e)}>
         <label>
@@ -353,16 +356,41 @@ function RequestLists({ onImported }: { onImported: () => void }) {
             value={provider}
             disabled={pending}
             onChange={(e) => {
-              setProvider(e.target.value as "tmdb" | "trakt" | "imdb_mdblist");
+              setProvider(
+                e.target.value as
+                  | "tmdb"
+                  | "trakt"
+                  | "imdb_mdblist"
+                  | "tmdb_private"
+                  | "trakt_private",
+              );
               setClientID("");
+              setAccessToken("");
             }}
           >
+            <option value="tmdb_private">TMDb private list</option>
+            <option value="trakt_private">Trakt private list</option>
             <option value="tmdb">TMDb</option>
             <option value="trakt">Trakt</option>
             <option value="imdb_mdblist">IMDb via MDBList</option>
           </select>
         </label>
-        {provider === "trakt" && (
+        {provider.endsWith("_private") && (
+          <label>
+            User access token{" "}
+            <TextField.Root
+              type="password"
+              value={accessToken}
+              onChange={(e) => setAccessToken(e.target.value)}
+              autoComplete="off"
+            />
+            <span>
+              Use your provider-issued user token. Expired tokens require adding
+              the list again. Tokens are encrypted and never displayed.
+            </span>
+          </label>
+        )}
+        {provider.startsWith("trakt") && (
           <label>
             Trakt list owner{" "}
             <TextField.Root
@@ -373,7 +401,7 @@ function RequestLists({ onImported }: { onImported: () => void }) {
           </label>
         )}
         <label>
-          {provider === "trakt"
+          {provider.startsWith("trakt")
             ? "Trakt list slug or ID"
             : provider === "imdb_mdblist"
               ? "MDBList external list ID"
@@ -384,9 +412,9 @@ function RequestLists({ onImported }: { onImported: () => void }) {
             required
           />
         </label>
-        {provider !== "tmdb" && (
+        {!provider.startsWith("tmdb") && (
           <label>
-            {provider === "trakt"
+            {provider.startsWith("trakt")
               ? "Trakt application client ID"
               : "MDBList API key"}{" "}
             <TextField.Root

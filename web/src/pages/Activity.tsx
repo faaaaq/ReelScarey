@@ -201,6 +201,14 @@ function JobCard({ job, reload }: { job: DownloadJob; reload: () => void }) {
           {job.error_message}
         </p>
       )}
+      {job.error_code === "replacement_review" && (
+        <Link
+          className="text-link"
+          to={`/organization?acquisition_kind=download&acquisition_job=${job.id}`}
+        >
+          Review acquired replacement
+        </Link>
+      )}
       {job.error_code === "choose_file" && attention && (
         <div className="file-choices">
           <label htmlFor={`file-${job.id}`}>Movie file to import</label>
@@ -297,6 +305,7 @@ function JobCard({ job, reload }: { job: DownloadJob; reload: () => void }) {
         )}
       <div className="provider-actions">
         {attention &&
+          job.error_code !== "replacement_review" &&
           job.error_code !== "choose_file" &&
           job.error_code !== "map_episodes" && (
             <Button disabled={pending} onClick={() => void action("retry")}>

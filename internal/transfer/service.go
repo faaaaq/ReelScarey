@@ -270,6 +270,9 @@ func (s *Service) Search(ctx context.Context, movieID int64, query string) ([]Re
 		return nil, e
 	}
 	defer tx.Rollback()
+	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+		return nil, e
+	}
 	if _, e = tx.ExecContext(ctx, `DELETE FROM release_candidates WHERE id NOT IN (SELECT release_id FROM downloads) AND (movie_id=? OR expires_at<?)`, movieID, now); e != nil {
 		return nil, e
 	}
@@ -308,7 +311,17 @@ func (s *Service) QueueAutomatic(ctx context.Context, releaseID string, guard Qu
 	}
 	return s.queue(ctx, releaseID, guard)
 }
-func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard) (Job, bool, error) {
+func (s *Service) QueueReplacement(ctx context.Context, releaseID string, fileID int64) (Job, bool, error) {
+	if fileID < 1 {
+		return Job{}, false, problem("invalid_file", "Choose a registered replacement target.")
+	}
+	return s.queue(ctx, releaseID, nil, fileID)
+}
+func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard, replacement ...int64) (Job, bool, error) {
+	var replacementID int64
+	if len(replacement) > 0 {
+		replacementID = replacement[0]
+	}
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
 	if existing, e := s.jobBy(ctx, "d.release_id", releaseID); e == nil {
@@ -388,7 +401,7 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard)
 		return Job{}, false, e
 	}
 	if v.Kind == "series" {
-		return s.queueTV(ctx, v, releaseID, sealed, hash, client, guard)
+		return s.queueTV(ctx, v, releaseID, sealed, hash, client, guard, replacementID)
 	}
 	if _, e = s.MovieByID(ctx, v.MovieID); e != nil {
 		return Job{}, false, e
@@ -401,13 +414,16 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard)
 		return Job{}, false, e
 	}
 	defer tx.Rollback()
+	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+		return Job{}, false, e
+	}
 	if guard != nil {
 		if e = guard(ctx, tx, v); e != nil {
 			return Job{}, false, e
 		}
 	}
 	var active int
-	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM media_files WHERE movie_id=?)+(SELECT COUNT(*) FROM youtube_jobs WHERE media_id=? AND target_kind='movie' AND state NOT IN ('completed','cancelled','failed'))`, v.MovieID, v.MovieID, v.MovieID).Scan(&active); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM media_files WHERE movie_id=? AND id<>?)+(SELECT COUNT(*) FROM youtube_jobs WHERE media_id=? AND target_kind='movie' AND state NOT IN ('completed','cancelled','failed'))`, v.MovieID, v.MovieID, replacementID, v.MovieID).Scan(&active); e != nil {
 		return Job{}, false, e
 	}
 	if active > 0 {
@@ -423,6 +439,11 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard)
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,indexer_name,protocol,organization_snapshot) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, v.IndexerName, protocol, string(namingJSON)); e != nil {
 		return Job{}, false, e
+	}
+	if replacementID > 0 {
+		if e = organization.ReserveAcquisition(ctx, tx, "download", id, replacementID, v.MovieID, nil); e != nil {
+			return Job{}, false, e
+		}
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET status='downloading' WHERE id=? AND status<>'available'`, v.MovieID); e != nil {
 		return Job{}, false, e

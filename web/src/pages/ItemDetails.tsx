@@ -222,6 +222,12 @@ export function ItemInformation({
                     : "movies"}
               </Link>
               <section className="panel item-hero">
+                <Link
+                  className="text-link"
+                  to={`/organization?media_id=${data.item.id}`}
+                >
+                  Organize or remove this title
+                </Link>
                 <Poster movie={data.item} />
                 <div>
                   <div className="item-badges">

@@ -37,8 +37,11 @@ func (s *Service) episodes(ctx context.Context, q query, fileID int64) ([]Episod
 	return out, rows.Err()
 }
 func idle(ctx context.Context, q query, mediaID, fileID int64) error {
+	return idleExcept(ctx, q, mediaID, fileID, "", "")
+}
+func idleExcept(ctx context.Context, q query, mediaID, fileID int64, kind, job string) error {
 	var n int
-	e := q.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM subtitle_jobs WHERE media_file_id=? AND (lease_until>=unixepoch() OR (requested=1 AND state IN ('queued','running','retrying','waiting_provider'))))+(SELECT COUNT(*) FROM subtitle_imports WHERE media_file_id=? AND phase<>'committed')+(SELECT COUNT(*) FROM youtube_jobs WHERE media_id=? AND state NOT IN ('completed','cancelled','failed'))+(SELECT COUNT(*) FROM youtube_imports i JOIN youtube_jobs j ON j.id=i.job_id WHERE j.media_id=? AND i.phase<>'committed')`, mediaID, fileID, fileID, mediaID, mediaID).Scan(&n)
+	e := q.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM downloads WHERE movie_id=? AND id<>? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM subtitle_jobs WHERE media_file_id=? AND (lease_until>=unixepoch() OR (requested=1 AND state IN ('queued','running','retrying','waiting_provider'))))+(SELECT COUNT(*) FROM subtitle_imports WHERE media_file_id=? AND phase<>'committed')+(SELECT COUNT(*) FROM youtube_jobs WHERE media_id=? AND id<>? AND state NOT IN ('completed','cancelled','failed'))+(SELECT COUNT(*) FROM youtube_imports i JOIN youtube_jobs j ON j.id=i.job_id WHERE j.media_id=? AND j.id<>? AND i.phase<>'committed')`, mediaID, map[bool]string{true: job}[kind == "download"], fileID, fileID, mediaID, map[bool]string{true: job}[kind == "youtube"], mediaID, map[bool]string{true: job}[kind == "youtube"]).Scan(&n)
 	if e != nil {
 		return e
 	}
@@ -271,7 +274,7 @@ func readPlan(ctx context.Context, q query, id string) (Plan, error) {
 	return p, nil
 }
 func (s *Service) Plans(ctx context.Context) ([]Plan, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT id FROM organization_plans ORDER BY CASE WHEN state IN ('queued','running') OR (state='failed' AND (json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')) THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT 20`)
+	rows, e := s.db.QueryContext(ctx, `SELECT id FROM organization_plans ORDER BY CASE WHEN state IN ('queued','running') OR (state='failed' AND (((json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')) OR (json_extract(snapshot,'$.removal') IS NOT NULL AND json_extract(snapshot,'$.phase')<>'failed_safe'))) THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT 20`)
 	if e != nil {
 		return nil, e
 	}
@@ -351,7 +354,7 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 		}
 	}
 	var count int
-	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE (state IN ('queued','running') OR (state='failed' AND (json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe'))) AND id<>?`, id).Scan(&count); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE (state IN ('queued','running') OR (state='failed' AND (((json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')) OR (json_extract(snapshot,'$.removal') IS NOT NULL AND json_extract(snapshot,'$.phase')<>'failed_safe')))) AND id<>?`, id).Scan(&count); e != nil {
 		return p, e
 	}
 	if count != 0 {
@@ -366,6 +369,14 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 	return s.Plan(ctx, id)
 }
 func (s *Service) validate(ctx context.Context, root *os.Root, q query, p Plan, allowPublished bool) error {
+	if p.Removal != nil {
+		if e := s.validateRemoval(ctx, q, p); e != nil {
+			return e
+		}
+		if p.Removal.Mode == "keep" {
+			return nil
+		}
+	}
 	if p.EntireMediaID != 0 {
 		ids, err := titleFiles(ctx, q, p.EntireMediaID)
 		if err != nil {
@@ -476,7 +487,7 @@ func (s *Service) Tick(ctx context.Context) error {
 	mediaGate.Lock()
 	defer mediaGate.Unlock()
 	var unresolved int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state='failed' AND (json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')`).Scan(&unresolved); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state='failed' AND (((json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')) OR (json_extract(snapshot,'$.removal') IS NOT NULL AND json_extract(snapshot,'$.phase')<>'failed_safe'))`).Scan(&unresolved); err != nil {
 		return err
 	}
 	if unresolved != 0 {
@@ -499,6 +510,21 @@ func (s *Service) Tick(ctx context.Context) error {
 	}
 	e = s.execute(ctx, &p)
 	if e != nil {
+		if p.Removal != nil && p.Phase != "committed" {
+			if root, _, err := s.openRoot(p.Root); err == nil {
+				safe := true
+				for _, file := range allFiles(p) {
+					if checkSource(context.WithoutCancel(ctx), root, file, false) != nil {
+						safe = false
+						break
+					}
+				}
+				if safe {
+					_ = s.savePhase(context.WithoutCancel(ctx), &p, "failed_safe")
+				}
+				root.Close()
+			}
+		}
 		if p.Replacement != nil && (p.Phase == "planned" || p.Phase == "prepared") {
 			if root, _, err := s.openRoot(p.Root); err == nil {
 				// No source deletion occurs in these phases. Avoid an unbounded

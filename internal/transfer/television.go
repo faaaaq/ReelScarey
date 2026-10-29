@@ -28,6 +28,13 @@ type TVTarget struct {
 func (s *Service) SearchTV(ctx context.Context, seriesID int64, season, episode int, query string) ([]Release, error) {
 	return s.searchTV(ctx, seriesID, season, episode, query, false)
 }
+func (s *Service) SearchTVReplacement(ctx context.Context, seriesID int64, season int, query string, fileID int64) ([]Release, error) {
+	out, e := s.searchTV(ctx, seriesID, season, 0, query, true)
+	if e != nil {
+		return nil, e
+	}
+	return s.restrictReplacementCandidates(ctx, out, fileID)
+}
 func (s *Service) SearchTVUpgrade(ctx context.Context, seriesID int64, season, episode int) ([]Release, error) {
 	return s.searchTV(ctx, seriesID, season, episode, "", true)
 }
@@ -43,7 +50,7 @@ func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode 
 	if loaded == "" {
 		return nil, problem("episodes_not_loaded", "Load this season's episodes before searching for releases.")
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT e.id,e.tmdb_id,s.number,e.number,e.title,a.absolute_number FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id LEFT JOIN anime_episode_numbers a ON a.episode_id=e.id WHERE s.series_id=? AND s.number=? AND (?=0 OR e.number=?) AND (?<>0 OR (m.monitored=1 AND s.monitored=1 AND e.monitored=1)) AND (? OR NOT EXISTS(SELECT 1 FROM episode_files f WHERE f.episode_id=e.id)) ORDER BY e.number LIMIT 101`, seriesID, season, episode, episode, episode, includeAvailable)
+	rows, e := s.db.QueryContext(ctx, `SELECT e.id,e.tmdb_id,s.number,e.number,e.title,a.absolute_number FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id LEFT JOIN anime_episode_numbers a ON a.episode_id=e.id WHERE s.series_id=? AND s.number=? AND (?=0 OR e.number=?) AND (?<>0 OR ? OR (m.monitored=1 AND s.monitored=1 AND e.monitored=1)) AND (? OR NOT EXISTS(SELECT 1 FROM episode_files f WHERE f.episode_id=e.id)) ORDER BY e.number LIMIT 101`, seriesID, season, episode, episode, episode, includeAvailable, includeAvailable)
 	if e != nil {
 		return nil, e
 	}
@@ -93,6 +100,9 @@ func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode 
 		return nil, e
 	}
 	defer tx.Rollback()
+	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+		return nil, e
+	}
 	now := time.Now().Unix()
 	scope := fmt.Sprintf("tv:%d:%d", season, episode)
 	if _, e = tx.ExecContext(ctx, `DELETE FROM release_candidates WHERE id NOT IN (SELECT release_id FROM downloads) AND ((movie_id=? AND scope=?) OR expires_at<?)`, seriesID, scope, now); e != nil {
@@ -162,7 +172,16 @@ func validateTVTarget(ctx context.Context, tx *sql.Tx, seriesID int64, t TVTarge
 	}
 	return nil
 }
-func reserveTV(ctx context.Context, tx *sql.Tx, id string, seriesID int64, targets []TVTarget) error {
+func reserveTV(ctx context.Context, tx *sql.Tx, id string, seriesID int64, targets []TVTarget, replacement ...int64) error {
+	var replacementID int64
+	if len(replacement) > 0 {
+		replacementID = replacement[0]
+	}
+	if replacementID == 0 {
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT media_file_id FROM acquisition_replacements WHERE source_kind='download' AND job_id=?),0)`, id).Scan(&replacementID); err != nil {
+			return err
+		}
+	}
 	for _, t := range targets {
 		if t.Skipped {
 			continue
@@ -171,7 +190,7 @@ func reserveTV(ctx context.Context, tx *sql.Tx, id string, seriesID int64, targe
 			return e
 		}
 		var busy int
-		if e := tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM episode_downloads WHERE episode_id=? AND download_id<>?)+(SELECT COUNT(*) FROM episode_files ef JOIN media_files mf ON mf.id=ef.media_file_id WHERE ef.episode_id=? AND (mf.download_id IS NULL OR mf.download_id<>?))+(SELECT COUNT(*) FROM youtube_jobs WHERE episode_id=? AND target_kind='episode' AND state NOT IN ('completed','cancelled','failed'))`, t.EpisodeID, id, t.EpisodeID, id, t.EpisodeID).Scan(&busy); e != nil {
+		if e := tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM episode_downloads WHERE episode_id=? AND download_id<>?)+(SELECT COUNT(*) FROM episode_files ef JOIN media_files mf ON mf.id=ef.media_file_id WHERE ef.episode_id=? AND mf.id<>? AND (mf.download_id IS NULL OR mf.download_id<>?))+(SELECT COUNT(*) FROM youtube_jobs WHERE episode_id=? AND target_kind='episode' AND state NOT IN ('completed','cancelled','failed'))`, t.EpisodeID, id, t.EpisodeID, replacementID, id, t.EpisodeID).Scan(&busy); e != nil {
 			return e
 		}
 		if busy > 0 {
@@ -187,7 +206,7 @@ func refreshTVStatus(ctx context.Context, tx *sql.Tx, id int64) error {
 	_, e := tx.ExecContext(ctx, `UPDATE media_items SET status=CASE WHEN EXISTS(SELECT 1 FROM downloads WHERE movie_id=? AND kind='series' AND state NOT IN ('completed','cancelled')) THEN 'downloading' WHEN EXISTS(SELECT 1 FROM media_files WHERE series_id=?) THEN 'available' ELSE 'missing' END WHERE id=? AND kind='series'`, id, id, id)
 	return e
 }
-func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, sealed []byte, hash string, client ClientConfig, guard QueueGuard) (Job, bool, error) {
+func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, sealed []byte, hash string, client ClientConfig, guard QueueGuard, replacementID int64) (Job, bool, error) {
 	if len(v.Targets) == 0 || len(v.Targets) > 100 {
 		return Job{}, false, problem("invalid_release", "This TV selection has invalid episode targets. Search again.")
 	}
@@ -206,6 +225,9 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 		return Job{}, false, e
 	}
 	defer tx.Rollback()
+	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+		return Job{}, false, e
+	}
 	if e = validateAnimeSnapshot(ctx, tx, v); e != nil {
 		return Job{}, false, e
 	}
@@ -275,8 +297,17 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 			return Job{}, false, e
 		}
 	}
-	if e = reserveTV(ctx, tx, id, v.MovieID, v.Targets); e != nil {
+	if e = reserveTV(ctx, tx, id, v.MovieID, v.Targets, replacementID); e != nil {
 		return Job{}, false, e
+	}
+	if replacementID > 0 {
+		ids := []int64{}
+		for _, t := range v.Targets {
+			ids = append(ids, t.EpisodeID)
+		}
+		if e = organization.ReserveAcquisition(ctx, tx, "download", id, replacementID, v.MovieID, ids); e != nil {
+			return Job{}, false, e
+		}
 	}
 	if e = refreshTVStatus(ctx, tx, v.MovieID); e != nil {
 		return Job{}, false, e

@@ -90,3 +90,30 @@ assert.equal(undone?.state, 'completed')
 assert.equal(run('sha256sum', '/media/Movies/Fixture/Film.mp4').split(' ')[0], before)
 assert.equal(run('sha256sum', '/downloads/seeding.mp4').split(' ')[0], before)
 console.log('PASS: real container move, verified embedded title, retained source, version rollback and reviewed move undo across restart')
+async function completePlan(plan) {
+  await api(`/organization/plans/${plan.id}/apply`, {method:'POST',body:'{}'})
+  for(let i=0;i<150;i++) {
+    const saved=await api(`/organization/plans/${plan.id}`)
+    if(saved.state==='completed')return
+    if(saved.state==='failed')throw new Error(saved.message)
+    await delay(400)
+  }
+  throw new Error('Removal completion timed out')
+}
+const keep=await api('/organization/removal',{method:'POST',body:JSON.stringify({media_id:4242,mode:'keep'})})
+assert.equal(keep.removal.mode,'keep')
+await completePlan(keep)
+assert.equal(run('sha256sum','/media/Movies/Fixture/Film.mp4').split(' ')[0],before)
+run('python3','-c',`import sqlite3, hashlib
+p='/media/Movies/Fixture/Film.mp4'
+b=open(p,'rb').read()
+c=sqlite3.connect('/config/reelscarey.db')
+c.execute("INSERT INTO media_items(id,kind,tmdb_id,title,year,status) VALUES(4243,'movie',4243,'Trash Fixture',2020,'available')")
+c.execute("INSERT INTO media_files(id,movie_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin,source_name) VALUES(4243,4243,'Movies/Fixture/Film.mp4',?,?,?,1,'existing','Film.mp4')",(len(b),hashlib.sha256(b).hexdigest(),'{}'))
+c.commit()`)
+const trash=await api('/organization/removal',{method:'POST',body:JSON.stringify({media_id:4243,mode:'trash'})})
+await completePlan(trash)
+assert.equal(run('sha256sum',`/media/${trash.files[0].destination}`).split(' ')[0],before)
+assert.equal(run('sha256sum','/downloads/seeding.mp4').split(' ')[0],before)
+assert.equal(run('python3','-c',"import sqlite3; c=sqlite3.connect('/config/reelscarey.db'); print(c.execute('SELECT COUNT(*) FROM media_items WHERE id IN (4242,4243)').fetchone()[0])"),'0')
+console.log('PASS: reviewed catalog removal with keep-files and retained-trash choices preserves download sources')

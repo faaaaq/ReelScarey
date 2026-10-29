@@ -22,7 +22,7 @@ var internalTagRE = regexp.MustCompile(`^\.reelscarey-tag-[a-f0-9]{32}$`)
 func validManagedRelative(name string) bool {
 	parts := strings.Split(name, "/")
 	for i, part := range parts {
-		if internalFolderStageRE.MatchString(part) || i == 0 && part == ".reelscarey-versions" || i == len(parts)-1 && (internalStageRE.MatchString(part) || internalVersionRE.MatchString(part) || internalTagRE.MatchString(part)) {
+		if internalFolderStageRE.MatchString(part) || i == 0 && (part == ".reelscarey-versions" || part == ".reelscarey-trash" && len(parts) > 2 && regexp.MustCompile(`^[a-f0-9]{32}$`).MatchString(parts[1])) || i == len(parts)-1 && (internalStageRE.MatchString(part) || internalVersionRE.MatchString(part) || internalTagRE.MatchString(part)) {
 			parts[i] = "safe-stage"
 		}
 	}
@@ -247,7 +247,7 @@ func companionsIgnoring(ctx context.Context, root *os.Root, source, destination 
 			return nil, e
 		}
 		v.Destination = path.Join(path.Dir(destination), targetStem+suffix)
-		if !validRelative(v.Destination) {
+		if !validManagedRelative(v.Destination) {
 			return nil, problem("unsafe_path", "A companion suffix produces an unsafe destination.")
 		}
 		out = append(out, v)

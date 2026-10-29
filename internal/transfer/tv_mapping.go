@@ -205,6 +205,13 @@ func (s *Service) ConfirmTVMapping(ctx context.Context, id string, in TVMappingU
 	if len(in.Files) == 0 || len(in.Files) > 100 || len(in.SkipEpisodeIDs) > 100 {
 		return mappingError()
 	}
+	var replacement int
+	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM acquisition_replacements WHERE source_kind='download' AND job_id=?`, id).Scan(&replacement); e != nil {
+		return e
+	}
+	if replacement > 0 && (len(in.Files) != 1 || len(in.SkipEpisodeIDs) != 0) {
+		return problem("invalid_mapping", "Replacement must map one file to every episode in the registered version.")
+	}
 	targets := map[int64]TVTarget{}
 	for _, t := range j.Targets {
 		targets[t.EpisodeID] = t

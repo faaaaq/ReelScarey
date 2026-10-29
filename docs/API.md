@@ -584,3 +584,45 @@ inverse paths, without moving files. Apply requires the normal explicit review.
 Current collection and naming preferences remain unchanged for future imports.
 Changed registered versions/mappings and occupied original paths are rejected;
 whole-folder reviews include current extras and use the existing copy journal.
+
+### Acquired replacements and catalog removal (schema 30)
+
+POST `/downloads` accepts optional positive `replacement_file_id` with a manual
+release selection. Normal and automatic downloads still refuse registered files.
+TV replacement searches accept `replacement_file_id`; the selected file must
+belong to that show/season. Reservation binds its current SHA and exact episode
+set. A shared video requires one reviewed completed file covering every episode;
+skipping episodes or splitting that replacement is rejected. Both qBittorrent
+and SABnzbd retain the existing complete-output and source-containment gates.
+
+Verified downloads pause as `blocked`/`replacement_review` with their import journal
+published but uncommitted. POST `/organization/acquisition` with `{kind,job_id}`
+(`download` or `youtube`) creates/reuses an immutable replacement review. Apply
+uses the existing organization journal, independent copies, retained versions,
+no-overwrite checks and rollback. Completion commits source provenance, download
+history and episode associations atomically. Different video extensions use a
+new destination extension and refuse collisions; rollback restores the old one.
+
+YouTube acquisition for an existing catalog target is labeled as replacement in
+its initial review. The first import publishes a retained candidate and selected
+subtitles, then returns to `awaiting_review`. A separate organization review is
+mandatory before replacing video. Selected VTT copies have source-specific paths;
+existing sidecars and both versions remain. Rollback restores video provenance
+and retains subtitle bytes without claiming timing synchronization.
+
+POST `/organization/removal` with `{media_id,mode}` (`keep` or `trash`) returns a
+201 review containing title, registered paths and hashed dependent-record
+snapshots. It accepts at most 100 files and 10,000 dependent rows. Apply rechecks
+the complete dependency closure and refuses pending media work, scans and active
+automation. `keep` removes catalog rows/history only; `trash` journals moves of
+registered files and recognized subtitle companions under `.reelscarey-trash`.
+Unregistered extras, client sources and retained versions are preserved. No
+permanent file-purge endpoint exists. Partial work retains verified outputs;
+failed cleanup remains fenced for recovery. Removed titles must be re-added
+and their retained media explicitly registered if desired.
+
+Requester list creation accepts providers `tmdb_private`/`trakt_private` with
+write-only `access_token`; Trakt also needs `client_id` and owner/list slug. Tokens
+are encrypted per list, bound to the resolved account, sent only to fixed provider
+hosts and omitted from responses/events. Expired tokens fail with a visible
+generic error. Public providers and existing credential formats remain compatible.

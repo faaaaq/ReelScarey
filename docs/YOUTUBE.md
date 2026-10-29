@@ -43,7 +43,23 @@ Configuration backups do not include the staging volume or downloaded media;
 retain the staging volume while queued or review-pending jobs need their files.
 
 The feature does not use browser cookies or user-supplied command flags. It does
-not automatically infer episodes, download entire channels, replace existing
+not automatically infer episodes, download entire channels, automatically replace
 library files, or embed subtitle tracks. Playlist and channel browsing is bounded;
 select each desired video explicitly. Existing OpenSubtitles settings are separate
 from the YouTube subtitle choices.
+
+Existing catalog movies or single-episode files can now receive a replacement.
+The initial target review explicitly labels replacement acquisition. Acquisition
+and its first import review retain a verified candidate under the versions folder;
+they do not change the current video. Then choose **Review acquired replacement**
+to inspect the destination, previous version and selected VTT subtitle paths in
+Organize library, and separately approve the swap. Shared episode files require
+an acquisition covering the complete shared mapping; the individual-video YouTube
+target selector supports single episodes only. Custom collections retain their
+ordinary import workflow.
+
+Selected subtitles receive separate source-specific names without overwriting
+existing sidecars. Both versions, the acquisition and subtitle bytes are retained
+across rollback, and the appropriate YouTube video provenance is restored. Old
+or newly retained sidecars may have different timing; rollback does not erase
+them. Automatic subtitle timing correction is not provided.

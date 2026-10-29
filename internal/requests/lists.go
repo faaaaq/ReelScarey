@@ -21,7 +21,12 @@ var listSlug = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
 var listNumber = regexp.MustCompile(`^[1-9][0-9]{0,15}$`)
 var traktClientID = regexp.MustCompile(`^[A-Za-z0-9]{20,200}$`)
 var mdblistKey = regexp.MustCompile(`^[A-Za-z0-9_-]{16,256}$`)
-var ErrList = errors.New("Choose a valid public list and provider settings.")
+
+func validPrivateToken(token string) bool {
+	return len(token) >= 20 && len(token) <= 4096 && regexp.MustCompile(`^[A-Za-z0-9._~-]+$`).MatchString(token)
+}
+
+var ErrList = errors.New("Choose a valid list and provider credentials.")
 
 type ImportList struct {
 	ID          int64  `json:"id"`
@@ -62,8 +67,20 @@ func (s *Lists) All(ctx context.Context, account int64) ([]ImportList, error) {
 	}
 	return out, rows.Err()
 }
-func (s *Lists) Add(ctx context.Context, account int64, provider, owner, id, key string) (ImportList, error) {
-	if account < 1 || (provider != "tmdb" && provider != "trakt" && provider != "imdb_mdblist") || (provider == "tmdb" && (!listNumber.MatchString(id) || owner != "" || key != "")) || (provider == "trakt" && (!listSlug.MatchString(owner) || !listSlug.MatchString(id) || !traktClientID.MatchString(key))) || (provider == "imdb_mdblist" && (!listNumber.MatchString(id) || owner != "" || !mdblistKey.MatchString(key))) {
+func (s *Lists) Add(ctx context.Context, account int64, provider, owner, id, key string, accessToken ...string) (ImportList, error) {
+	base := strings.TrimSuffix(provider, "_private")
+	private := base != provider
+	token := ""
+	if len(accessToken) > 0 {
+		token = accessToken[0]
+	}
+	if private && (!validPrivateToken(token) || base != "tmdb" && base != "trakt") {
+		return ImportList{}, ErrList
+	}
+	if !private && token != "" {
+		return ImportList{}, ErrList
+	}
+	if account < 1 || (base != "tmdb" && base != "trakt" && base != "imdb_mdblist") || (base == "tmdb" && (!listNumber.MatchString(id) || owner != "" || key != "")) || (base == "trakt" && (!listSlug.MatchString(owner) || !listSlug.MatchString(id) || !traktClientID.MatchString(key))) || (base == "imdb_mdblist" && (!listNumber.MatchString(id) || owner != "" || !mdblistKey.MatchString(key))) {
 		return ImportList{}, ErrList
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -91,6 +108,14 @@ func (s *Lists) Add(ctx context.Context, account int64, provider, owner, id, key
 	rowID, err := result.LastInsertId()
 	if err != nil {
 		return ImportList{}, err
+	}
+	if private {
+		if base == "tmdb" {
+			key = token
+		} else {
+			raw, _ := json.Marshal(privateListCredentials{ClientID: key, AccessToken: token})
+			key = string(raw)
+		}
 	}
 	if key != "" {
 		sealed, e := s.secrets.Seal(fmt.Sprintf("request-list:%d", rowID), []byte(key))
@@ -135,7 +160,30 @@ func (s *Lists) Refresh(ctx context.Context, account, id int64) error {
 	return nil
 }
 
+type privateListCredentials struct {
+	ClientID    string `json:"client_id"`
+	AccessToken string `json:"access_token"`
+}
+
 func (s *Lists) fetch(ctx context.Context, provider, owner, id, key string) ([]listTitle, error) {
+	private := strings.HasSuffix(provider, "_private")
+	provider = strings.TrimSuffix(provider, "_private")
+	var token string
+	if private {
+		if provider == "tmdb" {
+			token = key
+		} else {
+			var c privateListCredentials
+			if json.Unmarshal([]byte(key), &c) != nil {
+				return nil, ErrList
+			}
+			key = c.ClientID
+			token = c.AccessToken
+		}
+		if !validPrivateToken(token) {
+			return nil, ErrList
+		}
+	}
 	if provider == "imdb_mdblist" {
 		if owner != "" || !listNumber.MatchString(id) || !mdblistKey.MatchString(key) {
 			return nil, ErrList
@@ -172,6 +220,9 @@ func (s *Lists) fetch(ctx context.Context, provider, owner, id, key string) ([]l
 		} else {
 			req.Header.Set("trakt-api-key", key)
 			req.Header.Set("trakt-api-version", "2")
+			if private {
+				req.Header.Set("Authorization", "Bearer "+token)
+			}
 		}
 		resp, err := s.client.Do(req)
 		if err != nil {
@@ -183,7 +234,7 @@ func (s *Lists) fetch(ctx context.Context, provider, owner, id, key string) ([]l
 			return nil, errors.New("The list provider returned an unreadable response.")
 		}
 		if resp.StatusCode != 200 {
-			return nil, errors.New("The list is unavailable. Check that it is public and its provider settings are valid.")
+			return nil, errors.New("The list is unavailable. Check visibility, access-token expiry and provider settings.")
 		}
 		last := false
 		if provider == "tmdb" {
@@ -198,8 +249,8 @@ func (s *Lists) fetch(ctx context.Context, provider, owner, id, key string) ([]l
 					Name      string `json:"name"`
 				} `json:"results"`
 			}
-			if json.Unmarshal(body, &data) != nil || !data.Public || data.Page != page || data.TotalPages < 0 || data.TotalPages > 10 || len(data.Results) > 100 {
-				return nil, errors.New("The public TMDb list response could not be verified.")
+			if json.Unmarshal(body, &data) != nil || (!data.Public && !private) || data.Page != page || data.TotalPages < 0 || data.TotalPages > 10 || len(data.Results) > 100 {
+				return nil, errors.New("The TMDb list response could not be verified.")
 			}
 			for _, v := range data.Results {
 				kind, title := v.MediaType, v.Title
@@ -233,7 +284,7 @@ func (s *Lists) fetch(ctx context.Context, provider, owner, id, key string) ([]l
 				} `json:"show"`
 			}
 			if json.Unmarshal(body, &data) != nil || len(data) > 100 {
-				return nil, errors.New("The public Trakt list response could not be verified.")
+				return nil, errors.New("The Trakt list response could not be verified.")
 			}
 			for _, v := range data {
 				if v.Type == "movie" && v.Movie != nil {

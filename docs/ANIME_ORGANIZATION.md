@@ -229,3 +229,14 @@ preferences remain in force for future imports. Occupied destinations, changed
 episode mappings or changed registered media refuse rollback. If embedded titles
 or video versions changed after the move, restore those versions first. No
 existing file is overwritten; undoing an undo also requires a new review.
+
+From a title's details, **Organize or remove this title** opens scoped controls.
+**Review catalog removal** defaults to keeping files. Alternatively, move verified
+registered videos and recognized subtitle companions to retained trash, preserving
+unregistered extras, client sources and previous versions. Review every affected
+path and the record count before applying. Catalog associations and dependent
+download/import history are removed in one transaction; a title can be added again
+and retained files explicitly registered. There is no permanent trash purge.
+Reviews are bounded to 100 files/10,000 dependent records and reject pending work
+or changes to the reviewed catalog/history. Failed cleanup keeps media work fenced
+until the saved job recovers; failed-safe jobs require a new review.

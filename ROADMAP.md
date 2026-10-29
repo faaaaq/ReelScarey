@@ -26,7 +26,8 @@ Historical native and package results below remain as records of past work.
   control over approval and importing, with clear request status for users.
   Request accounts, approval, public TMDb/Trakt synchronization, automatic IMDb
   synchronization via an MDBList account, and one-time IMDb CSV imports are
-  implemented. Private lists and broader provider acceptance remain open.
+  implemented. Private TMDb/Trakt lists now use encrypted per-user access tokens.
+  Direct/private IMDb synchronization and owner-service acceptance remain open.
 - [ ] Add built-in Discord webhook notifications. Let users supply their own
   webhook information and receive notifications when their requests are fulfilled.
   Per-user encrypted webhooks and durable fulfillment notifications are
@@ -59,6 +60,13 @@ Historical native and package results below remain as records of past work.
   transitions that were not stored cannot be reconstructed.
 
 ## 1 — Foundation
+
+Current follow-through: manually acquired movie/TV upgrades and catalog-targeted
+YouTube videos connect to reviewed, versioned replacement and rollback, preserving
+canonical episode mappings, source provenance and selected VTT copies. Catalog
+removal offers keep-files or retained-trash reviews. Schema 30 adds acquisition
+reservations and private-list credentials; see docs/API.md and MILESTONES.md.
+
 - [x] Go server, structured logging, graceful shutdown and validated environment
 - [x] SQLite initialization, transactional checksummed migrations and persistence
 - [x] Versioned REST API, health/readiness, settings and library reads
