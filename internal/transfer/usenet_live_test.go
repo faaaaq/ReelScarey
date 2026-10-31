@@ -57,7 +57,9 @@ func runRealSAB(t *testing.T, tv bool, named ...bool) {
 	if !tv {
 		id = f.movie.ID
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	// SABnzbd can spend a full 60-second connection interval establishing its
+	// first NNTP connection. Leave bounded time for post-processing and review.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	generated := filepath.Join(t.TempDir(), "owned.mp4")
 	if output, e := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=10", "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", generated).CombinedOutput(); e != nil {

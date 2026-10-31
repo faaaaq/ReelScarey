@@ -1575,3 +1575,44 @@ See AUTHENTICATION.md for first setup, password recovery and key backup.
   pinned official GitHub action. This is workflow preparation, not evidence of
   signed publication. Private-repository eligibility, hosted checks, actual
   publishing and owner license selection remain separate release requirements.
+- Final dependency-patched Docker build passed all embedded UI/backend checks.
+  The broader Debian trixie/FFmpeg 7 race run exposed an obsolete assumption that
+  VP9/Opus WebM remuxing always changes timing. Updated the regression to compare
+  independently probed packet timestamps/content and require rejection whenever
+  they differ. The complete transfer race suite and vet then passed (350.482 s),
+  including real Transmission; every other package passed the complete patched
+  race run. The corrected assertion also passed with production's FFmpeg 5.
+- Existing real qBittorrent movie/TV/named-client/Anime-pack and NZBGet movie/TV
+  regressions passed. SABnzbd's initial connection sometimes consumed its full
+  60-second interval, exhausting the old one-minute total fixture deadline.
+  Allowed a bounded two minutes for startup plus post-processing/import review;
+  all four isolated standard/named movie/TV cases then passed (29.138 s total).
+  No production timeout or validation safeguard was relaxed.
+- Disposable Docker backup/download/upload/safe-restore, seven-feature workflows
+  and storage copy/mount-activation/restart checks passed. A one-minute constrained
+  run completed **3,816 reads and 12 settings writes with zero failures**, p95
+  **81 ms**, p99 **117 ms**, peak sampled **48.71 MiB** and eight processes under
+  **1 CPU / 384 MiB / 128 processes**. Catalog/integrity survived restart. This is
+  a bounded fixture workload, not long-term NAS or ARM capacity acceptance.
+- Before replacing the installed image, retained
+  `reelscarey:before-remaining-integrations-20261031` and a private offline,
+  verified schema-39 snapshot at
+  `data/backups/before-remaining-integrations-20261031/configuration-final`.
+  Prior deployment settings are stored alongside it. The candidate independently
+  verified the snapshot before image replacement. Backup data remains ignored by
+  Git and excluded from the Docker build context.
+- Upgraded the existing Compose app to **0.26.0-integrations**, schema **41**,
+  image `sha256:912dbc6283d85b37e3ed91a8a8a03c6bbd201515c9f57ffd6bb4d183dbff757a`.
+  Compared every prior column/row in all **82 tables** and the prior migration
+  ledger with the offline backup: unchanged. Encryption key/setup state remained
+  unchanged; integrity and foreign-key checks passed. All **nine installation
+  checks** passed before and after controlled restart. Docker reports healthy,
+  zero crash restarts, UID10001 and a read-only root. Windows loopback routes,
+  administrative authentication boundaries and all **40 served assets** passed.
+  The existing hidden WSL host launcher is active. The test-only packet assertion
+  change reproduced the exact acceptance-tested application binary.
+- GitHub Actions on PR #6 could not start: its annotations report failed account
+  payments or the spending limit. Entire Gates additionally reports missing
+  approvals and CI success. These are not represented as passing hosted checks.
+  Local results above were executed independently; no billing, branch protection,
+  check status or approval setting was changed.
