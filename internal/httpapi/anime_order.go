@@ -37,13 +37,22 @@ func (s *Server) animeOrderError(w http.ResponseWriter, e error) {
 	}
 }
 func (s *Server) searchAnimeIdentities(w http.ResponseWriter, r *http.Request) {
-	if len(r.URL.Query()) != 1 || len(r.URL.Query()["query"]) != 1 {
+	if len(r.URL.Query()) > 2 || len(r.URL.Query()["query"]) != 1 || len(r.URL.Query()["provider"]) > 1 || (len(r.URL.Query()) == 2 && len(r.URL.Query()["provider"]) != 1) {
 		fail(w, 400, "invalid_anime_query", "Use one Anime title query.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	items, e := s.animeProvider.SearchAnime(ctx, strings.TrimSpace(r.URL.Query().Get("query")))
+	provider := r.URL.Query().Get("provider")
+	if provider == "" {
+		provider = "anilist"
+	}
+	adapter := s.animeIdentityProvider(provider)
+	if adapter == nil {
+		fail(w, 400, "invalid_anime_provider", "Choose AniList or Kitsu.")
+		return
+	}
+	items, e := adapter.SearchAnime(ctx, strings.TrimSpace(r.URL.Query().Get("query")))
 	if e != nil {
 		s.providerError(w, e)
 		return
@@ -134,8 +143,13 @@ func (s *Server) reviewAnimeOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	known := map[int64]metadata.AnimeIdentity{}
+	if in.Provider == "" {
+		in.Provider = "anilist"
+	}
 	for _, v := range old.Identities {
-		known[v.ID] = v
+		if v.Provider == in.Provider {
+			known[v.ID] = v
+		}
 	}
 	newCount := 0
 	for _, providerID := range in.ProviderIDs {
@@ -144,14 +158,14 @@ func (s *Server) reviewAnimeOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if newCount > 8 {
-		fail(w, 400, "too_many_anime_identities", "Link at most eight new AniList entries per review; a show can retain up to twenty.")
+		fail(w, 400, "too_many_anime_identities", "Link at most eight new provider entries per review; a show can retain up to twenty.")
 		return
 	}
 	identities := []metadata.AnimeIdentity{}
 	for _, providerID := range in.ProviderIDs {
 		v, exists := known[providerID]
 		if !exists {
-			v, e = s.animeProvider.Anime(ctx, providerID)
+			v, e = s.animeIdentityProvider(in.Provider).Anime(ctx, providerID)
 			if e != nil {
 				s.providerError(w, e)
 				return
@@ -195,24 +209,39 @@ func (s *Server) refreshAnimeIdentities(w http.ResponseWriter, r *http.Request) 
 	identities := []metadata.AnimeIdentity{}
 	ids := []int64{}
 	for _, link := range old.Identities {
-		fresh, e := s.animeProvider.Anime(ctx, link.ID)
+		adapter := s.animeIdentityProvider(link.Provider)
+		if adapter == nil {
+			fail(w, 409, "invalid_identity", "The saved Anime provider is unsupported.")
+			return
+		}
+		fresh, e := adapter.Anime(ctx, link.ID)
 		if e != nil {
 			s.providerError(w, e)
 			return
 		}
-		if fresh.ID != link.ID || fresh.Provider != "anilist" {
-			fail(w, 502, "invalid_identity", "AniList returned a different identity; saved links were preserved.")
+		if fresh.ID != link.ID || fresh.Provider != link.Provider {
+			fail(w, 502, "invalid_identity", "The provider returned a different identity; saved links were preserved.")
 			return
 		}
 		identities = append(identities, fresh)
 		ids = append(ids, link.ID)
 	}
-	out, e := s.library.ReviewAnimeOrder(ctx, id, library.AnimeOrderUpdate{Revision: old.Revision, CategoryRevision: old.CategoryRevision, NumberingRevision: old.NumberingRevision, ProviderIDs: ids, Entries: old.Entries}, identities)
+	out, e := s.library.ReviewAnimeOrder(ctx, id, library.AnimeOrderUpdate{Provider: old.Provider, Revision: old.Revision, CategoryRevision: old.CategoryRevision, NumberingRevision: old.NumberingRevision, ProviderIDs: ids, Entries: old.Entries}, identities)
 	if e != nil {
 		s.animeOrderError(w, e)
 		return
 	}
 	send(w, 200, out)
+}
+
+func (s *Server) animeIdentityProvider(provider string) metadata.AnimeProvider {
+	switch provider {
+	case "anilist":
+		return s.animeProvider
+	case "kitsu":
+		return s.kitsuProvider
+	}
+	return nil
 }
 func (s *Server) animeOrderSources(w http.ResponseWriter, r *http.Request) {
 	id, ok := tvID(w, r)

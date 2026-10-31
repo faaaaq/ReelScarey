@@ -408,3 +408,16 @@ also accepts explicit 1x02, spaced S01 E02 and Season 1 Episode 2 labels while
 rejecting ambiguous or multi-episode automatic selections. No database migration
 or runtime dependency is added. [Workload checks](docs/WORKLOAD.md) define the
 repeatable constrained container budget and its limits.
+
+## Version 0.26 integrations and subtitle alignment
+
+Transmission 4 joins the named torrent clients with stable hash tracking,
+atomic ownership labels and the existing reviewed TV/import recovery path. Kitsu
+joins AniList for explicit Anime identity links and fact-refresh reviews. SubDL
+provides manually reviewed original-format subtitles. Reference-text alignment
+fits a conservative offset and uniform drift, with existing edit review/rollback.
+
+Migration 040 rebuilds the named-client allowlist while retaining IDs/defaults;
+041 records subtitle provider provenance in tracks and pending import journals.
+All run in the same Go/SQLite application container; no client daemon or model is
+bundled. See the feature documents and [remaining work](docs/REMAINING.md).

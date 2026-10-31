@@ -185,3 +185,22 @@ Owner IPTorrents and XSpeeds account tests remain deferred. Neither private
 accounts nor owner media are automated test fixtures. AniDB integration,
 and broader one-file/cross-season behavior
 remain future work in [REMAINING.md](REMAINING.md).
+
+## Kitsu identities (0.26)
+
+The editor now offers **AniList** or **Kitsu**. Kitsu uses its public JSON:API
+without an owner key. Search, linking and explicit fact refresh use the selected
+provider, bounded fixed-host requests and rate-limit cooldowns. Identity IDs are
+scoped to their provider: Kitsu 1 is never reused as AniList 1.
+
+Each title's saved identity set uses one provider. To switch, remove existing
+links and change dependent mapping rows to Manual before selecting the other
+provider, then review the complete change. A title without saved identities has
+no persisted provider selection and defaults to AniList on reopening. At most
+20 links can be saved, with eight newly resolved links per review. **Refresh
+linked facts** creates a review; it preserves all canonical targets and labels.
+Neither provider's title similarity, counts nor relationships infer an order.
+
+Existing AniList data remains readable without migration. Queued downloads keep
+their immutable provider/order snapshots. Kitsu facts do not replace TMDb catalog
+identities, automatically enable Anime searches or waive file-mapping review.

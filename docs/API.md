@@ -706,7 +706,7 @@ Credentials are never returned. Save/test have bounded connection timeouts.
   relative `local_folder` and count of unfinished jobs. Defaults contain torrent
   and Usenet client IDs (empty means the existing Settings connection), revision.
 - `POST /api/v1/download-clients` tests and creates a paused connection. Supply
-  name, kind (`qbittorrent`, `sabnzbd`, `nzbget`), URL, completed download_path,
+  name, kind (`qbittorrent`, `transmission`, `sabnzbd`, `nzbget`), URL, completed download_path,
   optional local_folder, username/password or SABnzbd api_key. Creation revision
   is zero and enabled must be false.
 - `PUT /api/v1/download-clients/{id}` tests and saves with the current revision;
@@ -739,3 +739,31 @@ Season 1 Ep 2. File-review suggestions accept bounded consecutive spaced and
 long-form ranges/chains. These hints never authorize import or turn packs into
 single-episode automatic downloads. Cross-season single-file mappings and
 inferred date/absolute numbering remain unsupported.
+
+## Additional providers and alignment (0.26)
+
+All existing administrator, CSRF, same-origin and revision checks still apply.
+
+- Named download clients accept `kind=transmission` (torrent protocol), using the
+  same URL, username/password, download_path and local_folder fields. Only
+  Transmission 4 with compatible RPC and scripts disabled passes connection tests.
+- `GET /api/v1/metadata/anime?query=...&provider=kitsu` selects Kitsu; omitted
+  provider means `anilist`. Unknown or repeated provider parameters are rejected.
+  Anime-order preview accepts `provider` and provider_ids; returned settings
+  include `provider`. All identities in a saved set use that provider. Refresh
+  dispatches by saved identity provider and never applies changed facts directly.
+- The compatible `/api/v1/providers/opensubtitles` route now manages the selected
+  subtitle connection. PUT accepts `provider=opensubtitles|subdl`, defaulting to
+  OpenSubtitles for legacy callers. SubDL requires api_key; username/password and
+  user_agent are cleared. Changing provider requires a new key. Status includes
+  `provider`; no secrets are returned. The existing `/test` and DELETE apply to
+  the selected connection. SubDL candidates include provider, download_url and
+  require_review; the URL is public and is not a credential.
+- Saved subtitle tracks include `provider`; unknown/local tracks use an empty
+  value. Existing downloaded records migrate to `opensubtitles`. Import journals
+  retain the original provider through a later connection change.
+- `POST /api/v1/subtitles/files/{id}/edits` accepts `action=align`, existing track
+  fields, `content` containing the reference text and
+  `reference_format=srt|vtt|ass|ssa`. offset_ms must be zero. The returned review
+  message includes match count, estimated starting offset and timing scale.
+  Existing edit apply/retry/rollback routes and review expiration are unchanged.

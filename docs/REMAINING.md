@@ -2,8 +2,8 @@
 
 The current milestone queue is summarized in [MILESTONES.md](../MILESTONES.md).
 
-This checklist consolidates the open work after version 0.18's Anime provider
-identity, reviewed order and manual special/multi-season pack implementation.
+This checklist consolidates the open work after version 0.26's additional providers
+and reference-subtitle alignment.
 Earlier milestone sections in [ROADMAP.md](../ROADMAP.md) also record historical
 scope limits. Implemented profile/monitoring bulk edits, explicit Anime numbering,
 configured-collection discovery and registered-file rename/reorganization are no
@@ -102,7 +102,9 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   in [VALIDATION.md](VALIDATION.md).
 - [x] Explicit reviewed refresh of already-linked AniList facts, preserving saved
   episode mappings and canonical identities.
-- [ ] AniDB or additional Anime identity/order providers.
+- [x] Kitsu identity search, links and reviewed fact refresh, with provider-scoped
+  IDs and existing canonical order review. See [Anime providers](ANIME_PROVIDER_ORDERS.md).
+- [ ] AniDB and other provider-specific integrations beyond AniList/Kitsu.
 - [ ] One-file cross-season Anime mappings, broader extras and unsupported release
   grammars. Current multi-season support applies to separate reviewed files,
   not arbitrary franchise flattening or inferred canonical season offsets.
@@ -135,11 +137,17 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 - [x] Styled ASS/SSA and VTT provider downloads with explicit original-format
   preference, bounded cue validation, format-preserving recovery and reviewed
   edits/rollback. SRT remains the default. See [Subtitles](SUBTITLES.md).
-- [ ] Additional subtitle providers, OCR, translation and automatic alignment.
+- [x] SubDL alternative provider, explicit file review, original formats and
+  provider-preserving interrupted imports. See [Subtitles](SUBTITLES.md).
+- [x] Reference-subtitle alignment for offset and small uniform drift, with
+  confidence checks, explicit review and retained-version rollback.
+- [ ] OCR, translation, audio-based alignment and further subtitle providers.
 - [x] Usenet retention and propagation filters with explicit publication evidence.
 - [x] Multiple named qBittorrent/SABnzbd clients and NZBGet support, explicit
   per-protocol defaults and immutable per-job folder mappings. See
   [Download clients](DOWNLOAD_CLIENTS.md). Owner-service acceptance remains separate.
+- [x] Transmission 4 named torrent clients with atomic ownership labels, uncertain
+  submission reconciliation, reviewed TV imports and retained seeding sources.
 - [ ] Additional client protocols or arbitrary durable job types if required by
   later workflows; downloads/searches already use durable leases and recovery.
 

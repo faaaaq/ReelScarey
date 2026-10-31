@@ -12,6 +12,40 @@ const renderPage = () =>
       </MemoryRouter>
     </Theme>,
   );
+it("offers Transmission only as a torrent default", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({
+        items: [
+          {
+            id: "t",
+            name: "Owned Transmission",
+            kind: "transmission",
+            enabled: true,
+            revision: 1,
+            url: "http://transmission:9091/transmission/rpc",
+            username: "fixture",
+            download_path: "/completed",
+            local_folder: "",
+            active_jobs: 0,
+          },
+        ],
+        defaults: { torrent: "t", usenet: "", revision: 1 },
+      }),
+    ),
+  );
+  renderPage();
+  const torrent = await screen.findByLabelText("Torrent default");
+  expect(
+    within(torrent).getByRole("option", { name: /Owned Transmission/ }),
+  ).toBeInTheDocument();
+  expect(
+    within(screen.getByLabelText("Usenet default")).queryByRole("option", {
+      name: /Owned Transmission/,
+    }),
+  ).not.toBeInTheDocument();
+});
 it("creates a tested paused client and sends its explicit folder mapping", async () => {
   const requests = vi.fn(async (_url: string, o?: RequestInit) =>
     Response.json(

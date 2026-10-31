@@ -17,19 +17,20 @@ import (
 )
 
 type Service struct {
-	db          *sql.DB
-	secrets     *securestore.Store
-	cfg         config.Config
-	client      Client
-	sab         *SABnzbd
-	nzbget      *NZBGet
-	indexer     Indexer
-	adapters    map[string]Indexer
-	configMu    sync.Mutex
-	healthMu    sync.RWMutex
-	probeMu     sync.Mutex
-	legacyError string
-	importer    *Importer
+	db           *sql.DB
+	secrets      *securestore.Store
+	cfg          config.Config
+	client       Client
+	transmission *Transmission
+	sab          *SABnzbd
+	nzbget       *NZBGet
+	indexer      Indexer
+	adapters     map[string]Indexer
+	configMu     sync.Mutex
+	healthMu     sync.RWMutex
+	probeMu      sync.Mutex
+	legacyError  string
+	importer     *Importer
 }
 
 func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Client, indexer Indexer) *Service {
@@ -38,6 +39,7 @@ func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Clien
 	s.adapters["newznab"] = NewNewznab()
 	s.sab = NewSABnzbd()
 	s.nzbget = NewNZBGet()
+	s.transmission = NewTransmission()
 	s.importer = NewImporter(s)
 	return s
 }

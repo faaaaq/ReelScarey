@@ -8,7 +8,7 @@ import { useResource } from "../useResource";
 type Client = {
   id: string;
   name: string;
-  kind: "qbittorrent" | "sabnzbd" | "nzbget";
+  kind: "qbittorrent" | "transmission" | "sabnzbd" | "nzbget";
   enabled: boolean;
   revision: number;
   url: string;
@@ -21,6 +21,7 @@ type Defaults = { torrent: string; usenet: string; revision: number };
 type State = { items: Client[]; defaults: Defaults; downloads_root?: string };
 const names = {
   qbittorrent: "qBittorrent",
+  transmission: "Transmission",
   sabnzbd: "SABnzbd",
   nzbget: "NZBGet",
 };
@@ -82,6 +83,13 @@ export function DownloadClients() {
         </>
       )}
       <section className="panel system-panel">
+        <h2>Transmission setup</h2>
+        <p>
+          Use Transmission 4 with a username and password, torrent scripts
+          disabled, and its full RPC address (normally
+          http://transmission:9091/transmission/rpc). Jobs use an ownership
+          label and a dedicated folder. Existing torrents are left unchanged.
+        </p>
         <h2>Usenet folder setup</h2>
         <p>
           SABnzbd needs a <code>reelscarey</code> category with folder{" "}
@@ -147,8 +155,8 @@ function DefaultsForm({
                   (c) =>
                     c.enabled &&
                     (protocol === "torrent"
-                      ? c.kind === "qbittorrent"
-                      : c.kind !== "qbittorrent"),
+                      ? c.kind === "qbittorrent" || c.kind === "transmission"
+                      : c.kind === "sabnzbd" || c.kind === "nzbget"),
                 )
                 .map((c) => (
                   <option key={c.id} value={c.id}>

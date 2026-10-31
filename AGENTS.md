@@ -186,3 +186,15 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - Run gofmt on Go changes and `npm run format` for the frontend. Keep dependencies locked and explain additions.
 - Record validation failures and environment limits; never mark an unrun check
   as passed. Use local Git commits for stable milestones.
+
+## Version 0.26 contributor boundaries
+
+Transmission 4 is an external named torrent client. Keep labels atomic with
+submission, reconcile uncertain results by hash, preserve dedicated folders and
+never adopt a foreign torrent. Kitsu IDs are scoped independently from AniList;
+one saved identity set uses one provider and never infers canonical ordering.
+SubDL requires explicit file review and fixed-host individual downloads; never
+send its account key to a download host. Pending subtitle imports retain their
+provider across changes and recover without spending quota again. Reference-text
+alignment requires strong bounded evidence, explicit edit review and retained
+rollback; do not describe it as audio alignment, OCR or translation.

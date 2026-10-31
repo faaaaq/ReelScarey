@@ -129,9 +129,9 @@ must not contain symlinks. The video is opened read-only throughout.
 
 Preferences, monitoring, connection generation and worker lease are checked before
 and after fetch and under the publication transaction. Pausing/disconnecting stops
-subsequent publication; already committed subtitles stay present. Existing videos
-and subtitles are never replaced. There is no subtitle deletion, replacement,
-automatic resynchronization, translation, OCR or provider fallback in this milestone.
+subsequent publication; already committed subtitles stay present. Provider downloads never replace existing videos or subtitles. Separate reviewed
+sidecar edits retain the previous version. Translation, OCR, audio-based alignment,
+subtitle deletion and automatic provider fallback remain unavailable.
 
 ## Protocol references and validation
 
@@ -153,3 +153,45 @@ sidecar publications with a fixture provider. This does not claim a live owner
 OpenSubtitles media-download acceptance test. The owner now reports a privately
 saved connection; a real sidecar check still needs imported media. See
 VALIDATION.md for executed results.
+
+## SubDL alternative provider (0.26)
+
+In Subtitles, choose **SubDL**, enter its API key and save the tested connection.
+One subtitle provider is selected at a time; changing providers requires a fresh
+key and invalidates unused search choices. Existing OpenSubtitles settings remain
+compatible. Keys use the same encrypted store and configuration backup/restore.
+
+Search uses exact canonical TMDb movie/series IDs. Series results must identify
+one exact season and episode; shared multi-episode media is not supported by this
+adapter. The provider can broaden an unsuccessful search, so mismatched identities
+are discarded. Only individually unpacked UTF-8 SRT, VTT, ASS and SSA files up to
+4 MiB qualify. ZIP-only results, ambiguous Chinese language tags, unknown formats
+and unsafe URLs are omitted. The adapter does not extract archives or translate.
+
+Every SubDL choice requires manual download review, even when a release matches.
+The default SRT preference accepts only SRT; choose **Keep original** for styled
+ASS/SSA or VTT. Conversion is unavailable. Public downloads use the provider's IP
+quota and receive no account key; rate-limit responses postpone further work.
+Only fixed HTTPS API/download hosts are used and redirects are refused. Search
+uses the documented [SubDL v1 API](https://subdl.com/api-doc/).
+
+Saved tracks and pending journals retain the original provider. A provider switch
+cannot relabel a completed subtitle or replace a different pending import whose
+numeric file ID happens to match. Interrupted publication recovers saved bytes
+without another download; current preferences and worker safeguards still apply.
+
+## Align timing using a reference subtitle (0.26)
+
+Open a registered sidecar's edit dialog, select **Align with a reference subtitle**,
+and upload a correctly timed SRT, VTT, ASS or SSA from the same language and cut.
+Review the estimated offset/drift, then explicitly apply. The original remains
+available through the existing retained-version rollback. Video bytes, dialogue,
+positioning and styling remain unchanged; only cue timestamps are adjusted.
+
+Alignment requires at least six unique identical dialogue cues spanning a minute,
+covering at least 60% of the smaller qualifying cue set. At least 80% of the
+matched cues must agree within 150 ms, in order. A uniform timing scale must stay
+within 0.95–1.05 and its starting offset within ten minutes. Negative timestamps,
+weak evidence and incompatible cuts are rejected. This is reference-text alignment;
+it does not listen to audio, perform OCR or translate. Reference content stays
+local and is bounded to 4 MiB. The preview never writes the sidecar.

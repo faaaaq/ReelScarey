@@ -19,6 +19,9 @@ func rank(p Preferences, t Target, in []Candidate) []Candidate {
 		if c.Format == "" {
 			reject("The original file is not a supported SRT, VTT, ASS or SSA subtitle. Choose SRT output to request conversion.")
 		}
+		if c.Provider == "subdl" && subtitleExtension(c.FileName) != "."+c.Format {
+			reject("SubDL provides original files only. Choose original format or an SRT candidate.")
+		}
 		if !c.Identity {
 			reject("The provider did not confirm this movie or episode identity.")
 		}
@@ -36,7 +39,7 @@ func rank(p Preferences, t Target, in []Candidate) []Candidate {
 		}
 		c.CanDownload = len(c.Reasons) == 0
 		releaseMatch := releaseName(c.Release) != "" && releaseName(c.Release) == releaseName(t.Release) && len(t.Episodes) <= 1
-		c.Automatic = c.CanDownload && (c.HashMatch || (p.MatchPolicy == "hash_or_release" && releaseMatch))
+		c.Automatic = c.CanDownload && !c.RequireReview && (c.HashMatch || (p.MatchPolicy == "hash_or_release" && releaseMatch))
 		if c.CanDownload && !c.Automatic {
 			reject("Timing is uncertain: there is no acceptable file-hash or exact release match. Review before downloading.")
 		}

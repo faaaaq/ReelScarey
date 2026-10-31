@@ -40,6 +40,10 @@ jobs:
         run: go test -race ./internal/metadata -run TestLiveAniListIdentity -count=1 -v -timeout=30s
         env:
           REELSCAREY_LIVE_ANILIST: '1'
+      - name: Public Kitsu identity and title-search acceptance
+        run: go test -race ./internal/metadata -run TestLiveKitsuIdentity -count=1 -v -timeout=30s
+        env:
+          REELSCAREY_LIVE_KITSU: '1'
       - name: Install disposable download clients and media test tools
         timeout-minutes: 20
         run: |
@@ -54,8 +58,12 @@ jobs:
         run: go test -race ./internal/transfer -run TestRealQBittorrent -count=1 -v -timeout=8m
         env:
           REELSCAREY_LIVE_QBT: '1'
+      - name: Real Transmission movie and reviewed TV imports
+        run: |
+          docker build -f scripts/transmission-test.Dockerfile -t reelscarey:transmission-test .
+          docker run --rm reelscarey:transmission-test
       - name: Generated subtitle media and embedded track detection
-        run: go test -race ./internal/subtitle -run 'TestRealSubtitle(Media|OriginalFormats)' -count=1 -v -timeout=3m
+        run: go test -race ./internal/subtitle -run 'TestRealSubtitle(Media|OriginalFormats|SubDLFormats)' -count=1 -v -timeout=3m
         env:
           REELSCAREY_LIVE_SUBTITLES: '1'
       - name: Automatic Anime matching and reviewed real-client import

@@ -116,6 +116,29 @@ function mount() {
   );
 }
 describe("subtitles", () => {
+  it("switches subtitle providers without reusing hidden credentials", async () => {
+    const fetch = setup();
+    mount();
+    await screen.findByRole("button", { name: "Save & test OpenSubtitles" });
+    await userEvent.selectOptions(screen.getByLabelText("Provider"), "subdl");
+    expect(
+      screen.queryByLabelText("OpenSubtitles password"),
+    ).not.toBeInTheDocument();
+    await userEvent.type(
+      screen.getByLabelText("Application API key"),
+      "subdl-fixture-key",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save & test SubDL" }),
+    );
+    await screen.findByText("SubDL connection verified and saved.");
+    const sent = fetch.mock.calls.find(([, o]) => o?.method === "PUT")!;
+    expect(JSON.parse(String(sent[1]?.body))).toMatchObject({
+      provider: "subdl",
+      api_key: "subdl-fixture-key",
+    });
+    expect(JSON.parse(String(sent[1]?.body))).not.toHaveProperty("password");
+  });
   it("saves original subtitle format explicitly while retaining SRT as the default", async () => {
     const fetch = setup();
     mount();
@@ -208,6 +231,7 @@ describe("subtitles", () => {
     await screen.findByText("OpenSubtitles connection verified and saved.");
     const call = fetch.mock.calls.find(([, o]) => o?.method === "PUT");
     expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+      provider: "opensubtitles",
       username: "saved-account",
       user_agent: "ReelScarey v0.7.0",
     });

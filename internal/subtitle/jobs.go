@@ -158,12 +158,11 @@ func (s *Service) Select(ctx context.Context, id string, reviewed bool) error {
 	if e != nil {
 		return e
 	}
-	var pending int64
-	e = s.db.QueryRowContext(ctx, `SELECT provider_file_id FROM subtitle_imports WHERE media_file_id=? AND language=? AND variant=? AND phase<>'committed'`, fileID, candidate.Language, candidate.Variant).Scan(&pending)
-	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+	pending, e := s.pending(ctx, fileID, candidate.Track)
+	if e != nil {
 		return e
 	}
-	if pending != 0 && pending != candidate.FileID {
+	if pending != nil && (pending.FileID != candidate.FileID || pending.Provider != providerName(candidate.Provider)) {
 		return problem("pending_import", "Finish the pending subtitle import before choosing a different subtitle for this track.")
 	}
 	return s.request(ctx, fileID, "download", id)

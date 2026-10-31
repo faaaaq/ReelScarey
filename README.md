@@ -42,7 +42,7 @@ single-episode searches using canonical season/episode numbers or explicitly sav
 absolute numbers and alternate titles, or reviewed mapped singles and explicitly
 enabled specials and packs. File mapping still requires review. See
 [Anime automatic searches](docs/ANIME_SEARCH.md) and [remaining work](docs/REMAINING.md).
-AniList identities and reviewed release-order mappings can cover separate cours
+AniList/Kitsu identities and reviewed release-order mappings can cover separate cours
 and specials without changing canonical TMDb episodes. TMDb episode-group proposals
 join exact saved episode IDs. Reviewed manual packs can span seasons through
 separate files, with immutable order history and mandatory import review. See
@@ -53,12 +53,12 @@ and playlists, mapped to existing movies/episodes or named custom collections.
 Selected creator or automatic subtitles are reviewed and imported as VTT sidecars
 with the video. See [YouTube sourcing](docs/YOUTUBE.md) for setup and limits.
 
-Reviewed replacements can use discovered unregistered files and retain the prior
-version for restoration. Downloaded upgrade imports, spoken-language verification,
-and full production hardening remain unimplemented. Automation starts paused and defaults to
+Reviewed replacements can use discovered files, selected download upgrades and
+YouTube videos, retaining the prior version for restoration. Spoken-language
+verification and independent production security review remain outstanding. Automation starts paused and defaults to
 search results for review; automatic downloads require explicit selection of that
-mode. There is no arbitrary existing-library scanner; subtitle checks inspect
-only media already registered by ReelScarey imports.
+mode. Existing-library discovery and registration require explicit review; subtitle
+checks inspect only registered media.
 FFprobe verifies completed video files before import. Sources remain in place
 for seeding; replacements require explicit review and retain the previous video.
 
@@ -282,3 +282,9 @@ Named qBittorrent, SABnzbd and NZBGet connections are available under
 **Settings → Manage download clients**. New connections start paused; choose
 explicit defaults after reviewing folder mappings. See
 [Download clients](docs/DOWNLOAD_CLIENTS.md) for setup and safety limits.
+
+Version 0.26 also provides named Transmission 4 clients, Kitsu Anime identities,
+SubDL subtitles with manual review and subtitle alignment from a reference file.
+The previous subtitle version is retained for rollback. These features share the
+single application container and existing configuration/library backup interface.
+See [remaining scope](docs/REMAINING.md) and [release process](docs/RELEASING.md).
