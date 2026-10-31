@@ -18,7 +18,8 @@ import (
 )
 
 type importPlan struct {
-	ID string
+	ID       string
+	Provider string
 	Track
 	FileID                  int64
 	Destination, Stage, SHA string
@@ -30,7 +31,7 @@ type importPlan struct {
 func (s *Service) pending(ctx context.Context, id int64, t Track) (*importPlan, error) {
 	var p importPlan
 	p.Track = t
-	e := s.db.QueryRowContext(ctx, `SELECT id,provider_file_id,destination,stage_name,sha256,size_bytes,content,phase FROM subtitle_imports WHERE media_file_id=? AND language=? AND variant=? AND phase<>'committed'`, id, t.Language, t.Variant).Scan(&p.ID, &p.FileID, &p.Destination, &p.Stage, &p.SHA, &p.Size, &p.Content, &p.Phase)
+	e := s.db.QueryRowContext(ctx, `SELECT id,provider_file_id,destination,stage_name,sha256,size_bytes,content,phase,provider FROM subtitle_imports WHERE media_file_id=? AND language=? AND variant=? AND phase<>'committed'`, id, t.Language, t.Variant).Scan(&p.ID, &p.FileID, &p.Destination, &p.Stage, &p.SHA, &p.Size, &p.Content, &p.Phase, &p.Provider)
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -61,15 +62,15 @@ func (s *Service) plan(ctx context.Context, m media, c Candidate, body []byte) (
 	if old, e := s.pending(ctx, m.ID, c.Track); e != nil {
 		return importPlan{}, e
 	} else if old != nil {
-		if old.FileID != c.FileID {
+		if old.FileID != c.FileID || old.Provider != providerName(c.Provider) {
 			return importPlan{}, problem("pending_import", "A different subtitle for this track is already staged. Retry that import first.")
 		}
 		return *old, nil
 	}
 	sum := sha256.Sum256(body)
 	id := transfer.ID()
-	p := importPlan{ID: id, Track: c.Track, FileID: c.FileID, Destination: destination(m, c.Track, format), Stage: ".reelscarey-sub-" + id + ".part", SHA: hex.EncodeToString(sum[:]), Size: int64(len(body)), Content: body, Phase: "planned"}
-	_, e := s.db.ExecContext(ctx, `INSERT INTO subtitle_imports(id,media_file_id,language,variant,provider_file_id,destination,stage_name,sha256,size_bytes,content,phase,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,'planned',?) ON CONFLICT(media_file_id,language,variant) DO UPDATE SET id=excluded.id,provider_file_id=excluded.provider_file_id,destination=excluded.destination,stage_name=excluded.stage_name,sha256=excluded.sha256,size_bytes=excluded.size_bytes,content=excluded.content,phase='planned',updated_at=excluded.updated_at WHERE subtitle_imports.phase='committed'`, id, m.ID, c.Language, c.Variant, c.FileID, p.Destination, p.Stage, p.SHA, p.Size, body, s.now().Unix())
+	p := importPlan{ID: id, Provider: providerName(c.Provider), Track: c.Track, FileID: c.FileID, Destination: destination(m, c.Track, format), Stage: ".reelscarey-sub-" + id + ".part", SHA: hex.EncodeToString(sum[:]), Size: int64(len(body)), Content: body, Phase: "planned"}
+	_, e := s.db.ExecContext(ctx, `INSERT INTO subtitle_imports(id,media_file_id,language,variant,provider_file_id,destination,stage_name,sha256,size_bytes,content,phase,updated_at,provider) VALUES(?,?,?,?,?,?,?,?,?,?,'planned',?,?) ON CONFLICT(media_file_id,language,variant) DO UPDATE SET id=excluded.id,provider_file_id=excluded.provider_file_id,provider=excluded.provider,destination=excluded.destination,stage_name=excluded.stage_name,sha256=excluded.sha256,size_bytes=excluded.size_bytes,content=excluded.content,phase='planned',updated_at=excluded.updated_at WHERE subtitle_imports.phase='committed'`, id, m.ID, c.Language, c.Variant, c.FileID, p.Destination, p.Stage, p.SHA, p.Size, body, s.now().Unix(), p.Provider)
 	return p, e
 }
 func (s *Service) phase(ctx context.Context, j Job, p importPlan, phase string) error {
@@ -279,7 +280,7 @@ func (s *Service) commit(ctx context.Context, j Job, m media, o *openedMedia, ge
 	if !slices.Contains(wanted, p.Track) {
 		return ErrLease
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO subtitles(media_file_id,language,variant,source,relative_path,sha256,provider_file_id,state,message,updated_at) VALUES(?,?,?,'downloaded',?,?,?,'available','Verified subtitle saved.',?) ON CONFLICT(media_file_id,language,variant) DO UPDATE SET source='downloaded',relative_path=excluded.relative_path,sha256=excluded.sha256,provider_file_id=excluded.provider_file_id,state='available',message=excluded.message,updated_at=excluded.updated_at`, m.ID, p.Language, p.Variant, p.Destination, p.SHA, p.FileID, s.now().Unix()); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO subtitles(media_file_id,language,variant,source,relative_path,sha256,provider_file_id,state,message,updated_at,provider) VALUES(?,?,?,'downloaded',?,?,?,'available','Verified subtitle saved.',?,?) ON CONFLICT(media_file_id,language,variant) DO UPDATE SET source='downloaded',relative_path=excluded.relative_path,sha256=excluded.sha256,provider_file_id=excluded.provider_file_id,provider=excluded.provider,state='available',message=excluded.message,updated_at=excluded.updated_at`, m.ID, p.Language, p.Variant, p.Destination, p.SHA, p.FileID, s.now().Unix(), providerName(p.Provider)); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE subtitle_imports SET phase='committed',content=NULL,updated_at=? WHERE id=?`, s.now().Unix(), p.ID); e != nil {

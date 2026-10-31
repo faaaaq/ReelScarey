@@ -22,6 +22,7 @@ export type SubtitlePreferences = {
   revision: number;
 };
 export type SubtitleProvider = {
+  provider?: "opensubtitles" | "subdl";
   configured: boolean;
   username: string;
   user_agent: string;
@@ -57,6 +58,7 @@ export type SubtitleFile = {
   path: string;
   episodes: string;
   tracks: (SubtitleTrack & {
+    provider?: string;
     source: string;
     path: string;
     state: string;
@@ -114,7 +116,11 @@ export function Subtitles() {
               provider={provider.data}
               saved={prefs.reload}
             />
-            <ProviderForm provider={provider.data} reload={provider.reload} />
+            <ProviderForm
+              key={provider.data.provider}
+              provider={provider.data}
+              reload={provider.reload}
+            />
           </div>
           <MediaFiles
             languages={prefs.data.languages}
@@ -437,6 +443,13 @@ function ProviderForm({
   reload: () => void;
 }) {
   const [username, setUsername] = useState(provider.username);
+  const [selectedProvider, setSelectedProvider] = useState(
+    provider.provider || "opensubtitles",
+  );
+  const providerLabel =
+    selectedProvider === "subdl" ? "SubDL" : "OpenSubtitles";
+  const changedProvider =
+    selectedProvider !== (provider.provider || "opensubtitles");
   const [agent, setAgent] = useState(
     provider.user_agent || "ReelScarey v0.7.0",
   );
@@ -454,6 +467,7 @@ function ProviderForm({
         await api("/providers/opensubtitles", {
           method: "PUT",
           body: JSON.stringify({
+            provider: selectedProvider,
             username,
             user_agent: agent,
             ...(key ? { api_key: key } : {}),
@@ -462,18 +476,20 @@ function ProviderForm({
         });
         setKey("");
         setPassword("");
-        setSuccess("OpenSubtitles connection verified and saved.");
+        setSuccess(`${providerLabel} connection verified and saved.`);
       } else if (kind === "test") {
         await api("/providers/opensubtitles/test", {
           method: "POST",
           body: "{}",
         });
-        setSuccess("OpenSubtitles connection verified.");
+        setSuccess("Saved subtitle connection verified.");
       } else {
         await api("/providers/opensubtitles", { method: "DELETE" });
         setKey("");
         setPassword("");
-        setSuccess("OpenSubtitles disconnected. Existing subtitles remain.");
+        setSuccess(
+          "Subtitle provider disconnected. Existing subtitles remain.",
+        );
       }
       reload();
     } catch (e) {
@@ -485,15 +501,16 @@ function ProviderForm({
   return (
     <section className="panel automation-panel subtitle-provider">
       <div className="section-title">
-        <h2>OpenSubtitles</h2>
+        <h2>Subtitle provider</h2>
         <Badge color={provider.configured ? "green" : "gray"}>
           {provider.configured ? "Connected" : "Not connected"}
         </Badge>
       </div>
       <p className="muted">
-        Connect your OpenSubtitles.com account and its application API key.
-        Credentials are saved privately. Connection tests sign in without using
-        a subtitle download.
+        Choose OpenSubtitles or SubDL for future searches. Credentials are saved
+        privately. Connection tests use a sign-in or metadata search, without
+        downloading subtitles. Changing providers replaces the saved connection
+        and invalidates old choices.
       </p>
       {provider.configured && (
         <div className="subtitle-provider-state">
@@ -515,37 +532,57 @@ function ProviderForm({
       >
         <fieldset disabled={busy} className="automation-fields">
           <label>
-            OpenSubtitles username
-            <TextField.Root
-              autoComplete="username"
-              required
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              maxLength={200}
-            />
+            Provider
+            <select
+              value={selectedProvider}
+              onChange={(e) => {
+                setSelectedProvider(
+                  e.target.value as "opensubtitles" | "subdl",
+                );
+                setKey("");
+                setPassword("");
+              }}
+            >
+              <option value="opensubtitles">OpenSubtitles</option>
+              <option value="subdl">SubDL</option>
+            </select>
           </label>
-          <label>
-            OpenSubtitles password
-            <TextField.Root
-              type="password"
-              autoComplete="new-password"
-              required={!provider.configured}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={
-                provider.configured
-                  ? "Leave blank to keep saved password"
-                  : "Account password"
-              }
-              maxLength={2048}
-            />
-          </label>
+          {selectedProvider === "opensubtitles" && (
+            <>
+              <label>
+                OpenSubtitles username
+                <TextField.Root
+                  autoComplete="username"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  maxLength={200}
+                />
+              </label>
+              <label>
+                OpenSubtitles password
+                <TextField.Root
+                  type="password"
+                  autoComplete="new-password"
+                  required={!provider.configured || changedProvider}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={
+                    provider.configured
+                      ? "Leave blank to keep saved password"
+                      : "Account password"
+                  }
+                  maxLength={2048}
+                />
+              </label>
+            </>
+          )}
           <label>
             Application API key
             <TextField.Root
               type="password"
               autoComplete="off"
-              required={!provider.configured}
+              required={!provider.configured || changedProvider}
               value={key}
               onChange={(e) => setKey(e.target.value)}
               placeholder={
@@ -556,22 +593,34 @@ function ProviderForm({
               maxLength={2048}
             />
           </label>
-          <label>
-            Registered application name & version
-            <TextField.Root
-              required
-              value={agent}
-              onChange={(e) => setAgent(e.target.value)}
-              maxLength={120}
-            />
-          </label>
-          <p className="field-help">
-            Use the application name and version associated with your API key.
-            Account download limits apply; ReelScarey waits when the provider
-            reports a quota or cooldown.
-          </p>
+          {selectedProvider === "opensubtitles" && (
+            <>
+              <label>
+                Registered application name & version
+                <TextField.Root
+                  required
+                  value={agent}
+                  onChange={(e) => setAgent(e.target.value)}
+                  maxLength={120}
+                />
+              </label>
+              <p className="field-help">
+                Use the application name and version associated with your API
+                key. Account download limits apply; ReelScarey waits when the
+                provider reports a quota or cooldown.
+              </p>
+            </>
+          )}
+          {selectedProvider === "subdl" && (
+            <p className="field-help">
+              SubDL uses an account API key. Individual SRT/VTT/ASS/SSA files
+              require review; shared multi-episode video files and ZIP-only
+              results are not selected. Choose original format for styled files.
+              Public downloads use the provider's IP allowance.
+            </p>
+          )}
           <div className="button-row">
-            <Button type="submit">Save & test OpenSubtitles</Button>
+            <Button type="submit">Save & test {providerLabel}</Button>
             {provider.configured && (
               <>
                 <Button
@@ -606,11 +655,15 @@ function ProviderForm({
       </form>
       <a
         className="text-link"
-        href="https://www.opensubtitles.com/"
+        href={
+          selectedProvider === "subdl"
+            ? "https://subdl.com/panel"
+            : "https://www.opensubtitles.com/"
+        }
         target="_blank"
         rel="noreferrer"
       >
-        Open OpenSubtitles.com
+        Open {providerLabel}
       </a>
     </section>
   );
@@ -768,7 +821,11 @@ function FileCard({
                 · {variantName[t.variant]}
               </Badge>
               <span>
-                {readable(t.source)} · {readable(t.state)}
+                {readable(t.source)}
+                {t.provider
+                  ? ` (${t.provider === "subdl" ? "SubDL" : "OpenSubtitles"})`
+                  : ""}{" "}
+                · {readable(t.state)}
               </span>
               <p>{t.message}</p>
             </div>

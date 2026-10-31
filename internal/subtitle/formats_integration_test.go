@@ -19,6 +19,10 @@ import (
 // Real generated video, FFprobe, provider HTTP serialization and journaled
 // imports. The remote provider/CDN are owned protocol fixtures, never accounts.
 func TestRealSubtitleOriginalFormats(t *testing.T) {
+	runRealSubtitleFormats(t, false)
+}
+func TestRealSubtitleSubDLFormats(t *testing.T) { runRealSubtitleFormats(t, true) }
+func runRealSubtitleFormats(t *testing.T, subdl bool) {
 	if os.Getenv("REELSCAREY_LIVE_SUBTITLES") != "1" {
 		t.Skip("set REELSCAREY_LIVE_SUBTITLES=1 for generated format-preserving imports")
 	}
@@ -76,6 +80,24 @@ func TestRealSubtitleOriginalFormats(t *testing.T) {
 				}
 			})
 			f.s.provider = provider
+			subdlProvider := NewSubDL()
+			if subdl {
+				subdlProvider.http.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
+					if r.URL.Host == "api.subdl.com" {
+						return response(200, fmt.Sprintf(`{"status":true,"results":[{"tmdb_id":123,"type":"movie"}],"subtitles":[{"unpack_files":[{"file_n_id":"owned","name":"Owned.en.%s","release_name":"Test.Movie.2020.1080p.WEB","language":"EN","format":"%s","size":%d,"url":"/subtitle/parent/owned"}]}]}`, format, format, len(body))), nil
+					}
+					if r.URL.Host != "dl.subdl.com" || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "" {
+						t.Error("download credential isolation")
+					}
+					downloads++
+					return response(200, body), nil
+				})
+				f.s.subdl = subdlProvider
+				key := "fixture-subdl-key"
+				if e = f.s.Configure(ctx, CredentialUpdate{Provider: "subdl", APIKey: &key}); e != nil {
+					t.Fatal(e)
+				}
+			}
 			f.s.Prober = transfer.FFprobe{}
 			enable(t, f, true, Track{"en", "full"})
 			prefs, _ := f.s.Preferences(ctx)
@@ -84,6 +106,16 @@ func TestRealSubtitleOriginalFormats(t *testing.T) {
 				t.Fatal(e)
 			}
 			process(t, f.s)
+			if subdl {
+				view, e := f.s.File(ctx, 1, true)
+				if e != nil || view.Job.State != "needs_review" || downloads != 0 || len(view.Candidates) != 1 {
+					t.Fatal("SubDL bypassed review", view, e)
+				}
+				if e = f.s.Select(ctx, view.Candidates[0].ID, true); e != nil {
+					t.Fatal(e)
+				}
+				process(t, f.s)
+			}
 			view, e := f.s.File(ctx, 1, true)
 			if e != nil || view.Job.State != "completed" || len(view.Tracks) != 1 || downloads != 1 {
 				t.Fatal(view, downloads, e)
@@ -102,6 +134,7 @@ func TestRealSubtitleOriginalFormats(t *testing.T) {
 			}
 			reopen(t, &f)
 			f.s.provider = provider
+			f.s.subdl = subdlProvider
 			f.s.Prober = transfer.FFprobe{}
 			if _, e = f.db.Exec(`UPDATE subtitle_jobs SET next_run=0`); e != nil {
 				t.Fatal(e)
@@ -109,6 +142,12 @@ func TestRealSubtitleOriginalFormats(t *testing.T) {
 			process(t, f.s)
 			if downloads != 1 {
 				t.Fatal("existing styled track downloaded again")
+			}
+			if subdl {
+				view, e = f.s.File(ctx, 1, false)
+				if e != nil || len(view.Tracks) != 1 || view.Tracks[0].Provider != "subdl" {
+					t.Fatal("provider provenance lost", view, e)
+				}
 			}
 			t.Log("Original format, styles, FFprobe readability, quota, source bytes and reopen verified")
 		})

@@ -59,6 +59,7 @@ type Server struct {
 	embyMonitor      *emby.Monitor
 	franchises       metadata.FranchiseProvider
 	animeProvider    metadata.AnimeProvider
+	kitsuProvider    metadata.AnimeProvider
 	youtube          *youtube.Store
 	youtubeInspector YouTubeInspector
 	backups          *backups.Service
@@ -72,6 +73,7 @@ type Dependencies struct {
 	Automation       *automation.Service
 	Subtitle         *subtitle.Service
 	AnimeProvider    metadata.AnimeProvider
+	KitsuProvider    metadata.AnimeProvider
 	YouTubeInspector YouTubeInspector
 	Secrets          *securestore.Store
 	Bot              *discordbot.Service
@@ -108,6 +110,10 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 		s.requestLists = requests.NewLists(db, deps.Secrets)
 	}
 	s.animeProvider = deps.AnimeProvider
+	s.kitsuProvider = deps.KitsuProvider
+	if s.kitsuProvider == nil {
+		s.kitsuProvider = metadata.NewKitsu()
+	}
 	if s.animeProvider == nil {
 		s.animeProvider = metadata.NewAniList()
 	}

@@ -1536,3 +1536,83 @@ See AUTHENTICATION.md for first setup, password recovery and key backup.
   alignment, broader release grammars, NAS/ARM validation and license selection
   remain separate work. No owner media, private tracker or provider account was
   used as a fixture.
+
+## 2026-10-31: version 0.26 providers and reference subtitle alignment
+
+- Implemented Transmission 4 as a named torrent client, Kitsu Anime identity
+  search/link/refresh, SubDL manually reviewed subtitle downloads, and local
+  reference-text subtitle timing alignment. Existing canonical IDs, explicit
+  consent, no-overwrite imports and retained subtitle rollback remain in force.
+  Migration 040 preserves named clients/defaults; 041 preserves subtitle provider
+  provenance in catalog tracks and pending journals. Existing data defaults to
+  OpenSubtitles without re-entering credentials.
+- Frontend format/type checks, **171 tests in 34 files**, and production build
+  passed. The first complete Linux race run passed every package; a concurrently
+  added regression test had a fixture pointer error caught by the subsequent
+  vet step. Corrected it, then the final affected subtitle/API race checks passed.
+  Regression coverage includes colliding provider IDs, Kitsu search/review/refresh
+  scoping, exact SubDL episode identity, cooldown and pending import provenance.
+- Real isolated authenticated Transmission movie and reviewed TV imports passed
+  using generated web-seeded media. A fresh build of the committed Transmission
+  test Dockerfile reproduced both flows under the race detector: stable job
+  binding across default changes/reopen, FFprobe validation, retained seeding
+  bytes and mandatory TV mapping review. The adapter's session challenge,
+  foreign-torrent rejection and incomplete verification states also passed.
+- Public Kitsu identity and title search passed without credentials or owner
+  media. SubDL adapter checks use owned HTTP responses, not an owner's paid key
+  or quota. Generated FFmpeg/FFprobe SRT, VTT, ASS and SSA imports passed with
+  manual review and provider provenance retained across reopen. Reference
+  alignment tests cover offset/drift, weak or incompatible references, duplicate
+  cues, preview without writes, journaled application and exact rollback.
+- Dependency scanning found the newly reported HTML parser performance issue
+  [GO-2026-6860](https://pkg.go.dev/vuln/GO-2026-6860), reachable through tracker
+  HTML parsing. Updated golang.org/x/net from 0.60.0 to fixed 0.62.0. The repeated
+  scan found zero affected symbols or imported packages. Its module-only notice
+  concerns unused x/crypto/openpgp; the application does not import that package.
+  npm audit found zero vulnerabilities. Actionlint passed both workflows.
+- Container publication now embeds the version, adds commit-addressed tags,
+  SBOM and provenance, and conditionally signs the published digest through the
+  pinned official GitHub action. This is workflow preparation, not evidence of
+  signed publication. Private-repository eligibility, hosted checks, actual
+  publishing and owner license selection remain separate release requirements.
+- Final dependency-patched Docker build passed all embedded UI/backend checks.
+  The broader Debian trixie/FFmpeg 7 race run exposed an obsolete assumption that
+  VP9/Opus WebM remuxing always changes timing. Updated the regression to compare
+  independently probed packet timestamps/content and require rejection whenever
+  they differ. The complete transfer race suite and vet then passed (350.482 s),
+  including real Transmission; every other package passed the complete patched
+  race run. The corrected assertion also passed with production's FFmpeg 5.
+- Existing real qBittorrent movie/TV/named-client/Anime-pack and NZBGet movie/TV
+  regressions passed. SABnzbd's initial connection sometimes consumed its full
+  60-second interval, exhausting the old one-minute total fixture deadline.
+  Allowed a bounded two minutes for startup plus post-processing/import review;
+  all four isolated standard/named movie/TV cases then passed (29.138 s total).
+  No production timeout or validation safeguard was relaxed.
+- Disposable Docker backup/download/upload/safe-restore, seven-feature workflows
+  and storage copy/mount-activation/restart checks passed. A one-minute constrained
+  run completed **3,816 reads and 12 settings writes with zero failures**, p95
+  **81 ms**, p99 **117 ms**, peak sampled **48.71 MiB** and eight processes under
+  **1 CPU / 384 MiB / 128 processes**. Catalog/integrity survived restart. This is
+  a bounded fixture workload, not long-term NAS or ARM capacity acceptance.
+- Before replacing the installed image, retained
+  `reelscarey:before-remaining-integrations-20261031` and a private offline,
+  verified schema-39 snapshot at
+  `data/backups/before-remaining-integrations-20261031/configuration-final`.
+  Prior deployment settings are stored alongside it. The candidate independently
+  verified the snapshot before image replacement. Backup data remains ignored by
+  Git and excluded from the Docker build context.
+- Upgraded the existing Compose app to **0.26.0-integrations**, schema **41**,
+  image `sha256:912dbc6283d85b37e3ed91a8a8a03c6bbd201515c9f57ffd6bb4d183dbff757a`.
+  Compared every prior column/row in all **82 tables** and the prior migration
+  ledger with the offline backup: unchanged. Encryption key/setup state remained
+  unchanged; integrity and foreign-key checks passed. All **nine installation
+  checks** passed before and after controlled restart. Docker reports healthy,
+  zero crash restarts, UID10001 and a read-only root. Windows loopback routes,
+  administrative authentication boundaries and all **40 served assets** passed.
+  The existing hidden WSL host launcher is active. The test-only packet assertion
+  change reproduced the exact acceptance-tested application binary.
+- GitHub Actions on PR #6 could not start: its annotations report failed account
+  payments or the spending limit. Entire Gates additionally reports missing
+  approvals and CI success. These are not represented as passing hosted checks.
+  Local results above were executed independently; no billing, branch protection,
+  check status or approval setting was changed.

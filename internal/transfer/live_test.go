@@ -46,14 +46,28 @@ func TestRealQBittorrentNamedClientDownloadAndImport(t *testing.T) {
 func TestRealQBittorrentNamedClientTVDownloadAndImport(t *testing.T) {
 	runRealQBittorrent(t, true, false, true)
 }
+func TestRealTransmissionDownloadAndImport(t *testing.T) {
+	runRealQBittorrent(t, false, false, true, true)
+}
+func TestRealTransmissionTVDownloadAndImport(t *testing.T) {
+	runRealQBittorrent(t, true, false, true, true)
+}
 func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
-	if os.Getenv("REELSCAREY_LIVE_QBT") != "1" {
+	transmission := len(providerOrder) > 2 && providerOrder[2]
+	binary, kind := "qbittorrent-nox", "qbittorrent"
+	if transmission {
+		binary, kind = "transmission-daemon", "transmission"
+		if os.Getenv("REELSCAREY_LIVE_TRANSMISSION") != "1" {
+			t.Skip("set REELSCAREY_LIVE_TRANSMISSION=1 with Transmission 4 and FFmpeg")
+		}
+	}
+	if !transmission && os.Getenv("REELSCAREY_LIVE_QBT") != "1" {
 		t.Skip("set REELSCAREY_LIVE_QBT=1 with qbittorrent-nox and FFmpeg installed")
 	}
 	if runtime.GOOS != "linux" {
 		t.Skip("headless Linux integration")
 	}
-	for _, binary := range []string{"qbittorrent-nox", "ffmpeg", "ffprobe"} {
+	for _, binary := range []string{binary, "ffmpeg", "ffprobe"} {
 		if _, e := exec.LookPath(binary); e != nil {
 			t.Fatalf("required integration binary %s: %v", binary, e)
 		}
@@ -71,70 +85,78 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	profile := t.TempDir()
-	configPath := filepath.Join(profile, "qBittorrent", "config")
-	if e := os.MkdirAll(configPath, 0700); e != nil {
-		t.Fatal(e)
-	}
-	listener, e := net.Listen("tcp", "127.0.0.1:0")
-	if e != nil {
-		t.Fatal(e)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
-	password := ID()
-	salt := []byte(ID()[:16])
-	key := pbkdf2.Key([]byte(password), salt, 100000, 64, sha512.New)
-	encoded := base64.StdEncoding.EncodeToString(salt) + ":" + base64.StdEncoding.EncodeToString(key)
-	ini := fmt.Sprintf("[LegalNotice]\nAccepted=true\n[Preferences]\nWebUI\\Address=127.0.0.1\nWebUI\\Port=%d\nWebUI\\Username=ciadmin\nWebUI\\Password_PBKDF2=\"@ByteArray(%s)\"\nWebUI\\LocalHostAuth=true\nWebUI\\CSRFProtection=true\nWebUI\\HostHeaderValidation=true\n[BitTorrent]\nSession\\DHTEnabled=false\nSession\\LSDEnabled=false\nSession\\PeXEnabled=false\nSession\\Port=0\n", port, encoded)
-	if e = os.WriteFile(filepath.Join(configPath, "qBittorrent.conf"), []byte(ini), 0600); e != nil {
-		t.Fatal(e)
-	}
-	// The isolated profile already accepts the notice. The command-line notice
-	// flag is unavailable in older supported clients, including Ubuntu's 4.6.3.
-	cmd := exec.CommandContext(ctx, "qbittorrent-nox", "--profile="+profile, "--webui-port="+strconv.Itoa(port))
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	if e = cmd.Start(); e != nil {
-		t.Fatal(e)
-	}
-	exited := make(chan error, 1)
-	go func() { exited <- cmd.Wait() }()
-	defer func() {
-		_ = cmd.Process.Signal(os.Interrupt)
-		select {
-		case <-exited:
-		case <-time.After(15 * time.Second):
-			_ = cmd.Process.Kill()
-			<-exited
-		}
-	}()
-	qbt := NewQBittorrent()
-	client := ClientConfig{URL: fmt.Sprintf("http://127.0.0.1:%d", port), Username: "ciadmin", Password: password, DownloadPath: filepath.ToSlash(f.cfg.DownloadsDir)}
-	if named {
-		client.LocalFolder = "named-qbt"
-		client.DownloadPath = filepath.ToSlash(filepath.Join(f.cfg.DownloadsDir, client.LocalFolder))
-		if e = os.MkdirAll(client.DownloadPath, 0755); e != nil {
+	var e error
+	var qbt Client
+	var client ClientConfig
+	var password string
+	if transmission {
+		qbt, client, password = startTransmissionFixture(t, ctx, f)
+	} else {
+		profile := t.TempDir()
+		configPath := filepath.Join(profile, "qBittorrent", "config")
+		if e := os.MkdirAll(configPath, 0700); e != nil {
 			t.Fatal(e)
 		}
-	}
-	ready := false
-	for start := time.Now(); time.Since(start) < 20*time.Second; {
-		if _, e = qbt.Test(ctx, client); e == nil {
-			ready = true
-			break
+		listener, e := net.Listen("tcp", "127.0.0.1:0")
+		if e != nil {
+			t.Fatal(e)
 		}
-		select {
-		case exitErr := <-exited:
-			exited <- exitErr
-			t.Fatalf("isolated qBittorrent exited before becoming ready: %v", exitErr)
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
-		case <-time.After(300 * time.Millisecond):
+		port := listener.Addr().(*net.TCPAddr).Port
+		listener.Close()
+		password = ID()
+		salt := []byte(ID()[:16])
+		key := pbkdf2.Key([]byte(password), salt, 100000, 64, sha512.New)
+		encoded := base64.StdEncoding.EncodeToString(salt) + ":" + base64.StdEncoding.EncodeToString(key)
+		ini := fmt.Sprintf("[LegalNotice]\nAccepted=true\n[Preferences]\nWebUI\\Address=127.0.0.1\nWebUI\\Port=%d\nWebUI\\Username=ciadmin\nWebUI\\Password_PBKDF2=\"@ByteArray(%s)\"\nWebUI\\LocalHostAuth=true\nWebUI\\CSRFProtection=true\nWebUI\\HostHeaderValidation=true\n[BitTorrent]\nSession\\DHTEnabled=false\nSession\\LSDEnabled=false\nSession\\PeXEnabled=false\nSession\\Port=0\n", port, encoded)
+		if e = os.WriteFile(filepath.Join(configPath, "qBittorrent.conf"), []byte(ini), 0600); e != nil {
+			t.Fatal(e)
 		}
-	}
-	if !ready {
-		t.Fatal("isolated authenticated qBittorrent did not become ready", e)
+		// The isolated profile already accepts the notice. The command-line notice
+		// flag is unavailable in older supported clients, including Ubuntu's 4.6.3.
+		cmd := exec.CommandContext(ctx, "qbittorrent-nox", "--profile="+profile, "--webui-port="+strconv.Itoa(port))
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
+		if e = cmd.Start(); e != nil {
+			t.Fatal(e)
+		}
+		exited := make(chan error, 1)
+		go func() { exited <- cmd.Wait() }()
+		defer func() {
+			_ = cmd.Process.Signal(os.Interrupt)
+			select {
+			case <-exited:
+			case <-time.After(15 * time.Second):
+				_ = cmd.Process.Kill()
+				<-exited
+			}
+		}()
+		qbt = NewQBittorrent()
+		client = ClientConfig{URL: fmt.Sprintf("http://127.0.0.1:%d", port), Username: "ciadmin", Password: password, DownloadPath: filepath.ToSlash(f.cfg.DownloadsDir)}
+		if named {
+			client.LocalFolder = "named-qbt"
+			client.DownloadPath = filepath.ToSlash(filepath.Join(f.cfg.DownloadsDir, client.LocalFolder))
+			if e = os.MkdirAll(client.DownloadPath, 0755); e != nil {
+				t.Fatal(e)
+			}
+		}
+		ready := false
+		for start := time.Now(); time.Since(start) < 20*time.Second; {
+			if _, e = qbt.Test(ctx, client); e == nil {
+				ready = true
+				break
+			}
+			select {
+			case exitErr := <-exited:
+				exited <- exitErr
+				t.Fatalf("isolated qBittorrent exited before becoming ready: %v", exitErr)
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			case <-time.After(300 * time.Millisecond):
+			}
+		}
+		if !ready {
+			t.Fatal("isolated authenticated qBittorrent did not become ready", e)
+		}
 	}
 	generated := filepath.Join(t.TempDir(), "fixture.mp4")
 	gen := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=128x96:rate=10", "-t", "2", "-c:v", "mpeg4", "-movflags", "faststart", generated)
@@ -258,7 +280,7 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 	}
 	var defaults ClientDefaults
 	if named {
-		saved, err := f.s.SaveDownloadClient(ctx, DownloadClientUpdate{Name: "Owned torrent", Kind: "qbittorrent", URL: client.URL, Username: client.Username, Password: &password, DownloadPath: client.DownloadPath, LocalFolder: client.LocalFolder})
+		saved, err := f.s.SaveDownloadClient(ctx, DownloadClientUpdate{Name: "Owned torrent", Kind: kind, URL: client.URL, Username: client.Username, Password: &password, DownloadPath: client.DownloadPath, LocalFolder: client.LocalFolder})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -302,7 +324,7 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 		t.Fatal("queue", e)
 	}
 	if named {
-		if job.ClientKey != defaults.Torrent || job.ClientKind != "qbittorrent" {
+		if job.ClientKey != defaults.Torrent || job.ClientKind != kind {
 			t.Fatal("named binding missing")
 		}
 		defaults.Torrent = ""
@@ -462,17 +484,17 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 					t.Fatal("pack import lacked real FFprobe or Anime organization", file)
 				}
 			}
-			t.Log("PASS: real authenticated qBittorrent downloaded three generated Anime pack videos; explicit provider order survived edits and reopen, mandatory mapping registered canonical S00E01/S01E01/S02E01, FFprobe verified each file and seeding sources remained intact")
+			t.Log("PASS:", kind, "downloaded three generated Anime pack videos; explicit provider order survived edits and reopen, mandatory mapping registered canonical S00E01/S01E01/S02E01, FFprobe verified each file and seeding sources remained intact")
 			return
 		}
 		season, e := library.New(db).TVSeason(ctx, job.MovieID, 1)
 		if e != nil || season.Season.AvailableEpisodes != 3 || season.Episodes[0].FilePath != season.Episodes[1].FilePath || season.Episodes[1].FilePath == season.Episodes[2].FilePath {
 			t.Fatal("live episode registration incorrect", e)
 		}
-		t.Log("PASS: real authenticated qBittorrent downloaded a generated season pack; review confirmation survived reopen; two FFprobe-verified files registered three episodes and preserved seeding sources")
+		t.Log("PASS:", kind, "downloaded a generated season pack; review confirmation survived reopen; two FFprobe-verified files registered three episodes and preserved seeding sources")
 		return
 	}
-	t.Log("PASS: real authenticated qBittorrent downloaded owned video via localhost web seed; app restart reconciled it and FFprobe-verified import preserved the source")
+	t.Log("PASS:", kind, "downloaded owned video via localhost web seed; app restart reconciled it and FFprobe-verified import preserved the source")
 }
 func bencode(v any) []byte {
 	switch x := v.(type) {

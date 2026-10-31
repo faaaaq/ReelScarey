@@ -214,7 +214,7 @@ func (s *Service) process(ctx context.Context, j Job, p Preferences) (string, st
 				langs = append(langs, track.Language)
 			}
 		}
-		raw, e := s.provider.Search(ctx, c, m.Target, langs)
+		raw, e := s.selectedProvider(c).Search(ctx, c, m.Target, langs)
 		if e != nil {
 			_ = s.providerError(ctx, c.Generation, e)
 			return "", "", e
@@ -257,7 +257,7 @@ func (s *Service) process(ctx context.Context, j Job, p Preferences) (string, st
 		if e = s.providerReady(ctx, c.Generation); e != nil {
 			return "", "", e
 		}
-		download, e := s.provider.Fetch(ctx, c, *chosen)
+		download, e := s.selectedProvider(c).Fetch(ctx, c, *chosen)
 		if e != nil {
 			_ = s.providerError(ctx, c.Generation, e)
 			return "", "", e
@@ -308,7 +308,7 @@ func (s *Service) saveDetected(ctx context.Context, j Job, m media, d detection)
 		return e
 	}
 	for t, v := range d.tracks {
-		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitles(media_file_id,language,variant,source,relative_path,state,message,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(media_file_id,language,variant) DO UPDATE SET source=CASE WHEN subtitles.source='downloaded' AND subtitles.relative_path=excluded.relative_path THEN 'downloaded' ELSE excluded.source END,relative_path=excluded.relative_path,state=excluded.state,message=excluded.message,updated_at=excluded.updated_at`, m.ID, t.Language, t.Variant, v.Source, v.Path, v.State, v.Message, s.now().Unix()); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitles(media_file_id,language,variant,source,relative_path,state,message,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(media_file_id,language,variant) DO UPDATE SET provider=CASE WHEN subtitles.source='downloaded' AND subtitles.relative_path=excluded.relative_path THEN subtitles.provider ELSE '' END,source=CASE WHEN subtitles.source='downloaded' AND subtitles.relative_path=excluded.relative_path THEN 'downloaded' ELSE excluded.source END,relative_path=excluded.relative_path,state=excluded.state,message=excluded.message,updated_at=excluded.updated_at`, m.ID, t.Language, t.Variant, v.Source, v.Path, v.State, v.Message, s.now().Unix()); e != nil {
 			return e
 		}
 	}

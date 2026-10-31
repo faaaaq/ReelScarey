@@ -44,7 +44,7 @@ type DownloadClientUpdate struct {
 }
 
 func clientProtocol(kind string) string {
-	if kind == "qbittorrent" {
+	if kind == "qbittorrent" || kind == "transmission" {
 		return "torrent"
 	}
 	if kind == "sabnzbd" || kind == "nzbget" {
@@ -124,12 +124,15 @@ func (s *Service) testDownloadClient(ctx context.Context, kind string, c ClientC
 	case "qbittorrent":
 		_, e := s.client.Test(ctx, c)
 		return e
+	case "transmission":
+		_, e := s.transmission.Test(ctx, c)
+		return e
 	case "sabnzbd":
 		return s.sab.Test(ctx, c)
 	case "nzbget":
 		return s.nzbget.Test(ctx, c)
 	default:
-		return problem("invalid_settings", "Choose qBittorrent, SABnzbd or NZBGet.")
+		return problem("invalid_settings", "Choose qBittorrent, Transmission, SABnzbd or NZBGet.")
 	}
 }
 func (s *Service) SaveDownloadClient(ctx context.Context, in DownloadClientUpdate) (DownloadClient, error) {

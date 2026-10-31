@@ -1,7 +1,7 @@
 # Download clients
 
 Version 0.24 adds **Settings → Manage download clients** (`/download-clients`).
-Save up to 32 named qBittorrent, SABnzbd and NZBGet connections. Each connection
+Save up to 32 named qBittorrent, Transmission 4, SABnzbd and NZBGet connections. Each connection
 is tested before saving and starts paused. Enable it explicitly, then choose it
 as the torrent or Usenet default. Existing Settings connections remain available
 through the explicit **Settings connection** choice. No existing job is rerouted
@@ -58,3 +58,23 @@ The application still deploys as one Docker container. External download clients
 and their NNTP/indexer accounts are configured independently. Generated-media
 acceptance uses isolated qBittorrent, SABnzbd 5.1.3 and NZBGet 26.3; it does not
 establish acceptance of an owner's accounts, NAS, proxy or shared mounts.
+
+## Transmission 4 (0.26)
+
+Choose **Transmission** and enter its RPC address, username/password and completed
+folder mapping. A bare server URL uses `/transmission/rpc`; an explicit reverse
+proxy path is preserved. Use Transmission 4 with legacy RPC 17 compatibility and
+all torrent-added, completed and seeding-completed scripts disabled. The profile
+is external to ReelScarey's single application container.
+
+A submission attaches its ownership label and dedicated output folder atomically.
+Tracking uses the info hash, which survives a client restart, rather than its
+numeric torrent ID. A lost response is reconciled before any retry; a preexisting
+foreign torrent is left untouched. Retain the application's labels and folders.
+Only checked, fully downloaded bytes can enter the existing importer. TV still
+requires explicit file-to-episode review, and seeding sources remain in place.
+The torrent default can use Transmission; the Usenet default cannot.
+
+The disposable test image in `scripts/transmission-test.Dockerfile` runs private,
+authenticated Transmission movie and TV flows with generated web-seeded media.
+It is a test tool, not part of the deployed runtime.

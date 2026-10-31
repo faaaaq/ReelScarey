@@ -126,9 +126,10 @@ func (s *Service) process(ctx context.Context, j Job) error {
 		return err
 	}
 	if c.URL != j.clientURL {
-		return problem("client_changed", "Restore the qBittorrent URL used by this download before resuming tracking.")
+		return problem("client_changed", "Restore the torrent client URL used by this download before resuming tracking.")
 	}
-	torrent, err := s.client.Find(ctx, c, j.Hash)
+	client := s.torrentClient(c)
+	torrent, err := client.Find(ctx, c, j.Hash)
 	if err != nil {
 		return err
 	}
@@ -136,7 +137,7 @@ func (s *Service) process(ctx context.Context, j Job) error {
 	if torrent == nil {
 		if j.attempted != 0 {
 			if time.Now().Unix()-j.submittedAt > 90 {
-				return problem("submission_unknown", "The torrent is not visible in qBittorrent. Check the client, then retry this job if it was not accepted. The same info hash will be reused.")
+				return problem("submission_unknown", "The torrent is not visible in its client. Check the client, then retry this job if it was not accepted. The same info hash will be reused.")
 			}
 			return nil
 		}
@@ -165,7 +166,7 @@ func (s *Service) process(ctx context.Context, j Job) error {
 		if err = s.owned(ctx, j, `UPDATE downloads SET state='submitting',submission_attempted=1,submitted_at=unixepoch(),updated_at=unixepoch()`); err != nil {
 			return err
 		}
-		if err = s.client.Add(ctx, c, tag, j.savePath, payload); err != nil {
+		if err = client.Add(ctx, c, tag, j.savePath, payload); err != nil {
 			return err
 		}
 		return s.owned(ctx, j, `UPDATE downloads SET state='downloading',updated_at=unixepoch()`)
@@ -174,7 +175,7 @@ func (s *Service) process(ctx context.Context, j Job) error {
 		return problem("torrent_exists", "This torrent already exists outside this ReelScarey job. It was left unchanged; choose another release or stop tracking this job.")
 	}
 	if math.IsNaN(torrent.Progress) || math.IsInf(torrent.Progress, 0) || torrent.Progress < 0 || torrent.Progress > 1 || torrent.Size < 0 || torrent.Completed < 0 {
-		return problem("client_response", "qBittorrent returned invalid progress information.")
+		return problem("client_response", "The torrent client returned invalid progress information.")
 	}
 	state := torrent.State
 	if !textOK(state, 50) {
@@ -184,13 +185,13 @@ func (s *Service) process(ctx context.Context, j Job) error {
 		return err
 	}
 	if state == "error" || state == "missingFiles" {
-		return problem("client_download_error", "qBittorrent reports an error or missing files. Fix the torrent in qBittorrent, then retry tracking.")
+		return problem("client_download_error", "The torrent client reports an error or missing files. Fix the torrent in the client, then retry tracking.")
 	}
 	complete := state == "uploading" || state == "stalledUP" || state == "queuedUP" || state == "pausedUP" || state == "stoppedUP" || state == "forcedUP"
 	if !complete || torrent.Progress < 1 || torrent.AmountLeft != 0 {
 		return nil
 	}
-	files, err := s.client.Files(ctx, c, j.Hash)
+	files, err := client.Files(ctx, c, j.Hash)
 	if err != nil {
 		return err
 	}

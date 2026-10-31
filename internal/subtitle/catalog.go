@@ -54,11 +54,12 @@ func (s *Service) media(ctx context.Context, id int64) (media, error) {
 
 type SavedTrack struct {
 	Track
-	Source  string `json:"source"`
-	Path    string `json:"path"`
-	State   string `json:"state"`
-	Message string `json:"message"`
-	Updated int64  `json:"updated_at"`
+	Provider string `json:"provider,omitempty"`
+	Source   string `json:"source"`
+	Path     string `json:"path"`
+	State    string `json:"state"`
+	Message  string `json:"message"`
+	Updated  int64  `json:"updated_at"`
 }
 type FileView struct {
 	ID           int64        `json:"id"`
@@ -91,13 +92,13 @@ func (s *Service) File(ctx context.Context, id int64, withCandidates bool) (File
 			v.Episodes += fmt.Sprintf("–E%02d", m.Episodes[len(m.Episodes)-1].Number)
 		}
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT language,variant,source,relative_path,state,message,updated_at FROM subtitles WHERE media_file_id=? ORDER BY language,variant`, id)
+	rows, e := s.db.QueryContext(ctx, `SELECT language,variant,source,relative_path,state,message,updated_at,provider FROM subtitles WHERE media_file_id=? ORDER BY language,variant`, id)
 	if e != nil {
 		return v, e
 	}
 	for rows.Next() {
 		var t SavedTrack
-		if e = rows.Scan(&t.Language, &t.Variant, &t.Source, &t.Path, &t.State, &t.Message, &t.Updated); e != nil {
+		if e = rows.Scan(&t.Language, &t.Variant, &t.Source, &t.Path, &t.State, &t.Message, &t.Updated, &t.Provider); e != nil {
 			rows.Close()
 			return v, e
 		}
@@ -217,7 +218,7 @@ func (s *Service) selected(ctx context.Context, j Job, p Preferences, c Credenti
 	if e = json.Unmarshal([]byte(b), &candidate); e != nil {
 		return candidate, e
 	}
-	if generation != c.Generation || revision != p.Revision || sha != m.SHA || expires < s.now().Unix() || !candidate.CanDownload || !slices.Contains(p.Tracks, candidate.Track) {
+	if generation != c.Generation || providerName(candidate.Provider) != providerName(c.Provider) || revision != p.Revision || sha != m.SHA || expires < s.now().Unix() || !candidate.CanDownload || !slices.Contains(p.Tracks, candidate.Track) {
 		return candidate, problem("candidate_expired", "The subtitle choice or its preferences changed. Search again before downloading.")
 	}
 	// Previously reviewed candidates without a format were always SRT.

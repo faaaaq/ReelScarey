@@ -19,7 +19,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/quality"
 )
 
-var ErrAnimeOrderInput = errors.New("Choose up to 20 distinct AniList entries and 5000 distinct loaded episodes with a release title (at most 180 UTF-8 bytes) and an unambiguous episode label.")
+var ErrAnimeOrderInput = errors.New("Choose up to 20 distinct entries from one Anime provider and 5000 distinct loaded episodes with a release title (at most 180 UTF-8 bytes) and an unambiguous episode label.")
 var ErrAnimeOrderRevision = errors.New("The Anime identities, order, section or episode metadata changed. Reload and review again.")
 var ErrAnimeOrderUnavailable = errors.New("Episode-order mappings apply to Anime shows; Anime films can link identities only.")
 var ErrAnimeOrderReview = errors.New("This order review expired or was already applied. Create a fresh review.")
@@ -32,6 +32,7 @@ type AnimeOrderEntry struct {
 	Label        string `json:"label"`
 }
 type AnimeOrderSettings struct {
+	Provider          string            `json:"provider"`
 	MediaID           int64             `json:"media_id"`
 	Revision          int               `json:"revision"`
 	CategoryRevision  int               `json:"category_revision"`
@@ -41,6 +42,7 @@ type AnimeOrderSettings struct {
 	Episodes          []AnimeEpisode    `json:"episodes"`
 }
 type AnimeOrderUpdate struct {
+	Provider          string            `json:"provider,omitempty"`
 	Revision          int               `json:"revision"`
 	CategoryRevision  int               `json:"category_revision"`
 	NumberingRevision int64             `json:"numbering_revision"`
@@ -50,9 +52,13 @@ type AnimeOrderUpdate struct {
 
 // Validate local scope before making any external identity requests.
 func ValidateAnimeOrderUpdate(old AnimeOrderSettings, in AnimeOrderUpdate) error {
+	provider := in.Provider
+	if provider == "" {
+		provider = "anilist"
+	}
 	identities := []AnimeIdentity{}
 	for _, id := range in.ProviderIDs {
-		identities = append(identities, AnimeIdentity{Provider: "anilist", ID: id, Title: "Pending identity review", URL: "https://anilist.co/anime/" + strconv.FormatInt(id, 10)})
+		identities = append(identities, AnimeIdentity{Provider: provider, ID: id, Title: "Pending identity review", URL: metadata.AnimeIdentityURL(provider, id)})
 	}
 	_, e := normalizeAnimeOrder(old, in, identities)
 	return e
@@ -123,6 +129,10 @@ func readAnimeOrder(ctx context.Context, tx *sql.Tx, id int64) (AnimeOrderSettin
 	if re != nil {
 		return out, re
 	}
+	out.Provider = "anilist"
+	if len(out.Identities) > 0 {
+		out.Provider = out.Identities[0].Provider
+	}
 	rows, e = tx.QueryContext(ctx, `SELECT episode_id,provider_id,release_title,label FROM anime_order_entries WHERE media_id=? ORDER BY episode_id`, id)
 	if e != nil {
 		return out, e
@@ -179,6 +189,12 @@ func (s *Store) AnimeOrder(ctx context.Context, id int64) (AnimeOrderSettings, e
 	return out, tx.Commit()
 }
 func normalizeAnimeOrder(old AnimeOrderSettings, in AnimeOrderUpdate, identities []AnimeIdentity) (AnimeOrderSettings, error) {
+	if in.Provider == "" {
+		in.Provider = "anilist"
+	}
+	if in.Provider != "anilist" && in.Provider != "kitsu" {
+		return old, ErrAnimeOrderInput
+	}
 	if in.Revision != old.Revision || in.CategoryRevision != old.CategoryRevision || in.NumberingRevision != old.NumberingRevision {
 		return old, ErrAnimeOrderRevision
 	}
@@ -187,7 +203,7 @@ func normalizeAnimeOrder(old AnimeOrderSettings, in AnimeOrderUpdate, identities
 	}
 	links := map[int64]AnimeIdentity{}
 	for _, v := range identities {
-		if v.Provider != "anilist" || v.ID < 1 || v.ID > 2147483647 || v.Title == "" || v.URL != "https://anilist.co/anime/"+strconv.FormatInt(v.ID, 10) || links[v.ID].ID != 0 {
+		if v.Provider != in.Provider || v.ID < 1 || v.ID > 2147483647 || v.Title == "" || v.URL != metadata.AnimeIdentityURL(v.Provider, v.ID) || links[v.ID].ID != 0 {
 			return old, ErrAnimeOrderInput
 		}
 		links[v.ID] = v
@@ -221,6 +237,7 @@ func normalizeAnimeOrder(old AnimeOrderSettings, in AnimeOrderUpdate, identities
 	sort.Slice(entries, func(i, j int) bool { return entries[i].EpisodeID < entries[j].EpisodeID })
 	sort.Slice(identities, func(i, j int) bool { return identities[i].ID < identities[j].ID })
 	out := old
+	out.Provider = in.Provider
 	out.Entries = entries
 	out.Identities = append([]AnimeIdentity{}, identities...)
 	return out, nil
@@ -285,7 +302,7 @@ func (s *Store) ApplyAnimeOrder(ctx context.Context, id int64, reviewID string) 
 	for _, v := range proposed.Identities {
 		ids = append(ids, v.ID)
 	}
-	proposed, e = normalizeAnimeOrder(old, AnimeOrderUpdate{Revision: proposed.Revision, CategoryRevision: proposed.CategoryRevision, NumberingRevision: proposed.NumberingRevision, ProviderIDs: ids, Entries: proposed.Entries}, proposed.Identities)
+	proposed, e = normalizeAnimeOrder(old, AnimeOrderUpdate{Provider: proposed.Provider, Revision: proposed.Revision, CategoryRevision: proposed.CategoryRevision, NumberingRevision: proposed.NumberingRevision, ProviderIDs: ids, Entries: proposed.Entries}, proposed.Identities)
 	if e != nil {
 		return old, e
 	}

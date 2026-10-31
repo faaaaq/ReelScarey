@@ -20,13 +20,14 @@ type Service struct {
 	secrets  *securestore.Store
 	cfg      config.Config
 	provider Provider
+	subdl    *SubDL
 	configMu sync.Mutex
 	Prober   transfer.Prober
 	now      func() time.Time
 }
 
 func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, p Provider) *Service {
-	return &Service{db: db, secrets: secrets, cfg: cfg, provider: p, Prober: transfer.FFprobe{}, now: time.Now}
+	return &Service{db: db, secrets: secrets, cfg: cfg, provider: p, subdl: NewSubDL(), Prober: transfer.FFprobe{}, now: time.Now}
 }
 
 type Preferences struct {
@@ -106,13 +107,17 @@ func (s *Service) credentials(ctx context.Context) (Credentials, error) {
 		return c, e
 	}
 	if len(b) == 0 {
-		return c, problem("provider_not_configured", "Connect OpenSubtitles to search and download subtitles. Torznab is not required.")
+		return c, problem("provider_not_configured", "Connect a subtitle provider to search and download subtitles. Torznab is not required.")
 	}
 	e = json.Unmarshal(b, &c)
+	if e == nil && providerName(c.Provider) != "opensubtitles" && c.Provider != "subdl" {
+		return c, problem("provider_not_configured", "The saved subtitle provider is unsupported.")
+	}
 	return c, e
 }
 
 type ProviderStatus struct {
+	Provider   string `json:"provider"`
 	Configured bool   `json:"configured"`
 	Username   string `json:"username"`
 	UserAgent  string `json:"user_agent"`
@@ -131,7 +136,7 @@ func (s *Service) Status(ctx context.Context) (ProviderStatus, error) {
 	if e != nil {
 		return ProviderStatus{}, e
 	}
-	out := ProviderStatus{Configured: true, Username: c.Username, UserAgent: c.UserAgent}
+	out := ProviderStatus{Provider: providerName(c.Provider), Configured: true, Username: c.Username, UserAgent: c.UserAgent}
 	e = s.db.QueryRowContext(ctx, `SELECT state,message,cooldown_until,remaining FROM subtitle_provider_state WHERE id=1`).Scan(&out.State, &out.Message, &out.Cooldown, &out.Remaining)
 	if e == nil && out.Cooldown <= s.now().Unix() && (out.State == "provider_quota" || out.State == "provider_rate_limit") {
 		out.State, out.Message, out.Cooldown = "ready", "Provider cooldown ended; missing tracks can be checked again.", 0
@@ -146,20 +151,38 @@ func (s *Service) Configure(ctx context.Context, in CredentialUpdate) error {
 	if e != nil && !(errors.As(e, &p) && p.Code == "provider_not_configured") {
 		return e
 	}
-	c := Credentials{Username: strings.TrimSpace(in.Username), UserAgent: strings.TrimSpace(in.UserAgent), APIKey: old.APIKey, Password: old.Password, Generation: transfer.ID()}
+	in.Provider = providerName(in.Provider)
+	if in.Provider != "opensubtitles" && in.Provider != "subdl" {
+		return problem("invalid_credentials", "Choose OpenSubtitles or SubDL.")
+	}
+	if providerName(old.Provider) != in.Provider {
+		old = Credentials{}
+		if in.APIKey == nil {
+			return problem("invalid_credentials", "Enter a new API key when changing subtitle providers.")
+		}
+	}
+	c := Credentials{Provider: in.Provider, Username: strings.TrimSpace(in.Username), UserAgent: strings.TrimSpace(in.UserAgent), APIKey: old.APIKey, Password: old.Password, Generation: transfer.ID()}
 	if in.APIKey != nil {
 		c.APIKey = *in.APIKey
 	}
 	if in.Password != nil {
 		c.Password = *in.Password
 	}
-	if old.Username != "" && c.Username != old.Username && in.Password == nil {
+	if c.Provider == "opensubtitles" && old.Username != "" && c.Username != old.Username && in.Password == nil {
 		return problem("invalid_credentials", "Re-enter the password when changing the OpenSubtitles account.")
 	}
-	if !textOK(c.APIKey, 2048) || !textOK(c.Username, 200) || !textOK(c.Password, 2048) || !textOK(c.UserAgent, 120) {
+	if c.Provider == "subdl" {
+		c.Username = ""
+		c.Password = ""
+		c.UserAgent = ""
+	}
+	if !textOK(c.APIKey, 2048) || (c.Provider == "opensubtitles" && (!textOK(c.Username, 200) || !textOK(c.Password, 2048) || !textOK(c.UserAgent, 120))) {
+		if c.Provider == "subdl" {
+			return problem("invalid_credentials", "Enter a valid SubDL API key.")
+		}
 		return problem("invalid_credentials", "Enter your OpenSubtitles API key, account username/password and registered application name/version.")
 	}
-	if e = s.provider.Test(ctx, c); e != nil {
+	if e = s.selectedProvider(c).Test(ctx, c); e != nil {
 		return e
 	}
 	b, e := json.Marshal(c)
@@ -193,7 +216,7 @@ func (s *Service) Test(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
-	if e = s.provider.Test(ctx, c); e != nil {
+	if e = s.selectedProvider(c).Test(ctx, c); e != nil {
 		_ = s.providerError(ctx, c.Generation, e)
 		return e
 	}

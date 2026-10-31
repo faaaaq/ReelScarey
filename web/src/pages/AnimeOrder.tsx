@@ -8,7 +8,7 @@ import { useResource } from "../useResource";
 import { bytes } from "./Releases";
 
 export type AnimeIdentity = {
-  provider: "anilist";
+  provider: "anilist" | "kitsu";
   id: number;
   title: string;
   romaji: string;
@@ -26,6 +26,7 @@ export type AnimeOrderEntry = {
   label: string;
 };
 export type AnimeOrderSettings = {
+  provider?: "anilist" | "kitsu";
   media_id: number;
   revision: number;
   category_revision: number;
@@ -113,10 +114,10 @@ export function AnimeOrder({ id }: { id: number }) {
     >
       <h2>Anime identity & episode mapping</h2>
       <p className="field-help">
-        Link the exact AniList entries and map release labels to saved episodes,
-        including specials. These choices support reviewed automatic searches,
-        manual pack searches and completed-file suggestions. Canonical TMDb
-        identities, monitoring and existing files stay unchanged. Automatic
+        Link exact AniList or Kitsu entries and map release labels to saved
+        episodes, including specials. These choices support reviewed automatic
+        searches, manual pack searches and completed-file suggestions. Canonical
+        TMDb identities, monitoring and existing files stay unchanged. Automatic
         searching keeps its separate settings.
       </p>
       {!open ? (
@@ -191,6 +192,10 @@ function OrderEditor({
   reload: () => void;
   saved: () => void;
 }) {
+  const [provider, setProvider] = useState<"anilist" | "kitsu">(
+    initial.provider ?? "anilist",
+  );
+  const providerName = provider === "kitsu" ? "Kitsu" : "AniList";
   const [providerIDs, setProviderIDs] = useState(
     initial.identities.map((identity) => identity.id),
   );
@@ -248,9 +253,13 @@ function OrderEditor({
     );
   const newProviderIDs = providerIDs.filter(
     (providerID) =>
-      !initial.identities.some((identity) => identity.id === providerID),
+      !initial.identities.some(
+        (identity) =>
+          identity.id === providerID && identity.provider === provider,
+      ),
   );
   const dirty =
+    provider !== (initial.provider ?? "anilist") ||
     JSON.stringify(providerIDs) !==
       JSON.stringify(initial.identities.map((identity) => identity.id)) ||
     JSON.stringify(draftEntries) !== JSON.stringify(initial.entries);
@@ -279,15 +288,15 @@ function OrderEditor({
     }));
   }
   function validate() {
-    if (providerIDs.length > 20) return "Link at most 20 AniList entries.";
+    if (providerIDs.length > 20) return "Link at most 20 provider entries.";
     if (newProviderIDs.length > 8)
-      return "Add at most eight new AniList links per review. Saved links can be retained, up to twenty total.";
+      return "Add at most eight new provider links per review. Saved links can be retained, up to twenty total.";
     const labels = new Set<string>();
     for (const entry of draftEntries) {
       if (!validTitle(entry.release_title.trim()) || !labelKey(entry.label))
         return "Each mapped episode needs a release title of 1–180 UTF-8 bytes and a label such as 25, S00E01, SP1, OVA1, ONA1 or OAD1.";
       if (entry.provider_id && !providerIDs.includes(entry.provider_id))
-        return "Every provider mapping must use a linked AniList entry, or choose Manual label.";
+        return "Every provider mapping must use a linked entry, or choose Manual label.";
       const key = `${titleKey(entry.release_title)}:${labelKey(entry.label)}`;
       if (labels.has(key))
         return "A release title and label must identify only one canonical episode, even when provider entries differ.";
@@ -305,7 +314,7 @@ function OrderEditor({
     request.current = controller;
     try {
       const out = await api<{ items: AnimeIdentity[] }>(
-        `/metadata/anime?query=${encodeURIComponent(query.trim())}`,
+        `/metadata/anime?query=${encodeURIComponent(query.trim())}${provider === "anilist" ? "" : "&provider=kitsu"}`,
         {
           signal: AbortSignal.any([
             controller.signal,
@@ -346,6 +355,7 @@ function OrderEditor({
             category_revision: initial.category_revision,
             numbering_revision: initial.numbering_revision,
             provider_ids: providerIDs,
+            ...(provider === "kitsu" ? { provider } : {}),
             entries: draftEntries.map((entry) => ({
               ...entry,
               release_title: entry.release_title.trim(),
@@ -465,7 +475,30 @@ function OrderEditor({
     ).length ?? 0;
   return (
     <div className="settings-form">
-      <h3>Linked AniList entries</h3>
+      <h3>Linked {providerName} entries</h3>
+      <label>
+        Anime provider
+        <select
+          value={provider}
+          disabled={locked || providerIDs.length > 0 || !!review}
+          onChange={(e) => {
+            invalidate();
+            setProvider(e.target.value as "anilist" | "kitsu");
+            setIdentityCache({});
+            setResults(undefined);
+            setSourceProvider(0);
+            setProposal(undefined);
+          }}
+        >
+          <option value="anilist">AniList</option>
+          <option value="kitsu">Kitsu</option>
+        </select>
+      </label>
+      <p className="field-help">
+        Each title uses one identity provider. To switch, change linked episode
+        rows to Manual label and unlink the old identities first. Saved release
+        labels remain explicit.
+      </p>
       <Button
         variant="soft"
         disabled={locked || dirty || !initial.identities.length}
@@ -490,8 +523,8 @@ function OrderEditor({
         }
       >
         {busy === "refresh"
-          ? "Refreshing AniList…"
-          : "Review refreshed AniList details"}
+          ? `Refreshing ${providerName}…`
+          : `Review refreshed ${providerName} details`}
       </Button>
       {initial.numbering_revision === 0 && (
         <p className="field-help">
@@ -505,7 +538,7 @@ function OrderEditor({
         lookup.
       </p>
       <p className="field-help">
-        AniList entries can describe a season, film or special rather than an
+        Provider entries can describe a season, film or special rather than an
         entire TMDb show. Review the format, year and titles; an episode count
         is not an episode mapping. Linking does not replace TMDb identity or
         automatically add search aliases.
@@ -516,9 +549,11 @@ function OrderEditor({
           return (
             <li key={providerID}>
               <div>
-                <strong>{identity?.title ?? `AniList ${providerID}`}</strong>
+                <strong>
+                  {identity?.title ?? `${providerName} ${providerID}`}
+                </strong>
                 <p className="field-help">
-                  AniList {providerID} · {identity?.format ?? ""} ·{" "}
+                  {providerName} {providerID} · {identity?.format ?? ""} ·{" "}
                   {identity?.year ?? "Year unknown"}
                   {identity?.episodes ? ` · ${identity.episodes} episodes` : ""}
                 </p>
@@ -529,11 +564,11 @@ function OrderEditor({
                 </p>
                 <a
                   className="text-link"
-                  href={`https://anilist.co/anime/${providerID}`}
+                  href={`https://${provider === "kitsu" ? "kitsu.io" : "anilist.co"}/anime/${providerID}`}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  View on AniList
+                  View on {providerName}
                 </a>
               </div>
               <Button
@@ -560,7 +595,7 @@ function OrderEditor({
           );
         })}
       </ul>
-      {!providerIDs.length && <p>No AniList entries linked.</p>}
+      {!providerIDs.length && <p>No {providerName} entries linked.</p>}
       <p className="field-help">
         Before unlinking an entry used by mappings, clear those rows or choose
         Manual label for them.
@@ -573,19 +608,21 @@ function OrderEditor({
         }}
       >
         <TextField.Root
-          aria-label="Search AniList titles"
+          aria-label={`Search ${providerName} titles`}
           maxLength={200}
           value={query}
           disabled={locked}
           onChange={(event) => setQuery(event.target.value)}
         />
         <Button type="submit" variant="soft" disabled={locked || !query.trim()}>
-          {busy === "search" ? "Searching AniList…" : "Search AniList"}
+          {busy === "search"
+            ? `Searching ${providerName}…`
+            : `Search ${providerName}`}
         </Button>
       </form>
       {results && (
-        <section aria-label="AniList search results">
-          {!results.length && <p>No AniList entries found.</p>}
+        <section aria-label={`${providerName} search results`}>
+          {!results.length && <p>No {providerName} entries found.</p>}
           <ul className="episode-list">
             {results.map((identity) => (
               <li key={identity.id}>
@@ -596,7 +633,7 @@ function OrderEditor({
                     {identity.episodes
                       ? ` · ${identity.episodes} episodes`
                       : ""}{" "}
-                    · AniList {identity.id}
+                    · {providerName} {identity.id}
                   </p>
                   <p className="field-help">
                     {[identity.romaji, identity.english, identity.native]
@@ -612,7 +649,9 @@ function OrderEditor({
                     providerIDs.length >= 20 ||
                     (newProviderIDs.length >= 8 &&
                       !initial.identities.some(
-                        (savedIdentity) => savedIdentity.id === identity.id,
+                        (savedIdentity) =>
+                          savedIdentity.id === identity.id &&
+                          savedIdentity.provider === provider,
                       ))
                   }
                   onClick={() => {
@@ -622,7 +661,7 @@ function OrderEditor({
                 >
                   {providerIDs.includes(identity.id)
                     ? "Linked in draft"
-                    : `Link AniList ${identity.id}`}
+                    : `Link ${providerName} ${identity.id}`}
                 </Button>
               </li>
             ))}
@@ -694,7 +733,7 @@ function OrderEditor({
                         <option value={0}>Manual label</option>
                         {providerIDs.map((providerID) => (
                           <option key={providerID} value={providerID}>
-                            {identityCache[providerID]?.title ?? "AniList"} ·{" "}
+                            {identityCache[providerID]?.title ?? providerName} ·{" "}
                             {providerID}
                           </option>
                         ))}
@@ -815,7 +854,7 @@ function OrderEditor({
                       <option value={0}>Manual label</option>
                       {providerIDs.map((providerID) => (
                         <option key={providerID} value={providerID}>
-                          {identityCache[providerID]?.title ?? "AniList"} ·{" "}
+                          {identityCache[providerID]?.title ?? providerName} ·{" "}
                           {providerID}
                         </option>
                       ))}
@@ -1008,7 +1047,7 @@ function OrderEditor({
         <section aria-label="Review Anime identity and episode changes">
           <h3>Review saved identity and episode changes</h3>
           <p>
-            {review.settings.identities.length} linked AniList entries ·{" "}
+            {review.settings.identities.length} linked {providerName} entries ·{" "}
             {review.settings.entries.length} canonical episode mappings
           </p>
           <p className="field-help">
@@ -1020,7 +1059,8 @@ function OrderEditor({
             {review.settings.identities.map((identity) => (
               <li key={identity.id}>
                 <span>
-                  {identity.title} · {identity.format} · AniList {identity.id}
+                  {identity.title} · {identity.format} · {providerName}{" "}
+                  {identity.id}
                 </span>
               </li>
             ))}
@@ -1039,7 +1079,7 @@ function OrderEditor({
                   <span>
                     {entry.release_title} · {entry.label} ·{" "}
                     {entry.provider_id
-                      ? `AniList ${entry.provider_id}`
+                      ? `${providerName} ${entry.provider_id}`
                       : "Manual"}
                   </span>
                 </li>

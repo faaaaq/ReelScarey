@@ -13,10 +13,17 @@ import (
 // ShiftTimedText preserves cue payload and ASS styles; only timestamp fields
 // change. It refuses negative times rather than silently clipping dialogue.
 func ShiftTimedText(body []byte, extension string, offsetMS int) ([]byte, int, error) {
+	if offsetMS < -600000 || offsetMS > 600000 {
+		return nil, 0, problem("invalid_subtitle", "Timing adjustments are limited to ten minutes.")
+	}
+	return transformTimedText(body, extension, func(ms int64) int64 { return ms + int64(offsetMS) })
+}
+
+func transformTimedText(body []byte, extension string, transform func(int64) int64) ([]byte, int, error) {
 	bad := func() ([]byte, int, error) {
 		return nil, 0, problem("invalid_subtitle", "Choose valid UTF-8 SRT, VTT, ASS or SSA with supported cue times; shifts must keep every cue at or after zero.")
 	}
-	if len(body) == 0 || len(body) > MaxSubtitle || !utf8.Valid(body) || bytes.ContainsRune(body, 0) || offsetMS < -600000 || offsetMS > 600000 {
+	if len(body) == 0 || len(body) > MaxSubtitle || !utf8.Valid(body) || bytes.ContainsRune(body, 0) {
 		return bad()
 	}
 	body = bytes.ReplaceAll(bytes.TrimPrefix(body, []byte{239, 187, 191}), []byte("\r\n"), []byte("\n"))
@@ -116,8 +123,8 @@ func ShiftTimedText(body []byte, extension string, offsetMS int) ([]byte, int, e
 			}
 			a, ok := parse(strings.TrimSpace(fields[startIndex]), true)
 			b, ok2 := parse(strings.TrimSpace(fields[endIndex]), true)
-			a += int64(offsetMS)
-			b += int64(offsetMS)
+			a = transform(a)
+			b = transform(b)
 			if !ok || !ok2 || a < 0 || b <= a || b > 360000000 {
 				return bad()
 			}
@@ -136,8 +143,8 @@ func ShiftTimedText(body []byte, extension string, offsetMS int) ([]byte, int, e
 		}
 		a, ok := parse(line[m[2]:m[3]], false)
 		b, ok2 := parse(line[m[4]:m[5]], false)
-		a += int64(offsetMS)
-		b += int64(offsetMS)
+		a = transform(a)
+		b = transform(b)
 		if !ok || !ok2 || a < 0 || b <= a || b > 360000000 || i+1 >= len(lines) || strings.TrimSpace(lines[i+1]) == "" {
 			return bad()
 		}

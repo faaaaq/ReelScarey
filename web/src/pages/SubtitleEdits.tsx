@@ -67,6 +67,7 @@ function Editor({
     [action, setAction] = useState("offset"),
     [offset, setOffset] = useState(1000),
     [content, setContent] = useState(""),
+    [referenceFormat, setReferenceFormat] = useState(""),
     [review, setReview] = useState<Edit>(),
     [checked, setChecked] = useState(false),
     [busy, setBusy] = useState(false),
@@ -96,7 +97,14 @@ function Editor({
             variant: previous?.variant ?? track.variant,
             action: previous ? "rollback" : action,
             offset_ms: previous ? 0 : action === "offset" ? offset : 0,
-            content: previous ? "" : action === "replace" ? content : "",
+            content: previous
+              ? ""
+              : action === "replace" || action === "align"
+                ? content
+                : "",
+            ...(!previous && action === "align"
+              ? { reference_format: referenceFormat }
+              : {}),
             previous_edit_id: previous?.id ?? "",
           }),
           signal: AbortSignal.timeout(120000),
@@ -130,9 +138,17 @@ function Editor({
         </label>
         <label>
           Change
-          <select value={action} onChange={(e) => setAction(e.target.value)}>
+          <select
+            value={action}
+            onChange={(e) => {
+              setAction(e.target.value);
+              setContent("");
+              setReferenceFormat("");
+            }}
+          >
             <option value="offset">Adjust timing</option>
             <option value="replace">Upload replacement</option>
+            <option value="align">Align with a reference subtitle</option>
           </select>
         </label>
         {action === "offset" ? (
@@ -149,13 +165,17 @@ function Editor({
           </label>
         ) : (
           <label>
-            Replacement file in the same format
+            {action === "align"
+              ? "Reference subtitle with correct timing"
+              : "Replacement file in the same format"}
             <input
               type="file"
               accept=".srt,.vtt,.ass,.ssa"
               onChange={(e) =>
                 void (async () => {
                   const file = e.target.files?.[0];
+                  setContent("");
+                  setReferenceFormat("");
                   if (!file) return;
                   if (file.size > 4 * 1024 * 1024) {
                     setError("Subtitles are limited to 4 MiB.");
@@ -163,6 +183,9 @@ function Editor({
                   }
                   try {
                     setContent(await file.text());
+                    setReferenceFormat(
+                      file.name.split(".").pop()?.toLowerCase() ?? "",
+                    );
                   } catch {
                     setError("The subtitle file could not be read.");
                   }
@@ -171,10 +194,19 @@ function Editor({
             />
           </label>
         )}
+        {action === "align" && (
+          <p>
+            Use a correctly timed subtitle in the same language and cut. At
+            least six unique matching dialogue cues spanning one minute are
+            needed. The app estimates the offset and small timing drift locally,
+            preserving the saved track's text and styles. Weak matches are
+            refused.
+          </p>
+        )}
         <Button
           disabled={
             !track ||
-            (action === "replace" && !content) ||
+            ((action === "replace" || action === "align") && !content) ||
             (!offset && action === "offset")
           }
           onClick={() => void preview()}
@@ -192,6 +224,7 @@ function Editor({
               : review.action}
           </p>
           <p>{review.destination}</p>
+          <p>{review.message}</p>
           <p>
             Old checksum: {review.old_sha256.slice(0, 12)}… · New:{" "}
             {review.new_sha256.slice(0, 12)}…

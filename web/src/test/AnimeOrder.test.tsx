@@ -180,6 +180,52 @@ async function mapSpecial(label = "SP1", title = "Anime special") {
 }
 
 describe("Reviewed Anime identity, order and pack workflow", () => {
+  it("scopes Kitsu searches and review payloads separately from AniList IDs", async () => {
+    const initial = fixture();
+    initial.identities = [];
+    const kitsu = {
+      ...identity(2),
+      provider: "kitsu",
+      url: "https://kitsu.io/anime/2",
+    };
+    const fetch = setup(
+      (url) =>
+        url.includes("/metadata/anime?")
+          ? Response.json({ items: [kitsu] })
+          : undefined,
+      initial,
+    );
+    await open();
+    await userEvent.selectOptions(
+      screen.getByLabelText("Anime provider"),
+      "kitsu",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Search Kitsu titles"),
+      "Owned story",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Search Kitsu" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Link Kitsu 2" }),
+    );
+    expect(screen.getByLabelText("Anime provider")).toBeDisabled();
+    expect(
+      fetch.mock.calls.some(([url]) => url.includes("&provider=kitsu")),
+    ).toBe(true);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Review Anime mapping changes" }),
+    );
+    await waitFor(() =>
+      expect(fetch.mock.calls.some(([url]) => url.endsWith("/preview"))).toBe(
+        true,
+      ),
+    );
+    const sent = fetch.mock.calls.find(([url]) => url.endsWith("/preview"))!;
+    expect(JSON.parse(String(sent[1]?.body))).toMatchObject({
+      provider: "kitsu",
+      provider_ids: [2],
+    });
+  });
   it("reviews refreshed AniList facts without applying or changing canonical mappings", async () => {
     const fetch = setup((url, _options, state) =>
       url.endsWith("/refresh")

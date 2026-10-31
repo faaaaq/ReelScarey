@@ -570,3 +570,17 @@ See [Subtitles](docs/SUBTITLES.md). More explicit TV labels share a conservative
 parser across ranking, discovery hints and reviewed file mappings. Ordinary
 automation still requires a single canonical episode; range/chain suggestions
 remain manual and bounded to twenty consecutive episodes in one season.
+
+## Version 0.26 integrations and alignment
+
+Implemented Transmission 4 named clients, Kitsu Anime identity search/link/refresh,
+SubDL subtitles with explicit review, and reference-subtitle timing alignment with
+retained-version rollback. Schema 40/41 preserves existing client IDs/defaults and
+adds subtitle provider provenance. The application remains one Docker container.
+See [download clients](docs/DOWNLOAD_CLIENTS.md), [Anime providers](docs/ANIME_PROVIDER_ORDERS.md)
+and [subtitles](docs/SUBTITLES.md) for exact bounds.
+
+Container publishing now records the application version, immutable commit tag,
+SBOM and build provenance. Signed GitHub attestation is conditional on repository
+eligibility; public distribution and license selection remain separate. See
+[release process](docs/RELEASING.md) and [executed validation](docs/VALIDATION.md).

@@ -48,10 +48,11 @@ func scanEdit(row interface{ Scan(...any) error }) (SubtitleEdit, error) {
 
 type EditRequest struct {
 	Track
-	Action     string `json:"action"`
-	Offset     int    `json:"offset_ms"`
-	Content    string `json:"content"`
-	PreviousID string `json:"previous_edit_id"`
+	ReferenceFormat string `json:"reference_format,omitempty"`
+	Action          string `json:"action"`
+	Offset          int    `json:"offset_ms"`
+	Content         string `json:"content"`
+	PreviousID      string `json:"previous_edit_id"`
 }
 type sidecarSnapshot struct {
 	MediaPath, MediaSHA, Path, SHA, RegisteredSHA string
@@ -166,7 +167,16 @@ func (s *Service) ReviewEdit(ctx context.Context, fileID int64, in EditRequest) 
 		return SubtitleEdit{}, e
 	}
 	content := old
+	message := "Review required; the original will be retained."
 	switch in.Action {
+	case "align":
+		if in.Offset != 0 || !supportedSubtitleFormat(in.ReferenceFormat) {
+			return SubtitleEdit{}, problem("invalid_subtitle", "Choose a supported reference subtitle and review alignment separately.")
+		}
+		content, message, e = AlignTimedText(old, subtitleExtension(snap.Path), []byte(in.Content), "."+in.ReferenceFormat)
+		if e != nil {
+			return SubtitleEdit{}, e
+		}
 	case "offset":
 		if in.Offset == 0 {
 			return SubtitleEdit{}, problem("invalid_subtitle", "Choose a non-zero timing adjustment.")
@@ -196,7 +206,7 @@ func (s *Service) ReviewEdit(ctx context.Context, fileID int64, in EditRequest) 
 		}
 		in.Offset = 0
 	default:
-		return SubtitleEdit{}, problem("invalid_subtitle", "Choose a timing adjustment, replacement or reviewed rollback.")
+		return SubtitleEdit{}, problem("invalid_subtitle", "Choose a timing adjustment, reference alignment, replacement or reviewed rollback.")
 	}
 	body, cues, e := ShiftTimedText(content, subtitleExtension(snap.Path), in.Offset)
 	if e != nil {
@@ -208,7 +218,7 @@ func (s *Service) ReviewEdit(ctx context.Context, fileID int64, in EditRequest) 
 	id := transfer.ID()
 	raw, _ := json.Marshal(snap)
 	folder := path.Dir(snap.Path)
-	v := SubtitleEdit{ID: id, FileID: fileID, Track: in.Track, Action: in.Action, OldSHA: snap.SHA, NewSHA: contentSHA(body), Size: len(body), Cues: cues, Offset: in.Offset, Destination: snap.Path, Previous: path.Join(".reelscarey-subtitle-history", id+".previous"), State: "review", Phase: "planned", Message: "Review required; the original will be retained.", Expires: s.now().Unix() + 1800, Created: s.now().Unix(), stage: path.Join(folder, ".reelscarey-subedit-"+id+".part"), snapshot: string(raw), content: body}
+	v := SubtitleEdit{ID: id, FileID: fileID, Track: in.Track, Action: in.Action, OldSHA: snap.SHA, NewSHA: contentSHA(body), Size: len(body), Cues: cues, Offset: in.Offset, Destination: snap.Path, Previous: path.Join(".reelscarey-subtitle-history", id+".previous"), State: "review", Phase: "planned", Message: message, Expires: s.now().Unix() + 1800, Created: s.now().Unix(), stage: path.Join(folder, ".reelscarey-subedit-"+id+".part"), snapshot: string(raw), content: body}
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM subtitle_edits WHERE state='review' AND (expires_at<? OR (media_file_id=? AND language=? AND variant=?))`, s.now().Unix(), fileID, in.Language, in.Variant)
 	var reviews int
 	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM subtitle_edits WHERE state='review'`).Scan(&reviews); e != nil {

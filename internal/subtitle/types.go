@@ -53,6 +53,7 @@ func textOK(v string, max int) bool {
 }
 
 type Credentials struct {
+	Provider   string `json:"provider,omitempty"`
 	APIKey     string `json:"api_key"`
 	Username   string `json:"username"`
 	Password   string `json:"password"`
@@ -60,6 +61,7 @@ type Credentials struct {
 	Generation string `json:"generation"`
 }
 type CredentialUpdate struct {
+	Provider  string  `json:"provider,omitempty"`
 	APIKey    *string `json:"api_key"`
 	Username  string  `json:"username"`
 	Password  *string `json:"password"`
@@ -81,10 +83,13 @@ type Episode struct {
 	Season, Number int
 }
 type Candidate struct {
-	Format     string `json:"format"`
-	ID         string `json:"id"`
-	FileID     int64  `json:"file_id"`
-	SubtitleID string `json:"subtitle_id"`
+	Provider      string `json:"provider,omitempty"`
+	DownloadURL   string `json:"download_url,omitempty"`
+	RequireReview bool   `json:"require_review,omitempty"`
+	Format        string `json:"format"`
+	ID            string `json:"id"`
+	FileID        int64  `json:"file_id"`
+	SubtitleID    string `json:"subtitle_id"`
 	Track
 	Release         string   `json:"release"`
 	FileName        string   `json:"file_name"`

@@ -1,6 +1,6 @@
 # ReelScarey milestones
 
-This is the current work queue, updated 2026-10-29. Docker is the supported
+This is the current work queue, updated 2026-10-31. Docker is the supported
 deployment. Checked boxes mean implemented; live acceptance is tracked separately.
 See [ROADMAP.md](ROADMAP.md) for the broader roadmap, [remaining work](docs/REMAINING.md)
 for limits, and [validation](docs/VALIDATION.md) for evidence.
@@ -61,16 +61,18 @@ for limits, and [validation](docs/VALIDATION.md) for evidence.
   Season 1 Episode 2, preserving single-episode and ambiguity checks.
 - [x] Five-minute constrained container read/write workload and restart budget:
   1,000 synthetic titles, eight readers, settings writes and sampled resources.
-- [ ] More Anime providers, broader release grammars and
-  single-file cross-season mappings.
-- [ ] Additional subtitle providers, OCR, translation and automatic alignment.
+- [x] Kitsu as an additional Anime identity provider, with reviewed links/refresh.
+- [ ] AniDB, broader release grammars and single-file cross-season mappings.
+- [x] SubDL subtitles and reviewed reference-based timing alignment.
+- [ ] OCR, translation and audio-based alignment.
 - [x] Original ASS/SSA/VTT provider subtitles, style-preserving recovery and
   reviewed edits/rollback. SRT remains the default.
 - [x] More explicit single-episode TV labels and bounded consecutive filename
   range/chain suggestions, sharing one parser and retaining mandatory review.
 - [x] Named qBittorrent/SABnzbd/NZBGet clients, per-protocol defaults and saved
   per-job folder mappings. See [Download clients](docs/DOWNLOAD_CLIENTS.md).
-- [ ] Language verification beyond stream tags and additional client protocols.
+- [x] Transmission 4 named torrent clients, with reviewed imports and recovery.
+- [ ] Language verification beyond stream tags and further client protocols.
 - [ ] NAS/shared-storage and ARM runtime acceptance and broader
   accessibility/security review. Public distribution also needs signed releases
   and an owner-selected license.
@@ -95,3 +97,13 @@ See [Storage](docs/STORAGE.md) for the read-only folder browser and guided offli
 disk migration. The latter retains the container media path, original disk and
 catalog IDs. [Workload checks](docs/WORKLOAD.md) define a repeatable constrained
 container scenario; representative hardware and long-term capacity remain separate.
+
+## Version 0.26 completed scope
+
+Transmission 4 named torrent clients, Kitsu Anime identity links/refresh, SubDL
+subtitle downloads and reviewed reference-text timing alignment are implemented.
+The release workflow is prepared for versioned image tags, SBOM/provenance and
+conditional signing. Actual signed publication remains outstanding until its
+repository/account requirements and owner license decision are satisfied; see
+[release process](docs/RELEASING.md). OCR, translation, audio alignment, spoken
+language detection and further provider integrations remain future extensions.

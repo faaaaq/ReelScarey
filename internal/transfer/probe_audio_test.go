@@ -9,9 +9,10 @@ import (
 	"testing"
 )
 
-// Some valid media cannot be remuxed without timestamp changes. Accepting the
-// extension must never bypass the packet verifier for those stream combinations.
-func TestRewriteTitleRejectsChangedPacketTiming(t *testing.T) {
+// FFmpeg versions differ in whether these audio/container combinations preserve
+// timing. Compare independently probed packets: a safe remux may succeed, while
+// any changed packet must still be rejected.
+func TestRewriteTitlePreservesPacketsOrRejectsUnsafeRemux(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("FFmpeg unavailable")
 	}
@@ -43,9 +44,24 @@ func TestRewriteTitleRejectsChangedPacketTiming(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer stage.Close()
-			_, err = RewriteTitleVerified(context.Background(), source, stage, "."+fixture.ext, "New title")
-			if err == nil {
-				t.Fatal("accepted a remux that changes packet timing")
+			_, rewriteErr := RewriteTitleVerified(context.Background(), source, stage, "."+fixture.ext, "New title")
+			packets := func(filename string) []byte {
+				t.Helper()
+				probe := exec.Command("ffprobe", "-v", "error", "-show_packets", "-show_data_hash", "sha256", "-show_entries", "packet=stream_index,pts_time,dts_time,duration_time,size,data_hash", "-of", "json", filename)
+				hideProbeWindow(probe)
+				out, e := probe.CombinedOutput()
+				if e != nil {
+					t.Fatalf("inspect packets: %v %s", e, out)
+				}
+				return out
+			}
+			if !bytes.Equal(packets(name), packets(stage.Name())) && rewriteErr == nil {
+				t.Fatal("accepted a remux that changes packet timing or content")
+			}
+			if rewriteErr == nil {
+				t.Log("This FFmpeg version preserved packet timing and content.")
+			} else {
+				t.Log("Unsafe remux rejected:", rewriteErr)
 			}
 			after, err := os.ReadFile(name)
 			if err != nil || !bytes.Equal(original, after) {
