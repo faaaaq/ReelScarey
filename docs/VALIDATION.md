@@ -1616,3 +1616,41 @@ See AUTHENTICATION.md for first setup, password recovery and key backup.
   approvals and CI success. These are not represented as passing hosted checks.
   Local results above were executed independently; no billing, branch protection,
   check status or approval setting was changed.
+
+## Existing milestone maintenance — 2026-10-31; rechecked 2026-11-01
+
+- Removed the unshipped OCR, translation and audio-alignment experiment, its
+  dependency manifests, model build/test files, downloaded models and test images
+  at the owner's request. No database migration or production feature removal was
+  needed because the experiment was never deployed. Existing manual timing and
+  reference-text subtitle alignment are preserved.
+- Audited the active milestone queue and reconciled historical entries for
+  already-completed clients, subtitle formats, bulk monitoring, file checks,
+  removal and replacements. Optional extensions are not active implementation
+  work. Owner-service, independent-review, hardware, supported IMDb-feed and
+  public-release requirements remain explicitly open.
+- Fixed browser titles on existing management pages, keyboard focus after route
+  navigation, and return to the mobile menu button when Escape closes navigation.
+  Removed the stale hard-coded sidebar version. This is targeted accessibility
+  coverage, not a complete accessibility or independent security review.
+- All 175 UI tests passed, including four navigation checks; formatting,
+  TypeScript and frontend build passed. The production Docker build passed
+  `go test ./...`, `go vet ./...` and the application build. Linux full race tests
+  and static checks also passed using the current application sources.
+- Disposable Docker backup/upload/restore/restart, existing seven-workflow
+  acceptance and storage migration/activation/recovery checks all passed.
+- Created and verified the offline schema-41 configuration/database/key backup
+  at `data/backups/before-existing-maintenance-20261031/configuration`; the private
+  deployment environment is alongside it. Preserved the old image as
+  `reelscarey:before-existing-maintenance-20261031`.
+- Updated the installed single container to `0.26.1-maintenance`, image
+  `sha256:ed4e499a476b0f22357a99d1cdcad91515169442bf306edb7ea71729c6df06af`.
+  All 82 pre-upgrade database tables and migration records matched; integrity,
+  foreign keys, encryption key and setup token were preserved. Startup and an
+  explicit restart passed doctor and health checks. The container remains
+  UID 10001, read-only, with zero recorded unexpected restarts.
+- Host HTTP readiness and protected routes passed. All 40 served frontend assets
+  matched the newly built files. Cancelled processing dependencies were confirmed
+  absent from the final runtime image. On resumption, all installation checks and
+  served-asset comparisons passed again; the existing hidden WSL host launcher
+  was restarted and the container reached healthy status.

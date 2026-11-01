@@ -5,6 +5,23 @@ deployment. Checked boxes mean implemented; live acceptance is tracked separatel
 See [ROADMAP.md](ROADMAP.md) for the broader roadmap, [remaining work](docs/REMAINING.md)
 for limits, and [validation](docs/VALIDATION.md) for evidence.
 
+## Current completion scope
+
+The existing implementation milestones are complete except direct/private IMDb
+synchronization, which lacks the supported feed needed by the existing adapter.
+Owner-service acceptance, external review, representative hardware testing and
+release/license requirements remain open as listed below. Optional extensions
+are not authorized by a request to finish the existing milestones.
+
+The experimental OCR, translation and audio-alignment branch work was removed at
+the owner's request on 2026-10-31; none was deployed. The existing reference-text
+subtitle alignment and manual timing editor remain unchanged.
+
+- [x] Repair existing navigation titles and keyboard focus: Escape returns focus
+  from a closing mobile menu, route changes focus the main content, and existing
+  management pages have descriptive browser titles. Remove the stale version label.
+  This targeted verification does not establish a full accessibility audit.
+
 ## Before feature-complete live testing
 
 - [x] Administration backup/restore manager for configuration and the catalog:
@@ -64,7 +81,6 @@ for limits, and [validation](docs/VALIDATION.md) for evidence.
 - [x] Kitsu as an additional Anime identity provider, with reviewed links/refresh.
 - [ ] AniDB, broader release grammars and single-file cross-season mappings.
 - [x] SubDL subtitles and reviewed reference-based timing alignment.
-- [ ] OCR, translation and audio-based alignment.
 - [x] Original ASS/SSA/VTT provider subtitles, style-preserving recovery and
   reviewed edits/rollback. SRT remains the default.
 - [x] More explicit single-episode TV labels and bounded consecutive filename
@@ -105,5 +121,4 @@ subtitle downloads and reviewed reference-text timing alignment are implemented.
 The release workflow is prepared for versioned image tags, SBOM/provenance and
 conditional signing. Actual signed publication remains outstanding until its
 repository/account requirements and owner license decision are satisfied; see
-[release process](docs/RELEASING.md). OCR, translation, audio alignment, spoken
-language detection and further provider integrations remain future extensions.
+[release process](docs/RELEASING.md). Optional extensions are not part of the current completion scope.
