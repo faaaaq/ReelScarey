@@ -1654,3 +1654,25 @@ See AUTHENTICATION.md for first setup, password recovery and key backup.
   absent from the final runtime image. On resumption, all installation checks and
   served-asset comparisons passed again; the existing hidden WSL host launcher
   was restarted and the container reached healthy status.
+
+## Ubuntu Docker Hub release preparation — 2026-11-01
+
+Version 0.26.1 adds a published-image Compose installation and server setup guide
+for Ubuntu x86-64. There are no new application features or schema changes.
+The Docker Hub workflow now runs candidate Compose, backup/restore, existing
+workflow and storage recovery acceptance before push, publishes a version tag,
+and pulls the registry digest to verify provenance labels and backup/restore.
+The actual workflow result is required before claiming publication succeeded.
+
+Hosted storage acceptance exposed a harness portability defect: the non-root
+runner could not traverse Docker's private volume directories. The harness now
+uses Docker-managed volume subdirectory mounts. Running the corrected full test
+as the `nobody` host user with Docker group access passed activation, restart,
+retained-original hashes and database checks. The Ubuntu Compose layout passed
+startup, HTTP readiness, administrator authentication boundary, read-only download
+mount, UID 10001, writable persistent storage, key preservation and restart checks
+using disposable folders/volumes with the already-verified maintenance image.
+Compose config, shell syntax, frontend formatting and actionlint 1.7.12 workflow
+validation passed. Release-image build and registry verification run in the
+publishing workflow using the existing Docker Hub login; repository visibility
+and signing eligibility have not been changed.

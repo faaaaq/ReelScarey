@@ -19,3 +19,4 @@ setup-token
 *.log
 *.exe
 .DS_Store
+/server.env
