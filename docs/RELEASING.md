@@ -6,7 +6,7 @@ Docker remains the only supported deployment target. The primary branch is
 change repository visibility. Manual dispatch is restricted to the primary ref.
 
 The workflow reads the application version from web/package.json, embeds it in
-the binary and OCI labels, and publishes `latest` plus `sha-<full commit>` tags.
+the binary and OCI labels, and publishes `latest`, the version, and `sha-<full commit>` tags.
 BuildKit attaches maximal build provenance and an SBOM. Use the digest or commit
 tag for review and rollback; `latest` changes on each successful publication.
 
@@ -23,3 +23,13 @@ verify backup/restore, and inspect the actual workflow result. Hosted runner
 billing, quota or permissions failures must be reported separately from local
 checks. Public distribution still requires the owner's license choice. Do not
 silently select a license, enable a paid plan or change visibility to clear a gate.
+
+The Ubuntu x86-64 live-testing release builds a local candidate and runs backup,
+existing-workflow and storage-recovery acceptance before publishing. After login,
+it pushes the image, pulls the exact registry digest and verifies its source label
+and backup/restore behavior. Existing repository visibility and credentials stay
+unchanged. Use [LIVE_TESTING.md](LIVE_TESTING.md) and compose.server.yaml to install.
+
+The storage acceptance mounts a named-volume subdirectory through Docker's
+[documented volume-subpath option](https://docs.docker.com/engine/storage/volumes/#mount-a-volume-subdirectory),
+so the calling user never needs access to Docker's private host directories.

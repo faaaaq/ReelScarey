@@ -62,6 +62,12 @@ checks inspect only registered media.
 FFprobe verifies completed video files before import. Sources remain in place
 for seeding; replacements require explicit review and retain the previous video.
 
+## Install the published image on Ubuntu
+
+For an Ubuntu x86-64 server, use [the live-testing installation guide](docs/LIVE_TESTING.md)
+and [compose.server.yaml](compose.server.yaml). It pulls the published Docker Hub
+image and keeps configuration, staging and backups in persistent volumes.
+
 ## Run with Docker
 
 Requires Docker Engine/Desktop with Compose v2. The Docker configuration is
