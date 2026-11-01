@@ -1,6 +1,8 @@
 # ReelScarey roadmap
 
 Status is evidence-based: checked items are implemented, not planned adapters.
+Use [MILESTONES.md](MILESTONES.md) for the active completion scope. Older sections
+record historical boundaries; optional extensions are not new implementation requests.
 
 ## Deployment direction
 
@@ -132,8 +134,8 @@ temporary libraries only. Never use unauthorized content as test material.
 - [x] Renewed leases, bounded provider retries, cursor rotation and restart recovery.
 - [x] Failed download visibility/manual retry and duplicate prevention through transfer.
 - [ ] Owner-service acceptance remains deferred with Torznab/shared mount setup.
-- [ ] Versioned replacement imports, audio-language verification and richer source/
-  codec scoring remain future extensions; they are not represented as working.
+- [x] Reviewed versioned replacements and source/codec scoring were completed in
+  later milestones. Audio-language verification beyond tags remains optional.
 
 ## 5 — Subtitles
 - [x] Provider interface and real OpenSubtitles.com REST integration; encrypted,
@@ -150,7 +152,8 @@ temporary libraries only. Never use unauthorized content as test material.
   separate from the completed connection and generated-media tests.
 - [x] Per-show language/track overrides and reviewed sidecar timing, replacement
   and retained-version rollback. See [current behavior](docs/SEVEN_FEATURES.md).
-- [ ] Additional providers, arbitrary-library scanning and ASS-style downloads.
+- [x] SubDL and original ASS/SSA/VTT downloads were completed in versions 0.25–0.26.
+  Arbitrary-library scanning remains outside this subtitle milestone.
 
 ## 6 — Production hardening
 - [x] Guided setup checklist with optional/deferred Torznab and real settings links.
@@ -212,7 +215,7 @@ See [existing-library workflow](docs/EXISTING_LIBRARY.md).
 - [x] Final Linux race/container/package and real SABnzbd acceptance.
 - [ ] Owner Newznab/SABnzbd/shared-mount acceptance requires private setup.
 - [x] Usenet retention/propagation filters and explained source/codec scoring.
-- [ ] Multiple SABnzbd clients and NZBGet remain future scope.
+- [x] Multiple named SABnzbd clients and NZBGet were completed in version 0.24.
 
 See [Usenet setup and limits](docs/USENET.md). IPTorrents and XSpeeds account
 testing remains deferred.
@@ -242,8 +245,8 @@ account testing remains deferred.
   of application slogans, decorative labels, welcome art and promotional copy.
 - [x] Local backend/API checks and 62 UI interaction tests.
 - [x] Complete browser/native/package/Linux acceptance and preview upgrade.
-- [ ] Bulk editing, media removal, disk health scanning and versioned replacement
-  imports remain future scope. No private-account testing is included.
+- [x] Later milestones completed bulk editing, reviewed removal, registered-file
+  health checks and reviewed versioned replacements. Private-account tests remain separate.
 
 See [browsing behavior and interface](docs/LIBRARY_BROWSING.md). IPTorrents and
 XSpeeds account testing remains explicitly deferred.
@@ -256,8 +259,8 @@ XSpeeds account testing remains explicitly deferred.
 - [x] Keep the catalog layout and plain copy; replace olive with graphite/blue.
 - [x] Local feature/API/security checks and 70 UI tests.
 - [x] Complete clean/native/package/browser/Linux acceptance and preview upgrade.
-- [ ] Bulk episode edits, removal, file moving and replacement imports
-  remain future scope. Private tracker account testing stays deferred.
+- [x] Later milestones completed bulk episode monitoring, reviewed removal,
+  file moves and versioned replacements. Private tracker testing stays deferred.
 
 See [bulk monitoring and limits](docs/BULK_MONITORING.md).
 

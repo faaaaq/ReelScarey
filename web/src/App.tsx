@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Activity,
   Archive,
@@ -176,17 +176,56 @@ function AppShell() {
   }
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+  const previousPath = useRef(location.pathname);
+  const menuButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     setMenuOpen(false);
-    document.title = `${location.pathname === "/backups" ? "Backups" : location.pathname === "/organization" ? "Organize library" : location.pathname === "/setup" ? "Setup" : location.pathname === "/system" ? "System checks" : location.pathname.startsWith("/series/") ? "TV show" : location.pathname.startsWith("/movies/") ? "Movie details" : location.pathname === "/import" ? "Import library" : location.pathname === "/indexers" ? "Indexers" : location.pathname === "/settings" ? "Settings" : location.pathname === "/releases" ? "Releases" : (navigation.find((item) => item.path === location.pathname)?.name ?? "Page")} · ReelScarey`;
+    const titles: Record<string, string> = {
+      "/backups": "Backups",
+      "/organization": "Organize library",
+      "/setup": "Setup",
+      "/system": "System checks",
+      "/import": "Import library",
+      "/indexers": "Indexers",
+      "/settings": "Settings",
+      "/releases": "Releases",
+      "/requests": "Requests",
+      "/metadata-refresh": "Metadata refresh",
+      "/storage": "Storage",
+      "/download-clients": "Download clients",
+      "/timeline": "Event timeline",
+      "/youtube/subscriptions": "YouTube subscriptions",
+    };
+    const title =
+      titles[location.pathname] ??
+      navigation.find((item) => item.path === location.pathname)?.name ??
+      (/^\/series\/[^/]+$/.test(location.pathname)
+        ? "TV show"
+        : /^\/movies\/[^/]+$/.test(location.pathname)
+          ? "Movie details"
+          : "Page not found");
+    document.title = `${title} · ReelScarey`;
+    if (previousPath.current !== location.pathname) {
+      document.getElementById("main-content")?.focus({ preventScroll: true });
+      previousPath.current = location.pathname;
+    }
   }, [location.pathname]);
   useEffect(() => {
     function close(event: KeyboardEvent) {
-      if (event.key === "Escape") setMenuOpen(false);
+      if (event.key === "Escape" && menuOpen) {
+        if (
+          document
+            .getElementById("main-navigation")
+            ?.contains(document.activeElement)
+        ) {
+          menuButton.current?.focus();
+        }
+        setMenuOpen(false);
+      }
     }
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, []);
+  }, [menuOpen]);
   return (
     <div className="app-shell">
       <a href="#main-content" className="skip-link">
@@ -198,6 +237,7 @@ function AppShell() {
           ReelScarey
         </Link>
         <button
+          ref={menuButton}
           aria-label={menuOpen ? "Close navigation" : "Open navigation"}
           aria-expanded={menuOpen}
           aria-controls="main-navigation"
@@ -270,9 +310,7 @@ function AppShell() {
             </NavLink>
           </nav>
           <div className="account-control">
-            <span>
-              {session.username} <small>v0.25</small>
-            </span>
+            <span>{session.username}</span>
             <button onClick={() => void logout()} disabled={signingOut}>
               <LogOut size={15} />
               {signingOut ? "Signing out…" : "Sign out"}

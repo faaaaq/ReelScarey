@@ -15,6 +15,10 @@ Docker is the sole supported deployment target. Historical native and Windows
 results are evidence of past work, not ongoing acceptance requirements. The
 owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
 
+OCR, translation and audio-based alignment were cancelled and removed on
+2026-10-31. The active scope is completion and verification of existing workflows.
+Optional integrations below are not an implementation queue without a new request.
+
 ## Current milestone acceptance
 
 - [x] Complete and record integrated application validation for version 0.17: clean frontend,
@@ -141,7 +145,7 @@ owner's newly requested features are tracked in [ROADMAP.md](../ROADMAP.md).
   provider-preserving interrupted imports. See [Subtitles](SUBTITLES.md).
 - [x] Reference-subtitle alignment for offset and small uniform drift, with
   confidence checks, explicit review and retained-version rollback.
-- [ ] OCR, translation, audio-based alignment and further subtitle providers.
+Further subtitle providers are optional extensions, outside the current completion scope.
 - [x] Usenet retention and propagation filters with explicit publication evidence.
 - [x] Multiple named qBittorrent/SABnzbd clients and NZBGet support, explicit
   per-protocol defaults and immutable per-job folder mappings. See
