@@ -1,0 +1,28 @@
+# Save as compose.yaml. Set the public URL to the address used in your browser.
+services:
+  reelscarey:
+    image: faaaaq/reelscarey:latest
+    container_name: reelscarey
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: America/Chicago
+      REELSCAREY_PUBLIC_URL: https://reelscarey.example.com
+      REELSCAREY_CONFIG_DIR: /config/state
+      REELSCAREY_MEDIA_DIR: /data
+    volumes:
+      - "/home/faaaaq/configs/reelscarey/config:/config"
+      - "/home/faaaaq/massstorage/PlexDL:/downloads:ro"
+      - "library-state:/data"
+      - "/mnt/masstorage/Anime:/data/anime"
+      - "/mnt/masstorage/TV:/data/tvshows"
+    networks:
+      - npm
+    restart: unless-stopped
+
+volumes:
+  library-state:
+
+networks:
+  npm:
+    external: true

@@ -33,3 +33,9 @@ unchanged. Use [LIVE_TESTING.md](LIVE_TESTING.md) and compose.server.yaml to ins
 The storage acceptance mounts a named-volume subdirectory through Docker's
 [documented volume-subpath option](https://docs.docker.com/engine/storage/volumes/#mount-a-volume-subdirectory),
 so the calling user never needs access to Docker's private host directories.
+
+The 0.26.2 publisher additionally exercises the single-file Compose template with
+PUID/PGID, private-directory initialization, separate library mounts, timezone,
+backup/restore, full container recreation and HTTPS proxy Host/Origin validation.
+It checks symlink/overlap refusal before initializing private folder permissions.
+The original explicit-user/read-only layout remains in the release checks.

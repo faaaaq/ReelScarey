@@ -1676,3 +1676,35 @@ Compose config, shell syntax, frontend formatting and actionlint 1.7.12 workflow
 validation passed. Release-image build and registry verification run in the
 publishing workflow using the existing Docker Hub login; repository visibility
 and signing eligibility have not been changed.
+
+## 2026-11-02: simple Docker Compose installation (0.26.2)
+
+Added a single-file published-image template for an existing npm network, PUID,
+PGID and TZ. The app runs as the selected non-root account after private-folder
+initialization. No schema or application feature is added. Existing explicit-user,
+read-only deployments retain their mappings; the simple layout keeps separate
+state/backup/staging folders under one config mount and persistent library recovery
+storage beneath separately mounted Anime/TV folders.
+
+Executed locally:
+- Docker build: frontend formatting/types/tests/build, all Go tests, vet and build passed.
+- Private-directory initialization rejected linked/overlapping roots and preserved
+  outside files reached through symbolic links and hard links.
+- The simple Compose template passed UID/GID 1000 startup, TZ, separate mount
+  access, unchanged media ownership, backup/upload/restore, safety snapshots,
+  container replacement, persistent key/archives/library state, HTTPS proxy login,
+  Secure cookies and foreign Host/Origin rejection.
+- Existing server Compose, backup, seven-feature and storage migration/recovery
+  acceptance passed, including original generated file hashes after restart.
+- Publishing/CI workflows passed actionlint; Compose and shell syntax passed.
+- A fresh offline backup verified three configuration files at schema 41. The local
+  app upgraded to 0.26.2, passed doctor before/after restart, and retained exact
+  rows in all 82 database tables plus the original encryption key. Prior image,
+  deployment settings and verified configuration backup remain available locally.
+
+The initial local build exposed legacy-builder incompatibility with COPY --chmod;
+a standard chmod layer fixed it. The first proxy test used fetch, which replaced
+its explicit Host header; native HTTP now exercises the actual configured and
+rejected proxy Hosts. Final acceptance passed. Docker Hub publication must still
+be confirmed from the new publishing workflow; these local results do not imply
+that a remote build or registry pull has completed.

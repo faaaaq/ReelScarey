@@ -1,5 +1,8 @@
 # Ubuntu server live-testing install
 
+For a normal one-file Compose install, use [INSTALL.md](INSTALL.md). This guide
+retains the isolated test layout and explicit non-root deployment option.
+
 Use Ubuntu x86-64 with Docker Engine and Compose v2. This installation runs one
 container from the existing `faaaaq/reelscarey` Docker Hub repository. No source
 build, Node, Go, Redis or external database is required on the server.

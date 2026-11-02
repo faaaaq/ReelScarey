@@ -16,13 +16,13 @@ The app never copies media, subtitles, downloads, container configuration or
 environment variables. Back those up separately. Catalog restore cannot undo
 filesystem changes made after the snapshot.
 
-Compose mounts a persistent private `reelscarey_backups` volume at `/backups`.
-The container runs as UID/GID 10001; a replacement bind mount must be writable by
-that account. `REELSCAREY_BACKUPS_DIR` controls the directory. Outside the image,
-the default is a sibling `backups` folder beside the configuration directory.
-The parent must exist; links and overlap with config/media/downloads/YouTube
-staging are refused. Never use `docker compose down -v` to preserve these volumes.
-
+The original Compose layout mounts a private volume at `/backups`. The simple
+Compose layout stores archives at `/config/backups`, beside `/config/state` in
+the same persistent host mount. `REELSCAREY_BACKUPS_DIR` can override the default
+sibling `backups` directory. PUID/PGID select the app account; explicit non-root
+installations require writable, pre-owned mounts. The parent must exist; links
+and overlap with state/media/downloads/staging are refused. Never use
+`docker compose down -v` when preserving named volumes.
 Archives contain credentials, encryption keys and password hashes. Keep exports
 private and encrypted in independent storage. A backup volume on the same host
 does not protect against host loss. ZIP checksums detect damage, not a malicious

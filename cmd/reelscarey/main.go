@@ -33,7 +33,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.26.0-dev"
+var version = "0.26.2-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -158,7 +158,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	youtubeInspector, _ := youtube.NewInspector(youtubePath)
 	youtubeStaging := os.Getenv("REELSCAREY_YOUTUBE_STAGING_DIR")
 	if youtubeStaging == "" {
-		youtubeStaging = filepath.Join(cfg.DownloadsDir, ".reelscarey-youtube")
+		youtubeStaging = filepath.Join(filepath.Dir(cfg.ConfigDir), "youtube-staging", "work")
 	}
 	var httpYouTubeInspector httpapi.YouTubeInspector
 	if youtubeInspector != nil {

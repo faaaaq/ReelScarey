@@ -587,3 +587,12 @@ Container publishing now records the application version, immutable commit tag,
 SBOM and build provenance. Signed GitHub attestation is conditional on repository
 eligibility; public distribution and license selection remain separate. See
 [release process](docs/RELEASING.md) and [executed validation](docs/VALIDATION.md).
+
+
+## Version 0.26.2 installation
+
+Single-file Docker Compose installation supports PUID/PGID, timezone, an existing
+reverse-proxy network and separate library mounts. Private state, backups and
+acquisition staging persist under one config mount; retained library versions
+use a persistent parent volume. Existing hardened deployments remain supported.
+See [installation](docs/INSTALL.md) and [validation](docs/VALIDATION.md).
