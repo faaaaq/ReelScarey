@@ -380,7 +380,7 @@ paths and the official image origin. CSP permits that origin for images only.
 
 ## Deployment
 
-The multi-stage Docker build compiles UI, tests Go, and creates a non-root Debian
+The multi-stage Docker build compiles UI, tests Go, and creates a Debian
 runtime with CA certificates and FFprobe for verified movie imports.
 `/config`, `/media`, and `/downloads` are mounted persistently. Initial Compose
 download mounts are read-only to preserve sources; media is writable for imports.
@@ -421,3 +421,11 @@ Migration 040 rebuilds the named-client allowlist while retaining IDs/defaults;
 041 records subtitle provider provenance in tracks and pending import journals.
 All run in the same Go/SQLite application container; no client daemon or model is
 bundled. See the feature documents and [remaining work](docs/REMAINING.md).
+
+The simple Compose installation initializes only private app folders as root, then
+drops to PUID/PGID through Debian's gosu before executing the Go process. Explicit
+Docker users skip initialization and remain compatible with dropped capabilities
+and a read-only root filesystem. The simple layout keeps state, backup archives
+and acquisition staging in separate sibling directories under one config mount;
+existing flat-config deployments retain their paths. TZ uses Debian tzdata.
+See [installation](docs/INSTALL.md). No database migration is introduced.

@@ -62,7 +62,15 @@ checks inspect only registered media.
 FFprobe verifies completed video files before import. Sources remain in place
 for seeding; replacements require explicit review and retain the previous video.
 
-## Install the published image on Ubuntu
+## Install with Docker Compose
+
+Use [compose.simple.yaml](compose.simple.yaml) as your compose.yaml. Set your
+folder mappings and browser URL, then run `docker compose up -d`. It supports
+PUID, PGID, TZ and an existing reverse-proxy network without a separate env file.
+See [installation and upgrades](docs/INSTALL.md) for the setup code, library folder
+selection and existing-installation compatibility.
+
+## Isolated live-testing installation
 
 For an Ubuntu x86-64 server, use [the live-testing installation guide](docs/LIVE_TESTING.md)
 and [compose.server.yaml](compose.server.yaml). It pulls the published Docker Hub
@@ -121,7 +129,7 @@ The private `reelscarey_backups` volume stores managed snapshots under `/backups
 Change `MEDIA_PATH` and `DOWNLOADS_PATH` in `.env` for your host folders; they map
 to `/media` (writable for imports) and `/downloads` (read-only to preserve torrent
 sources). The host download folder must contain the same files as qBittorrent's
-configured download root. The image runs
+configured download root. This source-build Compose runs
 as UID/GID 10001; if you replace the config volume with a bind mount, give that
 user read/write access. `docker compose down` keeps the database; adding `-v`
 deletes the named volume and its data.

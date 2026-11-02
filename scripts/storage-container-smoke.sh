@@ -17,7 +17,7 @@ cleanup(){
 trap cleanup EXIT
 docker run --rm --network none --user 0 -v "$target:/migration-target" --entrypoint sh "$image" -c 'chown 10001:10001 /migration-target; printf "Disposable external file\n" > /migration-target/outside.txt; chmod 644 /migration-target/outside.txt'
 start_app(){
- docker run -d --name "$name" --network none --read-only --cap-drop ALL \
+ docker run -d --name "$name" --network none --read-only --user 10001:10001 --cap-drop ALL \
   --security-opt no-new-privileges:true --tmpfs /tmp:rw,noexec,nosuid,size=64m \
   -e REELSCAREY_LISTEN_ADDR=127.0.0.1:18787 -e 'REELSCAREY_BROWSE_ROOTS={"archive":"/archive"}' \
   -v "$config:/config" "${media_args[@]}" -v "$downloads:/downloads:ro" \
@@ -34,7 +34,7 @@ check_app(){
   node /verification/storage-container-smoke.mjs "$1"
 }
 maintenance(){
- docker run --rm --network none --read-only --tmpfs /tmp --cap-drop ALL \
+ docker run --rm --network none --read-only --tmpfs /tmp --user 10001:10001 --cap-drop ALL \
   --security-opt no-new-privileges:true -v "$config:/config" "${media_args[@]}" \
   -v "$downloads:/downloads:ro" -v "$backups:/backups" -v "$target:/migration-target" "$image" "$@"
 }

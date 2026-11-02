@@ -17,7 +17,7 @@ cleanup(){
 }
 trap cleanup EXIT
 docker run -d --name "$name" --network none --read-only --cpus=1 --memory=384m --pids-limit=128 \
- --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+ --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:rw,noexec,nosuid,size=64m \
  -e REELSCAREY_LISTEN_ADDR=127.0.0.1:18787 -v "$config:/config" "$image" >/dev/null
 for attempt in {1..60};do if docker exec "$name" reelscarey healthcheck >/dev/null 2>&1;then break;fi;if [ "$attempt" = 60 ];then exit 1;fi;sleep 1;done
 docker exec "$name" python3 -c 'import sqlite3; db=sqlite3.connect("/config/reelscarey.db"); db.executemany("INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date) VALUES(?,?,?,?,0,?,?,?)",[("movie",n,"Synthetic film %04d"%n,2026,"Generated catalog fixture.","","2026-10-29") for n in range(1,1001)]); db.commit()'

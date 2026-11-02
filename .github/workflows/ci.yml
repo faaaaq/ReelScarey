@@ -120,7 +120,7 @@ jobs:
           set -euo pipefail
           docker compose config --quiet
           docker build -t reelscarey:ci .
-          docker run -d --name reelscarey-ci --memory=512m --cpus=1 --pids-limit=256 --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m --tmpfs /downloads:ro,nosuid,noexec,size=16m -p 127.0.0.1:8787:8787 reelscarey:ci
+          docker run -d --name reelscarey-ci --user 10001:10001 --memory=512m --cpus=1 --pids-limit=256 --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m --tmpfs /downloads:ro,nosuid,noexec,size=16m -p 127.0.0.1:8787:8787 reelscarey:ci
           trap 'docker logs reelscarey-ci; docker rm -fv reelscarey-ci' EXIT
           node scripts/container-smoke.mjs
           docker stats --no-stream --format 'Container resources: {{.MemUsage}}, {{.CPUPerc}}, {{.PIDs}}' reelscarey-ci
@@ -128,7 +128,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run -d --name reelscarey-meta-ci --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m --cap-drop ALL --security-opt no-new-privileges:true -e REELSCAREY_PUBLIC_URL=http://127.0.0.1:18788 -p 127.0.0.1:18788:8787 reelscarey:ci
+          docker run -d --name reelscarey-meta-ci --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges:true -e REELSCAREY_PUBLIC_URL=http://127.0.0.1:18788 -p 127.0.0.1:18788:8787 reelscarey:ci
           trap 'docker logs reelscarey-meta-ci; docker rm -fv reelscarey-meta-ci' EXIT
           REELSCAREY_SMOKE_URL=http://127.0.0.1:18788 REELSCAREY_SMOKE_CONTAINER=reelscarey-meta-ci node scripts/container-metadata-smoke.mjs
       - name: Container backup, upload, restore and recovery

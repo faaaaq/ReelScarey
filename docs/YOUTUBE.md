@@ -27,21 +27,15 @@ automatic retry. Fully recorded stages can be verified and resumed.
 When a registered catalog video is reorganized, its YouTube provenance and
 subtitle journal paths move atomically with the video and sidecar references.
 
-The container image includes a pinned, checksum-verified yt-dlp release and
-FFmpeg, with a dedicated writable YouTube staging volume. The existing downloads
-mount remains read-only. For a native installation, install a current yt-dlp executable on the
-server's PATH, or set `REELSCAREY_YTDLP_PATH` to its absolute path before starting
-ReelScarey. FFprobe must also be available. Restart the app after installing or
-changing the executable. If it is unavailable, inspection and queueing report
-that requirement; the rest of the application remains usable. YouTube may change
-its delivery protocols, so the tool can require updates independent of ReelScarey.
-Native staging defaults to `.reelscarey-youtube` inside the configured downloads
-directory; set `REELSCAREY_YOUTUBE_STAGING_DIR` to a dedicated writable path to
-use a separate location. Its parent must exist and be separate from media and
-configuration roots.
-Configuration backups do not include the staging volume or downloaded media;
-retain the staging volume while queued or review-pending jobs need their files.
-
+The container image includes pinned, checksum-verified yt-dlp and FFmpeg.
+The downloads mount remains read-only. YouTube staging defaults to
+`youtube-staging/work` beside the configured state directory: `/youtube-staging/work`
+for the original layout or `/config/youtube-staging/work` for the simple Compose
+layout. `REELSCAREY_YOUTUBE_STAGING_DIR` can select a different dedicated writable
+location; its parent must exist and it must remain separate from media and state.
+Configuration backups do not include staging or downloaded media. Preserve the
+staging storage while queued or review-pending jobs need those files. YouTube can
+change its protocols, requiring a container update independently of other features.
 The feature does not use browser cookies or user-supplied command flags. It does
 not automatically infer episodes, download entire channels, automatically replace
 library files, or embed subtitle tracks. Playlist and channel browsing is bounded;

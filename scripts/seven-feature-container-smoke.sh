@@ -11,7 +11,7 @@ cleanup() {
   docker volume rm "$config" >/dev/null || true
 }
 trap cleanup EXIT
-docker run -d --name "$name" --network none --read-only --cap-drop ALL \
+docker run -d --name "$name" --network none --read-only --user 10001:10001 --cap-drop ALL \
   --security-opt no-new-privileges:true --tmpfs /tmp:rw,noexec,nosuid,size=64m \
   -e REELSCAREY_LISTEN_ADDR=127.0.0.1:18787 \
   -e REELSCAREY_YTDLP_PATH=/verification/seven-feature-provider.py \
