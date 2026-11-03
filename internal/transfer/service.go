@@ -17,20 +17,21 @@ import (
 )
 
 type Service struct {
-	db           *sql.DB
-	secrets      *securestore.Store
-	cfg          config.Config
-	client       Client
-	transmission *Transmission
-	sab          *SABnzbd
-	nzbget       *NZBGet
-	indexer      Indexer
-	adapters     map[string]Indexer
-	configMu     sync.Mutex
-	healthMu     sync.RWMutex
-	probeMu      sync.Mutex
-	legacyError  string
-	importer     *Importer
+	automaticMetadata AutomaticMetadata
+	db                *sql.DB
+	secrets           *securestore.Store
+	cfg               config.Config
+	client            Client
+	transmission      *Transmission
+	sab               *SABnzbd
+	nzbget            *NZBGet
+	indexer           Indexer
+	adapters          map[string]Indexer
+	configMu          sync.Mutex
+	healthMu          sync.RWMutex
+	probeMu           sync.Mutex
+	legacyError       string
+	importer          *Importer
 }
 
 func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Client, indexer Indexer) *Service {

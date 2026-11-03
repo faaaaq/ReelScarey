@@ -100,6 +100,9 @@ func TestRequestAccountsAndApprovalAreIsolated(t *testing.T) {
 	if out.Code != 200 || strings.Contains(out.Body.String(), "Canonical provider title") {
 		t.Fatal("request leaked across users", out.Code, out.Body)
 	}
+	if denied := request(h, "POST", "/api/v1/library/imports/"+strings.Repeat("a", 32)+"/matches/automatic", `{"action":"start"}`, &viewer, true); denied.Code != 403 {
+		t.Fatal("requester started matching", denied.Code)
+	}
 	out = request(h, "POST", "/api/v1/requests/1/approve", `{}`, &viewer, true)
 	if out.Code != 403 {
 		t.Fatal("requester approved their own request", out.Code, out.Body)

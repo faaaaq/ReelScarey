@@ -136,6 +136,10 @@ func putSeasons(ctx context.Context, tx *sql.Tx, id int64, seasons []metadata.Se
 	return nil
 }
 func (s *Store) AddSeries(ctx context.Context, show metadata.Series, monitored bool, category ...string) (Item, bool, error) {
+	return s.AddSeriesAuthorized(ctx, show, monitored, nil, category...)
+}
+
+func (s *Store) AddSeriesAuthorized(ctx context.Context, show metadata.Series, monitored bool, authorize func(*sql.Tx) error, category ...string) (Item, bool, error) {
 	section, err := addCategory(category)
 	if err != nil {
 		return Item{}, false, err
@@ -148,6 +152,11 @@ func (s *Store) AddSeries(ctx context.Context, show metadata.Series, monitored b
 		return Item{}, false, e
 	}
 	defer tx.Rollback()
+	if authorize != nil {
+		if err := authorize(tx); err != nil {
+			return Item{}, false, err
+		}
+	}
 	result, e := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date,category) VALUES('series',?,?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, show.TMDbID, show.Title, show.Year, monitored, show.Overview, show.PosterPath, show.ReleaseDate, section)
 	if e != nil {
 		return Item{}, false, e
@@ -219,11 +228,20 @@ func (s *Store) RefreshSeries(ctx context.Context, id int64, show metadata.Serie
 	return tx.Commit()
 }
 func (s *Store) SaveSeason(ctx context.Context, id int64, season metadata.Season, revision int64) error {
+	return s.SaveSeasonAuthorized(ctx, id, season, revision, nil)
+}
+
+func (s *Store) SaveSeasonAuthorized(ctx context.Context, id int64, season metadata.Season, revision int64, authorize func(*sql.Tx) error) error {
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
+	if authorize != nil {
+		if err := authorize(tx); err != nil {
+			return err
+		}
+	}
 	var seasonID, tmdbID int64
 	if e = tx.QueryRowContext(ctx, `SELECT id,tmdb_id FROM seasons WHERE series_id=? AND number=?`, id, season.Number).Scan(&seasonID, &tmdbID); e != nil {
 		return e

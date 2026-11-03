@@ -132,13 +132,16 @@ describe("existing library discovery and review", () => {
       fetch.mock.calls.some(([, options]) => options?.method === "POST"),
     ).toBe(false);
     await userEvent.click(
-      screen.getByRole("button", { name: "Scan configured folder" }),
+      screen.getByRole("button", { name: "Scan and match library" }),
     );
     await screen.findByRole("button", { name: "Review match" });
     const call = fetch.mock.calls.find(
       ([, options]) => options?.method === "POST",
     );
-    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ kind: "movie" });
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+      kind: "movie",
+      automatic_matching: true,
+    });
     expect(call?.[1]?.headers).toMatchObject({
       "X-CSRF-Token": "fixture-csrf",
     });
@@ -306,5 +309,90 @@ describe("existing library discovery and review", () => {
     expect(
       screen.getByRole("button", { name: "Verify & add in place" }),
     ).toBeEnabled();
+  });
+});
+
+describe("automatic existing-library matching", () => {
+  it("allows opting out before starting discovery", async () => {
+    const fetch = setup((url, options) => {
+      if (url.endsWith("/library/imports") && options?.method === "POST")
+        return Response.json(scan, { status: 202 });
+    });
+    mount();
+    const checkbox = await screen.findByRole("checkbox", {
+      name: "Automatically match and register clear results",
+    });
+    expect(checkbox).toBeChecked();
+    await userEvent.click(checkbox);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Scan configured folder" }),
+    );
+    await waitFor(() =>
+      expect(fetch.mock.calls.some(([, o]) => o?.method === "POST")).toBe(true),
+    );
+    const request = fetch.mock.calls.find(
+      ([url, o]) => url.endsWith("/library/imports") && o?.method === "POST",
+    );
+    expect(JSON.parse(String(request?.[1]?.body))).toEqual({
+      kind: "movie",
+      automatic_matching: false,
+    });
+  });
+  it("starts matching an existing scan, displays progress and stops it", async () => {
+    let state = "";
+    const fetch = setup((url, options) => {
+      if (url.endsWith("/matches/automatic")) {
+        state =
+          JSON.parse(String(options?.body)).action === "start"
+            ? "running"
+            : "cancelled";
+        return Response.json({}, { status: 202 });
+      }
+      if (url.includes(`/library/imports/${scan.id}?`))
+        return Response.json({
+          scan: {
+            ...scan,
+            automatic_matching: state
+              ? {
+                  state,
+                  phase: "resolve",
+                  message: "Matching fixture titles",
+                  resolved: 1,
+                  queued: 0,
+                  review: 0,
+                }
+              : undefined,
+          },
+          items: [file],
+          page: 1,
+          total: 1,
+          limit: 50,
+        });
+    });
+    mount();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Match clear files automatically",
+      }),
+    );
+    expect(
+      await screen.findByText("Automatic matching: running"),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Stop automatic matching" }),
+    );
+    expect(
+      await screen.findByText("Automatic matching: cancelled"),
+    ).toBeInTheDocument();
+    const calls = fetch.mock.calls.filter(([url]) =>
+      url.endsWith("/matches/automatic"),
+    );
+    expect(calls.map(([, o]) => JSON.parse(String(o?.body)))).toEqual([
+      { action: "start" },
+      { action: "stop" },
+    ]);
+    expect(calls[0][1]?.headers).toMatchObject({
+      "X-CSRF-Token": "fixture-csrf",
+    });
   });
 });

@@ -522,6 +522,7 @@ func pauseRestored(ctx context.Context, dir string) error {
 		{"backup_schedule", `UPDATE backup_schedule SET enabled=0,running=0,next_run=0,last_error='',revision=revision+1`},
 		{"metadata_refresh_schedule", `UPDATE metadata_refresh_schedule SET enabled=0,requested=0,lease_owner='',lease_until=0,next_run=0,revision=revision+1,state='paused',message='Restored backup: review metadata settings before resuming.'`},
 		{"youtube_subscriptions", `UPDATE youtube_subscriptions SET enabled=0,requested=0,lease_owner='',lease_until=0,next_run=0,revision=revision+1,state='paused',message='Restored backup: review subscriptions before enabling.'`},
+		{"library_match_jobs", `UPDATE library_match_jobs SET state='paused',lease_owner='',lease_until=0,retry_at=0,message='Restored backup: review and restart automatic matching explicitly.' WHERE state IN ('pending','running','waiting')`},
 		{"search_schedule", `UPDATE search_schedule SET enabled=0,requested=0,lease_owner='',lease_until=0,revision=revision+1,state='paused',message='Restored backup: review settings before enabling searches.'`},
 		{"subtitle_preferences", `UPDATE subtitle_preferences SET enabled=0,revision=revision+1`},
 		{"subtitle_jobs", `UPDATE subtitle_jobs SET requested=0,lease_owner='',lease_until=0,state='paused',message='Restored backup: review settings before resuming.'`},

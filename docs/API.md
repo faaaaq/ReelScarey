@@ -171,10 +171,10 @@ same-origin validation. Reads never start a filesystem scan.
 | Method | Path | Behavior |
 | --- | --- | --- |
 | GET | `/api/v1/library/imports` | Recent scans and configured movie/TV server roots |
-| POST | `/api/v1/library/imports` | `{kind:"movie"|"series"}`; queue bounded discovery; 202 |
+| POST | `/api/v1/library/imports` | `{kind:"movie"|"series",library_key?:string,automatic_matching?:boolean}`; queue bounded discovery; matching defaults false; 202 |
 | GET | `/api/v1/library/imports/{id}?page=1&state=` | Scan status/counts plus 50 discovered files; optional review/blocked/registered/skipped filter |
 | POST | `/api/v1/library/imports/{id}/cancel` | `{}`; stop discovery; prior reviewed registrations remain independent |
-| DELETE | `/api/v1/library/imports/{id}` | `{}`; forget finished review records; refuses active discovery/verification; never deletes registered media |
+| DELETE | `/api/v1/library/imports/{id}` | `{}`; forget finished review records; refuses active discovery/matching/verification; never deletes registered media |
 | GET | `/api/v1/library/imports/catalog?kind=movie&query=title` | Up to 20 saved catalog title matches; offline read |
 | POST | `/api/v1/library/import-files/{id}/register` | `{media_id,episode_ids:[],reviewed:true}`; queue verified in-place registration; 202 |
 | POST | `/api/v1/library/import-files/{id}/skip` | `{}`; skip a review/blocked item |
@@ -187,11 +187,12 @@ Scans expose kind/folder/state/message, timestamps, discovery/registration/queue
 counts and directory-completion examination/skip counts. Limits and exact
 semantics are in [existing-library import](EXISTING_LIBRARY.md).
 
-Registration requires explicit review and canonical catalog identities. TV
+Manual registration requires explicit review and canonical catalog identities. TV
 targets must be loaded, consecutive episodes of one season (maximum 20).
 Source identity/size/mtime, checksum, FFprobe, active download reservations,
 duplicate paths/targets and current leases are checked before commit. There is
-no automatic matching, client submission or filesystem publication. Existing
+no client submission or filesystem publication. Automatic registration uses the
+separate matching-job authorization described below. Existing
 registered files appear in item details with `origin:"existing"`, an original
 filename and empty `download_id`; only downloaded files link to Activity.
 
@@ -767,3 +768,16 @@ All existing administrator, CSRF, same-origin and revision checks still apply.
   `reference_format=srt|vtt|ass|ssa`. offset_ms must be zero. The returned review
   message includes match count, estimated starting offset and timing scale.
   Existing edit apply/retry/rollback routes and review expiration are unchanged.
+
+### Automatic existing-library matching (0.27)
+
+`POST /api/v1/library/imports/{id}/matches/automatic` accepts only
+`{"action":"start"}` or `{"action":"stop"}` and returns 202 with matching status.
+Start requires completed discovery; stop prevents further matching writes but
+queued file verification continues. Administrator authentication, CSRF and
+same-origin checks apply. GET never starts a job. Scan objects optionally contain
+`automatic_matching:{state,phase,message,resolved,queued,review}`. States are
+pending/running/waiting/completed/cancelled/paused; phases are resolve/queue.
+A completed matching job may still have file verification outstanding. Manual
+registration and bulk apply continue to require explicit reviewed consent.
+See [matching rules and recovery](EXISTING_LIBRARY.md).

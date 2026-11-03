@@ -207,6 +207,7 @@ type matchPayload struct {
 func (s *Service) matchSnapshot(ctx context.Context, tx *sql.Tx, scan LibraryScan, choices []BulkMatchChoice, root *os.Root) (matchPayload, error) {
 	p := matchPayload{Scan: scan, ResolvedRoot: scan.ResolvedRoot, Items: []reviewedMatch{}}
 	p.Scan.ResolvedRoot = ""
+	p.Scan.AutomaticMatching = nil
 	p.Scan.owner = ""
 	seenFiles := map[string]bool{}
 	seenTargets := map[string]bool{}
@@ -228,7 +229,7 @@ func (s *Service) matchSnapshot(ctx context.Context, tx *sql.Tx, scan LibrarySca
 		if e = verifyMatchFile(root, f); e != nil {
 			return p, e
 		}
-		if e = s.registerDiscoveredTx(ctx, tx, choice.FileID, ExistingRegistration{MediaID: choice.MediaID, Episodes: choice.Episodes, Reviewed: true}, true); e != nil {
+		if e = s.queueExistingRegistrationTx(ctx, tx, choice.FileID, ExistingRegistration{MediaID: choice.MediaID, Episodes: choice.Episodes}, true); e != nil {
 			return p, e
 		}
 		if e = tx.QueryRowContext(ctx, `SELECT m.kind,m.tmdb_id,m.title,COALESCE(m.year,0),m.monitored,m.category_revision,COALESCE(d.revision,0) FROM media_items m LEFT JOIN series_details d ON d.media_id=m.id WHERE m.id=?`, choice.MediaID).Scan(&v.Kind, &v.ProviderID, &v.Title, &v.Year, &v.Monitored, &v.CategoryRevision, &v.SeriesRevision); e != nil {

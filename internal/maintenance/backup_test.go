@@ -67,13 +67,16 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	if _, e = db.Exec(`UPDATE settings SET library_name='Recovered cinema'; UPDATE subtitle_preferences SET enabled=1,download_format='original'; UPDATE search_schedule SET enabled=1`); e != nil {
 		t.Fatal(e)
 	}
+	if _, e = db.Exec(`INSERT INTO library_scans(id,kind,media_root,resolved_root,folder,state,created_at,updated_at) VALUES('automatic-fixture','movie','/media','/media','Movies','completed',1,1); INSERT INTO library_match_jobs(scan_id,state,lease_owner,lease_until,created_at,updated_at) VALUES('automatic-fixture','running','previous-process',9999999999,1,1)`); e != nil {
+		t.Fatal(e)
+	}
 	root := filepath.Dir(cfg.ConfigDir)
 	backup := filepath.Join(root, "snapshot")
 	m, e := Backup(ctx, cfg, backup, "0.8.0-test")
 	if e != nil {
 		t.Fatal(e)
 	}
-	if m.Schema != 41 || len(m.Files) != 2 {
+	if m.Schema != 42 || len(m.Files) != 2 {
 		t.Fatal(m)
 	}
 	if _, e = Verify(ctx, backup); e != nil {
@@ -102,6 +105,11 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 		t.Fatal(e)
 	}
 	defer restored.Close()
+	var matchingState, matchingOwner string
+	var matchingLease int64
+	if e = restored.QueryRow(`SELECT state,lease_owner,lease_until FROM library_match_jobs WHERE scan_id='automatic-fixture'`).Scan(&matchingState, &matchingOwner, &matchingLease); e != nil || matchingState != "paused" || matchingOwner != "" || matchingLease != 0 {
+		t.Fatal("restored matching must require explicit restart", matchingState, matchingOwner, matchingLease, e)
+	}
 	saved, e := securestore.New(ctx, restored, dest)
 	if e != nil {
 		t.Fatal(e)

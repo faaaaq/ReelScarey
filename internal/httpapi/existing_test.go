@@ -82,7 +82,7 @@ func TestExistingLibraryAPIAuthenticationReviewAndPathBoundaries(t *testing.T) {
 	if out := request(handler, "GET", "/api/v1/emby", "", &session, false); out.Code != 200 || strings.Contains(out.Body.String(), "private") {
 		t.Fatal("Emby key returned", out.Code, out.Body)
 	}
-	for _, op := range []struct{ method, path string }{{"POST", "/api/v1/library/imports"}, {"POST", "/api/v1/library/import-files/" + strings.Repeat("a", 32) + "/register"}, {"POST", "/api/v1/library/import-files/" + strings.Repeat("a", 32) + "/skip"}, {"POST", "/api/v1/library/imports/" + strings.Repeat("a", 32) + "/cancel"}, {"DELETE", "/api/v1/library/imports/" + strings.Repeat("a", 32)}} {
+	for _, op := range []struct{ method, path string }{{"POST", "/api/v1/library/imports/" + strings.Repeat("a", 32) + "/matches/automatic"}, {"POST", "/api/v1/library/imports"}, {"POST", "/api/v1/library/import-files/" + strings.Repeat("a", 32) + "/register"}, {"POST", "/api/v1/library/import-files/" + strings.Repeat("a", 32) + "/skip"}, {"POST", "/api/v1/library/imports/" + strings.Repeat("a", 32) + "/cancel"}, {"DELETE", "/api/v1/library/imports/" + strings.Repeat("a", 32)}} {
 		if out := request(handler, op.method, op.path, "{}", &session, false); out.Code != 403 {
 			t.Fatal("missing CSRF", op, out.Code)
 		}
@@ -117,6 +117,25 @@ func TestExistingLibraryAPIAuthenticationReviewAndPathBoundaries(t *testing.T) {
 	out = request(handler, "GET", path+"?page=1", "", &session, false)
 	var page transfer.DiscoveredPage
 	if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &page) != nil || len(page.Items) != 1 {
+		t.Fatal(out.Code, out.Body)
+	}
+	if page.Scan.AutomaticMatching != nil {
+		t.Fatal("legacy scan implicitly authorized matching")
+	}
+	automaticPath := path + "/matches/automatic"
+	if out = request(handler, "POST", automaticPath, `{"action":"start"}`, nil, false); out.Code != 401 {
+		t.Fatal("anonymous automatic matching", out.Code)
+	}
+	if out = request(handler, "POST", automaticPath, `{"action":"invented"}`, &session, true); out.Code != 400 {
+		t.Fatal("invalid action accepted", out.Code)
+	}
+	if out = request(handler, "POST", automaticPath, `{"action":"start"}`, &session, true); out.Code != 202 {
+		t.Fatal(out.Code, out.Body)
+	}
+	if out = request(handler, "DELETE", path, "{}", &session, true); out.Code != 409 {
+		t.Fatal("active matching discarded", out.Code)
+	}
+	if out = request(handler, "POST", automaticPath, `{"action":"stop"}`, &session, true); out.Code != 202 {
 		t.Fatal(out.Code, out.Body)
 	}
 	filePath := "/api/v1/library/import-files/" + page.Items[0].ID + "/register"

@@ -596,3 +596,14 @@ reverse-proxy network and separate library mounts. Private state, backups and
 acquisition staging persist under one config mount; retained library versions
 use a persistent parent volume. Existing hardened deployments remain supported.
 See [installation](docs/INSTALL.md) and [validation](docs/VALIDATION.md).
+
+## Version 0.27 automatic existing-library matching
+
+Implemented explicit scan-and-match jobs for clear movie identities and canonical
+TV episodes, automatic title/season metadata loading, progress/stop/retry controls
+and durable restart recovery. The UI enables matching by default when starting a
+scan; older scans require one explicit start. Ambiguous identities, duplicate
+versions and uncertain numbering remain review exceptions. Existing files remain
+in place and require hash/FFprobe verification. Backup restore pauses matching.
+See [matching behavior](docs/EXISTING_LIBRARY.md). Authenticated testing on the
+owner's Ubuntu server remains separate from disposable-container acceptance.

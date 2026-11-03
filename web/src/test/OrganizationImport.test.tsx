@@ -84,7 +84,7 @@ describe("Collection-aware existing-library discovery", () => {
       fetch.mock.calls.some(([, options]) => options?.method === "POST"),
     ).toBe(false);
     await userEvent.click(
-      screen.getByRole("button", { name: "Scan configured folder" }),
+      screen.getByRole("button", { name: "Scan and match library" }),
     );
     await waitFor(() =>
       expect(
@@ -97,6 +97,7 @@ describe("Collection-aware existing-library discovery", () => {
     expect(JSON.parse(String(call?.[1]?.body))).toEqual({
       kind: "series",
       library_key: "anime",
+      automatic_matching: true,
     });
     expect(
       fetch.mock.calls.every(([url]) => url === "/api/v1/library/imports"),
@@ -126,7 +127,7 @@ describe("Collection-aware existing-library discovery", () => {
     expect(screen.getByText("/media/Family")).toBeVisible();
     expect(screen.queryByText("/media/Legacy TV")).not.toBeInTheDocument();
     await userEvent.click(
-      screen.getByRole("button", { name: "Scan configured folder" }),
+      screen.getByRole("button", { name: "Scan and match library" }),
     );
     await waitFor(() =>
       expect(
@@ -141,7 +142,11 @@ describe("Collection-aware existing-library discovery", () => {
           )?.[1]?.body,
         ),
       ),
-    ).toEqual({ kind: "movie", library_key: "family" });
+    ).toEqual({
+      kind: "movie",
+      library_key: "family",
+      automatic_matching: true,
+    });
   });
 
   it("omits library_key after returning to the default folders", async () => {
@@ -168,7 +173,7 @@ describe("Collection-aware existing-library discovery", () => {
     expect(screen.getByText("/media/Legacy Movies")).toBeVisible();
     expect(screen.getByText("/media/Legacy TV")).toBeVisible();
     await userEvent.click(
-      screen.getByRole("button", { name: "Scan configured folder" }),
+      screen.getByRole("button", { name: "Scan and match library" }),
     );
     await waitFor(() =>
       expect(
@@ -183,18 +188,18 @@ describe("Collection-aware existing-library discovery", () => {
           )?.[1]?.body,
         ),
       ),
-    ).toEqual({ kind: "series" });
+    ).toEqual({ kind: "series", automatic_matching: true });
   });
 
   it("keeps legacy responses usable without collections or another configuration fetch", async () => {
     const fetch = setup(false);
-    await screen.findByRole("button", { name: "Scan configured folder" });
+    await screen.findByRole("button", { name: "Scan and match library" });
     expect(
       screen.queryByRole("combobox", { name: "Scan collection" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("/media/Legacy Movies")).toBeVisible();
     await userEvent.click(
-      screen.getByRole("button", { name: "Scan configured folder" }),
+      screen.getByRole("button", { name: "Scan and match library" }),
     );
     await waitFor(() =>
       expect(
@@ -209,7 +214,7 @@ describe("Collection-aware existing-library discovery", () => {
           )?.[1]?.body,
         ),
       ),
-    ).toEqual({ kind: "movie" });
+    ).toEqual({ kind: "movie", automatic_matching: true });
     expect(
       fetch.mock.calls.every(([url]) => url === "/api/v1/library/imports"),
     ).toBe(true);

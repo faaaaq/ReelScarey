@@ -429,3 +429,16 @@ and a read-only root filesystem. The simple layout keeps state, backup archives
 and acquisition staging in separate sibling directories under one config mount;
 existing flat-config deployments retain their paths. TZ uses Debian tzdata.
 See [installation](docs/INSTALL.md). No database migration is introduced.
+
+## Automatic existing-library matching (0.27)
+
+Migration 042 adds durable per-scan matching jobs, bounded title caches and
+per-file evidence. Transfer's existing-library worker resolves the complete scan
+before queueing any matches, rejects overlapping target claims, and uses a separate
+transactional automatic authorization guard. Current lease, scan completion,
+file identity, title/provider/category and canonical episode snapshots must still
+agree when registration is queued. Manual consent checks remain in place.
+Guarded catalog/season writes prevent cancelled provider fetches from modifying
+state. Existing verification supplies hashes, FFprobe facts and in-place availability;
+no download rows or video mutations are introduced. Backups include this state;
+restore pauses jobs and clears leases. One process/container remains sufficient.

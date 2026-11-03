@@ -135,6 +135,8 @@ jobs:
         run: bash scripts/backup-container-smoke.sh reelscarey:ci
       - name: Container feature schedules, subtitle edits and reviewed bulk operations
         run: bash scripts/seven-feature-container-smoke.sh reelscarey:ci
+      - name: Automatic existing-library matching and retained generated media
+        run: bash scripts/automatic-library-container-smoke.sh reelscarey:ci
       - name: Container storage copy, mount activation and recovery
         run: bash scripts/storage-container-smoke.sh reelscarey:ci
       - name: Constrained container read and write budget

@@ -23,23 +23,24 @@ const maxDiscoveryDirs = 2000
 const maxDirectoryEntries = 20000
 
 type LibraryScan struct {
-	ID             string `json:"id"`
-	Kind           string `json:"kind"`
-	MediaRoot      string `json:"media_root"`
-	ResolvedRoot   string `json:"-"`
-	Folder         string `json:"folder"`
-	State          string `json:"state"`
-	Message        string `json:"message"`
-	Created        int64  `json:"created_at"`
-	Updated        int64  `json:"updated_at"`
-	Discovered     int    `json:"discovered"`
-	Registered     int    `json:"registered"`
-	Queued         int    `json:"queued"`
-	NeedsMatch     int    `json:"needs_match"`
-	NeedsAttention int    `json:"needs_attention"`
-	Examined       int    `json:"examined"`
-	Skipped        int    `json:"skipped"`
-	owner          string
+	AutomaticMatching *AutomaticMatchStatus `json:"automatic_matching,omitempty"`
+	ID                string                `json:"id"`
+	Kind              string                `json:"kind"`
+	MediaRoot         string                `json:"media_root"`
+	ResolvedRoot      string                `json:"-"`
+	Folder            string                `json:"folder"`
+	State             string                `json:"state"`
+	Message           string                `json:"message"`
+	Created           int64                 `json:"created_at"`
+	Updated           int64                 `json:"updated_at"`
+	Discovered        int                   `json:"discovered"`
+	Registered        int                   `json:"registered"`
+	Queued            int                   `json:"queued"`
+	NeedsMatch        int                   `json:"needs_match"`
+	NeedsAttention    int                   `json:"needs_attention"`
+	Examined          int                   `json:"examined"`
+	Skipped           int                   `json:"skipped"`
+	owner             string
 }
 
 const libraryScanColumns = `id,kind,media_root,resolved_root,folder,state,message,created_at,updated_at,lease_owner`
@@ -59,6 +60,10 @@ func (s *Service) LibraryScan(ctx context.Context, id string) (LibraryScan, erro
 		return out, e
 	}
 	e = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(examined),0),COALESCE(SUM(skipped),0) FROM library_scan_dirs WHERE scan_id=?`, id).Scan(&out.Examined, &out.Skipped)
+	if e != nil {
+		return out, e
+	}
+	out.AutomaticMatching, e = s.AutomaticMatchStatus(ctx, id)
 	return out, e
 }
 func (s *Service) LibraryScans(ctx context.Context) ([]LibraryScan, error) {
@@ -113,6 +118,12 @@ func (s *Service) existingRoot(ctx context.Context, scan *LibraryScan) (*os.Root
 	return os.OpenRoot(s.cfg.MediaDir)
 }
 func (s *Service) StartLibraryScan(ctx context.Context, kind string, collection ...string) (LibraryScan, error) {
+	return s.startLibraryScan(ctx, kind, false, collection...)
+}
+func (s *Service) StartLibraryScanWithMatching(ctx context.Context, kind, collection string, automatic bool) (LibraryScan, error) {
+	return s.startLibraryScan(ctx, kind, automatic, collection)
+}
+func (s *Service) startLibraryScan(ctx context.Context, kind string, automatic bool, collection ...string) (LibraryScan, error) {
 	defer organization.ReadMedia()()
 	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
 		return LibraryScan{}, e
@@ -198,6 +209,15 @@ func (s *Service) StartLibraryScan(ctx context.Context, kind string, collection 
 	if _, e = tx.ExecContext(ctx, `INSERT INTO library_scan_dirs(scan_id,relative_path) VALUES(?,?)`, id, folder); e != nil {
 		return LibraryScan{}, e
 	}
+	if automatic {
+		category := "standard"
+		if key == "anime" {
+			category = "anime"
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO library_match_jobs(scan_id,state,category,message,created_at,updated_at) VALUES(?,'pending',?,'Waiting for discovery to finish.',?,?)`, id, category, now, now); e != nil {
+			return LibraryScan{}, e
+		}
+	}
 	if e = tx.Commit(); e != nil {
 		return LibraryScan{}, e
 	}
@@ -212,7 +232,7 @@ func (s *Service) CancelLibraryScan(ctx context.Context, id string) error {
 	if n != 1 {
 		return problem("scan_busy", "This scan is no longer running. Reload its status.")
 	}
-	return nil
+	return s.CancelAutomaticMatching(ctx, id)
 }
 func (s *Service) RemoveLibraryScan(ctx context.Context, id string) error {
 	defer organization.ReadMedia()()
@@ -228,7 +248,7 @@ func (s *Service) RemoveLibraryScan(ctx context.Context, id string) error {
 		return e
 	}
 	var active int
-	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM library_scans WHERE id=? AND (state IN ('queued','scanning') OR lease_until>=unixepoch()))+(SELECT COUNT(*) FROM library_scan_files WHERE scan_id=? AND (state IN ('queued','verifying') OR lease_until>=unixepoch()))`, id, id).Scan(&active); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM library_scans WHERE id=? AND (state IN ('queued','scanning') OR lease_until>=unixepoch()))+(SELECT COUNT(*) FROM library_scan_files WHERE scan_id=? AND (state IN ('queued','verifying') OR lease_until>=unixepoch()))+(SELECT COUNT(*) FROM library_match_jobs WHERE scan_id=? AND (state IN ('pending','running','waiting') OR lease_until>=unixepoch()))`, id, id, id).Scan(&active); e != nil {
 		return e
 	}
 	if active > 0 {
@@ -393,6 +413,14 @@ func (s *Service) RegisterDiscovered(ctx context.Context, id string, in Existing
 }
 func (s *Service) registerDiscoveredTx(ctx context.Context, tx *sql.Tx, id string, in ExistingRegistration, dryRun bool) error {
 	if !in.Reviewed || in.MediaID < 1 || len(in.Episodes) > 20 {
+		return mappingError()
+	}
+	return s.queueExistingRegistrationTx(ctx, tx, id, in, dryRun)
+}
+
+// Called only after manual review or registerAutomaticCandidate's fenced proof.
+func (s *Service) queueExistingRegistrationTx(ctx context.Context, tx *sql.Tx, id string, in ExistingRegistration, dryRun bool) error {
+	if in.MediaID < 1 || len(in.Episodes) > 20 {
 		return mappingError()
 	}
 	f, e := scanDiscovered(tx.QueryRowContext(ctx, `SELECT `+discoveredColumns+` FROM library_scan_files WHERE id=?`, id))
