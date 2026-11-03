@@ -1766,6 +1766,15 @@ Executed with disposable/generated media only:
 - Final focused checks also cover TV shows inside grouping folders and preserved
   changed-file errors. The publishing workflow rechecks the merged source before
   uploading and pulls the resulting registry digest for verification.
+- Primary-branch release run 41618794982 published version 0.27.5 and verified
+  the pulled Docker Hub digest, startup and backup/restore. Its generated-media
+  automatic matching, Compose and storage recovery checks passed before push.
+- Hosted CI run 41618794927 passed all 181 frontend tests, the full backend race
+  suite, vet and real-client/generated-media acceptance, then stopped on a stale
+  smoke-test expectation of 24 library items per page. The expected default is
+  corrected to the requested 48. The complete corrected smoke script passed in
+  the local release container, including restart, offline backup, restore and
+  recovery. This correction changes test expectations only, not app behavior.
 
 No owner library, credentials, or server database was used or modified. Real-server
 scan timing and metadata-provider latency remain owner-server acceptance work.

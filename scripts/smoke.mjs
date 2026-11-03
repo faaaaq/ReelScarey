@@ -95,7 +95,7 @@ try {
   assert.equal(catalog.status, 200)
   const catalogPage = await catalog.json()
   const {profile_context, ...catalogRows} = catalogPage
-  assert.deepEqual(catalogRows, { items: [], page: 1, total: 0, limit: 24, collection_total: 0 })
+  assert.deepEqual(catalogRows, { items: [], page: 1, total: 0, limit: 48, collection_total: 0 })
   assert.equal((await authenticated('/api/v1/library/profiles', {method:'PUT',body:'{}'})).status,400)
   assert.equal(profile_context.default_profile.id, 1)
   assert.equal(profile_context.profiles.length, 2)
