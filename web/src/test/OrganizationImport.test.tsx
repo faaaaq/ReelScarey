@@ -84,7 +84,11 @@ describe("Collection-aware existing-library discovery", () => {
       screen.getByRole("combobox", { name: "Scan collection" }),
       "anime",
     );
-    expect(screen.getByRole("option", { name: "Movies" })).toBeDisabled();
+    expect(
+      within(
+        screen.getByRole("combobox", { name: "Scan media type" }),
+      ).getByRole("option", { name: "Movies" }),
+    ).toBeDisabled();
     expect(screen.getByText("/media/Anime")).toBeVisible();
     expect(screen.queryByText("/media/Legacy Movies")).not.toBeInTheDocument();
     await userEvent.selectOptions(

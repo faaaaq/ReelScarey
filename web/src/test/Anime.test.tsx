@@ -145,7 +145,7 @@ describe("Anime library and explicit numbering", () => {
     );
     expect(screen.getByRole("link", { name: "Add anime" })).toHaveAttribute(
       "href",
-      "/search?kind=anime",
+      "/search?kind=anime&format=series",
     );
     await userEvent.click(
       screen.getByRole("checkbox", { name: "Select all titles on this page" }),
@@ -174,14 +174,14 @@ describe("Anime library and explicit numbering", () => {
     ).toBe(JSON.stringify({ kind: "series", ids: [12] }));
   });
 
-  it("adds an anime movie using its canonical endpoint and retains Anime in search pagination", async () => {
+  it("adds an anime film to Movies and retains Anime in search pagination", async () => {
     const fetch = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith("/providers/tmdb"))
         return Response.json({ configured: true });
       if (init?.method === "POST")
         return Response.json({
           created: true,
-          item: { id: 11, category: "anime" },
+          item: { id: 11, category: "standard" },
         });
       return Response.json({
         items: [
@@ -213,7 +213,7 @@ describe("Anime library and explicit numbering", () => {
         ([url, init]) =>
           url.endsWith("/library/movies") && init?.method === "POST",
       )?.[1]?.body,
-    ).toBe(JSON.stringify({ tmdb_id: 42, monitored: true, category: "anime" }));
+    ).toBe(JSON.stringify({ tmdb_id: 42, monitored: true }));
     await userEvent.click(screen.getByRole("button", { name: /Next/ }));
     expect(screen.getByLabelText("Current address")).toHaveTextContent(
       "kind=anime&format=movie&query=Feature&page=2",
