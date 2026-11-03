@@ -203,15 +203,18 @@ func (p *automaticProviderFixture) Season(context.Context, int64, int) (metadata
 	p.seasons++
 	return p.season, nil
 }
-func TestAutomaticTVMatchesEveryEpisodeAndLoadsSeasonOnce(t *testing.T) {
+func TestAutomaticAnimeMatchesDirectSeriesFolderAndLoadsSeasonOnce(t *testing.T) {
 	f := setupWorkflow(t)
 	year := 2022
 	season := metadata.SeasonSummary{TMDbID: 821, Number: 1, Title: "Season 1", EpisodeCount: 2}
 	provider := &automaticProviderFixture{show: metadata.Series{Movie: metadata.Movie{TMDbID: 820, Title: "New Show", Year: &year}, Seasons: []metadata.SeasonSummary{season}}, season: metadata.Season{SeasonSummary: season, Episodes: []metadata.Episode{{TMDbID: 822, Number: 1, Title: "First"}, {TMDbID: 823, Number: 2, Title: "Second"}}}}
 	f.s.SetAutomaticMetadata(provider)
-	existingVideo(t, f, "TV Shows/New Show (2022)/Season 01/S01E01.mp4", []byte("first owned episode"))
-	existingVideo(t, f, "TV Shows/New Show (2022)/Season 01/S01E02.mp4", []byte("second owned episode"))
-	scan, err := f.s.StartLibraryScanWithMatching(context.Background(), "series", "", true)
+	existingVideo(t, f, "Anime/New Show (2022)/Season 01/S01E01.mp4", []byte("first owned episode"))
+	existingVideo(t, f, "Anime/New Show (2022)/Season 01/S01E02.mp4", []byte("second owned episode"))
+	if _, err := f.s.StartLibraryScanWithMatching(context.Background(), "movie", "anime", true); err == nil {
+		t.Fatal("Anime accepted a movie scan")
+	}
+	scan, err := f.s.StartLibraryScanWithMatching(context.Background(), "series", "anime", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,10 +225,11 @@ func TestAutomaticTVMatchesEveryEpisodeAndLoadsSeasonOnce(t *testing.T) {
 		t.Fatal(current, provider.searches, provider.seasons)
 	}
 	var monitored, count int
-	f.db.QueryRow(`SELECT monitored FROM media_items WHERE tmdb_id=820 AND kind='series'`).Scan(&monitored)
+	var category string
+	f.db.QueryRow(`SELECT monitored,category FROM media_items WHERE tmdb_id=820 AND kind='series'`).Scan(&monitored, &category)
 	f.db.QueryRow(`SELECT COUNT(*) FROM episode_files`).Scan(&count)
-	if monitored != 0 || count != 2 {
-		t.Fatal(monitored, count)
+	if monitored != 0 || count != 2 || category != "anime" || scan.Folder != "Anime" {
+		t.Fatal(monitored, count, category, scan.Folder)
 	}
 }
 func TestAutomaticCancellationDuringProviderFetchPreventsCatalogCreation(t *testing.T) {

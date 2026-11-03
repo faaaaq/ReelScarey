@@ -115,6 +115,29 @@ func (s *Service) existingRoot(ctx context.Context, scan *LibraryScan) (*os.Root
 	}
 	return os.OpenRoot(s.cfg.MediaDir)
 }
+
+// DiscoveryFolder is shared by scan creation and the advertised import roots.
+func DiscoveryFolder(l organization.Library, kind string) string {
+	if l.Key == "anime" {
+		if kind == "series" {
+			return l.Folder
+		}
+		return ""
+	}
+	if l.Content == kind {
+		return l.Folder
+	}
+	if l.Content == "mixed" {
+		if kind == "movie" {
+			return path.Join(l.Folder, "Movies")
+		}
+		if kind == "series" {
+			return path.Join(l.Folder, "TV Shows")
+		}
+	}
+	return ""
+}
+
 func (s *Service) StartLibraryScan(ctx context.Context, kind string, collection ...string) (LibraryScan, error) {
 	return s.startLibraryScan(ctx, kind, false, collection...)
 }
@@ -150,15 +173,9 @@ func (s *Service) startLibraryScan(ctx context.Context, kind string, automatic b
 	}
 	folder := ""
 	for _, l := range prefs.Libraries {
-		if l.Key == key && (l.Content == "mixed" || l.Content == kind) {
-			folder = l.Folder
-			if l.Content == "mixed" {
-				if kind == "movie" {
-					folder = path.Join(folder, "Movies")
-				} else {
-					folder = path.Join(folder, "TV Shows")
-				}
-			}
+		if l.Key == key {
+			folder = DiscoveryFolder(l, kind)
+			break
 		}
 	}
 	if folder == "" {

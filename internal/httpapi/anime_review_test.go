@@ -88,8 +88,8 @@ func TestReviewAnimeAPISecurityAndStrictLongShowPayloads(t *testing.T) {
 	if out := request(handler, "PUT", route, valid, &session, true); out.Code != 409 {
 		t.Fatal("stale category revision accepted", out.Code, out.Body)
 	}
-	if out := request(handler, "GET", "/api/v1/library?kind=anime", "", &session, false); out.Code != 200 || !strings.Contains(out.Body.String(), "Reviewed film") {
-		t.Fatal("classified film missing from Anime catalog", out.Code, out.Body)
+	if out := request(handler, "GET", "/api/v1/library?kind=movie", "", &session, false); out.Code != 200 || !strings.Contains(out.Body.String(), "Reviewed film") {
+		t.Fatal("classified film missing from Movies catalog", out.Code, out.Body)
 	}
 	if out := request(handler, "DELETE", route, "", &session, true); out.Code != 405 || out.Header().Get("Allow") != "GET, PUT" {
 		t.Fatal("unexpected Anime method behavior", out.Code, out.Body)

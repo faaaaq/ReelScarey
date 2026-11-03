@@ -54,7 +54,9 @@ labels such as `S01E02`, `1x02`, or `S01E02-E03`. Filename/folder conflicts,
 ambiguous title results, date/absolute Anime numbering and nonconsecutive episodes
 stay in review. Duplicate files claiming any of the same targets all stay in review;
 the app does not choose an arbitrary version. Clear canonical Anime numbering works
-in the configured Anime collection.
+in the configured Anime collection. Anime discovery scans series directly in the
+configured Anime folder (for example, /data/anime). Scan films through Movies,
+including anime films.
 
 Matching first checks saved titles, then TMDb when needed. New titles are added
 with monitoring paused, and unloaded canonical season episodes are fetched once

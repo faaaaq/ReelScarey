@@ -40,7 +40,7 @@ func New(db *sql.DB) *Store { return &Store{db: db} }
 
 func (s *Store) Counts(ctx context.Context) (Counts, error) {
 	var counts Counts
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(kind = 'movie' AND category='standard'), 0), COALESCE(SUM(kind = 'series' AND category='standard'), 0),COALESCE(SUM(category='anime'),0) FROM media_items`).Scan(&counts.Movies, &counts.Series, &counts.Anime)
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(kind = 'movie'), 0), COALESCE(SUM(kind = 'series' AND category='standard'), 0),COALESCE(SUM(kind='series' AND category='anime'),0) FROM media_items`).Scan(&counts.Movies, &counts.Series, &counts.Anime)
 	return counts, err
 }
 
@@ -104,8 +104,11 @@ func (s *Store) Browse(ctx context.Context, f BrowseFilter) (Page, error) {
 	f.Query = strings.TrimSpace(f.Query)
 	collectionWhere := " WHERE kind=? AND category='standard'"
 	collectionArgs := []any{f.Kind}
+	if f.Kind == "movie" {
+		collectionWhere = " WHERE kind=?"
+	}
 	if f.Kind == "anime" {
-		collectionWhere = " WHERE category='anime'"
+		collectionWhere = " WHERE kind='series' AND category='anime'"
 		collectionArgs = nil
 	}
 	where := collectionWhere + " AND title LIKE ? ESCAPE '\\' AND (?='all' OR status=?) AND (?='all' OR monitored=?)"

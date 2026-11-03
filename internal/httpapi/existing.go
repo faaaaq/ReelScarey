@@ -26,18 +26,16 @@ func (s *Server) existingCollection(w http.ResponseWriter, r *http.Request) {
 		collections := []map[string]string{}
 		movieRoot, seriesRoot := "", ""
 		for _, l := range prefs.Libraries {
-			m, t := "", ""
-			if l.Content == "movie" || l.Content == "mixed" {
-				m = filepath.Join(s.config.MediaDir, l.Folder)
-				if l.Content == "mixed" {
-					m = filepath.Join(m, "Movies")
-				}
+			m, t := transfer.DiscoveryFolder(l, "movie"), transfer.DiscoveryFolder(l, "series")
+			if m != "" {
+				m = filepath.Join(s.config.MediaDir, m)
 			}
-			if l.Content == "series" || l.Content == "mixed" {
-				t = filepath.Join(s.config.MediaDir, l.Folder)
-				if l.Content == "mixed" {
-					t = filepath.Join(t, "TV Shows")
-				}
+			if t != "" {
+				t = filepath.Join(s.config.MediaDir, t)
+			}
+			content := l.Content
+			if l.Key == "anime" {
+				content = "series"
 			}
 			if l.Key == "movies" {
 				movieRoot = m
@@ -45,7 +43,7 @@ func (s *Server) existingCollection(w http.ResponseWriter, r *http.Request) {
 			if l.Key == "tv" {
 				seriesRoot = t
 			}
-			collections = append(collections, map[string]string{"key": l.Key, "name": l.Name, "content": l.Content, "movie_root": m, "series_root": t})
+			collections = append(collections, map[string]string{"key": l.Key, "name": l.Name, "content": content, "movie_root": m, "series_root": t})
 		}
 		send(w, 200, map[string]any{"items": items, "media_root": s.config.MediaDir, "movie_root": movieRoot, "series_root": seriesRoot, "collections": collections})
 	case http.MethodPost:
