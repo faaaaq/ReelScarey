@@ -298,12 +298,17 @@ func (s *Service) queueAutomaticNext(ctx context.Context, scanID, owner string) 
 	return s.saveAutomaticReview(ctx, scanID, owner, file, "This match changed or conflicts with another import. Review it before registration.")
 }
 
+// Workers only need the saved scan scope, not UI progress counts.
+func (s *Service) automaticScan(ctx context.Context, id string) (LibraryScan, error) {
+	return scanLibraryScan(s.db.QueryRowContext(ctx, `SELECT `+libraryScanColumns+` FROM library_scans WHERE id=?`, id))
+}
+
 // This is the only automatic entry into the shared registration implementation.
 // It requires an explicit matching job, a live lease, exact current identity,
 // a whole-scan duplicate check, unchanged file evidence and current episode IDs.
 // The public/manual registration entry retains its separate reviewed requirement.
 func (s *Service) registerAutomaticCandidate(ctx context.Context, scanID, owner, file string, expected automaticCandidate) error {
-	scan, err := s.LibraryScan(ctx, scanID)
+	scan, err := s.automaticScan(ctx, scanID)
 	if err != nil {
 		return err
 	}

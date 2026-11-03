@@ -126,7 +126,7 @@ describe("existing library discovery and review", () => {
     });
     mount();
     await screen.findByText(
-      "No discovery scans yet. Choose movies or TV shows to begin.",
+      "No discovery scans yet. Choose Movies, TV Shows, or Anime to begin.",
     );
     expect(
       fetch.mock.calls.some(([, options]) => options?.method === "POST"),

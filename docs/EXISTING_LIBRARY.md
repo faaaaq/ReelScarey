@@ -19,7 +19,7 @@ Only these configured folders can be scanned; the API accepts a media type,
 never an arbitrary filesystem path. Importing from external folders or the
 downloads root by copying/moving files is outside this milestone.
 
-Choose Movies or TV shows and click **Scan and match library**. Automatic matching
+Choose Movies, TV Shows, or Anime under **Look for** and click **Scan and match library**. Automatic matching
 is checked by default; uncheck it for discovery and manual review only. Nothing runs
 automatically on first visit. Discovery reads names, size, modification time and
 stable file identity, without hashing/probing every video. It skips hidden

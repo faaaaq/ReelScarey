@@ -171,6 +171,7 @@ type automaticProviderFixture struct {
 	fail              bool
 	ambiguous         bool
 	beforeMovie       func()
+	movieError        error
 }
 
 func (p *automaticProviderFixture) Search(context.Context, string, int) (metadata.Results, error) {
@@ -190,7 +191,7 @@ func (p *automaticProviderFixture) Movie(context.Context, int64) (metadata.Movie
 	if p.beforeMovie != nil {
 		p.beforeMovie()
 	}
-	return p.movie, nil
+	return p.movie, p.movieError
 }
 func (p *automaticProviderFixture) SearchSeries(context.Context, string, int) (metadata.SeriesResults, error) {
 	p.searches++
@@ -328,5 +329,24 @@ func TestAutomaticAmbiguousProviderIdentityStaysUnregistered(t *testing.T) {
 	var count int
 	if err := f.db.QueryRow(`SELECT COUNT(*) FROM media_items WHERE tmdb_id IN (9001,9002)`).Scan(&count); err != nil || count != 0 {
 		t.Fatal(count, err)
+	}
+}
+
+func TestAutomaticRegistrationContinuesPastMissingMetadataInLargeCatalog(t *testing.T) {
+	f := setupWorkflow(t)
+	ctx := context.Background()
+	if _, err := f.db.Exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<10001)
+		INSERT INTO media_items(kind,tmdb_id,title,year) SELECT 'movie',10000+i,'Other title '||i,2026 FROM n`); err != nil {
+		t.Fatal(err)
+	}
+	f.s.SetAutomaticMetadata(&automaticProviderFixture{movieError: &metadata.Error{Code: "movie_not_found"}})
+	scan := automaticMovieScan(t, f,
+		"Movies/Removed Film (2026) [tmdb-999]/Removed.Film.2026.mp4",
+		"Movies/Test Movie (2026)/Test.Movie.2026.mp4",
+	)
+	finishAutomatic(t, f, scan.ID)
+	current, err := f.s.LibraryScan(ctx, scan.ID)
+	if err != nil || current.Registered != 1 || current.NeedsMatch != 1 || current.AutomaticMatching == nil || current.AutomaticMatching.Review != 1 {
+		t.Fatal(current, err)
 	}
 }
