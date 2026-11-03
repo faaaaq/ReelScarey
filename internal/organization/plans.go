@@ -217,6 +217,9 @@ func (s *Service) preview(ctx context.Context, ids []int64, mediaID int64, targe
 		return Plan{}, e
 	}
 	defer root.Close()
+	if e = s.prepareChecksums(ctx, root, ids, mediaID); e != nil {
+		return Plan{}, e
+	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return Plan{}, e

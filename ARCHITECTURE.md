@@ -439,6 +439,16 @@ transactional automatic authorization guard. Current lease, scan completion,
 file identity, title/provider/category and canonical episode snapshots must still
 agree when registration is queued. Manual consent checks remain in place.
 Guarded catalog/season writes prevent cancelled provider fetches from modifying
-state. Existing verification supplies hashes, FFprobe facts and in-place availability;
+state. Existing verification supplies file observations, FFprobe facts and in-place availability;
 no download rows or video mutations are introduced. Backups include this state;
 restore pauses jobs and clears leases. One process/container remains sufficient.
+
+Migration 043 adds `media_files.verification_json` for bounded existing-file
+observations and a scan-resolution index. Transfer keeps one discovery/inspection
+worker and an independent leased metadata worker. Large existing files initially
+have no full SHA; internal/filecheck captures bounded change evidence and promotes
+to a full digest only for explicit file operations. Organization prepares these
+checksums before review transactions; its existing copy/publication/cleanup
+journals still require full digests. Subtitle inspection validates pending
+observations without a full-library read. Seekable inherited descriptors keep
+FFprobe inspection independent of movie size for ordinary container metadata.

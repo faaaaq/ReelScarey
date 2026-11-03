@@ -64,6 +64,9 @@ func (s *Service) previewEmbeddedTitle(ctx context.Context, fileID int64, parent
 		return Plan{}, e
 	}
 	defer root.Close()
+	if e = s.prepareChecksums(ctx, root, []int64{fileID}, 0); e != nil {
+		return Plan{}, e
+	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return Plan{}, e

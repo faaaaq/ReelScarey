@@ -44,6 +44,7 @@ export type LibraryScan = {
   discovered: number;
   registered: number;
   queued: number;
+  matched?: number;
   needs_match: number;
   needs_attention: number;
   examined: number;
@@ -89,7 +90,8 @@ const stateLabels: Record<string, string> = {
   cancelled: "Discovery stopped",
   failed: "Discovery needs attention",
   review: "Needs a match",
-  verifying: "Verifying video",
+  verifying: "Inspecting video",
+  matched: "Matched",
   registered: "In library",
   skipped: "Skipped",
   blocked: "Needs attention",
@@ -244,8 +246,9 @@ export function ExistingLibrary() {
                 <option key={s.id} value={s.id}>
                   {s.kind === "movie" ? "Movies" : "TV"} ·{" "}
                   {new Date(s.created_at * 1000).toLocaleString()} ·{" "}
-                  {stateLabels[s.state] ?? s.state} · {s.needs_match ?? 0} need
-                  a match · {s.needs_attention ?? 0} need attention
+                  {s.registered}/{s.discovered} in library · {s.matched ?? 0}{" "}
+                  matched · {s.needs_match ?? 0} unmatched ·{" "}
+                  {s.needs_attention ?? 0} need attention
                 </option>
               ))}
             </select>
@@ -355,15 +358,9 @@ function ScanReview({
               </strong>
               <p>{scan.automatic_matching.message}</p>
               <p>
-                {Math.max(
-                  0,
-                  scan.automatic_matching.resolved -
-                    scan.automatic_matching.queued -
-                    scan.automatic_matching.review,
-                )}{" "}
-                matched, awaiting duplicate check or queue ·{" "}
-                {scan.automatic_matching.queued} queued for verification ·{" "}
-                {scan.automatic_matching.review} need review
+                {scan.matched ?? 0} matched, waiting to attach · {scan.queued}{" "}
+                queued or inspecting · {scan.automatic_matching.review} need
+                review
               </p>
             </div>
           )}
@@ -373,15 +370,15 @@ function ScanReview({
               <strong>{scan.discovered}</strong>
             </div>
             <div>
-              <span>Verified registrations</span>
+              <span>In library</span>
               <strong>{scan.registered}</strong>
             </div>
             <div>
-              <span>Waiting or verifying</span>
-              <strong>{scan.queued}</strong>
+              <span>Matched, waiting to attach</span>
+              <strong>{(scan.matched ?? 0) + scan.queued}</strong>
             </div>
             <div>
-              <span>Need a match</span>
+              <span>Unmatched</span>
               <strong>{scan.needs_match ?? 0}</strong>
             </div>
             <div>
@@ -403,7 +400,8 @@ function ScanReview({
               >
                 Stop automatic matching
               </Button>
-            ) : scan.state === "completed" && (scan.needs_match ?? 0) > 0 ? (
+            ) : scan.state === "completed" &&
+              ((scan.needs_match ?? 0) > 0 || (scan.matched ?? 0) > 0) ? (
               <Button disabled={busy} onClick={() => void matching("start")}>
                 Match clear files automatically
               </Button>
@@ -472,6 +470,7 @@ function ScanReview({
         >
           <option value="">All files</option>
           <option value="review">Needs a match</option>
+          <option value="matched">Matched, waiting to attach</option>
           <option value="blocked">Needs attention</option>
           <option value="registered">In library</option>
           <option value="skipped">Skipped</option>

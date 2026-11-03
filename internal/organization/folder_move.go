@@ -34,6 +34,9 @@ func (s *Service) previewFolder(ctx context.Context, mediaID int64, target strin
 		return Plan{}, err
 	}
 	defer root.Close()
+	if err = s.prepareChecksums(ctx, root, nil, mediaID); err != nil {
+		return Plan{}, err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Plan{}, err

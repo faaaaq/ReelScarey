@@ -34,6 +34,7 @@ type LibraryScan struct {
 	Discovered        int                   `json:"discovered"`
 	Registered        int                   `json:"registered"`
 	Queued            int                   `json:"queued"`
+	Matched           int                   `json:"matched"`
 	NeedsMatch        int                   `json:"needs_match"`
 	NeedsAttention    int                   `json:"needs_attention"`
 	Examined          int                   `json:"examined"`
@@ -53,7 +54,7 @@ func (s *Service) LibraryScan(ctx context.Context, id string) (LibraryScan, erro
 	if e != nil {
 		return out, e
 	}
-	e = s.db.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(state='registered'),0),COALESCE(SUM(state IN ('queued','verifying')),0),COALESCE(SUM(state='review'),0),COALESCE(SUM(state='blocked'),0) FROM library_scan_files WHERE scan_id=?`, id).Scan(&out.Discovered, &out.Registered, &out.Queued, &out.NeedsMatch, &out.NeedsAttention)
+	e = s.db.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(state='registered'),0),COALESCE(SUM(state IN ('queued','verifying')),0),COALESCE(SUM(state='review' AND NOT EXISTS(SELECT 1 FROM library_match_candidates c WHERE c.file_id=library_scan_files.id AND c.state='ready')),0),COALESCE(SUM(state='blocked'),0),COALESCE(SUM(state='review' AND EXISTS(SELECT 1 FROM library_match_candidates c WHERE c.file_id=library_scan_files.id AND c.state='ready')),0) FROM library_scan_files WHERE scan_id=?`, id).Scan(&out.Discovered, &out.Registered, &out.Queued, &out.NeedsMatch, &out.NeedsAttention, &out.Matched)
 	if e != nil {
 		return out, e
 	}
@@ -350,13 +351,26 @@ func (s *Service) DiscoveredFiles(ctx context.Context, id string, page int, stat
 	if e != nil {
 		return out, e
 	}
-	if page < 1 || page > 100000 || (state != "" && state != "review" && state != "registered" && state != "blocked" && state != "skipped") {
+	if page < 1 || page > 100000 || (state != "" && state != "review" && state != "matched" && state != "registered" && state != "blocked" && state != "skipped") {
 		return out, problem("invalid_scan", "Choose a valid scan page and filter.")
 	}
-	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_scan_files WHERE scan_id=? AND (?='' OR state=?)`, id, state, state).Scan(&out.Total); e != nil {
+	condition := `scan_id=?`
+	args := []any{id}
+	ready := `EXISTS(SELECT 1 FROM library_match_candidates c WHERE c.file_id=library_scan_files.id AND c.state='ready')`
+	if state == "matched" {
+		condition += ` AND state='review' AND ` + ready
+	} else if state == "review" {
+		condition += ` AND state='review' AND NOT ` + ready
+	} else if state != "" {
+		condition += ` AND state=?`
+		args = append(args, state)
+	}
+	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_scan_files WHERE `+condition, args...).Scan(&out.Total); e != nil {
 		return out, e
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT `+discoveredColumns+` FROM library_scan_files WHERE scan_id=? AND (?='' OR state=?) ORDER BY relative_path LIMIT 50 OFFSET ?`, id, state, state, (page-1)*50)
+	args = append(args, (page-1)*50)
+	columns := strings.Replace(discoveredColumns, ",state,", ",CASE WHEN state='review' AND "+ready+" THEN 'matched' ELSE state END,", 1)
+	rows, e := s.db.QueryContext(ctx, `SELECT `+columns+` FROM library_scan_files WHERE `+condition+` ORDER BY relative_path LIMIT 50 OFFSET ?`, args...)
 	if e != nil {
 		return out, e
 	}

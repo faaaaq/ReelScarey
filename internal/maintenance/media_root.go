@@ -19,6 +19,7 @@ import (
 
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
 	"github.com/faaaaq/ReelScarey/internal/instance"
 	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/storage"
@@ -383,6 +384,9 @@ func PlanMediaRoot(ctx context.Context, cfg config.Config, destination string) (
 		return p, e
 	}
 	defer source.Close()
+	if e = prepareRootChecksums(ctx, cfg, source); e != nil {
+		return p, e
+	}
 	entries, e := rootInventory(ctx, source, "")
 	if e != nil {
 		return p, e
@@ -860,4 +864,36 @@ func CancelMediaRoot(ctx context.Context, cfg config.Config, digest string) (Roo
 		return p, e
 	}
 	return p, syncFolder(configRoot)
+}
+
+func prepareRootChecksums(ctx context.Context, cfg config.Config, root *os.Root) error {
+	db, err := database.OpenCurrent(ctx, filepath.Join(cfg.ConfigDir, "reelscarey.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	rows, err := db.QueryContext(ctx, `SELECT id FROM media_files WHERE sha256='' ORDER BY id`)
+	if err != nil {
+		return err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, err = filecheck.EnsureSHA(ctx, db, root, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }

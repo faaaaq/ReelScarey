@@ -22,6 +22,10 @@ func TestAutomaticIdentityEvidence(t *testing.T) {
 		{"movie", "Movies", "Movies/Test.Movie.2026.1080p.mkv", "Test Movie", 2026, 0, nil},
 		{"series", "TV", "TV/Example Show (2020)/Season 01/Example.Show.S01E02-E03.mkv", "Example Show", 2020, 1, []int{2, 3}},
 		{"series", "TV", "TV/Example Show/Season 02/S02E04.mkv", "Example Show", 0, 2, []int{4}},
+		{"movie", "Movies", "Movies/One Movie (2020)/Alternate.Release.Name.2020.mkv", "One Movie", 2020, 0, nil},
+		{"movie", "Movies", "Movies/One Movie/obfuscated.mkv", "One Movie", 0, 0, nil},
+		{"series", "TV", "TV/One Show (2020)/Season 01/Alternate.Title.S01E01.mkv", "One Show", 2020, 1, []int{1}},
+		{"series", "TV", "TV/Grouped/Example Show/S01E02.mkv", "Example Show", 0, 1, []int{2}},
 		{"series", "TV", "TV/1923/Season 01/1923.S01E01.mkv", "1923", 0, 1, []int{1}},
 	} {
 		h, err := automaticIdentity(LibraryScan{Kind: v.kind, Folder: v.folder}, DiscoveredFile{Path: v.name})
@@ -31,10 +35,10 @@ func TestAutomaticIdentityEvidence(t *testing.T) {
 	}
 	for _, v := range []struct{ kind, folder, name string }{
 		{"movie", "Movies", "Movies/A Movie.mkv"},
-		{"movie", "Movies", "Movies/One Movie (2020)/Another.Movie.2020.mkv"},
+		{"movie", "Movies", "Movies/One Movie (2020) [tmdb-10]/Another.Movie.2020.[tmdb-11].mkv"},
 		{"movie", "Movies", "Movies/One Movie (2020)/One.Movie.2021.mkv"},
 		{"movie", "Movies", "Other/One.Movie.2020.mkv"},
-		{"series", "TV", "TV/One Show/Season 01/Another.Show.S01E01.mkv"},
+		{"series", "TV", "TV/One Show [tmdb-10]/Season 01/Another.Show.[tmdb-11].S01E01.mkv"},
 		{"series", "TV", "TV/One Show/Season 02/One.Show.S01E01.mkv"},
 		{"series", "TV", "TV/One Show/One.Show.013.mkv"},
 		{"series", "TV", "TV/One Show/One.Show.2026.11.02.mkv"},

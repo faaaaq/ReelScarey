@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
 	"github.com/faaaaq/ReelScarey/internal/organization"
 	"io"
 	"log/slog"
@@ -19,9 +20,6 @@ import (
 func (s *Service) runLibrary(ctx context.Context, logger *slog.Logger) {
 	for ctx.Err() == nil {
 		processed, e := s.ProcessLibraryNext(ctx)
-		if !processed && e == nil {
-			processed, e = s.ProcessAutomaticMatchNext(ctx)
-		}
 		if e != nil && ctx.Err() == nil {
 			logger.Error("library review worker failed")
 		}
@@ -121,7 +119,7 @@ func scanLease(ctx context.Context, tx *sql.Tx, id, owner string) error {
 	return nil
 }
 func (s *Service) discoverDirectory(ctx context.Context, id, owner string) error {
-	scan, e := s.LibraryScan(ctx, id)
+	scan, e := s.automaticScan(ctx, id)
 	if e != nil {
 		return e
 	}
@@ -267,7 +265,7 @@ func (s *Service) verifyExisting(ctx context.Context, id, owner string) error {
 	if f.MediaID == nil || f.owner != owner {
 		return ErrLease
 	}
-	scan, e := s.LibraryScan(ctx, f.ScanID)
+	scan, e := s.automaticScan(ctx, f.ScanID)
 	if e != nil {
 		return e
 	}
@@ -308,7 +306,7 @@ func (s *Service) verifyExisting(ctx context.Context, id, owner string) error {
 	if identity != f.identity {
 		return problem("source_changed", "The discovered video was replaced. Start a new scan before adding it.")
 	}
-	hash, e := fileHash(ctx, file)
+	observation, e := filecheck.Capture(ctx, file)
 	if e != nil {
 		return e
 	}
@@ -316,7 +314,7 @@ func (s *Service) verifyExisting(ctx context.Context, id, owner string) error {
 	if e != nil {
 		return e
 	}
-	verified, e := fileHash(ctx, file)
+	verified, e := filecheck.Capture(ctx, file)
 	if e != nil {
 		return e
 	}
@@ -324,7 +322,7 @@ func (s *Service) verifyExisting(ctx context.Context, id, owner string) error {
 	if e != nil {
 		return e
 	}
-	if hash != verified || after.Size() != f.Size || after.ModTime().UnixNano() != f.Mtime {
+	if observation != verified || after.Size() != f.Size || after.ModTime().UnixNano() != f.Mtime {
 		return problem("source_changed", "The file changed during verification. It was not registered; start a new scan.")
 	}
 	if e = segments(root, f.Path, false); e != nil {
@@ -371,6 +369,16 @@ func (s *Service) verifyExisting(ctx context.Context, id, owner string) error {
 	if e != nil || !os.SameFile(info, latest) || latest.Size() != f.Size || latest.ModTime().UnixNano() != f.Mtime {
 		return problem("source_changed", "The file changed before registration. Start a new scan.")
 	}
+	hash, verification := "", ""
+	if observation.Size <= filecheck.FullSize {
+		hash = observation.Sample
+	} else {
+		encoded, err := json.Marshal(observation)
+		if err != nil {
+			return err
+		}
+		verification = string(encoded)
+	}
 	raw, e := json.Marshal(probe)
 	if e != nil {
 		return e
@@ -381,7 +389,7 @@ func (s *Service) verifyExisting(ctx context.Context, id, owner string) error {
 	} else {
 		seriesID = *f.MediaID
 	}
-	res, e := tx.ExecContext(ctx, `INSERT INTO media_files(movie_id,series_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin,source_name) VALUES(?,?,?,?,?,?,unixepoch(),'existing',?)`, movieID, seriesID, f.Path, f.Size, hash, string(raw), path.Base(f.Path))
+	res, e := tx.ExecContext(ctx, `INSERT INTO media_files(movie_id,series_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin,source_name,verification_json) VALUES(?,?,?,?,?,?,unixepoch(),'existing',?,?)`, movieID, seriesID, f.Path, f.Size, hash, string(raw), path.Base(f.Path), verification)
 	if e != nil {
 		return e
 	}
@@ -402,7 +410,7 @@ func (s *Service) verifyExisting(ctx context.Context, id, owner string) error {
 	if e != nil {
 		return e
 	}
-	res, e = tx.ExecContext(ctx, `UPDATE library_scan_files SET state='registered',media_file_id=?,message='Verified and added in its existing location.',updated_at=unixepoch() WHERE id=? AND lease_owner=? AND state='verifying' AND lease_until>=unixepoch()`, fileID, id, owner)
+	res, e = tx.ExecContext(ctx, `UPDATE library_scan_files SET state='registered',media_file_id=?,message='Video inspected and added in its existing location.',updated_at=unixepoch() WHERE id=? AND lease_owner=? AND state='verifying' AND lease_until>=unixepoch()`, fileID, id, owner)
 	if e != nil {
 		return e
 	}

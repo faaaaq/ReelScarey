@@ -313,6 +313,57 @@ describe("existing library discovery and review", () => {
 });
 
 describe("automatic existing-library matching", () => {
+  it("separates matched files from unmatched files and offers their own filter", async () => {
+    const fetch = setup((url) => {
+      if (url.includes(`/library/imports/${scan.id}?`))
+        return Response.json({
+          scan: {
+            ...scan,
+            discovered: 1605,
+            registered: 16,
+            matched: 1347,
+            queued: 1,
+            needs_match: 241,
+            automatic_matching: {
+              state: "running",
+              phase: "queue",
+              message: "Attaching matched files",
+              resolved: 1605,
+              queued: 17,
+              review: 241,
+            },
+          },
+          items: url.includes("state=matched")
+            ? [{ ...file, state: "matched" }]
+            : [],
+          page: 1,
+          total: url.includes("state=matched") ? 1 : 0,
+          limit: 50,
+        });
+    });
+    mount();
+    const unmatched = await screen.findByText("Unmatched");
+    expect(unmatched.parentElement).toHaveTextContent("241");
+    expect(
+      screen.getByText(
+        "1347 matched, waiting to attach · 1 queued or inspecting · 241 need review",
+      ),
+    ).toBeInTheDocument();
+    const option = screen.getByRole("option", {
+      name: "Matched, waiting to attach",
+    });
+    await userEvent.selectOptions(option.parentElement!, "matched");
+    expect(
+      await screen.findByText("Matched", { selector: "span" }),
+    ).toBeInTheDocument();
+    expect(
+      fetch.mock.calls.some(([url]) => url.includes("state=matched")),
+    ).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: "Review match" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("allows opting out before starting discovery", async () => {
     const fetch = setup((url, options) => {
       if (url.endsWith("/library/imports") && options?.method === "POST")
