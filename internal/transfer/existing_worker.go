@@ -19,6 +19,9 @@ import (
 func (s *Service) runLibrary(ctx context.Context, logger *slog.Logger) {
 	for ctx.Err() == nil {
 		processed, e := s.ProcessLibraryNext(ctx)
+		if !processed && e == nil {
+			processed, e = s.ProcessAutomaticMatchNext(ctx)
+		}
 		if e != nil && ctx.Err() == nil {
 			logger.Error("library review worker failed")
 		}
@@ -130,7 +133,7 @@ func (s *Service) discoverDirectory(ctx context.Context, id, owner string) error
 	var relative string
 	e = s.db.QueryRowContext(ctx, `SELECT relative_path FROM library_scan_dirs WHERE scan_id=? AND state='pending' ORDER BY relative_path LIMIT 1`, id).Scan(&relative)
 	if errors.Is(e, sql.ErrNoRows) {
-		_, e = s.db.ExecContext(ctx, `UPDATE library_scans SET state='completed',message='Discovery finished. Review files before adding them.',updated_at=unixepoch() WHERE id=? AND lease_owner=? AND state='scanning'`, id, owner)
+		_, e = s.db.ExecContext(ctx, `UPDATE library_scans SET state='completed',message=CASE WHEN EXISTS(SELECT 1 FROM library_match_jobs WHERE scan_id=library_scans.id AND state='pending') THEN 'Discovery finished. Clear matches will be registered automatically.' ELSE 'Discovery finished. Review files before adding them.' END,updated_at=unixepoch() WHERE id=? AND lease_owner=? AND state='scanning'`, id, owner)
 		return e
 	}
 	if e != nil {

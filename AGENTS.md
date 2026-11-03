@@ -33,9 +33,11 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - internal/transfer owns Torznab/qBittorrent adapters, encrypted integration
   settings, release selections, leased download jobs, TV episode reservations/
   reviewed file mappings and per-file journaled imports. TV shares the importer.
-  It also owns explicit existing-library discovery and reviewed in-place
-  registration. Discovery never authorizes a metadata match or a filesystem
-  write; registered existing files must not fabricate download/release rows.
+  It also owns explicit existing-library discovery and in-place registration.
+  Manual registration requires review. Automatic registration requires an explicit
+  matching job, exact title/episode evidence, whole-scan duplicate checks and a
+  live fenced lease; plain discovery and GET requests never authorize matching.
+  Existing-library registration never authorizes a filesystem write; registered existing files must not fabricate download/release rows.
   Newznab/SABnzbd share review, reservations and importer; NZB checksums have a
   separate namespace. Uncertain SABnzbd submissions must reconcile, never
   automatically resubmit. Only completed post-processing in an exact dedicated

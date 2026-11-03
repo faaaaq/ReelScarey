@@ -50,13 +50,14 @@ func (s *Server) existingCollection(w http.ResponseWriter, r *http.Request) {
 		send(w, 200, map[string]any{"items": items, "media_root": s.config.MediaDir, "movie_root": movieRoot, "series_root": seriesRoot, "collections": collections})
 	case http.MethodPost:
 		var in struct {
-			Kind       string `json:"kind"`
-			LibraryKey string `json:"library_key"`
+			Kind              string `json:"kind"`
+			LibraryKey        string `json:"library_key"`
+			AutomaticMatching bool   `json:"automatic_matching"`
 		}
 		if !decodeJSON(w, r, &in) {
 			return
 		}
-		out, e := s.transfer.StartLibraryScan(r.Context(), in.Kind, in.LibraryKey)
+		out, e := s.transfer.StartLibraryScanWithMatching(r.Context(), in.Kind, in.LibraryKey, in.AutomaticMatching)
 		if e != nil {
 			s.transferError(w, e)
 			return
@@ -147,4 +148,36 @@ func (s *Server) existingCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, map[string]any{"items": items})
+}
+
+func (s *Server) existingAutomaticMatching(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	var in struct {
+		Action string `json:"action"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	var err error
+	switch in.Action {
+	case "start":
+		err = s.transfer.StartAutomaticMatching(r.Context(), r.PathValue("id"))
+	case "stop":
+		err = s.transfer.CancelAutomaticMatching(r.Context(), r.PathValue("id"))
+	default:
+		fail(w, 400, "invalid_action", "Choose start or stop for automatic matching.")
+		return
+	}
+	if err != nil {
+		s.transferError(w, err)
+		return
+	}
+	status, err := s.transfer.AutomaticMatchStatus(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.transferError(w, err)
+		return
+	}
+	send(w, 202, status)
 }

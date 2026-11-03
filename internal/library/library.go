@@ -185,6 +185,11 @@ func (s *Store) Item(ctx context.Context, id int64) (Item, error) {
 	return scan(s.db.QueryRowContext(ctx, "SELECT "+columns+" FROM media_items WHERE id=?", id))
 }
 func (s *Store) AddMovie(ctx context.Context, movie metadata.Movie, monitored bool, category ...string) (Item, bool, error) {
+	return s.AddMovieAuthorized(ctx, movie, monitored, nil, category...)
+}
+
+// AddMovieAuthorized fences durable workers in the catalog creation transaction.
+func (s *Store) AddMovieAuthorized(ctx context.Context, movie metadata.Movie, monitored bool, authorize func(*sql.Tx) error, category ...string) (Item, bool, error) {
 	section, e := addCategory(category)
 	if e != nil {
 		return Item{}, false, e
@@ -197,6 +202,11 @@ func (s *Store) AddMovie(ctx context.Context, movie metadata.Movie, monitored bo
 		return Item{}, false, err
 	}
 	defer tx.Rollback()
+	if authorize != nil {
+		if err := authorize(tx); err != nil {
+			return Item{}, false, err
+		}
+	}
 	result, err := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date,runtime_minutes,category) VALUES('movie',?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, movie.TMDbID, movie.Title, movie.Year, monitored, movie.Overview, movie.PosterPath, movie.ReleaseDate, movie.RuntimeMinutes, section)
 	if err != nil {
 		return Item{}, false, err

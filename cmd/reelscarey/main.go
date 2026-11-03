@@ -33,7 +33,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.26.2-dev"
+var version = "0.27.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -125,6 +125,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	cancel()
 	metadataService := metadata.New(secretStore, metadata.NewTMDb())
 	transferService := transfer.New(db, secretStore, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
+	transferService.SetAutomaticMetadata(metadataService)
 	automationService := automation.New(db, transferService)
 	metadataRefresh := automation.NewMetadataRefresher(db, metadataService)
 	subtitleService := subtitle.New(db, secretStore, cfg, subtitle.NewOpenSubtitles())

@@ -1708,3 +1708,35 @@ its explicit Host header; native HTTP now exercises the actual configured and
 rejected proxy Hosts. Final acceptance passed. Docker Hub publication must still
 be confirmed from the new publishing workflow; these local results do not imply
 that a remote build or registry pull has completed.
+## 2026-11-02: automatic existing-library matching (0.27.0)
+
+Executed in Docker using generated/disposable media, without owner provider
+credentials or owner media:
+
+- Frontend formatting, type checks, all 177 interaction tests and production build.
+  Initial concurrent UI runs exposed stale scan-request expectations and three
+  startup timeouts; updated expectations and a bounded two-worker run passed.
+  The release Dockerfile independently passed the full frontend suite.
+- Full backend race suite, static checks and application build; focused final
+  automatic-matching race checks passed. A host-mounted build initially failed
+  Git ownership stamping; the explicit buildvcs=false development build and the
+  production Docker build succeeded.
+- Automatic title/year/provider identity parsing; duplicate-version exclusion;
+  cached title and season loading; manual-review preservation; explicit old-scan
+  start; cancellation during provider fetch; source/catalog changes; ambiguous
+  provider identities; bounded retries and paused failures; failed discovery;
+  foreign leases; persisted restart; admin/CSRF/requester boundaries; restored
+  jobs paused with cleared leases.
+- New automatic-library container acceptance exercised authenticated scan/start,
+  movie and TV registration, a two-episode shared video, duplicate and uncertain
+  exceptions, actual FFprobe and restart. All source hashes, inodes and mtimes
+  stayed unchanged; three canonical episodes became available with no fabricated
+  download records. This check runs before Docker Hub publication.
+- Local configuration backup was created and verified before upgrading schema
+  41 to 42. Version 0.27.0 passed readiness and doctor before/after restart. Every
+  row in all 82 prior tables, the migration ledger through 41, encryption key and
+  setup token were preserved. No matching job was implicitly created.
+
+Authenticated acceptance on the owner's Ubuntu server remains unperformed:
+the public readiness endpoint answered, but the desktop browser controller could
+not establish its session. No owner-server library records were changed.

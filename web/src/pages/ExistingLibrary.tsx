@@ -24,6 +24,15 @@ import { bytes } from "./Releases";
 import { BulkMatching } from "./BulkMatching";
 
 export type LibraryScan = {
+  automatic_matching?: {
+    state: string;
+    phase: string;
+    message: string;
+    resolved: number;
+    queued: number;
+    review: number;
+  };
+
   id: string;
   kind: "movie" | "series";
   media_root: string;
@@ -76,7 +85,7 @@ type ScanList = {
 const stateLabels: Record<string, string> = {
   queued: "Queued",
   scanning: "Discovering files",
-  completed: "Ready for review",
+  completed: "Discovery complete",
   cancelled: "Discovery stopped",
   failed: "Discovery needs attention",
   review: "Needs a match",
@@ -92,6 +101,7 @@ export function ExistingLibrary() {
   const scanID = params.get("scan") ?? roots.data?.items[0]?.id;
   const [kind, setKind] = useState<"movie" | "series">("movie");
   const [libraryKey, setLibraryKey] = useState("");
+  const [automatic, setAutomatic] = useState(true);
   const collection = roots.data?.collections?.find(
     (item) => item.key === libraryKey,
   );
@@ -113,6 +123,7 @@ export function ExistingLibrary() {
         method: "POST",
         body: JSON.stringify({
           kind,
+          automatic_matching: automatic,
           ...(collection ? { library_key: collection.key } : {}),
         }),
       });
@@ -128,7 +139,7 @@ export function ExistingLibrary() {
     <>
       <PageHeading
         title="Find unmatched files"
-        description="Scan your configured media folders for videos that are not registered, then review and match them without moving the files."
+        description="Find videos in your configured library, automatically register clear matches, and review uncertain results without moving files."
       />
       <RequestState
         loading={roots.loading}
@@ -142,8 +153,10 @@ export function ExistingLibrary() {
           </h2>
           <p>
             The scan reads filenames and sizes. It leaves files, folders and
-            existing subtitles untouched. Nothing is matched or registered
-            automatically.
+            existing subtitles untouched. Automatic matching identifies clear
+            movie and episode matches, verifies them, and registers them in
+            place. Ambiguous titles, duplicate versions and uncertain numbering
+            stay in review.
           </p>
           {!!roots.data.collections?.length && (
             <label>
@@ -183,6 +196,19 @@ export function ExistingLibrary() {
               </>
             )}
           </dl>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={automatic}
+              disabled={busy}
+              onChange={(event) => setAutomatic(event.target.checked)}
+            />
+            Automatically match and register clear results
+          </label>
+          <p className="field-help">
+            New titles use TMDb and start with monitoring paused. Turn this off
+            to discover files for manual review only.
+          </p>
           <div className="import-actions">
             <label>
               Look for{" "}
@@ -210,7 +236,11 @@ export function ExistingLibrary() {
               }
               onClick={() => void start()}
             >
-              {busy ? "Starting…" : "Scan configured folder"}
+              {busy
+                ? "Starting…"
+                : automatic
+                  ? "Scan and match library"
+                  : "Scan configured folder"}
             </Button>
           </div>
           <p className="field-help">
@@ -307,8 +337,27 @@ function ScanReview({
       setBusy(false);
     }
   }
+  async function matching(action: "start" | "stop") {
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/library/imports/${id}/matches/automatic`, {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      });
+      result.reload();
+      changed();
+    } catch (error) {
+      setError(messageFor(error));
+    } finally {
+      setBusy(false);
+    }
+  }
   const scan = result.data?.scan;
   const active = scan && ["queued", "scanning"].includes(scan.state);
+  const matchingActive =
+    !!scan?.automatic_matching &&
+    ["pending", "running", "waiting"].includes(scan.automatic_matching.state);
   return (
     <>
       <RequestState
@@ -325,6 +374,19 @@ function ScanReview({
             </Badge>
           </div>
           <p>{scan.message || "Reading the selected folder…"}</p>
+          {scan.automatic_matching && (
+            <div role="status">
+              <strong>
+                Automatic matching: {scan.automatic_matching.state}
+              </strong>
+              <p>{scan.automatic_matching.message}</p>
+              <p>
+                {scan.automatic_matching.resolved} resolved ·{" "}
+                {scan.automatic_matching.queued} queued for verification ·{" "}
+                {scan.automatic_matching.review} need review
+              </p>
+            </div>
+          )}
           <div className="item-storage-stats">
             <div>
               <span>Discovered videos</span>
@@ -353,6 +415,19 @@ function ScanReview({
             Counts update as folders finish.
           </p>
           <div className="import-actions">
+            {matchingActive ? (
+              <Button
+                variant="soft"
+                disabled={busy}
+                onClick={() => void matching("stop")}
+              >
+                Stop automatic matching
+              </Button>
+            ) : scan.state === "completed" && (scan.needs_match ?? 0) > 0 ? (
+              <Button disabled={busy} onClick={() => void matching("start")}>
+                Match clear files automatically
+              </Button>
+            ) : null}
             <Button variant="soft" onClick={result.reload}>
               <RefreshCw size={15} />
               Refresh status
@@ -372,7 +447,7 @@ function ScanReview({
                   <Button
                     variant="ghost"
                     color="gray"
-                    disabled={busy || !!scan.queued}
+                    disabled={busy || !!scan.queued || matchingActive}
                   >
                     Forget this scan
                   </Button>

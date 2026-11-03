@@ -154,6 +154,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/imports", s.existingCollection)
 	mux.HandleFunc("/api/v1/library/imports/catalog", method(http.MethodGet, s.existingCatalog))
 	mux.HandleFunc("/api/v1/library/imports/{id}", s.existingScan)
+	mux.HandleFunc("/api/v1/library/imports/{id}/matches/automatic", method(http.MethodPost, s.existingAutomaticMatching))
 	mux.HandleFunc("/api/v1/library/imports/{id}/matches/suggest", method(http.MethodPost, s.bulkMatchSuggestions))
 	mux.HandleFunc("/api/v1/library/imports/{id}/matches/review", method(http.MethodPost, s.bulkMatchReview))
 	mux.HandleFunc("/api/v1/library/imports/{id}/matches/apply", method(http.MethodPost, s.bulkMatchApply))

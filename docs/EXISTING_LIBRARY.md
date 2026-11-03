@@ -1,7 +1,7 @@
-# Existing-library import (0.10 development)
+# Existing-library import
 
 Open **Find unmatched files** or **Import existing** from Movies/TV shows. This is a
-reviewed, in-place registration workflow for media already inside the configured
+matching and in-place registration workflow for media already inside the configured
 media root. It does not move, rename, copy, replace or delete media files.
 
 ## Prepare and discover
@@ -19,7 +19,8 @@ Only these configured folders can be scanned; the API accepts a media type,
 never an arbitrary filesystem path. Importing from external folders or the
 downloads root by copying/moving files is outside this milestone.
 
-Choose Movies or TV shows and click **Scan configured folder**. Nothing runs
+Choose Movies or TV shows and click **Scan and match library**. Automatic matching
+is checked by default; uncheck it for discovery and manual review only. Nothing runs
 automatically on first visit. Discovery reads names, size, modification time and
 stable file identity, without hashing/probing every video. It skips hidden
 entries, symbolic links, samples/trailers, non-regular/empty files, unsupported
@@ -39,6 +40,35 @@ registered files or their catalog entries and refuses active verification work.
 Each scan shows counts of files needing a match and needing attention; the review
 opens to files needing a match. Counts are snapshots from that scan, not a live
 filesystem inventory. Run a new scan to discover later changes.
+
+## Automatic matching (0.27)
+
+New scans can automatically register clear matches across the entire library.
+For an older completed scan, choose **Match clear files automatically**. Opening
+this page never starts matching. Existing API callers remain discovery-only unless
+they explicitly send `automatic_matching:true`.
+
+Movies require an exact normalized title with a year or explicit `[tmdb-123]` /
+`{tmdb-123}` identity. TV uses the show folder and explicit canonical season/episode
+labels such as `S01E02`, `1x02`, or `S01E02-E03`. Filename/folder conflicts,
+ambiguous title results, date/absolute Anime numbering and nonconsecutive episodes
+stay in review. Duplicate files claiming any of the same targets all stay in review;
+the app does not choose an arbitrary version. Clear canonical Anime numbering works
+in the configured Anime collection.
+
+Matching first checks saved titles, then TMDb when needed. New titles are added
+with monitoring paused, and unloaded canonical season episodes are fetched once
+and reused. Existing monitoring choices are preserved. Movie/show searches are
+bounded to three complete provider pages; broader results need review or an
+explicit TMDb folder ID. Incomplete saved season definitions may need refresh.
+
+Progress shows resolved identities, registrations queued and review exceptions.
+The same durable hash/FFprobe verification below runs before availability changes.
+**Stop automatic matching** prevents further matching writes; already queued file
+verification continues. Network failures retry after a minute and pause after five
+consecutive failures. Correct the connection and use the matching button to retry.
+Jobs resume after ordinary restarts. Restoring a backup pauses them for explicit
+restart. Failed/partial discovery cannot automatically register files.
 
 ## Review the identity
 
@@ -88,7 +118,7 @@ registration, while existing videos/sidecars remain protected.
 
 The page records an import snapshot; it does not continuously detect later edits,
 deletions or renames. Reassigning/removing/replacing a registered file, multiple
-versions of one movie, mass automatic matching and arbitrary-root browsing remain
+versions of one movie and arbitrary-root imports remain
 future work. Ownership of filesystem mounts and their permission/access controls
 remains the host administrator's responsibility.
 
