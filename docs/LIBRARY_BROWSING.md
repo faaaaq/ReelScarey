@@ -19,17 +19,18 @@ automation continues independently.
 - Sort by title A–Z/Z–A, year newest/oldest, or recently added. Unknown years sort
   last in either direction. Recently added uses descending catalog insertion ID,
   not release date. Equal titles/years use stable title/ID tie breakers.
-- Pages contain up to 24 titles. The heading shows the unfiltered collection
+- Pages contain up to 48 titles. Choose **Show all** to display all matching titles.
+  Bulk selection is available in the paginated view. The heading shows the unfiltered collection
   count; the result bar shows the filtered total and displayed range. Empty
   filtered or later pages offer explicit recovery without silently changing filters.
 
 Filters, ordering, view and page live in the URL. Browser back/forward and shared
-bookmarks retain them. Filter/sort changes return to page one. Switching between
+bookmarks retain them. Filter/sort changes return to page one in paginated mode. Show all remains selected. Switching between
 posters and the table preserves the page and does not fetch the catalog again.
 These are per-URL choices, not a new account preference. Existing search/detail,
 episode, release and Activity links continue to use their normal workflows.
 
-GET `/api/v1/library` accepts kind=movie/series and page=1–100000. Optional
+GET `/api/v1/library` accepts kind=movie/series/anime and page=1–100000 or page=all. Optional
 parameters are query, status=all/missing/available/downloading,
 monitored=all/monitored/paused and sort=title/title_desc/year/year_desc/added.
 Defaults are no query, all statuses/monitoring and title ascending. Responses add

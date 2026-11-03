@@ -44,13 +44,13 @@ func TestConcurrentAddAndPagination(t *testing.T) {
 	if count != 1 {
 		t.Fatal("duplicate adds created multiple rows")
 	}
-	for i := 1; i < 25; i++ {
+	for i := 1; i <= PageSize; i++ {
 		if _, _, err := store.AddMovie(ctx, metadata.Movie{TMDbID: int64(i + 100), Title: fmt.Sprintf("Movie %03d", i)}, true); err != nil {
 			t.Fatal(err)
 		}
 	}
 	page, err := store.List(ctx, "movie", 1)
-	if err != nil || len(page.Items) != 24 || page.Total != 25 {
+	if err != nil || len(page.Items) != PageSize || page.Total != PageSize+1 {
 		t.Fatalf("bad first page: %+v %v", page, err)
 	}
 	page, err = store.List(ctx, "movie", 2)

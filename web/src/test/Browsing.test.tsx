@@ -56,6 +56,52 @@ function mock(response?: (url: string) => Response | undefined) {
   return fetch;
 }
 describe("catalog browsing", () => {
+  it("shows all matching titles and switches back to the first 48-item page", async () => {
+    const items = Array.from({ length: 49 }, (_, index) => ({
+      ...item,
+      id: index + 1,
+      title: "Saved title " + (index + 1),
+    }));
+    const fetch = mock((url) => {
+      const all =
+        new URL(url, "http://local").searchParams.get("page") === "all";
+      return Response.json({
+        items: all ? items : items.slice(0, 48),
+        total: 49,
+        collection_total: 49,
+        page: 1,
+        limit: all ? 49 : 48,
+      });
+    });
+    mount("/movies?view=table&query=Saved");
+    await screen.findByRole("link", { name: "Saved title 48" });
+    const display = screen.getByRole("combobox", {
+      name: "Library items per page",
+    });
+    expect(display).toHaveValue("48");
+    expect(
+      screen.queryByRole("link", { name: "Saved title 49" }),
+    ).not.toBeInTheDocument();
+    await userEvent.selectOptions(display, "all");
+    expect(
+      await screen.findByRole("link", { name: "Saved title 49" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("checkbox", {
+        name: "Select all titles on this page",
+      }),
+    ).not.toBeInTheDocument();
+    const request = new URL(fetch.mock.calls.at(-1)![0], "http://local");
+    expect(request.searchParams.get("page")).toBe("all");
+    expect(request.searchParams.get("query")).toBe("Saved");
+    await userEvent.selectOptions(display, "48");
+    await screen.findByRole("checkbox", {
+      name: "Select all titles on this page",
+    });
+    expect(
+      screen.queryByRole("link", { name: "Saved title 49" }),
+    ).not.toBeInTheDocument();
+  });
   it("retains bookmarks and sends literal filters to the server while resetting pages", async () => {
     const fetch = mock();
     mount(

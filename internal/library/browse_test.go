@@ -62,20 +62,26 @@ func TestBrowseFiltersStableSortsAndReadOnly(t *testing.T) {
 			t.Fatal("lost collection count")
 		}
 	}
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 54; i++ {
 		if _, e = db.Exec(`INSERT INTO media_items(kind,tmdb_id,title) VALUES('movie',?, 'Repeated title')`, 100+i); e != nil {
 			t.Fatal(e)
 		}
 	}
 	f := BrowseFilter{Kind: "movie", Page: 1, Query: "Repeated"}
 	first, e := store.Browse(ctx, f)
-	if e != nil || len(first.Items) != 24 || first.Total != 30 {
+	if e != nil || len(first.Items) != 48 || first.Total != 54 {
 		t.Fatal(first, e)
 	}
 	f.Page = 2
 	second, e := store.Browse(ctx, f)
-	if e != nil || len(second.Items) != 6 || second.Items[0].ID <= first.Items[23].ID {
+	if e != nil || len(second.Items) != 6 || second.Items[0].ID <= first.Items[47].ID {
 		t.Fatal(second, e)
+	}
+	allFilter := f
+	allFilter.Page, allFilter.All = 1, true
+	all, e := store.Browse(ctx, allFilter)
+	if e != nil || len(all.Items) != 54 || all.Items[48].ID != second.Items[0].ID {
+		t.Fatal(all, e)
 	}
 	db.QueryRow(`SELECT total_changes()`).Scan(&changes)
 	_, e = store.Browse(ctx, f)
@@ -91,7 +97,7 @@ func TestBrowseFiltersStableSortsAndReadOnly(t *testing.T) {
 	}
 	defer db.Close()
 	out, e := New(db).Browse(ctx, f)
-	if e != nil || out.Total != 30 || out.Items[0].ID != second.Items[0].ID {
+	if e != nil || out.Total != 54 || out.Items[0].ID != second.Items[0].ID {
 		t.Fatal("browse changed on reopen", e)
 	}
 }
