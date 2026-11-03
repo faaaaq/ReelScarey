@@ -171,7 +171,8 @@ func (s *Service) ProcessAutomaticMatchNext(ctx context.Context) (bool, error) {
 	finish, stop := context.WithTimeout(context.Background(), 3*time.Second)
 	defer stop()
 	if err != nil && ctx.Err() == nil && !errors.Is(err, ErrLease) {
-		_, save := s.db.ExecContext(finish, `UPDATE library_match_jobs SET attempts=attempts+1,state=CASE WHEN attempts>=4 THEN 'paused' ELSE 'waiting' END,retry_at=unixepoch()+60,message=CASE WHEN attempts>=4 THEN 'Matching paused after repeated metadata failures. Check TMDb and retry.' ELSE 'Waiting for metadata. Check the TMDb connection; matching will retry.' END WHERE scan_id=? AND lease_owner=? AND state='running'`, scanID, owner)
+		reason, delay := automaticRetryReason(err)
+		_, save := s.db.ExecContext(finish, `UPDATE library_match_jobs SET attempts=attempts+1,state=CASE WHEN attempts>=4 THEN 'paused' ELSE 'waiting' END,retry_at=unixepoch()+?,message=CASE WHEN attempts>=4 THEN ? ELSE ? END WHERE scan_id=? AND lease_owner=? AND state='running'`, delay, reason+" Matching paused after repeated failures. Start matching again after resolving the issue.", reason+" Matching will retry automatically.", scanID, owner)
 		if save != nil {
 			return true, save
 		}
@@ -179,6 +180,30 @@ func (s *Service) ProcessAutomaticMatchNext(ctx context.Context) (bool, error) {
 	_, save := s.db.ExecContext(finish, `UPDATE library_match_jobs SET lease_owner='',lease_until=0,updated_at=unixepoch() WHERE scan_id=? AND lease_owner=?`, scanID, owner)
 	return true, save
 }
+
+// Report only known error categories so internal details never reach scan status.
+func automaticRetryReason(err error) (string, int) {
+	var provider *metadata.Error
+	if errors.As(err, &provider) {
+		switch provider.Code {
+		case "tmdb_not_configured":
+			return "TMDb is not connected. Connect it in Settings.", 60
+		case "tmdb_unauthorized":
+			return "TMDb rejected the saved token. Replace and test it in Settings.", 60
+		case "tmdb_rate_limited":
+			return "TMDb is limiting requests.", max(60, min(300, provider.RetryAfter))
+		case "tmdb_unavailable":
+			return "TMDb could not be reached. Test the saved connection in Settings.", 60
+		case "tmdb_invalid_response":
+			return "TMDb returned an unreadable response.", 60
+		}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "A matching step timed out.", 60
+	}
+	return "Automatic matching could not finish the current step.", 60
+}
+
 func (s *Service) saveAutomaticReview(ctx context.Context, scan, owner, file, message string) error {
 	return s.automaticTx(ctx, scan, owner, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO library_match_candidates(file_id,scan_id,state,message) VALUES(?,?,'review',?) ON CONFLICT(file_id) DO UPDATE SET state='review',message=excluded.message`, file, scan, message); err != nil {
