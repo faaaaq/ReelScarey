@@ -31,10 +31,14 @@ func (s *Service) automaticTitle(ctx context.Context, scan LibraryScan, owner st
 	out, err = s.resolveAutomaticTitle(ctx, scan, owner, h)
 	if err != nil {
 		var review automaticReview
-		if !errors.As(err, &review) {
+		switch {
+		case errors.As(err, &review):
+			out.Reason = review.Error()
+		case automaticMetadataMissing(err):
+			out.Reason = "TMDb no longer lists this title. Choose a match manually."
+		default:
 			return out, err
 		}
-		out.Reason = review.Error()
 	}
 	rawBytes, err := json.Marshal(out)
 	if err != nil {
@@ -48,14 +52,12 @@ func (s *Service) automaticTitle(ctx context.Context, scan LibraryScan, owner st
 }
 func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, owner string, h automaticHint) (automaticTitle, error) {
 	out := automaticTitle{}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,tmdb_id,title,year FROM media_items WHERE kind=? ORDER BY id LIMIT 10001`, scan.Kind)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,tmdb_id,title,year FROM media_items WHERE kind=? AND (?=0 OR tmdb_id=?) AND (?=0 OR year=?)`, scan.Kind, h.ProviderID, h.ProviderID, h.Year, h.Year)
 	if err != nil {
 		return out, err
 	}
 	found := []automaticTitle{}
-	count := 0
 	for rows.Next() {
-		count++
 		var v automaticTitle
 		if err = rows.Scan(&v.MediaID, &v.Movie.TMDbID, &v.Movie.Title, &v.Movie.Year); err != nil {
 			rows.Close()
@@ -69,9 +71,6 @@ func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, o
 	rows.Close()
 	if err != nil {
 		return out, err
-	}
-	if count > 10000 {
-		return out, automaticReview("This catalog exceeds the automatic matching search limit; choose the title manually.")
 	}
 	if len(found) > 1 {
 		return out, automaticReview("More than one saved title matches this name. Choose the intended movie or show.")
@@ -174,6 +173,11 @@ func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, o
 	out.Movie = metadata.Movie{TMDbID: item.TMDbID, Title: item.Title, Year: item.Year}
 	return out, nil
 }
+func automaticMetadataMissing(err error) bool {
+	var provider *metadata.Error
+	return errors.As(err, &provider) && (provider.Code == "movie_not_found" || provider.Code == "series_not_found")
+}
+
 func (s *Service) automaticEpisodes(ctx context.Context, scan LibraryScan, owner string, h automaticHint, title automaticTitle) ([]int64, error) {
 	store := library.New(s.db)
 	season, err := store.TVSeason(ctx, title.MediaID, h.Season)
@@ -185,6 +189,9 @@ func (s *Service) automaticEpisodes(ctx context.Context, scan LibraryScan, owner
 			return nil, metadata.ErrNotConfigured
 		}
 		fresh, e := s.automaticMetadata.Season(ctx, title.Movie.TMDbID, h.Season)
+		if automaticMetadataMissing(e) {
+			return nil, automaticReview("TMDb no longer lists this season. Review the episode match.")
+		}
 		if e != nil {
 			return nil, e
 		}
@@ -218,7 +225,7 @@ func (s *Service) automaticEpisodes(ctx context.Context, scan LibraryScan, owner
 	return out, nil
 }
 func (s *Service) resolveAutomaticNext(ctx context.Context, scanID, owner string) error {
-	scan, err := s.LibraryScan(ctx, scanID)
+	scan, err := s.automaticScan(ctx, scanID)
 	if err != nil {
 		return err
 	}
@@ -286,6 +293,9 @@ func (s *Service) resolveAutomaticNext(ctx context.Context, scanID, owner string
 			return e
 		}
 		if _, e = tx.ExecContext(ctx, `INSERT INTO library_match_candidates(file_id,scan_id,state,payload) VALUES(?,?,'ready',?)`, id, scanID, string(raw)); e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE library_scan_files SET message='Title matched. Waiting for the scan-wide duplicate check before file verification.' WHERE id=? AND state='review'`, id); e != nil {
 			return e
 		}
 		_, e = tx.ExecContext(ctx, `UPDATE library_match_jobs SET attempts=0,retry_at=0,message='Resolving title and episode identities.' WHERE scan_id=?`, scanID)

@@ -242,6 +242,65 @@ describe("TV catalog and monitoring", () => {
       fetch.mock.calls.some(([url]) => url.includes("/metadata/movies")),
     ).toBe(false);
   });
+  it("shows registered, missing and upcoming episodes and expands the file path", async () => {
+    const season = {
+      ...show.seasons[0],
+      loaded_at: "2026-10-22",
+      episode_count: 3,
+      known_episodes: 3,
+      available_episodes: 1,
+    };
+    const filePath = "TV/Test TV series/Season 01/Pilot.mkv";
+    setup((url) => {
+      if (url.endsWith("/library/series/7"))
+        return Response.json({ ...show, seasons: [season] });
+      if (url.endsWith("/seasons/1"))
+        return Response.json({
+          season,
+          revision: 1,
+          series_monitored: true,
+          episodes: [
+            {
+              id: 9,
+              number: 1,
+              title: "Pilot",
+              available: true,
+              file_path: filePath,
+            },
+            {
+              id: 10,
+              number: 2,
+              title: "Return",
+              available: false,
+              air_date: "2025-01-09",
+            },
+            {
+              id: 11,
+              number: 3,
+              title: "Finale",
+              available: false,
+              air_date: "2099-01-16",
+            },
+          ],
+        });
+    });
+    mount("/series/7");
+    expect(await screen.findByText("1 / 3 on disk")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "View episodes" }),
+    );
+    const table = within(
+      await screen.findByRole("table", { name: "Season 1 episodes" }),
+    );
+    expect(table.getByText("On disk")).toBeVisible();
+    expect(table.getByText("Missing")).toBeVisible();
+    expect(table.getByText("Upcoming")).toBeVisible();
+    await userEvent.click(table.getByText("Pilot.mkv"));
+    expect(table.getByText(filePath).closest("details")).toHaveAttribute(
+      "open",
+    );
+  });
+
   it("loads episodes, preserves selections while paused, and keeps cached data on refresh failure", async () => {
     let current = structuredClone(show);
     let selected = true;

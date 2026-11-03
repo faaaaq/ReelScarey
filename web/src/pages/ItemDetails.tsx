@@ -233,14 +233,18 @@ export function ItemInformation({
                   <div className="item-badges">
                     <Badge
                       color={
-                        data.item.status === "available" ? "green" : "gray"
+                        data.file_count > 0
+                          ? "green"
+                          : data.item.status === "downloading"
+                            ? "gray"
+                            : "amber"
                       }
                     >
-                      {data.item.status === "available"
-                        ? "Available"
+                      {data.file_count > 0
+                        ? "On disk"
                         : data.item.status === "downloading"
                           ? "Downloading"
-                          : "Not downloaded"}
+                          : "Missing"}
                     </Badge>
                     <Badge color="gray">
                       {data.item.monitored ? "Monitored" : "Not monitored"}
@@ -285,6 +289,166 @@ export function ItemInformation({
               </section>
             </>
           )}
+          <section className="panel system-panel">
+            <h2>In your library</h2>
+            <div className="item-storage-stats">
+              <div>
+                <span>Registered files</span>
+                <strong>{data.file_count}</strong>
+              </div>
+              <div>
+                <span>Total file size</span>
+                <strong>
+                  {data.total_size_bytes
+                    ? bytes(data.total_size_bytes)
+                    : "No files imported"}
+                </strong>
+              </div>
+              <div>
+                <span>Download history</span>
+                <strong>
+                  {data.history_count}{" "}
+                  {data.history_count === 1 ? "release" : "releases"}
+                </strong>
+              </div>
+            </div>
+            <p className="field-help">
+              Sizes and locations come from verified import records. They are
+              not a current disk scan or a measure of physical space used by
+              hardlinks.
+            </p>
+            <dl className="detail-paths">
+              <dt>Media root</dt>
+              <dd>
+                <code>{data.media_root}</code>
+              </dd>
+              <dt>Current destination root</dt>
+              <dd>
+                <code>{data.library_root}</code>
+              </dd>
+            </dl>
+            <p className="field-help">
+              Existing files retain their original locations when folder
+              preferences change.
+            </p>
+          </section>
+          <section className="panel system-panel">
+            <h2>Files & locations</h2>
+            {data.files.length ? (
+              <div className="file-details-list">
+                {data.files.map((file) => (
+                  <article key={file.id}>
+                    <h3>
+                      {file.path.split("/").at(-1)} · {bytes(file.size_bytes)}
+                    </h3>
+                    <p>
+                      <code className="episode-path">{file.path}</code>
+                    </p>
+                    <p className="field-help">
+                      Directory: <code>{file.directory}</code>
+                    </p>
+                    <p>
+                      {[
+                        file.probe.codec
+                          ? file.probe.codec.toUpperCase()
+                          : "Codec unknown",
+                        file.probe.height
+                          ? `${file.probe.width} × ${file.probe.height}`
+                          : "",
+                        file.probe.duration_seconds
+                          ? `${Math.round(file.probe.duration_seconds / 60)} min`
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                    <p>
+                      {file.probe.embedded_title == null
+                        ? "Embedded title has not been inspected yet."
+                        : file.probe.embedded_title === ""
+                          ? "No embedded title was reported."
+                          : `Embedded title: ${file.probe.embedded_title}`}
+                    </p>
+                    {data.item.kind === "movie" &&
+                      file.probe.embedded_title &&
+                      file.probe.embedded_title.trim().toLocaleLowerCase() !==
+                        data.item.title.trim().toLocaleLowerCase() && (
+                        <p className="field-help">
+                          The embedded title differs from the saved movie title:{" "}
+                          {data.item.title}.
+                        </p>
+                      )}
+                    <p className="field-help">
+                      Embedded title changes can be reviewed in{" "}
+                      <Link
+                        className="text-link"
+                        to={`/organization?media_id=${id}`}
+                      >
+                        Organize library
+                      </Link>
+                      .
+                    </p>
+                    <p>
+                      {file.probe.audio_streams == null
+                        ? "Audio tags have not been inspected yet."
+                        : file.probe.audio_streams.length === 0
+                          ? "No audio streams were reported."
+                          : `Embedded audio tags: ${file.probe.audio_streams.map((stream) => [stream.language && stream.language !== "und" ? stream.language : "language unknown", stream.codec, stream.title].filter(Boolean).join(" · ")).join(", ")}`}
+                    </p>
+                    <p className="field-help">
+                      Embedded tags come from the file and may be missing or
+                      inaccurate. Rechecking reads the entire file.
+                    </p>
+                    <Button
+                      variant="soft"
+                      disabled={!!inspecting}
+                      onClick={() => void inspectFile(file.id)}
+                    >
+                      {inspecting === file.id
+                        ? "Inspecting…"
+                        : "Inspect embedded tags"}
+                    </Button>
+                    {inspectionError?.id === file.id && (
+                      <p role="alert" className="form-error">
+                        {inspectionError.message}
+                      </p>
+                    )}
+                    <p>
+                      {file.origin === "existing"
+                        ? "Existing file"
+                        : file.origin === "youtube"
+                          ? "YouTube video"
+                          : "Release"}
+                      : {file.release}
+                    </p>
+                    {file.origin === "existing" && (
+                      <Badge color="gray">
+                        Registered in its existing location
+                      </Badge>
+                    )}
+                    <p className="field-help">
+                      {file.origin === "existing" ? "Registered" : "Imported"}{" "}
+                      {new Date(file.imported_at * 1000).toLocaleString()}
+                    </p>
+                    {file.download_id && (
+                      <Link
+                        className="text-link"
+                        to={`/activity?job=${encodeURIComponent(file.download_id)}`}
+                      >
+                        View download
+                      </Link>
+                    )}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p>
+                {data.file_count
+                  ? "No files on this page."
+                  : "No file is registered for this title."}
+              </p>
+            )}
+          </section>
           {!hero && (
             <div className="item-links">
               <Button
@@ -395,166 +559,6 @@ export function ItemInformation({
               </section>
             </>
           )}
-          <section className="panel system-panel">
-            <h2>In your library</h2>
-            <div className="item-storage-stats">
-              <div>
-                <span>Registered files</span>
-                <strong>{data.file_count}</strong>
-              </div>
-              <div>
-                <span>Total file size</span>
-                <strong>
-                  {data.total_size_bytes
-                    ? bytes(data.total_size_bytes)
-                    : "No files imported"}
-                </strong>
-              </div>
-              <div>
-                <span>Download history</span>
-                <strong>
-                  {data.history_count}{" "}
-                  {data.history_count === 1 ? "release" : "releases"}
-                </strong>
-              </div>
-            </div>
-            <p className="field-help">
-              Sizes and locations come from verified import records. They are
-              not a current disk scan or a measure of physical space used by
-              hardlinks.
-            </p>
-            <dl className="detail-paths">
-              <dt>Media root</dt>
-              <dd>
-                <code>{data.media_root}</code>
-              </dd>
-              <dt>Current destination root</dt>
-              <dd>
-                <code>{data.library_root}</code>
-              </dd>
-            </dl>
-            <p className="field-help">
-              Existing files retain their original locations when folder
-              preferences change.
-            </p>
-          </section>
-          <section className="panel system-panel">
-            <h2>Files & locations</h2>
-            {data.files.length ? (
-              <div className="file-details-list">
-                {data.files.map((file) => (
-                  <article key={file.id}>
-                    <h3>
-                      {file.episodes || "Movie file"} · {bytes(file.size_bytes)}
-                    </h3>
-                    <p>
-                      <code>{file.path}</code>
-                    </p>
-                    <p className="field-help">
-                      Directory: <code>{file.directory}</code>
-                    </p>
-                    <p>
-                      {[
-                        file.probe.codec
-                          ? file.probe.codec.toUpperCase()
-                          : "Codec unknown",
-                        file.probe.height
-                          ? `${file.probe.width} × ${file.probe.height}`
-                          : "",
-                        file.probe.duration_seconds
-                          ? `${Math.round(file.probe.duration_seconds / 60)} min`
-                          : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                    <p>
-                      {file.probe.embedded_title == null
-                        ? "Embedded title has not been inspected yet."
-                        : file.probe.embedded_title === ""
-                          ? "No embedded title was reported."
-                          : `Embedded title: ${file.probe.embedded_title}`}
-                    </p>
-                    {data.item.kind === "movie" &&
-                      file.probe.embedded_title &&
-                      file.probe.embedded_title.trim().toLocaleLowerCase() !==
-                        data.item.title.trim().toLocaleLowerCase() && (
-                        <p className="field-help">
-                          The embedded title differs from the saved movie title:{" "}
-                          {data.item.title}.
-                        </p>
-                      )}
-                    <p className="field-help">
-                      Embedded title changes can be reviewed in{" "}
-                      <Link
-                        className="text-link"
-                        to={`/organization?media_id=${id}`}
-                      >
-                        Organize library
-                      </Link>
-                      .
-                    </p>
-                    <p>
-                      {file.probe.audio_streams == null
-                        ? "Audio tags have not been inspected yet."
-                        : file.probe.audio_streams.length === 0
-                          ? "No audio streams were reported."
-                          : `Embedded audio tags: ${file.probe.audio_streams.map((stream) => [stream.language && stream.language !== "und" ? stream.language : "language unknown", stream.codec, stream.title].filter(Boolean).join(" · ")).join(", ")}`}
-                    </p>
-                    <p className="field-help">
-                      Embedded tags come from the file and may be missing or
-                      inaccurate. Rechecking reads the entire file.
-                    </p>
-                    <Button
-                      variant="soft"
-                      disabled={!!inspecting}
-                      onClick={() => void inspectFile(file.id)}
-                    >
-                      {inspecting === file.id
-                        ? "Inspecting…"
-                        : "Inspect embedded tags"}
-                    </Button>
-                    {inspectionError?.id === file.id && (
-                      <p role="alert" className="form-error">
-                        {inspectionError.message}
-                      </p>
-                    )}
-                    <p>
-                      {file.origin === "existing"
-                        ? "Existing file"
-                        : file.origin === "youtube"
-                          ? "YouTube video"
-                          : "Release"}
-                      : {file.release}
-                    </p>
-                    {file.origin === "existing" && (
-                      <Badge color="gray">
-                        Registered in its existing location
-                      </Badge>
-                    )}
-                    <p className="field-help">
-                      {file.origin === "existing" ? "Registered" : "Imported"}{" "}
-                      {new Date(file.imported_at * 1000).toLocaleString()}
-                    </p>
-                    {file.download_id && (
-                      <Link
-                        className="text-link"
-                        to={`/activity?job=${encodeURIComponent(file.download_id)}`}
-                      >
-                        View download
-                      </Link>
-                    )}
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p>
-                {data.file_count
-                  ? "No files on this page."
-                  : "No verified files have been imported for this item."}
-              </p>
-            )}
-          </section>
           <section className="panel system-panel">
             <h2>Release & download history</h2>
             {data.history.length ? (

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import {
   AlertDialog,
   Badge,
@@ -99,41 +99,31 @@ export function ExistingLibrary() {
   const roots = useLiveResource<ScanList>("/library/imports", 5000);
   const [params, setParams] = useSearchParams();
   const scanID = params.get("scan") ?? roots.data?.items[0]?.id;
-  const [kind, setKind] = useState<"movie" | "series">(
-    params.get("collection") === "anime" ? "series" : "movie",
-  );
-  const [libraryKey, setLibraryKey] = useState(
-    () => params.get("collection") ?? "",
+  const [target, setTarget] = useState<"movie" | "series" | "anime">(
+    params.get("collection") === "anime" ? "anime" : "movie",
   );
   const [automatic, setAutomatic] = useState(true);
-  const collection = roots.data?.collections?.find(
-    (item) => item.key === libraryKey,
-  );
-  const movieAllowed = !collection || collection.content !== "series";
-  const seriesAllowed = !collection || collection.content !== "movie";
-  useEffect(() => {
-    if (libraryKey && roots.data && !collection) setLibraryKey("");
-    if (collection?.content === "movie") setKind("movie");
-    else if (collection?.content === "series") setKind("series");
-  }, [collection, libraryKey, roots.data]);
+  const animeRoot = roots.data?.collections?.find(
+    (item) => item.key === "anime",
+  )?.series_root;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function start() {
-    if (busy) return;
+    if (busy || (target === "anime" && !animeRoot)) return;
     setBusy(true);
     setError("");
     try {
       const scan = await api<LibraryScan>("/library/imports", {
         method: "POST",
         body: JSON.stringify({
-          kind,
+          kind: target === "movie" ? "movie" : "series",
           automatic_matching: automatic,
-          ...(collection ? { library_key: collection.key } : {}),
+          ...(target === "anime" ? { library_key: "anime" } : {}),
         }),
       });
       setParams({
         scan: scan.id,
-        ...(collection ? { collection: collection.key } : {}),
+        ...(target === "anime" ? { collection: "anime" } : {}),
       });
       roots.reload();
     } catch (e) {
@@ -165,49 +155,19 @@ export function ExistingLibrary() {
             place. Ambiguous titles, duplicate versions and uncertain numbering
             stay in review.
           </p>
-          {!!roots.data.collections?.length && (
-            <label>
-              Collection{" "}
-              <select
-                aria-label="Scan collection"
-                value={libraryKey}
-                onChange={(event) => setLibraryKey(event.target.value)}
-                disabled={busy}
-              >
-                <option value="">Default folders</option>
-                {roots.data.collections.map((item) => (
-                  <option key={item.key} value={item.key}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {roots.data.collections?.some((item) => item.key === "anime") && (
-            <p className="field-help">
-              Choose Anime under Collection to scan anime series. Check the
-              folder shown below before starting.
-            </p>
-          )}
           <dl className="detail-paths">
-            {movieAllowed && (
-              <>
-                <dt>Movies</dt>
-                <dd>
-                  <code>{collection?.movie_root ?? roots.data.movie_root}</code>
-                </dd>
-              </>
-            )}
-            {seriesAllowed && (
-              <>
-                <dt>TV shows</dt>
-                <dd>
-                  <code>
-                    {collection?.series_root ?? roots.data.series_root}
-                  </code>
-                </dd>
-              </>
-            )}
+            <dt>Movies</dt>
+            <dd>
+              <code>{roots.data.movie_root}</code>
+            </dd>
+            <dt>TV Shows</dt>
+            <dd>
+              <code>{roots.data.series_root}</code>
+            </dd>
+            <dt>Anime</dt>
+            <dd>
+              {animeRoot ? <code>{animeRoot}</code> : "Folder unavailable"}
+            </dd>
           </dl>
           <label className="checkbox-label">
             <input
@@ -227,22 +187,21 @@ export function ExistingLibrary() {
               Look for{" "}
               <select
                 aria-label="Scan media type"
-                value={kind}
-                onChange={(e) => setKind(e.target.value as "movie" | "series")}
+                value={target}
+                onChange={(e) => setTarget(e.target.value as typeof target)}
                 disabled={busy}
               >
-                <option value="movie" disabled={!movieAllowed}>
-                  Movies
-                </option>
-                <option value="series" disabled={!seriesAllowed}>
-                  TV shows
+                <option value="movie">Movies</option>
+                <option value="series">TV Shows</option>
+                <option value="anime" disabled={!animeRoot}>
+                  Anime
                 </option>
               </select>
             </label>
             <Button
               disabled={
                 busy ||
-                (kind === "movie" ? !movieAllowed : !seriesAllowed) ||
+                (target === "anime" && !animeRoot) ||
                 roots.data.items.some((s) =>
                   ["queued", "scanning"].includes(s.state),
                 )
@@ -305,7 +264,9 @@ export function ExistingLibrary() {
         </>
       ) : (
         !roots.loading && (
-          <p>No discovery scans yet. Choose movies or TV shows to begin.</p>
+          <p>
+            No discovery scans yet. Choose Movies, TV Shows, or Anime to begin.
+          </p>
         )
       )}
     </>
@@ -394,7 +355,13 @@ function ScanReview({
               </strong>
               <p>{scan.automatic_matching.message}</p>
               <p>
-                {scan.automatic_matching.resolved} resolved ·{" "}
+                {Math.max(
+                  0,
+                  scan.automatic_matching.resolved -
+                    scan.automatic_matching.queued -
+                    scan.automatic_matching.review,
+                )}{" "}
+                matched, awaiting duplicate check or queue ·{" "}
                 {scan.automatic_matching.queued} queued for verification ·{" "}
                 {scan.automatic_matching.review} need review
               </p>

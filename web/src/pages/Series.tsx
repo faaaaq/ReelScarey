@@ -140,12 +140,6 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           </a>
         </div>
       </section>
-      <SeriesReleaseRules id={show.id} />
-      <ShowSubtitlePreferences id={show.id} />
-      <ItemInformation
-        key={`details-${show.id}-${show.revision}`}
-        id={show.id}
-      />
       {error && (
         <div role="alert" className="movie-error">
           <p>{error}</p>
@@ -265,14 +259,25 @@ function SeriesView({ initial }: { initial: TVSeries }) {
                   </label>
                   <h3>{season.title}</h3>
                   <p>
-                    {season.episode_count} episodes
-                    {season.air_date ? ` · ${season.air_date}` : ""}
-                    {season.loaded_at
-                      ? ` · ${season.selected_episodes} of ${season.known_episodes} loaded episodes selected`
-                      : ""}
-                    {season.available_episodes
-                      ? ` · ${season.available_episodes} available`
-                      : ""}
+                    {season.loaded_at ? (
+                      <>
+                        <Badge
+                          color={
+                            season.available_episodes ===
+                              season.known_episodes && season.known_episodes > 0
+                              ? "green"
+                              : "gray"
+                          }
+                        >
+                          {season.available_episodes ?? 0} /{" "}
+                          {season.known_episodes ?? 0} on disk
+                        </Badge>
+                        {" · "}
+                        {season.selected_episodes ?? 0} monitored choices
+                      </>
+                    ) : (
+                      `${season.episode_count} episodes · episode details not loaded`
+                    )}
                   </p>
                 </div>
                 <label className="monitor-choice">
@@ -328,6 +333,12 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           ))}
         </div>
       )}
+      <SeriesReleaseRules id={show.id} />
+      <ShowSubtitlePreferences id={show.id} />
+      <ItemInformation
+        key={`details-${show.id}-${show.revision}`}
+        id={show.id}
+      />
     </>
   );
 }
@@ -347,6 +358,7 @@ function SeasonEpisodes({
     episodeIDs?: number[],
   ) => Promise<void>;
 }) {
+  const today = new Date().toISOString().slice(0, 10);
   const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
   const resource = useResource<TVSeasonDetails>(
     `/library/series/${show.id}/seasons/${season.number}`,
@@ -461,82 +473,116 @@ function SeasonEpisodes({
               >
                 Unmonitor selected ({selectedEpisodes.length})
               </Button>
-              <ul className="episode-list">
-                {resource.data.episodes.map((e) => (
-                  <li key={e.id}>
-                    <div>
-                      <label>
-                        <input
-                          type="checkbox"
-                          aria-label={`Select episode ${e.number}: ${e.title}`}
-                          checked={selectedEpisodes.includes(e.id)}
-                          disabled={
-                            pending ||
-                            !show.monitored ||
-                            !season.monitored ||
-                            (!selectedEpisodes.includes(e.id) &&
-                              selectedEpisodes.length >= 100)
-                          }
-                          onChange={(event) => {
-                            const checked = event.target.checked;
-                            setSelectedEpisodes((current) =>
-                              checked
-                                ? [...current, e.id]
-                                : current.filter((id) => id !== e.id),
-                            );
-                          }}
-                        />{" "}
-                        Select for batch
-                      </label>
-                      <h4>{`S${String(season.number).padStart(2, "0")}E${String(e.number).padStart(2, "0")} · ${e.title}`}</h4>
-                      <p className="field-help">
-                        {e.air_date || "Air date unknown"}
-                        {e.runtime_minutes ? ` · ${e.runtime_minutes} min` : ""}
-                      </p>
-                      {e.overview && <p>{e.overview}</p>}
-                      <Badge color={e.available ? "green" : "gray"}>
-                        {e.available
-                          ? "Available"
-                          : e.air_date &&
-                              e.air_date >
-                                new Date().toLocaleDateString("en-CA")
-                            ? "Upcoming"
-                            : "Not imported"}
-                      </Badge>
-                      {e.file_path && (
-                        <p className="field-help episode-path">{e.file_path}</p>
-                      )}
-                      {!e.available && (
-                        <p>
-                          <Link
-                            className="text-link"
-                            to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}`}
+              <div className="episode-table-scroll">
+                <table
+                  className="episode-table"
+                  aria-label={season.title + " episodes"}
+                >
+                  <thead>
+                    <tr>
+                      <th scope="col">Episode</th>
+                      <th scope="col">Air date</th>
+                      <th scope="col">Status & file</th>
+                      <th scope="col">Monitoring</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resource.data.episodes.map((e) => (
+                      <tr key={e.id}>
+                        <td>
+                          <label>
+                            <input
+                              type="checkbox"
+                              aria-label={`Select episode ${e.number}: ${e.title}`}
+                              checked={selectedEpisodes.includes(e.id)}
+                              disabled={
+                                pending ||
+                                !show.monitored ||
+                                !season.monitored ||
+                                (!selectedEpisodes.includes(e.id) &&
+                                  selectedEpisodes.length >= 100)
+                              }
+                              onChange={(event) => {
+                                const checked = event.target.checked;
+                                setSelectedEpisodes((current) =>
+                                  checked
+                                    ? [...current, e.id]
+                                    : current.filter((id) => id !== e.id),
+                                );
+                              }}
+                            />{" "}
+                            Select for batch
+                          </label>
+                          <h4>{`S${String(season.number).padStart(2, "0")}E${String(e.number).padStart(2, "0")} · ${e.title}`}</h4>
+                          {e.overview && (
+                            <details>
+                              <summary>Synopsis</summary>
+                              <p>{e.overview}</p>
+                            </details>
+                          )}
+                        </td>
+                        <td>{e.air_date || "Unknown"}</td>
+                        <td>
+                          <Badge
+                            color={
+                              e.available
+                                ? "green"
+                                : e.air_date && e.air_date > today
+                                  ? "gray"
+                                  : "amber"
+                            }
                           >
-                            Find episode releases
-                          </Link>
-                        </p>
-                      )}
-                    </div>
-                    <label className="monitor-choice">
-                      <Switch
-                        aria-label={`Monitor episode ${e.number}: ${e.title}`}
-                        checked={e.monitored}
-                        disabled={
-                          pending || !show.monitored || !season.monitored
-                        }
-                        onCheckedChange={(v) =>
-                          void update(
-                            `/seasons/${season.number}/episodes/${e.number}/monitor`,
-                            "PUT",
-                            v,
-                          )
-                        }
-                      />{" "}
-                      Monitor
-                    </label>
-                  </li>
-                ))}
-              </ul>
+                            {e.available
+                              ? "On disk"
+                              : e.air_date && e.air_date > today
+                                ? "Upcoming"
+                                : "Missing"}
+                          </Badge>
+                          {e.file_path && (
+                            <details className="episode-file">
+                              <summary>{e.file_path.split("/").at(-1)}</summary>
+                              <code>{e.file_path}</code>
+                            </details>
+                          )}
+                          {!e.available && (
+                            <p>
+                              <Link
+                                className="text-link"
+                                to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}`}
+                              >
+                                Find episode releases
+                              </Link>
+                            </p>
+                          )}
+                        </td>
+                        <td>
+                          <label className="monitor-choice">
+                            <Switch
+                              aria-label={`Monitor episode ${e.number}: ${e.title}`}
+                              checked={e.monitored}
+                              disabled={
+                                pending || !show.monitored || !season.monitored
+                              }
+                              onCheckedChange={(v) =>
+                                void update(
+                                  `/seasons/${season.number}/episodes/${e.number}/monitor`,
+                                  "PUT",
+                                  v,
+                                )
+                              }
+                            />{" "}
+                            Monitor
+                          </label>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="field-help">
+                Availability reflects registered files. Paths are relative to
+                the media root.
+              </p>
             </div>
           )}
         </>

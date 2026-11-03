@@ -900,34 +900,40 @@ dd {
   line-height: 1.8;
   margin-bottom: 18px;
 }
-.episode-list {
-  padding: 0;
-  list-style: none;
-  margin: 24px 0 0;
+.episode-table-scroll {
+  overflow-x: auto;
 }
-.episode-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 20px 0;
-  border-top: 1px solid #30323b;
+.episode-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
 }
-.episode-list li > div {
-  min-width: 0;
+.episode-table th,
+.episode-table td {
+  padding: 12px;
+  border-bottom: 1px solid #30323b;
+  text-align: left;
+  vertical-align: top;
 }
-.episode-list h4 {
-  margin: 0 0 8px;
-  font-size: 14px;
+.episode-table th {
+  color: #adb5c4;
 }
-.episode-list p {
-  line-height: 1.8;
-  font-size: 13px;
-  margin: 8px 0;
+.episode-table h4,
+.episode-table p {
+  margin: 4px 0;
 }
-.episode-list .monitor-choice {
-  align-self: start;
+.episode-table .monitor-choice {
   margin: 0;
   white-space: nowrap;
+}
+.episode-file {
+  margin-top: 5px;
+  max-width: 36rem;
+}
+.episode-file summary,
+.episode-path,
+.episode-file code {
+  overflow-wrap: anywhere;
 }
 @media (max-width: 700px) {
   .series-summary {
@@ -937,10 +943,6 @@ dd {
   }
   .season-card {
     padding: 20px;
-  }
-  .episode-list li {
-    flex-direction: column;
-    gap: 14px;
   }
 }
 @media (max-width: 700px) {
