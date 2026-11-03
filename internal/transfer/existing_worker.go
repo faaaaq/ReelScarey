@@ -232,13 +232,6 @@ func (s *Service) discoverDirectory(ctx context.Context, id, owner string) error
 	if e = scanLease(ctx, tx, id, owner); e != nil {
 		return e
 	}
-	var fileCount, dirCount, entryCount int
-	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM library_scan_files WHERE scan_id=?),(SELECT COUNT(*) FROM library_scan_dirs WHERE scan_id=?),(SELECT COALESCE(SUM(examined),0) FROM library_scan_dirs WHERE scan_id=?)`, id, id, id).Scan(&fileCount, &dirCount, &entryCount); e != nil {
-		return e
-	}
-	if fileCount+len(files) > maxDiscoveryFiles || dirCount+len(dirs) > maxDiscoveryDirs || entryCount+examined > 200000 {
-		return problem("scan_limit", "Discovery reached its limit of 10,000 videos, 2,000 folders or 200,000 entries. Previous results remain available; use a smaller configured library folder.")
-	}
 	for _, rel := range dirs {
 		if _, e = tx.ExecContext(ctx, `INSERT INTO library_scan_dirs(scan_id,relative_path) VALUES(?,?) ON CONFLICT DO NOTHING`, id, rel); e != nil {
 			return e

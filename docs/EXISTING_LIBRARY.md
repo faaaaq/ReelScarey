@@ -30,9 +30,9 @@ AVI, MOV, WEBM, TS and M2TS. Disc folders and archive extraction are not support
 Discovery is durable and processes one directory at a time. Restarted work
 resumes using a lease and unique discovered-path records. Stop discovery leaves
 its previous results available for review; already queued registrations continue.
-Limits per scan are 10,000 candidate videos, 2,000 folders, 200,000 examined
-entries, 20,000 entries in one folder and twelve nested path separators. Hitting
-a limit or inaccessible/changed folder produces an explicit failed/partial scan,
+There is no total cap on videos, folders or examined entries per scan. Individual
+folders are still limited to 20,000 entries and paths to twelve nested separators.
+Hitting either safeguard or encountering an inaccessible or changed folder produces an explicit failed/partial scan,
 retaining previous results. It never silently labels a partial scan complete.
 Each directory is read in batches of 128 entries. Twenty scan histories are kept;
 forget a finished scan to make room. Forgetting review records never removes
