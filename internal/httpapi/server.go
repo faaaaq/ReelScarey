@@ -375,14 +375,19 @@ func (s *Server) listLibrary(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid_kind", "Choose kind=movie, kind=series or kind=anime.")
 		return
 	}
-	page, valid := pageNumber(r, 100000)
-	if !valid {
-		fail(w, 400, "invalid_page", "Choose a page between 1 and 100000.")
-		return
+	all := values.Get("page") == "all"
+	page := 1
+	if !all {
+		var valid bool
+		page, valid = pageNumber(r, 100000)
+		if !valid {
+			fail(w, 400, "invalid_page", "Choose all or a page between 1 and 100000.")
+			return
+		}
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	items, err := s.library.Browse(ctx, library.BrowseFilter{Kind: kind, Page: page, Query: values.Get("query"), Status: values.Get("status"), Monitored: values.Get("monitored"), Sort: values.Get("sort"), Profile: values.Get("profile")})
+	items, err := s.library.Browse(ctx, library.BrowseFilter{Kind: kind, Page: page, All: all, Query: values.Get("query"), Status: values.Get("status"), Monitored: values.Get("monitored"), Sort: values.Get("sort"), Profile: values.Get("profile")})
 	if errors.Is(err, library.ErrBrowseInput) {
 		fail(w, 400, "invalid_library", err.Error())
 		return

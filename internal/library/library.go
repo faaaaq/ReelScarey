@@ -53,7 +53,7 @@ type Page struct {
 	ProfileContext  *ProfileContext `json:"profile_context,omitempty"`
 }
 
-const PageSize = 24
+const PageSize = 48
 const columns = "id, kind, tmdb_id, title, year, monitored, status, overview, poster_path, release_date, runtime_minutes, category, category_revision"
 
 type scanner interface{ Scan(...any) error }
@@ -75,6 +75,7 @@ var ErrBrowseInput = errors.New("Choose valid library filters and a page between
 type BrowseFilter struct {
 	Kind, Query, Status, Monitored, Sort, Profile string
 	Page                                          int
+	All                                           bool
 }
 
 // Browse reads saved catalog state only. Ordering SQL comes from a fixed allowlist.
@@ -140,7 +141,15 @@ func (s *Store) Browse(ctx context.Context, f BrowseFilter) (Page, error) {
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items"+where, args...).Scan(&out.Total); err != nil {
 		return Page{}, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT "+columns+",(SELECT profile_id FROM item_automation a WHERE a.media_id=media_items.id) FROM media_items"+where+" ORDER BY "+orders[f.Sort]+" LIMIT ? OFFSET ?", append(args, PageSize, (f.Page-1)*PageSize)...)
+	query := "SELECT " + columns + ",(SELECT profile_id FROM item_automation a WHERE a.media_id=media_items.id) FROM media_items" + where + " ORDER BY " + orders[f.Sort]
+	if f.All {
+		out.Page = 1
+		out.Limit = out.Total
+	} else {
+		query += " LIMIT ? OFFSET ?"
+		args = append(args, PageSize, (f.Page-1)*PageSize)
+	}
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return Page{}, err
 	}

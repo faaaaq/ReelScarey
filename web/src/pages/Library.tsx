@@ -57,7 +57,8 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const [params, setParams] = useSearchParams();
   const [input, setInput] = useState(params.get("query") ?? "");
   useEffect(() => setInput(params.get("query") ?? ""), [params]);
-  const page = Number(params.get("page") ?? 1);
+  const showAll = params.get("page") === "all";
+  const page = showAll ? 1 : Number(params.get("page") ?? 1);
   const apiParams = new URLSearchParams({
     kind,
     page: params.get("page") ?? "1",
@@ -95,7 +96,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
     else next.delete(key);
-    if (key !== "view" && key !== "page") next.delete("page");
+    if (!showAll && key !== "view" && key !== "page") next.delete("page");
     setParams(next);
   }
   function submit(e: FormEvent) {
@@ -249,6 +250,19 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
             ? `${data.total} matching ${data.total === 1 ? singular : noun}${data.items.length ? ` · ${(data.page - 1) * data.limit + 1}–${(data.page - 1) * data.limit + data.items.length} shown` : ""}`
             : ""}
         </p>
+        <label>
+          Items per page{" "}
+          <select
+            aria-label="Library items per page"
+            value={showAll ? "all" : "48"}
+            onChange={(event) =>
+              change("page", event.target.value === "all" ? "all" : "")
+            }
+          >
+            <option value="48">48 per page</option>
+            <option value="all">Show all</option>
+          </select>
+        </label>
         <div className="view-switch" role="group" aria-label="Library view">
           <button
             aria-label="Poster view"
@@ -273,7 +287,10 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
           {monitoringMessage}
         </p>
       )}
-      {!resource.loading && !resource.error && data?.items.length ? (
+      {!showAll &&
+      !resource.loading &&
+      !resource.error &&
+      data?.items.length ? (
         <div className="catalog-selection">
           <label>
             <input
@@ -371,9 +388,11 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                 >
                   <thead>
                     <tr>
-                      <th scope="col">
-                        <span className="sr-only">Select</span>
-                      </th>
+                      {!showAll && (
+                        <th scope="col">
+                          <span className="sr-only">Select</span>
+                        </th>
+                      )}
                       <th scope="col">Title</th>
                       <th scope="col">Year</th>
                       {anime && <th scope="col">Format</th>}
@@ -388,14 +407,18 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                   <tbody>
                     {data.items.map((item) => (
                       <tr key={item.id}>
-                        <td className="catalog-select-cell">
-                          <input
-                            type="checkbox"
-                            aria-label={`Select ${item.title}`}
-                            checked={selected.includes(item.id)}
-                            onChange={(e) => toggle(item.id, e.target.checked)}
-                          />
-                        </td>
+                        {!showAll && (
+                          <td className="catalog-select-cell">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${item.title}`}
+                              checked={selected.includes(item.id)}
+                              onChange={(e) =>
+                                toggle(item.id, e.target.checked)
+                              }
+                            />
+                          </td>
+                        )}
                         <th scope="row">
                           <Link
                             to={`/${item.kind === "movie" ? "movies" : "series"}/${item.id}`}
@@ -430,15 +453,17 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
               <div className="catalog-posters">
                 {data.items.map((item) => (
                   <article className="catalog-card" key={item.id}>
-                    <label className="catalog-card-select">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${item.title}`}
-                        checked={selected.includes(item.id)}
-                        onChange={(e) => toggle(item.id, e.target.checked)}
-                      />
-                      Select
-                    </label>
+                    {!showAll && (
+                      <label className="catalog-card-select">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${item.title}`}
+                          checked={selected.includes(item.id)}
+                          onChange={(e) => toggle(item.id, e.target.checked)}
+                        />
+                        Select
+                      </label>
+                    )}
                     <Link
                       className="catalog-art"
                       to={`/${item.kind === "movie" ? "movies" : "series"}/${item.id}`}
@@ -510,11 +535,13 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
               )}
             </section>
           )}
-          <Pagination
-            page={data.page}
-            pages={Math.ceil(data.total / data.limit)}
-            onPage={(p) => change("page", String(p))}
-          />
+          {!showAll && (
+            <Pagination
+              page={data.page}
+              pages={Math.ceil(data.total / data.limit)}
+              onPage={(p) => change("page", String(p))}
+            />
+          )}
           {!movies && (
             <p className="catalog-note">
               Show status reflects saved file registrations and tracked
