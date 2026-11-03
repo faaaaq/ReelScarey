@@ -58,7 +58,8 @@ spelling against your server before starting Docker.
 In **Organize library**, set the Anime folder to `anime` and TV folder to
 `tvshows` before scanning or importing. Folder names are case-sensitive. These
 are paths relative to `/data`. The Movies collection remains available but has
-no host movie mount in this example; add one before using it. Imports and
+no host movie mount in this example; add one before using it. The Anime scan
+finds series directly under /data/anime. Include anime films in the Movies scan. Imports and
 existing-file registration still require the normal review workflow.
 
 Keep the `library-state:/data` mount: it preserves retained versions and recovery

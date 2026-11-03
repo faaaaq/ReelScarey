@@ -23,9 +23,9 @@ const collections = [
   {
     key: "anime",
     name: "Anime",
-    content: "mixed",
-    movie_root: "/media/Anime/Movies",
-    series_root: "/media/Anime/TV Shows",
+    content: "series",
+    movie_root: "",
+    series_root: "/media/Anime",
   },
   {
     key: "family",
@@ -35,7 +35,7 @@ const collections = [
     series_root: "",
   },
 ];
-function setup(includeCollections = true) {
+function setup(includeCollections = true, path = "/import") {
   const fetch = vi.fn(async (_url: string, options?: RequestInit) => {
     if (options?.method === "POST")
       return Response.json(
@@ -57,7 +57,7 @@ function setup(includeCollections = true) {
   vi.stubGlobal("fetch", fetch);
   render(
     <Theme>
-      <MemoryRouter initialEntries={["/import"]}>
+      <MemoryRouter initialEntries={[path]}>
         <ExistingLibrary />
       </MemoryRouter>
     </Theme>,
@@ -66,6 +66,17 @@ function setup(includeCollections = true) {
 }
 
 describe("Collection-aware existing-library discovery", () => {
+  it("preselects the Anime series folder from the Anime import link", async () => {
+    setup(true, "/import?collection=anime");
+    expect(
+      await screen.findByRole("combobox", { name: "Scan collection" }),
+    ).toHaveValue("anime");
+    expect(
+      screen.getByRole("combobox", { name: "Scan media type" }),
+    ).toHaveValue("series");
+    expect(screen.getByText("/media/Anime")).toBeVisible();
+  });
+
   it("shows Anime roots from the existing response and scans the selected canonical format", async () => {
     const fetch = setup();
     await screen.findByRole("combobox", { name: "Scan collection" });
@@ -73,8 +84,8 @@ describe("Collection-aware existing-library discovery", () => {
       screen.getByRole("combobox", { name: "Scan collection" }),
       "anime",
     );
-    expect(screen.getByText("/media/Anime/Movies")).toBeVisible();
-    expect(screen.getByText("/media/Anime/TV Shows")).toBeVisible();
+    expect(screen.getByRole("option", { name: "Movies" })).toBeDisabled();
+    expect(screen.getByText("/media/Anime")).toBeVisible();
     expect(screen.queryByText("/media/Legacy Movies")).not.toBeInTheDocument();
     await userEvent.selectOptions(
       screen.getByRole("combobox", { name: "Scan media type" }),

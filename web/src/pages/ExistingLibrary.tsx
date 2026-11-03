@@ -99,8 +99,12 @@ export function ExistingLibrary() {
   const roots = useLiveResource<ScanList>("/library/imports", 5000);
   const [params, setParams] = useSearchParams();
   const scanID = params.get("scan") ?? roots.data?.items[0]?.id;
-  const [kind, setKind] = useState<"movie" | "series">("movie");
-  const [libraryKey, setLibraryKey] = useState("");
+  const [kind, setKind] = useState<"movie" | "series">(
+    params.get("collection") === "anime" ? "series" : "movie",
+  );
+  const [libraryKey, setLibraryKey] = useState(
+    () => params.get("collection") ?? "",
+  );
   const [automatic, setAutomatic] = useState(true);
   const collection = roots.data?.collections?.find(
     (item) => item.key === libraryKey,
@@ -127,7 +131,10 @@ export function ExistingLibrary() {
           ...(collection ? { library_key: collection.key } : {}),
         }),
       });
-      setParams({ scan: scan.id });
+      setParams({
+        scan: scan.id,
+        ...(collection ? { collection: collection.key } : {}),
+      });
       roots.reload();
     } catch (e) {
       setError(messageFor(e));
@@ -175,6 +182,12 @@ export function ExistingLibrary() {
                 ))}
               </select>
             </label>
+          )}
+          {roots.data.collections?.some((item) => item.key === "anime") && (
+            <p className="field-help">
+              Choose Anime under Collection to scan anime series. Check the
+              folder shown below before starting.
+            </p>
           )}
           <dl className="detail-paths">
             {movieAllowed && (

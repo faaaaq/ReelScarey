@@ -70,7 +70,7 @@ func (s *Service) StartAutomaticMatching(ctx context.Context, scanID string) err
 		return err
 	}
 	for _, collection := range prefs.Libraries {
-		if collection.Key == "anime" && (scan.Folder == collection.Folder+"/Movies" || scan.Folder == collection.Folder+"/TV Shows") {
+		if collection.Key == "anime" && scan.Kind == "series" && (scan.Folder == collection.Folder || scan.Folder == collection.Folder+"/TV Shows") {
 			category = "anime"
 		}
 	}

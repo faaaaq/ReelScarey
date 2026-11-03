@@ -216,7 +216,7 @@ function MediaSearch({
                         </Button>
                         <AddMovieButton
                           kind={kind}
-                          category={anime ? "anime" : undefined}
+                          category={anime && tv ? "anime" : undefined}
                           id={movie.tmdb_id}
                           added={movie.in_library || added.has(movie.tmdb_id)}
                           onAdded={onAdded}
@@ -251,7 +251,7 @@ function MediaSearch({
       {selected && (
         <MovieDetails
           kind={kind}
-          category={anime ? "anime" : undefined}
+          category={anime && tv ? "anime" : undefined}
           id={selected.id}
           title={selected.title}
           added={selected.inLibrary || added.has(selected.id)}

@@ -88,9 +88,9 @@ does not enable automatic matching or modify existing absolute aliases.
 
 ## Anime and organization
 
-Library browsing accepts kind=anime (mixed canonical movie/show types); ordinary
-movie/series collections exclude explicitly classified Anime. Adds accept optional
-category=anime. Item responses add category/category_revision, counts add anime.
+Library browsing accepts kind=anime for explicitly classified series. Movies
+includes all films, including previously classified anime films. The ordinary TV
+catalog excludes Anime series. Adds accept optional category=anime. Item responses add category/category_revision, counts add anime.
 GET/PUT `/library/items/{id}/anime` reads/saves explicit section and absolute
 aliases against category/show revisions; strict maximum 512 KiB/5000 entries.
 GET/PUT `/library/items/{id}/anime-search` reads/saves per-show opt-in search

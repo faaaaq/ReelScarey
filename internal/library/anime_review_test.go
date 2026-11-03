@@ -37,7 +37,7 @@ func animeReviewShow(t *testing.T, s *Store, tmdb int64) (Item, metadata.Season)
 	return item, season
 }
 
-func TestReviewAnimeCatalogSeparatesFilmsAndShowsWithoutGuessing(t *testing.T) {
+func TestReviewAnimeCatalogListsAllFilmsUnderMovies(t *testing.T) {
 	s, _ := animeReviewStore(t)
 	ctx := context.Background()
 	standard, _, err := s.AddMovie(ctx, metadata.Movie{TMDbID: 1, Title: "日本語 anime-looking title"}, false)
@@ -59,7 +59,7 @@ func TestReviewAnimeCatalogSeparatesFilmsAndShowsWithoutGuessing(t *testing.T) {
 	for _, tc := range []struct {
 		kind string
 		ids  []int64
-	}{{"movie", []int64{standard.ID}}, {"series", nil}, {"anime", []int64{film.ID, show.ID}}} {
+	}{{"movie", []int64{standard.ID, film.ID}}, {"series", nil}, {"anime", []int64{show.ID}}} {
 		page, err := s.List(ctx, tc.kind, 1)
 		if err != nil || page.Total != len(tc.ids) || page.CollectionTotal != len(tc.ids) {
 			t.Fatal("section count mismatch", tc.kind, page, err)
@@ -75,7 +75,7 @@ func TestReviewAnimeCatalogSeparatesFilmsAndShowsWithoutGuessing(t *testing.T) {
 		}
 	}
 	counts, err := s.Counts(ctx)
-	if err != nil || counts.Movies != 1 || counts.Series != 0 || counts.Anime != 2 {
+	if err != nil || counts.Movies != 2 || counts.Series != 0 || counts.Anime != 1 {
 		t.Fatal("overview does not match separate sections", counts, err)
 	}
 }

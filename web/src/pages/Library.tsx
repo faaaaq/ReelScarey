@@ -86,7 +86,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
     noun = anime ? "titles" : movies ? "movies" : "shows",
     singular = anime ? "title" : movies ? "movie" : "show",
     searchPath = anime
-      ? "/search?kind=anime"
+      ? "/search?kind=anime&format=series"
       : movies
         ? "/search"
         : "/search?kind=series",
@@ -139,7 +139,9 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
       >
         <div className="heading-actions">
           <Button asChild variant="soft">
-            <Link to="/import">Import existing</Link>
+            <Link to={anime ? "/import?collection=anime" : "/import"}>
+              Import existing
+            </Link>
           </Button>
           <Button asChild>
             <Link to={searchPath}>
