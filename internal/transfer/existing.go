@@ -18,8 +18,6 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/quality"
 )
 
-const maxDiscoveryFiles = 10000
-const maxDiscoveryDirs = 2000
 const maxDirectoryEntries = 20000
 
 type LibraryScan struct {

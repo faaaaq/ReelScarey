@@ -343,3 +343,28 @@ func TestRealExistingLibraryMedia(t *testing.T) {
 	}
 	t.Log("PASS: generated video discovered, reviewed, hashed and FFprobe verified in place; bytes, identity and timestamp preserved; no download job created")
 }
+
+func TestExistingDiscoveryContinuesPastFormerAggregateCaps(t *testing.T) {
+	f := setupWorkflow(t)
+	ctx := context.Background()
+	existingVideo(t, f, "Movies/Remaining.mp4", []byte("owned fixture"))
+	scan, err := f.s.StartLibraryScanWithMatching(ctx, "movie", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Represent completed discovery batches without creating thousands of files.
+	if _, err = f.db.ExecContext(ctx, `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<2000)
+		INSERT INTO library_scan_dirs(scan_id,relative_path,state,examined)
+		SELECT ?, 'Movies/previous-'||i, 'done', 100 FROM n`, scan.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.db.ExecContext(ctx, `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<10000)
+		INSERT INTO library_scan_files(id,scan_id,relative_path,size_bytes,mtime,file_identity,updated_at)
+		SELECT printf('%032x',i), ?, 'Movies/previous-'||i||'.mp4', 1, 1, 'fixture', 1 FROM n`, scan.ID); err != nil {
+		t.Fatal(err)
+	}
+	page := finishScan(t, f, scan.ID)
+	if page.Scan.Discovered != 10001 || page.Scan.Examined != 200001 || page.Scan.AutomaticMatching == nil || page.Scan.AutomaticMatching.State != "pending" {
+		t.Fatal(page.Scan)
+	}
+}
