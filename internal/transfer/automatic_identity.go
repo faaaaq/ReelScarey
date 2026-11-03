@@ -77,29 +77,29 @@ func automaticIdentity(scan LibraryScan, f DiscoveredFile) (automaticHint, error
 		}
 		h = file
 		if len(parts) > 1 {
+			// A managed title directory is authoritative. Release names may be
+			// abbreviated, translated or obfuscated; they do not override that folder.
 			folder, err := parseAutomaticTitle(parts[len(parts)-2])
-			if err != nil && automaticProviderID.MatchString(parts[len(parts)-2]) {
+			if err != nil {
 				return h, err
 			}
-			if err == nil && (folder.Year != 0 || folder.ProviderID != 0) {
-				if fileErr == nil && file.Year != 0 && (quality.Normalize(file.Title) != quality.Normalize(folder.Title) || folder.Year != 0 && file.Year != folder.Year) {
-					return h, automaticReview("The movie filename and folder disagree; review their identity.")
-				}
-				if file.ProviderID != 0 && folder.ProviderID != 0 && file.ProviderID != folder.ProviderID {
-					return h, automaticReview("The movie filename and folder have different provider IDs.")
-				}
-				h = folder
-				if h.ProviderID == 0 {
-					h.ProviderID = file.ProviderID
-				}
-			} else if fileErr != nil {
+			if file.ProviderID != 0 && folder.ProviderID != 0 && file.ProviderID != folder.ProviderID {
+				return h, automaticReview("The movie filename and folder have different provider IDs.")
+			}
+			if fileErr == nil && file.Year != 0 && folder.Year != 0 && file.Year != folder.Year {
+				return h, automaticReview("The movie filename and folder have different years.")
+			}
+			h = folder
+			if h.ProviderID == 0 {
+				h.ProviderID = file.ProviderID
+			}
+		} else {
+			if fileErr != nil {
 				return h, fileErr
 			}
-		} else if fileErr != nil {
-			return h, fileErr
-		}
-		if h.Year == 0 && h.ProviderID == 0 {
-			return h, automaticReview("A movie year or explicit TMDb ID is needed for automatic matching.")
+			if h.Year == 0 && h.ProviderID == 0 {
+				return h, automaticReview("A loose movie file needs a year or explicit TMDb ID for automatic matching.")
+			}
 		}
 		return h, nil
 	}
@@ -119,7 +119,7 @@ func automaticIdentity(scan LibraryScan, f DiscoveredFile) (automaticHint, error
 	}
 	h = file
 	if len(parts) > 1 {
-		titleFolder := parts[0]
+		titleFolder := parts[len(parts)-2]
 		for i, part := range parts[:len(parts)-1] {
 			match := automaticSeasonFolder.FindStringSubmatch(part)
 			number := -1
@@ -141,15 +141,12 @@ func automaticIdentity(scan LibraryScan, f DiscoveredFile) (automaticHint, error
 		if err != nil {
 			return h, err
 		}
-		if fileErr == nil && (quality.Normalize(file.Title) != quality.Normalize(folder.Title) || file.Year != 0 && folder.Year != 0 && file.Year != folder.Year || file.ProviderID != 0 && folder.ProviderID != 0 && file.ProviderID != folder.ProviderID) {
+		if fileErr == nil && (file.Year != 0 && folder.Year != 0 && file.Year != folder.Year || file.ProviderID != 0 && folder.ProviderID != 0 && file.ProviderID != folder.ProviderID) {
 			return h, automaticReview("The episode filename and show folder disagree; review the show identity.")
 		}
 		h = folder
 		if h.ProviderID == 0 {
 			h.ProviderID = file.ProviderID
-		}
-		if h.Year == 0 {
-			h.Year = file.Year
 		}
 	} else if fileErr != nil {
 		return h, fileErr
@@ -163,5 +160,8 @@ func (h automaticHint) key() string {
 	return fmt.Sprintf("%s|%d|%d", quality.Normalize(h.Title), h.Year, h.ProviderID)
 }
 func (h automaticHint) matches(title string, year *int, providerID int64) bool {
+	if h.ProviderID > 0 {
+		return h.ProviderID == providerID
+	}
 	return quality.Normalize(h.Title) == quality.Normalize(title) && (h.Year == 0 || year != nil && h.Year == *year) && (h.ProviderID == 0 || h.ProviderID == providerID)
 }

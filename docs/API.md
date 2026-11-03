@@ -172,7 +172,7 @@ same-origin validation. Reads never start a filesystem scan.
 | --- | --- | --- |
 | GET | `/api/v1/library/imports` | Recent scans and configured movie/TV server roots |
 | POST | `/api/v1/library/imports` | `{kind:"movie"|"series",library_key?:string,automatic_matching?:boolean}`; queue bounded discovery; matching defaults false; 202 |
-| GET | `/api/v1/library/imports/{id}?page=1&state=` | Scan status/counts plus 50 discovered files; optional review/blocked/registered/skipped filter |
+| GET | `/api/v1/library/imports/{id}?page=1&state=` | Scan status/counts plus 50 discovered files; optional review/matched/blocked/registered/skipped filter |
 | POST | `/api/v1/library/imports/{id}/cancel` | `{}`; stop discovery; prior reviewed registrations remain independent |
 | DELETE | `/api/v1/library/imports/{id}` | `{}`; forget finished review records; refuses active discovery/matching/verification; never deletes registered media |
 | GET | `/api/v1/library/imports/catalog?kind=movie&query=title` | Up to 20 saved catalog title matches; offline read |
@@ -189,7 +189,7 @@ semantics are in [existing-library import](EXISTING_LIBRARY.md).
 
 Manual registration requires explicit review and canonical catalog identities. TV
 targets must be loaded, consecutive episodes of one season (maximum 20).
-Source identity/size/mtime, checksum, FFprobe, active download reservations,
+Source identity/size/mtime, bounded content observation, FFprobe, active download reservations,
 duplicate paths/targets and current leases are checked before commit. There is
 no client submission or filesystem publication. Automatic registration uses the
 separate matching-job authorization described below. Existing
@@ -574,12 +574,14 @@ a `monitored` boolean and 1–100 distinct `season_ids` belonging to that show.
 It updates the selected seasons atomically without changing their episode choices.
 
 `POST /organization/files/{id}/health` with `{}` checks one registered file's
-saved size and SHA-256, without changing it. Results are `verified`, `missing`,
+saved size and SHA-256, without changing the file. A fast registration first
+establishes its deferred full checksum from an unchanged observation. Results are `verified`, `missing`,
 `changed`, or `unsafe`. A check reads the full file and is cancellable; only
 one such check runs at a time.
 
 `POST /library/files/{id}/inspect` with `{}` verifies the registered video's
-saved checksum, runs FFprobe and updates its saved stream facts. The response
+saved checksum (or bounded observation for a fast registration), runs FFprobe
+and updates its saved stream facts. The response
 includes bounded `audio_streams` with codec, embedded language tag and title.
 Existing registrations made before audio inspection can use this operation; the
 check reads the whole file. Tags describe file metadata and do not prove the
@@ -781,3 +783,18 @@ pending/running/waiting/completed/cancelled/paused; phases are resolve/queue.
 A completed matching job may still have file verification outstanding. Manual
 registration and bulk apply continue to require explicit reviewed consent.
 See [matching rules and recovery](EXISTING_LIBRARY.md).
+
+### Fast existing-library registration (0.27.5)
+
+Scan `matched` counts resolved files waiting for the duplicate check/attachment;
+`needs_match` excludes those files. `queued` counts files waiting for or undergoing
+inspection; `registered` counts attached files. The `matched` file filter and
+projected file state distinguish these rows without changing the durable review
+state. Automatic matching status `queued` remains cumulative, including files
+already attached. No GET starts work. Folder identity is primary; explicit
+provider/season conflicts and duplicate versions remain review exceptions.
+
+Schema 043 preserves bounded file observations separately from SHA-256. A large
+existing file has an empty full checksum until an explicit operation requires it;
+the sample digest is never represented as a full-file SHA. See
+[registration and integrity guarantees](EXISTING_LIBRARY.md#verification-and-registration).

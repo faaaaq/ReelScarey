@@ -6,6 +6,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import struct
 
 root = pathlib.Path('/media')
 db = sqlite3.connect('/config/reelscarey.db')
@@ -19,8 +20,12 @@ if '--verify' in sys.argv:
     assert db.execute('SELECT COUNT(*) FROM episode_files').fetchone()[0] == 3
     assert db.execute('SELECT COUNT(*) FROM downloads').fetchone()[0] == 0
     assert db.execute("SELECT COUNT(*) FROM library_match_candidates WHERE state='review'").fetchone()[0] == 3
-    for relative, sha, probe in db.execute('SELECT relative_path,sha256,probe_json FROM media_files'):
-        assert hashlib.sha256((root / relative).read_bytes()).hexdigest() == sha
+    for relative, sha, probe, observation in db.execute('SELECT relative_path,sha256,probe_json,verification_json FROM media_files'):
+        assert sha == '', 'large fixture should use fast observation'
+        observed = json.loads(observation)
+        assert observed['size'] == (root / relative).stat().st_size
+        assert observed['mtime'] == (root / relative).stat().st_mtime_ns
+        assert len(observed['sample']) == 64
         facts = json.loads(probe)
         assert facts['codec'] == 'h264' and facts['width'] == 160
     assert db.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
@@ -40,6 +45,21 @@ for index, name in enumerate(names):
     file.parent.mkdir(parents=True, exist_ok=True)
     if index == 0:
         subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=c=blue:s=160x90:r=10','-t','2','-c:v','libx264','-pix_fmt','yuv420p',str(file)],check=True)
+        # Place the metadata after a sparse padding box. Inspection must seek,
+        # and registration must retain a bounded observation across restart.
+        data = file.read_bytes()
+        offset = 0
+        while data[offset+4:offset+8] != b'moov':
+            size = struct.unpack('>I', data[offset:offset+4])[0]
+            assert size >= 8
+            offset += size
+        assert offset + struct.unpack('>I', data[offset:offset+4])[0] == len(data)
+        padding = 1 << 20
+        with file.open('r+b') as handle:
+            handle.seek(offset)
+            handle.write(struct.pack('>I4s', padding, b'free'))
+            handle.seek(offset + padding)
+            handle.write(data[offset:])
     else:
         shutil.copyfile(root / names[0],file)
     evidence[name] = [hashlib.sha256(file.read_bytes()).hexdigest(),file.stat().st_mtime_ns,file.stat().st_ino]

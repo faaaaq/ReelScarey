@@ -69,6 +69,14 @@ func (s *Service) PreviewAcquisition(ctx context.Context, kind, job string) (Pla
 		return Plan{}, err
 	}
 	defer root.Close()
+	var pendingFile int64
+	if err = s.db.QueryRowContext(ctx, `SELECT media_file_id FROM acquisition_replacements WHERE source_kind=? AND job_id=?`, kind, job).Scan(&pendingFile); err != nil {
+		return Plan{}, err
+	}
+	if err = s.prepareChecksums(ctx, root, []int64{pendingFile}, 0); err != nil {
+		return Plan{}, err
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Plan{}, err

@@ -96,7 +96,7 @@ func (s *Service) publish(ctx context.Context, j Job, m media, o *openedMedia, g
 	if hex.EncodeToString(sum[:]) != p.SHA {
 		return problem("invalid_subtitle", "The saved subtitle content failed verification.")
 	}
-	if e := o.unchanged(m); e != nil {
+	if e := o.unchanged(ctx, m); e != nil {
 		return e
 	}
 	if e := s.fence(ctx, nil, j, generation, true); e != nil {
@@ -188,7 +188,7 @@ func (s *Service) publish(ctx context.Context, j Job, m media, o *openedMedia, g
 	if e = s.phase(ctx, j, p, "staged"); e != nil {
 		return e
 	}
-	if e = o.unchanged(m); e != nil {
+	if e = o.unchanged(ctx, m); e != nil {
 		return e
 	}
 	// Hold the policy transaction across exclusive publication and registration.
@@ -258,7 +258,7 @@ func (s *Service) commit(ctx context.Context, j Job, m media, o *openedMedia, ge
 	if e != nil || !os.SameFile(visible, info) {
 		return problem("destination_changed", "The subtitle's destination folder moved during registration.")
 	}
-	if e = o.unchanged(m); e != nil {
+	if e = o.unchanged(ctx, m); e != nil {
 		return e
 	}
 	tx, e := s.db.BeginTx(ctx, nil)

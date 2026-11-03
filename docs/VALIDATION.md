@@ -1740,3 +1740,32 @@ credentials or owner media:
 Authenticated acceptance on the owner's Ubuntu server remains unperformed:
 the public readiness endpoint answered, but the desktop browser controller could
 not establish its session. No owner-server library records were changed.
+
+## 2026-11-03: fast existing-library registration (0.27.5)
+
+Executed with disposable/generated media only:
+
+- Frontend formatting, type checks, all 181 interaction tests and production build.
+- Docker build passed all Go tests, vet, compilation and its independent frontend
+  checks. Automatic scan/registration/restart, backup/restore, simple Compose
+  PUID/PGID/proxy startup and offline storage migration acceptance passed.
+- A generated 64 GiB sparse fixture registered in 18.3 ms with a fixture prober;
+  actual FFprobe inspected a 4 GiB sparse MP4 with trailing metadata in 54.1 ms.
+  These establish bounded reads and seeking, not real-server throughput promises.
+- Folder authority, one provider detail fetch for an explicit ID, title/season
+  caching, duplicate exclusions, accurate matched/unmatched filters and continued
+  queueing while disk inspection is deliberately blocked passed targeted tests.
+- Deferred checksums preserve replacement reservations, are promoted before
+  organization reviews, and reject changed/replaced sources. Subtitle inspection
+  and cached reuse validate observations before sidecar publication. Schema 42 to
+  43 preserves full hashes, technical facts and pending matching evidence.
+- The change-timestamp test initially exposed same-clock-tick timestamp coalescing
+  on an overlay filesystem. After allowing a timestamp tick in that test, ten
+  repeated fingerprint-suite runs passed. Bounded observations are explicitly not
+  represented as full-content integrity checks.
+- Final focused checks also cover TV shows inside grouping folders and preserved
+  changed-file errors. The publishing workflow rechecks the merged source before
+  uploading and pulls the resulting registry digest for verification.
+
+No owner library, credentials, or server database was used or modified. Real-server
+scan timing and metadata-provider latency remain owner-server acceptance work.

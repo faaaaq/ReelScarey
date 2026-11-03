@@ -54,7 +54,7 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 	defer file.Seek(0, 0)
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", "pipe", "-probesize", "16777216", "-analyzeduration", "10000000", "-show_entries", "format=duration:format_tags=title:stream=codec_type,codec_name,width,height:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags=language,title", "-of", "json", "-i", "pipe:0")
+	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", probeProtocols(), "-format_whitelist", "mov,matroska,webm,avi,mpegts", "-enable_drefs", "0", "-use_absolute_path", "0", "-probesize", "16777216", "-analyzeduration", "10000000", "-show_entries", "format=duration:format_tags=title:stream=codec_type,codec_name,width,height:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags=language,title", "-of", "json", "-i", probeInput())
 	hideProbeWindow(cmd)
 	var output limitedBuffer
 	output.max = 64 << 10

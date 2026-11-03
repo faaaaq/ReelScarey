@@ -20,6 +20,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
 	"github.com/faaaaq/ReelScarey/internal/quality"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
 )
@@ -29,6 +30,7 @@ type openedMedia struct {
 	file         *os.File
 	info         os.FileInfo
 	probe        transfer.Probe
+	observation  string
 	moviehash    string
 }
 
@@ -156,6 +158,15 @@ func (s *Service) openMedia(ctx context.Context, m media) (*openedMedia, error) 
 	if !os.SameFile(before, info) || !info.Mode().IsRegular() || info.Size() != m.Size {
 		return nil, problem("media_changed", "The video no longer matches its registered size or identity.")
 	}
+	var observation string
+	if m.SHA == "" {
+		if e = s.db.QueryRowContext(ctx, `SELECT verification_json FROM media_files WHERE id=? AND relative_path=? AND size_bytes=? AND sha256=''`, m.ID, m.Path, m.Size).Scan(&observation); e != nil {
+			return nil, e
+		}
+		if e = filecheck.Verify(ctx, file, observation); e != nil {
+			return nil, problem("media_changed", "The video changed since it was catalogued. No subtitle was written.")
+		}
+	}
 	var cachedSHA, cachedHash, cachedProbe string
 	var cachedSize, cachedMtime int64
 	e = s.db.QueryRowContext(ctx, `SELECT sha256,size_bytes,mtime,moviehash,probe_json FROM subtitle_inspections WHERE media_file_id=?`, m.ID).Scan(&cachedSHA, &cachedSize, &cachedMtime, &cachedHash, &cachedProbe)
@@ -170,12 +181,14 @@ func (s *Service) openMedia(ctx context.Context, m media) (*openedMedia, error) 
 		}
 		hash = cachedHash
 	} else {
-		sha, e := digest(ctx, file)
-		if e != nil {
-			return nil, e
-		}
-		if sha != m.SHA {
-			return nil, problem("media_changed", "The video content differs from its registered import. No subtitle was written.")
+		if m.SHA != "" {
+			sha, e := digest(ctx, file)
+			if e != nil {
+				return nil, e
+			}
+			if sha != m.SHA {
+				return nil, problem("media_changed", "The video content differs from its registered import. No subtitle was written.")
+			}
 		}
 		hash, e = movieHash(file, m.Size)
 		if e != nil {
@@ -192,14 +205,24 @@ func (s *Service) openMedia(ctx context.Context, m media) (*openedMedia, error) 
 			return nil, e
 		}
 	}
+	if observation != "" {
+		if e = filecheck.Verify(ctx, file, observation); e != nil {
+			return nil, problem("media_changed", "The video changed during subtitle inspection.")
+		}
+	}
 	after, e := file.Stat()
 	if e != nil || after.Size() != info.Size() || after.ModTime() != info.ModTime() {
 		return nil, problem("media_changed", "The video changed during subtitle inspection.")
 	}
 	failed = false
-	return &openedMedia{root: root, folder: folder, file: file, info: info, probe: probe, moviehash: hash}, nil
+	return &openedMedia{root: root, folder: folder, file: file, info: info, probe: probe, moviehash: hash, observation: observation}, nil
 }
-func (o *openedMedia) unchanged(m media) error {
+func (o *openedMedia) unchanged(ctx context.Context, m media) error {
+	if o.observation != "" {
+		if err := filecheck.Verify(ctx, o.file, o.observation); err != nil {
+			return problem("media_changed", "The video changed while subtitles were being prepared.")
+		}
+	}
 	info, e := o.file.Stat()
 	if e != nil || info.Size() != o.info.Size() || info.ModTime() != o.info.ModTime() {
 		return problem("media_changed", "The video changed while subtitles were being prepared.")

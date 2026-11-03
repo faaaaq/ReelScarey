@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
 	"github.com/faaaaq/ReelScarey/internal/organization"
 )
 
@@ -21,9 +22,9 @@ func (s *Service) RefreshMediaProbe(ctx context.Context, id int64) (Probe, error
 	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
 		return Probe{}, e
 	}
-	var name, expected string
+	var name, expected, observation string
 	var size int64
-	if e := s.db.QueryRowContext(ctx, `SELECT relative_path,size_bytes,sha256 FROM media_files WHERE id=?`, id).Scan(&name, &size, &expected); e != nil {
+	if e := s.db.QueryRowContext(ctx, `SELECT relative_path,size_bytes,sha256,verification_json FROM media_files WHERE id=?`, id).Scan(&name, &size, &expected, &observation); e != nil {
 		return Probe{}, e
 	}
 	if _, e := safeRelative(name); e != nil {
@@ -63,18 +64,32 @@ func (s *Service) RefreshMediaProbe(ctx context.Context, id int64) (Probe, error
 	if !info.Mode().IsRegular() || !os.SameFile(before, info) {
 		return Probe{}, problem("source_changed", "The registered file changed; it was not inspected.")
 	}
-	digest, e := fileHash(ctx, file)
+	verify := func() error {
+		if expected == "" {
+			err := filecheck.Verify(ctx, file, observation)
+			if errors.Is(err, filecheck.ErrChanged) {
+				return problem("source_changed", "The registered file changed since it was catalogued.")
+			}
+			return err
+		}
+		digest, err := fileHash(ctx, file)
+		if err != nil {
+			return err
+		}
+		if digest != expected {
+			return problem("source_changed", "The registered file no longer matches its saved checksum.")
+		}
+		return nil
+	}
+	e = verify()
 	if e != nil {
 		return Probe{}, e
-	}
-	if digest != expected {
-		return Probe{}, problem("source_changed", "The registered file no longer matches its saved checksum.")
 	}
 	result, e := s.importer.Prober.Probe(ctx, file)
 	if e != nil {
 		return Probe{}, e
 	}
-	digest, e = fileHash(ctx, file)
+	e = verify()
 	if e != nil {
 		return Probe{}, e
 	}
@@ -82,7 +97,7 @@ func (s *Service) RefreshMediaProbe(ctx context.Context, id int64) (Probe, error
 	if e != nil {
 		return Probe{}, e
 	}
-	if digest != expected || after.Size() != size || !after.ModTime().Equal(info.ModTime()) {
+	if after.Size() != size || !after.ModTime().Equal(info.ModTime()) {
 		return Probe{}, problem("source_changed", "The registered file changed during inspection.")
 	}
 	if e = segments(root, name, false); e != nil {

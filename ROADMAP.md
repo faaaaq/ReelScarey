@@ -190,7 +190,7 @@ recorded in [validation](docs/VALIDATION.md).
   restart recovery, review history, skip/stop controls and no arbitrary paths.
 - [x] Saved-catalog/TMDb match review, new titles paused, explicit consecutive
   TV episode selection and no automatic filename-based registration.
-- [x] Stable identity/size/mtime checks, double SHA-256 and FFprobe verification,
+- [x] Stable identity/size/mtime checks, bounded observations and FFprobe inspection,
   lease-fenced atomic in-place registration and download/episode conflict refusal.
 - [x] Genuine existing-file provenance, preserved migration references and shared
   availability/quality/subtitle consumers without fabricated download history.
@@ -604,6 +604,15 @@ TV episodes, automatic title/season metadata loading, progress/stop/retry contro
 and durable restart recovery. The UI enables matching by default when starting a
 scan; older scans require one explicit start. Ambiguous identities, duplicate
 versions and uncertain numbering remain review exceptions. Existing files remain
-in place and require hash/FFprobe verification. Backup restore pauses matching.
+in place and require file/FFprobe inspection. Backup restore pauses matching.
 See [matching behavior](docs/EXISTING_LIBRARY.md). Authenticated testing on the
 owner's Ubuntu server remains separate from disposable-container acceptance.
+
+## Version 0.27.5 existing-library performance
+
+Folder-first identities, scan-scoped title/season reuse, independent metadata
+queueing and bounded in-place video inspection replace full-file checksum reads
+at registration. Seekable FFprobe input handles trailing movie metadata. Progress
+separates matched files from unmatched exceptions. Full integrity checks remain
+part of explicit file operations; schema 043 persists deferred observations.
+See [existing-library behavior](docs/EXISTING_LIBRARY.md).

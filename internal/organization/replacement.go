@@ -91,6 +91,9 @@ func (s *Service) PreviewReplacement(ctx context.Context, fileID int64, scanID s
 		return Plan{}, e
 	}
 	defer root.Close()
+	if e = s.prepareChecksums(ctx, root, []int64{fileID}, 0); e != nil {
+		return Plan{}, e
+	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return Plan{}, e

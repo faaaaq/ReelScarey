@@ -7,7 +7,8 @@ import (
 )
 
 // FileHealth compares a registered file with its saved import checksum without
-// changing the registration or the file. Results describe one point in time.
+// changing the file. Fast registrations gain their first full checksum here.
+// Results describe one point in time.
 type FileHealth struct {
 	FileID int64  `json:"media_file_id"`
 	Path   string `json:"path"`
@@ -52,6 +53,19 @@ func (s *Service) CheckFileHealth(ctx context.Context, fileID int64) (FileHealth
 	if info.Size != size {
 		out.Status = "changed"
 		return out, nil
+	}
+	if checksum == "" {
+		if err = s.prepareChecksums(ctx, root, []int64{fileID}, 0); err != nil {
+			var changed *Error
+			if errors.As(err, &changed) {
+				out.Status = "changed"
+				return out, nil
+			}
+			return out, err
+		}
+		if err = s.db.QueryRowContext(ctx, `SELECT sha256 FROM media_files WHERE id=?`, fileID).Scan(&checksum); err != nil {
+			return out, err
+		}
 	}
 	info.SHA = checksum
 	err = checkSource(ctx, root, info, true)

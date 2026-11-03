@@ -269,7 +269,7 @@ func (s *Service) process(ctx context.Context, j Job, p Preferences) (string, st
 		if e != nil {
 			return "", "", e
 		}
-		if e = o.unchanged(m); e != nil {
+		if e = o.unchanged(ctx, m); e != nil {
 			return "", "", e
 		}
 		if e = s.fence(ctx, nil, j, c.Generation, true); e != nil {

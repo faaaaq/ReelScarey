@@ -195,3 +195,10 @@ within 0.95–1.05 and its starting offset within ten minutes. Negative timestam
 weak evidence and incompatible cuts are rejected. This is reference-text alignment;
 it does not listen to audio, perform OCR or translate. Reference content stays
 local and is bounded to 4 MiB. The preview never writes the sidecar.
+
+For existing videos registered by 0.27.5 or later, inspection validates the saved
+bounded observation while the full checksum is deferred. It rechecks identity,
+size, timestamps and sampled content before subtitle publication, and still uses
+the separate provider movie hash for matching. Downloaded/older registrations
+retain their full-checksum verification. This avoids hashing an entire newly
+catalogued library simply because subtitle inspection is enabled.

@@ -242,6 +242,11 @@ func (s *Service) PreviewRemoval(ctx context.Context, mediaID int64, mode string
 		return Plan{}, err
 	}
 	defer root.Close()
+	if mode == "trash" {
+		if err = s.prepareChecksums(ctx, root, nil, mediaID); err != nil {
+			return Plan{}, err
+		}
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Plan{}, err

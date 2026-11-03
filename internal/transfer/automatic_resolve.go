@@ -52,7 +52,11 @@ func (s *Service) automaticTitle(ctx context.Context, scan LibraryScan, owner st
 }
 func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, owner string, h automaticHint) (automaticTitle, error) {
 	out := automaticTitle{}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,tmdb_id,title,year FROM media_items WHERE kind=? AND (?=0 OR tmdb_id=?) AND (?=0 OR year=?)`, scan.Kind, h.ProviderID, h.ProviderID, h.Year, h.Year)
+	year := h.Year
+	if h.ProviderID > 0 {
+		year = 0
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id,tmdb_id,title,year FROM media_items WHERE kind=? AND (?=0 OR tmdb_id=?) AND (?=0 OR year=?)`, scan.Kind, h.ProviderID, h.ProviderID, year, h.Year)
 	if err != nil {
 		return out, err
 	}
@@ -82,14 +86,18 @@ func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, o
 		return out, metadata.ErrNotConfigured
 	}
 	candidates := map[int64]metadata.Movie{}
+	var directMovie *metadata.Movie
+	var directSeries *metadata.Series
 	if h.ProviderID > 0 {
 		var m metadata.Movie
 		if scan.Kind == "movie" {
 			m, err = s.automaticMetadata.Movie(ctx, h.ProviderID)
+			directMovie = &m
 		} else {
 			var show metadata.Series
 			show, err = s.automaticMetadata.Series(ctx, h.ProviderID)
 			m = show.Movie
+			directSeries = &show
 		}
 		if err != nil {
 			return out, err
@@ -145,7 +153,13 @@ func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, o
 	}
 	var item library.Item
 	if scan.Kind == "movie" {
-		full, e := s.automaticMetadata.Movie(ctx, chosen.TMDbID)
+		var full metadata.Movie
+		var e error
+		if directMovie != nil {
+			full = *directMovie
+		} else {
+			full, e = s.automaticMetadata.Movie(ctx, chosen.TMDbID)
+		}
 		if e != nil {
 			return out, e
 		}
@@ -154,7 +168,13 @@ func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, o
 		}
 		item, _, err = store.AddMovieAuthorized(ctx, full, false, authorize, category)
 	} else {
-		full, e := s.automaticMetadata.Series(ctx, chosen.TMDbID)
+		var full metadata.Series
+		var e error
+		if directSeries != nil {
+			full = *directSeries
+		} else {
+			full, e = s.automaticMetadata.Series(ctx, chosen.TMDbID)
+		}
 		if e != nil {
 			return out, e
 		}

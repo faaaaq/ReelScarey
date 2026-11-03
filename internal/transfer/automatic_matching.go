@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"time"
 
@@ -355,4 +356,25 @@ func (s *Service) registerAutomaticCandidate(ctx context.Context, scanID, owner,
 		_, err = tx.ExecContext(ctx, `UPDATE library_scan_files SET message='Automatically matched; waiting for file verification.' WHERE id=?`, file)
 		return err
 	})
+}
+
+// Metadata resolution and queueing must not wait behind disk inspection. There
+// remains just one disk worker, avoiding seek contention on a library drive.
+func (s *Service) runAutomaticMatching(ctx context.Context, logger *slog.Logger) {
+	for ctx.Err() == nil {
+		processed, err := s.ProcessAutomaticMatchNext(ctx)
+		if err != nil && ctx.Err() == nil {
+			logger.Error("automatic library matching step failed")
+		}
+		if processed && err == nil {
+			continue
+		}
+		timer := time.NewTimer(time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
 }

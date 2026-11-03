@@ -48,9 +48,14 @@ For an older completed scan, choose **Match clear files automatically**. Opening
 this page never starts matching. Existing API callers remain discovery-only unless
 they explicitly send `automatic_matching:true`.
 
-Movies require an exact normalized title with a year or explicit `[tmdb-123]` /
-`{tmdb-123}` identity. TV uses the show folder and explicit canonical season/episode
-labels such as `S01E02`, `1x02`, or `S01E02-E03`. Filename/folder conflicts,
+The movie/show title folder is authoritative, including when release filenames
+use an alternate, abbreviated or obfuscated title. Its match is cached for the
+scan and shared across episodes; loaded seasons are reused. An explicit
+`[tmdb-123]` / `{tmdb-123}` ID identifies that provider item without title search
+or a repeated details fetch. Without an ID, matching requires one unique exact
+normalized title (and year when supplied). Loose movie files still require a year
+or TMDb ID. TV uses explicit canonical season/episode labels such as `S01E02`,
+`1x02`, or `S01E02-E03`. Conflicting explicit IDs, years or season numbers,
 ambiguous title results, date/absolute Anime numbering and nonconsecutive episodes
 stay in review. Duplicate files claiming any of the same targets all stay in review;
 the app does not choose an arbitrary version. Clear canonical Anime numbering works
@@ -64,8 +69,11 @@ and reused. Existing monitoring choices are preserved. Movie/show searches are
 bounded to three complete provider pages; broader results need review or an
 explicit TMDb folder ID. Incomplete saved season definitions may need refresh.
 
-Progress shows resolved identities, registrations queued and review exceptions.
-The same durable hash/FFprobe verification below runs before availability changes.
+Progress separates files already in the library, matched files waiting to attach,
+unmatched files and attention items. Matched files have their own filter and no
+longer count as needing a match. A whole-scan duplicate check precedes queueing;
+metadata resolution/queueing then runs independently of the single disk worker.
+The bounded file/FFprobe inspection below runs before availability changes.
 **Stop automatic matching** prevents further matching writes; already queued file
 verification continues. Network failures retry after a minute and pause after five
 consecutive failures. Correct the connection and use the matching button to retry.
@@ -94,12 +102,31 @@ resolved; a changed source requires a new scan.
 ## Verification and registration
 
 The worker opens the file through an anchored `os.Root`, rejects link components
-and checks discovery identity, size and modification time. It computes SHA-256,
-inspects the video with FFprobe and hashes again to detect changes while probing.
-The visible path and file identity are checked again before the atomic database
-registration. Verification streams data with bounded memory, renews a lease and
-has a thirty-minute overall deadline. FFprobe has its own thirty-second timeout.
-Large videos may take time to read twice, particularly on network storage.
+and checks discovery identity, size and modification time. It records file identity,
+size, modification/change timestamps and a SHA-256 of three 64 KiB samples
+(beginning, middle, end), then inspects the video with FFprobe and checks the
+observation again. The visible path and identity are checked immediately before
+the atomic registration. This is bounded change detection, not a full-content
+integrity claim. Files up to 192 KiB retain an actual full SHA-256 directly.
+
+Linux FFprobe reads the already-open descriptor as a seekable regular file,
+including MP4/MOV metadata at the end. Only supported video demuxers and local
+file access are permitted; playlists, network protocols and external MOV track
+references are disabled. Its timeout remains thirty seconds. No video is copied,
+renamed, rewritten, or read twice end to end just to add it to the library.
+
+For larger existing videos the full SHA-256 is deferred. Explicit organization,
+replacement, trash, embedded-title and integrity-check operations establish it
+from an unchanged observation before their usual full-checksum review/journal
+safeguards. Offline root migration establishes full digests before copying.
+Subtitle inspection uses the saved observation and its provider-specific small
+movie hash, so enabling subtitles does not reintroduce a full-library checksum
+read. Old registrations and downloaded imports keep their existing full hashes.
+There is no background full-hash sweep after a scan.
+
+Already authorized scans and queued registrations resume after upgrading.
+Previously reviewed exceptions can be retried with **Match clear files
+automatically**; a new scan skips paths that are already registered.
 
 Registered paths are compared conservatively without case distinctions. Existing
 movie files, episode registrations and active download reservations prevent a
@@ -126,6 +153,8 @@ remains the host administrator's responsibility.
 
 ## Data and recovery
 
+Migration 043 adds `verification_json` to preserve deferred observations across
+restart, backup and restore without altering existing hashes or references.
 Migration 009 preserves media file IDs, existing download provenance and all
 episode/subtitle references, while allowing genuine existing files to have no
 download ID. The migration runner checks all foreign keys before committing.
