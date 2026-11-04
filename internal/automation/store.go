@@ -20,6 +20,7 @@ type Workflow interface {
 	SearchTVUpgrade(context.Context, int64, int, int) ([]transfer.Release, error)
 	SearchAnimeAutomatic(context.Context, int64, int, int, bool) ([]transfer.Release, error)
 	QueueAutomatic(context.Context, string, transfer.QueueGuard) (transfer.Job, bool, error)
+	QueueAutomaticVersion(context.Context, string, string, transfer.QueueGuard) (transfer.Job, bool, error)
 }
 type Service struct {
 	db       *sql.DB
@@ -253,6 +254,9 @@ func targetName(t searchTarget) string {
 			return fmt.Sprintf("%s · S%02dE%02d · absolute %d", t.Title, t.Season, t.Episode, *t.AbsoluteNumber)
 		}
 		return fmt.Sprintf("%s · S%02dE%02d", t.Title, t.Season, t.Episode)
+	}
+	if t.MovieVersion != "" {
+		return t.Title + " · " + quality.MovieVersionName(t.MovieVersion)
 	}
 	return t.Title
 }

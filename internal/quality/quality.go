@@ -34,6 +34,7 @@ type Summary struct {
 func (p Profile) Summary() Summary { return Summary{ID: p.ID, Name: p.Name, Revision: p.Revision} }
 
 type Target struct {
+	MovieVersion        string
 	Title               string
 	Year                *int
 	Season, Episode     int
@@ -211,6 +212,9 @@ func Evaluate(p Profile, t Target, r Release) Decision {
 	}
 	if !slices.Contains(p.Qualities, d.Quality) {
 		reject("Resolution is unknown or excluded by this profile.")
+	}
+	if !t.TV && !MovieVersionMatches(t.MovieVersion, d.Quality) {
+		reject("Resolution does not match the selected movie version.")
 	}
 	// Language claims must be explicit. MULTI alone does not establish a language.
 	for _, lang := range Languages[1:] {

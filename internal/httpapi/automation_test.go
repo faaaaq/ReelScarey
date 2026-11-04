@@ -55,12 +55,34 @@ func TestAutomationAPIRequiresAuthCSRFAndRevisions(t *testing.T) {
 		h.ServeHTTP(w, r)
 		return w
 	}
-	for _, path := range []string{"/automation", "/automation/runs", "/automation/items", "/quality-profiles"} {
+	for _, path := range []string{"/automation", "/automation/runs", "/automation/items", "/quality-profiles", "/library/movies/1/versions"} {
 		if w := request("GET", path, "", false, false); w.Code != 401 {
 			t.Fatal(path, w.Code, w.Body.String())
 		}
 	}
 	schedule := `{"enabled":true,"mode":"search","interval_minutes":60,"batch_size":5,"default_profile_id":1,"revision":1}`
+	if _, e = db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title) VALUES(101,'movie',101,'Version movie'),(102,'series',102,'Version show')`); e != nil {
+		t.Fatal(e)
+	}
+	versions := `{"enabled":true,"hd_profile_id":1,"uhd_profile_id":2,"revision":0}`
+	if w := request("GET", "/library/movies/101/versions", "", true, false); w.Code != 200 || !strings.Contains(w.Body.String(), `"enabled":false`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := request("PUT", "/library/movies/101/versions", versions, true, false); w.Code != 403 {
+		t.Fatal("version settings need CSRF", w.Code)
+	}
+	if w := request("PUT", "/library/movies/101/versions", versions, true, true); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := request("PUT", "/library/movies/101/versions", versions, true, true); w.Code != 409 {
+		t.Fatal("stale version settings accepted", w.Code)
+	}
+	if w := request("PUT", "/library/movies/102/versions", versions, true, true); w.Code != 404 {
+		t.Fatal("TV version settings accepted", w.Code)
+	}
+	if w := request("DELETE", "/library/movies/101/versions", "{}", true, true); w.Code != 405 {
+		t.Fatal(w.Code)
+	}
 	if w := request("PUT", "/automation", schedule, true, false); w.Code != 403 {
 		t.Fatal(w.Code, w.Body.String())
 	}

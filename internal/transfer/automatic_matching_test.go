@@ -125,13 +125,13 @@ func TestAutomaticMovieRegistrationSurvivesRestartWithoutManualConsentBypass(t *
 		t.Fatal("fabricated download")
 	}
 }
-func TestAutomaticMatchingLeavesAllDuplicateVersionsForReview(t *testing.T) {
+func TestAutomaticMatchingRegistersAllMovieVersions(t *testing.T) {
 	f := setupWorkflow(t)
 	scan := automaticMovieScan(t, f, "Movies/Test Movie (2026)/Test.Movie.2026.720p.mp4", "Movies/Test Movie (2026)/Test.Movie.2026.1080p.mp4")
 	finishAutomatic(t, f, scan.ID)
 	status, _ := f.s.AutomaticMatchStatus(context.Background(), scan.ID)
 	current, _ := f.s.LibraryScan(context.Background(), scan.ID)
-	if status.Review != 2 || status.Queued != 0 || current.Registered != 0 {
+	if status.Review != 0 || status.Queued != 2 || current.Registered != 2 {
 		t.Fatal(status, current)
 	}
 }

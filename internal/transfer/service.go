@@ -334,11 +334,27 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard,
 	if len(replacement) > 0 {
 		replacementID = replacement[0]
 	}
+	version := ""
+	if replacementID > 0 {
+		version = "replacement"
+	}
+	return s.queueVersion(ctx, releaseID, guard, replacementID, version)
+}
+func (s *Service) queueVersion(ctx context.Context, releaseID string, guard QueueGuard, replacementID int64, version string) (Job, bool, error) {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
 	if existing, e := s.jobBy(ctx, "d.release_id", releaseID); e == nil {
+		if existing.Kind == "series" && version != "" && version != "replacement" {
+			return Job{}, false, problem("invalid_version", "Movie versions cannot target TV episodes.")
+		}
 		if guard != nil && existing.AnimeOrder != nil && (existing.AnimeSearch == nil || existing.AnimeSearch.Mode != "mapped") {
 			return Job{}, false, problem("manual_anime_selection", "Reviewed Anime packs and specials require an explicit manual download choice.")
+		}
+		if version != "" && existing.Kind != "series" && existing.MovieVersion != version {
+			return Job{}, false, problem("duplicate_release", "This release is already attached to a different movie version. Choose another release.")
+		}
+		if e := s.checkReplacementSelection(ctx, existing.ID, replacementID); e != nil {
+			return Job{}, false, e
 		}
 		return existing, false, nil
 	} else if !errors.Is(e, sql.ErrNoRows) {
@@ -397,8 +413,17 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard,
 		return Job{}, false, e
 	}
 	if existing, e := s.jobBy(ctx, "d.info_hash", hash); e == nil {
+		if existing.Kind == "series" && version != "" && version != "replacement" {
+			return Job{}, false, problem("invalid_version", "Movie versions cannot target TV episodes.")
+		}
 		if existing.MovieID != v.MovieID || (v.Kind == "series" && (existing.Kind != "series" || !sameTargets(existing.Targets, v.Targets))) {
 			return Job{}, false, problem("duplicate_hash", "This torrent is already attached to a different target selection. Open its existing Activity job or choose another release.")
+		}
+		if version != "" && existing.Kind != "series" && existing.MovieVersion != version {
+			return Job{}, false, problem("duplicate_release", "This release is already attached to a different movie version. Choose another release.")
+		}
+		if e := s.checkReplacementSelection(ctx, existing.ID, replacementID); e != nil {
+			return Job{}, false, e
 		}
 		return existing, false, nil
 	} else if !errors.Is(e, sql.ErrNoRows) {
@@ -413,6 +438,9 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard,
 		return Job{}, false, e
 	}
 	if v.Kind == "series" {
+		if version != "" && version != "replacement" {
+			return Job{}, false, problem("invalid_version", "Movie versions cannot target TV episodes.")
+		}
 		return s.queueTV(ctx, v, releaseID, sealed, hash, client, guard, replacementID)
 	}
 	if _, e = s.MovieByID(ctx, v.MovieID); e != nil {
@@ -437,12 +465,8 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard,
 			return Job{}, false, e
 		}
 	}
-	var active int
-	if e = tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM media_files WHERE movie_id=? AND id<>?)+(SELECT COUNT(*) FROM youtube_jobs WHERE media_id=? AND target_kind='movie' AND state NOT IN ('completed','cancelled','failed'))`, v.MovieID, v.MovieID, replacementID, v.MovieID).Scan(&active); e != nil {
+	if e = reserveMovieVersion(ctx, tx, v.MovieID, version, v.Title, "", replacementID); e != nil {
 		return Job{}, false, e
-	}
-	if active > 0 {
-		return Job{}, false, problem("movie_busy", "This movie already has an active download or imported file. Open Activity to manage it.")
 	}
 	naming, e := organization.New(s.db, s.cfg).CaptureTx(ctx, tx, v.MovieID)
 	if e != nil {
@@ -452,7 +476,7 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard,
 	if e != nil {
 		return Job{}, false, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,indexer_name,protocol,organization_snapshot) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, v.IndexerName, protocol, string(namingJSON)); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,indexer_name,protocol,organization_snapshot,movie_version) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, v.IndexerName, protocol, string(namingJSON), version); e != nil {
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE downloads SET client_key=?,client_kind=?,client_label=?,client_download_root=?,client_local_folder=? WHERE id=?`, client.profileKey, client.kind, client.label, client.DownloadPath, client.LocalFolder, id); e != nil {

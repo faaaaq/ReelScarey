@@ -25,7 +25,19 @@ for attempt in {1..60}; do
   if [ "$attempt" = 60 ]; then echo "Acceptance app did not start." >&2; exit 1; fi
   sleep 1
 done
-docker exec "$name" python3 -c 'import sqlite3; db=sqlite3.connect("/config/reelscarey.db"); db.execute("INSERT INTO media_items(kind,tmdb_id,title,year,monitored,status,overview,poster_path,release_date) VALUES(?,?,?,?,?,?,?,?,?)",("movie",101,"Disposable backup fixture",2026,0,"missing","","","2026-01-01")); db.commit()'
-docker run --rm --network "container:$name" -e REELSCAREY_BACKUP_SMOKE=1 \
+docker exec -i "$name" python3 - <<'PY'
+import hashlib,json,pathlib,sqlite3,subprocess
+db=sqlite3.connect('/config/reelscarey.db')
+db.execute("INSERT INTO media_items(kind,tmdb_id,title,year,monitored,status,release_date) VALUES('movie',101,'Disposable backup fixture',2026,0,'available','2026-01-01')")
+for label,width,height in [('HD',1920,1080),('4K',3840,2160)]:
+    path=pathlib.Path('/media/Movies/Backup fixture')/(label+'.mp4')
+    path.parent.mkdir(parents=True,exist_ok=True)
+    subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'color=c=blue:s={width}x{height}:r=1','-frames:v','1','-c:v','libx264','-threads','1','-preset','ultrafast',str(path)],check=True)
+    probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=codec_name,width,height','-of','json',str(path)]))['streams'][0]
+    facts=json.dumps({'codec':probe['codec_name'],'width':probe['width'],'height':probe['height'],'duration':1})
+    db.execute("INSERT INTO media_files(movie_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin) VALUES(1,?,?,?,?,1,'existing')",(str(path.relative_to('/media')),path.stat().st_size,hashlib.sha256(path.read_bytes()).hexdigest(),facts))
+db.commit()
+PY
+docker run --rm --network "container:$name" -e REELSCAREY_BACKUP_SMOKE=1 -e REELSCAREY_BACKUP_VERSIONS=1 \
   -v "$config:/fixture:ro" -v "$scripts:/verification:ro" \
   node:24-bookworm-slim node /verification/backup-container-smoke.mjs

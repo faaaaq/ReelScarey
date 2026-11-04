@@ -792,9 +792,31 @@ inspection; `registered` counts attached files. The `matched` file filter and
 projected file state distinguish these rows without changing the durable review
 state. Automatic matching status `queued` remains cumulative, including files
 already attached. No GET starts work. Folder identity is primary; explicit
-provider/season conflicts and duplicate versions remain review exceptions.
+provider/season conflicts and overlapping episode files remain review exceptions.
 
 Schema 043 preserves bounded file observations separately from SHA-256. A large
 existing file has an empty full checksum until an explicit operation requires it;
 the sample digest is never represented as a full-file SHA. See
 [registration and integrity guarantees](EXISTING_LIBRARY.md#verification-and-registration).
+
+### Multiple movie versions (0.28)
+
+- `GET /api/v1/library/movies/{id}/versions` returns `enabled`, `hd_profile_id`,
+  `uhd_profile_id`, `revision`, `hd_files`, `uhd_files`, `hd_download` and
+  `uhd_download`. Download values are the current job state or an empty string.
+- `PUT` on that route accepts the first four fields. Revision 0 creates the
+  movie's initially disabled policy; stale revisions return 409. Enabling requires
+  an HD profile cutoff up to 1080p and a 4K cutoff of 2160p. Saving never starts
+  work or enables monitoring/schedules. Only movie IDs are accepted.
+- `POST /api/v1/downloads` optionally accepts `movie_version` as `hd`, `uhd` or
+  `additional`. The managed targets require an enabled movie policy and a matching
+  release resolution label. Additional is an explicit extra-copy request. This
+  field cannot be combined with `replacement_file_id`. Default callers retain
+  the original behavior that protects existing movie files.
+- Download jobs expose `movie_version`; file details expose `version_label`.
+  Wanted/Calendar entries expose optional `movie_version` for enabled dual targets.
+  Use kind, media/episode ID and movie_version together as a planning row key.
+
+All routes retain administrator authentication, same-origin and CSRF checks.
+Files remain distinct by file ID/path, and replacements require a specific file.
+See [behavior, recovery and limits](MOVIE_VERSIONS.md).

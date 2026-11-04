@@ -616,3 +616,11 @@ at registration. Seekable FFprobe input handles trailing movie metadata. Progres
 separates matched files from unmatched exceptions. Full integrity checks remain
 part of explicit file operations; schema 043 persists deferred observations.
 See [existing-library behavior](docs/EXISTING_LIBRARY.md).
+
+## Version 0.28 movie versions
+
+Existing movie resolutions and editions register under one title. Optional HD/4K
+targets have separate quality profiles, availability, reservations and downloads.
+Manual extra-edition acquisition and explicit per-file replacement preserve other
+copies and sidecars. Version-aware naming keeps organization destinations unique.
+See [movie versions](docs/MOVIE_VERSIONS.md) for behavior and remaining boundaries.

@@ -46,6 +46,9 @@ func TestRealQBittorrentNamedClientDownloadAndImport(t *testing.T) {
 func TestRealQBittorrentNamedClientTVDownloadAndImport(t *testing.T) {
 	runRealQBittorrent(t, true, false, true)
 }
+func TestRealQBittorrentMovieVersions(t *testing.T) {
+	runRealQBittorrent(t, false, false, false, false, true)
+}
 func TestRealTransmissionDownloadAndImport(t *testing.T) {
 	runRealQBittorrent(t, false, false, true, true)
 }
@@ -157,6 +160,10 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 		if !ready {
 			t.Fatal("isolated authenticated qBittorrent did not become ready", e)
 		}
+	}
+	if len(providerOrder) > 3 && providerOrder[3] {
+		runRealMovieVersions(t, ctx, f, qbt, client)
+		return
 	}
 	generated := filepath.Join(t.TempDir(), "fixture.mp4")
 	gen := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=128x96:rate=10", "-t", "2", "-c:v", "mpeg4", "-movflags", "faststart", generated)

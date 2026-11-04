@@ -68,6 +68,7 @@ type Content struct {
 	TMDbID           int64  `json:"tmdb_id"`
 }
 type Snapshot struct {
+	MovieVersion        string  `json:"movie_version,omitempty"`
 	Library             Library `json:"library"`
 	Content             Content `json:"content"`
 	AssignmentRevision  int     `json:"assignment_revision"`

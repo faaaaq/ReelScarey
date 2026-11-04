@@ -235,7 +235,7 @@ func (s *Service) matchSnapshot(ctx context.Context, tx *sql.Tx, scan LibrarySca
 		if e = tx.QueryRowContext(ctx, `SELECT m.kind,m.tmdb_id,m.title,COALESCE(m.year,0),m.monitored,m.category_revision,COALESCE(d.revision,0) FROM media_items m LEFT JOIN series_details d ON d.media_id=m.id WHERE m.id=?`, choice.MediaID).Scan(&v.Kind, &v.ProviderID, &v.Title, &v.Year, &v.Monitored, &v.CategoryRevision, &v.SeriesRevision); e != nil {
 			return p, e
 		}
-		keys := []string{v.Kind + ":" + strconv.FormatInt(choice.MediaID, 10)}
+		keys := []string{"file:" + strings.ToLower(f.Path)}
 		if v.Kind == "series" {
 			keys = []string{}
 			for _, eid := range choice.Episodes {
@@ -249,13 +249,13 @@ func (s *Service) matchSnapshot(ctx context.Context, tx *sql.Tx, scan LibrarySca
 		}
 		for _, key := range keys {
 			if seenTargets[key] {
-				return p, problem("invalid_mapping", "Two selected files claim the same movie or episode. Resolve the overlap before reviewing.")
+				return p, problem("invalid_mapping", "Two selected files claim the same path or episode. Resolve the overlap before reviewing.")
 			}
 			seenTargets[key] = true
 		}
 		var busy int
 		if v.Kind == "movie" {
-			e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_scan_files WHERE id<>? AND media_id=? AND state IN ('queued','verifying')`, f.ID, choice.MediaID).Scan(&busy)
+			e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_scan_files WHERE id<>? AND relative_path=? COLLATE NOCASE AND state IN ('queued','verifying')`, f.ID, f.Path).Scan(&busy)
 		} else {
 			for _, eid := range choice.Episodes {
 				var n int

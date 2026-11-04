@@ -154,8 +154,8 @@ export function ExistingLibrary() {
             The scan reads filenames and sizes. It leaves files, folders and
             existing subtitles untouched. Automatic matching identifies clear
             movie and episode matches, verifies them, and registers them in
-            place. Ambiguous titles, duplicate versions and uncertain numbering
-            stay in review.
+            place. Ambiguous titles, overlapping episodes and uncertain
+            numbering stay in review.
           </p>
           <dl className="detail-paths">
             <dt>Movies</dt>

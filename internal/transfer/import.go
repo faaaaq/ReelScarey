@@ -17,6 +17,7 @@ import (
 	"unicode"
 
 	"github.com/faaaaq/ReelScarey/internal/organization"
+	"github.com/faaaaq/ReelScarey/internal/quality"
 	"github.com/faaaaq/ReelScarey/internal/settings"
 )
 
@@ -213,6 +214,9 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 	if e != nil {
 		return p, e
 	}
+	if j.Kind != "series" && (j.MovieVersion == "hd" || j.MovieVersion == "uhd") && !quality.MovieVersionMatches(j.MovieVersion, quality.VerifiedQuality(probe.Width, probe.Height)) {
+		return p, problem("version_mismatch", "The downloaded video's inspected resolution does not match the selected movie version. The source and existing versions were left unchanged.")
+	}
 	hash, e := fileHash(ctx, src)
 	if e != nil {
 		return p, e
@@ -255,6 +259,14 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 			return p, problem(namingError.Code, namingError.Message)
 		}
 		return p, e
+	}
+	if j.Kind != "series" && j.MovieVersion != "" && j.MovieVersion != "replacement" {
+		label := quality.MovieVersionName(j.MovieVersion)
+		if j.MovieVersion == "additional" {
+			label = "Version " + j.ID
+		}
+		ext := path.Ext(destination)
+		destination = strings.TrimSuffix(destination, ext) + " [" + label + "]" + ext
 	}
 	if _, e = safeRelative(destination); e != nil {
 		return p, e

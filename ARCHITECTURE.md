@@ -452,3 +452,13 @@ checksums before review transactions; its existing copy/publication/cleanup
 journals still require full digests. Subtitle inspection validates pending
 observations without a full-library read. Seekable inherited descriptors keep
 FFprobe inspection independent of movie size for ordinary container metadata.
+
+Migration 044 removes movie-file cardinality restrictions while retaining file
+IDs, observations and child references. Subtitle edits have a cascading foreign
+key; their explicit row IDs and payloads are preserved across the parent rebuild.
+An indexed generated resolution projects the same video-dimension bands as
+quality.VerifiedQuality. Automation owns opt-in per-movie HD/4K policy, while
+transfer owns per-version reservations and checks actual resolution before import.
+Library planning projects each enabled target independently. Additional versions
+and per-file replacements require explicit manual intent; organization snapshots
+include stable version suffixes for multi-file movies. See [movie versions](docs/MOVIE_VERSIONS.md).

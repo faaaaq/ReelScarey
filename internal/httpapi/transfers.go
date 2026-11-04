@@ -194,6 +194,7 @@ func (s *Server) downloadCollection(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var body struct {
 			ReleaseID         string `json:"release_id"`
+			MovieVersion      string `json:"movie_version"`
 			ReplacementFileID int64  `json:"replacement_file_id"`
 		}
 		if !decodeJSON(w, r, &body) {
@@ -206,8 +207,18 @@ func (s *Server) downloadCollection(w http.ResponseWriter, r *http.Request) {
 		var out transfer.Job
 		var created bool
 		var err error
+		if body.ReplacementFileID < 0 {
+			fail(w, 400, "invalid_file", "Choose a registered replacement file.")
+			return
+		}
+		if body.ReplacementFileID > 0 && body.MovieVersion != "" {
+			fail(w, 400, "invalid_version", "Choose an additional version or a replacement, not both.")
+			return
+		}
 		if body.ReplacementFileID > 0 {
 			out, created, err = s.transfer.QueueReplacement(r.Context(), body.ReleaseID, body.ReplacementFileID)
+		} else if body.MovieVersion != "" {
+			out, created, err = s.transfer.QueueMovieVersion(r.Context(), body.ReleaseID, body.MovieVersion)
 		} else {
 			out, created, err = s.transfer.Queue(r.Context(), body.ReleaseID)
 		}
