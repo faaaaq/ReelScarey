@@ -42,6 +42,18 @@ function setup(
       });
     if (url.endsWith("/franchise"))
       return Response.json({ source: "Wikidata", items: [], truncated: false });
+    if (url.endsWith("/library/movies/1/versions"))
+      return Response.json({
+        enabled: false,
+        hd_profile_id: 1,
+        uhd_profile_id: 2,
+        revision: 0,
+        hd_files: 1,
+        uhd_files: 0,
+        hd_download: "",
+        uhd_download: "",
+      });
+    if (url.endsWith("/quality-profiles")) return Response.json({ items: [] });
     return (
       extra(url, options) ??
       Response.json(

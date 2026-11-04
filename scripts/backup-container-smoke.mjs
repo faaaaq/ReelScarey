@@ -7,6 +7,7 @@ import { createServer } from 'node:http'
 
 assert.equal(process.env.REELSCAREY_BACKUP_SMOKE, '1', 'Explicit disposable-test opt-in is required')
 const base = 'http://127.0.0.1:18787'
+const hasVersionFiles = process.env.REELSCAREY_BACKUP_VERSIONS === '1'
 let cookie = '', csrf = ''
 async function request(path, options = {}) {
   return fetch(base + '/api/v1' + path, { ...options, headers: {
@@ -30,6 +31,9 @@ const first = await json('/auth/session')
 assert.equal(first.setup_required, true)
 const setupToken = (await readFile('/fixture/setup-token', 'utf8')).trim()
 await signIn('/auth/setup', { ...credentials, setup_token: setupToken }, 201)
+const versions = await json('/library/movies/1/versions', { method: 'PUT', body: JSON.stringify({ enabled: true, hd_profile_id: 1, uhd_profile_id: 2, revision: 0 }) })
+assert.equal(versions.hd_files, hasVersionFiles ? 1 : 0)
+assert.equal(versions.uhd_files, hasVersionFiles ? 1 : 0)
 // Own loopback protocol fixture, reachable only inside the disposable test's
 // shared network namespace. Real-client/media acceptance runs separately.
 const clientServer = createServer((req, res) => {
@@ -84,6 +88,7 @@ assert.equal(review.movies, 1)
 assert.equal(review.administrator, credentials.username)
 await json(`/system/backups/${uploaded.id}/restore`, { method: 'POST', body: JSON.stringify({ sha256: 'stale', confirmation: 'RESTORE' }) }, 409)
 await json('/settings', { method: 'PUT', body: JSON.stringify({ library_name: 'Current fixture cinema', movie_folder: settings.movie_folder, series_folder: settings.series_folder, episode_naming: settings.episode_naming, revision: settings.revision }) })
+await json('/library/movies/1/versions', { method: 'PUT', body: JSON.stringify({ enabled: false, hd_profile_id: 1, uhd_profile_id: 2, revision: versions.revision }) })
 await json(`/system/backups/${uploaded.id}/restore`, { method: 'POST', body: JSON.stringify({ sha256: review.archive.sha256, confirmation: 'RESTORE' }) }, 202)
 let revoked = false
 for (let attempt = 0; attempt < 120; attempt++) {
@@ -95,6 +100,10 @@ cookie = ''; csrf = ''
 await signIn('/auth/login', credentials)
 settings = await json('/settings')
 assert.equal(settings.library_name, 'Backup fixture cinema')
+assert.deepEqual(await json('/library/movies/1/versions'), versions)
+const versionFiles = await json('/library/items/1')
+assert.equal(versionFiles.file_count, hasVersionFiles ? 2 : 0)
+assert.deepEqual(versionFiles.files.map(f => f.version_label).sort(), hasVersionFiles ? ['1080p', '4K (2160p)'] : [])
 assert.equal((await json('/subtitles/preferences')).preferences.download_format, 'original')
 const restoredClients = await json('/download-clients')
 assert.equal(restoredClients.items.length, 1)

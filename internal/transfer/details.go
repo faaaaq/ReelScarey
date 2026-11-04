@@ -5,23 +5,26 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/organization"
+	"github.com/faaaaq/ReelScarey/internal/quality"
 	"path/filepath"
 )
 
 type LocalFile struct {
-	ID         int64  `json:"id"`
-	Path       string `json:"path"`
-	Directory  string `json:"directory"`
-	Size       int64  `json:"size_bytes"`
-	Imported   int64  `json:"imported_at"`
-	DownloadID string `json:"download_id"`
-	Release    string `json:"release"`
-	Probe      Probe  `json:"probe"`
-	Episodes   string `json:"episodes"`
-	Origin     string `json:"origin"`
+	VersionLabel string `json:"version_label,omitempty"`
+	ID           int64  `json:"id"`
+	Path         string `json:"path"`
+	Directory    string `json:"directory"`
+	Size         int64  `json:"size_bytes"`
+	Imported     int64  `json:"imported_at"`
+	DownloadID   string `json:"download_id"`
+	Release      string `json:"release"`
+	Probe        Probe  `json:"probe"`
+	Episodes     string `json:"episodes"`
+	Origin       string `json:"origin"`
 }
 type History struct {
 	Protocol string  `json:"protocol"`
@@ -97,6 +100,16 @@ func (s *Service) Details(ctx context.Context, id int64, page int) (ItemDetails,
 		if e = json.Unmarshal([]byte(probe), &f.Probe); e != nil {
 			rows.Close()
 			return out, e
+		}
+		if item.Kind == "movie" {
+			resolution := quality.VerifiedQuality(f.Probe.Width, f.Probe.Height)
+			f.VersionLabel = "Resolution unknown"
+			if resolution > 0 {
+				f.VersionLabel = fmt.Sprintf("%dp", resolution)
+			}
+			if resolution == 2160 {
+				f.VersionLabel = "4K (2160p)"
+			}
 		}
 		out.Files = append(out.Files, f)
 	}

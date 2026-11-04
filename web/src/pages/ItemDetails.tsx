@@ -14,6 +14,7 @@ import { ItemOrganization } from "./Organization";
 import { MovieCollection } from "./MovieCollection";
 import { RelatedTitles } from "./RelatedTitles";
 import { AutomaticFranchise } from "./AutomaticFranchise";
+import { MovieVersions } from "./MovieVersions";
 
 export type Information = {
   tagline: string;
@@ -37,6 +38,7 @@ export type LocalDetails = {
   history_count: number;
   page: number;
   files: {
+    version_label?: string;
     origin?: string;
     id: number;
     path: string;
@@ -338,6 +340,11 @@ export function ItemInformation({
               <div className="file-details-list">
                 {data.files.map((file) => (
                   <article key={file.id}>
+                    {data.item.kind === "movie" && (
+                      <Badge color="green">
+                        {file.version_label || "Movie version"} · On disk
+                      </Badge>
+                    )}
                     <h3>
                       {file.path.split("/").at(-1)} · {bytes(file.size_bytes)}
                     </h3>
@@ -474,6 +481,7 @@ export function ItemInformation({
               ) : null}
             </div>
           )}
+          {data.item.kind === "movie" && <MovieVersions id={id} />}
           {error && (
             <p role="alert" className="error-box">
               {error} Your saved library and local file information remain

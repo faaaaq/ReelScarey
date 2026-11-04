@@ -174,6 +174,19 @@ function JobCard({ job, reload }: { job: DownloadJob; reload: () => void }) {
         </Badge>
       </div>
       <p className="release-title">{job.title}</p>
+      {job.movie_version && (
+        <p>
+          Movie version:{" "}
+          {(
+            {
+              hd: "HD",
+              uhd: "4K",
+              additional: "Additional copy",
+              replacement: "Reviewed replacement",
+            } as Record<string, string>
+          )[job.movie_version] || job.movie_version}
+        </p>
+      )}
       <p className="field-help">
         {job.client_label ??
           (job.protocol === "usenet"

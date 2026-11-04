@@ -20,6 +20,7 @@ type PlanningFilter struct {
 }
 type PlanningEntry struct {
 	Kind              string `json:"kind"`
+	MovieVersion      string `json:"movie_version,omitempty"`
 	MediaID           int64  `json:"media_id"`
 	EpisodeID         *int64 `json:"episode_id"`
 	Title             string `json:"title"`
@@ -72,15 +73,15 @@ type PlanningPage struct {
 const planningCTE = `WITH clock AS (SELECT ? AS today), raw AS (
  SELECT m.kind,m.id AS media_id,NULL AS episode_id,m.title,m.year,'' AS episode_title,NULL AS season,NULL AS episode,m.release_date AS raw_date,m.poster_path,
  m.monitored AS monitored,CASE WHEN m.monitored=0 THEN 'Movie monitoring is paused.' ELSE '' END AS monitoring_reason,
- EXISTS(SELECT 1 FROM media_files f WHERE f.movie_id=m.id) AS available,
- COALESCE((SELECT d.id FROM downloads d WHERE d.movie_id=m.id AND d.kind='movie' AND d.state NOT IN ('completed','cancelled') ORDER BY d.created_at DESC,d.id DESC LIMIT 1),'') AS download_id
- FROM media_items m WHERE m.kind='movie'
+ EXISTS(SELECT 1 FROM media_files f WHERE f.movie_id=m.id AND (mv.version='' OR (mv.version='hd' AND f.video_resolution BETWEEN 1 AND 1080) OR (mv.version='uhd' AND f.video_resolution=2160))) AS available,
+ COALESCE((SELECT d.id FROM downloads d WHERE d.movie_id=m.id AND d.kind='movie' AND d.state NOT IN ('completed','cancelled') AND (mv.version='' OR d.movie_version IN ('',mv.version)) ORDER BY d.created_at DESC,d.id DESC LIMIT 1),'') AS download_id,mv.version AS movie_version
+ FROM media_items m CROSS JOIN (SELECT '' AS version UNION ALL SELECT 'hd' UNION ALL SELECT 'uhd') mv LEFT JOIN movie_version_settings vs ON vs.media_id=m.id WHERE m.kind='movie' AND ((COALESCE(vs.enabled,0)=0 AND mv.version='') OR (vs.enabled=1 AND mv.version<>''))
  UNION ALL
  SELECT m.kind,m.id,e.id,m.title,m.year,e.title,s.number,e.number,e.air_date,m.poster_path,
  (m.monitored=1 AND s.monitored=1 AND e.monitored=1),
  CASE WHEN m.monitored=0 THEN 'Show monitoring is paused.' WHEN s.monitored=0 THEN 'Season monitoring is paused.' WHEN e.monitored=0 THEN 'Episode is not monitored.' ELSE '' END,
  EXISTS(SELECT 1 FROM episode_files ef WHERE ef.episode_id=e.id),
- COALESCE((SELECT d.id FROM episode_downloads ed JOIN downloads d ON d.id=ed.download_id WHERE ed.episode_id=e.id AND d.state NOT IN ('completed','cancelled') ORDER BY d.created_at DESC,d.id DESC LIMIT 1),'')
+ COALESCE((SELECT d.id FROM episode_downloads ed JOIN downloads d ON d.id=ed.download_id WHERE ed.episode_id=e.id AND d.state NOT IN ('completed','cancelled') ORDER BY d.created_at DESC,d.id DESC LIMIT 1),''),''
  FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id WHERE s.loaded_at<>'' AND m.kind='series'
 ), normalized AS (
  SELECT r.*,CASE WHEN length(raw_date)=10 AND substr(raw_date,1,4) BETWEEN '0001' AND '9999' AND date(raw_date,'+0 days')=raw_date THEN raw_date ELSE '' END AS date,
@@ -196,14 +197,14 @@ func (s *Store) planning(ctx context.Context, f PlanningFilter, now time.Time, c
 		return out, e
 	}
 	selectedArgs = append(selectedArgs, out.Limit, (out.Page-1)*out.Limit)
-	rows, e = tx.QueryContext(ctx, planningCTE+`SELECT kind,media_id,episode_id,title,year,episode_title,season,episode,date,monitored,monitoring_reason,available,status,download_id,download_state,protocol,poster_path FROM filtered`+selected+` ORDER BY date='',date,title COLLATE NOCASE,media_id,COALESCE(episode_id,0) LIMIT ? OFFSET ?`, selectedArgs...)
+	rows, e = tx.QueryContext(ctx, planningCTE+`SELECT kind,media_id,episode_id,title,year,episode_title,season,episode,date,monitored,monitoring_reason,available,status,download_id,download_state,protocol,poster_path,movie_version FROM filtered`+selected+` ORDER BY date='',date,title COLLATE NOCASE,media_id,COALESCE(episode_id,0),movie_version LIMIT ? OFFSET ?`, selectedArgs...)
 	if e != nil {
 		return out, e
 	}
 	for rows.Next() {
 		var v PlanningEntry
 		var poster string
-		if e = rows.Scan(&v.Kind, &v.MediaID, &v.EpisodeID, &v.Title, &v.Year, &v.EpisodeTitle, &v.Season, &v.Episode, &v.Date, &v.Monitored, &v.MonitoringReason, &v.Available, &v.Status, &v.DownloadID, &v.DownloadState, &v.Protocol, &poster); e != nil {
+		if e = rows.Scan(&v.Kind, &v.MediaID, &v.EpisodeID, &v.Title, &v.Year, &v.EpisodeTitle, &v.Season, &v.Episode, &v.Date, &v.Monitored, &v.MonitoringReason, &v.Available, &v.Status, &v.DownloadID, &v.DownloadState, &v.Protocol, &poster, &v.MovieVersion); e != nil {
 			rows.Close()
 			return out, e
 		}

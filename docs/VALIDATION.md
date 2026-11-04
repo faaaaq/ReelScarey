@@ -1778,3 +1778,38 @@ Executed with disposable/generated media only:
 
 No owner library, credentials, or server database was used or modified. Real-server
 scan timing and metadata-provider latency remain owner-server acceptance work.
+
+## Version 0.28 movie versions
+
+Executed against disposable/generated media:
+
+- All 185 frontend interaction tests, formatting, type checks and production
+  bundle; Docker build runs the same checks plus all Go tests and vet.
+- Backend race checks passed across all packages after fixing the existing-movie
+  YouTube reservation regression. Changed transfer, backup, HTTP and database
+  packages were rerun after their final changes. A standalone mounted-source
+  build initially could not read host Git metadata; vet and a build with host
+  VCS stamping disabled passed. The Docker release build is independent of that
+  metadata.
+- Real authenticated qBittorrent acquired generated 1080p and 2160p movies under
+  independent reservations, reopened the application while both were queued,
+  imported both through real FFprobe and retained both complete seeding sources.
+- Generated container scans attached both HD/4K files to one movie, retained
+  paths, bytes, inodes and modification times, and survived restart with the
+  saved version policy. Overlapping TV targets still require review.
+- Authenticated backup download/upload/restore preserved both registered movie
+  versions and their policy, revoked old sessions and retained recovery barriers.
+  Simple and hardened Compose startup, PUID/PGID, HTTPS proxy handling, storage
+  copy/activation/restart and existing feature-container acceptance passed.
+- Schema 43 to 44 preserved registered IDs, pending replacement intent, subtitle
+  tracks/jobs and staged subtitle edit bytes/row IDs. Separate-copy organization
+  preserved sidecars; replacing and rolling back HD left 4K untouched. Policy,
+  profile and monitoring changes during release fetch prevented stale queueing.
+- Prior hosted CI 41736345383 exposed a backup-list publication race: a reader
+  could see a record before JSON encoding finished. Records now publish from a
+  complete synced temporary file without replacement. A deterministic concurrent
+  publication test verifies that readers never see an unfinished record.
+
+The version controls and both file entries were inspected in a disposable browser
+session. The resulting dropdown styling uses the existing automation form layout.
+No owner-server media or download client was used for these checks.

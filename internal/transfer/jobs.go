@@ -17,6 +17,7 @@ type FileChoice struct {
 	Size        int64   `json:"size_bytes"`
 }
 type Job struct {
+	MovieVersion               string `json:"movie_version,omitempty"`
 	ClientKey                  string `json:"client_key,omitempty"`
 	ClientKind                 string `json:"client_kind,omitempty"`
 	ClientLabel                string `json:"client_label,omitempty"`
@@ -55,14 +56,14 @@ type Job struct {
 	organizationSnapshot       string
 }
 
-const jobColumns = `d.kind,d.id,d.movie_id,m.title,d.title,d.info_hash,d.state,d.progress,d.total_bytes,d.downloaded_bytes,d.client_state,d.selected_file,d.choices,d.attempts,d.error_code,d.error_message,d.created_at,d.updated_at,d.lease_owner,d.payload,d.client_url,d.save_path,d.submission_attempted,d.submitted_at,d.protocol,d.client_id,d.client_files,d.client_storage,d.organization_snapshot,d.anime_search_snapshot,d.anime_order_snapshot,d.client_key,d.client_kind,d.client_label,d.client_download_root,d.client_local_folder`
+const jobColumns = `d.kind,d.id,d.movie_id,m.title,d.title,d.info_hash,d.state,d.progress,d.total_bytes,d.downloaded_bytes,d.client_state,d.selected_file,d.choices,d.attempts,d.error_code,d.error_message,d.created_at,d.updated_at,d.lease_owner,d.payload,d.client_url,d.save_path,d.submission_attempted,d.submitted_at,d.protocol,d.client_id,d.client_files,d.client_storage,d.organization_snapshot,d.anime_search_snapshot,d.anime_order_snapshot,d.client_key,d.client_kind,d.client_label,d.client_download_root,d.client_local_folder,d.movie_version`
 
 type scanner interface{ Scan(...any) error }
 
 func scanJob(row scanner) (Job, error) {
 	var j Job
 	var choices, anime, order string
-	e := row.Scan(&j.Kind, &j.ID, &j.MovieID, &j.MovieTitle, &j.Title, &j.Hash, &j.State, &j.Progress, &j.Total, &j.Downloaded, &j.ClientState, &j.Selected, &choices, &j.Attempts, &j.ErrorCode, &j.ErrorMessage, &j.Created, &j.Updated, &j.owner, &j.payload, &j.clientURL, &j.savePath, &j.attempted, &j.submittedAt, &j.Protocol, &j.ClientID, &j.clientFiles, &j.clientStorage, &j.organizationSnapshot, &anime, &order, &j.ClientKey, &j.ClientKind, &j.ClientLabel, &j.clientRoot, &j.clientLocal)
+	e := row.Scan(&j.Kind, &j.ID, &j.MovieID, &j.MovieTitle, &j.Title, &j.Hash, &j.State, &j.Progress, &j.Total, &j.Downloaded, &j.ClientState, &j.Selected, &choices, &j.Attempts, &j.ErrorCode, &j.ErrorMessage, &j.Created, &j.Updated, &j.owner, &j.payload, &j.clientURL, &j.savePath, &j.attempted, &j.submittedAt, &j.Protocol, &j.ClientID, &j.clientFiles, &j.clientStorage, &j.organizationSnapshot, &anime, &order, &j.ClientKey, &j.ClientKind, &j.ClientLabel, &j.clientRoot, &j.clientLocal, &j.MovieVersion)
 	if e == nil {
 		e = json.Unmarshal([]byte(choices), &j.Choices)
 	}
@@ -163,18 +164,22 @@ func (s *Service) Retry(ctx context.Context, id string) error {
 	if j.State != "blocked" && j.State != "failed" && j.State != "cancelled" {
 		return problem("download_busy", "Only downloads needing attention or stopped tracking can be retried.")
 	}
-	var other int
-	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE movie_id=? AND id<>? AND kind='movie' AND state NOT IN ('completed','cancelled')`, j.MovieID, id).Scan(&other); e != nil {
-		return e
-	}
-	if j.Kind != "series" && other > 0 {
-		return problem("movie_busy", "This movie has another active download.")
-	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
+	if j.Kind != "series" {
+		var replacementID int64
+		if j.MovieVersion == "replacement" {
+			if e = tx.QueryRowContext(ctx, `SELECT media_file_id FROM acquisition_replacements WHERE source_kind='download' AND job_id=?`, j.ID).Scan(&replacementID); e != nil {
+				return e
+			}
+		}
+		if e = reserveMovieVersion(ctx, tx, j.MovieID, j.MovieVersion, j.Title, j.ID, replacementID); e != nil {
+			return e
+		}
+	}
 	if j.Kind == "series" {
 		if e = reserveTV(ctx, tx, id, j.MovieID, j.Targets); e != nil {
 			return e

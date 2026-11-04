@@ -77,6 +77,7 @@ func TestRequesterCannotAccessAdministratorAPIs(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, route := range []struct{ method, path, body string }{
+		{"GET", "/api/v1/library/movies/1/versions", ""}, {"PUT", "/api/v1/library/movies/1/versions", `{}`},
 		{"GET", "/api/v1/settings", ""}, {"GET", "/api/v1/library", ""}, {"GET", "/api/v1/indexers", ""},
 		{"POST", "/api/v1/automation/run", "{}"}, {"PUT", "/api/v1/settings", validSettings},
 		{"GET", "/api/v1/requester/../settings", ""},

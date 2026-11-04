@@ -67,7 +67,7 @@ func (s *Service) build(ctx context.Context, root *os.Root, q query, ids []int64
 		if e := idle(ctx, q, v.MediaID, v.FileID); e != nil {
 			return nil, e
 		}
-		snapshot, e := s.capture(ctx, q, v.MediaID, target)
+		snapshot, e := s.captureFile(ctx, q, v.MediaID, v.FileID, target)
 		if e != nil {
 			return nil, e
 		}
@@ -428,7 +428,7 @@ func (s *Service) validate(ctx context.Context, root *os.Root, q query, p Plan, 
 		return problem("revision_conflict", "Organization rules changed after review. Create a new review.")
 	}
 	for _, v := range p.Files {
-		snap, e := s.capture(ctx, q, v.MediaID, p.TargetLibrary)
+		snap, e := s.captureFile(ctx, q, v.MediaID, v.FileID, p.TargetLibrary)
 		if e != nil {
 			return e
 		}

@@ -57,8 +57,9 @@ normalized title (and year when supplied). Loose movie files still require a yea
 or TMDb ID. TV uses explicit canonical season/episode labels such as `S01E02`,
 `1x02`, or `S01E02-E03`. Conflicting explicit IDs, years or season numbers,
 ambiguous title results, date/absolute Anime numbering and nonconsecutive episodes
-stay in review. Duplicate files claiming any of the same targets all stay in review;
-the app does not choose an arbitrary version. Clear canonical Anime numbering works
+stay in review. Multiple movie files can attach to the same movie, preserving each
+resolution or edition. Overlapping TV episode files stay in review; the app does
+not choose an arbitrary episode version. Clear canonical Anime numbering works
 in the configured Anime collection. Anime discovery scans series directly in the
 configured Anime folder (for example, /data/anime). Scan films through Movies,
 including anime films.
@@ -129,8 +130,9 @@ Previously reviewed exceptions can be retried with **Match clear files
 automatically**; a new scan skips paths that are already registered.
 
 Registered paths are compared conservatively without case distinctions. Existing
-movie files, episode registrations and active download reservations prevent a
-conflicting import. These conditions and canonical episode identities are checked
+paths, episode registrations and active episode download reservations prevent a
+conflicting import. Separate movie copies can register even while a movie download
+is active. These conditions and canonical episode identities are checked
 again inside the registration transaction. An expired/lost lease cannot commit.
 Crashes before commit retry verification; a committed registration is not added
 twice. This workflow writes application state only. Normal filesystem reads may
@@ -146,9 +148,10 @@ Your configured subtitle preferences may therefore create new sidecars after
 registration, while existing videos/sidecars remain protected.
 
 The page records an import snapshot; it does not continuously detect later edits,
-deletions or renames. Reassigning/removing/replacing a registered file, multiple
-versions of one movie and arbitrary-root imports remain
-future work. Ownership of filesystem mounts and their permission/access controls
+deletions or renames. Reviewed file replacement/removal and multiple movie versions
+are supported; see [movie versions](MOVIE_VERSIONS.md). Reassigning a registered
+file to another title and arbitrary-root imports remain future work.
+Ownership of filesystem mounts and their permission/access controls
 remains the host administrator's responsibility.
 
 ## Data and recovery

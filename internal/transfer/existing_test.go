@@ -182,7 +182,7 @@ func (f existingProbeFunc) Probe(ctx context.Context, file *os.File) (Probe, err
 	return f(ctx, file)
 }
 func TestExistingChangedFilesAndLeaseFences(t *testing.T) {
-	for _, mode := range []string{"before", "replace", "during", "lease", "download"} {
+	for _, mode := range []string{"before", "replace", "during", "lease"} {
 		t.Run(mode, func(t *testing.T) {
 			f := setupWorkflow(t)
 			ctx := context.Background()
@@ -222,8 +222,6 @@ func TestExistingChangedFilesAndLeaseFences(t *testing.T) {
 					_, e := f.db.Exec(`UPDATE library_scan_files SET lease_owner='other',lease_until=unixepoch()+60 WHERE id=?`, id)
 					return Probe{Codec: "h264", Width: 1920, Height: 1080, Duration: 90}, e
 				})
-			case "download":
-				_ = f.queue(t)
 			}
 			if _, e = f.s.ProcessLibraryNext(ctx); e != nil {
 				t.Fatal(e)

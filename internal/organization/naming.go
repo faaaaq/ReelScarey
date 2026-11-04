@@ -152,6 +152,9 @@ func Destination(s Snapshot, episodes []Episode, source string) (string, error) 
 			relative = path.Join(series, episode)
 		}
 	}
+	if m.Kind == "movie" && s.MovieVersion != "" {
+		relative += " [" + sanitize(s.MovieVersion, 70) + "]"
+	}
 	destination := path.Join(leaf(l, m.Kind), relative+extension)
 	if !validRelative(destination) {
 		return "", problem("invalid_template", "The naming template produced an unsafe or overlong path. Shorten its folders or filename.")

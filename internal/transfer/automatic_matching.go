@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/instance"
@@ -219,7 +220,7 @@ func (s *Service) saveAutomaticReview(ctx context.Context, scan, owner, file, me
 }
 func automaticTargetKeys(v automaticCandidate) []string {
 	if v.Snapshot.Kind == "movie" {
-		return []string{fmt.Sprintf("movie:%d", v.Snapshot.Choice.MediaID)}
+		return []string{"movie-file:" + strings.ToLower(v.Snapshot.File.Path)}
 	}
 	out := []string{}
 	for _, id := range v.Snapshot.Choice.Episodes {
@@ -264,7 +265,7 @@ func (s *Service) finishAutomaticResolution(ctx context.Context, scan, owner str
 			}
 		}
 		for id := range duplicates {
-			message := "Multiple files match the same movie or episode. Choose the intended version."
+			message := "Multiple files claim the same episode or file path. Review the overlap."
 			if _, err = tx.ExecContext(ctx, `UPDATE library_match_candidates SET state='review',message=? WHERE file_id=?`, message, id); err != nil {
 				return err
 			}

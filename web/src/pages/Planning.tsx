@@ -18,6 +18,7 @@ export type PlanningEntry = {
   series_status?: string;
   metadata_updated_at?: number;
   kind: "movie" | "series";
+  movie_version?: string;
   media_id: number;
   episode_id: number | null;
   title: string;
@@ -359,7 +360,7 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
                   <div className="planning-items">
                     {entries.map((entry) => (
                       <PlanningCard
-                        key={`${entry.kind}-${entry.media_id}-${entry.episode_id ?? "movie"}`}
+                        key={`${entry.kind}-${entry.media_id}-${entry.episode_id ?? "movie"}-${entry.movie_version ?? ""}`}
                         entry={entry}
                         calendar={calendar}
                       />
@@ -395,7 +396,7 @@ function PlanningCard({
   const path = tv ? `/series/${entry.media_id}` : `/movies/${entry.media_id}`;
   const release = tv
     ? `/releases?series=${entry.media_id}&season=${entry.season}&episode=${entry.episode}`
-    : `/releases?movie=${entry.media_id}`;
+    : `/releases?movie=${entry.media_id}${entry.movie_version ? `&movie_version=${entry.movie_version}` : ""}`;
   const code = tv
     ? `S${String(entry.season).padStart(2, "0")}E${String(entry.episode).padStart(2, "0")}`
     : "Movie";
@@ -417,6 +418,11 @@ function PlanningCard({
       <div className="planning-copy">
         <Heading>
           <Link to={path}>{entry.title}</Link>
+          {entry.movie_version && (
+            <Badge color="gray">
+              {entry.movie_version === "uhd" ? "4K" : "HD"}
+            </Badge>
+          )}
           {entry.year ? <span> ({entry.year})</span> : null}
         </Heading>
         <p>

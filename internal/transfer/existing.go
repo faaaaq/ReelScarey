@@ -538,11 +538,14 @@ func (s *Service) queueExistingRegistrationTx(ctx context.Context, tx *sql.Tx, i
 func existingTargetFree(ctx context.Context, tx *sql.Tx, id int64, kind string, targets []TVTarget) error {
 	var count int
 	if kind == "movie" {
-		if e := tx.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM media_files WHERE movie_id=?)+(SELECT COUNT(*) FROM downloads WHERE movie_id=? AND state NOT IN ('completed','cancelled'))+(SELECT COUNT(*) FROM youtube_jobs WHERE media_id=? AND target_kind='movie' AND state NOT IN ('completed','cancelled','failed'))`, id, id, id).Scan(&count); e != nil {
+		// Registering an existing version never replaces files or changes download
+		// destinations. Path ownership is rechecked by the registration worker.
+		// YouTube still reserves the whole movie and has no version selector.
+		if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM youtube_jobs WHERE media_id=? AND target_kind='movie' AND state NOT IN ('completed','cancelled','failed')`, id).Scan(&count); e != nil {
 			return e
 		}
 		if count > 0 {
-			return problem("movie_busy", "This movie already has a registered file or active download. Stop tracking its download first or choose another title.")
+			return problem("movie_busy", "This movie has an active YouTube acquisition. Finish or cancel it before registering another version.")
 		}
 		return nil
 	}

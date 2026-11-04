@@ -154,6 +154,7 @@ export type Release = {
   published_at: string;
 };
 export type DownloadJob = {
+  movie_version?: string;
   client_key?: string;
   client_kind?: "qbittorrent" | "sabnzbd" | "nzbget";
   client_label?: string;

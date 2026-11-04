@@ -11,6 +11,7 @@ import {
 } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
+import type { MovieVersionSettings } from "./MovieVersions";
 
 export function bytes(size: number) {
   if (size <= 0) return "Size unknown";
@@ -48,7 +49,19 @@ function ReleaseBrowser() {
   const replacementFiles = useResource<{
     items: { id: number; path: string }[];
   }>(`/organization/files?media_id=${movieID}`);
-  const [replacementID, setReplacementID] = useState("");
+  const versions = useResource<MovieVersionSettings>(
+    valid && !tv ? `/library/movies/${movieID}/versions` : null,
+  );
+  const [purpose, setPurpose] = useState(
+    tv
+      ? ""
+      : ["hd", "uhd", "additional"].includes(params.get("movie_version") ?? "")
+        ? params.get("movie_version")!
+        : "",
+  );
+  const replacementID = /^[1-9][0-9]*$/.test(purpose) ? purpose : "";
+  const movieVersion =
+    !tv && ["hd", "uhd", "additional"].includes(purpose) ? purpose : "";
   const [input, setInput] = useState("");
   const [items, setItems] = useState<Release[]>();
   const [searching, setSearching] = useState(false);
@@ -93,6 +106,7 @@ function ReleaseBrowser() {
         method: "POST",
         body: JSON.stringify({
           release_id: id,
+          ...(movieVersion ? { movie_version: movieVersion } : {}),
           ...(replacementID
             ? { replacement_file_id: Number(replacementID) }
             : {}),
@@ -128,24 +142,43 @@ function ReleaseBrowser() {
       <Link className="text-link" to={tv ? `/series/${movieID}` : "/movies"}>
         {tv ? "Back to show" : "Back to movies"}
       </Link>
-      {!!replacementFiles.data?.items.length && (
-        <section className="panel">
+      {(!tv || !!replacementFiles.data?.items.length) && (
+        <section className="panel automation-panel">
           <label>
             Download purpose{" "}
             <select
-              value={replacementID}
-              onChange={(e) => setReplacementID(e.target.value)}
+              value={purpose}
+              disabled={searching || !!pending}
+              onChange={(e) => setPurpose(e.target.value)}
             >
               <option value="">
                 Normal import (existing files are protected)
               </option>
-              {replacementFiles.data.items.map((f) => (
+              {!tv && (
+                <option value="additional">
+                  Keep existing files and add another version
+                </option>
+              )}
+              {!tv && versions.data?.enabled && (
+                <>
+                  <option value="hd">HD version (up to 1080p)</option>
+                  <option value="uhd">4K version (2160p)</option>
+                </>
+              )}
+              {replacementFiles.data?.items.map((f) => (
                 <option key={f.id} value={f.id}>
                   Acquire replacement for {f.path}
                 </option>
               ))}
             </select>
           </label>
+          {!tv && (
+            <p>
+              Additional versions get separate filenames. HD and 4K downloads
+              fill their own missing version; an existing copy is never
+              overwritten.
+            </p>
+          )}
           <p>
             Replacement downloads are verified and retained for a separate
             review. TV mapping must cover every episode in the selected file.

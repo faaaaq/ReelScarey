@@ -13,6 +13,15 @@ func replacementTarget(ctx context.Context, q queryer, t Target) (int64, string,
 	var sha string
 	var err error
 	if t.Kind == "movie" {
+		var count int
+		if err = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_files WHERE movie_id=?`, t.MediaID).Scan(&count); err != nil {
+			return 0, "", err
+		}
+		// This workflow has no explicit file selector; never silently pick one of
+		// several registered versions for replacement.
+		if count > 1 {
+			return 0, "", ErrBusy
+		}
 		err = q.QueryRowContext(ctx, `SELECT id,sha256 FROM media_files WHERE movie_id=?`, t.MediaID).Scan(&id, &sha)
 	} else {
 		err = q.QueryRowContext(ctx, `SELECT f.id,f.sha256 FROM media_files f JOIN episode_files e ON e.media_file_id=f.id WHERE e.episode_id=?`, t.EpisodeID).Scan(&id, &sha)

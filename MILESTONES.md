@@ -122,3 +122,12 @@ The release workflow is prepared for versioned image tags, SBOM/provenance and
 conditional signing. Actual signed publication remains outstanding until its
 repository/account requirements and owner license decision are satisfied; see
 [release process](docs/RELEASING.md). Optional extensions are not part of the current completion scope.
+
+## Version 0.28 movie versions
+
+- [x] Attach multiple existing movie files without duplicate-title rejection.
+- [x] Opt-in HD and 4K targets with independent quality profiles and downloads.
+- [x] Explicit additional-edition acquisition, distinct filenames and file status.
+- [x] Per-file replacement/rollback and version-aware organization preserve other copies.
+
+See [movie versions](docs/MOVIE_VERSIONS.md) and [executed validation](docs/VALIDATION.md).

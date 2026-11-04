@@ -126,6 +126,17 @@ func persist(root *os.Root, name string, v any) error {
 	return errors.Join(e, f.Close())
 }
 
+// Readers must see a complete record or no record. Publishing the final name
+// before encoding allowed a concurrent backup-list refresh to see partial JSON.
+func publishRecord(root *os.Root, name string, v any) error {
+	tmp := ".record-" + id()
+	defer root.Remove(tmp)
+	if e := persist(root, tmp, v); e != nil {
+		return e
+	}
+	return root.Link(tmp, name)
+}
+
 func (s *Service) record(archiveID string) (Archive, error) {
 	var a Archive
 	if !validID.MatchString(archiveID) {
@@ -382,7 +393,7 @@ func (s *Service) publish(ctx context.Context, filename, kind string, m maintena
 	if e = root.Link(filepath.Base(filename), a.ID+".zip"); e != nil {
 		return a, e
 	}
-	if e = persist(root, a.ID+".json", a); e != nil {
+	if e = publishRecord(root, a.ID+".json", a); e != nil {
 		return a, e
 	}
 	if e = syncDir(root); e != nil {

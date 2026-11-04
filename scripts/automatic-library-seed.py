@@ -16,10 +16,12 @@ if '--verify' in sys.argv:
         file = root / name
         actual = [hashlib.sha256(file.read_bytes()).hexdigest(), file.stat().st_mtime_ns, file.stat().st_ino]
         assert actual == expected, name
-    assert db.execute('SELECT COUNT(*) FROM media_files').fetchone()[0] == 3
+    assert db.execute('SELECT COUNT(*) FROM media_files').fetchone()[0] == 5
     assert db.execute('SELECT COUNT(*) FROM episode_files').fetchone()[0] == 3
     assert db.execute('SELECT COUNT(*) FROM downloads').fetchone()[0] == 0
-    assert db.execute("SELECT COUNT(*) FROM library_match_candidates WHERE state='review'").fetchone()[0] == 3
+    assert db.execute("SELECT COUNT(*) FROM library_match_candidates WHERE state='review'").fetchone()[0] == 1
+    assert db.execute("SELECT enabled FROM movie_version_settings WHERE media_id=3").fetchone()[0] == 1
+    assert db.execute("SELECT video_resolution FROM media_files WHERE movie_id=3 ORDER BY video_resolution").fetchall() == [(1080,), (2160,)]
     for relative, sha, probe, observation in db.execute('SELECT relative_path,sha256,probe_json,verification_json FROM media_files'):
         assert sha == '', 'large fixture should use fast observation'
         observed = json.loads(observation)
@@ -27,15 +29,16 @@ if '--verify' in sys.argv:
         assert observed['mtime'] == (root / relative).stat().st_mtime_ns
         assert len(observed['sample']) == 64
         facts = json.loads(probe)
-        assert facts['codec'] == 'h264' and facts['width'] == 160
+        width = 3840 if '2160p' in relative else 1920 if '1080p' in relative else 160
+        assert facts['codec'] == 'h264' and facts['width'] == width
     assert db.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
     assert db.execute('PRAGMA foreign_key_check').fetchall() == []
-    print('Automatic movie/TV registration verified: real FFprobe, three canonical episodes, duplicate exceptions, source bytes/inodes/timestamps preserved, no fabricated downloads.')
+    print('Automatic movie/TV registration verified: real FFprobe, concurrent HD/4K movie files, retained version policy, three canonical episodes, source bytes/inodes/timestamps preserved, no fabricated downloads.')
     sys.exit(0)
 
 names = ['Movies/Fixture Movie (2026)/Fixture.Movie.2026.mp4',
-         'Movies/Duplicate Movie (2026)/Duplicate.Movie.2026.720p.mp4',
-         'Movies/Duplicate Movie (2026)/Duplicate.Movie.2026.1080p.mp4',
+         'Movies/Duplicate Movie (2026)/Duplicate.Movie.2026.1080p.SDR.mp4',
+         'Movies/Duplicate Movie (2026)/Duplicate.Movie.2026.2160p.HDR.mp4',
          'Movies/Uncertain.mp4',
          'TV Shows/Fixture Show (2026)/Season 01/S01E01.mp4',
          'TV Shows/Fixture Show (2026)/Season 01/S01E02-E03.mp4']
@@ -43,8 +46,9 @@ evidence = {}
 for index, name in enumerate(names):
     file = root / name
     file.parent.mkdir(parents=True, exist_ok=True)
-    if index == 0:
-        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=c=blue:s=160x90:r=10','-t','2','-c:v','libx264','-pix_fmt','yuv420p',str(file)],check=True)
+    if index <= 2:
+        size = '3840x2160' if index == 2 else '1920x1080' if index == 1 else '160x90'
+        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'color=c=blue:s={size}:r=1','-frames:v','2','-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p',str(file)],check=True)
         # Place the metadata after a sparse padding box. Inspection must seek,
         # and registration must retain a bounded observation across restart.
         data = file.read_bytes()
