@@ -28,6 +28,7 @@ func TestMovieVersionsOrganizationKeepsSeparateFilesAndSidecars(t *testing.T) {
 	if p.Files[0].Destination == p.Files[1].Destination || !strings.Contains(p.Files[0].Destination, "1080p") || !strings.Contains(p.Files[1].Destination, "2160p") {
 		t.Fatal(p.Files)
 	}
+	appliedID := p.ID
 	if _, err = f.s.Apply(ctx, p.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +53,29 @@ func TestMovieVersionsOrganizationKeepsSeparateFilesAndSidecars(t *testing.T) {
 	p, err = f.s.Preview(ctx, []int64{1, 2}, "")
 	if err != nil || !p.Files[0].Unchanged || !p.Files[1].Unchanged {
 		t.Fatal("unstable version names", p, err)
+	}
+	rollback, err := f.s.PreviewRollback(ctx, appliedID)
+	if err != nil {
+		t.Fatal("multi-file rollback preview failed", err)
+	}
+	if len(rollback.Files) != 2 {
+		t.Fatal("rollback did not retain both versions", rollback.Files)
+	}
+	if _, err = f.s.Apply(ctx, rollback.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.s.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range rollback.Files {
+		want := "HD video"
+		if v.FileID == 2 {
+			want = "4K video"
+		}
+		body, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(v.Destination)))
+		if e != nil || string(body) != want {
+			t.Fatal("rollback did not restore version", v.Destination, string(body), e)
+		}
 	}
 }
 
