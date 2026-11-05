@@ -18,22 +18,26 @@ import (
 // encoding statistics which the muxer recalculates.
 type tagManifest struct {
 	Streams []struct {
-		Index         int               `json:"index"`
-		Type          string            `json:"codec_type"`
-		Codec         string            `json:"codec_name"`
-		CodecTag      string            `json:"codec_tag_string"`
-		Width         int               `json:"width"`
-		Height        int               `json:"height"`
-		SampleRate    string            `json:"sample_rate"`
-		Channels      int               `json:"channels"`
-		ChannelLayout string            `json:"channel_layout"`
-		PixelFormat   string            `json:"pix_fmt"`
-		SampleFormat  string            `json:"sample_fmt"`
-		FrameRate     string            `json:"r_frame_rate"`
-		TimeBase      string            `json:"time_base"`
-		ExtraHash     string            `json:"extradata_hash"`
-		Tags          map[string]string `json:"tags"`
-		Disposition   map[string]int    `json:"disposition"`
+		Index          int               `json:"index"`
+		Type           string            `json:"codec_type"`
+		Codec          string            `json:"codec_name"`
+		CodecTag       string            `json:"codec_tag_string"`
+		Width          int               `json:"width"`
+		Height         int               `json:"height"`
+		SampleRate     string            `json:"sample_rate"`
+		Channels       int               `json:"channels"`
+		ChannelLayout  string            `json:"channel_layout"`
+		PixelFormat    string            `json:"pix_fmt"`
+		SampleFormat   string            `json:"sample_fmt"`
+		FrameRate      string            `json:"r_frame_rate"`
+		TimeBase       string            `json:"time_base"`
+		ColorTransfer  string            `json:"color_transfer"`
+		ColorPrimaries string            `json:"color_primaries"`
+		ColorSpace     string            `json:"color_space"`
+		ColorRange     string            `json:"color_range"`
+		ExtraHash      string            `json:"extradata_hash"`
+		Tags           map[string]string `json:"tags"`
+		Disposition    map[string]int    `json:"disposition"`
 	} `json:"streams"`
 	Chapters []struct {
 		Start string            `json:"start_time"`
@@ -56,7 +60,7 @@ func retagInspect(ctx context.Context, f *os.File) (retagResult, error) {
 	if _, e := f.Seek(0, 0); e != nil {
 		return out, e
 	}
-	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", "pipe", "-show_data_hash", "sha256", "-show_entries", "stream=index,codec_type,codec_name,codec_tag_string,extradata_hash,width,height,sample_rate,channels,channel_layout,pix_fmt,sample_fmt,r_frame_rate,time_base:stream_tags:stream_disposition:chapter=start_time,end_time:chapter_tags:format_tags", "-of", "json", "-i", "pipe:0")
+	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", "pipe", "-show_data_hash", "sha256", "-show_entries", "stream=index,codec_type,codec_name,codec_tag_string,extradata_hash,width,height,sample_rate,channels,channel_layout,pix_fmt,sample_fmt,r_frame_rate,time_base,color_transfer,color_primaries,color_space,color_range:stream_tags:stream_disposition:chapter=start_time,end_time:chapter_tags:format_tags", "-of", "json", "-i", "pipe:0")
 	hideProbeWindow(cmd)
 	cmd.Stdin = f
 	cmd.Stderr = io.Discard

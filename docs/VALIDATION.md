@@ -1817,18 +1817,24 @@ No owner-server media or download client was used for these checks.
 ## Version 0.30 inspected quality and copy-free title updates
 
 - FFprobe records `color_transfer`; generated media tests cover the SDR, HDR10
-  and HLG mapping, and schema 46 was migrated from a populated schema-45
-  database.
+  and HLG mapping. Migration 046 applied to a populated older-schema database
+  and leaves pre-HDR probes unknown rather than claiming SDR.
 - Organization and import naming tests assert inspected resolution plus the
   HDR/SDR tag, multi-version suffix composition and the absence of a quality
   claim for unverified files.
 - Embedded-title jobs write and verify a metadata-only stage, replace the
   original in place, record the previous title and both checksums, keep torrent
   seeding hardlinks, and resume after an interruption between the rename and the
-  saved phase advance.
+  saved phase advance. Retag verification now compares color transfer,
+  primaries, space and range; a generated HDR10 Matroska fixture retained HDR10
+  signaling and the new title.
 - Undo-move accepts a current file only when a completed metadata-only plan
   records its exact bytes; arbitrary content changes still require a reviewed
   restore.
+- Real Linux FFmpeg/FFprobe acceptance generated and rewrote MP4, M4V,
+  Matroska, MOV, AVI and WebM files. Each verified stage replaced the original
+  with no retained duplicate, preserved a hardlinked seeding source, recorded the
+  previous title, and resumed after an interruption between the rename and the
+  saved phase advance.
 - Frontend formatting, type checks, 186 interaction tests and the production
   bundle passed. Go tests and vet passed across all packages.
-

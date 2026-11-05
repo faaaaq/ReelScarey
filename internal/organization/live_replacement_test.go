@@ -234,6 +234,103 @@ func liveEmbeddedTitleReplacesInPlace(t *testing.T, ext string) {
 	}
 }
 
+func TestLiveHDRTitleRewritePreservesTransfer(t *testing.T) {
+	if os.Getenv("REELSCAREY_LIVE_REPLACEMENT") != "1" {
+		t.Skip("requires generated media and FFmpeg")
+	}
+	ctx := context.Background()
+	dir := t.TempDir()
+	cfg := config.Config{MediaDir: filepath.Join(dir, "media"), ConfigDir: filepath.Join(dir, "config"), DownloadsDir: filepath.Join(dir, "downloads")}
+	for _, v := range []string{cfg.MediaDir, cfg.DownloadsDir} {
+		if e := os.MkdirAll(v, 0700); e != nil {
+			t.Fatal(e)
+		}
+	}
+	db, e := database.Open(ctx, cfg.ConfigDir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	rel := "Movies/Film/Film.mkv"
+	name := filepath.Join(cfg.MediaDir, filepath.FromSlash(rel))
+	if e = os.MkdirAll(filepath.Dir(name), 0700); e != nil {
+		t.Fatal(e)
+	}
+	cmd := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:r=10", "-t", "1",
+		"-vf", "setparams=color_trc=smpte2084:color_primaries=bt2020:colorspace=bt2020nc",
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-metadata", "title=Wrong Title", "-y", name)
+	if b, e := cmd.CombinedOutput(); e != nil {
+		t.Fatalf("generate: %v %s", e, b)
+	}
+	original, e := os.ReadFile(name)
+	if e != nil {
+		t.Fatal(e)
+	}
+	sum := sha256.Sum256(original)
+	f, e := os.Open(name)
+	if e != nil {
+		t.Fatal(e)
+	}
+	probe, e := (transfer.FFprobe{}).Probe(ctx, f)
+	f.Close()
+	if e != nil || !probe.HDR {
+		t.Fatal("generated HDR fixture was not detected", probe, e)
+	}
+	raw, e := json.Marshal(probe)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,status) VALUES(1,'movie',1,'Correct Title',2020,'available')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`INSERT INTO media_files(id,movie_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin,source_name) VALUES(1,1,?,?,?,?,1,'existing',?)`, rel, len(original), hex.EncodeToString(sum[:]), string(raw), "Film.mkv"); e != nil {
+		t.Fatal(e)
+	}
+	s := organization.New(db, cfg)
+	s.SetProbe(func(ctx context.Context, f *os.File) (string, error) {
+		p, e := (transfer.FFprobe{}).Probe(ctx, f)
+		if e != nil {
+			return "", e
+		}
+		b, e := json.Marshal(p)
+		return string(b), e
+	})
+	s.SetTagger(func(ctx context.Context, source, stage *os.File, ext, title string) (string, error) {
+		p, e := transfer.RewriteTitleVerified(ctx, source, stage, ext, title)
+		if e != nil {
+			return "", e
+		}
+		b, e := json.Marshal(p)
+		return string(b), e
+	})
+	p, e := s.PreviewEmbeddedTitle(ctx, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	f, e = os.Open(name)
+	if e != nil {
+		t.Fatal(e)
+	}
+	after, e := (transfer.FFprobe{}).Probe(ctx, f)
+	f.Close()
+	if e != nil || !after.HDR || after.Title == nil || *after.Title != "Correct Title" {
+		t.Fatal("HDR transfer or title was not preserved", after, e)
+	}
+	saved, e := s.Plan(ctx, p.ID)
+	if e != nil || saved.Replacement.PreviousTitle == nil || *saved.Replacement.PreviousTitle != "Wrong Title" {
+		t.Fatal(saved, e)
+	}
+	if backups, _ := filepath.Glob(filepath.Join(cfg.MediaDir, ".reelscarey-versions", ".reelscarey-version-*")); len(backups) != 0 {
+		t.Fatal("title update retained a video copy", backups)
+	}
+}
+
 func TestLiveOrganizationUpdatesEmbeddedTitle(t *testing.T) {
 	if os.Getenv("REELSCAREY_LIVE_REPLACEMENT") != "1" {
 		t.Skip("requires generated media and FFmpeg")
