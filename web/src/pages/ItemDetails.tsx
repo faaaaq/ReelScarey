@@ -186,7 +186,31 @@ export function ItemInformation({
         <>
           {hero && (
             <>
+              <Link
+                className="detail-back"
+                to={
+                  data.item.category === "anime"
+                    ? "/anime"
+                    : data.item.kind === "series"
+                      ? "/series"
+                      : "/movies"
+                }
+              >
+                ← Back to{" "}
+                {data.item.category === "anime"
+                  ? "Anime"
+                  : data.item.kind === "series"
+                    ? "TV shows"
+                    : "movies"}
+              </Link>
               <PageHeading
+                eyebrow={
+                  data.item.category === "anime"
+                    ? "Anime"
+                    : data.item.kind === "series"
+                      ? "TV show"
+                      : "Movie"
+                }
                 title={data.item.title}
                 description={[
                   data.item.year,
@@ -198,69 +222,63 @@ export function ItemInformation({
                   .join(" · ")}
               >
                 <Button
+                  size="2"
                   variant="soft"
                   disabled={busy}
                   onClick={() => void refresh()}
                 >
-                  <RefreshCw size={16} />
+                  <RefreshCw size={15} />
                   {busy ? "Updating details…" : "Refresh metadata"}
                 </Button>
               </PageHeading>
-              <Link
-                className="text-link"
-                to={
-                  data.item.category === "anime"
-                    ? "/anime"
-                    : data.item.kind === "series"
-                      ? "/series"
-                      : "/movies"
-                }
-              >
-                Back to{" "}
-                {data.item.category === "anime"
-                  ? "Anime"
-                  : data.item.kind === "series"
-                    ? "TV shows"
-                    : "movies"}
-              </Link>
-              <section className="panel item-hero">
-                <Link
-                  className="text-link"
-                  to={`/organization?media_id=${data.item.id}`}
-                >
-                  Organize or remove this title
-                </Link>
+
+              <section className="detail-hero">
+                {data.item.poster_url && (
+                  <div
+                    className="detail-backdrop"
+                    aria-hidden="true"
+                    style={{
+                      backgroundImage: `url(${data.item.poster_url})`,
+                    }}
+                  />
+                )}
                 <Poster movie={data.item} />
-                <div>
-                  <div className="item-badges">
-                    <Badge
-                      color={
+                <div className="detail-copy">
+                  <div className="detail-badges">
+                    <span
+                      className={`ui-chip ${
                         data.file_count > 0
                           ? "green"
                           : data.item.status === "downloading"
-                            ? "gray"
+                            ? "blue"
                             : "amber"
-                      }
+                      }`}
                     >
                       {data.file_count > 0
                         ? "On disk"
                         : data.item.status === "downloading"
                           ? "Downloading"
                           : "Missing"}
-                    </Badge>
-                    <Badge color="gray">
+                    </span>
+                    <span className="ui-chip">
                       {data.item.monitored ? "Monitored" : "Not monitored"}
-                    </Badge>
+                    </span>
                     {info?.rating ? (
-                      <Badge>{info.rating.toFixed(1)} / 10 · TMDb</Badge>
+                      <span className="ui-chip blue">
+                        {info.rating.toFixed(1)} / 10 · TMDb
+                      </span>
                     ) : null}
                   </div>
                   {info?.tagline && (
-                    <p className="item-tagline">{info.tagline}</p>
+                    <p className="detail-tagline">{info.tagline}</p>
                   )}
-                  <p>{data.item.overview || "No synopsis is available yet."}</p>
-                  <p className="field-help">{info?.genres.join(" · ")}</p>
-                  <div className="item-links">
+                  <p className="detail-overview">
+                    {data.item.overview || "No synopsis is available yet."}
+                  </p>
+                  {info?.genres.length ? (
+                    <p className="detail-genres">{info.genres.join(" · ")}</p>
+                  ) : null}
+                  <div className="detail-actions">
                     {info?.imdb_url && (
                       <External href={info.imdb_url}>IMDb</External>
                     )}
@@ -274,76 +292,94 @@ export function ItemInformation({
                     </External>
                     {info?.trailer_url && (
                       <External href={info.trailer_url}>
-                        <Play size={16} />
+                        <Play size={15} />
                         Watch trailer
                       </External>
                     )}
                     {data.item.kind === "movie" && (
-                      <Button asChild variant="soft">
+                      <Button asChild size="2" variant="soft">
                         <Link to={`/releases?movie=${id}`}>Find releases</Link>
                       </Button>
                     )}
-                    <Button asChild variant="soft">
+                    <Button asChild size="2" variant="soft">
                       <Link to="/automation">Quality & automation</Link>
                     </Button>
+                    <Link
+                      className="text-link"
+                      to={`/organization?media_id=${data.item.id}`}
+                    >
+                      Organize or remove
+                    </Link>
                   </div>
                 </div>
               </section>
+
+              <div className="detail-stats">
+                <div>
+                  <span>Registered files</span>
+                  <strong>{data.file_count}</strong>
+                </div>
+                <div>
+                  <span>Total file size</span>
+                  <strong>
+                    {data.total_size_bytes
+                      ? bytes(data.total_size_bytes)
+                      : "No files imported"}
+                  </strong>
+                </div>
+                <div>
+                  <span>Download history</span>
+                  <strong>
+                    {data.history_count}{" "}
+                    {data.history_count === 1 ? "release" : "releases"}
+                  </strong>
+                </div>
+              </div>
             </>
           )}
-          <section className="panel system-panel">
-            <h2>In your library</h2>
-            <div className="item-storage-stats">
+          <section className="panel">
+            <div className="ui-section-head">
               <div>
-                <span>Registered files</span>
-                <strong>{data.file_count}</strong>
-              </div>
-              <div>
-                <span>Total file size</span>
-                <strong>
-                  {data.total_size_bytes
-                    ? bytes(data.total_size_bytes)
-                    : "No files imported"}
-                </strong>
-              </div>
-              <div>
-                <span>Download history</span>
-                <strong>
-                  {data.history_count}{" "}
-                  {data.history_count === 1 ? "release" : "releases"}
-                </strong>
+                <h2>Storage locations</h2>
+                <p>Paths come from verified records, not a disk scan.</p>
               </div>
             </div>
-            <p className="field-help">
+            <dl className="ui-path-list">
+              <div>
+                <dt>Media root</dt>
+                <dd>
+                  <code>{data.media_root}</code>
+                </dd>
+              </div>
+              <div>
+                <dt>Current destination</dt>
+                <dd>
+                  <code>{data.library_root}</code>
+                </dd>
+              </div>
+            </dl>
+            <p className="ui-note">
               Sizes and locations come from verified import records. They are
               not a current disk scan or a measure of physical space used by
-              hardlinks.
-            </p>
-            <dl className="detail-paths">
-              <dt>Media root</dt>
-              <dd>
-                <code>{data.media_root}</code>
-              </dd>
-              <dt>Current destination root</dt>
-              <dd>
-                <code>{data.library_root}</code>
-              </dd>
-            </dl>
-            <p className="field-help">
-              Existing files retain their original locations when folder
-              preferences change.
+              hardlinks. Existing files retain their original locations when
+              folder preferences change.
             </p>
           </section>
-          <section className="panel system-panel">
-            <h2>Files & locations</h2>
+          <section className="panel">
+            <div className="ui-section-head">
+              <div>
+                <h2>Files & locations</h2>
+                <p>Verified files, stream facts and provenance.</p>
+              </div>
+            </div>
             {data.files.length ? (
-              <div className="file-details-list">
+              <div>
                 {data.files.map((file) => (
-                  <article key={file.id}>
+                  <article className="file-row" key={file.id}>
                     {data.item.kind === "movie" && (
-                      <Badge color="green">
+                      <span className="ui-chip green">
                         {file.version_label || "Movie version"} · On disk
-                      </Badge>
+                      </span>
                     )}
                     <h3>
                       {file.path.split("/").at(-1)} · {bytes(file.size_bytes)}
@@ -510,7 +546,7 @@ export function ItemInformation({
                     ),
                   ];
                   return (
-                    <section className="panel system-panel" key={group.name}>
+                    <section className="panel" key={group.name}>
                       <h2>{group.name}</h2>
                       <p>
                         {names.length
@@ -521,8 +557,13 @@ export function ItemInformation({
                   );
                 })}
               </div>
-              <section className="panel system-panel">
-                <h2>Main cast</h2>
+              <section className="panel">
+                <div className="ui-section-head">
+                  <div>
+                    <h2>Main cast</h2>
+                    <p>Cast and roles from TMDb.</p>
+                  </div>
+                </div>
                 {info.cast.length ? (
                   <div className="cast-grid">
                     {info.cast.map((person) => (
@@ -567,12 +608,17 @@ export function ItemInformation({
               </section>
             </>
           )}
-          <section className="panel system-panel">
-            <h2>Release & download history</h2>
+          <section className="panel">
+            <div className="ui-section-head">
+              <div>
+                <h2>Release & download history</h2>
+                <p>Tracked jobs and their retained sources.</p>
+              </div>
+            </div>
             {data.history.length ? (
-              <div className="file-details-list">
+              <div>
                 {data.history.map((job) => (
-                  <article key={job.id}>
+                  <article className="file-row" key={job.id}>
                     <div className="indexer-title">
                       <h3>{job.title}</h3>
                       <Badge

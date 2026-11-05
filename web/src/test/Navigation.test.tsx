@@ -45,14 +45,14 @@ it("returns keyboard focus when navigation closes and focuses content after a ro
   await screen.findByRole("heading", { name: "Storage" });
   const toggle = screen.getByRole("button", { name: "Open navigation" });
   await user.click(toggle);
-  const link = screen.getByRole("link", { name: "Metadata refresh" });
+  const link = screen.getByRole("link", { name: "Settings" });
   link.focus();
   await user.keyboard("{Escape}");
   expect(toggle).toHaveFocus();
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   await user.click(toggle);
   await user.click(link);
-  await screen.findByRole("heading", { name: "Metadata refresh" });
+  await screen.findByRole("heading", { name: "Settings" });
   await waitFor(() => expect(screen.getByRole("main")).toHaveFocus());
   expect(toggle).toHaveAttribute("aria-expanded", "false");
 });
