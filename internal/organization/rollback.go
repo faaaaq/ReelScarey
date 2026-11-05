@@ -52,7 +52,7 @@ func (s *Service) previewMoveRollback(ctx context.Context, old Plan) (Plan, erro
 		if info.Size != current.Size {
 			return Plan{}, problem("source_changed", "A moved file changed since registration.")
 		}
-		snapshot, e := s.capture(ctx, tx, mediaID, "")
+		snapshot, e := s.captureFile(ctx, tx, mediaID, previous.FileID, "")
 		if e != nil {
 			return Plan{}, e
 		}
