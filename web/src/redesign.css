@@ -1902,3 +1902,26 @@ html[data-theme="light"] .media-status .ui-chip.blue {
   border-color: rgba(28, 139, 80, 0.3);
   color: #146c3f;
 }
+
+/* Text-field roots must be tall enough for the input, otherwise the input
+   paints over the bottom border and the field looks clipped. */
+.settings-form .fieldset .rt-TextFieldRoot {
+  height: 40px;
+  min-height: 40px;
+}
+.settings-form .fieldset .rt-TextFieldInput {
+  height: 100%;
+}
+.ui-toolbar .rt-TextFieldRoot {
+  height: 38px;
+  min-height: 38px;
+}
+.ui-toolbar .rt-TextFieldInput {
+  height: 100%;
+}
+
+/* Legacy styles added horizontal margins; keep the account card aligned with
+   the navigation items. */
+.account-control {
+  margin: 14px 0 0;
+}
