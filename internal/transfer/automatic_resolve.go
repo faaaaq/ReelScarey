@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
+	"github.com/faaaaq/ReelScarey/internal/quality"
 )
 
 type automaticTitle struct {
@@ -268,6 +270,107 @@ func (s *Service) automaticEpisodes(ctx context.Context, scan LibraryScan, owner
 	}
 	return out, nil
 }
+
+// automaticEpisodesByTitle matches an episode file with no filename numbering
+// by its canonical episode title. The match must be unique across the whole
+// show and agree with a numbered season folder when one exists. Ambiguous or
+// missing titles stay in manual review.
+func (s *Service) automaticEpisodesByTitle(ctx context.Context, scan LibraryScan, owner string, h automaticHint, title automaticTitle) ([]int64, error) {
+	name := quality.Normalize(h.EpisodeTitle)
+	if len(name) < 2 {
+		return nil, automaticReview("The filename does not contain a usable episode title. Review the mapping.")
+	}
+	type seasonRow struct {
+		Number   int
+		Loaded   bool
+		Episodes int
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT number,loaded_at<>'',episode_count FROM seasons WHERE series_id=? ORDER BY number`, title.MediaID)
+	if err != nil {
+		return nil, err
+	}
+	seasons := []seasonRow{}
+	for rows.Next() {
+		var season seasonRow
+		if err = rows.Scan(&season.Number, &season.Loaded, &season.Episodes); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		seasons = append(seasons, season)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	if len(seasons) == 0 {
+		return nil, automaticReview("This show has no saved seasons. Review the show or refresh its seasons.")
+	}
+	store := library.New(s.db)
+	fetchable := len(seasons) <= 20
+	matched := []int64{}
+	matchedSeason := -1
+	unloaded := 0
+	for _, season := range seasons {
+		if h.Season >= 0 && h.Season != season.Number {
+			continue
+		}
+		if season.Episodes == 0 {
+			continue
+		}
+		details, err := store.TVSeason(ctx, title.MediaID, season.Number)
+		if err != nil {
+			return nil, err
+		}
+		if details.Season.LoadedAt == "" {
+			if s.automaticMetadata == nil || !fetchable {
+				unloaded++
+				continue
+			}
+			fresh, e := s.automaticMetadata.Season(ctx, title.Movie.TMDbID, season.Number)
+			if automaticMetadataMissing(e) {
+				continue
+			}
+			if e != nil {
+				if automaticInvalidProviderDetails(e) {
+					return nil, automaticReview("TMDb returned invalid season details. Review the episode mapping.")
+				}
+				return nil, e
+			}
+			if fresh.Number != season.Number || fresh.TMDbID != details.Season.TMDbID {
+				return nil, automaticReview("The provider season identity changed. Review this season.")
+			}
+			if err = store.SaveSeasonAuthorized(ctx, title.MediaID, fresh, details.Revision, func(tx *sql.Tx) error { return s.automaticGuard(ctx, tx, scan.ID, owner) }); err != nil {
+				return nil, err
+			}
+			details, err = store.TVSeason(ctx, title.MediaID, season.Number)
+			if err != nil {
+				return nil, err
+			}
+		}
+		for _, episode := range details.Episodes {
+			if episode.Title == "" || quality.Normalize(episode.Title) != name {
+				continue
+			}
+			if len(matched) > 0 {
+				return nil, automaticReview(fmt.Sprintf("Multiple episodes are titled %q. Review the mapping.", h.EpisodeTitle))
+			}
+			matched = append(matched, episode.ID)
+			matchedSeason = season.Number
+		}
+	}
+	if len(matched) == 1 {
+		if h.Season >= 0 && matchedSeason != h.Season {
+			return nil, automaticReview(fmt.Sprintf("The episode titled %q is in season %d, not the file's season %d.", h.EpisodeTitle, matchedSeason, h.Season))
+		}
+		return matched, nil
+	}
+	if len(matched) == 0 && unloaded > 0 {
+		return nil, automaticReview(fmt.Sprintf("No episode is titled %q in the loaded seasons. Connect TMDb or load more seasons, then retry matching.", h.EpisodeTitle))
+	}
+	return nil, automaticReview(fmt.Sprintf("No episode is titled %q. Review the mapping.", h.EpisodeTitle))
+}
+
 func (s *Service) resolveAutomaticNext(ctx context.Context, scanID, owner string) error {
 	scan, err := s.automaticScan(ctx, scanID)
 	if err != nil {
@@ -306,7 +409,11 @@ func (s *Service) resolveAutomaticNext(ctx context.Context, scanID, owner string
 	}
 	choice := BulkMatchChoice{FileID: id, MediaID: title.MediaID, Episodes: []int64{}}
 	if scan.Kind == "series" {
-		choice.Episodes, err = s.automaticEpisodes(ctx, scan, owner, h, title)
+		if h.EpisodeTitle != "" && len(h.Episodes) == 0 {
+			choice.Episodes, err = s.automaticEpisodesByTitle(ctx, scan, owner, h, title)
+		} else {
+			choice.Episodes, err = s.automaticEpisodes(ctx, scan, owner, h, title)
+		}
 		if err != nil {
 			var review automaticReview
 			if errors.As(err, &review) {

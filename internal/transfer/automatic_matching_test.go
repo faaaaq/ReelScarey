@@ -217,6 +217,81 @@ func TestAutomaticInvalidProviderTitleBecomesReviewWithoutStoppingScan(t *testin
 	}
 }
 
+func TestAutomaticEpisodeTitleFallbackIdentity(t *testing.T) {
+	h, err := automaticIdentity(LibraryScan{Kind: "series", Folder: "anime"}, DiscoveredFile{Path: "anime/Angels of Death (2018) [tmdb-80477]/Season/Angels of Death - SE - A vow cannot be stolen.mkv"})
+	if err != nil || h.Title != "Angels of Death" || h.Year != 2018 || h.ProviderID != 80477 || h.Season != -1 || h.EpisodeTitle != "A vow cannot be stolen" || h.Episodes != nil {
+		t.Fatalf("%+v %v", h, err)
+	}
+	h, err = automaticIdentity(LibraryScan{Kind: "series", Folder: "TV"}, DiscoveredFile{Path: "TV/Example Show (2020)/Season 02/Example Show - Promise.mkv"})
+	if err != nil || h.Title != "Example Show" || h.Season != 2 || h.EpisodeTitle != "Promise" {
+		t.Fatalf("%+v %v", h, err)
+	}
+	if _, err := automaticIdentity(LibraryScan{Kind: "series", Folder: "TV"}, DiscoveredFile{Path: "TV/Example Show/Example Show.mkv"}); err == nil {
+		t.Fatal("accepted a file without an episode title")
+	}
+}
+
+func TestAutomaticTitleOnlyEpisodeMatchesUniqueCanonicalTitle(t *testing.T) {
+	f := setupWorkflow(t)
+	year := 2018
+	s1 := metadata.SeasonSummary{TMDbID: 901, Number: 1, Title: "Season 1", EpisodeCount: 2}
+	s2 := metadata.SeasonSummary{TMDbID: 902, Number: 2, Title: "Season 2", EpisodeCount: 1}
+	provider := &automaticProviderFixture{
+		show: metadata.Series{Movie: metadata.Movie{TMDbID: 900, Title: "Angels", Year: &year}, Seasons: []metadata.SeasonSummary{s1, s2}},
+		seasonsByNumber: map[int]metadata.Season{
+			1: {SeasonSummary: s1, Episodes: []metadata.Episode{{TMDbID: 911, Number: 1, Title: "A vow cannot be stolen"}, {TMDbID: 912, Number: 2, Title: "I'm not Your God."}}},
+			2: {SeasonSummary: s2, Episodes: []metadata.Episode{{TMDbID: 913, Number: 1, Title: "Stop crying and smile"}}},
+		},
+	}
+	f.s.SetAutomaticMetadata(provider)
+	existingVideo(t, f, "Anime/Angels (2018) [tmdb-900]/Season/Angels - SE - A vow cannot be stolen.mp4", []byte("owned title-matched episode"))
+	scan, err := f.s.StartLibraryScanWithMatching(context.Background(), "series", "anime", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishScan(t, f, scan.ID)
+	finishAutomatic(t, f, scan.ID)
+	current, err := f.s.LibraryScan(context.Background(), scan.ID)
+	if err != nil || current.Registered != 1 {
+		t.Fatal(current, err)
+	}
+	var count int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM episode_files ef JOIN episodes e ON e.id=ef.episode_id WHERE e.tmdb_id=911`).Scan(&count); err != nil || count != 1 {
+		t.Fatal("the wrong episode was registered", count, err)
+	}
+}
+
+func TestAutomaticTitleOnlyAmbiguousTitleStaysReview(t *testing.T) {
+	f := setupWorkflow(t)
+	year := 2018
+	s1 := metadata.SeasonSummary{TMDbID: 901, Number: 1, Title: "Season 1", EpisodeCount: 1}
+	s2 := metadata.SeasonSummary{TMDbID: 902, Number: 2, Title: "Season 2", EpisodeCount: 1}
+	provider := &automaticProviderFixture{
+		show: metadata.Series{Movie: metadata.Movie{TMDbID: 900, Title: "Angels", Year: &year}, Seasons: []metadata.SeasonSummary{s1, s2}},
+		seasonsByNumber: map[int]metadata.Season{
+			1: {SeasonSummary: s1, Episodes: []metadata.Episode{{TMDbID: 911, Number: 1, Title: "Recap"}}},
+			2: {SeasonSummary: s2, Episodes: []metadata.Episode{{TMDbID: 913, Number: 1, Title: "Recap"}}},
+		},
+	}
+	f.s.SetAutomaticMetadata(provider)
+	existingVideo(t, f, "Anime/Angels (2018) [tmdb-900]/Season/Angels - SE - Recap.mp4", []byte("owned ambiguous episode"))
+	scan, err := f.s.StartLibraryScanWithMatching(context.Background(), "series", "anime", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishScan(t, f, scan.ID)
+	finishAutomatic(t, f, scan.ID)
+	status, err := f.s.AutomaticMatchStatus(context.Background(), scan.ID)
+	if err != nil || status.Review != 1 || status.Queued != 0 {
+		t.Fatal(status, err)
+	}
+	var count int
+	f.db.QueryRow(`SELECT COUNT(*) FROM episode_files`).Scan(&count)
+	if count != 0 {
+		t.Fatal("ambiguous title registered a file", count)
+	}
+}
+
 func TestAutomaticInvalidSeasonDetailsBecomesReviewWithoutStoppingScan(t *testing.T) {
 	f := setupWorkflow(t)
 	year := 2022
@@ -289,6 +364,7 @@ type automaticProviderFixture struct {
 	movieError        error
 	searchError       error
 	seasonError       error
+	seasonsByNumber   map[int]metadata.Season
 }
 
 func (p *automaticProviderFixture) Search(context.Context, string, int) (metadata.Results, error) {
@@ -320,10 +396,17 @@ func (p *automaticProviderFixture) SearchSeries(context.Context, string, int) (m
 func (p *automaticProviderFixture) Series(context.Context, int64) (metadata.Series, error) {
 	return p.show, nil
 }
-func (p *automaticProviderFixture) Season(context.Context, int64, int) (metadata.Season, error) {
+func (p *automaticProviderFixture) Season(_ context.Context, _ int64, number int) (metadata.Season, error) {
 	p.seasons++
 	if p.seasonError != nil {
 		return metadata.Season{}, p.seasonError
+	}
+	if p.seasonsByNumber != nil {
+		season, ok := p.seasonsByNumber[number]
+		if !ok {
+			return metadata.Season{}, &metadata.Error{Code: "series_not_found", Message: "missing fixture season"}
+		}
+		return season, nil
 	}
 	return p.season, nil
 }
