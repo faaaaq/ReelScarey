@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -549,6 +550,9 @@ func TestYouTubeMetadataUpdateKeepsProvenanceAndRollback(t *testing.T) {
 }
 
 func TestYouTubeSubtitleHistoryFollowsFolderMoveBeforeRestore(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("whole-folder moves require the Linux Docker deployment")
+	}
 	ctx := context.Background()
 	f, _ := replacementFixture(t)
 	addYouTubeProvenance(t, f)

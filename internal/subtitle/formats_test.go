@@ -115,6 +115,7 @@ func TestSRTOutputExplicitlyConvertsAStyledSource(t *testing.T) {
 }
 
 func TestStyledProviderImportsAndRecoveriesKeepFormatAndQuota(t *testing.T) {
+	skipWithoutDirectorySync(t)
 	for _, format := range []string{"ass", "ssa", "vtt"} {
 		t.Run(format, func(t *testing.T) {
 			f := setup(t)

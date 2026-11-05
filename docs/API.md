@@ -54,6 +54,13 @@ changes the requester's password and revokes their sessions. Requesters are deni
 administrator APIs. Authenticated mutations require CSRF and same origin. See
 [request accounts and limits](REQUESTS.md).
 
+Administrator GET/PUT `/api/v1/discord-bot` reads or saves the companion-bot
+configuration; POST `/api/v1/discord-bot/register` registers its commands, and
+POST `/api/v1/discord-bot/notices/{id}/retry` retries an uncertain notice.
+POST `/api/v1/discord/interactions` is the companion bot's external endpoint:
+it is intentionally not cookie-authenticated and verifies Discord's Ed25519
+signature instead. See [request accounts and limits](REQUESTS.md).
+
 ## YouTube sourcing
 
 Authenticated POST `/api/v1/youtube/inspect` accepts `{url}` for a bounded
@@ -285,7 +292,10 @@ See [backup behavior and recovery limits](BACKUPS.md).
 ## Common behavior
 
 All routes are same-origin. JSON uses snake_case. All `/api/v1` routes require
-an administrator session except the three public auth routes below. Mutations
+an administrator session by default. The exceptions are the public auth routes
+below, the requester-scoped `/api/v1/requester/*` routes (bound to the resolved
+request account), and the signature-verified `/api/v1/discord/interactions`
+endpoint. Mutations
 also require `X-CSRF-Token` from session status and an allowed browser Origin.
 Cookies are HttpOnly/SameSite=Strict; there is no Bearer app API token yet.
 The API is versioned under `/api/v1`. Changes within v1 should be additive unless

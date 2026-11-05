@@ -46,6 +46,7 @@ func TestAlignmentFitsOffsetAndDriftAndRejectsUncertainEvidence(t *testing.T) {
 	}
 }
 func TestAlignmentUsesReviewedJournalAndRollback(t *testing.T) {
+	skipWithoutDirectorySync(t)
 	f, name := editedFixture(t)
 	body := alignmentFixture()
 	if e := os.WriteFile(name, body, 0600); e != nil {

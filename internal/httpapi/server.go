@@ -76,6 +76,8 @@ type Dependencies struct {
 	KitsuProvider    metadata.AnimeProvider
 	YouTubeInspector YouTubeInspector
 	Secrets          *securestore.Store
+	Emby             *emby.Service
+	EmbyMonitor      *emby.Monitor
 	Bot              *discordbot.Service
 	Franchises       metadata.FranchiseProvider
 	Backups          *backups.Service
@@ -104,8 +106,14 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	s.organization = organization.New(db, cfg)
 	s.requests = requests.New(db)
 	if deps.Secrets != nil {
-		s.emby = emby.New(deps.Secrets)
-		s.embyMonitor = emby.NewMonitor(db, s.emby)
+		s.emby = deps.Emby
+		if s.emby == nil {
+			s.emby = emby.New(deps.Secrets)
+		}
+		s.embyMonitor = deps.EmbyMonitor
+		if s.embyMonitor == nil {
+			s.embyMonitor = emby.NewMonitor(db, s.emby)
+		}
 		s.discord = requests.NewDiscord(db, deps.Secrets)
 		s.requestLists = requests.NewLists(db, deps.Secrets)
 	}
@@ -489,6 +497,19 @@ func frontend(assets fs.FS) http.HandlerFunc {
 	routes["/download-clients"] = true
 	routes["/metadata-refresh"] = true
 	routes["/youtube/subscriptions"] = true
+	serveIndex := func(w http.ResponseWriter, r *http.Request, status int) {
+		body, err := fs.ReadFile(assets, "index.html")
+		if err != nil {
+			fail(w, 503, "frontend_unavailable", "Build the frontend before starting the application.")
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(status)
+		if r.Method == http.MethodGet {
+			_, _ = w.Write(body)
+		}
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.Header().Set("Allow", "GET, HEAD")
@@ -499,27 +520,25 @@ func frontend(assets fs.FS) http.HandlerFunc {
 		seriesID, seriesErr := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/series/"), 10, 64)
 		movieID, movieErr := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/movies/"), 10, 64)
 		if routes[r.URL.Path] || (strings.HasPrefix(r.URL.Path, "/series/") && seriesErr == nil && seriesID > 0) || (strings.HasPrefix(r.URL.Path, "/movies/") && movieErr == nil && movieID > 0) {
-			body, err := fs.ReadFile(assets, "index.html")
-			if err != nil {
-				fail(w, 503, "frontend_unavailable", "Build the frontend before starting the application.")
-				return
-			}
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Header().Set("Cache-Control", "no-cache")
-			if r.Method == http.MethodGet {
-				_, _ = w.Write(body)
-			}
+			serveIndex(w, r, http.StatusOK)
 			return
 		}
 		info, err := fs.Stat(assets, name)
-		if err != nil || info.IsDir() || strings.HasPrefix(filepath.Base(name), ".") {
-			http.NotFound(w, r)
+		if err == nil && !info.IsDir() && !strings.HasPrefix(filepath.Base(name), ".") {
+			if strings.HasPrefix(name, "assets/") {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			}
+			files.ServeHTTP(w, r)
 			return
 		}
-		if strings.HasPrefix(name, "assets/") {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		// Unknown extensionless paths are client-side routes. Serve the
+		// application with a 404 status so its own not-found page handles them,
+		// while missing assets continue to return a plain 404.
+		if !strings.Contains(path.Base(r.URL.Path), ".") && !strings.HasPrefix(r.URL.Path, "/assets/") {
+			serveIndex(w, r, http.StatusNotFound)
+			return
 		}
-		files.ServeHTTP(w, r)
+		http.NotFound(w, r)
 	}
 }
 

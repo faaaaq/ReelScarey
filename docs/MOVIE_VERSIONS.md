@@ -45,6 +45,8 @@ continues to reserve the entire movie until it finishes or is cancelled.
 Reviewed organization gives multiple copies distinct, stable filenames with their
 resolution and file ID. A changed version set invalidates a pending naming review.
 Download sources remain intact for seeding; publication never overwrites a file.
+Embedded-title updates pass the staging file through Unix descriptors, so they
+are available in the Linux container and not in native Windows builds.
 
 ## Persistence and verification
 

@@ -48,7 +48,7 @@ function ReleaseBrowser() {
   const sab = useResource<IntegrationStatus>("/integrations/sabnzbd");
   const replacementFiles = useResource<{
     items: { id: number; path: string }[];
-  }>(`/organization/files?media_id=${movieID}`);
+  }>(valid ? `/organization/files?media_id=${movieID}` : null);
   const versions = useResource<MovieVersionSettings>(
     valid && !tv ? `/library/movies/${movieID}/versions` : null,
   );

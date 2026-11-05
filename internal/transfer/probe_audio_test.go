@@ -6,13 +6,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+func skipOutsideLinuxRewrite(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "linux" {
+		t.Skip("metadata rewrite passes the staging file through Unix descriptors; Docker/Linux is the supported deployment")
+	}
+}
 
 // FFmpeg versions differ in whether these audio/container combinations preserve
 // timing. Compare independently probed packets: a safe remux may succeed, while
 // any changed packet must still be rejected.
 func TestRewriteTitlePreservesPacketsOrRejectsUnsafeRemux(t *testing.T) {
+	skipOutsideLinuxRewrite(t)
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("FFmpeg unavailable")
 	}
@@ -55,10 +64,10 @@ func TestRewriteTitlePreservesPacketsOrRejectsUnsafeRemux(t *testing.T) {
 				}
 				return out
 			}
-			if !bytes.Equal(packets(name), packets(stage.Name())) && rewriteErr == nil {
-				t.Fatal("accepted a remux that changes packet timing or content")
-			}
 			if rewriteErr == nil {
+				if !bytes.Equal(packets(name), packets(stage.Name())) {
+					t.Fatal("accepted a remux that changes packet timing or content")
+				}
 				t.Log("This FFmpeg version preserved packet timing and content.")
 			} else {
 				t.Log("Unsafe remux rejected:", rewriteErr)
@@ -72,6 +81,7 @@ func TestRewriteTitlePreservesPacketsOrRejectsUnsafeRemux(t *testing.T) {
 }
 
 func TestRealFFprobeReadsEmbeddedAudioLanguage(t *testing.T) {
+	skipOutsideLinuxRewrite(t)
 	if _, e := exec.LookPath("ffmpeg"); e != nil {
 		t.Skip("FFmpeg unavailable")
 	}
@@ -137,6 +147,7 @@ func TestRealFFprobeReadsEmbeddedAudioLanguage(t *testing.T) {
 }
 
 func TestRewriteTitlePreservesChaptersSubtitlesAndAttachments(t *testing.T) {
+	skipOutsideLinuxRewrite(t)
 	if _, e := exec.LookPath("ffmpeg"); e != nil {
 		t.Skip("FFmpeg unavailable")
 	}
