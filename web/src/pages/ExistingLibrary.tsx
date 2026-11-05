@@ -101,6 +101,14 @@ const stateLabels: Record<string, string> = {
   blocked: "Needs attention",
 };
 
+function scanLabel(scan: Pick<LibraryScan, "kind" | "folder">) {
+  const folder = (scan.folder ?? "").toLowerCase();
+  if (folder.includes("anime")) return "Anime";
+  if (folder.includes("movie")) return "Movies";
+  if (folder.includes("tv")) return "TV";
+  return scan.kind === "movie" ? "Movies" : "TV";
+}
+
 type PhaseTone = "done" | "active" | "waiting" | "attention" | "skipped";
 
 function phaseIcon(tone: PhaseTone) {
@@ -356,7 +364,7 @@ export function ExistingLibrary() {
               >
                 {roots.data.items.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.kind === "movie" ? "Movies" : "TV"} ·{" "}
+                    {scanLabel(s)} ·{" "}
                     {new Date(s.created_at * 1000).toLocaleString()} ·{" "}
                     {s.registered}/{s.discovered} in library · {s.matched ?? 0}{" "}
                     matched · {s.needs_match ?? 0} unmatched ·{" "}
@@ -475,7 +483,7 @@ function ScanReview({
           <div className="scan-header">
             <div>
               <p className="page-eyebrow">2 · Review scan</p>
-              <h2>{scan.kind === "movie" ? "Movie" : "TV"} discovery</h2>
+              <h2>{scanLabel(scan)} discovery</h2>
               <p className="scan-sub">
                 Started {new Date(scan.created_at * 1000).toLocaleString()} ·{" "}
                 {scan.folder || "Configured folder"}
