@@ -196,6 +196,27 @@ func TestAutomaticInvalidFolderIDBecomesReviewWithoutStoppingScan(t *testing.T) 
 	}
 }
 
+func TestAutomaticInvalidProviderTitleBecomesReviewWithoutStoppingScan(t *testing.T) {
+	f := setupWorkflow(t)
+	scan := automaticMovieScan(t, f, "Movies/Broken Title (2024)/Broken.Title.2024.mp4")
+	f.s.SetAutomaticMetadata(&automaticProviderFixture{
+		movie:       metadata.Movie{TMDbID: 77, Title: "Broken Title"},
+		searchError: &metadata.Error{Code: "tmdb_invalid_response", Message: "unreadable"},
+	})
+	worked, err := f.s.ProcessAutomaticMatchNext(context.Background())
+	if err != nil || !worked {
+		t.Fatal("one malformed title stopped the matcher", worked, err)
+	}
+	status, err := f.s.AutomaticMatchStatus(context.Background(), scan.ID)
+	if err != nil || status.Review != 1 || status.State == "paused" {
+		t.Fatal(status, err)
+	}
+	var message string
+	if err := f.db.QueryRow(`SELECT message FROM library_scan_files WHERE scan_id=?`, scan.ID).Scan(&message); err != nil || !strings.Contains(message, "invalid details") {
+		t.Fatal(message, err)
+	}
+}
+
 func TestAutomaticMatchingRequiresExplicitStartForOldScansAndRejectsChangedSource(t *testing.T) {
 	f := setupWorkflow(t)
 	ctx := context.Background()
@@ -237,10 +258,14 @@ type automaticProviderFixture struct {
 	ambiguous         bool
 	beforeMovie       func()
 	movieError        error
+	searchError       error
 }
 
 func (p *automaticProviderFixture) Search(context.Context, string, int) (metadata.Results, error) {
 	p.searches++
+	if p.searchError != nil {
+		return metadata.Results{}, p.searchError
+	}
 	if p.fail {
 		return metadata.Results{}, errors.New("fixture provider unavailable")
 	}
