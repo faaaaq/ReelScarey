@@ -3,6 +3,7 @@ export type Settings = {
   movie_folder: string;
   series_folder: string;
   episode_naming?: "standard" | "with-title";
+  register_unverified_video: boolean;
   revision: number;
   updated_at: string;
 };

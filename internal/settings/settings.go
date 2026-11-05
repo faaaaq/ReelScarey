@@ -18,8 +18,12 @@ type Settings struct {
 	MovieFolder   string `json:"movie_folder"`
 	SeriesFolder  string `json:"series_folder"`
 	EpisodeNaming string `json:"episode_naming"`
-	Revision      int    `json:"revision"`
-	UpdatedAt     string `json:"updated_at"`
+	// RegisterUnverifiedVideo permits existing-library registration when the
+	// video cannot be inspected. Registered files carry no resolution facts
+	// and are labeled as unverified.
+	RegisterUnverifiedVideo bool   `json:"register_unverified_video"`
+	Revision                int    `json:"revision"`
+	UpdatedAt               string `json:"updated_at"`
 }
 
 type Update struct {
@@ -27,7 +31,9 @@ type Update struct {
 	MovieFolder   string `json:"movie_folder"`
 	SeriesFolder  string `json:"series_folder"`
 	EpisodeNaming string `json:"episode_naming"`
-	Revision      int    `json:"revision"`
+	// Pointer so a missing field keeps the saved preference unchanged.
+	RegisterUnverifiedVideo *bool `json:"register_unverified_video,omitempty"`
+	Revision                int   `json:"revision"`
 }
 
 type ValidationError struct{ Message string }
@@ -67,7 +73,7 @@ func New(db *sql.DB) *Store { return &Store{db: db} }
 
 func (s *Store) Get(ctx context.Context) (Settings, error) {
 	var out Settings
-	err := s.db.QueryRowContext(ctx, "SELECT library_name, movie_folder, series_folder, episode_naming,revision, updated_at FROM settings WHERE id = 1").Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.Revision, &out.UpdatedAt)
+	err := s.db.QueryRowContext(ctx, "SELECT library_name, movie_folder, series_folder, episode_naming, register_unverified_video, revision, updated_at FROM settings WHERE id = 1").Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.RegisterUnverifiedVideo, &out.Revision, &out.UpdatedAt)
 	return out, err
 }
 
@@ -76,7 +82,7 @@ func (s *Store) Update(ctx context.Context, in Update) (Settings, error) {
 		return Settings{}, err
 	}
 	var out Settings
-	err := s.db.QueryRowContext(ctx, `UPDATE settings SET library_name=?,movie_folder=?,series_folder=?,episode_naming=CASE WHEN ?='' THEN episode_naming ELSE ? END,revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND revision=? RETURNING library_name,movie_folder,series_folder,episode_naming,revision,updated_at`, in.LibraryName, in.MovieFolder, in.SeriesFolder, in.EpisodeNaming, in.EpisodeNaming, in.Revision).Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.Revision, &out.UpdatedAt)
+	err := s.db.QueryRowContext(ctx, `UPDATE settings SET library_name=?,movie_folder=?,series_folder=?,episode_naming=CASE WHEN ?='' THEN episode_naming ELSE ? END,register_unverified_video=COALESCE(?,register_unverified_video),revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND revision=? RETURNING library_name,movie_folder,series_folder,episode_naming,register_unverified_video,revision,updated_at`, in.LibraryName, in.MovieFolder, in.SeriesFolder, in.EpisodeNaming, in.EpisodeNaming, in.RegisterUnverifiedVideo, in.Revision).Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.RegisterUnverifiedVideo, &out.Revision, &out.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Settings{}, ErrConflict
 	}

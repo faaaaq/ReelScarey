@@ -113,5 +113,5 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 			return Probe{Codec: stream.Codec, Width: stream.Width, Height: stream.Height, Duration: duration, Subtitles: subtitles, Audio: audio, Title: &title}, nil
 		}
 	}
-	return Probe{}, problem("invalid_media", "The selected file has no usable video stream.")
+	return Probe{}, problem("no_video_stream", "The selected file has no usable video stream.")
 }

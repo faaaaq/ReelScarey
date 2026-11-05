@@ -101,6 +101,7 @@ export function Settings() {
         movie_folder,
         series_folder,
         episode_naming,
+        register_unverified_video,
         revision,
       } = settings.data;
       const value = {
@@ -108,6 +109,7 @@ export function Settings() {
         movie_folder,
         series_folder,
         episode_naming,
+        register_unverified_video,
         revision,
       };
       setForm(value);
@@ -141,6 +143,7 @@ export function Settings() {
         movie_folder: result.movie_folder,
         series_folder: result.series_folder,
         episode_naming: result.episode_naming,
+        register_unverified_video: result.register_unverified_video,
         revision: result.revision,
       };
       setForm(value);
@@ -254,6 +257,40 @@ export function Settings() {
                   presets and custom paths are in Organize library. Existing
                   files and queued import plans keep their names.
                 </p>
+                <div className="span-2">
+                  <label className="scan-toggle">
+                    <input
+                      type="checkbox"
+                      aria-label="Register videos that cannot be verified"
+                      checked={form.register_unverified_video}
+                      disabled={saving}
+                      onChange={(event) => {
+                        setForm((current) =>
+                          current
+                            ? {
+                                ...current,
+                                register_unverified_video: event.target.checked,
+                              }
+                            : current,
+                        );
+                        setSuccess(false);
+                      }}
+                    />
+                    <span>
+                      <strong>
+                        Register videos that ffprobe cannot verify
+                      </strong>
+                      <small>
+                        Discovery and matching add files even when the video
+                        cannot be inspected, labeled as unverified: resolution
+                        and embedded-title facts stay unknown, and
+                        embedded-title rewrites and subtitle matching refuse
+                        them. These files are often incomplete downloads —
+                        replacing them is usually better.
+                      </small>
+                    </span>
+                  </label>
+                </div>
               </fieldset>
               {error && (
                 <div className="form-error" role="alert">

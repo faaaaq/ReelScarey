@@ -47,6 +47,77 @@ func finishScan(t *testing.T, f *workflowFixture, id string) DiscoveredPage {
 	t.Fatal("scan did not finish")
 	return DiscoveredPage{}
 }
+func TestUnverifiedVideoRegistrationFollowsOwnerPreference(t *testing.T) {
+	f := setupWorkflow(t)
+	ctx := context.Background()
+	existingVideo(t, f, "Movies/Test Movie (2026)/Test.Movie.2026.mp4", []byte("owned disposable unverified media"))
+	f.s.importer.Prober = existingProbeFunc(func(context.Context, *os.File) (Probe, error) {
+		return Probe{}, problem("invalid_media", "FFprobe could not verify a playable video. The source was left unchanged.")
+	})
+	scan, e := f.s.StartLibraryScan(ctx, "movie")
+	if e != nil {
+		t.Fatal(e)
+	}
+	page := finishScan(t, f, scan.ID)
+	if e = f.s.RegisterDiscovered(ctx, page.Items[0].ID, ExistingRegistration{MediaID: f.movie.ID, Reviewed: true}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.ProcessLibraryNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	updated, e := f.s.LibraryScan(ctx, scan.ID)
+	if e != nil || updated.NeedsAttention != 1 || updated.Registered != 0 {
+		t.Fatal("registered without the owner preference", updated, e)
+	}
+	if _, e = f.db.Exec(`UPDATE settings SET register_unverified_video=1`); e != nil {
+		t.Fatal(e)
+	}
+	// Blocked files return through the reviewed retry path, exactly like the
+	// interface's "Review match" action on a needs-attention row.
+	if e = f.s.RegisterDiscovered(ctx, page.Items[0].ID, ExistingRegistration{MediaID: f.movie.ID, Reviewed: true}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.ProcessLibraryNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	updated, e = f.s.LibraryScan(ctx, scan.ID)
+	if e != nil || updated.Registered != 1 || updated.NeedsAttention != 0 {
+		t.Fatal("preference did not allow registration", updated, e)
+	}
+	var raw string
+	if e = f.db.QueryRow(`SELECT probe_json FROM media_files WHERE movie_id=?`, f.movie.ID).Scan(&raw); e != nil {
+		t.Fatal(e)
+	}
+	if strings.Contains(raw, "1920") || strings.Contains(raw, `"codec":"h264"`) {
+		t.Fatal("fabricated video facts", raw)
+	}
+	var message string
+	if e = f.db.QueryRow(`SELECT message FROM library_scan_files WHERE scan_id=?`, scan.ID).Scan(&message); e != nil || !strings.Contains(message, "without video verification") {
+		t.Fatal(message, e)
+	}
+	// A file ffprobe reads but finds no video stream in is never registered,
+	// even with the preference enabled.
+	f.s.importer.Prober = existingProbeFunc(func(context.Context, *os.File) (Probe, error) {
+		return Probe{}, problem("no_video_stream", "The selected file has no usable video stream.")
+	})
+	existingVideo(t, f, "Movies/Test Movie (2026)/Test.Movie.2026.extra.mp4", []byte("owned second unverified media"))
+	next, e := f.s.StartLibraryScan(ctx, "movie")
+	if e != nil {
+		t.Fatal(e)
+	}
+	again := finishScan(t, f, next.ID)
+	if e = f.s.RegisterDiscovered(ctx, again.Items[0].ID, ExistingRegistration{MediaID: f.movie.ID, Reviewed: true}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.ProcessLibraryNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	finished, e := f.s.LibraryScan(ctx, next.ID)
+	if e != nil || finished.NeedsAttention != 1 || finished.Registered != 0 {
+		t.Fatal("a non-video file was registered", finished, e)
+	}
+}
+
 func TestExistingMovieDiscoveryReviewedRegistrationAndRestart(t *testing.T) {
 	f := setupWorkflow(t)
 	ctx := context.Background()

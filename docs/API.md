@@ -309,6 +309,12 @@ explicitly documented as breaking before the first stable release.
 | GET | `/api/v1/dashboard` | Library name, real SQL movie/series counts, settings revision/time |
 | GET | `/api/v1/settings` | Current library preferences and revision |
 | PUT | `/api/v1/settings` | Validate and atomically update preferences if revision matches |
+
+`register_unverified_video` (default false) lets existing-library discovery and
+matching register files whose video ffprobe cannot inspect. Registered files
+carry no resolution or embedded-title facts, their scan rows say "Added without
+video verification", and embedded-title rewrites and subtitle matching refuse
+them. Files ffprobe reads but finds no video stream in are never registered.
 | GET | `/api/v1/library?kind=movie&page=1&query=&status=all&monitored=all&sort=title&profile=all` | Filtered movies, saved metadata, filtered/collection totals and coherent effective-profile context |
 | GET | `/api/v1/library?kind=series&page=1` | Same filters and pagination for TV parent catalog status/monitoring |
 | POST | `/api/v1/library/monitoring/preview` | Read current monitoring/revisions for explicit kind/ids; authenticated + CSRF; no writes |

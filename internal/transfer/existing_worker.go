@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/faaaaq/ReelScarey/internal/filecheck"
 	"github.com/faaaaq/ReelScarey/internal/organization"
+	"github.com/faaaaq/ReelScarey/internal/settings"
 	"io"
 	"log/slog"
 	"os"
@@ -16,6 +17,13 @@ import (
 	"time"
 	"unicode/utf8"
 )
+
+func registeredMessageFor(unverified bool) string {
+	if unverified {
+		return "Added without video verification: ffprobe could not inspect this video. It may be incomplete or unplayable."
+	}
+	return "Video inspected and added in its existing location."
+}
 
 func (s *Service) runLibrary(ctx context.Context, logger *slog.Logger) {
 	for ctx.Err() == nil {
@@ -311,8 +319,23 @@ func (s *Service) verifyExisting(ctx context.Context, id, owner string) error {
 		return e
 	}
 	probe, e := s.importer.Prober.Probe(ctx, file)
+	unverified := false
 	if e != nil {
-		return e
+		// Only an explicit owner preference allows registering a video that
+		// could not be inspected. A file ffprobe read but found to contain no
+		// video stream is never registered: it is not a video.
+		var p *Error
+		if !errors.As(e, &p) || p.Code != "invalid_media" {
+			return e
+		}
+		prefs, pe := settings.New(s.db).Get(ctx)
+		if pe != nil {
+			return pe
+		}
+		if !prefs.RegisterUnverifiedVideo {
+			return e
+		}
+		probe, unverified = Probe{}, true
 	}
 	verified, e := filecheck.Capture(ctx, file)
 	if e != nil {
@@ -410,7 +433,7 @@ func (s *Service) verifyExisting(ctx context.Context, id, owner string) error {
 	if e != nil {
 		return e
 	}
-	res, e = tx.ExecContext(ctx, `UPDATE library_scan_files SET state='registered',media_file_id=?,message='Video inspected and added in its existing location.',updated_at=unixepoch() WHERE id=? AND lease_owner=? AND state='verifying' AND lease_until>=unixepoch()`, fileID, id, owner)
+	res, e = tx.ExecContext(ctx, `UPDATE library_scan_files SET state='registered',media_file_id=?,message=?,updated_at=unixepoch() WHERE id=? AND lease_owner=? AND state='verifying' AND lease_until>=unixepoch()`, fileID, registeredMessageFor(unverified), id, owner)
 	if e != nil {
 		return e
 	}

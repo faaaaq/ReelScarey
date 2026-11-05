@@ -110,6 +110,14 @@ observation again. The visible path and identity are checked immediately before
 the atomic registration. This is bounded change detection, not a full-content
 integrity claim. Files up to 192 KiB retain an actual full SHA-256 directly.
 
+When the owner preference **Register videos that ffprobe cannot verify**
+(Settings → Library preferences, default off) is enabled, a file whose video
+cannot be inspected is still registered: it records no resolution or
+embedded-title facts, its review row says "Added without video verification",
+and embedded-title rewrites and subtitle matching refuse it. Files ffprobe
+reads but finds no video stream in are never registered. Replacing a corrupt
+file and reviewing the new copy is usually the better fix.
+
 Linux FFprobe reads the already-open descriptor as a seekable regular file,
 including MP4/MOV metadata at the end. Only supported video demuxers and local
 file access are permitted; playlists, network protocols and external MOV track
