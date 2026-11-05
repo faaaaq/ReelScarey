@@ -1040,7 +1040,9 @@ function Reorganize({ config }: { config: Config }) {
           Choose MP4, M4V, Matroska, MOV, AVI or WebM files, or review an entire
           title folder. The verified title update replaces the original in place
           and records the previous title in the job history. No duplicate video
-          copy is kept.
+          copy is kept. A temporary verified stage is written on the same
+          filesystem and consumed by the replacement, so allow free space equal
+          to the video during the update.
         </p>
         {mediaID && (
           <>

@@ -205,9 +205,10 @@ checksum check; the batch can be stopped, and completed results remain visible.
 Selected MP4, M4V, Matroska, MOV, AVI or WebM files, a whole title, or a whole folder can include
 **Also update embedded titles after organization** in the review. The move
 finishes first, then durable jobs sequentially write and verify a metadata-only
-stage and atomically replace the original video. The saved movie title or
-canonical series/episode labels supply the titles. Folder extras are preserved
-and are not retagged.
+stage on the video's filesystem and atomically replace the original. The stage
+temporarily needs free space equal to the video and is consumed by the rename.
+The saved movie title or canonical series/episode labels supply the titles.
+Folder extras are preserved and are not retagged.
 A separate embedded-title review is also available for an individual file.
 
 MOV, AVI and WebM use their own container muxers; M4V uses its iPod-compatible

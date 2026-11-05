@@ -620,10 +620,12 @@ catalog-derived movie or episode title for a registered MP4, M4V, Matroska, MOV,
 Every rewrite must preserve packet timing and non-title metadata; unsupported
 codec combinations fail safely. TS/M2TS title tags remain unsupported.
 
-Applying the plan writes a verified independent stage, checks stream metadata,
-packet data and timestamps, chapters and existing container tags, then atomically
-replaces the original path. The original is untouched until the verified stage is
-published, and a torrent seeding hardlink continues to reference the old bytes.
+Applying the plan writes a verified independent stage on the video's own
+filesystem, checks stream metadata, packet data and timestamps, chapters and
+existing container tags, then atomically replaces the original path. The stage
+temporarily needs free space equal to the video; the rename consumes it, so it is
+not retained. The original is untouched until the verified stage is published,
+and a torrent seeding hardlink continues to reference the old bytes.
 No prior video copy is retained: `previous_title`, `before` and `after` in the
 plan snapshot are the durable change record, and metadata-only plans refuse
 `rollback`. Unsupported or changed streams fail without replacing the original.
