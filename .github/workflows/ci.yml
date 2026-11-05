@@ -78,8 +78,8 @@ jobs:
         run: go test -race ./internal/organization -run TestRealOrganization -count=1 -v -timeout=2m
         env:
           REELSCAREY_LIVE_ORGANIZATION: '1'
-      - name: Generated metadata updates and rollback
-        run: go test -race ./internal/organization -run 'TestLive(EmbeddedTitleAndRollback|OrganizationUpdatesEmbeddedTitle|SeriesOrganizationUpdatesEmbeddedTitle)' -count=1 -v -timeout=3m
+      - name: Generated metadata updates and in-place title verification
+        run: go test -race ./internal/organization -run 'TestLive(EmbeddedTitleReplacesInPlace|HDRTitleRewritePreservesTransfer|OrganizationUpdatesEmbeddedTitle|SeriesOrganizationUpdatesEmbeddedTitle)' -count=1 -v -timeout=5m
         env:
           REELSCAREY_LIVE_REPLACEMENT: '1'
       - name: Reviewed YouTube video and subtitle import with generated media
