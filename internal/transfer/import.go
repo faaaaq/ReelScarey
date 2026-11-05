@@ -228,17 +228,30 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 	if after.Size() != before.Size() || after.ModTime() != before.ModTime() {
 		return p, problem("source_changed", "The source changed while it was being verified. Wait for the client and retry.")
 	}
-	var destination string
 	var replacement int
 	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM acquisition_replacements WHERE source_kind='download' AND job_id=?`, j.ID).Scan(&replacement); e != nil {
 		return p, e
 	}
+	// The verified probe drives the naming quality tag: resolution plus an
+	// explicit HDR or SDR transfer label. Every import is named from its own
+	// inspected facts, and HD/4K downloads no longer need a separate label —
+	// the inspected resolution is stronger evidence than the requested target.
+	tag := organization.QualityTag(probe.Width, probe.Height, probe.HDR)
+	// Snapshot-planned movies render the tag inside Destination from
+	// snapshot.Quality; series and plain-folder movies append it explicitly.
+	var destination string
+	var tagged bool
 	if j.Kind == "series" {
 		destination, e = s.tvDestination(ctx, j, source)
 	} else if j.organizationSnapshot != "" {
 		var snapshot organization.Snapshot
 		if e = json.Unmarshal([]byte(j.organizationSnapshot), &snapshot); e == nil {
+			snapshot.Quality = tag
+			if j.MovieVersion == "additional" {
+				snapshot.MovieVersion = "Version " + j.ID
+			}
 			destination, e = organization.Destination(snapshot, nil, source)
+			tagged = true
 		}
 	} else {
 		var name string
@@ -260,13 +273,9 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 		}
 		return p, e
 	}
-	if j.Kind != "series" && j.MovieVersion != "" && j.MovieVersion != "replacement" {
-		label := quality.MovieVersionName(j.MovieVersion)
-		if j.MovieVersion == "additional" {
-			label = "Version " + j.ID
-		}
+	if tag != "" && !tagged {
 		ext := path.Ext(destination)
-		destination = strings.TrimSuffix(destination, ext) + " [" + label + "]" + ext
+		destination = strings.TrimSuffix(destination, ext) + " [" + tag + "]" + ext
 	}
 	if _, e = safeRelative(destination); e != nil {
 		return p, e

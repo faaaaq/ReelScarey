@@ -93,7 +93,7 @@ func TestMovieVersionsQueueImportRestartAndAdditionalCopy(t *testing.T) {
 	if details.Files[0].Path == details.Files[1].Path {
 		t.Fatal("versions share a destination")
 	}
-	if !strings.Contains(details.Files[0].Path, "[4K]") && !strings.Contains(details.Files[1].Path, "[4K]") {
+	if !strings.Contains(details.Files[0].Path, "2160p") && !strings.Contains(details.Files[1].Path, "2160p") {
 		t.Fatal(details.Files)
 	}
 	releases, err = f.s.Search(ctx, f.movie.ID, "")

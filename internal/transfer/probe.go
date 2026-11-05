@@ -20,6 +20,10 @@ type Probe struct {
 	Width     int              `json:"width"`
 	Height    int              `json:"height"`
 	Duration  float64          `json:"duration_seconds"`
+	// HDR records the video stream's transfer characteristics: true when the
+	// stream declares HDR10 (SMPTE ST 2084) or HLG, false when it declares
+	// anything else or nothing. Recorded for every newly captured probe.
+	HDR bool `json:"hdr"`
 }
 type AudioStream struct {
 	Codec    string `json:"codec"`
@@ -54,7 +58,7 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 	defer file.Seek(0, 0)
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", probeProtocols(), "-format_whitelist", "mov,matroska,webm,avi,mpegts", "-enable_drefs", "0", "-use_absolute_path", "0", "-probesize", "16777216", "-analyzeduration", "10000000", "-show_entries", "format=duration:format_tags=title:stream=codec_type,codec_name,width,height:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags=language,title", "-of", "json", "-i", probeInput())
+	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", probeProtocols(), "-format_whitelist", "mov,matroska,webm,avi,mpegts", "-enable_drefs", "0", "-use_absolute_path", "0", "-probesize", "16777216", "-analyzeduration", "10000000", "-show_entries", "format=duration:format_tags=title:stream=codec_type,codec_name,width,height,color_transfer:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags=language,title", "-of", "json", "-i", probeInput())
 	hideProbeWindow(cmd)
 	var output limitedBuffer
 	output.max = 64 << 10
@@ -75,11 +79,12 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 			} `json:"tags"`
 		} `json:"format"`
 		Streams []struct {
-			Type        string `json:"codec_type"`
-			Codec       string `json:"codec_name"`
-			Width       int    `json:"width"`
-			Height      int    `json:"height"`
-			Disposition struct {
+			Type          string `json:"codec_type"`
+			Codec         string `json:"codec_name"`
+			Width         int    `json:"width"`
+			Height        int    `json:"height"`
+			ColorTransfer string `json:"color_transfer"`
+			Disposition   struct {
 				Attached int `json:"attached_pic"`
 				Forced   int `json:"forced"`
 				Hearing  int `json:"hearing_impaired"`
@@ -109,8 +114,13 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 	}
 	for _, stream := range raw.Streams {
 		if stream.Type == "video" && stream.Codec != "" && stream.Codec != "unknown" && stream.Width > 0 && stream.Height > 0 && stream.Width <= 32768 && stream.Height <= 32768 && stream.Disposition.Attached == 0 {
+			// HDR10 and HLG are the two broadcast HDR transfer families;
+			// anything else (bt709, bt2020 SDR, unspecified) is SDR. Dolby
+			// Vision files carry a base layer with HDR10 transfer, so they
+			// label as HDR.
+			hdr := stream.ColorTransfer == "smpte2084" || stream.ColorTransfer == "arib-std-b67"
 			title := raw.Format.Tags.Title
-			return Probe{Codec: stream.Codec, Width: stream.Width, Height: stream.Height, Duration: duration, Subtitles: subtitles, Audio: audio, Title: &title}, nil
+			return Probe{Codec: stream.Codec, Width: stream.Width, Height: stream.Height, Duration: duration, HDR: hdr, Subtitles: subtitles, Audio: audio, Title: &title}, nil
 		}
 	}
 	return Probe{}, problem("no_video_stream", "The selected file has no usable video stream.")

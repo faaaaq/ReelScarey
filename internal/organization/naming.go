@@ -152,8 +152,15 @@ func Destination(s Snapshot, episodes []Episode, source string) (string, error) 
 			relative = path.Join(series, episode)
 		}
 	}
+	tags := []string{}
+	if s.Quality != "" {
+		tags = append(tags, sanitize(s.Quality, 40))
+	}
 	if m.Kind == "movie" && s.MovieVersion != "" {
-		relative += " [" + sanitize(s.MovieVersion, 70) + "]"
+		tags = append(tags, sanitize(s.MovieVersion, 70))
+	}
+	if len(tags) > 0 {
+		relative += " [" + strings.Join(tags, " - ") + "]"
 	}
 	destination := path.Join(leaf(l, m.Kind), relative+extension)
 	if !validRelative(destination) {

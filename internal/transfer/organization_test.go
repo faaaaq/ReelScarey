@@ -30,6 +30,7 @@ func TestQueuedMovieRetainsReviewedCollectionAndNamingAcrossChanges(t *testing.T
 	if e = json.Unmarshal([]byte(j.organizationSnapshot), &snapshot); e != nil {
 		t.Fatal(e)
 	}
+	snapshot.Quality = organization.QualityTag(1920, 1080, false)
 	expected, e := organization.Destination(snapshot, nil, "movie.mkv")
 	if e != nil || !strings.HasPrefix(expected, "Family/Movies/") || !strings.Contains(expected, "[tmdbid-123]") {
 		t.Fatal("wrong queued layout", expected, e)
@@ -132,7 +133,7 @@ func TestQueuedAnimeAbsoluteAliasesAndCustomNamingStayImmutable(t *testing.T) {
 		}
 		paths = append(paths, name)
 	}
-	if len(paths) != 2 || !strings.Contains(paths[0], "025-026.mkv") || !strings.Contains(paths[1], "027.mkv") || !strings.HasPrefix(paths[0], "Anime/TV Shows/") {
+	if len(paths) != 2 || !strings.Contains(paths[0], "025-026") || !strings.Contains(paths[1], "027") || !strings.HasPrefix(paths[0], "Anime/TV Shows/") {
 		t.Fatal("queued aliases/templates changed after review", paths)
 	}
 }

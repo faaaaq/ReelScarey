@@ -69,6 +69,7 @@ type Content struct {
 }
 type Snapshot struct {
 	MovieVersion        string  `json:"movie_version,omitempty"`
+	Quality             string  `json:"quality,omitempty"`
 	Library             Library `json:"library"`
 	Content             Content `json:"content"`
 	AssignmentRevision  int     `json:"assignment_revision"`

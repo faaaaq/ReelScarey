@@ -5,7 +5,9 @@ import (
 	"errors"
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -164,6 +166,11 @@ func TestTVPartialImportCollisionAndRestart(t *testing.T) {
 	dest, e := f.s.tvDestination(ctx, child, "Test.Show.S01E03.mkv")
 	if e != nil {
 		t.Fatal(e)
+	}
+	tag := organization.QualityTag(1920, 1080, false)
+	if tag != "" {
+		ext := path.Ext(dest)
+		dest = strings.TrimSuffix(dest, ext) + " [" + tag + "]" + ext
 	}
 	collision := filepath.Join(f.cfg.MediaDir, filepath.FromSlash(dest))
 	if e = os.MkdirAll(filepath.Dir(collision), 0755); e != nil {
