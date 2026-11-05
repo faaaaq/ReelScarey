@@ -94,10 +94,10 @@ func (s *Service) StartAutomaticMatching(ctx context.Context, scanID string) err
 	if active > 0 {
 		return problem("scan_busy", "Automatic matching is already active.")
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM library_match_candidates WHERE scan_id=? AND state<>'queued'`, scanID); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM library_match_cache WHERE scan_id=?`, scanID); err != nil {
+	// Resume an interrupted run: ready and queued matches are already verified
+	// snapshots and must not be thrown away. Only unresolved reviews are retried,
+	// and the title cache is retained to avoid repeating provider searches.
+	if _, err = tx.ExecContext(ctx, `DELETE FROM library_match_candidates WHERE scan_id=? AND state='review'`, scanID); err != nil {
 		return err
 	}
 	// Only an explicit administrator POST reaches this method. Existing scans do

@@ -25,6 +25,36 @@ func TestExpandedTVLabelsRemainExactSingleEpisodeEvidence(t *testing.T) {
 	}
 }
 
+func TestNumericEpisodeTitlesAreNotTreatedAsRanges(t *testing.T) {
+	single := []struct {
+		title  string
+		season int
+		number int
+	}{
+		{"3rd Rock from the Sun - S02E23 - 15 Minutes of Dick", 2, 23},
+		{"Abbott Elementary - S03E10 - 2 Ava 2 Fest", 3, 10},
+		{"Weeds - S01E01 - 36! 24! 36! Dick", 1, 1},
+		{"Show - S01E01 - 15 Minutes", 1, 1},
+		{"Show - S01E01 - 02", 1, 1},
+	}
+	for _, v := range single {
+		season, numbers, _, _, ok := EpisodeSpan(v.title)
+		if !ok || season != v.season || !reflect.DeepEqual(numbers, []int{v.number}) {
+			t.Fatalf("numeric title became a range: %q => %d %v %v", v.title, season, numbers, ok)
+		}
+	}
+	for _, title := range []string{
+		"Show S01E01-E02",
+		"Show S01E01 - E02",
+		"Show S01E01-02",
+	} {
+		season, numbers, _, _, ok := EpisodeSpan(title)
+		if !ok || season != 1 || !reflect.DeepEqual(numbers, []int{1, 2}) {
+			t.Fatalf("explicit range not parsed: %q => %d %v %v", title, season, numbers, ok)
+		}
+	}
+}
+
 func TestEpisodeSpansAreBoundedHintsAndNeverAutomaticPacks(t *testing.T) {
 	for _, label := range []string{"S01E01-E03", "S01 E01 - E03", "Season 1 Episodes 1-3", "Season 1 Ep 1 - Ep 3", "1x01-03", "S01E01E02E03", "S01 Ep 1 Ep 2 Ep 3"} {
 		title := "Owned Show " + label + " 1080p WEB-DL"

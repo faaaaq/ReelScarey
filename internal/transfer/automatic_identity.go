@@ -105,7 +105,7 @@ func automaticIdentity(scan LibraryScan, f DiscoveredFile) (automaticHint, error
 	}
 	season, episodes, start, _, ok := quality.EpisodeSpan(base)
 	if !ok || len(episodes) == 0 || len(episodes) > 20 {
-		return h, automaticReview("Episode numbering is uncertain. Review date-based or absolute Anime numbering.")
+		return h, automaticReview("Episode numbering is uncertain. Review the season and episode mapping.")
 	}
 	for i, n := range episodes {
 		if i > 0 && n != episodes[i-1]+1 {

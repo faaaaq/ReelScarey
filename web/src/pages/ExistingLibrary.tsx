@@ -1,12 +1,16 @@
 import { useState, type FormEvent } from "react";
+import { AlertDialog, Button, Dialog, TextField } from "@radix-ui/themes";
 import {
-  AlertDialog,
-  Badge,
-  Button,
-  Dialog,
-  TextField,
-} from "@radix-ui/themes";
-import { FolderSearch, RefreshCw } from "lucide-react";
+  AlertTriangle,
+  Check,
+  Circle,
+  Clock3,
+  FolderSearch,
+  Loader2,
+  RefreshCw,
+  Search,
+  Settings2,
+} from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   api,
@@ -97,6 +101,90 @@ const stateLabels: Record<string, string> = {
   blocked: "Needs attention",
 };
 
+type PhaseTone = "done" | "active" | "waiting" | "attention" | "skipped";
+
+function phaseIcon(tone: PhaseTone) {
+  if (tone === "done") return <Check size={14} />;
+  if (tone === "active") return <Loader2 size={14} className="spin" />;
+  if (tone === "attention") return <AlertTriangle size={14} />;
+  if (tone === "waiting") return <Clock3 size={14} />;
+  return <Circle size={12} />;
+}
+
+function ScanPhases({ scan }: { scan: LibraryScan }) {
+  const matching = scan.automatic_matching;
+  const matchingActive =
+    !!matching && ["pending", "running"].includes(matching.state);
+  const matchingWaiting =
+    !!matching && ["waiting", "failed"].includes(matching.state);
+  const reviewCount = (scan.needs_match ?? 0) + (scan.needs_attention ?? 0);
+  const discoveredActive = ["queued", "scanning"].includes(scan.state);
+  const phases: {
+    label: string;
+    detail: string;
+    tone: PhaseTone;
+  }[] = [
+    {
+      label: "Discover",
+      detail: discoveredActive
+        ? `${scan.discovered} videos found so far`
+        : `${scan.discovered} videos found`,
+      tone: discoveredActive
+        ? "active"
+        : scan.state === "failed"
+          ? "attention"
+          : scan.state === "cancelled"
+            ? "waiting"
+            : "done",
+    },
+    {
+      label: "Match",
+      detail: matchingActive
+        ? `${scan.matched ?? 0} clear matches found so far`
+        : matchingWaiting
+          ? "Waiting for TMDb"
+          : `${scan.matched ?? 0} clear matches`,
+      tone: matchingActive
+        ? "active"
+        : matchingWaiting
+          ? "attention"
+          : matching && scan.state === "completed"
+            ? "done"
+            : "skipped",
+    },
+    {
+      label: "Register",
+      detail: `${scan.registered} added to the library`,
+      tone:
+        scan.registered > 0
+          ? "done"
+          : (scan.matched ?? 0) > 0 && !matchingWaiting
+            ? "active"
+            : matchingWaiting
+              ? "waiting"
+              : "skipped",
+    },
+    {
+      label: "Review",
+      detail: reviewCount > 0 ? `${reviewCount} to review` : "Nothing waiting",
+      tone: reviewCount > 0 ? "attention" : "done",
+    },
+  ];
+  return (
+    <ol className="scan-phases" aria-label="Scan progress">
+      {phases.map((phase) => (
+        <li key={phase.label} data-tone={phase.tone}>
+          <span className="scan-phase-icon">{phaseIcon(phase.tone)}</span>
+          <span className="scan-phase-copy">
+            <strong>{phase.label}</strong>
+            <span>{phase.detail}</span>
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export function ExistingLibrary() {
   const roots = useLiveResource<ScanList>("/library/imports", 5000);
   const [params, setParams] = useSearchParams();
@@ -137,8 +225,9 @@ export function ExistingLibrary() {
   return (
     <>
       <PageHeading
+        eyebrow="Library tools"
         title="Find unmatched files"
-        description="Find videos in your configured library, automatically register clear matches, and review uncertain results without moving files."
+        description="Discover videos already on disk, bring clear matches into your library, and review uncertain files without moving anything."
       />
       <RequestState
         loading={roots.loading}
@@ -146,48 +235,42 @@ export function ExistingLibrary() {
         retry={roots.reload}
       />
       {roots.data && (
-        <section className="panel system-panel">
-          <h2>
-            <FolderSearch size={20} /> Discover files
-          </h2>
-          <p>
-            The scan reads filenames and sizes. It leaves files, folders and
-            existing subtitles untouched. Automatic matching identifies clear
-            movie and episode matches, verifies them, and registers them in
-            place. Ambiguous titles, overlapping episodes and uncertain
-            numbering stay in review.
-          </p>
-          <dl className="detail-paths">
-            <dt>Movies</dt>
-            <dd>
+        <section className="panel scan-start">
+          <div className="ui-section-head">
+            <div>
+              <p className="page-eyebrow">1 · Discover</p>
+              <h2>
+                <FolderSearch size={18} /> Discover files
+              </h2>
+              <p>
+                Find videos already in your configured folders. Discovery only
+                reads names and sizes; your files, folders and subtitles stay
+                untouched.
+              </p>
+            </div>
+            <span className="ui-chip">Read-only discovery</span>
+          </div>
+
+          <div className="scan-folder-grid">
+            <div className="scan-folder">
+              <span>Movies</span>
               <code>{roots.data.movie_root}</code>
-            </dd>
-            <dt>TV Shows</dt>
-            <dd>
+            </div>
+            <div className="scan-folder">
+              <span>TV Shows</span>
               <code>{roots.data.series_root}</code>
-            </dd>
-            <dt>Anime</dt>
-            <dd>
-              {animeRoot ? <code>{animeRoot}</code> : "Folder unavailable"}
-            </dd>
-          </dl>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={automatic}
-              disabled={busy}
-              onChange={(event) => setAutomatic(event.target.checked)}
-            />
-            Automatically match and register clear results
-          </label>
-          <p className="field-help">
-            New titles use TMDb and start with monitoring paused. Turn this off
-            to discover files for manual review only.
-          </p>
-          <div className="import-actions">
-            <label>
-              Look for{" "}
+            </div>
+            <div className="scan-folder" data-unavailable={!animeRoot}>
+              <span>Anime</span>
+              <code>{animeRoot ?? "Folder unavailable"}</code>
+            </div>
+          </div>
+
+          <div className="scan-start-row">
+            <div className="ui-field">
+              <label htmlFor="scan-media-type">Look for</label>
               <select
+                id="scan-media-type"
                 aria-label="Scan media type"
                 value={target}
                 onChange={(e) => setTarget(e.target.value as typeof target)}
@@ -199,8 +282,25 @@ export function ExistingLibrary() {
                   Anime
                 </option>
               </select>
+            </div>
+            <label className="scan-toggle">
+              <input
+                type="checkbox"
+                aria-label="Automatically match and register clear results"
+                checked={automatic}
+                disabled={busy}
+                onChange={(event) => setAutomatic(event.target.checked)}
+              />
+              <span>
+                <strong>Automatically match and register clear results</strong>
+                <small>
+                  New titles use TMDb and start with monitoring paused. Turn
+                  this off to discover files for manual review only.
+                </small>
+              </span>
             </label>
             <Button
+              size="3"
               disabled={
                 busy ||
                 (target === "anime" && !animeRoot) ||
@@ -217,14 +317,24 @@ export function ExistingLibrary() {
                   : "Scan configured folder"}
             </Button>
           </div>
-          <p className="field-help">
+
+          {roots.data.items.some((s) =>
+            ["queued", "scanning"].includes(s.state),
+          ) && (
+            <p className="scan-notice">
+              <Loader2 size={14} className="spin" /> A scan is already running.
+              Follow its progress below, or stop it before starting another.
+            </p>
+          )}
+
+          <p className="ui-note">
             These paths are on the ReelScarey server. Mount existing media under
             the media root and check your{" "}
             <Link to="/settings">folder preferences</Link>. Discovery and
             registration keep files in place. Review renaming or reorganization
             separately in <Link to="/organization">Organize library</Link>.
             Anime classification and episode numbering are explicit choices in
-            the title's Library section settings.
+            the title&apos;s Library section settings.
           </p>
         </section>
       )}
@@ -235,24 +345,31 @@ export function ExistingLibrary() {
       )}
       {roots.data?.items.length ? (
         <>
-          <label className="import-history">
-            Scan history{" "}
-            <select
-              aria-label="Scan history"
-              value={scanID}
-              onChange={(e) => setParams({ scan: e.target.value })}
-            >
-              {roots.data.items.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.kind === "movie" ? "Movies" : "TV"} ·{" "}
-                  {new Date(s.created_at * 1000).toLocaleString()} ·{" "}
-                  {s.registered}/{s.discovered} in library · {s.matched ?? 0}{" "}
-                  matched · {s.needs_match ?? 0} unmatched ·{" "}
-                  {s.needs_attention ?? 0} need attention
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="scan-history">
+            <div className="ui-field">
+              <label htmlFor="scan-history-select">Scan history</label>
+              <select
+                id="scan-history-select"
+                aria-label="Scan history"
+                value={scanID}
+                onChange={(e) => setParams({ scan: e.target.value })}
+              >
+                {roots.data.items.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.kind === "movie" ? "Movies" : "TV"} ·{" "}
+                    {new Date(s.created_at * 1000).toLocaleString()} ·{" "}
+                    {s.registered}/{s.discovered} in library · {s.matched ?? 0}{" "}
+                    matched · {s.needs_match ?? 0} unmatched ·{" "}
+                    {s.needs_attention ?? 0} need attention
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span className="ui-note">
+              Scans are retained for review. Choose an older scan to compare its
+              results.
+            </span>
+          </div>
           {scanID && (
             <ScanReview
               key={scanID}
@@ -330,11 +447,22 @@ function ScanReview({
       setBusy(false);
     }
   }
+  function showFilter(value: string) {
+    setFilter(value);
+    setPage(1);
+    window.requestAnimationFrame(() =>
+      document
+        .getElementById("discovery-files")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  }
   const scan = result.data?.scan;
-  const active = scan && ["queued", "scanning"].includes(scan.state);
-  const matchingActive =
-    !!scan?.automatic_matching &&
-    ["pending", "running", "waiting"].includes(scan.automatic_matching.state);
+  const active = !!scan && ["queued", "scanning"].includes(scan.state);
+  const auto = scan?.automatic_matching;
+  const matchingActive = !!auto && ["pending", "running"].includes(auto.state);
+  const matchingWaiting = !!auto && ["waiting", "failed"].includes(auto.state);
+  const reviewCount = (scan?.needs_match ?? 0) + (scan?.needs_attention ?? 0);
+  const readyCount = (scan?.matched ?? 0) + (scan?.queued ?? 0);
   return (
     <>
       <RequestState
@@ -343,69 +471,215 @@ function ScanReview({
         retry={result.reload}
       />
       {scan && (
-        <section className="panel system-panel">
-          <div className="indexer-title">
-            <h2>{scan.kind === "movie" ? "Movie" : "TV"} discovery</h2>
-            <Badge color={scan.state === "failed" ? "amber" : "gray"}>
-              {stateLabels[scan.state] ?? scan.state}
-            </Badge>
-          </div>
-          <p>{scan.message || "Reading the selected folder…"}</p>
-          {scan.automatic_matching && (
-            <div role="status">
-              <strong>
-                Automatic matching: {scan.automatic_matching.state}
-              </strong>
-              <p>{scan.automatic_matching.message}</p>
-              <p>
-                {scan.matched ?? 0} matched, waiting to attach · {scan.queued}{" "}
-                queued or inspecting · {scan.automatic_matching.review} need
-                review
+        <section className="panel scan-overview" aria-live="polite">
+          <div className="scan-header">
+            <div>
+              <p className="page-eyebrow">2 · Review scan</p>
+              <h2>{scan.kind === "movie" ? "Movie" : "TV"} discovery</h2>
+              <p className="scan-sub">
+                Started {new Date(scan.created_at * 1000).toLocaleString()} ·{" "}
+                {scan.folder || "Configured folder"}
               </p>
             </div>
-          )}
-          <div className="item-storage-stats">
-            <div>
-              <span>Discovered videos</span>
-              <strong>{scan.discovered}</strong>
-            </div>
-            <div>
-              <span>In library</span>
-              <strong>{scan.registered}</strong>
-            </div>
-            <div>
-              <span>Matched, waiting to attach</span>
-              <strong>{(scan.matched ?? 0) + scan.queued}</strong>
-            </div>
-            <div>
-              <span>Unmatched</span>
-              <strong>{scan.needs_match ?? 0}</strong>
-            </div>
-            <div>
-              <span>Need attention</span>
-              <strong>{scan.needs_attention ?? 0}</strong>
+            <div className="scan-header-meta">
+              <span
+                className={`ui-chip ${
+                  scan.state === "failed"
+                    ? "amber"
+                    : scan.state === "completed"
+                      ? "green"
+                      : "blue"
+                }`}
+              >
+                {stateLabels[scan.state] ?? scan.state}
+              </span>
+              <span className="scan-live">
+                <span aria-hidden="true" /> Live · updates every 3s
+              </span>
             </div>
           </div>
-          <p className="field-help">
+
+          <ScanPhases scan={scan} />
+
+          <div
+            className={`scan-banner ${
+              active || matchingActive
+                ? "active"
+                : matchingWaiting || scan.state === "failed"
+                  ? "attention"
+                  : reviewCount > 0
+                    ? "review"
+                    : "done"
+            }`}
+            role="status"
+          >
+            <span className="scan-banner-icon">
+              {active || matchingActive ? (
+                <Loader2 size={19} className="spin" />
+              ) : matchingWaiting || scan.state === "failed" ? (
+                <AlertTriangle size={19} />
+              ) : reviewCount > 0 ? (
+                <Search size={19} />
+              ) : (
+                <Check size={19} />
+              )}
+            </span>
+            <div className="scan-banner-copy">
+              <strong>
+                {active
+                  ? "Discovery is running"
+                  : matchingActive
+                    ? "Matching is running"
+                    : matchingWaiting
+                      ? "Matching is paused"
+                      : scan.state === "failed"
+                        ? "Discovery needs attention"
+                        : reviewCount > 0
+                          ? `${reviewCount} files need your review`
+                          : readyCount > 0
+                            ? `${readyCount} matches are ready to register`
+                            : "Discovery complete"}
+              </strong>
+              <p>
+                {active
+                  ? `${scan.discovered} videos found so far. Counts update as folders finish.`
+                  : matchingActive
+                    ? auto?.message ||
+                      "Clear matches are being verified and registered."
+                    : matchingWaiting
+                      ? auto?.message ||
+                        scan.message ||
+                        "Matching will retry automatically."
+                      : scan.state === "failed"
+                        ? scan.message ||
+                          "Review the scan and retry when the provider is available."
+                        : reviewCount > 0
+                          ? "These files could not be matched confidently. Clear matches continue automatically."
+                          : readyCount > 0
+                            ? "Clear matches are waiting to be verified and attached."
+                            : `${scan.registered} files are in your library.`}
+              </p>
+              {auto && (
+                <span className="scan-auto-state">
+                  Automatic matching: {auto.state}
+                </span>
+              )}
+              {auto && (
+                <p className="scan-match-summary">
+                  {scan.matched ?? 0} matched, waiting to attach · {scan.queued}{" "}
+                  queued or inspecting · {auto.review} need review
+                </p>
+              )}
+            </div>
+            <div className="scan-banner-actions">
+              {matchingWaiting && (
+                <>
+                  <Button
+                    size="2"
+                    disabled={busy}
+                    onClick={() => void matching("start")}
+                  >
+                    Retry matching now
+                  </Button>
+                  <Button asChild size="2" variant="soft">
+                    <Link to="/settings#tmdb">
+                      <Settings2 size={14} /> TMDb settings
+                    </Link>
+                  </Button>
+                </>
+              )}
+              {matchingActive && (
+                <Button
+                  size="2"
+                  variant="soft"
+                  disabled={busy}
+                  onClick={() => void matching("stop")}
+                >
+                  Stop automatic matching
+                </Button>
+              )}
+              {!matchingActive && !matchingWaiting && reviewCount > 0 && (
+                <Button size="2" onClick={() => showFilter("review")}>
+                  Review files
+                </Button>
+              )}
+              {!matchingActive && !matchingWaiting && readyCount > 0 && (
+                <Button
+                  size="2"
+                  variant="soft"
+                  onClick={() => showFilter("matched")}
+                >
+                  View ready files
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="scan-metrics">
+            <button
+              type="button"
+              className="scan-metric"
+              onClick={() => showFilter("")}
+            >
+              <span>Discovered videos</span>
+              <strong>{scan.discovered}</strong>
+              <small>{scan.examined} entries examined</small>
+            </button>
+            <button
+              type="button"
+              className="scan-metric"
+              onClick={() => showFilter("registered")}
+            >
+              <span>In library</span>
+              <strong>{scan.registered}</strong>
+              <small>Verified and registered</small>
+            </button>
+            <button
+              type="button"
+              className="scan-metric"
+              onClick={() => showFilter("matched")}
+            >
+              <span>Ready to register</span>
+              <strong>{readyCount}</strong>
+              <small>Matched, waiting to attach</small>
+            </button>
+            <button
+              type="button"
+              className="scan-metric"
+              data-attention={reviewCount > 0}
+              onClick={() => showFilter("review")}
+            >
+              <span>Unmatched</span>
+              <strong>{scan.needs_match ?? 0}</strong>
+              <small>Needs a decision</small>
+            </button>
+            <button
+              type="button"
+              className="scan-metric"
+              data-attention={(scan.needs_attention ?? 0) > 0}
+              onClick={() => showFilter("blocked")}
+            >
+              <span>Need attention</span>
+              <strong>{scan.needs_attention ?? 0}</strong>
+              <small>Blocked or unsafe</small>
+            </button>
+          </div>
+
+          <p className="scan-footnote">
             {scan.examined} entries examined · {scan.skipped} skipped (including
             registered files, hidden entries, links and unsupported files).
             Counts update as folders finish.
           </p>
-          <div className="import-actions">
-            {matchingActive ? (
-              <Button
-                variant="soft"
-                disabled={busy}
-                onClick={() => void matching("stop")}
-              >
-                Stop automatic matching
-              </Button>
-            ) : scan.state === "completed" &&
-              ((scan.needs_match ?? 0) > 0 || (scan.matched ?? 0) > 0) ? (
-              <Button disabled={busy} onClick={() => void matching("start")}>
-                Match clear files automatically
-              </Button>
-            ) : null}
+
+          <div className="scan-actions">
+            {!matchingActive &&
+              !matchingWaiting &&
+              scan.state === "completed" &&
+              ((scan.needs_match ?? 0) > 0 || (scan.matched ?? 0) > 0) && (
+                <Button disabled={busy} onClick={() => void matching("start")}>
+                  Match clear files automatically
+                </Button>
+              )}
             <Button variant="soft" onClick={result.reload}>
               <RefreshCw size={15} />
               Refresh status
@@ -458,24 +732,36 @@ function ScanReview({
           {error}
         </p>
       )}
-      <label className="import-history">
-        Show{" "}
-        <select
-          aria-label="Discovery status filter"
-          value={filter}
-          onChange={(e) => {
-            setFilter(e.target.value);
-            setPage(1);
-          }}
-        >
-          <option value="">All files</option>
-          <option value="review">Needs a match</option>
-          <option value="matched">Matched, waiting to attach</option>
-          <option value="blocked">Needs attention</option>
-          <option value="registered">In library</option>
-          <option value="skipped">Skipped</option>
-        </select>
-      </label>
+      <div className="scan-file-toolbar">
+        <div>
+          <h2>Files in this scan</h2>
+          <p>
+            {result.data
+              ? `${result.data.total} ${
+                  result.data.total === 1 ? "file" : "files"
+                } in this view`
+              : "Loading files…"}
+          </p>
+        </div>
+        <label className="ui-field">
+          <span className="ui-field-label">Show</span>
+          <select
+            aria-label="Discovery status filter"
+            value={filter}
+            onChange={(e) => {
+              setFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All files</option>
+            <option value="review">Needs a match</option>
+            <option value="matched">Matched, waiting to attach</option>
+            <option value="blocked">Needs attention</option>
+            <option value="registered">In library</option>
+            <option value="skipped">Skipped</option>
+          </select>
+        </label>
+      </div>
       {result.data && (
         <BulkMatching
           key={`${id}-${page}-${filter}`}
@@ -490,70 +776,79 @@ function ScanReview({
         />
       )}
       {result.data?.items.length ? (
-        <div className="file-details-list panel system-panel">
-          {result.data.items.map((item) => (
-            <article key={item.id} className="discovery-file">
-              <div className="indexer-title">
-                <h3>{item.path.split("/").at(-1)}</h3>
-                <Badge
-                  color={
-                    item.state === "registered"
-                      ? "green"
-                      : item.state === "blocked"
-                        ? "amber"
-                        : "gray"
-                  }
-                >
-                  {stateLabels[item.state] ?? item.state}
-                </Badge>
-              </div>
-              <p>
-                <code>{item.full_path}</code>
-              </p>
-              <p>{bytes(item.size_bytes)}</p>
-              {item.message && <p className="field-help">{item.message}</p>}
-              <div className="import-actions">
-                {["review", "blocked"].includes(item.state) && (
-                  <>
-                    <Button disabled={busy} onClick={() => setFile(item)}>
-                      Review match
-                    </Button>
-                    <Button
-                      variant="soft"
-                      disabled={busy}
-                      onClick={() => void action("skip", item.id)}
-                    >
-                      Skip file
-                    </Button>
-                  </>
-                )}
-                {item.state === "review" && (
-                  <Button asChild variant="soft">
-                    <Link
-                      to={`/organization?replacement_source=${encodeURIComponent(item.id)}`}
-                    >
-                      Replace a registered file
-                    </Link>
-                  </Button>
-                )}
-                {item.state === "registered" && item.media_id && (
-                  <Link
-                    className="text-link"
-                    to={`/${scan?.kind === "series" ? "series" : "movies"}/${item.media_id}`}
+        <section className="panel scan-files" id="discovery-files">
+          <div className="scan-file-list">
+            {result.data.items.map((item) => (
+              <article key={item.id} className="scan-file-row">
+                <div className="scan-file-head">
+                  <div>
+                    <h3>{item.path.split("/").at(-1)}</h3>
+                    <code>{item.full_path}</code>
+                  </div>
+                  <span
+                    className={`ui-chip ${
+                      item.state === "registered"
+                        ? "green"
+                        : item.state === "blocked"
+                          ? "amber"
+                          : "blue"
+                    }`}
                   >
-                    Open library details
-                  </Link>
+                    {stateLabels[item.state] ?? item.state}
+                  </span>
+                </div>
+                <p className="scan-file-meta">
+                  {bytes(item.size_bytes)} · {item.path}
+                </p>
+                {item.message && (
+                  <p className="scan-file-message">{item.message}</p>
                 )}
-              </div>
-            </article>
-          ))}
-        </div>
+                <div className="scan-file-actions">
+                  {["review", "blocked"].includes(item.state) && (
+                    <>
+                      <Button disabled={busy} onClick={() => setFile(item)}>
+                        Review match
+                      </Button>
+                      <Button
+                        variant="soft"
+                        disabled={busy}
+                        onClick={() => void action("skip", item.id)}
+                      >
+                        Skip file
+                      </Button>
+                    </>
+                  )}
+                  {item.state === "review" && (
+                    <Button asChild variant="soft">
+                      <Link
+                        to={`/organization?replacement_source=${encodeURIComponent(item.id)}`}
+                      >
+                        Replace a registered file
+                      </Link>
+                    </Button>
+                  )}
+                  {item.state === "registered" && item.media_id && (
+                    <Link
+                      className="text-link"
+                      to={`/${scan?.kind === "series" ? "series" : "movies"}/${item.media_id}`}
+                    >
+                      Open library details
+                    </Link>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       ) : (
         !result.loading && (
-          <p>
-            No files on this page. Registered videos, samples, trailers, hidden
-            entries and unsupported files are excluded from new discoveries.
-          </p>
+          <section className="empty-state" id="discovery-files">
+            <h2>No files in this view</h2>
+            <p>
+              Registered videos, samples, trailers, hidden entries and
+              unsupported files are excluded from new discoveries.
+            </p>
+          </section>
         )
       )}
       {result.data && (

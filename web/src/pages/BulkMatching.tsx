@@ -113,7 +113,10 @@ export function BulkMatching({
     });
   }
   return (
-    <section className="panel system-panel" aria-label="Bulk metadata matching">
+    <section
+      className={open ? "panel system-panel" : "scan-bulk-bar"}
+      aria-label="Bulk metadata matching"
+    >
       <Button variant="soft" onClick={() => setOpen(!open)}>
         {open ? "Hide bulk matching" : "Match multiple files"}
       </Button>
