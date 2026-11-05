@@ -224,8 +224,30 @@ func automaticMetadataMissing(err error) bool {
 func (s *Service) automaticEpisodes(ctx context.Context, scan LibraryScan, owner string, h automaticHint, title automaticTitle) ([]int64, error) {
 	store := library.New(s.db)
 	season, err := store.TVSeason(ctx, title.MediaID, h.Season)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Saved show metadata can predate a newly added season, which is
+		// common for ongoing anime. Pull the current season list from the
+		// provider and save it through the guarded refresh path, then retry.
+		if s.automaticMetadata == nil {
+			return nil, metadata.ErrNotConfigured
+		}
+		fresh, e := s.automaticMetadata.Series(ctx, title.Movie.TMDbID)
+		if e != nil {
+			if automaticInvalidProviderDetails(e) {
+				return nil, automaticReview("TMDb returned invalid details for this show. Review the mapping.")
+			}
+			return nil, e
+		}
+		if fresh.Movie.TMDbID != title.Movie.TMDbID || !h.matches(fresh.Movie.Title, fresh.Movie.Year, fresh.Movie.TMDbID) {
+			return nil, automaticReview("The provider show identity changed. Review the mapping.")
+		}
+		if e = store.RefreshSeries(ctx, title.MediaID, fresh, season.Revision); e != nil {
+			return nil, e
+		}
+		season, err = store.TVSeason(ctx, title.MediaID, h.Season)
+	}
 	if err != nil {
-		return nil, automaticReview("The numbered season is not part of this show's saved metadata. Review the show or refresh its seasons.")
+		return nil, automaticReview("The provider does not list this season for the show. Review the season and episode mapping.")
 	}
 	if season.Season.LoadedAt == "" {
 		if s.automaticMetadata == nil {

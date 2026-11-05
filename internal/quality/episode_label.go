@@ -60,6 +60,20 @@ func EpisodeSpan(title string) (season int, episodes []int, start, end int, ok b
 				return season, nil, start, end, false
 			}
 			last, _ := strconv.Atoi(tail[r[4]:r[5]])
+			// A spelled-out "Episode N" after the label is a placeholder title,
+			// not a range: "S01E01 - Episode 1" restates the same episode, and
+			// "S01E01 - Episode 2" conflicts with it. Neither is a pack.
+			if r[2] >= 0 && strings.EqualFold(tail[r[2]:r[3]], "episode") {
+				if last != first {
+					return season, nil, start, end, false
+				}
+				end += r[1]
+				tail = title[end:]
+				if wordAfter(title, end) || extraEpisode.MatchString(tail) || extraStandardLabel.MatchString(tail) || remainingEpisodeLabel.MatchString(tail) {
+					return season, nil, start, end, false
+				}
+				return season, episodes, start, end, true
+			}
 			if last <= first || last-first >= 20 {
 				return season, nil, start, end, false
 			}
@@ -77,6 +91,12 @@ func EpisodeSpan(title string) (season int, episodes []int, start, end int, ok b
 			tail = title[end:]
 			next, _ := strconv.Atoi(tail[c[2]:c[3]])
 			if next != episodes[len(episodes)-1]+1 || len(episodes) >= 20 {
+				// A dashless spelled-out "Episode N" restating the same single
+				// episode is a placeholder title, not additional numbering.
+				if len(episodes) == 1 && next == episodes[0] && strings.Contains(strings.ToLower(tail[:c[1]]), "episode") {
+					end += c[1]
+					break
+				}
 				return season, nil, start, end, false
 			}
 			episodes = append(episodes, next)

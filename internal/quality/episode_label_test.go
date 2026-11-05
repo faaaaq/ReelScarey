@@ -36,6 +36,9 @@ func TestNumericEpisodeTitlesAreNotTreatedAsRanges(t *testing.T) {
 		{"Weeds - S01E01 - 36! 24! 36! Dick", 1, 1},
 		{"Show - S01E01 - 15 Minutes", 1, 1},
 		{"Show - S01E01 - 02", 1, 1},
+		{"DEAD DEAD DEMONS DEDEDEDE DESTRUCTION - S01E01 - Episode 1", 1, 1},
+		{"Show - S01E01 - Episode 1 1080p", 1, 1},
+		{"Show S01E01 Episode 1", 1, 1},
 	}
 	for _, v := range single {
 		season, numbers, _, _, ok := EpisodeSpan(v.title)
@@ -51,6 +54,17 @@ func TestNumericEpisodeTitlesAreNotTreatedAsRanges(t *testing.T) {
 		season, numbers, _, _, ok := EpisodeSpan(title)
 		if !ok || season != 1 || !reflect.DeepEqual(numbers, []int{1, 2}) {
 			t.Fatalf("explicit range not parsed: %q => %d %v %v", title, season, numbers, ok)
+		}
+	}
+	for _, title := range []string{
+		"Show - S01E01 - Episode 2",
+		"Show - S01E01 - Episode 1 Episode 2",
+		"Show - S01E01 - EP01",
+		"Show - S01E01 - Ep 1",
+		"Owned Show S01E01-E01",
+	} {
+		if _, numbers, _, _, ok := EpisodeSpan(title); ok {
+			t.Fatalf("conflicting or ambiguous episode label accepted: %q => %v", title, numbers)
 		}
 	}
 }

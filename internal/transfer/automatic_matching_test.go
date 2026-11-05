@@ -231,6 +231,45 @@ func TestAutomaticEpisodeTitleFallbackIdentity(t *testing.T) {
 	}
 }
 
+func TestAutomaticMatchingCreatesSeasonsAddedAfterTheShowWasSaved(t *testing.T) {
+	f := setupWorkflow(t)
+	year := 2024
+	s1 := metadata.SeasonSummary{TMDbID: 951, Number: 1, Title: "Season 1", EpisodeCount: 1}
+	s2 := metadata.SeasonSummary{TMDbID: 952, Number: 2, Title: "Season 2", EpisodeCount: 1}
+	provider := &automaticProviderFixture{
+		show: metadata.Series{Movie: metadata.Movie{TMDbID: 950, Title: "DAN", Year: &year}, Seasons: []metadata.SeasonSummary{s1}},
+		seasonsByNumber: map[int]metadata.Season{
+			1: {SeasonSummary: s1, Episodes: []metadata.Episode{{TMDbID: 961, Number: 1, Title: "First"}}},
+			2: {SeasonSummary: s2, Episodes: []metadata.Episode{{TMDbID: 962, Number: 1, Title: "Hey, It's a Kaiju!"}}},
+		},
+	}
+	f.s.SetAutomaticMetadata(provider)
+	existingVideo(t, f, "Anime/DAN (2024) [tmdb-950]/Season 01/DAN - S01E01.mp4", []byte("owned season one episode"))
+	existingVideo(t, f, "Anime/DAN (2024) [tmdb-950]/Season 2/DAN - S02E01 - Hey, It's a Kaiju!.mp4", []byte("owned season two episode"))
+	scan, err := f.s.StartLibraryScanWithMatching(context.Background(), "series", "anime", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishScan(t, f, scan.ID)
+	// The first step resolves the title and saves the show with only the
+	// seasons the provider listed at that moment.
+	if _, err := f.s.ProcessAutomaticMatchNext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// The provider now lists a season that did not exist when the show was
+	// saved, exactly like an ongoing anime continuing on TMDb.
+	provider.show.Seasons = []metadata.SeasonSummary{s1, s2}
+	finishAutomatic(t, f, scan.ID)
+	current, err := f.s.LibraryScan(context.Background(), scan.ID)
+	if err != nil || current.Registered != 2 {
+		t.Fatal(current, err)
+	}
+	var season2, episode int64
+	if err := f.db.QueryRow(`SELECT s.number,e.tmdb_id FROM episode_files ef JOIN episodes e ON e.id=ef.episode_id JOIN seasons s ON s.id=e.season_id WHERE e.tmdb_id=962`).Scan(&season2, &episode); err != nil || season2 != 2 || episode != 962 {
+		t.Fatal("season 2 episode was not registered", season2, episode, err)
+	}
+}
+
 func TestAutomaticTitleOnlyEpisodeMatchesUniqueCanonicalTitle(t *testing.T) {
 	f := setupWorkflow(t)
 	year := 2018
