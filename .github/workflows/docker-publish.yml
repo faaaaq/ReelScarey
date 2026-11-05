@@ -2,8 +2,8 @@ name: Publish ReelScarey to Docker Hub
 
 on:
   push:
-    branches:
-      - codex/foundation
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   publish:
-    if: github.ref == 'refs/heads/codex/foundation'
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
 
     steps:
@@ -48,6 +48,8 @@ jobs:
           build-args: VERSION=${{ steps.version.outputs.value }}
           provenance: false
           sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Verify release startup, backup restore and storage recovery
         run: |
@@ -71,6 +73,7 @@ jobs:
             ${{ vars.DOCKERHUB_USERNAME }}/reelscarey:${{ steps.version.outputs.value }}
             ${{ vars.DOCKERHUB_USERNAME }}/reelscarey:sha-${{ github.sha }}
           build-args: VERSION=${{ steps.version.outputs.value }}
+          cache-from: type=gha
           provenance: mode=max
           sbom: true
           labels: |

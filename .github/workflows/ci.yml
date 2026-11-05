@@ -1,7 +1,13 @@
 name: Application checks
 on:
   push:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
 permissions:
   contents: read
 concurrency:
@@ -9,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, reelscarey-ci]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
