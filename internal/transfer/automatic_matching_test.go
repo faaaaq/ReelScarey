@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/faaaaq/ReelScarey/internal/metadata"
@@ -27,11 +28,17 @@ func TestAutomaticIdentityEvidence(t *testing.T) {
 		{"series", "TV", "TV/One Show (2020)/Season 01/Alternate.Title.S01E01.mkv", "One Show", 2020, 1, []int{1}},
 		{"series", "TV", "TV/Grouped/Example Show/S01E02.mkv", "Example Show", 0, 1, []int{2}},
 		{"series", "TV", "TV/1923/Season 01/1923.S01E01.mkv", "1923", 0, 1, []int{1}},
+		{"series", "TV", "TV/Alley Cats (2026) [tmdb-300480]/Season 1/Alley Cats - S01E01 - Lost.mkv", "Alley Cats", 2026, 1, []int{1}},
+		{"series", "TV", "TV/3rd Rock from the Sun (1996) [tmdb-155]/Season 2/3rd Rock from the Sun - S02E23 - 15 Minutes of Dick.mkv", "3rd Rock from the Sun", 1996, 2, []int{23}},
 	} {
 		h, err := automaticIdentity(LibraryScan{Kind: v.kind, Folder: v.folder}, DiscoveredFile{Path: v.name})
 		if err != nil || h.Title != v.title || h.Year != v.year || h.Season != v.season || !reflect.DeepEqual(h.Episodes, v.episodes) {
 			t.Fatalf("%s: %+v %v", v.name, h, err)
 		}
+	}
+	h, err := automaticIdentity(LibraryScan{Kind: "series", Folder: "TV"}, DiscoveredFile{Path: "TV/Alley Cats (2026) [tmdb-300480]/Season 1/Alley Cats - S01E01 - Lost.mkv"})
+	if err != nil || h.ProviderID != 300480 {
+		t.Fatalf("TMDb folder identity not retained: %+v %v", h, err)
 	}
 	for _, v := range []struct{ kind, folder, name string }{
 		{"movie", "Movies", "Movies/A Movie.mkv"},
@@ -135,6 +142,60 @@ func TestAutomaticMatchingRegistersAllMovieVersions(t *testing.T) {
 		t.Fatal(status, current)
 	}
 }
+func TestAutomaticMatchingResumesResolvedCandidates(t *testing.T) {
+	f := setupWorkflow(t)
+	scan := automaticMovieScan(t, f,
+		"Movies/Test Movie (2026)/Test.Movie.2026.720p.mp4",
+		"Movies/Test Movie (2026)/Test.Movie.2026.1080p.mp4",
+	)
+	ctx := context.Background()
+	if _, err := f.s.ProcessAutomaticMatchNext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var ready, cache int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM library_match_candidates WHERE scan_id=? AND state='ready'`, scan.ID).Scan(&ready); err != nil || ready != 1 {
+		t.Fatal("first candidate was not resolved", ready, err)
+	}
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM library_match_cache WHERE scan_id=?`, scan.ID).Scan(&cache); err != nil || cache == 0 {
+		t.Fatal("title cache was not written", cache, err)
+	}
+	if _, err := f.db.Exec(`UPDATE library_match_jobs SET state='paused',lease_owner='',lease_until=0 WHERE scan_id=?`, scan.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.StartAutomaticMatching(ctx, scan.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM library_match_candidates WHERE scan_id=? AND state='ready'`, scan.ID).Scan(&ready); err != nil || ready != 1 {
+		t.Fatal("resume discarded a verified candidate", ready, err)
+	}
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM library_match_cache WHERE scan_id=?`, scan.ID).Scan(&cache); err != nil || cache == 0 {
+		t.Fatal("resume discarded the title cache", cache, err)
+	}
+}
+
+func TestAutomaticInvalidFolderIDBecomesReviewWithoutStoppingScan(t *testing.T) {
+	f := setupWorkflow(t)
+	scan := automaticMovieScan(t, f, "Movies/Bad Folder (2024) [tmdb-999]/Bad.Folder.2024.mp4")
+	year := 2024
+	provider := &automaticProviderFixture{
+		movie:      metadata.Movie{TMDbID: 999, Title: "Bad Folder", Year: &year},
+		movieError: &metadata.Error{Code: "tmdb_invalid_response", Message: "unreadable"},
+	}
+	f.s.SetAutomaticMetadata(provider)
+	worked, err := f.s.ProcessAutomaticMatchNext(context.Background())
+	if err != nil || !worked {
+		t.Fatal("single bad ID stopped the matcher", worked, err)
+	}
+	status, err := f.s.AutomaticMatchStatus(context.Background(), scan.ID)
+	if err != nil || status.Review != 1 || status.State == "paused" {
+		t.Fatal(status, err)
+	}
+	var message string
+	if err := f.db.QueryRow(`SELECT message FROM library_scan_files WHERE scan_id=?`, scan.ID).Scan(&message); err != nil || !strings.Contains(message, "folder's ID") {
+		t.Fatal(message, err)
+	}
+}
+
 func TestAutomaticMatchingRequiresExplicitStartForOldScansAndRejectsChangedSource(t *testing.T) {
 	f := setupWorkflow(t)
 	ctx := context.Background()

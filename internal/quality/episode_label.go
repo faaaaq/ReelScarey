@@ -15,6 +15,7 @@ var chainLabel = regexp.MustCompile(`(?i)^[ ._]*e(?:p(?:isode)?s?)?[ ._-]*([0-9]
 var rangeLabel = regexp.MustCompile(`(?i)^[ ._]*-[ ._]*(?:(e(?:p(?:isode)?s?)?)[ ._-]*)?([0-9]{1,5})`)
 var extraStandardLabel = regexp.MustCompile(`(?i)^[ ._,+&/\-]*(?:s(?:eason)?[ ._-]*[0-9]|e(?:p(?:isode)?s?)?[ ._-]*[0-9]|x[0-9]|(?:and|to)[ ._-]+[0-9])`)
 var remainingEpisodeLabel = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:s(?:eason)?[ ._-]*[0-9]{1,4}|e(?:p(?:isode)?s?)?[ ._-]*[0-9]{1,5}|x[0-9]{1,2})(?:$|[^a-z0-9])`)
+var numericTitleTail = regexp.MustCompile(`(?i)^[ ._]*[-–—][ ._]*[0-9]{1,5}(?:[^a-z0-9]|$)`)
 
 func HasEpisodeLabel(title string) bool { return standardLabel.MatchString(title) }
 
@@ -45,9 +46,16 @@ func EpisodeSpan(title string) (season int, episodes []int, start, end int, ok b
 	episodes = []int{first}
 	tail := title[end:]
 	if r := rangeLabel.FindStringSubmatchIndex(tail); r != nil {
+		rangeText := tail[r[0]:r[1]]
+		dash := strings.IndexAny(rangeText, "-–—")
+		// A range must be attached to the episode label (S01E01-02) or use an
+		// explicit E marker (S01E01 - E02). "S01E01 - 15 Minutes" is an episode
+		// title, not an episode range.
+		detached := dash > 0
+		explicit := r[2] >= 0
 		// A resolution following a dash is not the endpoint of an episode range.
 		resolution := r[2] < 0 && r[5] < len(tail) && animeResolution.MatchString(tail[r[4]:r[5]+1]) && !wordAfter(tail, r[5]+1)
-		if !resolution {
+		if !resolution && (!detached || explicit) {
 			if wordAfter(tail, r[1]) {
 				return season, nil, start, end, false
 			}
@@ -76,7 +84,8 @@ func EpisodeSpan(title string) (season int, episodes []int, start, end int, ok b
 		}
 	}
 	tail = title[end:]
-	if wordAfter(title, end) || extraEpisode.MatchString(tail) || extraStandardLabel.MatchString(tail) || remainingEpisodeLabel.MatchString(tail) {
+	numericTitle := numericTitleTail.MatchString(tail)
+	if wordAfter(title, end) || (!numericTitle && extraEpisode.MatchString(tail)) || extraStandardLabel.MatchString(tail) || remainingEpisodeLabel.MatchString(tail) {
 		return season, nil, start, end, false
 	}
 	ok = true

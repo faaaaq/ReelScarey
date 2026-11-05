@@ -37,6 +37,13 @@ func (s *Service) automaticTitle(ctx context.Context, scan LibraryScan, owner st
 		case automaticMetadataMissing(err):
 			out.Reason = "TMDb no longer lists this title. Choose a match manually."
 		default:
+			var provider *metadata.Error
+			if h.ProviderID > 0 && errors.As(err, &provider) && provider.Code == "tmdb_invalid_response" {
+				// A broken ID in one folder must not pause a scan containing
+				// thousands of otherwise valid files.
+				out.Reason = "TMDb could not read this folder's ID. Review the title manually."
+				break
+			}
 			return out, err
 		}
 	}
