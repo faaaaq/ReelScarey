@@ -207,7 +207,7 @@ function AuthForm({
               required
               minLength={setup ? 3 : 1}
               maxLength={40}
-              pattern={setup ? "[A-Za-z0-9_-]+" : undefined}
+              pattern={setup ? "[A-Za-z0-9_\\-]+" : undefined}
               autoComplete="username"
               autoCapitalize="none"
               spellCheck={false}

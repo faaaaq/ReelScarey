@@ -6,9 +6,17 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/organization"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func skipWithoutDirectorySync(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("publication fsyncs directories, which Windows does not support; Docker/Linux is the supported deployment")
+	}
+}
 
 func editedFixture(t *testing.T) (fixture, string) {
 	t.Helper()
@@ -24,6 +32,7 @@ func editedFixture(t *testing.T) (fixture, string) {
 	return f, name
 }
 func TestReviewedSubtitleOffsetReplacementAndRollbackPreserveOriginalAndVideo(t *testing.T) {
+	skipWithoutDirectorySync(t)
 	f, name := editedFixture(t)
 	ctx := context.Background()
 	track := Track{"en", "full"}
@@ -92,6 +101,7 @@ func TestReviewedSubtitleOffsetReplacementAndRollbackPreserveOriginalAndVideo(t 
 	}
 }
 func TestSubtitleJournalRecoversEveryPublicationBoundaryAndPreservesForeignOutput(t *testing.T) {
+	skipWithoutDirectorySync(t)
 	for _, cut := range []string{"staged_original", "staged_missing", "staged_published", "published", "foreign"} {
 		t.Run(cut, func(t *testing.T) {
 			f, name := editedFixture(t)

@@ -100,8 +100,8 @@ reservations. HTTP owns strict filter validation and a five-second read budget;
 the UI uses bookmarkable filters and explicit existing workflow links. No provider,
 worker or filesystem operation is started by these reads. Calendar dates remain
 civil dates; UTC supplies the comparison day. Invalid saved dates stay undated
-and cannot authorize automation. This adds no tables/migrations/dependencies;
-schema remains 10. See docs/PLANNING.md.
+and cannot authorize automation. This adds no tables or migrations. See
+docs/PLANNING.md.
 Library browsing extends the existing paginated read with strict literal-title,
 parent-status/monitoring filters and allowlisted stable ordering. Counts and rows
 share a transaction; the UI keeps filters/view/page in the URL. Poster/table view
@@ -262,8 +262,9 @@ TV downloads retain the mandatory reviewed mapping before any import.
 Resolution upgrades compare stored FFprobe dimensions to the current profile
 cutoff. Below-cutoff files can generate suggestions; no replacement download or
 file mutation is performed. Labels establish selection evidence only, never
-verified audio language. Generic arbitrary jobs, replacement imports and advanced
-source/codec scoring remain future scope. See docs/AUTOMATION.md for exact limits.
+verified audio language. Generic arbitrary job types remain future scope;
+replacement imports and source/codec scoring are implemented in later
+migrations. See docs/AUTOMATION.md for exact limits.
 
 TV shares the same client adapter, submission deduplication, leases, filesystem
 importer and startup staging cleanup. It adds episode reservations, file snapshots

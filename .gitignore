@@ -20,3 +20,5 @@ setup-token
 *.exe
 .DS_Store
 /server.env
+# Local OpenCode permission config, not part of the application
+/opencode.jsonc

@@ -1,10 +1,20 @@
 package httpapi
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 )
+
+func (s *Server) itemError(w http.ResponseWriter, e error) {
+	if errors.Is(e, sql.ErrNoRows) {
+		fail(w, 404, "not_found", "This title is not in your library.")
+		return
+	}
+	s.tvError(w, e)
+}
 
 func (s *Server) itemDetails(w http.ResponseWriter, r *http.Request) {
 	id, ok := tvID(w, r)
@@ -22,7 +32,7 @@ func (s *Server) itemDetails(w http.ResponseWriter, r *http.Request) {
 	}
 	out, e := s.transfer.Details(r.Context(), id, page)
 	if e != nil {
-		s.tvError(w, e)
+		s.itemError(w, e)
 		return
 	}
 	send(w, 200, out)
@@ -41,7 +51,7 @@ func (s *Server) refreshInformation(w http.ResponseWriter, r *http.Request) {
 	}
 	item, e := s.library.Item(r.Context(), id)
 	if e != nil {
-		s.tvError(w, e)
+		s.itemError(w, e)
 		return
 	}
 	info, e := s.metadata.Information(r.Context(), item.Kind, item.TMDbID)

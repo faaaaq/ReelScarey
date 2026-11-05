@@ -43,7 +43,7 @@ export function RequestState({
       <div className="error-box" role="alert">
         <AlertCircle size={20} />
         <div>
-          <strong>Connection interrupted</strong>
+          <strong>Could not load this page</strong>
           <p>{error}</p>
           <Button variant="soft" onClick={retry}>
             Try again

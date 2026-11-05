@@ -156,4 +156,21 @@ describe("Movie versions", () => {
       );
     },
   );
+  it("does not request replacement files without a selected movie", async () => {
+    const fetch = vi.fn(async (_url: string) =>
+      Response.json({ configured: true }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    mount(<Releases />, "/releases");
+    expect(
+      await screen.findByText("Choose a valid movie from your library first."),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(([url]) =>
+          String(url).includes("/organization/files"),
+        ),
+      ).toBe(false),
+    );
+  });
 });

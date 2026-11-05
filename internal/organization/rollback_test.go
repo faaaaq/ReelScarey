@@ -4,12 +4,16 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestMoveRollbackRestoresPathsAndRejectsStaleReview(t *testing.T) {
 	for _, folder := range []bool{false, true} {
 		t.Run(map[bool]string{false: "files", true: "folder"}[folder], func(t *testing.T) {
+			if folder && runtime.GOOS != "linux" {
+				t.Skip("whole-folder moves require the Linux Docker deployment")
+			}
 			ctx := context.Background()
 			f := newReviewFixture(t)
 			original := "Movies/Film/original.mkv"
