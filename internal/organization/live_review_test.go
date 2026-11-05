@@ -158,8 +158,8 @@ func TestRealOrganizationGeneratedMedia(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan, err := organizer.Preview(ctx, []int64{fileID}, "")
-	if err != nil || len(plan.Files) != 1 || len(plan.Files[0].Companions) != 1 || !strings.Contains(plan.Files[0].Destination, "025-026.mkv") {
-		t.Fatal("generated Anime review lost shared mapping or ASS companion", plan, err)
+	if err != nil || len(plan.Files) != 1 || len(plan.Files[0].Companions) != 1 || !strings.Contains(plan.Files[0].Destination, "025-026 [480p SDR].mkv") {
+		t.Fatal("generated Anime review lost shared mapping, quality tag or ASS companion", plan, err)
 	}
 	if _, err = os.Stat(video); err != nil {
 		t.Fatal("preview changed original path", err)
