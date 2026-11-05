@@ -14,7 +14,9 @@ import (
 )
 
 // Replacement is a durable, reviewed swap. The original file is retained at
-// Backup and the discovered source is never removed.
+// Backup for media replacements and the discovered source is never removed.
+// Metadata-only title updates keep no second copy: the verified stage replaces
+// the original in place, and PreviousTitle records the prior container title.
 type Replacement struct {
 	AcquisitionSubtitles []AcquiredSubtitle  `json:"acquisition_subtitles,omitempty"`
 	AcquisitionKind      string              `json:"acquisition_kind,omitempty"`
@@ -25,6 +27,8 @@ type Replacement struct {
 	ScanFileID           string              `json:"scan_file_id,omitempty"`
 	RestoresPlan         string              `json:"restores_plan,omitempty"`
 	Recovering           bool                `json:"recovering,omitempty"`
+	MetadataOnly         bool                `json:"metadata_only,omitempty"`
+	PreviousTitle        *string             `json:"previous_title,omitempty"`
 	TagTitle             string              `json:"tag_title,omitempty"`
 	TagStage             string              `json:"tag_stage,omitempty"`
 	TagParent            string              `json:"tag_parent,omitempty"`
@@ -47,6 +51,14 @@ type ReplacementMetadata struct {
 	ImportedAt int64   `json:"imported_at"`
 	Origin     string  `json:"origin"`
 	SourceName string  `json:"source_name"`
+	// Mtime and Identity describe a verified replacement output. They are not
+	// stored in media_files, so Before records leave them zero.
+	Mtime    int64  `json:"mtime,omitempty"`
+	Identity string `json:"identity,omitempty"`
+}
+
+func (m ReplacementMetadata) companion(source string) Companion {
+	return Companion{Source: source, Size: m.Size, Mtime: m.Mtime, SHA: m.SHA, Identity: m.Identity}
 }
 
 type YouTubeVersion struct {
@@ -256,6 +268,9 @@ func (s *Service) PreviewRollback(ctx context.Context, planID string) (Plan, err
 	if old.Removal != nil {
 		return Plan{}, problem("invalid_selection", "Removed catalog entries must be added and registered again. Retained trash is not deleted.")
 	}
+	if old.Replacement != nil && old.Replacement.MetadataOnly {
+		return Plan{}, problem("invalid_selection", "This job only changed the embedded title and kept no video copy. Review a new title update to change it again.")
+	}
 	if old.State == "completed" && old.Replacement == nil {
 		return s.previewMoveRollback(ctx, old)
 	}
@@ -353,6 +368,9 @@ func (s *Service) PreviewRollback(ctx context.Context, planID string) (Plan, err
 
 func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 	r := p.Replacement
+	if r.MetadataOnly {
+		return s.executeEmbeddedTitle(ctx, p)
+	}
 	root, _, e := s.openRoot(p.Root)
 	if e != nil {
 		return e
@@ -673,6 +691,9 @@ func (s *Service) RecoverReplacement(ctx context.Context, planID string) (Plan, 
 		return p, e
 	}
 	r := p.Replacement
+	if r != nil && r.MetadataOnly {
+		return p, problem("invalid_selection", "Metadata-only title updates keep no video copy to restore.")
+	}
 	if p.State != "failed" || r == nil || r.Recovering || (p.Phase != "archived" && p.Phase != "removed") {
 		return p, problem("invalid_selection", "This job cannot restore its original version from the current state.")
 	}

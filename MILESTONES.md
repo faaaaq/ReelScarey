@@ -131,3 +131,22 @@ repository/account requirements and owner license decision are satisfied; see
 - [x] Per-file replacement/rollback and version-aware organization preserve other copies.
 
 See [movie versions](docs/MOVIE_VERSIONS.md) and [executed validation](docs/VALIDATION.md).
+
+## Version 0.29 UI, discovery and matching
+
+- [x] Emby-inspired light/dark shell, collapsed navigation and command palette.
+- [x] Reviewed existing-library discovery with automatic matching and explicit exceptions.
+- [x] Folder-first identity, title-only episode fallback and guarded season refresh.
+- [x] Optional registration of unverified videos with honest labels (schema 045).
+
+See [existing-library behavior](docs/EXISTING_LIBRARY.md) and [UI](docs/UI.md).
+
+## Version 0.30 inspected quality and title records
+
+- [x] Filenames carry inspected resolution plus HDR/SDR transfer tags.
+- [x] FFprobe records HDR10/HLG transfer; migration 046 projects `video_hdr`.
+- [x] Multiversion suffixes combine quality and version without duplication.
+- [x] Embedded-title updates replace the original in place and record the
+  previous title, sizes and checksums instead of retaining a duplicate video.
+
+See [existing-library behavior](docs/EXISTING_LIBRARY.md) and [API](docs/API.md).

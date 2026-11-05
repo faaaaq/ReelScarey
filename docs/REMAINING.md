@@ -57,11 +57,13 @@ Optional integrations below are not an implementation queue without a new reques
 ## Media management and organization
 
 - [x] Safely update embedded movie and episode titles during reviewed organization,
-  preserving streams, chapters, attachments, sidecars, seeding sources and rollback.
-  Reviewed MP4/M4V, Matroska, MOV, AVI and WebM updates preserve a rollback copy and can be queued
-  automatically after selected-file and whole-folder moves, with one rollback
-  copy per registered video. Rewrites that change stream or packet facts are
-  rejected; TS/M2TS container title tags remain unsupported.
+  preserving streams, chapters, attachments, sidecars and seeding sources.
+  Reviewed MP4/M4V, Matroska, MOV, AVI and WebM updates replace the original in
+  place, record the previous title and old/new checksums in the plan, and can be
+  queued automatically after selected-file and whole-folder moves. No duplicate
+  video copy is retained; metadata-only plans refuse byte-level rollback. Rewrites
+  that change stream or packet facts are rejected; TS/M2TS container title tags
+  remain unsupported.
 
 - [x] Connect manually selected movie/TV upgrades and YouTube videos to reviewed
   versioned replacement. Source provenance and canonical mappings survive rollback;

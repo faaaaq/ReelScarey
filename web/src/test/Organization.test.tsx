@@ -207,10 +207,12 @@ describe("Reviewed library organization", () => {
           replacement: {
             title: "First feature",
             tag_title: "First feature",
+            metadata_only: true,
+            previous_title: "Wrong title",
             media_file_id: 41,
             original: { source: "Old/First feature.mkv", size_bytes: 1000000 },
             incoming: { source: "Old/First feature.mkv", size_bytes: 1000000 },
-            backup: ".reelscarey-versions/example",
+            backup: "",
             episodes: [],
           },
         });
@@ -228,6 +230,11 @@ describe("Reviewed library organization", () => {
       name: "Organization review",
     });
     expect(within(review).getByText("New embedded title:")).toBeVisible();
+    expect(within(review).getByText("Previous embedded title:")).toBeVisible();
+    expect(within(review).getByText("Wrong title")).toBeVisible();
+    expect(
+      within(review).getByText(/no duplicate video copy is kept/i),
+    ).toBeVisible();
     expect(
       within(review).getByRole("button", { name: "Apply reviewed changes" }),
     ).toBeDisabled();

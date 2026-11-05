@@ -807,12 +807,11 @@ func TestOrganizationQueuesApprovedEmbeddedTitleAfterMove(t *testing.T) {
 		t.Fatal("seeding source changed", string(data), e)
 	}
 	child, e := f.s.Plan(ctx, childID)
-	if e != nil || child.State != "completed" {
+	if e != nil || child.State != "completed" || !child.Replacement.MetadataOnly || child.Replacement.Backup != "" {
 		t.Fatal(child, e)
 	}
-	old, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(child.Replacement.Backup)))
-	if e != nil || string(old) != "original video" {
-		t.Fatal(string(old), e)
+	if backups, _ := filepath.Glob(filepath.Join(f.cfg.MediaDir, ".reelscarey-versions", ".reelscarey-version-*")); len(backups) != 0 {
+		t.Fatal("metadata update retained a video copy", backups)
 	}
 }
 

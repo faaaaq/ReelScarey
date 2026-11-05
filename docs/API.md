@@ -612,21 +612,27 @@ means it has not been inspected with this version and an empty string means no
 title was reported. Inspection does not edit the file or rewrite tags. A separate reviewed
 embedded-title update is available; selected-file, whole-title and whole-folder
 organization reviews can request it with `update_embedded_title: true`. Updates
-run sequentially after the move, retaining a rollback copy for each video.
+run sequentially after the move. Each plan records the previous title, previous
+size/checksum and the new size/checksum; no duplicate video copy is retained.
 
 `POST /organization/embedded-title` with `media_file_id` creates a review of a
 catalog-derived movie or episode title for a registered MP4, M4V, Matroska, MOV, AVI or WebM video.
 Every rewrite must preserve packet timing and non-title metadata; unsupported
 codec combinations fail safely. TS/M2TS title tags remain unsupported.
 
-Applying the plan uses an independent staged copy, verifies stream metadata,
-packet data and timestamps, chapters and existing container tags, and retains
-the previous file for reviewed rollback. Unsupported or changed streams fail
-without replacing the original. YouTube-origin provenance is retained and
-restored with its corresponding version.
+Applying the plan writes a verified independent stage, checks stream metadata,
+packet data and timestamps, chapters and existing container tags, then atomically
+replaces the original path. The original is untouched until the verified stage is
+published, and a torrent seeding hardlink continues to reference the old bytes.
+No prior video copy is retained: `previous_title`, `before` and `after` in the
+plan snapshot are the durable change record, and metadata-only plans refuse
+`rollback`. Unsupported or changed streams fail without replacing the original.
+YouTube-origin provenance is retained and updated to the replacement checksum.
 
-POST `/api/v1/organization/plans/{id}/rollback` with `{}` also accepts completed
-file/title/folder moves. It returns a 201 review plan with `restores_plan` and
+POST `/api/v1/organization/plans/{id}/rollback` with `{}` accepts completed
+file/title/folder moves and media replacements. Metadata-only embedded-title
+plans keep no video copy and refuse rollback; review a new title update instead.
+The endpoint returns a 201 review plan with `restores_plan` and
 inverse paths, without moving files. Apply requires the normal explicit review.
 Current collection and naming preferences remain unchanged for future imports.
 Changed registered versions/mappings and occupied original paths are rejected;

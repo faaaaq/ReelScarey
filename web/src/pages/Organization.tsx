@@ -74,10 +74,12 @@ type Plan = {
     media_file_id: number;
     restores_plan?: string;
     recovering?: boolean;
+    metadata_only?: boolean;
+    previous_title?: string | null;
     tag_title?: string;
     original: { source: string; size_bytes: number };
     incoming: { source: string; size_bytes: number };
-    backup: string;
+    backup?: string;
     episodes: { id: number; season: number; number: number; title: string }[];
   };
   folder_move?: {
@@ -931,20 +933,38 @@ function Reorganize({ config }: { config: Config }) {
                   <p>
                     {new Date(item.updated_at * 1000).toLocaleString()} ·{" "}
                     {item.replacement?.title}
+                    {item.replacement?.metadata_only
+                      ? " · embedded title update"
+                      : ""}
                   </p>
-                  <Button
-                    variant="soft"
-                    disabled={!!pending || running}
-                    onClick={() => void reviewRollback(item)}
-                  >
-                    Review restore previous version
-                  </Button>
+                  {item.replacement?.metadata_only ? (
+                    <p className="field-help">
+                      {item.replacement.previous_title == null
+                        ? "Previous title not recorded"
+                        : item.replacement.previous_title === ""
+                          ? "Previous title: (none)"
+                          : `Previous title: ${item.replacement.previous_title}`}
+                      {" → "}
+                      {item.replacement.tag_title
+                        ? `New title: ${item.replacement.tag_title}`
+                        : "New title: (none)"}
+                      . No video copy was retained.
+                    </p>
+                  ) : (
+                    <Button
+                      variant="soft"
+                      disabled={!!pending || running}
+                      onClick={() => void reviewRollback(item)}
+                    >
+                      Review restore previous version
+                    </Button>
+                  )}
                 </div>
               ))}
             {versions.data &&
               !versions.data.items.filter(
                 (item) => !item.replacement?.recovering,
-              ).length && <p>No saved versions.</p>}
+              ).length && <p>No saved versions or title updates.</p>}
           </div>
         )}
         {replacementSource && (
@@ -1018,7 +1038,9 @@ function Reorganize({ config }: { config: Config }) {
         </label>
         <p className="field-help">
           Choose MP4, M4V, Matroska, MOV, AVI or WebM files, or review an entire
-          title folder. Each verified title update retains a rollback copy.
+          title folder. The verified title update replaces the original in place
+          and records the previous title in the job history. No duplicate video
+          copy is kept.
         </p>
         {mediaID && (
           <>
@@ -1116,8 +1138,9 @@ function Reorganize({ config }: { config: Config }) {
           )}
           {plan.update_embedded_title && (
             <p>
-              After the file move, update embedded titles using verified copies
-              and retain each previous version.
+              After the file move, update embedded titles in place using
+              verified metadata. Each job records the previous title; no
+              duplicate video is kept.
             </p>
           )}
           {plan.restores_plan && (
@@ -1252,7 +1275,7 @@ function Reorganize({ config }: { config: Config }) {
               {p.state === "completed" &&
                 !p.removal &&
                 (p.replacement
-                  ? !p.replacement.recovering
+                  ? !p.replacement.recovering && !p.replacement.metadata_only
                   : p.files.length > 0) && (
                   <Button
                     variant="soft"
@@ -1303,32 +1326,43 @@ function PlanFiles({ plan }: { plan: Plan }) {
           <p>
             <strong>{plan.replacement.title}</strong>
           </p>
-          {plan.replacement.tag_title && (
-            <p>
-              New embedded title: <strong>{plan.replacement.tag_title}</strong>
-            </p>
-          )}
           <p>
             Current file: <code>{plan.replacement.original.source}</code> (
             {bytes(plan.replacement.original.size_bytes)})
           </p>
-          {!plan.replacement.tag_title && (
-            <p>
-              Incoming file: <code>{plan.replacement.incoming.source}</code> (
-              {bytes(plan.replacement.incoming.size_bytes)})
-            </p>
-          )}
-          {plan.replacement.tag_title ? (
-            <p>
-              A separate copy will be checked to ensure its streams, packets,
-              chapters and existing tags are preserved. The prior video will be
-              retained for a reviewed restore; seeding sources and external
-              subtitles remain in place.
-            </p>
+          {plan.replacement.metadata_only ? (
+            <>
+              <p>
+                New embedded title:{" "}
+                <strong>{plan.replacement.tag_title}</strong>
+              </p>
+              <p>
+                Previous embedded title:{" "}
+                {plan.replacement.previous_title == null ? (
+                  "not recorded"
+                ) : plan.replacement.previous_title === "" ? (
+                  "(none)"
+                ) : (
+                  <strong>{plan.replacement.previous_title}</strong>
+                )}
+              </p>
+              <p>
+                The verified metadata rewrite replaces the file in place. This
+                job records the previous title, checksums and sizes; no
+                duplicate video copy is kept. Seeding sources and external
+                subtitles remain in place.
+              </p>
+            </>
           ) : (
-            <p>
-              Retained version: <code>{plan.replacement.backup}</code>
-            </p>
+            <>
+              <p>
+                Incoming file: <code>{plan.replacement.incoming.source}</code> (
+                {bytes(plan.replacement.incoming.size_bytes)})
+              </p>
+              <p>
+                Retained version: <code>{plan.replacement.backup}</code>
+              </p>
+            </>
           )}
           {!!plan.replacement.episodes?.length && (
             <p>
@@ -1364,12 +1398,14 @@ function PlanFiles({ plan }: { plan: Plan }) {
               </ul>
             </div>
           )}
-          <p>
-            The source remains in place. Existing external subtitles remain
-            alongside the video, but their timing may differ. The incoming
-            file’s sidecars are imported only when explicitly listed above. The
-            previous video is retained for a reviewed restore.
-          </p>
+          {!plan.replacement.metadata_only && (
+            <p>
+              The source remains in place. Existing external subtitles remain
+              alongside the video, but their timing may differ. The incoming
+              file’s sidecars are imported only when explicitly listed above.
+              The previous video is retained for a reviewed restore.
+            </p>
+          )}
         </div>
       )}
       {plan.folder_move && (

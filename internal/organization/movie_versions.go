@@ -2,6 +2,7 @@ package organization
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/faaaaq/ReelScarey/internal/quality"
@@ -37,7 +38,7 @@ func (s *Service) captureFile(ctx context.Context, q query, mediaID, fileID int6
 	}
 	var count, resolution int
 	var managed string
-	var hdr any
+	var hdr sql.NullInt64
 	err = q.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM media_files WHERE movie_id=? OR series_id=?),f.video_resolution,f.video_hdr,COALESCE(d.movie_version,'') FROM media_files f LEFT JOIN downloads d ON d.id=f.download_id WHERE f.id=? AND (f.movie_id=? OR f.series_id=?)`, mediaID, mediaID, fileID, mediaID, mediaID).Scan(&count, &resolution, &hdr, &managed)
 	if err != nil {
 		return v, err
@@ -55,13 +56,13 @@ func (s *Service) captureFile(ctx context.Context, q query, mediaID, fileID int6
 // qualityLabel renders the naming-engine quality tag. Resolution comes from
 // the generated projection of the stored probe; the HDR/SDR suffix appears
 // only when the probe recorded transfer characteristics.
-func qualityLabel(resolution int, hdr any) string {
+func qualityLabel(resolution int, hdr sql.NullInt64) string {
 	if resolution <= 0 {
 		return ""
 	}
 	label := fmt.Sprintf("%dp", resolution)
-	if b, ok := hdr.(int); ok {
-		if b == 1 {
+	if hdr.Valid {
+		if hdr.Int64 == 1 {
 			label += " HDR"
 		} else {
 			label += " SDR"

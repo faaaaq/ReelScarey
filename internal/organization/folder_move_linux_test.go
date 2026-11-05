@@ -117,12 +117,11 @@ func TestFolderMoveQueuesVerifiedTitleUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	version, err := f.s.Plan(ctx, child)
-	if err != nil || version.State != "completed" {
+	if err != nil || version.State != "completed" || !version.Replacement.MetadataOnly || version.Replacement.Backup != "" {
 		t.Fatal(version, err)
 	}
-	b, err = os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(version.Replacement.Backup)))
-	if err != nil || string(b) != "video" {
-		t.Fatal("rollback copy", err)
+	if backups, _ := filepath.Glob(filepath.Join(f.cfg.MediaDir, ".reelscarey-versions", ".reelscarey-version-*")); len(backups) != 0 {
+		t.Fatal("metadata update retained a video copy", backups)
 	}
 }
 

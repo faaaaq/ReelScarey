@@ -10,7 +10,8 @@ automatically** to retry the files previously held as duplicate movie versions.
 The movie's file list shows every copy, its inspected resolution, filename, path,
 size and technical details. Subtitles, replacement reviews and rollback history
 belong to a specific file. Resolution labels come from inspected video dimensions;
-edition and HDR labels in filenames are not independently verified edition claims.
+HDR/SDR labels come from the video stream's transfer characteristics. Edition
+labels in filenames are not independently verified edition claims.
 
 ## Download choices
 

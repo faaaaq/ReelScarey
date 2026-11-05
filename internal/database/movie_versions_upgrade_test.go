@@ -66,8 +66,15 @@ func TestMovieVersionsUpgradePreservesFilesAndSubtitleHistory(t *testing.T) {
 	if err = db.QueryRow(`SELECT (SELECT COUNT(*) FROM subtitle_jobs WHERE media_file_id=55)+(SELECT COUNT(*) FROM subtitles WHERE media_file_id=55)`).Scan(&rows); err != nil || rows != 2 {
 		t.Fatal(rows, err)
 	}
-	if _, err = db.Exec(`INSERT INTO media_files(movie_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin) VALUES(1,'Movies/new.mkv',200,'hash','{"width":3840,"height":1600}',11,'existing')`); err != nil {
+	var hdr sql.NullInt64
+	if err = db.QueryRow(`SELECT video_hdr FROM media_files WHERE id=55`).Scan(&hdr); err != nil || hdr.Valid {
+		t.Fatal("pre-HDR probe should be unknown, not SDR", hdr, err)
+	}
+	if _, err = db.Exec(`INSERT INTO media_files(movie_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin) VALUES(1,'Movies/new.mkv',200,'hash','{"width":3840,"height":1600,"hdr":true}',11,'existing')`); err != nil {
 		t.Fatal(err)
+	}
+	if err = db.QueryRow(`SELECT video_hdr FROM media_files WHERE relative_path='Movies/new.mkv'`).Scan(&hdr); err != nil || !hdr.Valid || hdr.Int64 != 1 {
+		t.Fatal("HDR projection failed", hdr, err)
 	}
 	if err = db.QueryRow(`SELECT COUNT(*) FROM media_files WHERE movie_id=1`).Scan(&rows); err != nil || rows != 2 {
 		t.Fatal(rows, err)

@@ -204,10 +204,10 @@ checksum check; the batch can be stopped, and completed results remain visible.
 
 Selected MP4, M4V, Matroska, MOV, AVI or WebM files, a whole title, or a whole folder can include
 **Also update embedded titles after organization** in the review. The move
-finishes first, then durable jobs sequentially create and verify metadata-only
-copies and retain a rollback version for each registered video. The saved movie
-title or canonical series/episode labels supply the titles. Folder extras are
-preserved and are not retagged.
+finishes first, then durable jobs sequentially write and verify a metadata-only
+stage and atomically replace the original video. The saved movie title or
+canonical series/episode labels supply the titles. Folder extras are preserved
+and are not retagged.
 A separate embedded-title review is also available for an individual file.
 
 MOV, AVI and WebM use their own container muxers; M4V uses its iPod-compatible
@@ -217,8 +217,12 @@ support does not guarantee every codec combination can be rewritten: generated
 AVI/AAC and WebM/Opus fixtures change packet timing and are rejected without
 changing the original. AVI does not retain audio language labels in the fixture.
 Transport streams (TS/M2TS) have no supported container title tag and remain
-unavailable for this operation. Rollback copies and torrent seeding sources are
-preserved for all supported formats.
+unavailable for this operation. No duplicate video copy is retained: each job
+records the previous title, previous and new sizes/checksums in its plan
+snapshot. Torrent seeding sources and external subtitles are preserved for all
+supported formats. A completed metadata-only update cannot restore the old
+container bytes, so reviewing another title update is required to change it
+again.
 
 Completed file, title and folder moves offer **Review undo move** in Recent
 organization jobs. This creates a new reviewed job returning videos and subtitle
@@ -226,9 +230,11 @@ references to the saved original paths. Folder rollback includes the current
 reviewed extras and empty directories, using the same verified copying and
 recovery when crossing filesystems. Current collection assignments and naming
 preferences remain in force for future imports. Occupied destinations, changed
-episode mappings or changed registered media refuse rollback. If embedded titles
-or video versions changed after the move, restore those versions first. No
-existing file is overwritten; undoing an undo also requires a new review.
+episode mappings or changed registered media refuse rollback. Embedded-title
+rewrites keep no video copy, so undoing a move restores paths but leaves the
+current titles in place. If video versions changed after the move, restore those
+versions first. No existing file is overwritten; undoing an undo also requires a
+new review.
 
 From a title's details, **Organize or remove this title** opens scoped controls.
 **Review catalog removal** defaults to keeping files. Alternatively, move verified

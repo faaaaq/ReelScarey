@@ -38,8 +38,20 @@ func (s *Service) previewMoveRollback(ctx context.Context, old Plan) (Plan, erro
 		if e != nil {
 			return Plan{}, e
 		}
-		if mediaID != previous.MediaID || current.Path != previous.Destination || current.SHA != previous.SHA || current.Size != previous.Size {
-			return Plan{}, problem("revision_conflict", "A moved file has since changed. Restore its latest version before reviewing this move.")
+		if mediaID != previous.MediaID || current.Path != previous.Destination {
+			return Plan{}, problem("revision_conflict", "A moved file no longer matches this move. Review its latest location before restoring.")
+		}
+		if current.SHA != previous.SHA || current.Size != previous.Size {
+			// A metadata-only title update changes bytes without keeping a copy.
+			// Undoing the move restores the path and keeps the current verified
+			// title. Any other content change still requires a reviewed restore.
+			changed, e := metadataOnlyChangeRecorded(ctx, tx, previous.FileID, current.SHA, current.Size)
+			if e != nil {
+				return Plan{}, e
+			}
+			if !changed {
+				return Plan{}, problem("revision_conflict", "A moved file has since changed. Restore its latest version before reviewing this move.")
+			}
 		}
 		if e = idle(ctx, tx, mediaID, previous.FileID); e != nil {
 			return Plan{}, e
@@ -151,6 +163,15 @@ func (s *Service) previewMoveRollback(ctx context.Context, old Plan) (Plan, erro
 		return Plan{}, err
 	}
 	return p, tx.Commit()
+}
+
+// metadataOnlyChangeRecorded accepts a current file only when its exact bytes
+// are the verified output of a completed metadata-only title update. The update
+// journal is the proof; an arbitrary external edit is not accepted.
+func metadataOnlyChangeRecorded(ctx context.Context, q query, fileID int64, sha string, size int64) (bool, error) {
+	var count int
+	e := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state='completed' AND json_extract(snapshot,'$.replacement.media_file_id')=? AND json_extract(snapshot,'$.replacement.metadata_only')=1 AND json_extract(snapshot,'$.replacement.after.sha256')=? AND json_extract(snapshot,'$.replacement.after.size_bytes')=?`, fileID, sha, size).Scan(&count)
+	return count > 0, e
 }
 
 func checkRollbackDestinations(root *os.Root, v PlannedFile, seen map[string]bool) error {

@@ -624,3 +624,18 @@ targets have separate quality profiles, availability, reservations and downloads
 Manual extra-edition acquisition and explicit per-file replacement preserve other
 copies and sidecars. Version-aware naming keeps organization destinations unique.
 See [movie versions](docs/MOVIE_VERSIONS.md) for behavior and remaining boundaries.
+
+## Version 0.29 UI, discovery and matching
+
+The shell uses shared Emby-inspired light/dark tokens, a compact navigation and
+a command palette. Existing-library scans run explicit match jobs with
+folder-first identity, exact title-only episode fallbacks, guarded season
+refreshes and honest review exceptions. Unverified registration is opt-in.
+
+## Version 0.30 inspected quality and title records
+
+Registered filenames include the inspected resolution and HDR/SDR transfer
+label; files probed before HDR detection keep resolution only. Embedded-title
+updates use a verified metadata-only stage, replace the original in place and
+record the previous title and old/new checksums. No duplicate video copy is
+retained, and metadata-only plans refuse byte-level rollback.

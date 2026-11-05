@@ -345,11 +345,14 @@ func TestReplacementPreservesSharedEpisodeMappingAndExternalSubtitle(t *testing.
 	}
 }
 
-func TestReviewedEmbeddedTitleUsesVersionedCopyAndRollback(t *testing.T) {
+func TestReviewedEmbeddedTitleReplacesInPlaceAndRecordsPreviousTitle(t *testing.T) {
 	ctx := context.Background()
 	f := newReviewFixture(t)
 	rel := "Movies/Original/movie.mkv"
 	f.movie(t, 1, rel, []byte("original video"))
+	if _, e := f.db.Exec(`UPDATE media_files SET probe_json='{"embedded_title":"Wrong title"}' WHERE id=1`); e != nil {
+		t.Fatal(e)
+	}
 	seed := filepath.Join(f.cfg.DownloadsDir, "seeding.mkv")
 	if e := os.Link(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(rel)), seed); e != nil {
 		t.Fatal(e)
@@ -367,8 +370,11 @@ func TestReviewedEmbeddedTitleUsesVersionedCopyAndRollback(t *testing.T) {
 		return `{"embedded_title":"Review movie"}`, nil
 	})
 	p, e := f.s.PreviewEmbeddedTitle(ctx, 1)
-	if e != nil || p.Replacement.TagTitle != "Review movie" {
+	if e != nil || p.Replacement.TagTitle != "Review movie" || !p.Replacement.MetadataOnly || p.Replacement.Backup != "" {
 		t.Fatal(p, e)
+	}
+	if p.Replacement.PreviousTitle == nil || *p.Replacement.PreviousTitle != "Wrong title" {
+		t.Fatal("previous title not recorded", p.Replacement.PreviousTitle)
 	}
 	if _, e = f.s.Apply(ctx, p.ID); e != nil {
 		t.Fatal(e)
@@ -386,22 +392,22 @@ func TestReviewedEmbeddedTitleUsesVersionedCopyAndRollback(t *testing.T) {
 	}
 	read(current, "tagged video")
 	read(seed, "original video")
-	read(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(p.Replacement.Backup)), "original video")
 	if _, e = os.Stat(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(p.Replacement.TagStage))); !errors.Is(e, os.ErrNotExist) {
 		t.Fatal("metadata stage not cleaned", e)
 	}
-	back, e := f.s.PreviewRollback(ctx, p.ID)
-	if e != nil {
-		t.Fatal(e)
+	if backups, _ := filepath.Glob(filepath.Join(f.cfg.MediaDir, ".reelscarey-versions", ".reelscarey-version-*")); len(backups) != 0 {
+		t.Fatal("title update retained a video copy", backups)
 	}
-	if _, e = f.s.Apply(ctx, back.ID); e != nil {
-		t.Fatal(e)
+	saved, e := f.s.Plan(ctx, p.ID)
+	if e != nil || saved.State != "completed" || saved.Replacement.PreviousTitle == nil || *saved.Replacement.PreviousTitle != "Wrong title" {
+		t.Fatal(saved, e)
 	}
-	if e = f.s.Tick(ctx); e != nil {
-		t.Fatal(e)
+	if saved.Replacement.Before.SHA == saved.Replacement.After.SHA {
+		t.Fatal("change record does not distinguish the previous and current checksums")
 	}
-	read(current, "original video")
-	read(seed, "original video")
+	if _, e = f.s.PreviewRollback(ctx, p.ID); e == nil {
+		t.Fatal("metadata-only rollback accepted without a retained video")
+	}
 }
 
 func TestEmbeddedTitleRejectsStaleTitleAndUnsafeRewrite(t *testing.T) {
@@ -510,7 +516,7 @@ func TestYouTubeProvenanceRestoredAlongWithVideo(t *testing.T) {
 		t.Fatal("subtitle changed", string(b), e)
 	}
 }
-func TestYouTubeMetadataUpdateKeepsProvenanceAndRollback(t *testing.T) {
+func TestYouTubeMetadataUpdateKeepsProvenance(t *testing.T) {
 	ctx := context.Background()
 	f, _ := replacementFixture(t)
 	addYouTubeProvenance(t, f)
@@ -534,18 +540,63 @@ func TestYouTubeMetadataUpdateKeepsProvenanceAndRollback(t *testing.T) {
 	if e = f.db.QueryRow(`SELECT m.sha256,y.sha256 FROM media_files m JOIN youtube_files y ON y.media_file_id=m.id WHERE m.id=1`).Scan(&actual, &provenance); e != nil || actual != provenance {
 		t.Fatal(actual, provenance, e)
 	}
-	back, e := f.s.PreviewRollback(ctx, p.ID)
-	if e != nil {
-		t.Fatal(e)
+	saved, e := f.s.Plan(ctx, p.ID)
+	if e != nil || saved.Replacement.Before.SHA == saved.Replacement.After.SHA {
+		t.Fatal(saved, e)
 	}
-	if _, e = f.s.Apply(ctx, back.ID); e != nil {
+	if _, e = f.s.PreviewRollback(ctx, p.ID); e == nil {
+		t.Fatal("metadata-only rollback accepted without a retained video")
+	}
+}
+
+func TestMoveRollbackAllowsRecordedMetadataTitleChange(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	rel := "Movies/Original/movie.mkv"
+	f.movie(t, 1, rel, []byte("original video"))
+	move, e := f.s.Preview(ctx, []int64{1}, "anime")
+	if e != nil || len(move.Files) != 1 || move.Files[0].Destination == rel {
+		t.Fatal(move, e)
+	}
+	if _, e = f.s.Apply(ctx, move.ID); e != nil {
 		t.Fatal(e)
 	}
 	if e = f.s.Tick(ctx); e != nil {
 		t.Fatal(e)
 	}
-	if e = f.db.QueryRow(`SELECT m.sha256,y.sha256 FROM media_files m JOIN youtube_files y ON y.media_file_id=m.id WHERE m.id=1`).Scan(&actual, &provenance); e != nil || actual != provenance {
-		t.Fatal(actual, provenance, e)
+	f.s.SetTagger(func(ctx context.Context, source, stage *os.File, extension, title string) (string, error) {
+		if _, e := stage.WriteAt([]byte("tagged video"), 0); e != nil {
+			return "", e
+		}
+		return `{"embedded_title":"Review movie"}`, nil
+	})
+	title, e := f.s.PreviewEmbeddedTitle(ctx, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, title.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	rollback, e := f.s.PreviewRollback(ctx, move.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, rollback.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	var current string
+	if e = f.db.QueryRow(`SELECT relative_path FROM media_files WHERE id=1`).Scan(&current); e != nil || current != rel {
+		t.Fatal(current, e)
+	}
+	content, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(rel)))
+	if e != nil || string(content) != "tagged video" {
+		t.Fatal(string(content), e)
 	}
 }
 
@@ -643,5 +694,60 @@ func TestEmbeddedTitleResumesVerifiedStageAfterRestart(t *testing.T) {
 	content, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(rel)))
 	if e != nil || string(content) != "tagged video" {
 		t.Fatal(string(content), e)
+	}
+}
+
+func TestEmbeddedTitleResumesAfterRenameBeforePhaseAdvance(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	rel := "Movies/Original/movie.mkv"
+	f.movie(t, 1, rel, []byte("original video"))
+	calls := 0
+	tag := func(ctx context.Context, source, stage *os.File, extension, title string) (string, error) {
+		calls++
+		if _, e := stage.WriteAt([]byte("tagged video"), 0); e != nil {
+			return "", e
+		}
+		return `{"embedded_title":"Review movie"}`, nil
+	}
+	f.s.SetTagger(tag)
+	p, e := f.s.PreviewEmbeddedTitle(ctx, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.Apply(ctx, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	root, _, e := f.s.openRoot(p.Root)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.prepareEmbeddedTitle(ctx, root, &p); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.s.savePhase(ctx, &p, "prepared"); e != nil {
+		t.Fatal(e)
+	}
+	// Simulate interruption after the atomic replacement but before the saved
+	// phase advances. The published file already matches the prepared output.
+	if e = root.Rename(filepath.FromSlash(p.Replacement.TagStage), filepath.FromSlash(rel)); e != nil {
+		t.Fatal(e)
+	}
+	root.Close()
+	restarted := New(f.db, f.cfg)
+	restarted.SetTagger(tag)
+	if e = restarted.Tick(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if calls != 1 {
+		t.Fatal("verified stage was regenerated after rename", calls)
+	}
+	content, e := os.ReadFile(filepath.Join(f.cfg.MediaDir, filepath.FromSlash(rel)))
+	if e != nil || string(content) != "tagged video" {
+		t.Fatal(string(content), e)
+	}
+	saved, e := restarted.Plan(ctx, p.ID)
+	if e != nil || saved.State != "completed" || saved.Phase != "committed" {
+		t.Fatal(saved, e)
 	}
 }

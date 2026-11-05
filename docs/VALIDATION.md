@@ -1813,3 +1813,22 @@ Executed against disposable/generated media:
 The version controls and both file entries were inspected in a disposable browser
 session. The resulting dropdown styling uses the existing automation form layout.
 No owner-server media or download client was used for these checks.
+
+## Version 0.30 inspected quality and copy-free title updates
+
+- FFprobe records `color_transfer`; generated media tests cover the SDR, HDR10
+  and HLG mapping, and schema 46 was migrated from a populated schema-45
+  database.
+- Organization and import naming tests assert inspected resolution plus the
+  HDR/SDR tag, multi-version suffix composition and the absence of a quality
+  claim for unverified files.
+- Embedded-title jobs write and verify a metadata-only stage, replace the
+  original in place, record the previous title and both checksums, keep torrent
+  seeding hardlinks, and resume after an interruption between the rename and the
+  saved phase advance.
+- Undo-move accepts a current file only when a completed metadata-only plan
+  records its exact bytes; arbitrary content changes still require a reviewed
+  restore.
+- Frontend formatting, type checks, 186 interaction tests and the production
+  bundle passed. Go tests and vet passed across all packages.
+

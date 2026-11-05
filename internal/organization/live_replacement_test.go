@@ -124,13 +124,13 @@ func TestLiveReplacementWithFFprobe(t *testing.T) {
 	}
 }
 
-func TestLiveEmbeddedTitleAndRollback(t *testing.T) {
+func TestLiveEmbeddedTitleReplacesInPlace(t *testing.T) {
 	for _, ext := range []string{"mp4", "m4v", "mkv", "mov", "avi", "webm"} {
-		t.Run(ext, func(t *testing.T) { liveEmbeddedTitleAndRollback(t, ext) })
+		t.Run(ext, func(t *testing.T) { liveEmbeddedTitleReplacesInPlace(t, ext) })
 	}
 }
 
-func liveEmbeddedTitleAndRollback(t *testing.T, ext string) {
+func liveEmbeddedTitleReplacesInPlace(t *testing.T, ext string) {
 	if os.Getenv("REELSCAREY_LIVE_REPLACEMENT") != "1" {
 		t.Skip("requires generated media and FFmpeg")
 	}
@@ -183,6 +183,14 @@ func liveEmbeddedTitleAndRollback(t *testing.T, ext string) {
 		t.Fatal(e)
 	}
 	s := organization.New(db, cfg)
+	s.SetProbe(func(ctx context.Context, f *os.File) (string, error) {
+		p, e := (transfer.FFprobe{}).Probe(ctx, f)
+		if e != nil {
+			return "", e
+		}
+		b, e := json.Marshal(p)
+		return string(b), e
+	})
 	s.SetTagger(func(ctx context.Context, source, stage *os.File, ext, title string) (string, error) {
 		p, e := transfer.RewriteTitleVerified(ctx, source, stage, ext, title)
 		if e != nil {
@@ -214,20 +222,15 @@ func liveEmbeddedTitleAndRollback(t *testing.T, ext string) {
 	if e != nil || string(seeded) != string(original) {
 		t.Fatal("seeding source changed", e)
 	}
-	s = organization.New(db, cfg)
-	restore, e := s.PreviewRollback(ctx, p.ID)
-	if e != nil {
-		t.Fatal(e)
+	saved, e := s.Plan(ctx, p.ID)
+	if e != nil || saved.State != "completed" || saved.Replacement.PreviousTitle == nil || *saved.Replacement.PreviousTitle != "Wrong Title" {
+		t.Fatal(saved, e)
 	}
-	if _, e = s.Apply(ctx, restore.ID); e != nil {
-		t.Fatal(e)
+	if backups, _ := filepath.Glob(filepath.Join(cfg.MediaDir, ".reelscarey-versions", ".reelscarey-version-*")); len(backups) != 0 {
+		t.Fatal("title update retained a video copy", backups)
 	}
-	if e = s.Tick(ctx); e != nil {
-		t.Fatal(e)
-	}
-	restored, e := os.ReadFile(name)
-	if e != nil || string(restored) != string(original) {
-		t.Fatal("original was not restored", e)
+	if _, e = s.PreviewRollback(ctx, p.ID); e == nil {
+		t.Fatal("metadata-only rollback accepted without a retained video")
 	}
 }
 

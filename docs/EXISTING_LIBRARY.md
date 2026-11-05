@@ -112,9 +112,13 @@ integrity claim. Files up to 192 KiB retain an actual full SHA-256 directly.
 
 Reviewed organization appends the inspected quality tag to every renamed file:
 resolution plus an explicit HDR or SDR transfer label (for example
-`[1080p HDR]`). Files probed before HDR detection carry resolution only, and
-unverified files carry no quality tag at all — the catalog never claims a
-quality it did not measure. When the owner preference **Register videos that
+`[1080p HDR]`). A review refreshes one missing transfer fact through a bounded
+FFprobe read before naming; files probed before HDR detection therefore acquire
+the transfer label on their first reviewed rename. If that probe fails, the file
+keeps resolution only, and unverified files carry no quality tag at all — the
+catalog never claims a quality it did not measure. Embedded-title updates replace
+the file in place and record the previous title and old/new checksums; no
+duplicate video copy is retained. When the owner preference **Register videos that
 ffprobe cannot verify** (Settings → Library preferences, default off) is
 enabled, a file whose video cannot be inspected is still registered: it
 records no resolution or embedded-title facts, its review row says "Added
