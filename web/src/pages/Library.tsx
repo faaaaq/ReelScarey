@@ -29,6 +29,13 @@ function statusLabel(item: MediaItem) {
   if (item.status === "downloading") return "Downloading";
   return item.kind === "series" ? "No episode files" : "Missing";
 }
+
+function statusTone(item: MediaItem) {
+  if (item.status === "available") return "green";
+  if (item.status === "downloading") return "blue";
+  return "amber";
+}
+
 function ItemAction({ item }: { item: MediaItem }) {
   return (
     <Link
@@ -53,6 +60,7 @@ function ItemAction({ item }: { item: MediaItem }) {
     </Link>
   );
 }
+
 export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const [params, setParams] = useSearchParams();
   const [input, setInput] = useState(params.get("query") ?? "");
@@ -128,32 +136,33 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const filtered = ["query", "status", "monitored", "profile"].some(
     (k) => !!params.get(k) && params.get(k) !== "all",
   );
+  const title = anime ? "Anime" : movies ? "Movies" : "TV shows";
   return (
     <>
       <PageHeading
-        title={anime ? "Anime" : movies ? "Movies" : "TV shows"}
+        eyebrow="Library"
+        title={title}
         description={
           data
             ? `${data.collection_total ?? data.total} ${(data.collection_total ?? data.total) === 1 ? singular : noun} in the catalog`
             : "Saved titles"
         }
       >
-        <div className="heading-actions">
-          <Button asChild variant="soft">
-            <Link to={anime ? "/import?collection=anime" : "/import"}>
-              Import existing
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link to={searchPath}>
-              <Plus size={16} />
-              {anime ? "Add anime" : movies ? "Add movies" : "Add shows"}
-            </Link>
-          </Button>
-        </div>
+        <Button asChild variant="soft" size="2">
+          <Link to={anime ? "/import?collection=anime" : "/import"}>
+            Import existing
+          </Link>
+        </Button>
+        <Button asChild size="2">
+          <Link to={searchPath}>
+            <Plus size={16} />
+            {anime ? "Add anime" : movies ? "Add movies" : "Add shows"}
+          </Link>
+        </Button>
       </PageHeading>
-      <section className="catalog-toolbar" aria-label="Library filters">
-        <form onSubmit={submit} className="catalog-search">
+
+      <section className="ui-toolbar" aria-label="Library filters">
+        <form onSubmit={submit} className="ui-search">
           <TextField.Root
             aria-label="Search saved titles"
             placeholder="Filter by title…"
@@ -165,93 +174,101 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
               <Search size={16} />
             </TextField.Slot>
           </TextField.Root>
-          <Button type="submit" variant="soft">
+          <Button type="submit" size="2" variant="soft">
             Filter
           </Button>
         </form>
-        <div className="catalog-selects">
-          <label>
-            Status
-            <select
-              aria-label="Library status"
-              value={params.get("status") ?? "all"}
-              onChange={(e) => change("status", e.target.value)}
-            >
-              <option value="all">All statuses</option>
-              <option value="missing">
-                {anime
-                  ? "Missing / no episode files"
-                  : movies
-                    ? "Missing"
-                    : "No episode files"}
-              </option>
-              <option value="available">
-                {anime
-                  ? "Files registered"
-                  : movies
-                    ? "In library"
-                    : "Episode files registered"}
-              </option>
-              <option value="downloading">Downloading</option>
-            </select>
-          </label>
-          <label>
-            Monitoring
-            <select
-              aria-label="Library monitoring"
-              value={params.get("monitored") ?? "all"}
-              onChange={(e) => change("monitored", e.target.value)}
-            >
-              <option value="all">All titles</option>
-              <option value="monitored">Monitored</option>
-              <option value="paused">Paused</option>
-            </select>
-          </label>
-          <label>
-            Sort
-            <select
-              aria-label="Sort library"
-              value={params.get("sort") ?? "title"}
-              onChange={(e) => change("sort", e.target.value)}
-            >
-              <option value="title">Title A–Z</option>
-              <option value="title_desc">Title Z–A</option>
-              <option value="year_desc">Year, newest first</option>
-              <option value="year">Year, oldest first</option>
-              <option value="added">Recently added</option>
-            </select>
-          </label>
-          {profileContext && (
-            <label>
-              Quality profile
-              <select
-                aria-label="Library quality profile"
-                value={params.get("profile") ?? "all"}
-                onChange={(e) => change("profile", e.target.value)}
-              >
-                <option value="all">All profiles</option>
-                <option value="default">Follows schedule default</option>
-                {profileContext.profiles.map((profile) => (
-                  <option key={profile.id} value={String(profile.id)}>
-                    {profile.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <Button variant="ghost" color="gray" onClick={() => setParams({})}>
-            Reset filters
-          </Button>
+        <div className="ui-field">
+          <label htmlFor="library-status">Status</label>
+          <select
+            id="library-status"
+            aria-label="Library status"
+            value={params.get("status") ?? "all"}
+            onChange={(e) => change("status", e.target.value)}
+          >
+            <option value="all">All statuses</option>
+            <option value="missing">
+              {anime
+                ? "Missing / no episode files"
+                : movies
+                  ? "Missing"
+                  : "No episode files"}
+            </option>
+            <option value="available">
+              {anime
+                ? "Files registered"
+                : movies
+                  ? "In library"
+                  : "Episode files registered"}
+            </option>
+            <option value="downloading">Downloading</option>
+          </select>
         </div>
+        <div className="ui-field">
+          <label htmlFor="library-monitoring">Monitoring</label>
+          <select
+            id="library-monitoring"
+            aria-label="Library monitoring"
+            value={params.get("monitored") ?? "all"}
+            onChange={(e) => change("monitored", e.target.value)}
+          >
+            <option value="all">All titles</option>
+            <option value="monitored">Monitored</option>
+            <option value="paused">Paused</option>
+          </select>
+        </div>
+        <div className="ui-field">
+          <label htmlFor="library-sort">Sort</label>
+          <select
+            id="library-sort"
+            aria-label="Sort library"
+            value={params.get("sort") ?? "title"}
+            onChange={(e) => change("sort", e.target.value)}
+          >
+            <option value="title">Title A–Z</option>
+            <option value="title_desc">Title Z–A</option>
+            <option value="year_desc">Year, newest first</option>
+            <option value="year">Year, oldest first</option>
+            <option value="added">Recently added</option>
+          </select>
+        </div>
+        {profileContext && (
+          <div className="ui-field">
+            <label htmlFor="library-profile">Quality profile</label>
+            <select
+              id="library-profile"
+              aria-label="Library quality profile"
+              value={params.get("profile") ?? "all"}
+              onChange={(e) => change("profile", e.target.value)}
+            >
+              <option value="all">All profiles</option>
+              <option value="default">Follows schedule default</option>
+              {profileContext.profiles.map((profile) => (
+                <option key={profile.id} value={String(profile.id)}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <Button
+          size="2"
+          variant="ghost"
+          color="gray"
+          onClick={() => setParams({})}
+        >
+          Reset filters
+        </Button>
       </section>
-      <div className="catalog-result-bar">
+
+      <div className="ui-resultbar">
         <p role="status">
           {data && !resource.loading && !resource.error
             ? `${data.total} matching ${data.total === 1 ? singular : noun}${data.items.length ? ` · ${(data.page - 1) * data.limit + 1}–${(data.page - 1) * data.limit + data.items.length} shown` : ""}`
             : ""}
         </p>
-        <label>
-          Items per page{" "}
+        <label className="ui-field">
+          <span className="ui-field-label">Items per page</span>
           <select
             aria-label="Library items per page"
             value={showAll ? "all" : "48"}
@@ -263,13 +280,13 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
             <option value="all">Show all</option>
           </select>
         </label>
-        <div className="view-switch" role="group" aria-label="Library view">
+        <div className="ui-segment" role="group" aria-label="Library view">
           <button
             aria-label="Poster view"
             aria-pressed={!table}
             onClick={() => change("view", "")}
           >
-            <LayoutGrid size={16} />
+            <LayoutGrid size={15} />
             <span>Posters</span>
           </button>
           <button
@@ -277,21 +294,23 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
             aria-pressed={table}
             onClick={() => change("view", "table")}
           >
-            <List size={16} />
+            <List size={15} />
             <span>Table</span>
           </button>
         </div>
       </div>
+
       {monitoringMessage && (
         <p role="status" className="save-success">
           {monitoringMessage}
         </p>
       )}
+
       {!showAll &&
       !resource.loading &&
       !resource.error &&
       data?.items.length ? (
-        <div className="catalog-selection">
+        <div className="ui-selection-bar">
           <label>
             <input
               type="checkbox"
@@ -315,11 +334,13 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
           <span>Selection is cleared when filters or pages change.</span>
         </div>
       ) : null}
+
       {!resource.loading &&
         !resource.error &&
         selectedGroups.map((group) => (
           <section
             key={group.kind}
+            className="ui-stack"
             aria-label={
               anime
                 ? `Selected anime ${group.kind === "movie" ? "movies" : "shows"}`
@@ -356,6 +377,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
             </BulkMonitoring>
           </section>
         ))}
+
       <RequestState
         loading={resource.loading}
         error={resource.error}
@@ -366,18 +388,19 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
           Clear library filters
         </Button>
       )}
+
       {!resource.loading && !resource.error && data && (
         <>
           {data.items.length ? (
             table ? (
               <div
-                className="catalog-table-wrap"
+                className="ui-table-wrap"
                 role="region"
                 aria-label="Scrollable library table"
                 tabIndex={0}
               >
                 <table
-                  className="catalog-table"
+                  className="ui-table"
                   aria-label={
                     anime
                       ? "Anime library"
@@ -408,7 +431,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                     {data.items.map((item) => (
                       <tr key={item.id}>
                         {!showAll && (
-                          <td className="catalog-select-cell">
+                          <td className="ui-select-cell">
                             <input
                               type="checkbox"
                               aria-label={`Select ${item.title}`}
@@ -432,7 +455,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                         )}
                         <td>
                           <span
-                            className={`catalog-state state-${item.status}`}
+                            className={`ui-chip ${statusTone(item)} catalog-state state-${item.status}`}
                           >
                             {statusLabel(item)}
                           </span>
@@ -450,11 +473,11 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                 </table>
               </div>
             ) : (
-              <div className="catalog-posters">
+              <div className="media-grid">
                 {data.items.map((item) => (
-                  <article className="catalog-card" key={item.id}>
+                  <article className="media-card" key={item.id}>
                     {!showAll && (
-                      <label className="catalog-card-select">
+                      <label className="media-select">
                         <input
                           type="checkbox"
                           aria-label={`Select ${item.title}`}
@@ -465,37 +488,43 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                       </label>
                     )}
                     <Link
-                      className="catalog-art"
+                      className="media-art"
                       to={`/${item.kind === "movie" ? "movies" : "series"}/${item.id}`}
                       aria-label={`Open ${item.title} details`}
                     >
                       <Poster movie={item} />
-                      <span className={`catalog-state state-${item.status}`}>
-                        {statusLabel(item)}
+                      <span className="media-status">
+                        <span
+                          className={`ui-chip ${statusTone(item)} catalog-state state-${item.status}`}
+                        >
+                          {statusLabel(item)}
+                        </span>
                       </span>
                     </Link>
-                    <h2>
+                    <h2 className="media-title">
                       <Link
                         to={`/${item.kind === "movie" ? "movies" : "series"}/${item.id}`}
                       >
                         {item.title}
                       </Link>
                     </h2>
-                    <div className="catalog-card-meta">
+                    <div className="media-meta catalog-card-meta">
                       <span>{item.year ?? "Year unknown"}</span>
                       {anime && (
                         <span>{item.kind === "movie" ? "Movie" : "Show"}</span>
                       )}
                       <span>{item.monitored ? "Monitored" : "Paused"}</span>
                     </div>
-                    <ItemAction item={item} />
+                    <div className="media-foot">
+                      <ItemAction item={item} />
+                    </div>
                     <ProfileLabel item={item} />
                   </article>
                 ))}
               </div>
             )
           ) : (
-            <section className="empty-state panel">
+            <section className="empty-state">
               <h2>
                 {page > 1
                   ? `No ${noun} on this page`
@@ -543,7 +572,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
             />
           )}
           {!movies && (
-            <p className="catalog-note">
+            <p className="ui-note">
               Show status reflects saved file registrations and tracked
               downloads. Episode files registered does not mean every episode is
               available.

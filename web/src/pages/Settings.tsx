@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Badge, Button, TextField } from "@radix-ui/themes";
+import { Button, TextField } from "@radix-ui/themes";
 import { Link, useLocation } from "react-router-dom";
 import { CheckCircle2, FolderOpen, Save, Server } from "lucide-react";
 import {
@@ -13,6 +13,59 @@ import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
 import { TMDbSettings } from "./TMDbSettings";
 import { IntegrationSettings } from "./IntegrationSettings";
+
+const adminLinks = [
+  {
+    to: "/requests",
+    name: "Requests",
+    description: "Manage request accounts and review requested titles.",
+  },
+  {
+    to: "/import",
+    name: "Find unmatched files",
+    description: "Discover and review existing files in configured folders.",
+  },
+  {
+    to: "/organization",
+    name: "Organize library",
+    description: "Review collection paths, naming and file moves.",
+  },
+  {
+    to: "/metadata-refresh",
+    name: "Metadata refresh",
+    description: "Schedule catalog and episode metadata updates.",
+  },
+  {
+    to: "/storage",
+    name: "Storage",
+    description: "Browse mounted folders and plan storage migration.",
+  },
+  {
+    to: "/backups",
+    name: "Backups",
+    description: "Create, schedule, download and restore verified backups.",
+  },
+  {
+    to: "/timeline",
+    name: "Event timeline",
+    description: "Review recorded changes across the library and jobs.",
+  },
+  {
+    to: "/watch-activity",
+    name: "Emby activity",
+    description: "Review playback reported by the connected Emby server.",
+  },
+  {
+    to: "/setup",
+    name: "Setup",
+    description: "Walk through library, provider and client setup.",
+  },
+  {
+    to: "/system",
+    name: "System checks",
+    description: "Verify storage, database, credentials and publication.",
+  },
+];
 
 export function Settings() {
   const location = useLocation();
@@ -103,19 +156,10 @@ export function Settings() {
   return (
     <>
       <PageHeading
+        eyebrow="Configuration"
         title="Settings"
         description="Library folders, naming and service connections."
       />
-      <section className="panel organization-root">
-        <h2>Media organization</h2>
-        <p>
-          Configure Movies, TV Shows, Anime and custom collections; choose
-          naming presets or review existing file changes.
-        </p>
-        <Link className="text-link" to="/organization">
-          Open folders, naming & reorganization
-        </Link>
-      </section>
       <RequestState
         loading={settings.loading || system.loading}
         error={settings.error || system.error}
@@ -130,76 +174,85 @@ export function Settings() {
         !system.error &&
         form &&
         system.data && (
-          <div className="settings-grid grid gap-6 xl:grid-cols-[1.3fr_1fr]">
+          <div className="settings-layout">
             <form className="panel settings-form" onSubmit={submit}>
-              <div className="section-title">
-                <h2>
-                  <FolderOpen size={19} /> Library preferences
-                </h2>
-                <Badge color="green">Available</Badge>
+              <div className="ui-section-head">
+                <div>
+                  <h2>
+                    <FolderOpen size={17} /> Library preferences
+                  </h2>
+                  <p>These preferences are saved to your local database.</p>
+                </div>
+                <span className="ui-chip green">Available</span>
               </div>
-              <p className="muted">
-                These preferences are saved to your local database.
-              </p>
-              <fieldset disabled={saving}>
-                <label htmlFor="library-name">Library name</label>
-                <TextField.Root
-                  id="library-name"
-                  value={form.library_name}
-                  onChange={(event) =>
-                    update("library_name", event.target.value)
-                  }
-                  maxLength={80}
-                  required
-                  size="3"
-                  autoComplete="off"
-                />
-                <p className="field-help">Shown on your dashboard.</p>
-                <label htmlFor="movie-folder">Movie folder</label>
-                <TextField.Root
-                  id="movie-folder"
-                  value={form.movie_folder}
-                  onChange={(event) =>
-                    update("movie_folder", event.target.value)
-                  }
-                  maxLength={80}
-                  required
-                  size="3"
-                  aria-describedby="folder-help"
-                />
-                <label htmlFor="series-folder">TV folder</label>
-                <TextField.Root
-                  id="series-folder"
-                  value={form.series_folder}
-                  onChange={(event) =>
-                    update("series_folder", event.target.value)
-                  }
-                  maxLength={80}
-                  required
-                  size="3"
-                  aria-describedby="folder-help"
-                />
-                <p className="field-help" id="folder-help">
+              <fieldset className="fieldset" disabled={saving}>
+                <div>
+                  <label htmlFor="library-name">Library name</label>
+                  <TextField.Root
+                    id="library-name"
+                    value={form.library_name}
+                    onChange={(event) =>
+                      update("library_name", event.target.value)
+                    }
+                    maxLength={80}
+                    required
+                    size="2"
+                    autoComplete="off"
+                  />
+                  <p className="field-help">Shown on your dashboard.</p>
+                </div>
+                <div>
+                  <label htmlFor="episode-naming">TV episode names</label>
+                  <select
+                    id="episode-naming"
+                    value={form.episode_naming ?? "standard"}
+                    onChange={(e) => update("episode_naming", e.target.value)}
+                  >
+                    <option value="standard">Show - S01E01</option>
+                    <option value="with-title">
+                      Show - S01E01 - Episode title
+                    </option>
+                  </select>
+                  <p className="field-help">
+                    Multi-episode files use S01E01-E02. Existing files keep
+                    their names.
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="movie-folder">Movie folder</label>
+                  <TextField.Root
+                    id="movie-folder"
+                    value={form.movie_folder}
+                    onChange={(event) =>
+                      update("movie_folder", event.target.value)
+                    }
+                    maxLength={80}
+                    required
+                    size="2"
+                    aria-describedby="folder-help"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="series-folder">TV folder</label>
+                  <TextField.Root
+                    id="series-folder"
+                    value={form.series_folder}
+                    onChange={(event) =>
+                      update("series_folder", event.target.value)
+                    }
+                    maxLength={80}
+                    required
+                    size="2"
+                    aria-describedby="folder-help"
+                  />
+                </div>
+                <p className="field-help span-2" id="folder-help">
                   Default folder names before organization rules are saved.
                   Organize library controls configured collection destinations.
-                  Saving preferences alone creates no folders.
-                </p>
-                <label htmlFor="episode-naming">TV episode names</label>
-                <select
-                  id="episode-naming"
-                  value={form.episode_naming ?? "standard"}
-                  onChange={(e) => update("episode_naming", e.target.value)}
-                >
-                  <option value="standard">Show - S01E01</option>
-                  <option value="with-title">
-                    Show - S01E01 - Episode title
-                  </option>
-                </select>
-                <p className="field-help">
-                  The Current ReelScarey naming preset uses this episode-name
-                  choice. Other presets and custom paths are in Organize
-                  library. Multi-episode files use S01E01-E02. Existing files
-                  and queued import plans keep their names.
+                  Saving preferences alone creates no folders. The Current
+                  ReelScarey naming preset uses this episode-name choice; other
+                  presets and custom paths are in Organize library. Existing
+                  files and queued import plans keep their names.
                 </p>
               </fieldset>
               {error && (
@@ -216,8 +269,8 @@ export function Settings() {
                 </div>
               )}
               <div className="form-footer">
-                <Button type="submit" size="3" disabled={!dirty || saving}>
-                  <Save size={17} />
+                <Button type="submit" size="2" disabled={!dirty || saving}>
+                  <Save size={16} />
                   {saving ? "Saving…" : "Save preferences"}
                 </Button>
                 <Button
@@ -233,21 +286,47 @@ export function Settings() {
                 >
                   Reset changes
                 </Button>
+                {success && (
+                  <p className="save-success" role="status">
+                    <CheckCircle2 size={16} /> Preferences saved.
+                  </p>
+                )}
               </div>
-              {success && (
-                <p className="save-success" role="status">
-                  <CheckCircle2 size={17} /> Preferences saved.
-                </p>
-              )}
             </form>
-            <div className="space-y-6">
-              <section className="panel settings-info">
+
+            <section className="panel settings-admin">
+              <div className="ui-section-head">
+                <div>
+                  <h2>Administration</h2>
+                  <p>
+                    Library tools, integrations and server maintenance live here
+                    so the main navigation stays focused.
+                  </p>
+                </div>
+              </div>
+              <div className="settings-admin-grid">
+                {adminLinks.map((link) => (
+                  <Link
+                    className="settings-link-card"
+                    key={link.to}
+                    to={link.to}
+                  >
+                    <h3>{link.name}</h3>
+                    <p>{link.description}</p>
+                    <span className="text-link">Open</span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+
+            <aside className="settings-side">
+              <section className="panel">
                 <div className="section-title">
                   <h2>
-                    <Server size={19} /> Server & storage
+                    <Server size={17} /> Server & storage
                   </h2>
                 </div>
-                <p>
+                <p className="field-help">
                   Set these paths with environment variables when starting
                   ReelScarey.
                 </p>
@@ -261,11 +340,24 @@ export function Settings() {
                 </dl>
                 <div className="server-version">
                   <span>Version {system.data.version}</span>
-                  <Badge color="green">Database connected</Badge>
+                  <span className="ui-chip green">Database connected</span>
                 </div>
               </section>
+
+              <section className="settings-link-card">
+                <h2>Media organization</h2>
+                <p>
+                  Configure Movies, TV Shows, Anime and custom collections;
+                  choose naming presets or review existing file changes.
+                </p>
+                <Link className="text-link" to="/organization">
+                  Open folders, naming & reorganization
+                </Link>
+              </section>
+
               <TMDbSettings />
-              <section className="panel settings-info">
+
+              <section className="settings-link-card">
                 <h2>Indexers</h2>
                 <p>
                   Manage direct IPTorrents, XSpeeds, NYAA, private feeds and
@@ -277,7 +369,8 @@ export function Settings() {
               </section>
               <IntegrationSettings kind="torznab" />
               <IntegrationSettings kind="qbittorrent" />
-              <section className="panel settings-info">
+
+              <section className="settings-link-card">
                 <h2>Download clients</h2>
                 <p>
                   Manage named qBittorrent, SABnzbd and NZBGet connections,
@@ -288,7 +381,8 @@ export function Settings() {
                 </Link>
               </section>
               <IntegrationSettings kind="sabnzbd" />
-              <section className="panel settings-info">
+
+              <section className="settings-link-card">
                 <h2>Subtitle providers</h2>
                 <p>
                   Manage OpenSubtitles, language preferences and automatic
@@ -298,7 +392,7 @@ export function Settings() {
                   Open subtitle settings
                 </Link>
               </section>
-            </div>
+            </aside>
           </div>
         )}
     </>

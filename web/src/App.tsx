@@ -1,9 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Activity,
-  Archive,
-  RefreshCw,
-  CheckCircle2,
   Captions,
   Clapperboard,
   Film as BrandIcon,
@@ -11,15 +8,14 @@ import {
   CalendarDays,
   ListFilter,
   Film,
-  FolderSearch,
   LayoutDashboard,
   LogOut,
   Menu,
   MonitorPlay,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   Settings2,
-  ShieldCheck,
-  Radio,
   X,
 } from "lucide-react";
 import {
@@ -31,8 +27,10 @@ import {
   useLocation,
 } from "react-router-dom";
 import { PageHeading } from "./components";
+import { CommandPalette } from "./components/CommandPalette";
 import { PageLoadBoundary } from "./components/PageLoadBoundary";
 import { HistoryTray } from "./components/HistoryTray";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { AuthGate, useAuth } from "./auth";
 const Dashboard = lazy(() =>
   import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })),
@@ -121,19 +119,30 @@ const Timeline = lazy(() =>
   import("./pages/Timeline").then((m) => ({ default: m.Timeline })),
 );
 
-const navigation = [
+const libraryNavigation = [
   { path: "/", name: "Dashboard", icon: LayoutDashboard },
   { path: "/movies", name: "Movies", icon: Film },
   { path: "/series", name: "TV shows", icon: MonitorPlay },
   { path: "/anime", name: "Anime", icon: Clapperboard },
   { path: "/youtube", name: "YouTube", icon: MonitorPlay },
+];
+
+const browseNavigation = [
+  { path: "/search", name: "Search", icon: Search },
   { path: "/wanted", name: "Wanted", icon: ListFilter },
   { path: "/calendar", name: "Calendar", icon: CalendarDays },
-  { path: "/search", name: "Search", icon: Search },
   { path: "/activity", name: "Activity", icon: Activity },
-  { path: "/watch-activity", name: "Emby activity", icon: MonitorPlay },
+];
+
+const toolsNavigation = [
   { path: "/automation", name: "Automation", icon: Clock3 },
   { path: "/subtitles", name: "Subtitles", icon: Captions },
+];
+
+const allNavigation = [
+  ...libraryNavigation,
+  ...browseNavigation,
+  ...toolsNavigation,
 ];
 
 export default function App() {
@@ -175,6 +184,23 @@ function AppShell() {
     }
   }
   const [menuOpen, setMenuOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem("reelscarey-sidebar") === "collapsed";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "reelscarey-sidebar",
+        collapsed ? "collapsed" : "expanded",
+      );
+    } catch {
+      /* Keep the current sidebar state for this session. */
+    }
+  }, [collapsed]);
   const location = useLocation();
   const previousPath = useRef(location.pathname);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -198,7 +224,7 @@ function AppShell() {
     };
     const title =
       titles[location.pathname] ??
-      navigation.find((item) => item.path === location.pathname)?.name ??
+      allNavigation.find((item) => item.path === location.pathname)?.name ??
       (/^\/series\/[^/]+$/.test(location.pathname)
         ? "TV show"
         : /^\/movies\/[^/]+$/.test(location.pathname)
@@ -227,7 +253,7 @@ function AppShell() {
     return () => window.removeEventListener("keydown", close);
   }, [menuOpen]);
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${collapsed ? "is-collapsed" : ""}`}>
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
@@ -236,94 +262,105 @@ function AppShell() {
           <BrandIcon size={21} />
           ReelScarey
         </Link>
-        <button
-          ref={menuButton}
-          aria-label={menuOpen ? "Close navigation" : "Open navigation"}
-          aria-expanded={menuOpen}
-          aria-controls="main-navigation"
-          onClick={() => setMenuOpen(!menuOpen)}
-        >
-          {menuOpen ? <X /> : <Menu />}
-        </button>
+        <div className="mobile-actions">
+          <ThemeToggle />
+          <button
+            ref={menuButton}
+            aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={menuOpen}
+            aria-controls="main-navigation"
+            onClick={() => setMenuOpen(!menuOpen)}
+          >
+            {menuOpen ? <X /> : <Menu />}
+          </button>
+        </div>
       </header>
       <aside
         className={`sidebar ${menuOpen ? "is-open" : ""}`}
         id="main-navigation"
       >
-        <Link to="/" className="brand">
-          <span className="brand-mark">
-            <BrandIcon size={21} />
-          </span>
-          <div className="wordmark">ReelScarey</div>
-        </Link>
+        <div className="sidebar-brand">
+          <Link to="/" className="brand" aria-label="ReelScarey dashboard">
+            <span className="brand-mark">
+              <BrandIcon size={21} />
+            </span>
+            <div className="wordmark">ReelScarey</div>
+          </Link>
+          <button
+            type="button"
+            className="sidebar-toggle"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={() => setCollapsed(!collapsed)}
+          >
+            {collapsed ? (
+              <PanelLeftOpen size={16} />
+            ) : (
+              <PanelLeftClose size={16} />
+            )}
+          </button>
+        </div>
         <p className="nav-label">Library</p>
         <nav aria-label="Main navigation">
-          {navigation.map(({ path, name, icon: Icon }) => (
-            <NavLink key={path} to={path} end={path === "/"}>
-              <Icon size={19} strokeWidth={1.7} />
+          {libraryNavigation.map(({ path, name, icon: Icon }) => (
+            <NavLink
+              key={path}
+              to={path}
+              end={path === "/"}
+              aria-label={name}
+              title={name}
+            >
+              <Icon size={18} strokeWidth={1.7} />
+              <span>{name}</span>
+            </NavLink>
+          ))}
+          <p className="nav-label">Browse</p>
+          {browseNavigation.map(({ path, name, icon: Icon }) => (
+            <NavLink key={path} to={path} aria-label={name} title={name}>
+              <Icon size={18} strokeWidth={1.7} />
+              <span>{name}</span>
+            </NavLink>
+          ))}
+          <p className="nav-label">Tools</p>
+          {toolsNavigation.map(({ path, name, icon: Icon }) => (
+            <NavLink key={path} to={path} aria-label={name} title={name}>
+              <Icon size={18} strokeWidth={1.7} />
               <span>{name}</span>
             </NavLink>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <p className="nav-label">Manage</p>
           <nav aria-label="Administration">
-            <NavLink to="/requests">
-              <ListFilter size={19} strokeWidth={1.7} />
-              <span>Requests</span>
-            </NavLink>
-            <NavLink to="/import">
-              <FolderSearch size={19} strokeWidth={1.7} />
-              <span>Find unmatched files</span>
-            </NavLink>
-            <NavLink to="/organization">
-              <FolderSearch size={19} strokeWidth={1.7} />
-              <span>Organize library</span>
-            </NavLink>
-            <NavLink to="/indexers">
-              <Radio size={19} strokeWidth={1.7} />
-              <span>Indexers</span>
-            </NavLink>
-            <NavLink to="/setup">
-              <CheckCircle2 size={19} strokeWidth={1.7} />
-              <span>Setup</span>
-            </NavLink>
-            <NavLink to="/system">
-              <ShieldCheck size={19} strokeWidth={1.7} />
-              <span>System checks</span>
-            </NavLink>
-            <NavLink to="/settings">
-              <Settings2 size={19} strokeWidth={1.7} />
+            <NavLink to="/settings" aria-label="Settings" title="Settings">
+              <Settings2 size={18} strokeWidth={1.7} />
               <span>Settings</span>
-            </NavLink>
-            <NavLink to="/backups">
-              <Archive size={19} strokeWidth={1.7} />
-              <span>Backups</span>
-            </NavLink>
-            <NavLink to="/metadata-refresh">
-              <RefreshCw size={19} strokeWidth={1.7} />
-              <span>Metadata refresh</span>
-            </NavLink>
-            <NavLink to="/storage">
-              <FolderSearch size={18} />
-              <span>Storage</span>
             </NavLink>
           </nav>
           <div className="account-control">
             <span>{session.username}</span>
-            <button onClick={() => void logout()} disabled={signingOut}>
+            <button
+              aria-label={signingOut ? "Signing out" : "Sign out"}
+              title={signingOut ? "Signing out" : "Sign out"}
+              onClick={() => void logout()}
+              disabled={signingOut}
+            >
               <LogOut size={15} />
-              {signingOut ? "Signing out…" : "Sign out"}
+              <span>{signingOut ? "Signing out…" : "Sign out"}</span>
             </button>
             {signOutError && <p role="alert">{signOutError}</p>}
           </div>
         </div>
       </aside>
       <main id="main-content" tabIndex={-1}>
-        <div className="page-content">
-          <div className="history-tray-trigger">
+        <div className="topbar">
+          <CommandPalette />
+          <div className="topbar-spacer" />
+          <div className="topbar-actions">
+            <ThemeToggle />
             <HistoryTray />
           </div>
+        </div>
+        <div className="page-content">
           <Routes>
             <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="/" element={<Dashboard />} />

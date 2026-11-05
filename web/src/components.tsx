@@ -6,19 +6,22 @@ import type { ReactNode } from "react";
 export function PageHeading({
   title,
   description,
+  eyebrow,
   children,
 }: {
   title: string;
   description?: string;
+  eyebrow?: string;
   children?: ReactNode;
 }) {
   return (
     <header className="page-heading flex flex-wrap items-end justify-between gap-4">
-      <div>
+      <div className="page-heading-copy">
+        {eyebrow && <p className="page-eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
         {description && <p className="page-description">{description}</p>}
       </div>
-      {children}
+      {children && <div className="page-actions">{children}</div>}
     </header>
   );
 }

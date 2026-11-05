@@ -1,5 +1,5 @@
 import { Button } from "@radix-ui/themes";
-import { ArrowUpRight, Film, Tv, Plus } from "lucide-react";
+import { ArrowUpRight, Clapperboard, Film, Plus, Tv } from "lucide-react";
 import { Link } from "react-router-dom";
 import { type Dashboard as DashboardData, type System } from "../api";
 import { PageHeading, RequestState } from "../components";
@@ -8,7 +8,7 @@ import type { PlanningData, PlanningEntry } from "./Planning";
 
 function CatalogLine({ item }: { item: PlanningEntry }) {
   return (
-    <li>
+    <li className="ui-list-row">
       <Link
         to={`/${item.kind === "movie" ? "movies" : "series"}/${item.media_id}`}
       >
@@ -24,20 +24,22 @@ function CatalogLine({ item }: { item: PlanningEntry }) {
     </li>
   );
 }
+
 export function Dashboard() {
   const dashboard = useResource<DashboardData>("/dashboard");
   const system = useResource<System>("/system");
   const wanted = useResource<PlanningData>("/wanted");
   const upcoming = useResource<PlanningData>("/calendar?status=upcoming");
-  const error = dashboard.error || system.error,
-    loading = dashboard.loading || system.loading;
+  const error = dashboard.error || system.error;
+  const loading = dashboard.loading || system.loading;
   return (
     <>
       <PageHeading
+        eyebrow="Overview"
         title={dashboard.data?.library_name ?? "Library"}
         description="Library overview"
       >
-        <Button asChild>
+        <Button asChild size="2">
           <Link to="/search">
             <Plus size={16} />
             Add a title
@@ -53,41 +55,42 @@ export function Dashboard() {
         }}
       />
       {!loading && !error && dashboard.data && system.data && (
-        <>
-          <section className="library-register" aria-label="Catalog totals">
-            <Link to="/movies">
-              <Film size={23} />
-              <div>
-                <span>Movies</span>
-                <strong>{dashboard.data.counts.movies}</strong>
-              </div>
-              <ArrowUpRight size={20} />
+        <div className="ui-stack">
+          <section className="ui-stat-grid" aria-label="Catalog totals">
+            <Link className="ui-stat" to="/movies">
+              <span className="ui-stat-top">
+                <Film size={15} aria-hidden="true" /> Movies
+              </span>
+              <strong>{dashboard.data.counts.movies}</strong>
+              <span>In catalog</span>
             </Link>
-            <Link to="/series">
-              <Tv size={23} />
-              <div>
-                <span>TV shows</span>
-                <strong>{dashboard.data.counts.series}</strong>
-              </div>
-              <ArrowUpRight size={20} />
+            <Link className="ui-stat" to="/series">
+              <span className="ui-stat-top">
+                <Tv size={15} aria-hidden="true" /> TV shows
+              </span>
+              <strong>{dashboard.data.counts.series}</strong>
+              <span>In catalog</span>
             </Link>
-            <Link to="/anime">
-              <Film size={23} />
-              <div>
-                <span>Anime</span>
-                <strong>{dashboard.data.counts.anime ?? 0}</strong>
-              </div>
-              <ArrowUpRight size={20} />
+            <Link className="ui-stat" to="/anime">
+              <span className="ui-stat-top">
+                <Clapperboard size={15} aria-hidden="true" /> Anime
+              </span>
+              <strong>{dashboard.data.counts.anime ?? 0}</strong>
+              <span>In catalog</span>
             </Link>
           </section>
-          <div className="overview-columns">
-            <section className="overview-section">
-              <header>
-                <h2>Wanted</h2>
+
+          <div className="ui-grid-2">
+            <section className="panel">
+              <div className="ui-section-head">
+                <div>
+                  <h2>Wanted</h2>
+                  <p>Monitored titles with no registered file.</p>
+                </div>
                 <Link className="text-link" to="/wanted">
-                  View all <ArrowUpRight size={14} />
+                  View all <ArrowUpRight size={13} />
                 </Link>
-              </header>
+              </div>
               <RequestState
                 loading={wanted.loading}
                 error={wanted.error}
@@ -95,22 +98,22 @@ export function Dashboard() {
               />
               {wanted.data && !wanted.error && !wanted.loading && (
                 <>
-                  <div className="work-counts">
-                    <Link to="/wanted">
+                  <div className="ui-count-row">
+                    <Link className="ui-count" to="/wanted">
                       <strong>{wanted.data.counts?.missing ?? 0}</strong>
                       <span>Missing</span>
                     </Link>
-                    <Link to="/wanted?status=downloading">
+                    <Link className="ui-count" to="/wanted?status=downloading">
                       <strong>{wanted.data.counts?.downloading ?? 0}</strong>
                       <span>In progress</span>
                     </Link>
-                    <Link to="/wanted?status=attention">
+                    <Link className="ui-count" to="/wanted?status=attention">
                       <strong>{wanted.data.counts?.attention ?? 0}</strong>
                       <span>Needs attention</span>
                     </Link>
                   </div>
                   {wanted.data.items?.length ? (
-                    <ul className="catalog-lines">
+                    <ul className="ui-list">
                       {wanted.data.items.slice(0, 4).map((item) => (
                         <CatalogLine
                           key={`${item.media_id}-${item.episode_id}`}
@@ -119,20 +122,24 @@ export function Dashboard() {
                       ))}
                     </ul>
                   ) : (
-                    <p className="overview-empty">
+                    <p className="ui-empty-note">
                       No monitored, dated items are missing.
                     </p>
                   )}
                 </>
               )}
             </section>
-            <section className="overview-section">
-              <header>
-                <h2>Later this month</h2>
+
+            <section className="panel">
+              <div className="ui-section-head">
+                <div>
+                  <h2>Later this month</h2>
+                  <p>Saved release dates from your catalog.</p>
+                </div>
                 <Link className="text-link" to="/calendar">
-                  Calendar <ArrowUpRight size={14} />
+                  Calendar <ArrowUpRight size={13} />
                 </Link>
-              </header>
+              </div>
               <RequestState
                 loading={upcoming.loading}
                 error={upcoming.error}
@@ -141,7 +148,7 @@ export function Dashboard() {
               {upcoming.data && !upcoming.error && !upcoming.loading && (
                 <>
                   {upcoming.data.items?.length ? (
-                    <ul className="catalog-lines">
+                    <ul className="ui-list">
                       {upcoming.data.items.slice(0, 4).map((item) => (
                         <CatalogLine
                           key={`${item.media_id}-${item.episode_id}`}
@@ -150,11 +157,11 @@ export function Dashboard() {
                       ))}
                     </ul>
                   ) : (
-                    <p className="overview-empty">
+                    <p className="ui-empty-note">
                       No upcoming dates in the saved catalog for this month.
                     </p>
                   )}
-                  <p className="catalog-note">
+                  <p className="ui-note">
                     Saved release dates, in UTC. Load season episodes to include
                     them. Movie dates may be theatrical releases.
                   </p>
@@ -162,14 +169,18 @@ export function Dashboard() {
               )}
             </section>
           </div>
-          <section className="storage-register">
-            <header>
-              <h2>Storage</h2>
+
+          <section className="panel">
+            <div className="ui-section-head">
+              <div>
+                <h2>Storage</h2>
+                <p>Configured folders and current server status.</p>
+              </div>
               <Link className="text-link" to="/settings">
-                Folder settings <ArrowUpRight size={14} />
+                Folder settings <ArrowUpRight size={13} />
               </Link>
-            </header>
-            <dl>
+            </div>
+            <dl className="ui-path-list">
               {Object.entries(system.data.paths).map(([key, value]) => (
                 <div key={key}>
                   <dt>
@@ -183,14 +194,14 @@ export function Dashboard() {
                 </div>
               ))}
             </dl>
-            <div className="overview-server">
+            <div className="ui-footer-line">
               <span>Connected · {system.data.version}</span>
               <Link className="text-link" to="/system">
                 Run system checks
               </Link>
             </div>
           </section>
-        </>
+        </div>
       )}
     </>
   );
