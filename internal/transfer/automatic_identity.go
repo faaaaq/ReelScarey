@@ -12,11 +12,12 @@ import (
 
 // Automatic matching uses exact identity evidence, never the fuzzy suggestion score.
 type automaticHint struct {
-	Title      string `json:"title"`
-	Year       int    `json:"year"`
-	ProviderID int64  `json:"provider_id"`
-	Season     int    `json:"season"`
-	Episodes   []int  `json:"episodes"`
+	Title        string `json:"title"`
+	Year         int    `json:"year"`
+	ProviderID   int64  `json:"provider_id"`
+	Season       int    `json:"season"`
+	Episodes     []int  `json:"episodes"`
+	EpisodeTitle string `json:"episode_title,omitempty"`
 }
 
 var automaticProviderID = regexp.MustCompile(`(?i)[\[{]tmdb[-= ]([0-9]+)[\]}]`)
@@ -104,8 +105,13 @@ func automaticIdentity(scan LibraryScan, f DiscoveredFile) (automaticHint, error
 		return h, nil
 	}
 	season, episodes, start, _, ok := quality.EpisodeSpan(base)
-	if !ok || len(episodes) == 0 || len(episodes) > 20 {
-		return h, automaticReview("Episode numbering is uncertain. Review the season and episode mapping.")
+	if !ok {
+		if quality.HasEpisodeLabel(base) {
+			return h, automaticReview("Episode numbering is ambiguous. Review the season and episode mapping.")
+		}
+		// No SxxExx label at all: identify the show from the folder and the
+		// episode by its canonical title instead of refusing the file.
+		return titleOnlyIdentity(parts, base, h)
 	}
 	for i, n := range episodes {
 		if i > 0 && n != episodes[i-1]+1 {
@@ -119,7 +125,7 @@ func automaticIdentity(scan LibraryScan, f DiscoveredFile) (automaticHint, error
 	}
 	h = file
 	if len(parts) > 1 {
-		titleFolder := parts[len(parts)-2]
+		titleFolder, titleIndex := parts[len(parts)-2], len(parts)-2
 		for i, part := range parts[:len(parts)-1] {
 			match := automaticSeasonFolder.FindStringSubmatch(part)
 			number := -1
@@ -133,9 +139,14 @@ func automaticIdentity(scan LibraryScan, f DiscoveredFile) (automaticHint, error
 					return h, automaticReview("The episode filename and season folder disagree.")
 				}
 				if i > 0 {
-					titleFolder = parts[i-1]
+					titleFolder, titleIndex = parts[i-1], i-1
 				}
 			}
+		}
+		// An unnumbered "Season" folder is a container, not a title.
+		for titleIndex > 0 && plainSeasonFolder(titleFolder) {
+			titleIndex--
+			titleFolder = parts[titleIndex]
 		}
 		folder, err := parseAutomaticTitle(titleFolder)
 		if err != nil {
@@ -154,6 +165,102 @@ func automaticIdentity(scan LibraryScan, f DiscoveredFile) (automaticHint, error
 	h.Season = season
 	h.Episodes = episodes
 	return h, nil
+}
+
+func plainSeasonFolder(part string) bool {
+	trimmed := strings.TrimRight(part, " ._-")
+	return strings.EqualFold(trimmed, "season") || strings.EqualFold(trimmed, "seasons")
+}
+
+// titleOnlyIdentity handles episode files with no SxxExx label. The show still
+// comes from exact folder evidence; the episode is resolved later by matching
+// its canonical title, which must be unique across the whole show.
+func titleOnlyIdentity(parts []string, base string, h automaticHint) (automaticHint, error) {
+	folderSeason := -1
+	titleFolder := ""
+	for i := len(parts) - 2; i >= 0; i-- {
+		part := parts[i]
+		if match := automaticSeasonFolder.FindStringSubmatch(part); len(match) > 0 {
+			folderSeason, _ = strconv.Atoi(match[1])
+			continue
+		}
+		trimmed := strings.TrimRight(part, " ._-")
+		if strings.EqualFold(trimmed, "specials") {
+			folderSeason = 0
+			continue
+		}
+		if plainSeasonFolder(part) {
+			continue
+		}
+		titleFolder = part
+		break
+	}
+	if titleFolder == "" {
+		file, fileErr := parseAutomaticTitle(base)
+		if fileErr != nil {
+			return h, fileErr
+		}
+		h = file
+		if h.Year == 0 && h.ProviderID == 0 {
+			return h, automaticReview("A loose episode file needs a year or explicit TMDb ID for automatic matching.")
+		}
+	} else {
+		folder, err := parseAutomaticTitle(titleFolder)
+		if err != nil {
+			return h, err
+		}
+		h = folder
+	}
+	h.Season = folderSeason
+	h.Episodes = nil
+	h.EpisodeTitle = episodeTitleTail(base, h.Title)
+	if h.EpisodeTitle == "" {
+		return h, automaticReview("The filename does not include an episode title after the show name. Review the mapping.")
+	}
+	return h, nil
+}
+
+// episodeTitleTail removes the show name, container markers such as "SE" and
+// bare episode numbers, leaving the episode title text.
+func episodeTitleTail(base, show string) string {
+	raw := strings.NewReplacer(".", " ", "_", " ").Replace(base)
+	if i := hintQuality.FindStringIndex(raw); i != nil {
+		raw = raw[:i[0]]
+	}
+	if show != "" {
+		lower, prefix := strings.ToLower(raw), strings.ToLower(strings.TrimSpace(show))
+		if at := strings.Index(lower, prefix); at >= 0 {
+			raw = raw[at+len(prefix):]
+		}
+	}
+	tokens := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ' ' || r == '-' || r == '.' || r == '_' || r == '–' || r == '—'
+	})
+	markers := map[string]bool{
+		"se": true, "sp": true, "ova": true, "oad": true,
+		"ncop": true, "nced": true, "pv": true,
+	}
+	for i := 0; i < len(tokens); i++ {
+		token := strings.ToLower(tokens[i])
+		if markers[token] {
+			continue
+		}
+		if token == "special" || token == "specials" || token == "episode" || token == "ep" {
+			continue
+		}
+		isNumber := true
+		for _, r := range tokens[i] {
+			if r < '0' || r > '9' {
+				isNumber = false
+				break
+			}
+		}
+		if isNumber {
+			continue
+		}
+		return strings.TrimSpace(strings.Join(tokens[i:], " "))
+	}
+	return ""
 }
 
 func (h automaticHint) key() string {
