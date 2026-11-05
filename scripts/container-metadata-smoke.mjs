@@ -60,19 +60,15 @@ const probe = JSON.parse(run('ffprobe', '-v', 'error', '-show_entries', 'format_
 assert.equal(probe.format.tags.title, 'Correct Fixture')
 assert.ok(probe.streams.some(stream => stream.tags?.language === 'jpn'))
 assert.equal(run('sha256sum', '/downloads/seeding.mp4').split(' ')[0], before)
-assert.equal(run('sha256sum', `/media/${child.replacement.backup}`).split(' ')[0], before)
-const rollback = await api(`/organization/plans/${child.id}/rollback`, { method: 'POST', body: '{}' })
-await api(`/organization/plans/${rollback.id}/apply`, { method: 'POST', body: '{}' })
-let restored
-for (let i = 0; i < 150; i++) {
-  restored = await api(`/organization/plans/${rollback.id}`)
-  if (restored.state === 'failed') throw new Error(`Rollback failed: ${restored.message}`)
-  if (restored.state === 'completed') break
-  await delay(400)
-}
-assert.equal(restored?.state, 'completed')
-assert.equal(run('sha256sum', `/media/${path}`).split(' ')[0], before)
-assert.equal(run('sha256sum', '/downloads/seeding.mp4').split(' ')[0], before)
+assert.equal(child.replacement.metadata_only, true)
+assert.equal(child.replacement.backup, '')
+assert.equal(child.replacement.previous_title, 'Wrong Fixture')
+assert.equal(child.replacement.before.sha256, before)
+const tagged = run('sha256sum', `/media/${path}`).split(' ')[0]
+assert.notEqual(tagged, before)
+assert.equal(child.replacement.after.sha256, tagged)
+const titleRollback = await fetch(`${base}/api/v1/organization/plans/${child.id}/rollback`, { method: 'POST', headers, body: '{}' })
+assert.equal(titleRollback.status, 400)
 const undoMove = await api(`/organization/plans/${plan.id}/rollback`, { method: 'POST', body: '{}' })
 assert.equal(undoMove.restores_plan, plan.id)
 assert.equal(undoMove.files[0].destination, 'Movies/Fixture/Film.mp4')
@@ -87,9 +83,10 @@ for (let i = 0; i < 150; i++) {
   await delay(400)
 }
 assert.equal(undone?.state, 'completed')
-assert.equal(run('sha256sum', '/media/Movies/Fixture/Film.mp4').split(' ')[0], before)
+assert.equal(run('sha256sum', '/media/Movies/Fixture/Film.mp4').split(' ')[0], tagged)
 assert.equal(run('sha256sum', '/downloads/seeding.mp4').split(' ')[0], before)
-console.log('PASS: real container move, verified embedded title, retained source, version rollback and reviewed move undo across restart')
+assert.equal(JSON.parse(run('ffprobe', '-v', 'error', '-show_entries', 'format_tags=title', '-of', 'json', '/media/Movies/Fixture/Film.mp4')).format.tags.title, 'Correct Fixture')
+console.log('PASS: real container move, verified in-place embedded title, retained source, recorded title change and reviewed move undo across restart')
 async function completePlan(plan) {
   await api(`/organization/plans/${plan.id}/apply`, {method:'POST',body:'{}'})
   for(let i=0;i<150;i++) {
@@ -103,7 +100,7 @@ async function completePlan(plan) {
 const keep=await api('/organization/removal',{method:'POST',body:JSON.stringify({media_id:4242,mode:'keep'})})
 assert.equal(keep.removal.mode,'keep')
 await completePlan(keep)
-assert.equal(run('sha256sum','/media/Movies/Fixture/Film.mp4').split(' ')[0],before)
+assert.equal(run('sha256sum','/media/Movies/Fixture/Film.mp4').split(' ')[0],tagged)
 run('python3','-c',`import sqlite3, hashlib
 p='/media/Movies/Fixture/Film.mp4'
 b=open(p,'rb').read()
@@ -113,7 +110,7 @@ c.execute("INSERT INTO media_files(id,movie_id,relative_path,size_bytes,sha256,p
 c.commit()`)
 const trash=await api('/organization/removal',{method:'POST',body:JSON.stringify({media_id:4243,mode:'trash'})})
 await completePlan(trash)
-assert.equal(run('sha256sum',`/media/${trash.files[0].destination}`).split(' ')[0],before)
+assert.equal(run('sha256sum',`/media/${trash.files[0].destination}`).split(' ')[0],tagged)
 assert.equal(run('sha256sum','/downloads/seeding.mp4').split(' ')[0],before)
 assert.equal(run('python3','-c',"import sqlite3; c=sqlite3.connect('/config/reelscarey.db'); print(c.execute('SELECT COUNT(*) FROM media_items WHERE id IN (4242,4243)').fetchone()[0])"),'0')
 console.log('PASS: reviewed catalog removal with keep-files and retained-trash choices preserves download sources')
