@@ -17,6 +17,11 @@ type automaticTitle struct {
 	Reason  string         `json:"reason"`
 }
 
+func automaticInvalidProviderDetails(err error) bool {
+	var provider *metadata.Error
+	return errors.As(err, &provider) && provider.Code == "tmdb_invalid_response"
+}
+
 func (s *Service) automaticTitle(ctx context.Context, scan LibraryScan, owner string, h automaticHint) (automaticTitle, error) {
 	var out automaticTitle
 	var raw string
@@ -37,8 +42,7 @@ func (s *Service) automaticTitle(ctx context.Context, scan LibraryScan, owner st
 		case automaticMetadataMissing(err):
 			out.Reason = "TMDb no longer lists this title. Choose a match manually."
 		default:
-			var provider *metadata.Error
-			if errors.As(err, &provider) && provider.Code == "tmdb_invalid_response" {
+			if automaticInvalidProviderDetails(err) {
 				// One malformed provider record must not pause a scan containing
 				// thousands of otherwise valid files.
 				if h.ProviderID > 0 {
@@ -172,6 +176,9 @@ func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, o
 			full, e = s.automaticMetadata.Movie(ctx, chosen.TMDbID)
 		}
 		if e != nil {
+			if automaticInvalidProviderDetails(e) {
+				return out, automaticReview("TMDb returned invalid details for this title. Review it manually.")
+			}
 			return out, e
 		}
 		if full.TMDbID != chosen.TMDbID || !h.matches(full.Title, full.Year, full.TMDbID) {
@@ -187,6 +194,9 @@ func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, o
 			full, e = s.automaticMetadata.Series(ctx, chosen.TMDbID)
 		}
 		if e != nil {
+			if automaticInvalidProviderDetails(e) {
+				return out, automaticReview("TMDb returned invalid details for this show. Review it manually.")
+			}
 			return out, e
 		}
 		if full.TMDbID != chosen.TMDbID || !h.matches(full.Title, full.Year, full.TMDbID) {
@@ -224,6 +234,9 @@ func (s *Service) automaticEpisodes(ctx context.Context, scan LibraryScan, owner
 			return nil, automaticReview("TMDb no longer lists this season. Review the episode match.")
 		}
 		if e != nil {
+			if automaticInvalidProviderDetails(e) {
+				return nil, automaticReview("TMDb returned invalid season details. Review the episode mapping.")
+			}
 			return nil, e
 		}
 		if fresh.Number != h.Season || fresh.TMDbID != season.Season.TMDbID {

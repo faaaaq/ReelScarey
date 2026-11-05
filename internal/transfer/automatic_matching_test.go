@@ -217,6 +217,35 @@ func TestAutomaticInvalidProviderTitleBecomesReviewWithoutStoppingScan(t *testin
 	}
 }
 
+func TestAutomaticInvalidSeasonDetailsBecomesReviewWithoutStoppingScan(t *testing.T) {
+	f := setupWorkflow(t)
+	year := 2022
+	season := metadata.SeasonSummary{TMDbID: 821, Number: 1, Title: "Season 1", EpisodeCount: 1}
+	provider := &automaticProviderFixture{
+		show:        metadata.Series{Movie: metadata.Movie{TMDbID: 820, Title: "New Show", Year: &year}, Seasons: []metadata.SeasonSummary{season}},
+		seasonError: &metadata.Error{Code: "tmdb_invalid_response", Message: "unreadable"},
+	}
+	f.s.SetAutomaticMetadata(provider)
+	existingVideo(t, f, "Anime/New Show (2022) [tmdb-820]/Season 01/S01E01.mp4", []byte("owned season fixture"))
+	scan, err := f.s.StartLibraryScanWithMatching(context.Background(), "series", "anime", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishScan(t, f, scan.ID)
+	worked, err := f.s.ProcessAutomaticMatchNext(context.Background())
+	if err != nil || !worked {
+		t.Fatal("invalid season stopped the matcher", worked, err)
+	}
+	status, err := f.s.AutomaticMatchStatus(context.Background(), scan.ID)
+	if err != nil || status.Review != 1 || status.State == "paused" {
+		t.Fatal(status, err)
+	}
+	var message string
+	if err := f.db.QueryRow(`SELECT message FROM library_scan_files WHERE scan_id=?`, scan.ID).Scan(&message); err != nil || !strings.Contains(message, "invalid season") {
+		t.Fatal(message, err)
+	}
+}
+
 func TestAutomaticMatchingRequiresExplicitStartForOldScansAndRejectsChangedSource(t *testing.T) {
 	f := setupWorkflow(t)
 	ctx := context.Background()
@@ -259,6 +288,7 @@ type automaticProviderFixture struct {
 	beforeMovie       func()
 	movieError        error
 	searchError       error
+	seasonError       error
 }
 
 func (p *automaticProviderFixture) Search(context.Context, string, int) (metadata.Results, error) {
@@ -292,6 +322,9 @@ func (p *automaticProviderFixture) Series(context.Context, int64) (metadata.Seri
 }
 func (p *automaticProviderFixture) Season(context.Context, int64, int) (metadata.Season, error) {
 	p.seasons++
+	if p.seasonError != nil {
+		return metadata.Season{}, p.seasonError
+	}
 	return p.season, nil
 }
 func TestAutomaticAnimeMatchesDirectSeriesFolderAndLoadsSeasonOnce(t *testing.T) {
