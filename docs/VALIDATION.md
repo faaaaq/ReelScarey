@@ -2056,3 +2056,6 @@ No owner-server media or download client was used for these checks.
   password error.
 - Schema 52 adds the durable extraction path. Docker now installs unrar
   (non-free) and p7zip-full in the runtime and test stages.
+- A queued playlist job is processed end to end with an explicit language list
+  and 1080 quality; this covers the subtitle-options language array column that
+  the worker reads.

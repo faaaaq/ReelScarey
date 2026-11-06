@@ -3,6 +3,7 @@ package youtube
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/faaaaq/ReelScarey/internal/database"
@@ -80,6 +81,27 @@ func TestPlaylistPreviewIdentifiesShowAndPrefersFullEpisodes(t *testing.T) {
 	}
 	if byVideo["fffffffffff"].EpisodeID != 6 || byVideo["fffffffffff"].Status != "missing" || !byVideo["fffffffffff"].Selected {
 		t.Fatal("episode-title fallback did not match", byVideo["fffffffffff"])
+	}
+}
+
+func TestPlaylistQueuedJobProcessesQualityAndLanguages(t *testing.T) {
+	ctx := context.Background()
+	s, inspector := playlistFixture(t)
+	queued, err := s.QueuePlaylist(ctx, PlaylistQueueInput{
+		URL: inspector.result.Source.URL, ShowID: 1, Season: 1, Quality: "1080",
+		Subtitles: DownloadOptions{Languages: []string{"en"}},
+		Entries:   []string{"aaaaaaaaaaa"},
+	}, inspector)
+	if err != nil || len(queued) != 1 || queued[0].State != "queued" {
+		t.Fatal(queued, err)
+	}
+	w := Worker{Store: s, Downloader: testDownloader{}, Prober: testProber{}, StagingRoot: filepath.Join(t.TempDir(), "staging")}
+	if worked, err := w.ProcessOne(ctx); err != nil || !worked {
+		t.Fatal(worked, err)
+	}
+	job, err := s.Job(ctx, queued[0].JobID)
+	if err != nil || job.State != "awaiting_review" || job.Quality != "1080" || job.Target.EpisodeID != 1 || job.Progress != 1 {
+		t.Fatal(job, err)
 	}
 }
 
