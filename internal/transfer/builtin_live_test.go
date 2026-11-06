@@ -45,25 +45,16 @@ func TestRealBundledClientLifecycle(t *testing.T) {
 	if e = f.s.TestDownloadClient(ctx, builtinClientID); e != nil {
 		t.Fatal("real RPC login failed", e)
 	}
+	// The runner may host unrelated qbittorrent-nox processes from earlier
+	// steps: compare against the pre-test count instead of scanning bare.
+	baseline := countQbtProcesses()
 	saved, e := f.s.UpdateBundled(ctx, BundledUpdate{Enabled: boolPtr(false), Revision: status.Revision})
 	if e != nil || saved.Enabled || saved.State != "stopped" {
 		t.Fatal(saved, e)
 	}
 	deadline := time.Now().Add(20 * time.Second)
 	for {
-		processes, e := os.ReadDir("/proc")
-		if e != nil {
-			t.Fatal(e)
-		}
-		running := false
-		for _, entry := range processes {
-			b, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "comm"))
-			if err == nil && strings.TrimSpace(string(b)) == "qbittorrent-nox" {
-				running = true
-				break
-			}
-		}
-		if !running {
+		if countQbtProcesses() <= baseline {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -73,4 +64,19 @@ func TestRealBundledClientLifecycle(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+func countQbtProcesses() int {
+	entries, e := os.ReadDir("/proc")
+	if e != nil {
+		return 0
+	}
+	count := 0
+	for _, entry := range entries {
+		b, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "comm"))
+		if err == nil && strings.TrimSpace(string(b)) == "qbittorrent-nox" {
+			count++
+		}
+	}
+	return count
 }

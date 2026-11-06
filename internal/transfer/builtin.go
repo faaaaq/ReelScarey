@@ -28,6 +28,9 @@ const (
 	defaultBuiltinPeer  = 6881
 	builtinReadyTimeout = 40 * time.Second
 	builtinStopTimeout  = 15 * time.Second
+	// tunnelDownMessage is the kill-switch explanation surfaced by both the
+	// supervisor and the enable path while the VPN tunnel is down.
+	tunnelDownMessage = "The VPN tunnel is down. The built-in client stays stopped until the tunnel returns."
 )
 
 // BundledStatus reports the supervised daemon and its saved connection.
@@ -142,8 +145,9 @@ func (s *Service) UpdateBundled(ctx context.Context, in BundledUpdate) (BundledS
 	s.bundled.poke()
 	if in.Enabled == nil || *in.Enabled {
 		if !s.tunnelReady() {
-			// The VPN kill switch keeps the daemon stopped; the saved status
-			// explains it and the client starts when the tunnel returns.
+			// The VPN kill switch keeps the daemon stopped; return the honest
+			// explanation immediately instead of waiting for the next tick.
+			s.bundled.setState("stopped", tunnelDownMessage)
 			return s.BundledStatus(ctx)
 		}
 		if e = s.awaitBundled(ctx, generation); e != nil {

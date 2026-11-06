@@ -1884,3 +1884,8 @@ No owner-server media or download client was used for these checks.
   while the child process was still running and the exec copier still writing.
   The capture is now a locked buffer shared by writer and readers; the fix was
   validated by the Linux race suite.
+- Two CI-only failures were diagnosed and fixed: the gated enable returned an
+  unexplained stopped state because the supervisor tick had not run yet (the
+  enable path now states the kill-switch reason immediately), and the live
+  supervision test counted unrelated qbittorrent-nox processes from earlier
+  runner steps (it now compares against a pre-test baseline).

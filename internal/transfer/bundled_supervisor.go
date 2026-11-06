@@ -211,7 +211,7 @@ func (s *Service) reconcileBundled(ctx context.Context, logger *slog.Logger, c C
 		if wasAlive {
 			s.stopBundled()
 		}
-		r.setState("stopped", "The VPN tunnel is down. The built-in client stays stopped until the tunnel returns.")
+		r.setState("stopped", tunnelDownMessage)
 		return
 	}
 	if wasAlive && !stale && !tunnelChanged {
