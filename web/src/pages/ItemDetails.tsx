@@ -359,10 +359,8 @@ export function ItemInformation({
               </div>
             </dl>
             <p className="ui-note">
-              Sizes and locations come from verified import records. They are
-              not a current disk scan or a measure of physical space used by
-              hardlinks. Existing files retain their original locations when
-              folder preferences change.
+              Sizes and locations come from import records, not a live disk
+              scan.
             </p>
           </section>
           <section className="panel">

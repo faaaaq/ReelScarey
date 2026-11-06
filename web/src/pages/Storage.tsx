@@ -62,15 +62,11 @@ export function Storage() {
     });
   return (
     <>
-      <PageHeading
-        title="Storage"
-        description="Browse mounted folders and review a planned library storage migration."
-      />
+      <PageHeading title="Storage" />
       <section className="panel system-panel">
         <h2>Folder browser</h2>
         <p>
-          Browsing shows names and sizes only. Files stay unchanged. To match
-          files in configured library collections, open{" "}
+          Read-only. To match files in a collection, open{" "}
           <Link to="/import">Import library</Link>.
         </p>
         <label>

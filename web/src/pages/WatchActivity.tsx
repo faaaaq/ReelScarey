@@ -77,10 +77,7 @@ export function WatchActivity() {
   }
   return (
     <>
-      <PageHeading
-        title="Emby watch activity"
-        description="See the latest playback state reported by your Emby server."
-      />
+      <PageHeading title="Emby watch activity" />
       <RequestState
         loading={settings.loading}
         error={settings.error}

@@ -218,9 +218,6 @@ describe("Anime library and explicit numbering", () => {
     expect(screen.getByLabelText("Current address")).toHaveTextContent(
       "kind=anime&format=movie&query=Feature&page=2",
     );
-    expect(
-      screen.getByText(/Titles already saved stay in their current section/),
-    ).toBeVisible();
   });
 
   it("reviews category and explicit aliases without writing, then cancels", async () => {

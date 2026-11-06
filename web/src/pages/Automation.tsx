@@ -105,10 +105,7 @@ export function Automation() {
   const profiles = useLiveResource<{ items: Profile[] }>("/quality-profiles");
   return (
     <>
-      <PageHeading
-        title="Automation"
-        description="Search on a schedule, choose your quality, and see every decision."
-      />
+      <PageHeading title="Automation" />
       <RequestState
         loading={(!schedule.data && schedule.loading) || profiles.loading}
         error={schedule.error || profiles.error}
@@ -361,10 +358,7 @@ function RunHistory() {
       </div>
       {runs.error && <p role="alert">{runs.error}</p>}
       {!runs.data?.items.length ? (
-        <p className="muted">
-          Your searches and their decisions will appear here. No search has run
-          yet.
-        </p>
+        <p className="muted">No searches have run yet.</p>
       ) : (
         <>
           <label>
@@ -515,11 +509,6 @@ function Profiles({
           Reload saved profiles
         </Button>
       </div>
-      <p className="muted">
-        Resolution preferences, a cutoff for upgrade suggestions, and rules for
-        release selection. Language matching uses explicit release labels; media
-        verification checks video files during import.
-      </p>
       <label>
         Choose profile
         <select
@@ -832,10 +821,6 @@ function Assignments({ profiles }: { profiles: Profile[] }) {
   return (
     <section className="panel automation-panel">
       <h2>Library preferences</h2>
-      <p className="muted">
-        Choose a profile per movie or show, or follow the schedule default. TV
-        selection follows the show's season and episode controls.
-      </p>
       <RequestState
         loading={items.loading}
         error={items.error}

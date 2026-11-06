@@ -17,9 +17,7 @@ export function HistoryTray() {
       </Dialog.Trigger>
       <Dialog.Content maxWidth="420px">
         <Dialog.Title>Recent activity</Dialog.Title>
-        <Dialog.Description>
-          Recent recorded changes across your library and connected services.
-        </Dialog.Description>
+        <Dialog.Description>Newest first.</Dialog.Description>
         <RequestState
           loading={history.loading}
           error={history.error}

@@ -105,10 +105,7 @@ export function Organization() {
   const [tab, setTab] = useState("files");
   return (
     <>
-      <PageHeading
-        title="Organize library"
-        description="Collections, folder structure and reviewed file changes."
-      />
+      <PageHeading title="Organize library" />
       <RequestState
         loading={config.loading}
         error={config.error}
@@ -191,9 +188,7 @@ function Naming({ config, saved }: { config: Config; saved: () => void }) {
     <section className="panel settings-form organization-settings">
       <h2>Folders & naming</h2>
       <p>
-        These rules apply to newly queued downloads. Previously queued downloads
-        keep their saved rules. Existing files change only through a reviewed
-        reorganization.
+        Applies to newly queued downloads. Queued jobs keep their saved rules.
       </p>
       <fieldset disabled={pending}>
         {libraries.map((library, index) => (

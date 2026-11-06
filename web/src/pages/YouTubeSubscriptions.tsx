@@ -70,10 +70,7 @@ export function YouTubeSubscriptions() {
   }
   return (
     <>
-      <PageHeading
-        title="YouTube subscriptions"
-        description="Watch public channels and playlists for new videos, with explicit acquisition controls."
-      />
+      <PageHeading title="YouTube subscriptions" />
       <p>
         <Link to="/youtube">Back to YouTube acquisition and import review</Link>
       </p>

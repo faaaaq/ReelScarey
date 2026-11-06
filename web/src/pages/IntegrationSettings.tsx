@@ -108,10 +108,10 @@ export function IntegrationSettings({
         <>
           <p>
             {indexer
-              ? "Connect the Torznab API from Prowlarr, Jackett, or another compatible indexer to search movie releases."
+              ? "Torznab endpoint from Prowlarr, Jackett or another indexer."
               : usenet
-                ? "Send NZB releases to SABnzbd. Import verified videos after repair and unpacking finish; TV files require episode review."
-                : "Send selected releases to qBittorrent, track completion, and import verified movie files into your library."}
+                ? "Sends NZB releases to SABnzbd."
+                : "Sends torrent releases to qBittorrent."}
           </p>
           <form onSubmit={submit}>
             <label htmlFor={`${kind}-url`}>

@@ -157,11 +157,6 @@ function AuthForm({
           <span className="wordmark">ReelScarey</span>
         </div>
         <h1>{setup ? "Create administrator" : "Sign in"}</h1>
-        <p className="muted">
-          {setup
-            ? "Create the administrator account for this installation."
-            : "Sign in to manage your library."}
-        </p>
         <form onSubmit={submit}>
           <fieldset disabled={pending}>
             {setup && (

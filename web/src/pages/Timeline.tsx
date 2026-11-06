@@ -28,10 +28,7 @@ export function Timeline() {
   }
   return (
     <>
-      <PageHeading
-        title="Event timeline"
-        description="Recorded changes across downloads, requests, playback and library tasks."
-      />
+      <PageHeading title="Event timeline" />
       <p>
         Older saved creation times and last-known states are shown where
         available. Earlier intermediate changes may be missing.

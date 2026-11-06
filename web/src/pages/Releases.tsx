@@ -72,9 +72,6 @@ function ReleaseBrowser() {
   const [episodeInput, setEpisodeInput] = useState("");
   const [attaching, setAttaching] = useState(false);
   const navigate = useNavigate();
-  const targetLabel = tv
-    ? `S${String(season).padStart(2, "0")}${episode ? `E${String(episode).padStart(2, "0")}` : " · selected missing episodes"}`
-    : "";
   const suggested = movie.data
     ? tv
       ? `${movie.data.title} S${String(season).padStart(2, "0")}${episode ? `E${String(episode).padStart(2, "0")}` : ""}`
@@ -156,13 +153,6 @@ function ReleaseBrowser() {
             : tv
               ? "TV releases"
               : "Movie releases"
-        }
-        description={
-          tv
-            ? `${targetLabel}. Review the release, then confirm episode files in Activity before importing.`
-            : movie.data?.year
-              ? `For your ${movie.data.year} movie. Review the release title before downloading.`
-              : "Choose a release from your connected indexer."
         }
       />
       <Link className="text-link" to={tv ? `/series/${movieID}` : "/movies"}>
@@ -306,7 +296,6 @@ function ReleaseBrowser() {
             !client.data.configured &&
             !sab.data.configured && (
               <p className="search-disclaimer">
-                You can browse releases now.{" "}
                 <Link to="/settings" className="text-link">
                   Connect qBittorrent or SABnzbd
                 </Link>{" "}
@@ -382,13 +371,10 @@ function ReleaseBrowser() {
             </>
           )}
           <p className="search-disclaimer">
-            Torrent releases use qBittorrent; NZB releases use SABnzbd.
-            Completed video files are verified before importing.{" "}
             {tv
               ? "TV files require your episode mapping confirmation in Activity. "
               : ""}
-            Torrent sources stay in place for seeding; existing library files
-            are never replaced.
+            Existing library files are never replaced.
           </p>
         </>
       )}

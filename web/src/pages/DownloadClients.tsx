@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button } from "@radix-ui/themes";
-import { Link } from "react-router-dom";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
@@ -51,16 +50,7 @@ export function DownloadClients() {
   const resource = useResource<State>("/download-clients");
   return (
     <>
-      <PageHeading
-        title="Download clients"
-        description="Save named connections and choose defaults for future torrent and Usenet jobs."
-      />
-      <p>
-        Each job keeps its original client and folder mapping. Changing a
-        default affects future jobs. Existing connections in{" "}
-        <Link to="/settings#qbittorrent">Settings</Link> remain available as the
-        fallback choices.
-      </p>
+      <PageHeading title="Download clients" />
       <RequestState
         loading={resource.loading}
         error={resource.error}

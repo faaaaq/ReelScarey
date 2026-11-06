@@ -230,3 +230,5 @@ See [announce feeds](docs/ANNOUNCE.md).
   Linux, so MP4/MOV files with the index at the end can be verified.
 - [x] A generated non-faststart MP4 acceptance case passes alongside every
   supported container, HDR transfer, chapter/attachment and packet check.
+- [x] Decorative page subtitles, section summaries and explanatory footers were
+  removed; operational warnings and field help remain.

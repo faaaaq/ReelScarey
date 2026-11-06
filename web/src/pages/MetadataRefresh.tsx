@@ -21,10 +21,7 @@ export function MetadataRefresh() {
   const resource = useLiveResource<Schedule>("/system/metadata-refresh", 5000);
   return (
     <>
-      <PageHeading
-        title="Metadata refresh"
-        description="Keep saved titles, release dates and episode details current without changing monitoring or media files."
-      />
+      <PageHeading title="Metadata refresh" />
       <RequestState
         loading={resource.loading}
         error={resource.error}
@@ -175,11 +172,6 @@ function RefreshForm({
           loaded seasons and monitored seasons due within 90 days. Provider
           identity changes are held for review; saved episodes and files are
           retained.
-        </p>
-        <p>
-          The <Link to="/calendar">calendar</Link> shows saved release dates,
-          runtimes, show status and metadata freshness. Provider dates do not
-          establish exact broadcast times or download availability.
         </p>
       </section>
     </>

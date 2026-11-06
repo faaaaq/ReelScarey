@@ -35,10 +35,7 @@ function FocusedJobContent({ id }: { id: string }) {
   const job = useLiveResource<DownloadJob>(`/downloads/${id}`, 5000);
   return (
     <>
-      <PageHeading
-        title="Download details"
-        description="Release, progress, files and safe import status."
-      />
+      <PageHeading title="Download details" />
       <Link className="text-link" to="/activity">
         View all activity
       </Link>
@@ -96,10 +93,7 @@ function ActivityList() {
   }, [page, attempt]);
   return (
     <>
-      <PageHeading
-        title="Activity"
-        description="Follow your movies and episodes from download to library."
-      >
+      <PageHeading title="Activity">
         <Button variant="soft" onClick={reload}>
           Refresh
         </Button>
@@ -132,10 +126,6 @@ function ActivityList() {
           />
         </>
       )}
-      <p className="search-disclaimer">
-        Progress is saved on the server and resumes after a restart. Stopping
-        tracking leaves the client job and its source files unchanged.
-      </p>
     </>
   );
 }

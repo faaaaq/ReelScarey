@@ -175,10 +175,7 @@ export function Backups() {
   const blocked = busy || !!state?.schedule.running || restarting;
   return (
     <>
-      <PageHeading
-        title="Backups"
-        description="Protect your settings, connections, accounts and library database."
-      >
+      <PageHeading title="Backups">
         <Button
           disabled={blocked || !state}
           onClick={() =>

@@ -573,9 +573,8 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
           )}
           {!movies && (
             <p className="ui-note">
-              Show status reflects saved file registrations and tracked
-              downloads. Episode files registered does not mean every episode is
-              available.
+              Show status reflects registered files and tracked downloads, not
+              full episode coverage.
             </p>
           )}
         </>

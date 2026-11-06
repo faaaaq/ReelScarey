@@ -294,7 +294,7 @@ describe("subtitles", () => {
         name: "Search subtitles for Generated fixture movie",
       }),
     );
-    expect(await screen.findByText(/No saved matches yet/)).toBeVisible();
+    expect(await screen.findByText(/No saved matches/)).toBeVisible();
     await waitFor(() =>
       expect(
         fetch.mock.calls.some(

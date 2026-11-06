@@ -78,13 +78,6 @@ function MediaSearch({
               ? "Search TV shows"
               : "Search movies"
         }
-        description={
-          anime
-            ? "Search TMDb titles and add them to Anime. Check the format and episode identity before importing."
-            : tv
-              ? "Search TMDb and add TV shows to your library."
-              : "Search TMDb and add movies to your library."
-        }
       />
       <nav className="search-kind" aria-label="Search type">
         <Button asChild variant={!anime && !tv ? "solid" : "soft"}>
@@ -239,13 +232,6 @@ function MediaSearch({
               />
             </>
           )}
-          <p className="search-disclaimer">
-            {anime
-              ? "Anime keeps the title's movie or show identity. Titles already saved stay in their current section; use Library section in their details to change it. Absolute episode numbers are entered explicitly after loading the season episodes."
-              : tv
-                ? "Adding a show saves its seasons and monitoring choices. Open the show to load episodes and find releases. Scheduled searches follow your settings in Automation."
-                : "Adding a movie saves its metadata and monitoring preference. Open Movies to find a release and download it through qBittorrent."}
-          </p>
         </>
       )}
       {selected && (

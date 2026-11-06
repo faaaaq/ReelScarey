@@ -96,10 +96,7 @@ export function Subtitles() {
   );
   return (
     <>
-      <PageHeading
-        title="Subtitles"
-        description="English dialogue, signs and songs, and forced tracks — kept with your media."
-      />
+      <PageHeading title="Subtitles" />
       <RequestState
         loading={prefs.loading || provider.loading}
         error={prefs.error || provider.error}
@@ -211,11 +208,6 @@ function PreferenceForm({
           {data.preferences.enabled ? "Automatic" : "Manual"}
         </Badge>
       </div>
-      <p className="muted">
-        Full English subtitles cover dialogue. Signs/songs and forced tracks are
-        separate choices for on-screen text and foreign dialogue. Uncertain
-        matches stay available for review.
-      </p>
       <fieldset disabled={busy} className="automation-fields">
         <label className="check-label">
           <input
@@ -506,12 +498,7 @@ function ProviderForm({
           {provider.configured ? "Connected" : "Not connected"}
         </Badge>
       </div>
-      <p className="muted">
-        Choose OpenSubtitles or SubDL for future searches. Credentials are saved
-        privately. Connection tests use a sign-in or metadata search, without
-        downloading subtitles. Changing providers replaces the saved connection
-        and invalidates old choices.
-      </p>
+      <p className="muted">Changing providers clears saved subtitle choices.</p>
       {provider.configured && (
         <div className="subtitle-provider-state">
           <strong>{readable(provider.state)}</strong>
@@ -678,10 +665,7 @@ function MediaFiles({
   const [page, setPage] = useState(1);
   return (
     <section>
-      <PageHeading
-        title="Subtitle activity"
-        description="Imported movies and episode files appear here. Existing media stays untouched."
-      />
+      <PageHeading title="Subtitle activity" />
       <FilePage
         key={page}
         page={page}
@@ -894,8 +878,7 @@ function Matches({
       />
       {result.data?.candidates?.length === 0 && (
         <p className="muted">
-          No saved matches yet. Search this file to find subtitles; results
-          expire after 30 minutes.
+          No saved matches. Results expire after 30 minutes.
         </p>
       )}
       {result.data?.candidates?.map((c) => (

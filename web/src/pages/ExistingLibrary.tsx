@@ -232,11 +232,7 @@ export function ExistingLibrary() {
   }
   return (
     <>
-      <PageHeading
-        eyebrow="Library tools"
-        title="Find unmatched files"
-        description="Discover videos already on disk, bring clear matches into your library, and review uncertain files without moving anything."
-      />
+      <PageHeading eyebrow="Library tools" title="Find unmatched files" />
       <RequestState
         loading={roots.loading}
         error={roots.error}
@@ -336,13 +332,8 @@ export function ExistingLibrary() {
           )}
 
           <p className="ui-note">
-            These paths are on the ReelScarey server. Mount existing media under
-            the media root and check your{" "}
-            <Link to="/settings">folder preferences</Link>. Discovery and
-            registration keep files in place. Review renaming or reorganization
-            separately in <Link to="/organization">Organize library</Link>.
-            Anime classification and episode numbering are explicit choices in
-            the title&apos;s Library section settings.
+            Paths are on the ReelScarey server. Registration does not move
+            files.
           </p>
         </section>
       )}
@@ -373,10 +364,6 @@ export function ExistingLibrary() {
                 ))}
               </select>
             </div>
-            <span className="ui-note">
-              Scans are retained for review. Choose an older scan to compare its
-              results.
-            </span>
           </div>
           {scanID && (
             <ScanReview
@@ -674,9 +661,7 @@ function ScanReview({
           </div>
 
           <p className="scan-footnote">
-            {scan.examined} entries examined · {scan.skipped} skipped (including
-            registered files, hidden entries, links and unsupported files).
-            Counts update as folders finish.
+            {scan.examined} entries examined · {scan.skipped} skipped
           </p>
 
           <div className="scan-actions">

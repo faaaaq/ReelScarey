@@ -188,10 +188,7 @@ export function Indexers() {
   }
   return (
     <>
-      <PageHeading
-        title="Indexers"
-        description="Connect torrent trackers, RSS feeds and Newznab Usenet sources. Search results keep their source and use the matching download client."
-      >
+      <PageHeading title="Indexers">
         <Button onClick={() => setEditing(null)}>
           <Plus size={17} />
           Add indexer
@@ -216,10 +213,6 @@ export function Indexers() {
         <section className="panel system-panel">
           <Radio size={27} />
           <h2>Add your first indexer</h2>
-          <p>
-            IPTorrents and XSpeeds connect directly with a saved session. NYAA
-            is public. Your library stays available while you set up sources.
-          </p>
           <Button onClick={() => setEditing(null)}>Choose an indexer</Button>
         </section>
       )}

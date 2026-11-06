@@ -1993,3 +1993,6 @@ No owner-server media or download client was used for these checks.
   On the acceptance server, a generated non-faststart MP4 rewrites correctly;
   mp4/m4v/mkv/mov/avi/webm, HDR, chapters, attachments and packet-preservation
   tests pass. `go test ./...`, `go vet ./...` and `go build ./...` pass.
+- The interface copy sweep removed decorative page subtitles, section summaries
+  and explanatory footers while keeping operational warnings and field help.
+  Prettier, TypeScript, all 194 interaction tests and the production build pass.

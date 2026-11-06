@@ -122,14 +122,7 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
   undated.set("status", "undated");
   return (
     <>
-      <PageHeading
-        title={calendar ? "Release calendar" : "Wanted"}
-        description={
-          calendar
-            ? "Saved movie releases and loaded TV episodes, month by month."
-            : "Missing movies and episodes, with saved dates and download status."
-        }
-      >
+      <PageHeading title={calendar ? "Release calendar" : "Wanted"}>
         <Button asChild variant="soft">
           <Link to={calendar ? "/wanted" : "/calendar"}>
             {calendar ? "View wanted" : "View calendar"}

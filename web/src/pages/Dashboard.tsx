@@ -37,7 +37,6 @@ export function Dashboard() {
       <PageHeading
         eyebrow="Overview"
         title={dashboard.data?.library_name ?? "Library"}
-        description="Library overview"
       >
         <Button asChild size="2">
           <Link to="/search">
@@ -85,7 +84,6 @@ export function Dashboard() {
               <div className="ui-section-head">
                 <div>
                   <h2>Wanted</h2>
-                  <p>Monitored titles with no registered file.</p>
                 </div>
                 <Link className="text-link" to="/wanted">
                   View all <ArrowUpRight size={13} />
@@ -134,7 +132,6 @@ export function Dashboard() {
               <div className="ui-section-head">
                 <div>
                   <h2>Later this month</h2>
-                  <p>Saved release dates from your catalog.</p>
                 </div>
                 <Link className="text-link" to="/calendar">
                   Calendar <ArrowUpRight size={13} />
@@ -174,7 +171,6 @@ export function Dashboard() {
             <div className="ui-section-head">
               <div>
                 <h2>Storage</h2>
-                <p>Configured folders and current server status.</p>
               </div>
               <Link className="text-link" to="/settings">
                 Folder settings <ArrowUpRight size={13} />

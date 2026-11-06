@@ -222,7 +222,7 @@ describe("catalog browsing", () => {
         selector: ".catalog-state",
       }),
     ).toBeVisible();
-    expect(screen.getByText(/does not mean every episode/)).toBeVisible();
+    expect(screen.getByText(/not full episode coverage/)).toBeVisible();
     expect(screen.getByRole("link", { name: "Episodes" })).toHaveAttribute(
       "href",
       "/series/11",

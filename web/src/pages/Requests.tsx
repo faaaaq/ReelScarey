@@ -665,10 +665,7 @@ export function AdminRequests() {
   }
   return (
     <>
-      <PageHeading
-        title="Requests"
-        description="Manage request accounts and review requested titles."
-      />
+      <PageHeading title="Requests" />
       {error && (
         <p role="alert" className="form-error">
           {error}

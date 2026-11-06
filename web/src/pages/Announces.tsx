@@ -215,16 +215,9 @@ export function Announces() {
   }
   return (
     <>
-      <PageHeading
-        title="Announce feeds"
-        description="Catch releases from tracker IRC channels and keep a bounded history."
-      />
-      <p>
-        Announces are captured and matched to their tracker link. The app does
-        not start downloads automatically yet: open the tracker link or attach
-        the torrent file manually. Passwords are encrypted and never shown
-        again.
-      </p>
+      <PageHeading title="Announce feeds">
+        <Badge color="gray">Capture only</Badge>
+      </PageHeading>
       <details className="indexer-help">
         <summary>How to get the IRC values</summary>
         <ol>

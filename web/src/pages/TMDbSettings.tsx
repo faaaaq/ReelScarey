@@ -69,10 +69,7 @@ export function TMDbSettings() {
       />
       {resource.data && !resource.error && (
         <>
-          <p>
-            Connect The Movie Database to search for movies and TV shows, see
-            their details, and add them to your library.
-          </p>
+          <p>Metadata source for movie and TV searches.</p>
           <form onSubmit={submit}>
             <label htmlFor="tmdb-token">API Read Access Token</label>
             <TextField.Root

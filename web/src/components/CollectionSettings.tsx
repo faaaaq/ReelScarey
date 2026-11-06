@@ -68,10 +68,8 @@ export function CollectionSettings({
     <section className="panel settings-form organization-settings">
       <h2>Collections & folders</h2>
       <p>
-        Movies, TV Shows and Anime are built in. Add a custom collection for any
-        other grouping — the folder is created under the main media directory.
-        These rules apply to newly queued downloads and reviewed reorganization;
-        existing files change only through a reviewed plan.
+        Built-in: Movies, TV Shows and Anime. Custom collections are created
+        under the media directory.
       </p>
       <fieldset disabled={pending}>
         {libraries.map((library, index) => (

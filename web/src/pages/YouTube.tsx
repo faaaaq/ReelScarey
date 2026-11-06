@@ -257,10 +257,7 @@ export function YouTube() {
   }
   return (
     <>
-      <PageHeading
-        title="YouTube"
-        description="Inspect a video, playlist or channel and choose where a video belongs."
-      />
+      <PageHeading title="YouTube" />
       <p>
         <a href="/youtube/subscriptions">
           Manage channel and playlist subscriptions

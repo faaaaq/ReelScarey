@@ -39,10 +39,7 @@ export function Setup() {
   const guide = useResource<Guide>("/setup");
   return (
     <>
-      <PageHeading
-        title="Set up your library"
-        description="Start with your library and metadata. Connect the optional services whenever you are ready."
-      />
+      <PageHeading title="Set up your library" />
       <RequestState
         loading={guide.loading}
         error={guide.error}
@@ -89,10 +86,6 @@ export function Setup() {
           </div>
           <section className="panel system-panel">
             <h2>Check your installation</h2>
-            <p>
-              Verify folder access, database health and safe file publication
-              before your first import.
-            </p>
             <Button asChild>
               <Link to="/system">Open system checks</Link>
             </Button>
@@ -140,10 +133,7 @@ export function SystemChecks() {
   }
   return (
     <>
-      <PageHeading
-        title="System checks"
-        description="Check this installation before importing media or resuming a restored configuration."
-      >
+      <PageHeading title="System checks">
         <Button
           disabled={busy || resource.loading}
           onClick={() => void action()}
@@ -219,8 +209,8 @@ export function SystemChecks() {
         <>
           <p className="muted">
             Last checked{" "}
-            {new Date(state.report.checked_at * 1000).toLocaleString()}. Results
-            describe this moment; run again after changing storage.
+            {new Date(state.report.checked_at * 1000).toLocaleString()}. Run
+            again after changing storage.
           </p>
           <div className="setup-steps">
             {state.report.checks.map((check) => (

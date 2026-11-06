@@ -33,42 +33,31 @@ const sections = [
     id: "general",
     name: "General",
     icon: Settings2,
-    description:
-      "Library identity, folder defaults, episode naming and unverified-file behavior.",
   },
   {
     id: "media",
     name: "Media Management",
     icon: FolderOpen,
-    description:
-      "Collection destinations, naming presets and reviewed library changes.",
   },
   {
     id: "indexers",
     name: "Indexers",
     icon: Radio,
-    description:
-      "Direct tracker connections, private feeds, Torznab/Newznab and IRC announcements.",
   },
   {
     id: "clients",
     name: "Download Clients",
     icon: Download,
-    description:
-      "Named qBittorrent, SABnzbd and NZBGet connections, defaults and folder mappings.",
   },
   {
     id: "connect",
     name: "Connect",
     icon: Plug,
-    description:
-      "Metadata, subtitle providers, requests and playback reporting.",
   },
   {
     id: "system",
     name: "System",
     icon: Server,
-    description: "Backups, storage, health checks and server paths.",
   },
 ] as const;
 
@@ -100,7 +89,6 @@ function SectionHead({ id }: { id: SectionID }) {
         <h2>
           <Icon size={18} /> {section.name}
         </h2>
-        <p>{section.description}</p>
       </div>
     </div>
   );
@@ -219,11 +207,7 @@ export function Settings() {
 
   return (
     <>
-      <PageHeading
-        eyebrow="Configuration"
-        title="Settings"
-        description="Focused sections for the library, sources, clients and server."
-      />
+      <PageHeading eyebrow="Configuration" title="Settings" />
       <RequestState
         loading={settings.loading || system.loading}
         error={settings.error || system.error}
@@ -257,7 +241,6 @@ export function Settings() {
                 <div className="ui-section-head">
                   <div>
                     <h3>Library preferences</h3>
-                    <p>These preferences are saved to your local database.</p>
                   </div>
                   <span className="ui-chip green">Available</span>
                 </div>
