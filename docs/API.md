@@ -349,6 +349,8 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | GET | `/api/v1/releases?movie_id=1&query=title` | Search enabled indexers; materialize encrypted short-lived selections |
 | GET | `/api/v1/downloads?page=1` | Activity: items, page, total, limit 24 |
 | POST | `/api/v1/downloads` | `{ "release_id": "..." }`; 202 queued or 200 existing; item + created |
+| POST | `/api/v1/library/movies/{id}/manual-torrent[?movie_version=additional]` | Raw `.torrent` body (≤4 MiB); registers the upload as this movie's selected release and queues it through the normal pipeline; 202 queued or 200 existing |
+| POST | `/api/v1/library/series/{id}/manual-torrent?season=1[&episodes=2,3]` | Raw `.torrent` body; with no episodes the torrent covers the season's selected missing episodes; import still requires the mapping review |
 | GET | `/api/v1/downloads/{id}` | One durable job with progress/error fields |
 | POST | `/api/v1/downloads/{id}/retry` | `{}`; retry/resume blocked, failed or stopped tracking |
 | POST | `/api/v1/downloads/{id}/stop` | `{}`; stop blocked/failed local tracking, leaving client/files untouched |
@@ -373,7 +375,14 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | POST | `/api/v1/subtitles/candidates/{id}/download` | `{ "reviewed": true }`; 202 queue an opaque, unexpired subtitle choice |
 
 Library responses contain `items`, `page`, `total`, and `limit: 24`. Page bounds
-are 1–100000; ordering is case-insensitive title then ID. Search responses contain
+
+Manual torrent uploads treat the owner's file as the release selection: the
+server parses the metainfo (name, size, v1/hybrid infohash), refuses torrents
+that are already attached to a job or that use v2-only metadata, and queues the
+exact bytes through the normal reservation, client submission, reconcile-by-hash
+and verified import. The upload binds to the chosen movie, or to the chosen
+season and episodes for a series; the per-file TV mapping review is still
+required before registration. Selections expire like searched releases.are 1–100000; ordering is case-insensitive title then ID. Search responses contain
 `items`, `page`, `total_pages` (capped at 500), and `total_results`. Queries accept
 1–200 characters without control characters; search pages accept 1–500.
 

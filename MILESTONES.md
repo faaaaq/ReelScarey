@@ -162,3 +162,13 @@ See [existing-library behavior](docs/EXISTING_LIBRARY.md) and [API](docs/API.md)
   `DOWNLOADS_READ_ONLY=false`; enabling without it fails honestly.
 
 See [download clients](docs/DOWNLOAD_CLIENTS.md).
+
+## Version 0.32 manual torrent uploads
+
+- [x] Attach an uploaded .torrent file to a movie or series/season as the
+  selected release, queued through the normal verified pipeline.
+- [x] Duplicated torrents refused by infohash; v2-only metadata refused honestly.
+- [x] Season packs bind the season's selected missing episodes; explicit
+  episode numbers bind exactly those; import mapping review unchanged.
+
+See the release endpoints in [API](docs/API.md).

@@ -387,31 +387,50 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 	if guard != nil && v.AnimeOrder != nil && (v.AnimeSearch == nil || v.AnimeSearch.Mode != "mapped") {
 		return Job{}, false, problem("manual_anime_selection", "Reviewed Anime packs and specials cannot be queued automatically.")
 	}
-	indexer, e := s.candidateIndexer(ctx, v)
-	if e != nil {
-		return Job{}, false, e
+	var protocol string
+	var client ClientConfig
+	var payload Payload
+	var hash string
+	if v.Manual {
+		// A manually uploaded torrent carries its own metainfo: no indexer is
+		// involved, so generation fencing and network fetch do not apply.
+		if v.Generation != "" || len(v.Torrent) == 0 || v.Hash == "" || v.Protocol != "" && v.Protocol != "torrent" {
+			return Job{}, false, problem("invalid_release", "The saved manual torrent is incomplete. Upload it again.")
+		}
+		protocol = "torrent"
+		v.Protocol = protocol
+		payload = Payload{Torrent: v.Torrent}
+		hash = v.Hash
+	} else {
+		indexer, e := s.candidateIndexer(ctx, v)
+		if e != nil {
+			return Job{}, false, e
+		}
+		if v.Generation != indexer.Generation {
+			return Job{}, false, problem("release_expired", "The indexer settings changed. Search again before downloading.")
+		}
+		protocol = "torrent"
+		if indexer.Kind == "newznab" {
+			protocol = "usenet"
+		}
+		if v.Protocol != "" && v.Protocol != protocol {
+			return Job{}, false, problem("invalid_release", "The release protocol does not match its indexer. Search again.")
+		}
+		v.Protocol = protocol
+		client, e = s.downloadConfig(ctx, protocol)
+		if e != nil {
+			return Job{}, false, e
+		}
+		adapter := s.adapter(indexer)
+		if adapter == nil {
+			return Job{}, false, problem("release_expired", "The source adapter is unavailable. Search again.")
+		}
+		payload, hash, e = adapter.Fetch(ctx, indexer, v)
+		if e != nil {
+			return Job{}, false, e
+		}
 	}
-	if v.Generation != indexer.Generation {
-		return Job{}, false, problem("release_expired", "The indexer settings changed. Search again before downloading.")
-	}
-	protocol := "torrent"
-	if indexer.Kind == "newznab" {
-		protocol = "usenet"
-	}
-	if v.Protocol != "" && v.Protocol != protocol {
-		return Job{}, false, problem("invalid_release", "The release protocol does not match its indexer. Search again.")
-	}
-	v.Protocol = protocol
-	client, e := s.downloadConfig(ctx, protocol)
-	if e != nil {
-		return Job{}, false, e
-	}
-	adapter := s.adapter(indexer)
-	if adapter == nil {
-		return Job{}, false, problem("release_expired", "The source adapter is unavailable. Search again.")
-	}
-	payload, hash, e := adapter.Fetch(ctx, indexer, v)
-	if e != nil {
+	if client, e = s.downloadConfig(ctx, protocol); e != nil {
 		return Job{}, false, e
 	}
 	if existing, e := s.jobBy(ctx, "d.info_hash", hash); e == nil {

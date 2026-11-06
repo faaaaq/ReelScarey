@@ -68,6 +68,9 @@ function ReleaseBrowser() {
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [torrentFile, setTorrentFile] = useState<File>();
+  const [episodeInput, setEpisodeInput] = useState("");
+  const [attaching, setAttaching] = useState(false);
   const navigate = useNavigate();
   const targetLabel = tv
     ? `S${String(season).padStart(2, "0")}${episode ? `E${String(episode).padStart(2, "0")}` : " · selected missing episodes"}`
@@ -119,6 +122,29 @@ function ReleaseBrowser() {
       );
     } finally {
       setPending("");
+    }
+  }
+  async function attachTorrent() {
+    if (!torrentFile || attaching || !valid || replacementID) return;
+    setAttaching(true);
+    setError("");
+    try {
+      await api(
+        tv
+          ? `/library/series/${movieID}/manual-torrent?season=${season}${episodeInput.trim() ? `&episodes=${episodeInput.trim()}` : ""}`
+          : `/library/movies/${movieID}/manual-torrent${movieVersion ? `?movie_version=${movieVersion}` : ""}`,
+        {
+          method: "POST",
+          body: torrentFile,
+          headers: { "Content-Type": "application/x-bittorrent" },
+          signal: AbortSignal.timeout(60000),
+        },
+      );
+      navigate("/activity");
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setAttaching(false);
     }
   }
   return (
@@ -190,6 +216,50 @@ function ReleaseBrowser() {
           Choose a valid {tv ? "episode or season" : "movie"} from your library
           first.
         </p>
+      )}
+      {valid && !replacementID && (
+        <section className="panel">
+          <h2>Attach a .torrent file</h2>
+          <p>
+            Already have the exact release you want — for example from a tracker
+            without an API? Upload its .torrent file and the app queues it for
+            this {tv ? "series" : "movie"} with the same duplicate checks,
+            client submission and verified import as a searched release.
+          </p>
+          {tv && (
+            <p>
+              With no episode numbers the torrent is treated as a season pack
+              covering the selected missing episodes. The import still requires
+              the episode mapping review before anything is registered.
+            </p>
+          )}
+          <label>
+            Torrent file{" "}
+            <input
+              type="file"
+              accept=".torrent,application/x-bittorrent"
+              onChange={(e) => setTorrentFile(e.target.files?.[0])}
+              disabled={attaching}
+            />
+          </label>
+          {tv && (
+            <label>
+              Episode numbers (optional, e.g. 2 or 2,3){" "}
+              <input
+                value={episodeInput}
+                onChange={(e) => setEpisodeInput(e.target.value)}
+                placeholder="Whole season when empty"
+                disabled={attaching}
+              />
+            </label>
+          )}
+          <Button
+            disabled={!torrentFile || attaching}
+            onClick={() => void attachTorrent()}
+          >
+            {attaching ? "Attaching…" : "Attach and queue"}
+          </Button>
+        </section>
       )}
       <RequestState
         loading={

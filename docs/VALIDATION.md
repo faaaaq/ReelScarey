@@ -1853,3 +1853,15 @@ No owner-server media or download client was used for these checks.
 - Frontend formatting, type checks, 188 interaction tests and the production
   bundle passed. Go tests and vet passed across all packages.
 
+## Version 0.32 manual torrent uploads
+
+- Parser tests cover single-file and multi-file metainfo, exact-span infohash,
+  the private flag, duplicate keys, truncated input, trailing garbage, missing
+  or malformed names, missing v1 pieces and the oversized upload bound.
+- Queue tests cover movie binding with the recorded infohash, duplicate-hash
+  refusal, unknown titles, replacement rejection without a registered target,
+  season-pack targets matching the season search, episode-filtered targets,
+  the episode reservation guard, unloaded seasons and empty uploads.
+- Frontend formatting, type checks, 190 interaction tests and the production
+  bundle passed. Go tests and vet passed across all packages.
+

@@ -284,6 +284,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/integrations/{name}/test", method(http.MethodPost, s.integrationTest))
 	mux.HandleFunc("/api/v1/releases", method(http.MethodGet, s.searchReleases))
 	mux.HandleFunc("/api/v1/library/series/{id}/seasons/{number}/releases", method(http.MethodGet, s.searchTVReleases))
+	mux.HandleFunc("/api/v1/library/series/{id}/manual-torrent", method(http.MethodPost, s.manualSeriesTorrent))
+	mux.HandleFunc("/api/v1/library/movies/{id}/manual-torrent", method(http.MethodPost, s.manualMovieTorrent))
 	mux.HandleFunc("/api/v1/downloads", s.downloadCollection)
 	mux.HandleFunc("/api/v1/library/movies/{id}/versions", s.movieVersions)
 	mux.HandleFunc("/api/v1/downloads/{id}", method(http.MethodGet, s.downloadDetail))

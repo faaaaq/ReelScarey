@@ -648,3 +648,12 @@ stopped/failed status and graceful shutdown with fastresume. The connection is
 an ordinary paused named client; the torrent default routes new jobs. The
 daemon saves only into `downloads/builtin`, which hardened installs opt into
 with `DOWNLOADS_READ_ONLY=false`.
+
+## Version 0.32 manual torrent uploads
+
+An owner-uploaded .torrent file becomes the release selection for a movie or a
+series season: bounded metainfo parsing derives the display name, size and
+exact-bencoded v1 infohash, duplicates are refused by hash, v2-only metadata is
+refused honestly, and the exact bytes queue through the normal reservation,
+client submission and verified import. Season packs cover the season's selected
+missing episodes; explicit episode numbers cover exactly those.

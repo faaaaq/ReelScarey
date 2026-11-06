@@ -117,6 +117,11 @@ type Candidate struct {
 	Kind                          string                      `json:"kind,omitempty"`
 	Targets                       []TVTarget                  `json:"targets,omitempty"`
 	URL, Magnet, Hash, Generation string
+	// Manual torrents are owner-supplied metainfo bound to one title: no
+	// indexer is involved, so generation fencing and network fetch do not
+	// apply, and the bytes are queued exactly as uploaded.
+	Manual  bool   `json:"manual,omitempty"`
+	Torrent []byte `json:"torrent,omitempty"`
 }
 type Payload struct {
 	NZB     []byte `json:"nzb,omitempty"`
