@@ -204,3 +204,10 @@ See [announce feeds](docs/ANNOUNCE.md).
   returned, and redacted from tool output.
 - [x] A clear kill-switch toggle stops the built-in client when the tunnel is
   down; turning it off allows unbound torrent traffic with an explicit warning.
+
+## Version 0.34.2 Collections in Settings
+
+- [x] Media Management lists Movies, TV Shows, Anime and custom collections.
+- [x] Add, edit and remove custom collection folders with content and naming
+  presets; the three built-ins are retained.
+- [x] General points to Media Management for every collection folder.

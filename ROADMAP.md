@@ -686,3 +686,10 @@ area. Sections stay mounted while hidden, preserving unsaved edits, and the old
 `#qbittorrent`, `#torznab`, `#tmdb` and field anchors still open the right
 section. The indexer dialog explains how to obtain tracker cookies and user
 agents and strips pasted header labels.
+
+## Version 0.34.2 Collections in Settings
+
+Settings → Media Management embeds the shared collection editor. Movies, TV
+Shows and Anime are always visible; custom collections can be added with their
+own folder, content type and naming preset. General no longer implies that only
+movie and TV folders exist.

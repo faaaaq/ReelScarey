@@ -60,3 +60,11 @@ unsaved edits in one section survive switching away and back. Old deep links
 still work: `#qbittorrent`/`#sabnzbd` open Download Clients, `#torznab` opens
 Indexers, `#tmdb` opens Connect, and the general field anchors open General.
 On narrow screens the rail becomes a horizontal scroller above the content.
+
+### Collections in Settings (0.34.2)
+
+Media Management embeds the shared collection editor from Organize library.
+Movies, TV Shows and Anime are always listed; custom collections can be added,
+renamed, assigned a folder, content type and naming preset, or removed while
+the three built-ins remain. General links to Media Management instead of
+implying that only movie and TV folders exist.

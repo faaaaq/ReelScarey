@@ -1956,3 +1956,12 @@ No owner-server media or download client was used for these checks.
   interaction test verifies the active General section, switching to System,
   hiding the General save bar, and the Indexers links. Prettier and TypeScript
   checks pass; the full image build validates the remaining suite.
+
+## Version 0.34.2 Collections in Settings
+
+- The collection editor is a shared component used by Organize library and
+  Settings → Media Management. The App test selects Media Management, asserts
+  the built-in Anime collection is present and the Add collection action is
+  available.
+- Frontend Prettier, TypeScript and the App interaction suite passed; the full
+  image build validates the complete suite.

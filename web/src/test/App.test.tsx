@@ -53,6 +53,46 @@ function setupFetch(save?: (body: unknown) => Response) {
         })
       );
     if (url.endsWith("/settings")) return Response.json(settings);
+    if (
+      url.endsWith("/organization") &&
+      (!options?.method || options.method === "GET")
+    )
+      return Response.json({
+        revision: 1,
+        main_root: "/media",
+        libraries: [
+          {
+            key: "movies",
+            name: "Movies",
+            folder: "Movies",
+            content: "movie",
+            preset: "emby",
+            movie_template: "",
+            series_template: "",
+            episode_template: "",
+          },
+          {
+            key: "tv",
+            name: "TV Shows",
+            folder: "TV Shows",
+            content: "series",
+            preset: "emby",
+            movie_template: "",
+            series_template: "",
+            episode_template: "",
+          },
+          {
+            key: "anime",
+            name: "Anime",
+            folder: "Anime",
+            content: "mixed",
+            preset: "emby",
+            movie_template: "",
+            series_template: "",
+            episode_template: "",
+          },
+        ],
+      });
     if (url.endsWith("/system")) return Response.json(system);
     if (url.includes("/library"))
       return Response.json({ items: [], limit: 24, total: 0, page: 1 });
@@ -104,6 +144,14 @@ describe("foundation UI", () => {
     expect(
       screen.getByRole("link", { name: /IRC announce feeds/ }),
     ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Media Management" }),
+    );
+    expect(await screen.findByText("Collections & folders")).toBeVisible();
+    expect(screen.getByLabelText("Collection name 3")).toHaveValue("Anime");
+    expect(
+      screen.getByRole("button", { name: "Add collection" }),
+    ).toBeVisible();
   });
 
   it("saves a changed preference with the current revision and reports success", async () => {

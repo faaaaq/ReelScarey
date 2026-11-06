@@ -20,6 +20,10 @@ import {
   type System,
 } from "../api";
 import { PageHeading, RequestState } from "../components";
+import {
+  CollectionSettings,
+  type CollectionConfig,
+} from "../components/CollectionSettings";
 import { useResource } from "../useResource";
 import { TMDbSettings } from "./TMDbSettings";
 import { IntegrationSettings } from "./IntegrationSettings";
@@ -124,6 +128,7 @@ export function Settings() {
   const location = useLocation();
   const settings = useResource<LibrarySettings>("/settings");
   const system = useResource<System>("/system");
+  const collections = useResource<CollectionConfig>("/organization");
   const [form, setForm] = useState<SettingsUpdate>();
   const [saved, setSaved] = useState<SettingsUpdate>();
   const [saving, setSaving] = useState(false);
@@ -318,13 +323,13 @@ export function Settings() {
                     />
                   </div>
                   <p className="field-help span-2" id="folder-help">
-                    Default folder names before organization rules are saved.
-                    Organize library controls configured collection
-                    destinations. Saving preferences alone creates no folders.
-                    The Current ReelScarey naming preset uses this episode-name
-                    choice; other presets and custom paths are in Organize
-                    library. Existing files and queued import plans keep their
-                    names.
+                    Collection folder names, including Anime and any custom
+                    collections, are managed in{" "}
+                    <Link className="text-link" to="/settings#media">
+                      Media Management
+                    </Link>
+                    . These two fields are the legacy defaults used only when no
+                    collection rules are saved; saving here creates no folders.
                   </p>
                   <div className="span-2">
                     <label className="scan-toggle">
@@ -404,6 +409,18 @@ export function Settings() {
 
             <section hidden={section !== "media"}>
               <SectionHead id="media" />
+              <RequestState
+                loading={collections.loading}
+                error={collections.error}
+                retry={collections.reload}
+              />
+              {collections.data?.libraries && (
+                <CollectionSettings
+                  key={collections.data.revision}
+                  config={collections.data}
+                  saved={collections.reload}
+                />
+              )}
               <div className="settings-card-grid">
                 <SettingsLink
                   to="/organization"
