@@ -1876,3 +1876,7 @@ No owner-server media or download client was used for these checks.
 - Frontend formatting, type checks, 190 interaction tests and the production
   bundle passed. Go tests and vet passed across all packages.
 
+- A production deployment with PUID 1000 exposed the setpriv init-groups
+  limitation (arbitrary numeric IDs have no passwd entry). The entrypoint now
+  uses --clear-groups, matching the gosu path for unknown IDs, and the fixed
+  entrypoint was verified on the affected deployment before releasing.
