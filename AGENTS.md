@@ -201,3 +201,22 @@ send its account key to a download host. Pending subtitle imports retain their
 provider across changes and recover without spending quota again. Reference-text
 alignment requires strong bounded evidence, explicit edit review and retained
 rollback; do not describe it as audio alignment, OCR or translation.
+
+## Live server access
+
+The live test server is scareypit at 192.168.1.47, user faaaaq. Connect only
+with the dedicated acceptance key, never a default key:
+
+    ssh -i ~/.ssh/reelscarey_acceptance -o IdentitiesOnly=yes faaaaq@192.168.1.47
+
+The key has no passphrase; non-interactive BatchMode and docker exec are the
+normal working pattern. The live stack runs Compose from ~/reelscarey-live as
+container reelscarey and must stay untouched during acceptance work; inspect it
+with read-only commands only, and never restart or rebuild it without explicit
+user authorization.
+
+Acceptance testing runs an isolated container (reelscarey-accept) from its own
+~/reelscarey-accept directory tree with ports bound to 127.0.0.1 and an SSH
+tunnel (-L 18787:127.0.0.1:18787) for browser access. That environment is
+disposable: create and destroy it freely, and keep it fully separated from the
+live stack.
