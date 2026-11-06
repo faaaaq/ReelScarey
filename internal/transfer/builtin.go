@@ -30,7 +30,7 @@ const (
 	builtinStopTimeout  = 15 * time.Second
 	// tunnelDownMessage is the kill-switch explanation surfaced by both the
 	// supervisor and the enable path while the VPN tunnel is down.
-	tunnelDownMessage = "The VPN tunnel is down. The built-in client stays stopped until the tunnel returns."
+	tunnelDownMessage = "The VPN kill switch is on and the tunnel is down. The built-in client stays stopped until the tunnel returns."
 )
 
 // BundledStatus reports the supervised daemon and its saved connection.

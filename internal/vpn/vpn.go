@@ -56,24 +56,32 @@ type Config struct {
 	Endpoint   string `json:"endpoint"`
 	AllowedIPs string `json:"allowed_ips,omitempty"`
 	Keepalive  int    `json:"keepalive,omitempty"`
+	// KillSwitch stops the built-in torrent client whenever the tunnel is
+	// down. It defaults to on; nil keeps the safe default for older configs.
+	KillSwitch *bool `json:"kill_switch,omitempty"`
 }
+
+// KillSwitchEnabled reports the effective kill-switch setting.
+func (c Config) KillSwitchEnabled() bool { return c.KillSwitch == nil || *c.KillSwitch }
 
 // Status reports the tunnel honestly. State is stopped, starting, up or
 // failed; a failed tunnel carries its message with secrets redacted.
 type Status struct {
-	Present   bool   `json:"present"`
-	Enabled   bool   `json:"enabled"`
-	State     string `json:"state"`
-	Message   string `json:"message,omitempty"`
-	Interface string `json:"interface,omitempty"`
-	Address   string `json:"address,omitempty"`
-	Endpoint  string `json:"endpoint,omitempty"`
-	Revision  int    `json:"revision"`
+	Present    bool   `json:"present"`
+	Enabled    bool   `json:"enabled"`
+	KillSwitch bool   `json:"kill_switch"`
+	State      string `json:"state"`
+	Message    string `json:"message,omitempty"`
+	Interface  string `json:"interface,omitempty"`
+	Address    string `json:"address,omitempty"`
+	Endpoint   string `json:"endpoint,omitempty"`
+	Revision   int    `json:"revision"`
 }
 
 type Update struct {
 	Revision   int    `json:"revision"`
 	Enabled    *bool  `json:"enabled,omitempty"`
+	KillSwitch *bool  `json:"kill_switch,omitempty"`
 	PrivateKey string `json:"private_key,omitempty"`
 	Address    string `json:"address,omitempty"`
 	PeerKey    string `json:"peer_key,omitempty"`
@@ -117,6 +125,7 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 		return out, nil
 	}
 	out.Enabled = c.Enabled
+	out.KillSwitch = c.KillSwitchEnabled()
 	out.Address = c.Address
 	out.Endpoint = c.Endpoint
 	out.Revision = c.Revision
@@ -146,7 +155,15 @@ func (s *Service) Update(ctx context.Context, in Update) (Status, error) {
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
-	next := Config{Revision: c.Revision + 1, Enabled: enabled, Address: c.Address, PeerKey: c.PeerKey, Endpoint: c.Endpoint, AllowedIPs: c.AllowedIPs, Keepalive: c.Keepalive}
+	next := Config{Revision: c.Revision + 1, Enabled: enabled, Address: c.Address, PeerKey: c.PeerKey, Endpoint: c.Endpoint, AllowedIPs: c.AllowedIPs, Keepalive: c.Keepalive, KillSwitch: c.KillSwitch}
+	if !present {
+		// New configurations default to the safe kill switch.
+		safe := true
+		next.KillSwitch = &safe
+	}
+	if in.KillSwitch != nil {
+		next.KillSwitch = in.KillSwitch
+	}
 	if in.Address != "" {
 		next.Address = strings.TrimSpace(in.Address)
 	}
@@ -177,7 +194,15 @@ func (s *Service) Update(ctx context.Context, in Update) (Status, error) {
 		return Status{}, e
 	}
 	s.poke()
-	if enabled {
+	// Connection changes must wait for the tunnel; a kill-switch-only edit does
+	// not, so the owner can change the policy while the tunnel is down.
+	connectionChanged := in.PrivateKey != "" || in.Address != "" || in.PeerKey != "" || in.Endpoint != "" || in.AllowedIPs != ""
+	enableChanged := in.Enabled != nil && (!present || *in.Enabled != c.Enabled)
+	if !enabled {
+		if e = s.awaitStopped(ctx); e != nil {
+			return Status{}, e
+		}
+	} else if connectionChanged || enableChanged || !present {
 		if e = s.awaitUp(ctx); e != nil {
 			// The tunnel did not come up: revert to disabled so nothing waits
 			// on a broken configuration, and surface the failure honestly.
@@ -186,8 +211,6 @@ func (s *Service) Update(ctx context.Context, in Update) (Status, error) {
 			s.poke()
 			return Status{}, e
 		}
-	} else if e = s.awaitStopped(ctx); e != nil {
-		return Status{}, e
 	}
 	return s.Status(ctx)
 }
@@ -288,4 +311,19 @@ func (s *Service) TunnelUp() bool {
 	s.rt.mu.Lock()
 	defer s.rt.mu.Unlock()
 	return s.rt.up
+}
+
+// TorrentState reports whether the built-in client may run and whether it must
+// bind to the tunnel. With the kill switch off and the tunnel down, torrents
+// may run unbound; with the kill switch on they stop.
+func (s *Service) TorrentState() (allowed, bind bool) {
+	c, present, e := s.load(context.Background())
+	if e != nil || !present || !c.Enabled {
+		return true, false
+	}
+	up := s.TunnelUp()
+	if !c.KillSwitchEnabled() {
+		return true, up
+	}
+	return up, up
 }

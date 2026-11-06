@@ -666,4 +666,6 @@ The client stops while the tunnel is down and starts again when it returns;
 everything else keeps the normal network. NET_ADMIN retention through the
 privilege drop is opt-in (`REELSCAREY_KEEP_NET_ADMIN=1` plus `cap_add`). The
 private key lives in the encrypted integration store, is never returned by the
-API, and is redacted from any tool output that reaches logs or status.
+API, and is redacted from any tool output that reaches logs or status. The
+kill-switch toggle is separate: off permits unbound torrent traffic when the
+tunnel is down, and the UI states that exposure explicitly.

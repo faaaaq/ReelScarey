@@ -211,6 +211,55 @@ func TestVPNTunnelLifecycleAndRedaction(t *testing.T) {
 	<-done
 }
 
+func TestTorrentStateHonorsKillSwitch(t *testing.T) {
+	s := vpnFixture(t)
+	ctx := context.Background()
+	if allowed, bind := s.TorrentState(); !allowed || bind {
+		t.Fatal("no VPN must allow unbound torrents", allowed, bind)
+	}
+	base := Config{Revision: 1, Enabled: true, PrivateKey: testPrivateKey, Address: "10.66.0.2/32", PeerKey: testPeerKey, Endpoint: "1.2.3.4:51820", AllowedIPs: "0.0.0.0/0"}
+	if e := s.save(ctx, base); e != nil {
+		t.Fatal(e)
+	}
+	s.rt.mu.Lock()
+	s.rt.up = false
+	s.rt.mu.Unlock()
+	if allowed, bind := s.TorrentState(); allowed || bind {
+		t.Fatal("kill switch on with the tunnel down must stop torrents", allowed, bind)
+	}
+	s.rt.mu.Lock()
+	s.rt.up = true
+	s.rt.mu.Unlock()
+	if allowed, bind := s.TorrentState(); !allowed || !bind {
+		t.Fatal("kill switch on with the tunnel up must allow and bind", allowed, bind)
+	}
+	off := false
+	base.KillSwitch = &off
+	s.rt.mu.Lock()
+	s.rt.up = false
+	s.rt.mu.Unlock()
+	if e := s.save(ctx, base); e != nil {
+		t.Fatal(e)
+	}
+	if allowed, bind := s.TorrentState(); !allowed || bind {
+		t.Fatal("kill switch off with the tunnel down must allow unbound torrents", allowed, bind)
+	}
+	status, e := s.Status(ctx)
+	if e != nil || status.KillSwitch {
+		t.Fatal("status must report the disabled kill switch", status, e)
+	}
+	base.Enabled = false
+	s.rt.mu.Lock()
+	s.rt.up = true
+	s.rt.mu.Unlock()
+	if e := s.save(ctx, base); e != nil {
+		t.Fatal(e)
+	}
+	if allowed, bind := s.TorrentState(); !allowed || bind {
+		t.Fatal("a disabled VPN must allow unbound torrents", allowed, bind)
+	}
+}
+
 func TestVPNUpdateRejectsIncompleteEnable(t *testing.T) {
 	wg, ip, stateDir := commandStubs(t)
 	t.Setenv("REELSCAREY_WG", wg)

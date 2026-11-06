@@ -227,10 +227,12 @@ Endpoint = 1.2.3.4:51820
           endpoint: "1.2.3.4:51820",
           allowed_ips: "0.0.0.0/0,::/0",
           private_key: "priv-key",
+          kill_switch: true,
         });
         return Response.json({
           present: true,
           enabled: true,
+          kill_switch: true,
           state: "up",
           revision: 2,
         });
@@ -238,6 +240,7 @@ Endpoint = 1.2.3.4:51820
       return Response.json({
         present: false,
         enabled: false,
+        kill_switch: true,
         state: "stopped",
         revision: 0,
       });
@@ -255,6 +258,56 @@ Endpoint = 1.2.3.4:51820
   const file = new File([config], "mullvad.conf", { type: "text/plain" });
   Object.defineProperty(file, "text", { value: async () => config });
   await userEvent.upload(input, file);
+  await waitFor(() =>
+    expect(
+      requests.mock.calls.some(
+        ([url, o]) => url.endsWith("/vpn/mullvad") && o?.method === "PUT",
+      ),
+    ).toBe(true),
+  );
+});
+
+it("toggles the VPN kill switch without reconnecting the tunnel", async () => {
+  const requests = vi.fn(async (url: string, o?: RequestInit) => {
+    if (url.endsWith("/vpn/mullvad")) {
+      if (o?.method === "PUT") {
+        expect(JSON.parse(o.body as string)).toEqual({
+          revision: 5,
+          kill_switch: false,
+        });
+        return Response.json({
+          present: true,
+          enabled: true,
+          kill_switch: false,
+          state: "up",
+          revision: 6,
+        });
+      }
+      return Response.json({
+        present: true,
+        enabled: true,
+        kill_switch: true,
+        state: "up",
+        revision: 5,
+      });
+    }
+    if (url.endsWith("/download-clients/builtin"))
+      return Response.json({
+        present: true,
+        enabled: true,
+        state: "running",
+        revision: 1,
+      });
+    return Response.json({
+      items: [],
+      defaults: { torrent: "", usenet: "", revision: 1 },
+    });
+  });
+  vi.stubGlobal("fetch", requests);
+  renderPage();
+  const toggle = await screen.findByLabelText(/Kill switch/);
+  expect(toggle).toBeChecked();
+  await userEvent.click(toggle);
   await waitFor(() =>
     expect(
       requests.mock.calls.some(

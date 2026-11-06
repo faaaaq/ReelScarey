@@ -53,6 +53,7 @@ type bundledRuntime struct {
 	lastAttempt      time.Time
 	appliedRevision  int
 	tunnelReadyCache bool
+	tunnelBindCache  bool
 	notify           chan struct{}
 }
 
@@ -191,11 +192,11 @@ func (s *Service) reconcileBundled(ctx context.Context, logger *slog.Logger, c C
 	r.procMu.Lock()
 	wasAlive := r.cmd != nil
 	stale := wasAlive && r.appliedRevision != revision
-	prevTunnel := r.tunnelReadyCache
-	currentTunnel := s.tunnelReady()
-	r.tunnelReadyCache = currentTunnel
+	prevAllowed, prevBind := r.tunnelReadyCache, r.tunnelBindCache
+	currentAllowed, currentBind := s.tunnelReady(), s.tunnelBound()
+	r.tunnelReadyCache, r.tunnelBindCache = currentAllowed, currentBind
 	r.procMu.Unlock()
-	tunnelChanged := wasAlive && prevTunnel != currentTunnel
+	tunnelChanged := wasAlive && (prevAllowed != currentAllowed || prevBind != currentBind)
 	if !desired {
 		if wasAlive {
 			s.stopBundled()
@@ -204,10 +205,10 @@ func (s *Service) reconcileBundled(ctx context.Context, logger *slog.Logger, c C
 		}
 		return
 	}
-	// The VPN kill switch: with a tunnel configured but down, the daemon does
-	// not run at all, so torrent traffic can never fall back to the bare
-	// interface.
-	if !currentTunnel {
+	// The VPN kill switch: with the tunnel down and the switch on, the daemon
+	// does not run at all, so torrent traffic can never fall back to the bare
+	// interface. With the kill switch off, it may run unbound.
+	if !currentAllowed {
 		if wasAlive {
 			s.stopBundled()
 		}
@@ -268,9 +269,9 @@ func (s *Service) startBundled(ctx context.Context, c ClientConfig, revision int
 		"[BitTorrent]\n" +
 		"Session\\Port=" + strconv.Itoa(c.PeerPort) + "\n" +
 		"Session\\DefaultSavePath=" + c.DownloadPath + "\n"
-	// The VPN kill switch: with the tunnel up, the daemon binds every torrent
-	// socket to the tunnel interface, so it has no egress without the tunnel.
-	if s.tunnelReady() {
+	// The VPN kill switch: when the tunnel is up, the daemon binds every
+	// torrent socket to the tunnel interface, so it has no egress without it.
+	if s.tunnelBound() {
 		conf += "Session\\Interface=" + vpn.TunnelInterface + "\n"
 		conf += "Session\\InterfaceName=" + vpn.TunnelInterface + "\n"
 	}

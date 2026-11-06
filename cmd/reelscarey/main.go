@@ -34,7 +34,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.33.3-dev"
+var version = "0.33.4-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -131,7 +131,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	metadataRefresh := automation.NewMetadataRefresher(db, metadataService)
 	subtitleService := subtitle.New(db, secretStore, cfg, subtitle.NewOpenSubtitles())
 	vpnService := vpn.New(db, secretStore, cfg)
-	transferService.SetTunnelGate(vpnService.TunnelUp)
+	transferService.SetTunnelState(vpnService.TorrentState)
 	organizationService := organization.New(db, cfg)
 	organizationService.SetProbe(func(ctx context.Context, f *os.File) (string, error) {
 		result, err := (transfer.FFprobe{}).Probe(ctx, f)

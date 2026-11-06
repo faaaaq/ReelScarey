@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        VERSION: ${REELSCAREY_VERSION:-0.33.3-dev}
+        VERSION: ${REELSCAREY_VERSION:-0.33.4-dev}
     image: reelscarey:local
     user: '10001:10001'
     restart: unless-stopped

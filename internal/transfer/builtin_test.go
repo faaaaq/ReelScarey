@@ -220,8 +220,8 @@ func TestBundledClientMissingBinaryFailsHonestly(t *testing.T) {
 func TestBundledClientWaitsForVPNTunnel(t *testing.T) {
 	f := setupWorkflow(t)
 	t.Setenv("REELSCAREY_BUNDLED_QBT", bundledStubBinary(t))
-	tunnel := false
-	f.s.SetTunnelGate(func() bool { return tunnel })
+	allowed, bind := false, false
+	f.s.SetTunnelState(func() (bool, bool) { return allowed, bind })
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan struct{})
@@ -233,10 +233,10 @@ func TestBundledClientWaitsForVPNTunnel(t *testing.T) {
 	if e != nil || !status.Enabled || status.State != "stopped" {
 		t.Fatal(status, e)
 	}
-	if !strings.Contains(status.Message, "VPN tunnel is down") {
+	if !strings.Contains(status.Message, "kill switch") {
 		t.Fatal("the kill-switch state was not honest", status)
 	}
-	tunnel = true
+	allowed, bind = true, true
 	f.s.bundled.poke()
 	awaitBundledState(t, f, "running")
 	saved, e := f.s.BundledStatus(ctx)
@@ -244,18 +244,42 @@ func TestBundledClientWaitsForVPNTunnel(t *testing.T) {
 		t.Fatal(saved, e)
 	}
 	// The generated configuration binds the daemon to the tunnel interface.
-	conf, e := os.ReadFile(filepath.Join(f.cfg.ConfigDir, "qbittorrent", "qBittorrent", "config", "qBittorrent.conf"))
-	if e != nil || !strings.Contains(string(conf), "Session\\Interface=reelscarey0") {
-		t.Fatal("the tunnel binding was not applied", string(conf), e)
+	awaitBundledConfig(t, f, true)
+	// With the kill switch off and the tunnel down, torrents may run, but must
+	// not claim the tunnel binding.
+	allowed, bind = true, false
+	f.s.bundled.poke()
+	awaitBundledConfig(t, f, false)
+	if state := awaitBundledState(t, f, "running"); state.Message != "" {
+		t.Fatal(state)
 	}
-	tunnel = false
+	// With the kill switch back on and the tunnel down, the daemon stops.
+	allowed, bind = false, false
 	f.s.bundled.poke()
 	stopped := awaitBundledState(t, f, "stopped")
-	if !strings.Contains(stopped.Message, "VPN tunnel is down") {
+	if !strings.Contains(stopped.Message, "kill switch") {
 		t.Fatal(stopped)
 	}
 	cancel()
 	<-done
+}
+
+func awaitBundledConfig(t *testing.T, f *workflowFixture, wantBound bool) {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		conf, e := os.ReadFile(filepath.Join(f.cfg.ConfigDir, "qbittorrent", "qBittorrent", "config", "qBittorrent.conf"))
+		if e == nil {
+			bound := strings.Contains(string(conf), "Session\\Interface=reelscarey0")
+			if bound == wantBound {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("tunnel binding never became %v", wantBound)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func TestBundledClientRefusesGenericEditing(t *testing.T) {

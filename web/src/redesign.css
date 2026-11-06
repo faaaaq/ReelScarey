@@ -604,6 +604,20 @@ fieldset
   color: var(--ui-muted);
   font-size: 12px;
 }
+.checkbox-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ui-text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.checkbox-row input[type="checkbox"] {
+  margin-top: 2px;
+}
 .ui-toolbar .ui-search {
   flex: 1 1 240px;
   min-width: 200px;

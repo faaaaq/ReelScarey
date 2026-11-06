@@ -180,3 +180,5 @@ See the release endpoints in [API](docs/API.md).
   whenever the tunnel is down; metadata and the UI keep the normal network.
 - [x] NET_ADMIN retention is opt-in; the private key is encrypted, never
   returned, and redacted from tool output.
+- [x] A clear kill-switch toggle stops the built-in client when the tunnel is
+  down; turning it off allows unbound torrent traffic with an explicit warning.

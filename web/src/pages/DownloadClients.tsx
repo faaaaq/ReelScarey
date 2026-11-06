@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
 import { api, messageFor } from "../api";
@@ -33,6 +33,7 @@ type Builtin = {
 type VPN = {
   present: boolean;
   enabled: boolean;
+  kill_switch: boolean;
   state: string;
   message?: string;
   interface?: string;
@@ -184,10 +185,14 @@ function VPNCard() {
     [peerKey, setPeerKey] = useState(""),
     [privateKey, setPrivateKey] = useState(""),
     [allowedIPs, setAllowedIPs] = useState(""),
+    [killSwitch, setKillSwitch] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const data = resource.data;
+  useEffect(() => {
+    if (data) setKillSwitch(data.kill_switch);
+  }, [data?.revision]);
   async function save(
     enabled: boolean,
     overrides?: ReturnType<typeof parseWireGuard>,
@@ -203,6 +208,7 @@ function VPNCard() {
         body: JSON.stringify({
           revision: data.revision,
           enabled,
+          kill_switch: killSwitch,
           address: overrides?.address ?? (address || data.address || ""),
           endpoint: overrides?.endpoint ?? (endpoint || data.endpoint || ""),
           peer_key: overrides?.peer_key ?? peerKey,
@@ -237,6 +243,24 @@ function VPNCard() {
       await save(true, parsed);
     } catch (e) {
       setError(e instanceof Error ? e.message : messageFor(e));
+    }
+  }
+  async function toggleKillSwitch(next: boolean) {
+    if (!data || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api("/vpn/mullvad", {
+        method: "PUT",
+        signal: AbortSignal.timeout(40000),
+        body: JSON.stringify({ revision: data.revision, kill_switch: next }),
+      });
+      setKillSwitch(next);
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      resource.reload();
+      setBusy(false);
     }
   }
   return (
@@ -293,6 +317,21 @@ function VPNCard() {
             {data.message ? ` · ${data.message}` : ""}
           </p>
           {notice && <p role="status">{notice}</p>}
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={killSwitch}
+              disabled={busy}
+              onChange={(e) => void toggleKillSwitch(e.target.checked)}
+            />
+            Kill switch: stop the built-in torrent client whenever the VPN
+            tunnel is down
+          </label>
+          <p className="field-help">
+            Default on. When off, the built-in client may use the normal
+            connection if the tunnel drops — only disable this if you accept
+            that exposure.
+          </p>
           <fieldset disabled={busy} className="backup-fields">
             <label>
               Tunnel address (IPv4 and optional IPv6, comma separated)

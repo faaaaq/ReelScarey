@@ -1911,3 +1911,16 @@ No owner-server media or download client was used for these checks.
   spacing; labels read as labels in both themes.
 - Frontend formatting, type checks, 191 interaction tests and the production
   bundle passed. Go tests and vet passed across all packages.
+
+## Version 0.33.4 kill-switch toggle
+
+- VPN policy tests cover every combination: no VPN, enabled with the kill
+  switch on and the tunnel down/up, and the kill switch off with the tunnel
+  down. The status reports the saved preference.
+- Supervisor tests cover the client stopping with the honest reason, restarting
+  bound when the tunnel returns, restarting unbound with the kill switch off,
+  and stopping again when it is turned back on.
+- The VPN card toggles the switch through a revision-checked update that does
+  not force a reconnect; the frontend tests assert the exact request.
+- Frontend formatting, type checks, 192 interaction tests and the production
+  bundle passed. Go tests and vet passed across all packages.

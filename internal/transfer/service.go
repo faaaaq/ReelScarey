@@ -33,7 +33,7 @@ type Service struct {
 	legacyError       string
 	importer          *Importer
 	bundled           bundledRuntime
-	tunnelGate        func() bool
+	tunnelState       func() (allowed, bind bool)
 }
 
 func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Client, indexer Indexer) *Service {
@@ -48,15 +48,28 @@ func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Clien
 	return s
 }
 
-// SetTunnelGate supplies the VPN state consulted by the built-in client
-// supervisor. A nil gate means no VPN is configured.
-func (s *Service) SetTunnelGate(gate func() bool) { s.tunnelGate = gate }
+// SetTunnelState supplies the VPN policy: whether the built-in client may run
+// and whether it must bind to the tunnel. A nil state means no VPN policy.
+func (s *Service) SetTunnelState(state func() (allowed, bind bool)) { s.tunnelState = state }
 
-// tunnelReady reports whether the built-in daemon may run. When a VPN is
-// configured, the tunnel must be up: the kill switch keeps the torrent client
-// stopped instead of letting it fall back to the bare interface.
+// tunnelReady reports whether the built-in daemon may run. When the kill
+// switch is on and the tunnel is down, the daemon stays stopped instead of
+// letting it fall back to the bare interface.
 func (s *Service) tunnelReady() bool {
-	return s.tunnelGate == nil || s.tunnelGate()
+	if s.tunnelState == nil {
+		return true
+	}
+	allowed, _ := s.tunnelState()
+	return allowed
+}
+
+// tunnelBound reports whether the daemon must bind to the tunnel interface.
+func (s *Service) tunnelBound() bool {
+	if s.tunnelState == nil {
+		return false
+	}
+	_, bind := s.tunnelState()
+	return bind
 }
 
 type IntegrationStatus struct {
