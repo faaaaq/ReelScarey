@@ -50,3 +50,13 @@ Migrate a page by replacing its one-off layout classes with shared primitives,
 then remove the corresponding legacy rules. Do not add a third styling layer.
 Keep the 186 frontend tests passing and verify both themes before calling a
 page migrated.
+
+## Settings layout (0.34.1)
+
+Settings follows the Sonarr/Radarr pattern: a left section rail with General,
+Media Management, Indexers, Download Clients, Connect and System, and one
+focused content area. Sections stay mounted and are hidden with `hidden`, so
+unsaved edits in one section survive switching away and back. Old deep links
+still work: `#qbittorrent`/`#sabnzbd` open Download Clients, `#torznab` opens
+Indexers, `#tmdb` opens Connect, and the general field anchors open General.
+On narrow screens the rail becomes a horizontal scroller above the content.

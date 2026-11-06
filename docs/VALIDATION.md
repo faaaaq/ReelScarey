@@ -1952,3 +1952,7 @@ No owner-server media or download client was used for these checks.
   reports the IPTorrents display settings instead of a false auth failure.
 - The full Docker image was built on the acceptance server; frontend format,
   type checks, interaction tests and Go tests passed.
+- The Settings page was reorganized into a Sonarr/Radarr-style rail; an App
+  interaction test verifies the active General section, switching to System,
+  hiding the General save bar, and the Indexers links. Prettier and TypeScript
+  checks pass; the full image build validates the remaining suite.

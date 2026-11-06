@@ -1,7 +1,17 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { Link, useLocation } from "react-router-dom";
-import { CheckCircle2, FolderOpen, Save, Server } from "lucide-react";
+import {
+  CheckCircle2,
+  Database,
+  Download,
+  FolderOpen,
+  Plug,
+  Radio,
+  Save,
+  Server,
+  Settings2,
+} from "lucide-react";
 import {
   api,
   messageFor,
@@ -14,58 +24,101 @@ import { useResource } from "../useResource";
 import { TMDbSettings } from "./TMDbSettings";
 import { IntegrationSettings } from "./IntegrationSettings";
 
-const adminLinks = [
+const sections = [
   {
-    to: "/requests",
-    name: "Requests",
-    description: "Manage request accounts and review requested titles.",
+    id: "general",
+    name: "General",
+    icon: Settings2,
+    description:
+      "Library identity, folder defaults, episode naming and unverified-file behavior.",
   },
   {
-    to: "/import",
-    name: "Find unmatched files",
-    description: "Discover and review existing files in configured folders.",
+    id: "media",
+    name: "Media Management",
+    icon: FolderOpen,
+    description:
+      "Collection destinations, naming presets and reviewed library changes.",
   },
   {
-    to: "/organization",
-    name: "Organize library",
-    description: "Review collection paths, naming and file moves.",
+    id: "indexers",
+    name: "Indexers",
+    icon: Radio,
+    description:
+      "Direct tracker connections, private feeds, Torznab/Newznab and IRC announcements.",
   },
   {
-    to: "/metadata-refresh",
-    name: "Metadata refresh",
-    description: "Schedule catalog and episode metadata updates.",
+    id: "clients",
+    name: "Download Clients",
+    icon: Download,
+    description:
+      "Named qBittorrent, SABnzbd and NZBGet connections, defaults and folder mappings.",
   },
   {
-    to: "/storage",
-    name: "Storage",
-    description: "Browse mounted folders and plan storage migration.",
+    id: "connect",
+    name: "Connect",
+    icon: Plug,
+    description:
+      "Metadata, subtitle providers, requests and playback reporting.",
   },
   {
-    to: "/backups",
-    name: "Backups",
-    description: "Create, schedule, download and restore verified backups.",
+    id: "system",
+    name: "System",
+    icon: Server,
+    description: "Backups, storage, health checks and server paths.",
   },
-  {
-    to: "/timeline",
-    name: "Event timeline",
-    description: "Review recorded changes across the library and jobs.",
-  },
-  {
-    to: "/watch-activity",
-    name: "Emby activity",
-    description: "Review playback reported by the connected Emby server.",
-  },
-  {
-    to: "/setup",
-    name: "Setup",
-    description: "Walk through library, provider and client setup.",
-  },
-  {
-    to: "/system",
-    name: "System checks",
-    description: "Verify storage, database, credentials and publication.",
-  },
-];
+] as const;
+
+type SectionID = (typeof sections)[number]["id"];
+
+function sectionFromHash(hash: string): SectionID {
+  if (hash === "#qbittorrent" || hash === "#sabnzbd") return "clients";
+  if (hash === "#torznab") return "indexers";
+  if (hash === "#tmdb") return "connect";
+  if (
+    [
+      "#library-name",
+      "#episode-naming",
+      "#movie-folder",
+      "#series-folder",
+    ].includes(hash)
+  )
+    return "general";
+  const match = sections.find((section) => `#${section.id}` === hash);
+  return match ? match.id : "general";
+}
+
+function SectionHead({ id }: { id: SectionID }) {
+  const section = sections.find((item) => item.id === id)!;
+  const Icon = section.icon;
+  return (
+    <div className="settings-section-head">
+      <div>
+        <h2>
+          <Icon size={18} /> {section.name}
+        </h2>
+        <p>{section.description}</p>
+      </div>
+    </div>
+  );
+}
+
+function SettingsLink({
+  to,
+  title,
+  children,
+}: {
+  to: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link className="settings-link-card" to={to}>
+      <h3>{title}</h3>
+      <p>{children}</p>
+      <span className="text-link">Open</span>
+    </Link>
+  );
+}
 
 export function Settings() {
   const location = useLocation();
@@ -76,6 +129,9 @@ export function Settings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [section, setSection] = useState<SectionID>(() =>
+    sectionFromHash(location.hash),
+  );
   const ready =
     !settings.loading &&
     !system.loading &&
@@ -83,16 +139,10 @@ export function Settings() {
     !system.error &&
     !!form &&
     !!system.data;
+
   useEffect(() => {
-    if (
-      ready &&
-      ["#tmdb", "#torznab", "#qbittorrent", "#sabnzbd"].includes(location.hash)
-    ) {
-      document
-        .getElementById(location.hash.slice(1))
-        ?.scrollIntoView({ block: "start" });
-    }
-  }, [ready, location.hash]);
+    setSection(sectionFromHash(location.hash));
+  }, [location.hash]);
 
   useEffect(() => {
     if (settings.data) {
@@ -126,6 +176,12 @@ export function Settings() {
   ) {
     setForm((current) => (current ? { ...current, [field]: value } : current));
     setSuccess(false);
+  }
+  function choose(id: SectionID) {
+    setSection(id);
+    const next =
+      id === "general" ? location.pathname : `${location.pathname}#${id}`;
+    window.history.replaceState(null, "", next);
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -161,7 +217,7 @@ export function Settings() {
       <PageHeading
         eyebrow="Configuration"
         title="Settings"
-        description="Library folders, naming and service connections."
+        description="Focused sections for the library, sources, clients and server."
       />
       <RequestState
         loading={settings.loading || system.loading}
@@ -171,196 +227,272 @@ export function Settings() {
           system.reload();
         }}
       />
-      {!settings.loading &&
-        !system.loading &&
-        !settings.error &&
-        !system.error &&
-        form &&
-        system.data && (
-          <div className="settings-layout">
-            <form className="panel settings-form" onSubmit={submit}>
-              <div className="ui-section-head">
-                <div>
-                  <h2>
-                    <FolderOpen size={17} /> Library preferences
-                  </h2>
-                  <p>These preferences are saved to your local database.</p>
+      {ready && form && system.data && (
+        <div className="settings-shell">
+          <nav className="settings-rail" aria-label="Settings sections">
+            <p className="settings-rail-group">Settings</p>
+            {sections.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-current={section === item.id ? "page" : undefined}
+                  onClick={() => choose(item.id)}
+                >
+                  <Icon size={16} /> {item.name}
+                </button>
+              );
+            })}
+          </nav>
+          <div className="settings-content">
+            <section hidden={section !== "general"}>
+              <SectionHead id="general" />
+              <form className="panel settings-form" onSubmit={submit}>
+                <div className="ui-section-head">
+                  <div>
+                    <h3>Library preferences</h3>
+                    <p>These preferences are saved to your local database.</p>
+                  </div>
+                  <span className="ui-chip green">Available</span>
                 </div>
-                <span className="ui-chip green">Available</span>
-              </div>
-              <fieldset className="fieldset" disabled={saving}>
-                <div>
-                  <label htmlFor="library-name">Library name</label>
-                  <TextField.Root
-                    id="library-name"
-                    value={form.library_name}
-                    onChange={(event) =>
-                      update("library_name", event.target.value)
-                    }
-                    maxLength={80}
-                    required
-                    size="2"
-                    autoComplete="off"
-                  />
-                  <p className="field-help">Shown on your dashboard.</p>
-                </div>
-                <div>
-                  <label htmlFor="episode-naming">TV episode names</label>
-                  <select
-                    id="episode-naming"
-                    value={form.episode_naming ?? "standard"}
-                    onChange={(e) => update("episode_naming", e.target.value)}
-                  >
-                    <option value="standard">Show - S01E01</option>
-                    <option value="with-title">
-                      Show - S01E01 - Episode title
-                    </option>
-                  </select>
-                  <p className="field-help">
-                    Multi-episode files use S01E01-E02. Existing files keep
-                    their names.
-                  </p>
-                </div>
-                <div>
-                  <label htmlFor="movie-folder">Movie folder</label>
-                  <TextField.Root
-                    id="movie-folder"
-                    value={form.movie_folder}
-                    onChange={(event) =>
-                      update("movie_folder", event.target.value)
-                    }
-                    maxLength={80}
-                    required
-                    size="2"
-                    aria-describedby="folder-help"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="series-folder">TV folder</label>
-                  <TextField.Root
-                    id="series-folder"
-                    value={form.series_folder}
-                    onChange={(event) =>
-                      update("series_folder", event.target.value)
-                    }
-                    maxLength={80}
-                    required
-                    size="2"
-                    aria-describedby="folder-help"
-                  />
-                </div>
-                <p className="field-help span-2" id="folder-help">
-                  Default folder names before organization rules are saved.
-                  Organize library controls configured collection destinations.
-                  Saving preferences alone creates no folders. The Current
-                  ReelScarey naming preset uses this episode-name choice; other
-                  presets and custom paths are in Organize library. Existing
-                  files and queued import plans keep their names.
-                </p>
-                <div className="span-2">
-                  <label className="scan-toggle">
-                    <input
-                      type="checkbox"
-                      aria-label="Register videos that cannot be verified"
-                      checked={form.register_unverified_video}
-                      disabled={saving}
-                      onChange={(event) => {
-                        setForm((current) =>
-                          current
-                            ? {
-                                ...current,
-                                register_unverified_video: event.target.checked,
-                              }
-                            : current,
-                        );
-                        setSuccess(false);
-                      }}
+                <fieldset className="fieldset" disabled={saving}>
+                  <div>
+                    <label htmlFor="library-name">Library name</label>
+                    <TextField.Root
+                      id="library-name"
+                      value={form.library_name}
+                      onChange={(event) =>
+                        update("library_name", event.target.value)
+                      }
+                      maxLength={80}
+                      required
+                      size="2"
+                      autoComplete="off"
                     />
-                    <span>
-                      <strong>
-                        Register videos that ffprobe cannot verify
-                      </strong>
-                      <small>
-                        Discovery and matching add files even when the video
-                        cannot be inspected, labeled as unverified: resolution
-                        and embedded-title facts stay unknown, and
-                        embedded-title rewrites and subtitle matching refuse
-                        them. These files are often incomplete downloads —
-                        replacing them is usually better.
-                      </small>
-                    </span>
-                  </label>
-                </div>
-              </fieldset>
-              {error && (
-                <div className="form-error" role="alert">
-                  <p>{error}</p>
+                    <p className="field-help">Shown on your dashboard.</p>
+                  </div>
+                  <div>
+                    <label htmlFor="episode-naming">TV episode names</label>
+                    <select
+                      id="episode-naming"
+                      value={form.episode_naming ?? "standard"}
+                      onChange={(e) => update("episode_naming", e.target.value)}
+                    >
+                      <option value="standard">Show - S01E01</option>
+                      <option value="with-title">
+                        Show - S01E01 - Episode title
+                      </option>
+                    </select>
+                    <p className="field-help">
+                      Multi-episode files use S01E01-E02. Existing files keep
+                      their names.
+                    </p>
+                  </div>
+                  <div>
+                    <label htmlFor="movie-folder">Movie folder</label>
+                    <TextField.Root
+                      id="movie-folder"
+                      value={form.movie_folder}
+                      onChange={(event) =>
+                        update("movie_folder", event.target.value)
+                      }
+                      maxLength={80}
+                      required
+                      size="2"
+                      aria-describedby="folder-help"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="series-folder">TV folder</label>
+                    <TextField.Root
+                      id="series-folder"
+                      value={form.series_folder}
+                      onChange={(event) =>
+                        update("series_folder", event.target.value)
+                      }
+                      maxLength={80}
+                      required
+                      size="2"
+                      aria-describedby="folder-help"
+                    />
+                  </div>
+                  <p className="field-help span-2" id="folder-help">
+                    Default folder names before organization rules are saved.
+                    Organize library controls configured collection
+                    destinations. Saving preferences alone creates no folders.
+                    The Current ReelScarey naming preset uses this episode-name
+                    choice; other presets and custom paths are in Organize
+                    library. Existing files and queued import plans keep their
+                    names.
+                  </p>
+                  <div className="span-2">
+                    <label className="scan-toggle">
+                      <input
+                        type="checkbox"
+                        aria-label="Register videos that cannot be verified"
+                        checked={form.register_unverified_video}
+                        disabled={saving}
+                        onChange={(event) => {
+                          setForm((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  register_unverified_video:
+                                    event.target.checked,
+                                }
+                              : current,
+                          );
+                          setSuccess(false);
+                        }}
+                      />
+                      <span>
+                        <strong>
+                          Register videos that ffprobe cannot verify
+                        </strong>
+                        <small>
+                          Discovery and matching add files even when the video
+                          cannot be inspected, labeled as unverified: resolution
+                          and embedded-title facts stay unknown, and
+                          embedded-title rewrites and subtitle matching refuse
+                          them. These files are often incomplete downloads —
+                          replacing them is usually better.
+                        </small>
+                      </span>
+                    </label>
+                  </div>
+                </fieldset>
+                {error && (
+                  <div className="form-error" role="alert">
+                    <p>{error}</p>
+                    <Button
+                      type="button"
+                      variant="soft"
+                      color="gray"
+                      onClick={settings.reload}
+                    >
+                      Reload saved settings
+                    </Button>
+                  </div>
+                )}
+                <div className="form-footer">
+                  <Button type="submit" size="2" disabled={!dirty || saving}>
+                    <Save size={16} />
+                    {saving ? "Saving…" : "Save preferences"}
+                  </Button>
                   <Button
                     type="button"
-                    variant="soft"
+                    variant="ghost"
                     color="gray"
-                    onClick={settings.reload}
+                    disabled={!dirty || saving}
+                    onClick={() => {
+                      setForm(saved);
+                      setError("");
+                      setSuccess(false);
+                    }}
                   >
-                    Reload saved settings
+                    Reset changes
                   </Button>
+                  {success && (
+                    <p className="save-success" role="status">
+                      <CheckCircle2 size={16} /> Preferences saved.
+                    </p>
+                  )}
                 </div>
-              )}
-              <div className="form-footer">
-                <Button type="submit" size="2" disabled={!dirty || saving}>
-                  <Save size={16} />
-                  {saving ? "Saving…" : "Save preferences"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  color="gray"
-                  disabled={!dirty || saving}
-                  onClick={() => {
-                    setForm(saved);
-                    setError("");
-                    setSuccess(false);
-                  }}
-                >
-                  Reset changes
-                </Button>
-                {success && (
-                  <p className="save-success" role="status">
-                    <CheckCircle2 size={16} /> Preferences saved.
-                  </p>
-                )}
-              </div>
-            </form>
+              </form>
+            </section>
 
-            <section className="panel settings-admin">
-              <div className="ui-section-head">
-                <div>
-                  <h2>Administration</h2>
-                  <p>
-                    Library tools, integrations and server maintenance live here
-                    so the main navigation stays focused.
-                  </p>
-                </div>
-              </div>
-              <div className="settings-admin-grid">
-                {adminLinks.map((link) => (
-                  <Link
-                    className="settings-link-card"
-                    key={link.to}
-                    to={link.to}
-                  >
-                    <h3>{link.name}</h3>
-                    <p>{link.description}</p>
-                    <span className="text-link">Open</span>
-                  </Link>
-                ))}
+            <section hidden={section !== "media"}>
+              <SectionHead id="media" />
+              <div className="settings-card-grid">
+                <SettingsLink
+                  to="/organization"
+                  title="Folders, naming & reorganization"
+                >
+                  Configure Movies, TV Shows, Anime and custom collections;
+                  choose presets or review existing file changes.
+                </SettingsLink>
+                <SettingsLink to="/import" title="Find unmatched files">
+                  Discover existing files, match titles and register them
+                  without moving the originals.
+                </SettingsLink>
+                <SettingsLink to="/metadata-refresh" title="Metadata refresh">
+                  Schedule catalog and episode metadata updates.
+                </SettingsLink>
               </div>
             </section>
 
-            <aside className="settings-side">
+            <section hidden={section !== "indexers"}>
+              <SectionHead id="indexers" />
+              <div className="settings-card-grid">
+                <SettingsLink to="/indexers" title="Trackers and feeds">
+                  Manage IPTorrents, XSpeeds, NYAA, private RSS, Torznab and
+                  Newznab connections.
+                </SettingsLink>
+                <SettingsLink to="/announces" title="IRC announce feeds">
+                  Watch tracker announce channels and review new releases as
+                  they are posted.
+                </SettingsLink>
+              </div>
+              <IntegrationSettings kind="torznab" />
+            </section>
+
+            <section hidden={section !== "clients"}>
+              <SectionHead id="clients" />
+              <div className="settings-card-grid">
+                <SettingsLink
+                  to="/download-clients"
+                  title="Named download clients"
+                >
+                  Manage qBittorrent, Transmission, SABnzbd and NZBGet
+                  connections, defaults and folder mappings.
+                </SettingsLink>
+              </div>
+              <IntegrationSettings kind="qbittorrent" />
+              <IntegrationSettings kind="sabnzbd" />
+            </section>
+
+            <section hidden={section !== "connect"}>
+              <SectionHead id="connect" />
+              <TMDbSettings />
+              <div className="settings-card-grid">
+                <SettingsLink to="/subtitles" title="Subtitle providers">
+                  Manage OpenSubtitles, languages and automatic downloads for
+                  imported media.
+                </SettingsLink>
+                <SettingsLink to="/requests" title="Requests">
+                  Manage request accounts, Discord notifications and requested
+                  titles.
+                </SettingsLink>
+                <SettingsLink to="/watch-activity" title="Emby activity">
+                  Review playback reported by the connected Emby server.
+                </SettingsLink>
+              </div>
+            </section>
+
+            <section hidden={section !== "system"}>
+              <SectionHead id="system" />
+              <div className="settings-card-grid">
+                <SettingsLink to="/backups" title="Backups">
+                  Create, schedule, download and restore verified backups.
+                </SettingsLink>
+                <SettingsLink to="/storage" title="Storage">
+                  Browse mounted folders and plan storage migration.
+                </SettingsLink>
+                <SettingsLink to="/system" title="System checks">
+                  Verify storage, database, credentials and publication.
+                </SettingsLink>
+                <SettingsLink to="/setup" title="Setup">
+                  Walk through library, provider and client setup.
+                </SettingsLink>
+                <SettingsLink to="/timeline" title="Event timeline">
+                  Review recorded changes across the library and jobs.
+                </SettingsLink>
+              </div>
               <section className="panel">
                 <div className="section-title">
                   <h2>
-                    <Server size={17} /> Server & storage
+                    <Database size={17} /> Server & storage
                   </h2>
                 </div>
                 <p className="field-help">
@@ -380,58 +512,10 @@ export function Settings() {
                   <span className="ui-chip green">Database connected</span>
                 </div>
               </section>
-
-              <section className="settings-link-card">
-                <h2>Media organization</h2>
-                <p>
-                  Configure Movies, TV Shows, Anime and custom collections;
-                  choose naming presets or review existing file changes.
-                </p>
-                <Link className="text-link" to="/organization">
-                  Open folders, naming & reorganization
-                </Link>
-              </section>
-
-              <TMDbSettings />
-
-              <section className="settings-link-card">
-                <h2>Indexers</h2>
-                <p>
-                  Manage direct IPTorrents, XSpeeds, NYAA, private feeds and
-                  multiple Torznab and Newznab connections.
-                </p>
-                <Link className="text-link" to="/indexers">
-                  Manage indexers
-                </Link>
-              </section>
-              <IntegrationSettings kind="torznab" />
-              <IntegrationSettings kind="qbittorrent" />
-
-              <section className="settings-link-card">
-                <h2>Download clients</h2>
-                <p>
-                  Manage named qBittorrent, SABnzbd and NZBGet connections,
-                  separate folder mappings and defaults for future jobs.
-                </p>
-                <Link className="text-link" to="/download-clients">
-                  Manage download clients
-                </Link>
-              </section>
-              <IntegrationSettings kind="sabnzbd" />
-
-              <section className="settings-link-card">
-                <h2>Subtitle providers</h2>
-                <p>
-                  Manage OpenSubtitles, language preferences and automatic
-                  downloads for imported movies and episodes.
-                </p>
-                <Link className="text-link" to="/subtitles">
-                  Open subtitle settings
-                </Link>
-              </section>
-            </aside>
+            </section>
           </div>
-        )}
+        </div>
+      )}
     </>
   );
 }

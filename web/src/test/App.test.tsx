@@ -84,6 +84,28 @@ describe("foundation UI", () => {
     ).toBe(true);
   });
 
+  it("organizes settings into focused sections", async () => {
+    setupFetch();
+    mount("/settings");
+    const general = await screen.findByRole("button", { name: "General" });
+    expect(general).toHaveAttribute("aria-current", "page");
+    await userEvent.click(screen.getByRole("button", { name: "System" }));
+    expect(
+      await screen.findByRole("heading", { name: "System" }),
+    ).toBeVisible();
+    expect(screen.getByText("Server & storage")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Save preferences" }),
+    ).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Indexers" }));
+    expect(
+      screen.getByRole("link", { name: /Trackers and feeds/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /IRC announce feeds/ }),
+    ).toBeInTheDocument();
+  });
+
   it("saves a changed preference with the current revision and reports success", async () => {
     const fetch = setupFetch();
     mount("/settings");

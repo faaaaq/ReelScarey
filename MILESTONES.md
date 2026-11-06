@@ -185,6 +185,16 @@ See the release endpoints in [API](docs/API.md).
 
 See [announce feeds](docs/ANNOUNCE.md).
 
+## Version 0.34.1 Settings and IPTorrents setup
+
+- [x] Sonarr/Radarr-style left section rail for General, Media Management,
+  Indexers, Download Clients, Connect and System.
+- [x] One focused content area; sections stay mounted so unsaved edits survive
+  switching.
+- [x] Existing deep links and integration forms remain available.
+- [x] Inline instructions for obtaining tracker cookies and user agents, with
+  automatic removal of pasted header labels and line breaks.
+
 ## Version 0.33 Mullvad VPN kill switch
 
 - [x] Encrypted Mullvad WireGuard configuration with a route-suppressed tunnel.

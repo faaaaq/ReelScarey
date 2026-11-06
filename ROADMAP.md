@@ -677,3 +677,12 @@ IPTorrents, TorrentLeech, FileList, BeyondHD, AnimeBytes and MyAnonamouse.
 Announces are parsed with the trackers' real formats and stored as a bounded,
 deduped history with tracker links. Automatic grabbing is not part of this
 release; the next step adds download-URL fetching and a fenced queue guard.
+
+## Version 0.34.1 Settings and IPTorrents setup
+
+Settings uses a Sonarr/Radarr-style left rail with General, Media Management,
+Indexers, Download Clients, Connect and System, and a single focused content
+area. Sections stay mounted while hidden, preserving unsaved edits, and the old
+`#qbittorrent`, `#torznab`, `#tmdb` and field anchors still open the right
+section. The indexer dialog explains how to obtain tracker cookies and user
+agents and strips pasted header labels.
