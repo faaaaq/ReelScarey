@@ -2014,3 +2014,11 @@ No owner-server media or download client was used for these checks.
   import evidence dialog; the Series page test covers the added source panel and
   the Torrents page test covers listing and the disabled state. Prettier,
   TypeScript, 196 interaction tests and the production build pass.
+- Live 0.35.0 (schema 51) kept the VPN up, the built-in client enabled and
+  selected as the torrent default, and automation paused. Torrents listed a
+  manual Sintel magnet, reported metadata fetch, accepted reviewed removal with
+  data deletion and returned to empty. YouTube inspected a public video with a
+  thumbnail and duration, queued a 720p download, reported live progress/speed
+  and cancelled it; the test staging directory and job record were removed. A
+  per-show YouTube source on a real show previewed a channel, saved paused,
+  recorded its baseline and was removed without queueing a download.
