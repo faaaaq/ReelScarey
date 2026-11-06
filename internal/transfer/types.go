@@ -129,16 +129,36 @@ type Payload struct {
 	Torrent []byte `json:"torrent,omitempty"`
 }
 type Torrent struct {
-	Hash       string  `json:"hash"`
-	Name       string  `json:"name"`
-	State      string  `json:"state"`
-	SavePath   string  `json:"save_path"`
-	Progress   float64 `json:"progress"`
-	AmountLeft int64   `json:"amount_left"`
-	Size       int64   `json:"total_size"`
-	Completed  int64   `json:"completed"`
-	Tags       string  `json:"tags"`
+	Hash         string  `json:"hash"`
+	Name         string  `json:"name"`
+	State        string  `json:"state"`
+	SavePath     string  `json:"save_path"`
+	Progress     float64 `json:"progress"`
+	AmountLeft   int64   `json:"amount_left"`
+	Size         int64   `json:"total_size"`
+	Completed    int64   `json:"completed"`
+	Tags         string  `json:"tags"`
+	Category     string  `json:"category"`
+	Downloaded   int64   `json:"downloaded"`
+	Uploaded     int64   `json:"uploaded"`
+	DLSpeed      int64   `json:"dlspeed"`
+	UPSpeed      int64   `json:"upspeed"`
+	ETA          int64   `json:"eta"`
+	Ratio        float64 `json:"ratio"`
+	NumSeeds     int     `json:"num_seeds"`
+	NumLeechs    int     `json:"num_leechs"`
+	AddedOn      int64   `json:"added_on"`
+	CompletionOn int64   `json:"completion_on"`
+	ContentPath  string  `json:"content_path"`
 }
+type TransferInfo struct {
+	DLSpeed    int64  `json:"dl_info_speed"`
+	UPSpeed    int64  `json:"up_info_speed"`
+	Downloaded int64  `json:"dl_info_data"`
+	Uploaded   int64  `json:"up_info_data"`
+	Connection string `json:"connection_status"`
+}
+
 type TorrentFile struct {
 	Index    int     `json:"index"`
 	Name     string  `json:"name"`

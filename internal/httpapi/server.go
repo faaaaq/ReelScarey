@@ -226,6 +226,9 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/subtitles/files/{id}/{action}", method(http.MethodPost, s.subtitleFileAction))
 	mux.HandleFunc("/api/v1/subtitles/candidates/{id}/download", method(http.MethodPost, s.subtitleDownload))
 	mux.HandleFunc("/api/v1/automation", s.automationSettings)
+	mux.HandleFunc("/api/v1/torrents", s.torrents)
+	mux.HandleFunc("/api/v1/torrents/{hash}", method(http.MethodGet, s.torrentDetail))
+	mux.HandleFunc("/api/v1/torrents/{hash}/{action}", method(http.MethodPost, s.torrentAction))
 	mux.HandleFunc("/api/v1/youtube/inspect", method(http.MethodPost, s.youtubeInspect))
 	mux.HandleFunc("/api/v1/youtube/bulk/review", method(http.MethodPost, s.youtubeBulkReview))
 	mux.HandleFunc("/api/v1/youtube/bulk/queue", method(http.MethodPost, s.youtubeBulkQueue))
@@ -513,6 +516,7 @@ func frontend(assets fs.FS) http.HandlerFunc {
 	routes["/metadata-refresh"] = true
 	routes["/youtube/subscriptions"] = true
 	routes["/announces"] = true
+	routes["/torrents"] = true
 	serveIndex := func(w http.ResponseWriter, r *http.Request, status int) {
 		body, err := fs.ReadFile(assets, "index.html")
 		if err != nil {

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Activity,
+  ArrowDownToLine,
   Captions,
   Clapperboard,
   Film as BrandIcon,
@@ -47,6 +48,9 @@ const MovieSearch = lazy(() =>
 );
 const DownloadActivity = lazy(() =>
   import("./pages/Activity").then((m) => ({ default: m.Activity })),
+);
+const Torrents = lazy(() =>
+  import("./pages/Torrents").then((m) => ({ default: m.Torrents })),
 );
 const Releases = lazy(() =>
   import("./pages/Releases").then((m) => ({ default: m.Releases })),
@@ -139,6 +143,7 @@ const browseNavigation = [
 ];
 
 const toolsNavigation = [
+  { path: "/torrents", name: "Torrents", icon: ArrowDownToLine },
   { path: "/automation", name: "Automation", icon: Clock3 },
   { path: "/subtitles", name: "Subtitles", icon: Captions },
   { path: "/announces", name: "Announces", icon: Radio },
@@ -409,6 +414,7 @@ function AppShell() {
             <Route path="/search" element={<MovieSearch />} />
             <Route path="/releases" element={<Releases />} />
             <Route path="/activity" element={<DownloadActivity />} />
+            <Route path="/torrents" element={<Torrents />} />
             <Route path="/watch-activity" element={<WatchActivity />} />
             <Route path="/timeline" element={<Timeline />} />
             <Route path="/automation" element={<Automation />} />

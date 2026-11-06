@@ -40,6 +40,13 @@ type fixtureClient struct {
 	adds         int
 	lostResponse bool
 	offline      bool
+	transfer     TransferInfo
+	list         []Torrent
+	action       string
+	deleteFiles  bool
+	lastTag      string
+	lastSave     string
+	lastPayload  Payload
 }
 
 func (*fixtureClient) Test(context.Context, ClientConfig) (string, error) { return "2.11.3", nil }
@@ -49,8 +56,9 @@ func (f *fixtureClient) Find(context.Context, ClientConfig, string) (*Torrent, e
 	}
 	return f.torrent, nil
 }
-func (f *fixtureClient) Add(_ context.Context, _ ClientConfig, tag, save string, _ Payload) error {
+func (f *fixtureClient) Add(_ context.Context, _ ClientConfig, tag, save string, p Payload) error {
 	f.adds++
+	f.lastTag, f.lastSave, f.lastPayload = tag, save, p
 	f.torrent = &Torrent{Hash: testHash, Tags: tag, SavePath: save, State: "downloading", AmountLeft: 10}
 	if f.lostResponse {
 		return unavailable("test lost response")
@@ -59,6 +67,35 @@ func (f *fixtureClient) Add(_ context.Context, _ ClientConfig, tag, save string,
 }
 func (f *fixtureClient) Files(context.Context, ClientConfig, string) ([]TorrentFile, error) {
 	return f.files, nil
+}
+func (f *fixtureClient) TransferInfo(context.Context, ClientConfig) (TransferInfo, error) {
+	if f.offline {
+		return TransferInfo{}, unavailable("test client offline")
+	}
+	return f.transfer, nil
+}
+func (f *fixtureClient) List(context.Context, ClientConfig) ([]Torrent, error) {
+	if f.offline {
+		return nil, unavailable("test client offline")
+	}
+	return f.list, nil
+}
+func (f *fixtureClient) Pause(context.Context, ClientConfig, []string) error {
+	f.action = "pause"
+	return nil
+}
+func (f *fixtureClient) Resume(context.Context, ClientConfig, []string) error {
+	f.action = "resume"
+	return nil
+}
+func (f *fixtureClient) Recheck(context.Context, ClientConfig, []string) error {
+	f.action = "recheck"
+	return nil
+}
+func (f *fixtureClient) Delete(_ context.Context, _ ClientConfig, _ []string, deleteFiles bool) error {
+	f.action = "remove"
+	f.deleteFiles = deleteFiles
+	return nil
 }
 
 type fixtureProbe struct {
