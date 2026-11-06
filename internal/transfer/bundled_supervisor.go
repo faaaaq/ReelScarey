@@ -20,12 +20,32 @@ import (
 // bundledRuntime owns the supervised daemon process. The supervisor loop is
 // the only writer; status readers get an honest state without touching the
 // process.
+// lockedBuffer wraps the bounded stderr capture so the supervisor can read it
+// while the child process is still running and the exec copier is still
+// writing. Without the lock the race detector correctly flags the reads.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf limitedBuffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 type bundledRuntime struct {
 	procMu           sync.Mutex
 	stateMu          sync.Mutex
 	cmd              *exec.Cmd
 	wait             chan error
-	stderr           limitedBuffer
+	stderr           *lockedBuffer
 	state            string
 	message          string
 	lifecycle        int64
@@ -91,7 +111,7 @@ func (r *bundledRuntime) reap() {
 	select {
 	case <-wait:
 		detail := "The built-in client stopped unexpectedly."
-		if strings.TrimSpace(r.stderr.String()) != "" {
+		if r.stderr != nil && strings.TrimSpace(r.stderr.String()) != "" {
 			detail += " " + strings.TrimSpace(r.stderr.String())
 		}
 		r.cmd, r.wait = nil, nil
@@ -261,9 +281,9 @@ func (s *Service) startBundled(ctx context.Context, c ClientConfig, revision int
 	// Ubuntu's qBittorrent 4.6.3.
 	cmd := exec.Command(binary, "--profile="+profile, "--webui-port="+strconv.Itoa(builtinWebPort))
 	hideProbeWindow(cmd)
-	var stderr limitedBuffer
-	stderr.max = 64 << 10
-	cmd.Stderr = &stderr
+	stderr := &lockedBuffer{}
+	stderr.buf.max = 64 << 10
+	cmd.Stderr = stderr
 	if e := cmd.Start(); e != nil {
 		return e
 	}

@@ -1880,3 +1880,7 @@ No owner-server media or download client was used for these checks.
   limitation (arbitrary numeric IDs have no passwd entry). The entrypoint now
   uses --clear-groups, matching the gosu path for unknown IDs, and the fixed
   entrypoint was verified on the affected deployment before releasing.
+- The race detector caught the supervisor reading the bounded stderr capture
+  while the child process was still running and the exec copier still writing.
+  The capture is now a locked buffer shared by writer and readers; the fix was
+  validated by the Linux race suite.
