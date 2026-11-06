@@ -1838,3 +1838,18 @@ No owner-server media or download client was used for these checks.
   saved phase advance.
 - Frontend formatting, type checks, 186 interaction tests and the production
   bundle passed. Go tests and vet passed across all packages.
+
+## Version 0.31 built-in qBittorrent client
+
+- Supervisor lifecycle tests with a stub daemon cover enable (row created,
+  daemon started, configuration generated, tested), peer-port restart, missing
+  binary failure surfacing, disable-while-default refusal and generic
+  edit/delete refusal. Database tests migrate schema 47 and verify the builtin
+  check constraint.
+- Real Linux acceptance inside the production image lineage: qbittorrent-nox
+  installed from the same Debian bookworm packages, the generated
+  configuration authenticated the real RPC, the daemon ran, and disable
+  stopped it gracefully with the process verified gone from /proc.
+- Frontend formatting, type checks, 188 interaction tests and the production
+  bundle passed. Go tests and vet passed across all packages.
+

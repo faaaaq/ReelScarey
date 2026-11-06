@@ -7,6 +7,33 @@ as the torrent or Usenet default. Existing Settings connections remain available
 through the explicit **Settings connection** choice. No existing job is rerouted
 when a default changes, and a failed named client never silently falls back.
 
+## Built-in qBittorrent (0.31)
+
+The Docker image ships `qbittorrent-nox`, and the application can supervise it
+directly. **Set up built-in client** on the Download clients page creates the
+saved connection, starts the daemon inside the container, waits for its API and
+tests it before the connection is enabled. The daemon's API listens only on the
+container's loopback interface, so the application is the only client and
+nothing is exposed beyond the peer port.
+
+- The connection is an ordinary named torrent client: it starts paused, and new
+  jobs reach it only after it is chosen as the torrent default. Existing jobs
+  never change their client.
+- The daemon writes only inside `downloads/builtin` under the download mount.
+  On a hardened installation the download mount is read-only by default; set
+  `DOWNLOADS_READ_ONLY=false` in `server.env` and prepare the folder with
+  `install -d -o <uid> -g <gid> "$DOWNLOADS_PATH/builtin"` (the container user
+  is `10001:10001` in the shipped compose file) before enabling it. Disabling
+  the client refuses while jobs are active or it is the torrent default.
+- The peer port defaults to 6881 and can be changed on the page; the compose
+  file publishes it as `REELSCAREY_QBT_PORT` (TCP and UDP). Changing it
+  restarts the daemon briefly; completed state resumes from fastresume.
+- Disabling stops the daemon; retained seeding resumes when it is enabled
+  again. The daemon's lifecycle status — running, starting, stopped or failed
+  with its message — is shown on the page and never invented.
+- Generic client editing and deletion refuse the built-in connection; use its
+  own controls. It can still be tested from the client list.
+
 Each job retains its client ID/type/name, remote completed root and local folder
 mapping. Credentials are encrypted with the existing configuration key and never
 returned by the API. Leaving a secret blank retains it; changing the address or

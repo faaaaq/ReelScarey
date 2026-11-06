@@ -10,6 +10,7 @@ type Client = {
   name: string;
   kind: "qbittorrent" | "transmission" | "sabnzbd" | "nzbget";
   enabled: boolean;
+  builtin?: boolean;
   revision: number;
   url: string;
   username?: string;
@@ -19,6 +20,16 @@ type Client = {
 };
 type Defaults = { torrent: string; usenet: string; revision: number };
 type State = { items: Client[]; defaults: Defaults; downloads_root?: string };
+type Builtin = {
+  present: boolean;
+  enabled: boolean;
+  state: string;
+  message?: string;
+  revision: number;
+  peer_port: number;
+  active_jobs: number;
+  name: string;
+};
 const names = {
   qbittorrent: "qBittorrent",
   transmission: "Transmission",
@@ -52,26 +63,29 @@ export function DownloadClients() {
             clients={resource.data.items}
             reload={resource.reload}
           />
+          <BuiltinCard reload={resource.reload} />
           <section className="panel system-panel">
             <h2>Named connections</h2>
-            {!resource.data.items.length && (
+            {!resource.data.items.some((c) => !c.builtin) && (
               <p>
                 No named clients saved. Existing Settings connections continue
                 to work.
               </p>
             )}
-            {resource.data.items.map((client) => (
-              <ClientForm
-                key={`${client.id}-${client.revision}`}
-                client={client}
-                isDefault={
-                  resource.data!.defaults.torrent === client.id ||
-                  resource.data!.defaults.usenet === client.id
-                }
-                root={resource.data!.downloads_root ?? "/downloads"}
-                reload={resource.reload}
-              />
-            ))}
+            {resource.data.items
+              .filter((c) => !c.builtin)
+              .map((client) => (
+                <ClientForm
+                  key={`${client.id}-${client.revision}`}
+                  client={client}
+                  isDefault={
+                    resource.data!.defaults.torrent === client.id ||
+                    resource.data!.defaults.usenet === client.id
+                  }
+                  root={resource.data!.downloads_root ?? "/downloads"}
+                  reload={resource.reload}
+                />
+              ))}
           </section>
           <section className="panel system-panel">
             <h2>Add a download client</h2>
@@ -108,6 +122,164 @@ export function DownloadClients() {
         </p>
       </section>
     </>
+  );
+}
+const builtinStates: Record<string, string> = {
+  running: "Running",
+  starting: "Starting…",
+  stopped: "Stopped",
+  failed: "Needs attention",
+};
+function BuiltinCard({ reload }: { reload: () => void }) {
+  const resource = useResource<Builtin>("/download-clients/builtin");
+  const [port, setPort] = useState(""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  async function update(body: { enabled?: boolean; peer_port?: number }) {
+    setBusy(true);
+    setError("");
+    try {
+      await api("/download-clients/builtin", {
+        method: "PUT",
+        signal: AbortSignal.timeout(160000),
+        body: JSON.stringify({
+          revision: resource.data?.revision ?? 0,
+          ...body,
+        }),
+      });
+      reload();
+      resource.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const data = resource.data;
+  const enabled = data?.enabled ?? false;
+  return (
+    <section className="panel system-panel">
+      <h2>Built-in qBittorrent</h2>
+      <RequestState
+        loading={resource.loading}
+        error={resource.error}
+        retry={resource.reload}
+      />
+      {data && (
+        <>
+          <p>
+            The application supervises a private qBittorrent daemon inside its
+            own container. Its API stays on the container's loopback interface,
+            so nothing outside the app can reach it. Torrent data is written to
+            the shared download folder and imported with the same verification
+            as every other client.
+          </p>
+          <p>
+            Status:{" "}
+            <Badge
+              color={
+                data.state === "running"
+                  ? "green"
+                  : data.state === "failed"
+                    ? "red"
+                    : "gray"
+              }
+            >
+              {builtinStates[data.state] ?? data.state}
+            </Badge>
+            {data.message ? ` · ${data.message}` : ""}
+          </p>
+          {enabled && data.active_jobs > 0 && (
+            <p>
+              {data.active_jobs} active{" "}
+              {data.active_jobs === 1 ? "job" : "jobs"} use this client. It
+              cannot be disabled until they finish.
+            </p>
+          )}
+          {enabled && (
+            <p>
+              This connection is enabled but starts paused: choose it as the
+              torrent default above to send new jobs to it.
+            </p>
+          )}
+          <fieldset disabled={busy} className="backup-fields">
+            {data.present ? (
+              <>
+                <label>
+                  BitTorrent peer port
+                  <input
+                    type="number"
+                    min={1024}
+                    max={65535}
+                    value={port}
+                    placeholder={String(data.peer_port)}
+                    onChange={(e) => setPort(e.target.value)}
+                  />
+                </label>
+                <Button
+                  variant="soft"
+                  disabled={
+                    busy || port === "" || Number(port) === data.peer_port
+                  }
+                  onClick={() => void update({ peer_port: Number(port) })}
+                >
+                  Change peer port
+                </Button>
+                {enabled ? (
+                  <Button
+                    variant="soft"
+                    disabled={busy}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Disable the built-in qBittorrent client? Its downloads stay in the download folder for retry.",
+                        )
+                      )
+                        void update({ enabled: false });
+                    }}
+                  >
+                    Disable
+                  </Button>
+                ) : (
+                  <Button
+                    disabled={busy}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Enable the built-in qBittorrent client? The app will start its daemon inside this container.",
+                        )
+                      )
+                        void update({ enabled: true });
+                    }}
+                  >
+                    Enable
+                  </Button>
+                )}
+              </>
+            ) : (
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Set up the built-in qBittorrent client? The app creates its connection, starts the daemon inside this container and tests it.",
+                    )
+                  )
+                    void update({ enabled: true });
+                }}
+              >
+                Set up built-in client
+              </Button>
+            )}
+          </fieldset>
+          {error && (
+            <p className="error-box" role="alert">
+              {error}
+            </p>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 function DefaultsForm({

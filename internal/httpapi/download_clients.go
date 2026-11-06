@@ -116,3 +116,35 @@ func (s *Server) testDownloadClient(w http.ResponseWriter, r *http.Request) {
 	}
 	send(w, 200, map[string]bool{"tested": true})
 }
+func (s *Server) downloadClientBuiltin(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	if r.Method == "GET" {
+		out, e := s.transfer.BundledStatus(r.Context())
+		if e != nil {
+			s.transferError(w, e)
+			return
+		}
+		send(w, 200, out)
+		return
+	}
+	if r.Method != "PUT" {
+		w.Header().Set("Allow", "GET, PUT")
+		fail(w, 405, "method_not_allowed", "Use GET or PUT.")
+		return
+	}
+	var in transfer.BundledUpdate
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 150*time.Second)
+	defer cancel()
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(155 * time.Second))
+	out, e := s.transfer.UpdateBundled(ctx, in)
+	if e != nil {
+		s.transferError(w, e)
+		return
+	}
+	send(w, 200, out)
+}

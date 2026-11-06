@@ -15,7 +15,7 @@ COPY internal/ ./internal/
 COPY web/embed.go ./web/embed.go
 COPY --from=frontend /src/web/dist ./web/dist
 RUN go test ./... && go vet ./...
-ARG VERSION=0.30.2-dev
+ARG VERSION=0.31.0-dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/reelscarey ./cmd/reelscarey
 
 FROM debian:bookworm-slim AS youtube-tools
@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && /opt/reelscarey-yt-dlp/bin/python -m pip uninstall -y pip setuptools
 
 FROM debian:bookworm-slim AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg python3 gosu tzdata \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg python3 gosu tzdata qbittorrent-nox wireguard-tools iptables \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 reelscarey \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin reelscarey \

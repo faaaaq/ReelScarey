@@ -83,15 +83,19 @@ type IndexerConfig struct {
 	Generation    string `json:"generation"`
 }
 type ClientConfig struct {
-	LocalFolder                       string `json:"local_folder,omitempty"`
-	URL                               string `json:"url"`
-	Username                          string `json:"username"`
-	Password                          string `json:"password"`
-	DownloadPath                      string `json:"download_path"`
-	APIKey                            string `json:"api_key,omitempty"`
-	profileKey, kind, label           string
-	profileRevision, defaultsRevision int
-	ciphertext                        []byte
+	LocalFolder  string `json:"local_folder,omitempty"`
+	URL          string `json:"url"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	DownloadPath string `json:"download_path"`
+	APIKey       string `json:"api_key,omitempty"`
+	// PeerPort is the BitTorrent listen port of the app-supervised built-in
+	// client. External clients manage their own listen port, so it stays 0.
+	PeerPort                int `json:"peer_port,omitempty"`
+	profileKey, kind, label string
+	profileRevision         int
+	defaultsRevision        int
+	ciphertext              []byte
 }
 type Release struct {
 	Protocol    string `json:"protocol,omitempty"`

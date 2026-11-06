@@ -639,3 +639,12 @@ label; files probed before HDR detection keep resolution only. Embedded-title
 updates use a verified metadata-only stage, replace the original in place and
 record the previous title and old/new checksums. No duplicate video copy is
 retained, and metadata-only plans refuse byte-level rollback.
+
+## Version 0.31 built-in torrent client
+
+The Docker image ships qbittorrent-nox and the application supervises its
+lifecycle: generated loopback-only configuration, tested enable, honest
+stopped/failed status and graceful shutdown with fastresume. The connection is
+an ordinary paused named client; the torrent default routes new jobs. The
+daemon saves only into `downloads/builtin`, which hardened installs opt into
+with `DOWNLOADS_READ_ONLY=false`.

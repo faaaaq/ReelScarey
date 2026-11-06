@@ -32,6 +32,7 @@ type Service struct {
 	probeMu           sync.Mutex
 	legacyError       string
 	importer          *Importer
+	bundled           bundledRuntime
 }
 
 func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Client, indexer Indexer) *Service {
@@ -42,6 +43,7 @@ func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Clien
 	s.nzbget = NewNZBGet()
 	s.transmission = NewTransmission()
 	s.importer = NewImporter(s)
+	s.bundled.notify = make(chan struct{}, 1)
 	return s
 }
 

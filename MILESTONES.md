@@ -150,3 +150,15 @@ See [existing-library behavior](docs/EXISTING_LIBRARY.md) and [UI](docs/UI.md).
   previous title, sizes and checksums instead of retaining a duplicate video.
 
 See [existing-library behavior](docs/EXISTING_LIBRARY.md) and [API](docs/API.md).
+
+## Version 0.31 built-in torrent client
+
+- [x] The Docker image ships qbittorrent-nox and the application supervises it.
+- [x] The built-in connection starts paused; the torrent default routes jobs and
+  existing jobs never change clients.
+- [x] The daemon writes only inside `downloads/builtin`; its API stays on the
+  container loopback. The peer port publishes as `REELSCAREY_QBT_PORT`.
+- [x] Hardened installs opt into a writable download folder with
+  `DOWNLOADS_READ_ONLY=false`; enabling without it fails honestly.
+
+See [download clients](docs/DOWNLOAD_CLIENTS.md).

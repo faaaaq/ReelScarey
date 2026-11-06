@@ -33,7 +33,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.30.2-dev"
+var version = "0.31.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -263,6 +263,11 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		defer close(workerDone)
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			transferService.Run(workerCtx, logger)
+		}
+	}()
+	go func() {
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			transferService.SuperviseBundled(workerCtx, logger)
 		}
 	}()
 	automationDone := make(chan struct{})

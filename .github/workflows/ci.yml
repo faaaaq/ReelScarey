@@ -64,6 +64,10 @@ jobs:
         run: go test -race ./internal/transfer -run TestRealQBittorrent -count=1 -v -timeout=8m
         env:
           REELSCAREY_LIVE_QBT: '1'
+      - name: Real built-in qBittorrent supervision
+        run: go test -race ./internal/transfer -run TestRealBundledClientLifecycle -count=1 -v -timeout=5m
+        env:
+          REELSCAREY_LIVE_BUNDLED: '1'
       - name: Real Transmission movie and reviewed TV imports
         run: |
           docker build -f scripts/transmission-test.Dockerfile -t reelscarey:transmission-test .

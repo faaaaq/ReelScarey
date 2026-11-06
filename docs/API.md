@@ -746,6 +746,16 @@ Credentials are never returned. Save/test have bounded connection timeouts.
 - `DELETE /api/v1/download-clients/{id}` requires `{revision,reviewed:true}` and
   refuses default clients or clients with unfinished jobs (including stopped).
   Completed history remains. It never deletes external jobs or source files.
+- `GET /api/v1/download-clients/builtin` reports the app-supervised built-in
+  qBittorrent daemon: `{present,enabled,state,message?,revision,peer_port,active_jobs,name}`;
+  state is `running`, `starting`, `stopped` or `failed` with its honest message.
+  `PUT` with `{revision,enabled?,peer_port?}` enables it (the daemon starts, its
+  loopback API is awaited and tested before the connection is enabled),
+  disables it (refused while jobs are active or it is the torrent default), or
+  changes the peer port (the daemon restarts briefly and resumes from
+  fastresume). The generic save/delete endpoints refuse the built-in
+  connection; see [Download clients](DOWNLOAD_CLIENTS.md) for the writable
+  download folder and peer-port requirements.
 
 Download rows additionally expose client_key, client_kind and client_label.
 Each new job stores its original remote root and local folder privately. See

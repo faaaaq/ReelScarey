@@ -28,7 +28,7 @@ func TestTransmissionMigrationPreservesClientsAndDefaults(t *testing.T) {
 	if e = migrate(ctx, db, files); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec(`INSERT INTO download_clients VALUES('original','Original client','qbittorrent',1,7,100,200); UPDATE download_client_preferences SET torrent='original',revision=8; INSERT INTO integration_configs(name,ciphertext) VALUES('opensubtitles',x'010203')`); e != nil {
+	if _, e = db.Exec(`INSERT INTO download_clients(id,name,kind,enabled,revision,created_at,updated_at) VALUES('original','Original client','qbittorrent',1,7,100,200); UPDATE download_client_preferences SET torrent='original',revision=8; INSERT INTO integration_configs(name,ciphertext) VALUES('opensubtitles',x'010203')`); e != nil {
 		t.Fatal(e)
 	}
 	if e = Migrate(ctx, db); e != nil {
@@ -42,10 +42,16 @@ func TestTransmissionMigrationPreservesClientsAndDefaults(t *testing.T) {
 	if e = db.QueryRow(`SELECT torrent,revision FROM download_client_preferences`).Scan(&id, &revision); e != nil || id != "original" || revision != 8 {
 		t.Fatal("defaults changed", e)
 	}
-	if _, e = db.Exec(`INSERT INTO download_clients VALUES('new','New client','transmission',0,1,100,200)`); e != nil {
+	if _, e = db.Exec(`INSERT INTO download_clients(id,name,kind,enabled,revision,created_at,updated_at) VALUES('new','New client','transmission',0,1,100,200)`); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec(`INSERT INTO download_clients VALUES('bad','Bad client','unsupported',0,1,100,200)`); e == nil {
+	if _, e = db.Exec(`INSERT INTO download_clients(id,name,kind,enabled,revision,created_at,updated_at) VALUES('bad','Bad client','unsupported',0,1,100,200)`); e == nil {
 		t.Fatal("kind guard lost")
+	}
+	if _, e = db.Exec(`INSERT INTO download_clients(id,name,kind,enabled,builtin,revision,created_at,updated_at) VALUES('builtin','Built-in qBittorrent','qbittorrent',0,1,1,100,200)`); e != nil {
+		t.Fatal("builtin flag rejected", e)
+	}
+	if _, e = db.Exec(`INSERT INTO download_clients(id,name,kind,enabled,builtin,revision,created_at,updated_at) VALUES('badflag','Bad','qbittorrent',0,2,1,100,200)`); e == nil {
+		t.Fatal("builtin check lost")
 	}
 }

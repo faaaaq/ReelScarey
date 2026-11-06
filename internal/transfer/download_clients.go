@@ -18,6 +18,7 @@ type DownloadClient struct {
 	Name         string `json:"name"`
 	Kind         string `json:"kind"`
 	Enabled      bool   `json:"enabled"`
+	Builtin      bool   `json:"builtin,omitempty"`
 	Revision     int    `json:"revision"`
 	URL          string `json:"url"`
 	Username     string `json:"username,omitempty"`
@@ -67,14 +68,14 @@ func (s *Service) ClientDefaults(ctx context.Context) (ClientDefaults, error) {
 	return defaultsTx(ctx, s.db)
 }
 func (s *Service) DownloadClients(ctx context.Context) ([]DownloadClient, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT c.id,c.name,c.kind,c.enabled,c.revision,(SELECT COUNT(*) FROM downloads d WHERE d.client_key=c.id AND d.state<>'completed') FROM download_clients c ORDER BY c.name COLLATE NOCASE,c.id LIMIT 32`)
+	rows, e := s.db.QueryContext(ctx, `SELECT c.id,c.name,c.kind,c.enabled,c.builtin,c.revision,(SELECT COUNT(*) FROM downloads d WHERE d.client_key=c.id AND d.state<>'completed') FROM download_clients c ORDER BY c.name COLLATE NOCASE,c.id LIMIT 32`)
 	if e != nil {
 		return nil, e
 	}
 	out := []DownloadClient{}
 	for rows.Next() {
 		var c DownloadClient
-		if e = rows.Scan(&c.ID, &c.Name, &c.Kind, &c.Enabled, &c.Revision, &c.ActiveJobs); e != nil {
+		if e = rows.Scan(&c.ID, &c.Name, &c.Kind, &c.Enabled, &c.Builtin, &c.Revision, &c.ActiveJobs); e != nil {
 			rows.Close()
 			return nil, e
 		}
@@ -142,6 +143,9 @@ func (s *Service) SaveDownloadClient(ctx context.Context, in DownloadClientUpdat
 	_, keyError := hex.DecodeString(in.ID)
 	if !textOK(strings.TrimSpace(in.Name), 60) || clientProtocol(in.Kind) == "" || (in.ID != "" && (len(in.ID) != 32 || keyError != nil || strings.ToLower(in.ID) != in.ID)) || (in.ID == "" && in.Revision != 0) {
 		return result, problem("invalid_settings", "Use a unique name and a supported download client.")
+	}
+	if in.ID == builtinClientID {
+		return result, problem("invalid_selection", "The built-in client is supervised by the application. Use its dedicated controls instead.")
 	}
 	in.Name = strings.TrimSpace(in.Name)
 	if in.LocalFolder != "" && (!fs.ValidPath(in.LocalFolder) || in.LocalFolder == "." || strings.ContainsAny(in.LocalFolder, "\\:\x00") || len(in.LocalFolder) > 250) {
@@ -297,6 +301,9 @@ func (s *Service) SaveClientDefaults(ctx context.Context, in ClientDefaults) (Cl
 func (s *Service) DeleteDownloadClient(ctx context.Context, key string, revision int) error {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
+	if key == builtinClientID {
+		return problem("invalid_selection", "The built-in client cannot be removed. Disable it instead.")
+	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e

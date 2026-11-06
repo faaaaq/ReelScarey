@@ -160,3 +160,102 @@ it("retains blank secrets, restricts protocol defaults and protects bound client
     ).toBe(true),
   );
 });
+it("supervises the built-in client and disables it with explicit review", async () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  const builtin = {
+    present: true,
+    enabled: true,
+    state: "running",
+    revision: 4,
+    peer_port: 6881,
+    active_jobs: 2,
+    name: "Built-in qBittorrent",
+  };
+  const requests = vi.fn(async (url: string, o?: RequestInit) => {
+    if (url.endsWith("/download-clients/builtin")) {
+      if (o?.method === "PUT") {
+        expect(JSON.parse(o.body as string)).toMatchObject({
+          revision: 4,
+          enabled: false,
+        });
+        return Response.json({ ...builtin, enabled: false, state: "stopped" });
+      }
+      return Response.json(builtin);
+    }
+    return Response.json({
+      items: [],
+      defaults: { torrent: "", usenet: "", revision: 1 },
+    });
+  });
+  vi.stubGlobal("fetch", requests);
+  renderPage();
+  expect(
+    await screen.findByRole("heading", { name: "Built-in qBittorrent" }),
+  ).toBeInTheDocument();
+  expect(await screen.findByText("Running")).toBeInTheDocument();
+  expect(screen.getByText(/starts paused/)).toBeInTheDocument();
+  expect(screen.getByText(/2 active jobs use this client/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Disable" }));
+  await waitFor(() =>
+    expect(
+      requests.mock.calls.some(
+        ([url, o]) =>
+          url.endsWith("/download-clients/builtin") && o?.method === "PUT",
+      ),
+    ).toBe(true),
+  );
+  expect(confirm).toHaveBeenCalled();
+});
+it("sets up the built-in client from scratch without routing jobs", async () => {
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  const requests = vi.fn(async (url: string, o?: RequestInit) => {
+    if (url.endsWith("/download-clients/builtin")) {
+      if (o?.method === "PUT") {
+        expect(JSON.parse(o.body as string)).toMatchObject({
+          revision: 0,
+          enabled: true,
+        });
+        return Response.json({
+          present: true,
+          enabled: true,
+          state: "running",
+          revision: 1,
+          peer_port: 6881,
+          active_jobs: 0,
+          name: "Built-in qBittorrent",
+        });
+      }
+      return Response.json({
+        present: false,
+        enabled: false,
+        state: "stopped",
+        revision: 0,
+        peer_port: 6881,
+        active_jobs: 0,
+        name: "Built-in qBittorrent",
+      });
+    }
+    return Response.json({
+      items: [],
+      defaults: { torrent: "", usenet: "", revision: 1 },
+    });
+  });
+  vi.stubGlobal("fetch", requests);
+  renderPage();
+  expect(
+    await screen.findByText(
+      /The application supervises a private qBittorrent daemon/,
+    ),
+  ).toBeInTheDocument();
+  await userEvent.click(
+    screen.getByRole("button", { name: "Set up built-in client" }),
+  );
+  await waitFor(() =>
+    expect(
+      requests.mock.calls.some(
+        ([url, o]) =>
+          url.endsWith("/download-clients/builtin") && o?.method === "PUT",
+      ),
+    ).toBe(true),
+  );
+});

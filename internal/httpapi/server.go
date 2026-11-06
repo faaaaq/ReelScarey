@@ -134,6 +134,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/system/storage", method(http.MethodGet, s.storageBrowser))
 	mux.HandleFunc("/api/v1/download-clients", s.downloadClients)
 	mux.HandleFunc("/api/v1/download-clients/defaults", method(http.MethodPut, s.downloadClientDefaults))
+	mux.HandleFunc("/api/v1/download-clients/builtin", s.downloadClientBuiltin)
 	mux.HandleFunc("/api/v1/download-clients/{id}", s.downloadClient)
 	mux.HandleFunc("/api/v1/download-clients/{id}/test", method(http.MethodPost, s.testDownloadClient))
 	mux.HandleFunc("/api/v1/system/storage/migration", method(http.MethodGet, s.storageMigration))
