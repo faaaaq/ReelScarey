@@ -98,7 +98,7 @@ func (i *Inspector) DownloadWithSubtitles(ctx context.Context, id, directory str
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Hour)
 	defer cancel()
-	args := []string{"--ignore-config", "--no-cache-dir", "--no-cookies", "--no-cookies-from-browser", "--no-warnings", "--no-playlist", "--no-overwrites", "--no-write-info-json", "--no-write-thumbnail", "--no-write-playlist-metafiles", "--paths", dir, "-o", id + ".%(ext)s"}
+	args := []string{"--ignore-config", "--no-cache-dir", "--no-cookies", "--no-cookies-from-browser", "--no-warnings", "--no-playlist", "--no-overwrites", "--no-write-info-json", "--no-write-thumbnail", "--no-write-playlist-metafiles", "--merge-output-format", "mkv", "--remux-video", "mkv", "--paths", dir, "-o", id + ".%(ext)s"}
 	if quality, ok := normalizedQuality(options.Quality); ok && quality != "best" {
 		args = append(args, "-f", "bv*[height<="+quality+"]+ba/b[height<="+quality+"]/b")
 	}

@@ -3,6 +3,8 @@
 Use **YouTube** like a downloader: paste a public video, playlist or channel
 URL, fetch its entries, choose a video, choose a destination, quality
 (`Best`, `1080p` or `720p`) and optional subtitles, then add it to the queue.
+Finished downloads are remuxed to MKV without re-encoding, so the library keeps
+a single widely supported container instead of WebM fragments.
 The queue shows each download's state, progress, speed and ETA. Cancel stops a
 running yt-dlp process; isolated files are retained for inspection. Verified
 files wait for an import review unless they came from an explicit per-show

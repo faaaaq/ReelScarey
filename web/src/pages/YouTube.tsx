@@ -943,15 +943,17 @@ export function YouTube() {
                               batch.entries
                                 .filter(
                                   (entry) =>
-                                    entry.status === "missing" &&
-                                    !entry.duplicate,
+                                    !entry.duplicate &&
+                                    (entry.status === "missing" ||
+                                      (replaceExisting &&
+                                        entry.status === "available")),
                                 )
                                 .map((entry) => entry.video_id),
                             ),
                           )
                         }
                       >
-                        Select missing
+                        Select eligible
                       </Button>
                       <Button
                         size="1"
@@ -962,6 +964,15 @@ export function YouTube() {
                       </Button>
                       <span>{selection.size} selected</span>
                     </div>
+                    {!replaceExisting &&
+                      batch.entries.some(
+                        (entry) => entry.status === "available",
+                      ) && (
+                        <p className="field-help">
+                          Matched episodes already in the library are disabled.
+                          Enable replacement in step 4 to select new versions.
+                        </p>
+                      )}
                     <ul
                       className="yt-batch-list"
                       aria-label="Playlist episodes"

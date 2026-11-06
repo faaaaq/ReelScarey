@@ -2034,3 +2034,11 @@ No owner-server media or download client was used for these checks.
   single-video tests cover the renamed steps and review actions.
 - YouTube imports now append the inspected resolution/SDR/HDR quality tag to the
   organized episode filename, matching regular downloads.
+
+## Version 0.36.1 MKV YouTube downloads
+
+- The downloader adds `--merge-output-format mkv` and `--remux-video mkv`; the
+  existing probe/import validation accepts the resulting MKV and the quality tag
+  is appended to the organized filename.
+- The playlist batch action selects eligible missing episodes and, only after an
+  explicit replacement choice, eligible episodes already in the library.

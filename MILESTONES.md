@@ -258,3 +258,10 @@ See [announce feeds](docs/ANNOUNCE.md).
   explicit replacement choice and the existing swap review.
 - [x] Styled dropdowns as controls with a visible border and chevron; operational
   guidance now sits next to each step.
+
+## Version 0.36.1 MKV YouTube downloads
+
+- [x] YouTube downloads merge and remux to MKV without re-encoding, so library
+  imports no longer land as WebM.
+- [x] The playlist batch highlights library episodes that need replacement and
+  offers Select eligible once replacement is enabled.
