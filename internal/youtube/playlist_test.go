@@ -19,10 +19,14 @@ func playlistFixture(t *testing.T) (*Store, *seriesInspector) {
 	queries := []string{
 		`INSERT INTO media_items(id,kind,tmdb_id,title,year,status,monitored) VALUES(1,'series',242826,'X or Go',2024,'available',0)`,
 		`INSERT INTO series_details(media_id) VALUES(1)`,
-		`INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,1,1,1,'Season 1','','',5,1,'2024-01-01')`,
+		`INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,1,1,1,'Season 1','','',6,1,'2024-01-01')`,
 	}
-	for n := 1; n <= 5; n++ {
-		queries = append(queries, fmt.Sprintf(`INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(%d,1,%d,%d,'Episode %d','','',1)`, n, 100+n, n, n))
+	for n := 1; n <= 6; n++ {
+		title := fmt.Sprintf("Episode %d", n)
+		if n == 6 {
+			title = "Pilot"
+		}
+		queries = append(queries, fmt.Sprintf(`INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(%d,1,%d,%d,'%s','','',1)`, n, 100+n, n, title))
 	}
 	queries = append(queries, `INSERT INTO media_files(id,series_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin,source_name) VALUES(1,1,'TV/X or GO/Season 1/Episode 5.webm',10,'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','{}',1,'existing','Episode 5.webm')`)
 	queries = append(queries, `INSERT INTO episode_files(episode_id,media_file_id) VALUES(5,1)`)
@@ -38,6 +42,7 @@ func playlistFixture(t *testing.T) (*Store, *seriesInspector) {
 		{Kind: "video", ID: "bbbbbbbbbbb", Title: "[X or GO] Ep.2 (Full Ver.) (ENG/JPN)", Channel: "Vaff angool", DurationSeconds: 3077},
 		{Kind: "video", ID: "ccccccccccc", Title: "[X or GO] clip | Ep.2 (ENG/JPN)", Channel: "Vaff angool", DurationSeconds: 632},
 		{Kind: "video", ID: "ddddddddddd", Title: "[X or GO] behind the scenes | Ep.5 (ENG/JPN)", Channel: "Vaff angool", DurationSeconds: 902},
+		{Kind: "video", ID: "fffffffffff", Title: "X or GO Pilot", Channel: "Vaff angool", DurationSeconds: 3000},
 		{Kind: "video", ID: "eeeeeeeeeee", Title: "[Comeback Stage] Crayon Pop", Channel: "Other", DurationSeconds: 205},
 	}}}
 	return NewStore(db), inspector
@@ -72,6 +77,9 @@ func TestPlaylistPreviewIdentifiesShowAndPrefersFullEpisodes(t *testing.T) {
 	}
 	if byVideo["eeeeeeeeeee"].Status != "unmatched" {
 		t.Fatal(byVideo["eeeeeeeeeee"])
+	}
+	if byVideo["fffffffffff"].EpisodeID != 6 || byVideo["fffffffffff"].Status != "missing" || !byVideo["fffffffffff"].Selected {
+		t.Fatal("episode-title fallback did not match", byVideo["fffffffffff"])
 	}
 }
 

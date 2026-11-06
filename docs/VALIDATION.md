@@ -2026,8 +2026,9 @@ No owner-server media or download client was used for these checks.
 ## Version 0.36 Playlist to series
 
 - Playlist tests cover saved-show identification, full-episode preference over
-  clips, duplicate and unmatched marking, preselection, explicit missing-episode
-  queues, replacement consent and the acquisition reservation.
+  clips, explicit episode numbers and the episode-title fallback, duplicate and
+  unmatched marking, preselection, explicit missing-episode queues, replacement
+  consent and the acquisition reservation.
 - The frontend batch test covers the show/season preview, episode table,
   preselection, the download action and the exact queue request. The YouTube
   single-video tests cover the renamed steps and review actions.

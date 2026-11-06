@@ -475,21 +475,26 @@ func (s *Store) QueuePlaylist(ctx context.Context, in PlaylistQueueInput, inspec
 		}
 		result := PlaylistQueueResult{VideoID: entry.ID}
 		season, number, ok := parseVideoEpisode(entry.Title)
-		if !ok {
-			result.State, result.Message = "skipped", "No episode number in the title."
-			results = append(results, result)
-			continue
-		}
-		if season > 0 && season != in.Season {
-			result.State, result.Message = "skipped", "The video names a different season."
-			results = append(results, result)
-			continue
-		}
-		ep := byNumber[number]
-		if ep == nil {
-			result.State, result.Message = "skipped", "That episode is not loaded."
-			results = append(results, result)
-			continue
+		var ep *episodeRow
+		if ok {
+			if season > 0 && season != in.Season {
+				result.State, result.Message = "skipped", "The video names a different season."
+				results = append(results, result)
+				continue
+			}
+			ep = byNumber[number]
+			if ep == nil {
+				result.State, result.Message = "skipped", "That episode is not loaded."
+				results = append(results, result)
+				continue
+			}
+		} else {
+			ep = matchEpisodeByTitle(entry.Title, episodes)
+			if ep == nil {
+				result.State, result.Message = "skipped", "No episode number or matching episode title."
+				results = append(results, result)
+				continue
+			}
 		}
 		result.EpisodeID = ep.ID
 		if ep.Files > 0 && !in.Replace {
