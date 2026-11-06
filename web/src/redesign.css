@@ -1314,6 +1314,7 @@ fieldset
     --sidebar-width: 0px;
   }
   .sidebar {
+    position: fixed;
     width: 270px;
     transform: translateX(-100%);
     transition: transform 160ms ease;
