@@ -209,6 +209,9 @@ with the dedicated acceptance key, never a default key:
 
     ssh -i ~/.ssh/reelscarey_acceptance -o IdentitiesOnly=yes faaaaq@192.168.1.47
 
+`faaaq` (three a's) is never a valid account; the account always has four a's
+after the leading `f`.
+
 The key has no passphrase; non-interactive BatchMode and docker exec are the
 normal working pattern. The live stack runs Compose from ~/reelscarey-live as
 container reelscarey and must stay untouched during acceptance work; inspect it
