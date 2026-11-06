@@ -10,8 +10,11 @@ services:
     pids_limit: 256
     ports:
       - "${REELSCAREY_BIND_IP:-127.0.0.1}:${REELSCAREY_PORT:-8787}:8787"
-      - "${REELSCAREY_BIND_IP:-127.0.0.1}:${REELSCAREY_QBT_PORT:-6881}:6881/tcp"
-      - "${REELSCAREY_BIND_IP:-127.0.0.1}:${REELSCAREY_QBT_PORT:-6881}:6881/udp"
+      # Optional inbound peer port for the built-in qBittorrent client. Choose a
+      # free host port and uncomment both entries; outbound torrents work
+      # without this; do not reuse a port already bound by another client.
+      # - "${REELSCAREY_BIND_IP:-127.0.0.1}:${REELSCAREY_QBT_PORT:-6881}:6881/tcp"
+      # - "${REELSCAREY_BIND_IP:-127.0.0.1}:${REELSCAREY_QBT_PORT:-6881}:6881/udp"
     environment:
       REELSCAREY_PUBLIC_URL: ${REELSCAREY_PUBLIC_URL:?Set the exact browser URL in server.env}
       REELSCAREY_LOG_LEVEL: info
