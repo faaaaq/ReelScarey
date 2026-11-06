@@ -1996,3 +1996,7 @@ No owner-server media or download client was used for these checks.
 - The interface copy sweep removed decorative page subtitles, section summaries
   and explanatory footers while keeping operational warnings and field help.
   Prettier, TypeScript, all 194 interaction tests and the production build pass.
+- On the live stack, 0.34.5 rewrote the embedded title of a non-faststart MP4 in
+  place with no retained copy, then the generated test download was removed.
+  Schema 49, the VPN tunnel and kill switch remained up, and the built-in client
+  stayed enabled as the torrent default.
