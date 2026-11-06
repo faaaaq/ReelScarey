@@ -174,7 +174,7 @@ function ScheduleForm({
     setSuccess("");
     try {
       await api("/automation/run", { method: "POST", body: "{}" });
-      setSuccess("Search requested. Results will appear below.");
+      setSuccess("Search requested.");
       reload();
     } catch (e) {
       setError(messageFor(e));
@@ -285,12 +285,9 @@ function ScheduleForm({
             </label>
           </div>
           <p className="field-help">
-            Only released, monitored movies and loaded, selected TV episodes are
-            searched. Targets rotate between runs. Unknown dates wait for
-            metadata. Anime shows require individual consent in their automatic
-            search settings. Saved provider mappings can include approved
-            specials and explicit range packs; every selected episode must
-            qualify.
+            Only monitored, released movies and loaded episodes are searched.
+            Anime requires per-show consent. Saved provider mappings can include
+            approved specials and range packs.
           </p>
           {form.mode === "download" && (
             <p className="automation-notice">

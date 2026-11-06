@@ -86,10 +86,7 @@ export function WatchActivity() {
       <EmbyHistory />
       <section className="panel system-panel">
         <h2>Emby connection</h2>
-        <p>
-          Enter the server address reachable from the ReelScarey container and
-          an Emby API key. The key is stored encrypted and is never shown again.
-        </p>
+        <p>Server URL and an Emby API key. The key is stored encrypted.</p>
         <form onSubmit={save}>
           <label>
             Server URL

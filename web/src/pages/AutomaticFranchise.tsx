@@ -23,11 +23,7 @@ export function AutomaticFranchise({ id }: { id: number }) {
   return (
     <section className="panel system-panel">
       <h2>Franchise connections</h2>
-      <p>
-        Movies and shows linked to the same media franchise in Wikidata.
-        Coverage depends on Wikidata; associations are suggestions and do not
-        change your library.
-      </p>
+      <p>Suggestions from Wikidata. They do not change your library.</p>
       {found.loading && <p>Checking Wikidata…</p>}
       {found.error && (
         <div role="alert">

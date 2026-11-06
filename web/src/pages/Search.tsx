@@ -130,12 +130,8 @@ function MediaSearch({
       {provider.data && !provider.data.configured && (
         <section className="panel connect-prompt">
           <Settings2 size={28} />
-          <h2>Connect your {tv ? "TV" : "movie"} metadata.</h2>
-          <p>
-            Add your TMDb API Read Access Token in Settings to search real{" "}
-            {tv ? "TV" : "movie"}
-            titles and artwork.
-          </p>
+          <h2>TMDb is not connected.</h2>
+          <p>Add a TMDb API Read Access Token in Settings.</p>
           <Button asChild>
             <Link to="/settings">Connect TMDb</Link>
           </Button>
@@ -167,10 +163,6 @@ function MediaSearch({
             <section className="panel search-intro">
               <SearchIcon size={30} />
               <h2>Search by title</h2>
-              <p>
-                Search a title to see real {tv ? "show" : "movie"} details,
-                artwork, and release dates.
-              </p>
             </section>
           )}
           <RequestState
@@ -187,7 +179,7 @@ function MediaSearch({
               {results.data.items.length === 0 ? (
                 <section className="panel search-intro">
                   <h2>{tv ? "No shows found." : "No movies found."}</h2>
-                  <p>Try another title or check the spelling.</p>
+                  <p>Try another title.</p>
                 </section>
               ) : (
                 <div className="movie-grid">

@@ -265,11 +265,8 @@ function ReleaseBrowser() {
       />
       {indexer.data && !indexer.data.configured && (
         <section className="panel connect-prompt">
-          <h2>Release search is ready when you connect an indexer.</h2>
-          <p>
-            Add a direct tracker, a private RSS feed, Torznab or Newznab
-            endpoint. Your library and monitoring choices remain available.
-          </p>
+          <h2>No indexer connected.</h2>
+          <p>Add a tracker, RSS feed, Torznab or Newznab endpoint.</p>
           <Button asChild>
             <Link to="/indexers">Connect indexer</Link>
           </Button>

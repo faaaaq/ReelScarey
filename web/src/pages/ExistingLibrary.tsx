@@ -378,11 +378,7 @@ export function ExistingLibrary() {
           )}
         </>
       ) : (
-        !roots.loading && (
-          <p>
-            No discovery scans yet. Choose Movies, TV Shows, or Anime to begin.
-          </p>
-        )
+        !roots.loading && <p>No discovery scans yet.</p>
       )}
     </>
   );

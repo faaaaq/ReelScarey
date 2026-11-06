@@ -109,11 +109,7 @@ function ActivityList() {
             </div>
           ) : (
             <section className="panel search-intro">
-              <h2>Your next download starts in Movies.</h2>
-              <p>
-                Choose a movie, search your connected indexer, and select a
-                release. Only downloads started by ReelScarey appear here.
-              </p>
+              <h2>No downloads yet</h2>
               <Button asChild>
                 <Link to="/movies">Open movies</Link>
               </Button>

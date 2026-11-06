@@ -159,7 +159,7 @@ export function Announces() {
           ? "Source saved."
           : wasEnabled
             ? "Source added and enabled."
-            : "Source added paused. Enable it when you are ready to connect.",
+            : "Source added paused.",
       );
       sources.reload();
     } catch (e) {
@@ -337,10 +337,8 @@ export function Announces() {
               />
             </label>
             <p className="field-help">
-              The {def?.key_label || "tracker key"} is encrypted and used for
-              automatic downloads when that step is enabled. It is not sent to
-              other hosts. For IPTorrents, copy the passkey from your details
-              page.
+              Encrypted. Used for automatic downloads when that step is enabled.
+              For IPTorrents, copy the passkey from your details page.
             </p>
             <label>
               Invite command{" "}
@@ -365,8 +363,7 @@ export function Announces() {
               Connect this source now
             </label>
             <p className="field-help">
-              New sources start paused. Save it now and enable it when you are
-              ready to connect; a paused source keeps its encrypted credentials
+              New sources start paused. A paused source keeps its credentials
               without opening an IRC connection.
             </p>
             {def && (
@@ -459,12 +456,7 @@ export function Announces() {
           {events.data?.total ?? 0} stored announce
           {events.data?.total === 1 ? "" : "s"}; the newest 50 are shown.
         </p>
-        {!events.data?.items.length && (
-          <p>
-            Nothing captured yet. Enable a source and wait for the tracker to
-            publish a release.
-          </p>
-        )}
+        {!events.data?.items.length && <p>No announces captured.</p>}
         {events.data?.items.map((event) => (
           <div key={event.id} className="announce-event">
             <div>

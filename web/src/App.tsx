@@ -417,10 +417,7 @@ function AppShell() {
               path="*"
               element={
                 <>
-                  <PageHeading
-                    title="Page not found"
-                    description="Check the address or return to your library."
-                  />
+                  <PageHeading title="Page not found" />
                   <Link to="/" className="text-link">
                     Back to dashboard
                   </Link>

@@ -69,10 +69,7 @@ export function DownloadClients() {
           <section className="panel system-panel">
             <h2>Named connections</h2>
             {!resource.data.items.some((c) => !c.builtin) && (
-              <p>
-                No named clients saved. Existing Settings connections continue
-                to work.
-              </p>
+              <p>No named clients saved.</p>
             )}
             {resource.data.items
               .filter((c) => !c.builtin)
@@ -101,26 +98,20 @@ export function DownloadClients() {
       <section className="panel system-panel">
         <h2>Transmission setup</h2>
         <p>
-          Use Transmission 4 with a username and password, torrent scripts
-          disabled, and its full RPC address (normally
-          http://transmission:9091/transmission/rpc). Jobs use an ownership
-          label and a dedicated folder. Existing torrents are left unchanged.
+          Transmission 4 with a username, password, torrent scripts disabled,
+          and its full RPC URL. Jobs use an ownership label and a dedicated
+          folder.
         </p>
         <h2>Usenet folder setup</h2>
         <p>
           SABnzbd needs a <code>reelscarey</code> category with folder{" "}
           <code>ReelScarey</code>, no sorting and no script. NZBGet needs a{" "}
-          <code>reelscarey</code> category whose destination is the completed
-          folder plus <code>/ReelScarey</code>, using a profile without
-          post-processing extensions. Only fully completed jobs in their own
-          folders can import.
+          <code>reelscarey</code> category pointing at the completed folder plus{" "}
+          <code>/ReelScarey</code>.
         </p>
         <p>
-          Client services stay separate from the ReelScarey container. Mount
-          their completed folders under the app's download mount. TV files still
-          require the existing episode-mapping review. Uncertain Usenet
-          submissions are reconciled by their unique job identity and are never
-          blindly resubmitted.
+          Mount completed client folders under the app's download mount. TV
+          files still require episode review.
         </p>
       </section>
     </>
@@ -264,19 +255,14 @@ function VPNCard() {
       {data && (
         <>
           <p>
-            An optional WireGuard tunnel for the <strong>built-in</strong>{" "}
-            torrent client only. The client binds directly to the tunnel
-            interface, so when the tunnel is down the built-in client stays
-            stopped instead of leaking onto the bare network. Metadata, search
-            and the rest of the app keep using the normal connection, and DNS
-            lookups still use the container's resolver.
+            Optional WireGuard tunnel for the built-in torrent client. When the
+            tunnel is down, that client stays stopped. Other app traffic uses
+            the normal connection.
           </p>
           <p>
-            Requires the container to run with the NET_ADMIN capability and{" "}
-            <code>REELSCAREY_KEEP_NET_ADMIN=1</code>. Upload the WireGuard
-            configuration file from your Mullvad account and the app fills every
-            field and connects. The private key is stored encrypted and never
-            shown again.
+            Requires NET_ADMIN and <code>REELSCAREY_KEEP_NET_ADMIN=1</code>.
+            Upload a Mullvad config to connect. The private key is stored
+            encrypted.
           </p>
           <p className="field-help">
             Upload a <code>.conf</code> file exported by Mullvad. The tunnel

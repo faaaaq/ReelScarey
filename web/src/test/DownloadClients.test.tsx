@@ -56,9 +56,7 @@ it("creates a tested paused client and sends its explicit folder mapping", async
   );
   vi.stubGlobal("fetch", requests);
   renderPage();
-  await screen.findByText(
-    "No named clients saved. Existing Settings connections continue to work.",
-  );
+  await screen.findByText("No named clients saved.");
   const user = userEvent.setup();
   await user.type(screen.getByLabelText("Client name"), "Owned NZBGet");
   await user.selectOptions(screen.getByLabelText("Client type"), "nzbget");

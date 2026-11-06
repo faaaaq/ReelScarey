@@ -124,10 +124,7 @@ export function BulkMatching({
         <>
           <h3>Batch matching suggestions</h3>
           <p>
-            Select up to 25 files on this page. Suggestions never register files
-            automatically. Choose each title and its canonical episodes, then
-            review the complete batch. Existing files stay in place and pass
-            verification before registration.
+            Select up to 25 files. Suggestions never register automatically.
           </p>
           <fieldset className="backup-fields" disabled={busy || !!review}>
             <div className="bulk-video-list">
