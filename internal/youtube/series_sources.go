@@ -510,8 +510,8 @@ func (s *Store) queueSeriesEntry(ctx context.Context, tx *sql.Tx, p SeriesSource
 	if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_reviews(id,video_id,video_title,channel,target_kind,media_id,episode_id,target_snapshot,expires_at) VALUES(?,?,?,?,?,?,?,?,?)`, key, entry.ID, entry.Title, entry.Channel, "episode", p.MediaID, episodeID, snap, expiry); e != nil {
 		return "", e
 	}
-	options, _ := json.Marshal(p.Subtitles)
-	if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_subtitle_options(review_id,languages_json,automatic,quality) VALUES(?,?,?,?)`, key, string(options), p.Subtitles.Automatic, p.Quality); e != nil {
+	languages, _ := json.Marshal(p.Subtitles.Languages)
+	if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_subtitle_options(review_id,languages_json,automatic,quality) VALUES(?,?,?,?)`, key, string(languages), p.Subtitles.Automatic, p.Quality); e != nil {
 		return "", e
 	}
 	job, e := s.queueTx(ctx, tx, key)

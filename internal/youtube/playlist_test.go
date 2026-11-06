@@ -103,7 +103,7 @@ func TestPlaylistQueueQueuesSelectedMissingAndRequiresReplacementConsent(t *test
 	ctx := context.Background()
 	s, inspector := playlistFixture(t)
 	url := inspector.result.Source.URL
-	result, e := s.QueuePlaylist(ctx, PlaylistQueueInput{URL: url, ShowID: 1, Season: 1, Quality: "1080", Entries: []string{"aaaaaaaaaaa", "bbbbbbbbbbb"}}, inspector)
+	result, e := s.QueuePlaylist(ctx, PlaylistQueueInput{URL: url, ShowID: 1, Season: 1, Quality: "1080", Subtitles: DownloadOptions{Languages: []string{"en"}}, Entries: []string{"aaaaaaaaaaa", "bbbbbbbbbbb"}}, inspector)
 	if e != nil || len(result) != 2 || result[0].State != "queued" || result[1].State != "queued" {
 		t.Fatal(result, e)
 	}
@@ -114,6 +114,10 @@ func TestPlaylistQueueQueuesSelectedMissingAndRequiresReplacementConsent(t *test
 	for _, job := range jobs {
 		if !job.AutoImport || job.Quality != "1080" || job.Target.Kind != "episode" {
 			t.Fatal(job)
+		}
+		var languages string
+		if e = s.db.QueryRow(`SELECT o.languages_json FROM youtube_jobs j JOIN youtube_subtitle_options o ON o.review_id=j.review_id WHERE j.id=?`, job.ID).Scan(&languages); e != nil || languages != `["en"]` {
+			t.Fatal("languages column is not a language array", languages, e)
 		}
 	}
 	available, e := s.QueuePlaylist(ctx, PlaylistQueueInput{URL: url, ShowID: 1, Season: 1, Quality: "best", Entries: []string{"ddddddddddd"}}, inspector)

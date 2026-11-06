@@ -553,8 +553,8 @@ func (s *Store) queueExplicit(ctx context.Context, mediaID int64, season int, ep
 	if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_reviews(id,video_id,video_title,channel,target_kind,media_id,episode_id,target_snapshot,expires_at) VALUES(?,?,?,?,?,?,?,?,?)`, key, video.ID, video.Title, video.Channel, "episode", mediaID, ep.ID, snap, now+1800); e != nil {
 		return Job{}, e
 	}
-	options, _ := json.Marshal(subtitles)
-	if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_subtitle_options(review_id,languages_json,automatic,quality) VALUES(?,?,?,?)`, key, string(options), subtitles.Automatic, quality); e != nil {
+	languages, _ := json.Marshal(subtitles.Languages)
+	if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_subtitle_options(review_id,languages_json,automatic,quality) VALUES(?,?,?,?)`, key, string(languages), subtitles.Automatic, quality); e != nil {
 		return Job{}, e
 	}
 	job, e := s.queueTx(ctx, tx, key)
