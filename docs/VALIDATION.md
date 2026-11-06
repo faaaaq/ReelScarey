@@ -1982,3 +1982,14 @@ No owner-server media or download client was used for these checks.
 - The source test covers saving and retaining the key across a blank-key edit.
   The Announce page adds a password field and shows "key saved" without
   displaying it. The key is not used until automatic grabbing is enabled.
+
+## Version 0.34.5 seekable title verification
+
+- End-to-end manual acceptance on the live server: an IPTorrents release was
+  downloaded by the built-in qBittorrent client and imported as a verified
+  `[1080p SDR]` movie file. The embedded-title update then failed because the
+  verifier read the non-faststart MP4 through a pipe.
+- Inspection and remux now use the same seekable Linux descriptor as probing.
+  On the acceptance server, a generated non-faststart MP4 rewrites correctly;
+  mp4/m4v/mkv/mov/avi/webm, HDR, chapters, attachments and packet-preservation
+  tests pass. `go test ./...`, `go vet ./...` and `go build ./...` pass.

@@ -60,7 +60,7 @@ func retagInspect(ctx context.Context, f *os.File) (retagResult, error) {
 	if _, e := f.Seek(0, 0); e != nil {
 		return out, e
 	}
-	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", "pipe", "-show_data_hash", "sha256", "-show_entries", "stream=index,codec_type,codec_name,codec_tag_string,extradata_hash,width,height,sample_rate,channels,channel_layout,pix_fmt,sample_fmt,r_frame_rate,time_base,color_transfer,color_primaries,color_space,color_range:stream_tags:stream_disposition:chapter=start_time,end_time:chapter_tags:format_tags", "-of", "json", "-i", "pipe:0")
+	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", probeProtocols(), "-show_data_hash", "sha256", "-show_entries", "stream=index,codec_type,codec_name,codec_tag_string,extradata_hash,width,height,sample_rate,channels,channel_layout,pix_fmt,sample_fmt,r_frame_rate,time_base,color_transfer,color_primaries,color_space,color_range:stream_tags:stream_disposition:chapter=start_time,end_time:chapter_tags:format_tags", "-of", "json", "-i", probeInput())
 	hideProbeWindow(cmd)
 	cmd.Stdin = f
 	cmd.Stderr = io.Discard
@@ -78,7 +78,7 @@ func retagInspect(ctx context.Context, f *os.File) (retagResult, error) {
 	}
 	// Hash packet indexes, timestamps, durations and data hashes in their original
 	// order. Any remux that changes, omits or reorders packets is rejected.
-	cmd = exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", "pipe", "-show_packets", "-show_data_hash", "sha256", "-show_entries", "packet=stream_index,pts_time,dts_time,duration_time,data_hash", "-of", "compact=p=0:nk=0", "-i", "pipe:0")
+	cmd = exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", probeProtocols(), "-show_packets", "-show_data_hash", "sha256", "-show_entries", "packet=stream_index,pts_time,dts_time,duration_time,data_hash", "-of", "compact=p=0:nk=0", "-i", probeInput())
 	hideProbeWindow(cmd)
 	cmd.Stdin = f
 	cmd.Stderr = io.Discard
@@ -210,7 +210,9 @@ func RewriteTitleVerified(ctx context.Context, source, stage *os.File, extension
 	if _, e = source.Seek(0, 0); e != nil {
 		return Probe{}, e
 	}
-	args := []string{"-nostdin", "-v", "error", "-copyts", "-protocol_whitelist", "pipe", "-i", "pipe:0", "-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-c", "copy", "-metadata", "title=" + title, "-f", mux, "-avoid_negative_ts", "disabled"}
+	// The source is inherited as stdin so Linux can open a seekable descriptor
+	// for MP4/MOV files whose index sits at the end. The stage is fd 3.
+	args := []string{"-nostdin", "-v", "error", "-copyts", "-protocol_whitelist", probeProtocols(), "-i", probeInput(), "-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-c", "copy", "-metadata", "title=" + title, "-f", mux, "-avoid_negative_ts", "disabled"}
 	if mux == "mp4" || mux == "mov" || mux == "ipod" {
 		if brand := before.Manifest.Format.Tags["major_brand"]; brand != "" {
 			args = append(args, "-brand", brand)

@@ -2,8 +2,8 @@
 
 ReelScarey can watch tracker IRC announce channels and keep a bounded history
 of new releases. This release captures and displays announces; it does **not**
-start downloads automatically. Use the tracker link or attach the `.torrent`
-manually until automatic grabbing is added.
+start downloads automatically. Automatic grabbing is paused at the owner's
+request. Use the tracker link or attach the `.torrent` manually.
 
 ## Supported trackers
 
@@ -58,8 +58,8 @@ error appears under the source.
 
 - Search for these private trackers is not part of this release; the existing
   IPTorrents/XSpeeds/Nyaa/RSS/Torznab/Newznab adapters remain the search paths.
-- Automatic queueing and download-URL fetching are the next step. That will
-  need each tracker's passkey/RSS key and a fenced queue guard.
+- Automatic queueing and download-URL fetching are deferred at the owner's
+  request. The saved key is ready for when that work resumes.
 ## Readiness and deferred live testing
 
 New sources are saved **paused** by default. Saving stores the encrypted IRC

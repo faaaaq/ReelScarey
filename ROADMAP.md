@@ -676,7 +676,9 @@ Tracker IRC announce channels are captured through encrypted sources for
 IPTorrents, TorrentLeech, FileList, BeyondHD, AnimeBytes and MyAnonamouse.
 Announces are parsed with the trackers' real formats and stored as a bounded,
 deduped history with tracker links. Automatic grabbing is not part of this
-release; the next step adds download-URL fetching and a fenced queue guard.
+release. It is paused at the owner's request; basic Sonarr/Radarr-style library
+and download management takes priority, and this work resumes only when the
+owner explicitly asks.
 
 ## Version 0.34.1 Settings and IPTorrents setup
 

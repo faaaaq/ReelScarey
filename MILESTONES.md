@@ -181,7 +181,8 @@ See the release endpoints in [API](docs/API.md).
   never stored in the event list.
 - [x] Sources can be paused, edited and removed; a failing connection shows
   its error.
-- [ ] Automatic grabbing and download-URL fetching are the next step.
+- [ ] Automatic grabbing and live IRC acceptance are deferred at the owner's
+  request; basic *arr-style library and download management takes priority.
 
 See [announce feeds](docs/ANNOUNCE.md).
 
@@ -222,3 +223,10 @@ See [announce feeds](docs/ANNOUNCE.md).
   TorrentLeech/BeyondHD RSS key, FileList/AnimeBytes passkey, MAM cookie).
 - [x] Key is write-only in the API and UI; blank edits keep it.
 - [x] Stored now, used when automatic grabbing is enabled.
+
+## Version 0.34.5 seekable title verification
+
+- [x] Embedded-title inspection and remux read through a seekable descriptor on
+  Linux, so MP4/MOV files with the index at the end can be verified.
+- [x] A generated non-faststart MP4 acceptance case passes alongside every
+  supported container, HDR transfer, chapter/attachment and packet check.
