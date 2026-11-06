@@ -473,14 +473,24 @@ func (s *Store) ProcessSeriesSource(ctx context.Context, inspector SourceInspect
 	} else if queued > 0 {
 		message = fmt.Sprintf("Queued %d episode%s.", queued, map[bool]string{true: "", false: "s"}[queued == 1])
 	}
-	_, e = tx.ExecContext(work, `UPDATE youtube_series_sources SET initialized=1,last_checked=?,next_run=?,requested=0,state='idle',message=?,lease_owner='',lease_until=0 WHERE id=? AND revision=? AND lease_owner=?`, now, now+int64(p.Interval)*3600, message, p.ID, p.Revision, owner)
+	res, e := tx.ExecContext(work, `UPDATE youtube_series_sources SET initialized=1,last_checked=?,next_run=?,requested=0,state='idle',message=?,lease_owner='',lease_until=0 WHERE id=? AND revision=? AND lease_owner=?`, now, now+int64(p.Interval)*3600, message, p.ID, p.Revision, owner)
 	if e != nil {
 		return true, e
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return true, ErrChanged
 	}
 	return true, tx.Commit()
 }
 
 func (s *Store) queueSeriesEntry(ctx context.Context, tx *sql.Tx, p SeriesSource, entry Entry, episodeID int64) (string, error) {
+	var monitored int
+	if e := tx.QueryRowContext(ctx, `SELECT (e.monitored=1 AND s.monitored=1 AND m.monitored=1) FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id WHERE e.id=? AND s.series_id=? AND m.kind='series'`, episodeID, p.MediaID).Scan(&monitored); e != nil {
+		return "", ErrChanged
+	}
+	if monitored != 1 {
+		return "", ErrBusy
+	}
 	var fileID int64
 	if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episode_files WHERE episode_id=?`, episodeID).Scan(&fileID); e != nil {
 		return "", e
