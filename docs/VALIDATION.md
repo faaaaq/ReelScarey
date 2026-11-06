@@ -2011,5 +2011,6 @@ No owner-server media or download client was used for these checks.
   playlist-order preview and the reviewed import boundary. Automatic import is
   only approved through the same verified import review.
 - Frontend tests cover the MeTube-style fetch/select/review/queue flow and the
-  import evidence dialog; the Series page test covers the added source panel.
-  Prettier, TypeScript, 194 interaction tests and the production build pass.
+  import evidence dialog; the Series page test covers the added source panel and
+  the Torrents page test covers listing and the disabled state. Prettier,
+  TypeScript, 196 interaction tests and the production build pass.

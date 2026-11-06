@@ -130,8 +130,12 @@ function isError(t: Torrent) {
 function managed(t: Torrent) {
   return t.tags
     .split(",")
+    .map((tag) => tag.trim())
     .some(
-      (tag) => tag.trim() === "reelscarey" || tag.startsWith("reelscarey:"),
+      (tag) =>
+        tag === "reelscarey" ||
+        tag.startsWith("reelscarey-") ||
+        tag.startsWith("reelscarey:"),
     );
 }
 
@@ -529,6 +533,7 @@ function TorrentDetails({ hash }: { hash: string }) {
       </Dialog.Trigger>
       <Dialog.Content maxWidth="620px">
         <Dialog.Title>Torrent details</Dialog.Title>
+        <Dialog.Description size="1">Files and save path.</Dialog.Description>
         {open && <TorrentDetailsBody hash={hash} />}
         <Dialog.Close>
           <Button variant="soft">Close</Button>
