@@ -1889,3 +1889,6 @@ No owner-server media or download client was used for these checks.
   enable path now states the kill-switch reason immediately), and the live
   supervision test counted unrelated qbittorrent-nox processes from earlier
   runner steps (it now compares against a pre-test baseline).
+- The VPN dependency was missing from the HTTP server's constructor call, so
+  the card reported the service as unavailable. The dependency is wired and the
+  endpoint verified on the affected deployment before this release.
