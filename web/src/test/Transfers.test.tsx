@@ -419,6 +419,9 @@ describe("release downloads and imports", () => {
       }
     });
     mount("/settings");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Download Clients" }),
+    );
     const region = await screen.findByRole("region", {
       name: "qBittorrent settings",
     });
