@@ -2022,3 +2022,14 @@ No owner-server media or download client was used for these checks.
   and cancelled it; the test staging directory and job record were removed. A
   per-show YouTube source on a real show previewed a channel, saved paused,
   recorded its baseline and was removed without queueing a download.
+
+## Version 0.36 Playlist to series
+
+- Playlist tests cover saved-show identification, full-episode preference over
+  clips, duplicate and unmatched marking, preselection, explicit missing-episode
+  queues, replacement consent and the acquisition reservation.
+- The frontend batch test covers the show/season preview, episode table,
+  preselection, the download action and the exact queue request. The YouTube
+  single-video tests cover the renamed steps and review actions.
+- YouTube imports now append the inspected resolution/SDR/HDR quality tag to the
+  organized episode filename, matching regular downloads.

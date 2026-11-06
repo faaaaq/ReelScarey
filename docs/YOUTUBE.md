@@ -80,6 +80,28 @@ paused. The first check records the current videos as a baseline; **Fill
 missing** explicitly clears that baseline and requests the mapped missing
 episodes. Future videos are checked on the source interval.
 
+## Playlist to series
+
+Use the **Playlist to series** tab for a one-time batch. Paste a playlist, then
+confirm the saved show and season that ReelScarey identifies from the playlist
+title. If several shows match, choose one; if none match, search the TV library.
+Episode matching uses an explicit `S01E05`, `Ep.5`, `E5` or `#5` token, with an
+episode-title fallback. The longest video for each episode is preselected, so a
+playlist that also contains clips does not queue several files for one episode.
+
+Select or clear individual videos, then **Download selected**. Missing episodes
+are downloaded, verified and imported through the normal organization template,
+including the inspected `[1080p SDR]`/`[2160p HDR]` quality tag. Videos that
+already have an episode file are disabled until **Replace episodes already in the
+library** is enabled; replacement acquisitions keep the old file and require the
+separate swap review in Organize library. Unmatched videos and episodes with an
+active download are skipped and reported.
+
+The batch is explicit and does not need monitoring. **Save a paused source for
+future episodes** also creates the per-show source, which can be enabled on the
+show page.
+
+
 Only episodes that are loaded, monitored and missing are queued. Episodes with
 an existing file or another active download are skipped with a recorded reason.
 When **Import verified exact matches without review** is enabled, a verified

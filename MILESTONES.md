@@ -245,3 +245,16 @@ See [announce feeds](docs/ANNOUNCE.md).
   order mapping, preview, paused creation, baseline and explicit backfill.
 - [x] Exact mapped episodes can auto-import after verification; existing files
   and active downloads are skipped and recorded.
+
+## Version 0.36 Playlist to series
+
+- [x] Rebuilt the YouTube page around numbered steps: load, destination,
+  quality/subtitles, review and download.
+- [x] Added a Playlist to series batch: identify the saved show from the
+  playlist title, choose the season, match explicit episode numbers, prefer the
+  longest video per episode and select videos individually.
+- [x] Batch downloads target the matched episodes and import with the normal
+  organization and quality-tagged filenames; already-present episodes require an
+  explicit replacement choice and the existing swap review.
+- [x] Styled dropdowns as controls with a visible border and chevron; operational
+  guidance now sits next to each step.

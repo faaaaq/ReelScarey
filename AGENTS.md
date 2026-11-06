@@ -115,7 +115,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   mapping reviewed by the owner; they start paused and only queue loaded,
   monitored, missing episodes. Automatic import applies only to those exact
   mapped acquisitions and still uses the verified journaled import; anything
-  uncertain stays awaiting review. Sidecars require explicit language choice,
+  uncertain stays awaiting review. Playlist-to-series batches re-inspect the
+  playlist, require an explicitly confirmed saved show and season, and never
+  replace an existing episode without the reviewed replacement flow.
+  Sidecars require explicit language choice,
   bounded content, review and recovery alongside video.
   The Torrents page manages only the supervised built-in client: manual inputs
   are magnet links or bounded uploaded metainfo (never server-fetched URLs), and

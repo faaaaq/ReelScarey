@@ -67,11 +67,11 @@ describe("YouTube source review", () => {
       screen.getByLabelText("YouTube URL"),
       "https://www.youtube.com/playlist?list=PLabcdefghijk",
     );
-    await userEvent.click(screen.getByRole("button", { name: "Fetch" }));
+    await userEvent.click(screen.getByRole("button", { name: "Load" }));
     const results = await screen.findByRole("list", { name: "Source results" });
     expect(within(results).getByText(/XG DAYS #01/)).toBeVisible();
     expect(
-      screen.queryByRole("button", { name: "Add to queue" }),
+      screen.queryByRole("button", { name: "Download" }),
     ).not.toBeInTheDocument();
     await userEvent.click(
       within(results).getByRole("button", { name: /XG DAYS #01/ }),
@@ -80,7 +80,9 @@ describe("YouTube source review", () => {
       await screen.findByLabelText("Collection"),
       "2",
     );
-    await userEvent.click(screen.getByRole("button", { name: "Review" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Check destination" }),
+    );
     const review = await screen.findByLabelText("Review YouTube download");
     expect(review).toHaveTextContent("XG Days");
     const preview = fetch.mock.calls.find(([url]) =>
@@ -92,9 +94,9 @@ describe("YouTube source review", () => {
       subtitles: { languages: ["en"], automatic: false, quality: "best" },
     });
     await userEvent.click(
-      within(review).getByRole("button", { name: "Add to queue" }),
+      within(review).getByRole("button", { name: "Download" }),
     );
-    expect(await screen.findByText("Queued.")).toBeVisible();
+    expect(await screen.findByText("Download queued.")).toBeVisible();
   });
 
   it("clears a review when its target changes", async () => {
@@ -103,7 +105,7 @@ describe("YouTube source review", () => {
       screen.getByLabelText("YouTube URL"),
       "https://youtu.be/limOfz2srCk",
     );
-    await userEvent.click(screen.getByRole("button", { name: "Fetch" }));
+    await userEvent.click(screen.getByRole("button", { name: "Load" }));
     const results = await screen.findByRole("list", { name: "Source results" });
     await userEvent.click(
       within(results).getByRole("button", { name: /XG DAYS #01/ }),
@@ -112,7 +114,9 @@ describe("YouTube source review", () => {
       await screen.findByLabelText("Collection"),
       "2",
     );
-    await userEvent.click(screen.getByRole("button", { name: "Review" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Check destination" }),
+    );
     await screen.findByLabelText("Review YouTube download");
     await userEvent.selectOptions(
       screen.getByLabelText("Destination"),
@@ -122,7 +126,7 @@ describe("YouTube source review", () => {
       screen.queryByLabelText("Review YouTube download"),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Add to queue" }),
+      screen.queryByRole("button", { name: "Download" }),
     ).not.toBeInTheDocument();
   });
 
@@ -188,5 +192,128 @@ describe("YouTube source review", () => {
       url.endsWith("/youtube/jobs/job123/import"),
     );
     expect(JSON.parse(String(request?.[1]?.body))).toEqual(evidence);
+  });
+
+  it("matches a playlist to a saved show and queues selected episodes", async () => {
+    const fetch = vi.fn(async (url: string, _options?: RequestInit) => {
+      if (url.endsWith("/youtube/collections"))
+        return Response.json({ items: [] });
+      if (url.endsWith("/youtube/files")) return Response.json({ items: [] });
+      if (url.endsWith("/youtube/jobs")) return Response.json({ items: [] });
+      if (url.endsWith("/youtube/playlist/preview"))
+        return Response.json({
+          source_url:
+            "https://www.youtube.com/playlist?list=PLohGMC3h97JT6mdbfBiriHz4aVx6XdZUF",
+          title: "X or GO Full Episodes",
+          channel: "Vaff angool",
+          truncated: false,
+          needs_show: false,
+          show: {
+            id: 1908,
+            title: "X or Go",
+            year: 2024,
+            tmdb_id: 1,
+            score: 1,
+          },
+          candidates: [],
+          season_number: 1,
+          seasons: [{ number: 1, episode_count: 5, loaded: true }],
+          entries: [
+            {
+              video_id: "gA3TyIxnMKY",
+              title: "[X or GO] Ep.1 (Full Ver.) (ENG/JPN)",
+              channel: "Vaff angool",
+              duration_seconds: 2876,
+              thumbnail: "",
+              season_number: 1,
+              episode_number: 1,
+              episode_id: 14100,
+              episode_title: "Episode 1",
+              status: "missing",
+              note: "",
+              selected_default: true,
+              duplicate: false,
+            },
+            {
+              video_id: "ogaqMkYZGBc",
+              title: "[X or GO] Ep.2 (Full Ver.) (ENG/JPN)",
+              channel: "Vaff angool",
+              duration_seconds: 3077,
+              thumbnail: "",
+              season_number: 1,
+              episode_number: 2,
+              episode_id: 14101,
+              episode_title: "Episode 2",
+              status: "missing",
+              note: "",
+              selected_default: true,
+              duplicate: false,
+            },
+          ],
+        });
+      if (url.endsWith("/youtube/playlist/queue"))
+        return Response.json(
+          {
+            items: [
+              {
+                video_id: "gA3TyIxnMKY",
+                episode_id: 14100,
+                job_id: "job1",
+                state: "queued",
+                message: "Download queued.",
+              },
+              {
+                video_id: "ogaqMkYZGBc",
+                episode_id: 14101,
+                job_id: "job2",
+                state: "queued",
+                message: "Download queued.",
+              },
+            ],
+          },
+          { status: 201 },
+        );
+      return Response.json(
+        { error: { message: "Unexpected request" } },
+        { status: 404 },
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+    render(
+      <Theme>
+        <MemoryRouter>
+          <YouTube />
+        </MemoryRouter>
+      </Theme>,
+    );
+    await userEvent.click(
+      screen.getByRole("tab", { name: "Playlist to series" }),
+    );
+    await userEvent.type(
+      screen.getByLabelText("Playlist URL"),
+      "https://www.youtube.com/playlist?list=PLohGMC3h97JT6mdbfBiriHz4aVx6XdZUF",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Load playlist" }),
+    );
+    expect(await screen.findByText("X or Go")).toBeVisible();
+    expect(
+      screen.getByRole("list", { name: "Playlist episodes" }),
+    ).toHaveTextContent("S01E01");
+    expect(screen.getByText("2 selected")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Download 2 selected" }),
+    );
+    expect(await screen.findByText("2 of 2 queued.")).toBeVisible();
+    const request = fetch.mock.calls.find(([url]) =>
+      url.endsWith("/youtube/playlist/queue"),
+    );
+    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+      show_id: 1908,
+      season_number: 1,
+      entries: ["gA3TyIxnMKY", "ogaqMkYZGBc"],
+      replace_existing: false,
+      keep_source: false,
+    });
   });
 });

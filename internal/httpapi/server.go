@@ -230,6 +230,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/torrents/{hash}", method(http.MethodGet, s.torrentDetail))
 	mux.HandleFunc("/api/v1/torrents/{hash}/{action}", method(http.MethodPost, s.torrentAction))
 	mux.HandleFunc("/api/v1/youtube/inspect", method(http.MethodPost, s.youtubeInspect))
+	mux.HandleFunc("/api/v1/youtube/playlist/preview", method(http.MethodPost, s.youtubePlaylistPreview))
+	mux.HandleFunc("/api/v1/youtube/playlist/queue", method(http.MethodPost, s.youtubePlaylistQueue))
 	mux.HandleFunc("/api/v1/youtube/bulk/review", method(http.MethodPost, s.youtubeBulkReview))
 	mux.HandleFunc("/api/v1/youtube/bulk/queue", method(http.MethodPost, s.youtubeBulkQueue))
 	mux.HandleFunc("/api/v1/youtube/subscriptions", s.youtubeSubscriptions)

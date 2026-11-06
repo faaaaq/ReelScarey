@@ -81,8 +81,20 @@ Per-show sources use GET/POST
 `reviewed: true`; new sources start paused), POST `.../youtube-sources/preview`
 for the explicit video-to-episode mapping, and POST/DELETE
 `.../youtube-sources/{source}` for a fenced check, an explicit baseline
-backfill (`{"action":"backfill"}`) or removal. Mutations require CSRF and same
-origin. See [YouTube sourcing](YOUTUBE.md) for limits and setup.
+backfill (`{"action":"backfill"}`) or removal.
+
+The playlist batch uses POST `/api/v1/youtube/playlist/preview` with
+`{source_url}`, optional `show_id` and `season_number`. It returns ranked saved
+show matches, loaded seasons and per-video episode matches (missing, available,
+active or unmatched), with the longest video per episode preselected. POST
+`/api/v1/youtube/playlist/queue` accepts `source_url`, `show_id`,
+`season_number`, `quality`, `subtitles`, explicit `entries` (video IDs),
+`replace_existing` and `keep_source`; it re-inspects the playlist, verifies every
+mapping and queues only the selected missing episodes. Existing files require
+`replace_existing` and still go through the acquired-replacement review.
+
+Mutations require CSRF and same origin. See [YouTube sourcing](YOUTUBE.md) for
+limits and setup.
 
 ## Anime providers and release-order reviews
 

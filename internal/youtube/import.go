@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/organization"
+	"github.com/faaaaq/ReelScarey/internal/transfer"
 )
 
 type ImportReview struct {
@@ -103,6 +105,16 @@ func (s *Store) reviewImportTx(ctx context.Context, tx *sql.Tx, cfg config.Confi
 	}
 	if replacement > 0 {
 		r.Destination = path.Join(".reelscarey-versions", "acquired-youtube-"+jobID+ext)
+	} else {
+		// YouTube imports use the same inspected quality label as regular
+		// downloads: resolution plus an explicit HDR/SDR tag.
+		var probe transfer.Probe
+		if json.Unmarshal([]byte(r.Probe), &probe) == nil {
+			if tag := organization.QualityTag(probe.Width, probe.Height, probe.HDR); tag != "" {
+				destinationExt := path.Ext(r.Destination)
+				r.Destination = strings.TrimSuffix(r.Destination, destinationExt) + " [" + tag + "]" + destinationExt
+			}
+		}
 	}
 	r.Subtitles = []SubtitleReview{}
 	rows, e := tx.QueryContext(ctx, `SELECT language,size_bytes,sha256 FROM youtube_subtitle_sources WHERE job_id=? ORDER BY language`, jobID)
