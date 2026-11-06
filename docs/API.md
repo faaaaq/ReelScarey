@@ -755,7 +755,15 @@ Credentials are never returned. Save/test have bounded connection timeouts.
 - `DELETE /api/v1/download-clients/{id}` requires `{revision,reviewed:true}` and
   refuses default clients or clients with unfinished jobs (including stopped).
   Completed history remains. It never deletes external jobs or source files.
-- `GET /api/v1/download-clients/builtin` reports the app-supervised built-in
+- - `GET /api/v1/vpn/mullvad` reports the opt-in tunnel:
+  `{present,enabled,state,message?,interface,address?,endpoint?,revision}` with
+  state `up`, `starting`, `stopped` or `failed`. The private key is never
+  returned. `PUT` with `{revision,enabled?,private_key?,address,peer_key,endpoint,allowed_ips?}`
+  saves the encrypted configuration; enabling awaits the interface and reverts
+  to disabled when it does not come up. The built-in torrent client binds to
+  the tunnel and stops while it is down.
+
+`GET /api/v1/download-clients/builtin` reports the app-supervised built-in
   qBittorrent daemon: `{present,enabled,state,message?,revision,peer_port,active_jobs,name}`;
   state is `running`, `starting`, `stopped` or `failed` with its honest message.
   `PUT` with `{revision,enabled?,peer_port?}` enables it (the daemon starts, its

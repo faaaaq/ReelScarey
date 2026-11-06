@@ -34,6 +34,29 @@ nothing is exposed beyond the peer port.
 - Generic client editing and deletion refuse the built-in connection; use its
   own controls. It can still be tested from the client list.
 
+## Mullvad VPN kill switch (0.33)
+
+The Download clients page can save an encrypted Mullvad WireGuard
+configuration and bring up a `reelscarey0` tunnel **without installing any
+routes**. The built-in torrent client binds directly to that interface, so:
+
+- torrent traffic can only leave through the tunnel — if the interface
+  disappears, the client has no egress and cannot fall back to the bare
+  network;
+- the supervisor additionally stops the built-in client while the tunnel is
+  down and starts it again when the tunnel returns;
+- the rest of the application (metadata, search, the web UI) keeps using the
+  normal connection, and DNS lookups still use the container's resolver —
+  tracker hostnames remain visible to that resolver, which the settings page
+  states plainly.
+
+Enabling requires the container to run with `cap_add: [NET_ADMIN]` and
+`REELSCAREY_KEEP_NET_ADMIN=1`, which retains that capability for the
+application process through its privilege drop; the default deployment stays
+capability-free. The private key is stored encrypted, never returned by the
+API, and redacted from any tool output that reaches logs or status messages.
+A failed connection reverts to disabled with the failure visible.
+
 Each job retains its client ID/type/name, remote completed root and local folder
 mapping. Credentials are encrypted with the existing configuration key and never
 returned by the API. Leaving a secret blank retains it; changing the address or

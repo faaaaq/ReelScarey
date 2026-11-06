@@ -33,6 +33,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/settings"
 	"github.com/faaaaq/ReelScarey/internal/subtitle"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
+	"github.com/faaaaq/ReelScarey/internal/vpn"
 	"github.com/faaaaq/ReelScarey/internal/youtube"
 )
 
@@ -57,6 +58,7 @@ type Server struct {
 	bot              *discordbot.Service
 	emby             *emby.Service
 	embyMonitor      *emby.Monitor
+	vpn              *vpn.Service
 	franchises       metadata.FranchiseProvider
 	animeProvider    metadata.AnimeProvider
 	kitsuProvider    metadata.AnimeProvider
@@ -78,6 +80,7 @@ type Dependencies struct {
 	Secrets          *securestore.Store
 	Emby             *emby.Service
 	EmbyMonitor      *emby.Monitor
+	VPN              *vpn.Service
 	Bot              *discordbot.Service
 	Franchises       metadata.FranchiseProvider
 	Backups          *backups.Service
@@ -92,6 +95,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle}
 	s.youtube = youtube.NewStore(db)
 	s.backups = deps.Backups
+	s.vpn = deps.VPN
 	s.metadataRefresh = deps.MetadataRefresh
 	if s.metadataRefresh == nil && deps.Metadata != nil {
 		s.metadataRefresh = automation.NewMetadataRefresher(db, deps.Metadata)
@@ -286,6 +290,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/series/{id}/seasons/{number}/releases", method(http.MethodGet, s.searchTVReleases))
 	mux.HandleFunc("/api/v1/library/series/{id}/manual-torrent", method(http.MethodPost, s.manualSeriesTorrent))
 	mux.HandleFunc("/api/v1/library/movies/{id}/manual-torrent", method(http.MethodPost, s.manualMovieTorrent))
+	mux.HandleFunc("/api/v1/vpn/mullvad", s.vpnMullvad)
 	mux.HandleFunc("/api/v1/downloads", s.downloadCollection)
 	mux.HandleFunc("/api/v1/library/movies/{id}/versions", s.movieVersions)
 	mux.HandleFunc("/api/v1/downloads/{id}", method(http.MethodGet, s.downloadDetail))

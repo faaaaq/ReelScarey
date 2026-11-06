@@ -29,11 +29,12 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"github.com/faaaaq/ReelScarey/internal/subtitle"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
+	"github.com/faaaaq/ReelScarey/internal/vpn"
 	"github.com/faaaaq/ReelScarey/internal/youtube"
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.32.0-dev"
+var version = "0.33.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -129,6 +130,8 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	automationService := automation.New(db, transferService)
 	metadataRefresh := automation.NewMetadataRefresher(db, metadataService)
 	subtitleService := subtitle.New(db, secretStore, cfg, subtitle.NewOpenSubtitles())
+	vpnService := vpn.New(db, secretStore, cfg)
+	transferService.SetTunnelGate(vpnService.TunnelUp)
 	organizationService := organization.New(db, cfg)
 	organizationService.SetProbe(func(ctx context.Context, f *os.File) (string, error) {
 		result, err := (transfer.FFprobe{}).Probe(ctx, f)
@@ -284,7 +287,16 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			subtitleService.Run(workerCtx, logger)
 		}
 	}()
+	vpnDone := make(chan struct{})
+	go func() {
+		defer close(vpnDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			vpnService.Supervise(workerCtx, logger)
+		}
+	}()
 	defer func() { workerCancel(); <-subtitleDone }()
+	defer func() { workerCancel(); <-vpnDone }()
+
 	embyDone := make(chan struct{})
 	go func() {
 		defer close(embyDone)

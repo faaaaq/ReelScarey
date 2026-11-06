@@ -141,6 +141,11 @@ func (s *Service) UpdateBundled(ctx context.Context, in BundledUpdate) (BundledS
 	generation := s.bundled.generation()
 	s.bundled.poke()
 	if in.Enabled == nil || *in.Enabled {
+		if !s.tunnelReady() {
+			// The VPN kill switch keeps the daemon stopped; the saved status
+			// explains it and the client starts when the tunnel returns.
+			return s.BundledStatus(ctx)
+		}
 		if e = s.awaitBundled(ctx, generation); e != nil {
 			return BundledStatus{}, e
 		}

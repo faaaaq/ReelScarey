@@ -172,3 +172,11 @@ See [download clients](docs/DOWNLOAD_CLIENTS.md).
   episode numbers bind exactly those; import mapping review unchanged.
 
 See the release endpoints in [API](docs/API.md).
+
+## Version 0.33 Mullvad VPN kill switch
+
+- [x] Encrypted Mullvad WireGuard configuration with a route-suppressed tunnel.
+- [x] The built-in torrent client binds to the tunnel interface and stops
+  whenever the tunnel is down; metadata and the UI keep the normal network.
+- [x] NET_ADMIN retention is opt-in; the private key is encrypted, never
+  returned, and redacted from tool output.

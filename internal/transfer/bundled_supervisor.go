@@ -13,24 +13,27 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/faaaaq/ReelScarey/internal/vpn"
 )
 
 // bundledRuntime owns the supervised daemon process. The supervisor loop is
 // the only writer; status readers get an honest state without touching the
 // process.
 type bundledRuntime struct {
-	procMu          sync.Mutex
-	stateMu         sync.Mutex
-	cmd             *exec.Cmd
-	wait            chan error
-	stderr          limitedBuffer
-	state           string
-	message         string
-	lifecycle       int64
-	attempts        int
-	lastAttempt     time.Time
-	appliedRevision int
-	notify          chan struct{}
+	procMu           sync.Mutex
+	stateMu          sync.Mutex
+	cmd              *exec.Cmd
+	wait             chan error
+	stderr           limitedBuffer
+	state            string
+	message          string
+	lifecycle        int64
+	attempts         int
+	lastAttempt      time.Time
+	appliedRevision  int
+	tunnelReadyCache bool
+	notify           chan struct{}
 }
 
 func (r *bundledRuntime) snapshot() (string, string) {
@@ -168,7 +171,11 @@ func (s *Service) reconcileBundled(ctx context.Context, logger *slog.Logger, c C
 	r.procMu.Lock()
 	wasAlive := r.cmd != nil
 	stale := wasAlive && r.appliedRevision != revision
+	prevTunnel := r.tunnelReadyCache
+	currentTunnel := s.tunnelReady()
+	r.tunnelReadyCache = currentTunnel
 	r.procMu.Unlock()
+	tunnelChanged := wasAlive && prevTunnel != currentTunnel
 	if !desired {
 		if wasAlive {
 			s.stopBundled()
@@ -177,10 +184,20 @@ func (s *Service) reconcileBundled(ctx context.Context, logger *slog.Logger, c C
 		}
 		return
 	}
-	if wasAlive && !stale {
+	// The VPN kill switch: with a tunnel configured but down, the daemon does
+	// not run at all, so torrent traffic can never fall back to the bare
+	// interface.
+	if !currentTunnel {
+		if wasAlive {
+			s.stopBundled()
+		}
+		r.setState("stopped", "The VPN tunnel is down. The built-in client stays stopped until the tunnel returns.")
 		return
 	}
-	if stale {
+	if wasAlive && !stale && !tunnelChanged {
+		return
+	}
+	if stale || tunnelChanged {
 		s.stopBundled()
 	}
 	if time.Since(r.lastAttempt) < bundledBackoff(r.attempts) {
@@ -231,6 +248,11 @@ func (s *Service) startBundled(ctx context.Context, c ClientConfig, revision int
 		"[BitTorrent]\n" +
 		"Session\\Port=" + strconv.Itoa(c.PeerPort) + "\n" +
 		"Session\\DefaultSavePath=" + c.DownloadPath + "\n"
+	// The VPN kill switch: with the tunnel up, the daemon binds every torrent
+	// socket to the tunnel interface, so it has no egress without the tunnel.
+	if s.tunnelReady() {
+		conf += "Session\\Interface=" + vpn.TunnelInterface + "\n"
+	}
 	if e := os.WriteFile(filepath.Join(confDir, "qBittorrent.conf"), []byte(conf), 0o600); e != nil {
 		return e
 	}

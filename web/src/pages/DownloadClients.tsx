@@ -30,6 +30,16 @@ type Builtin = {
   active_jobs: number;
   name: string;
 };
+type VPN = {
+  present: boolean;
+  enabled: boolean;
+  state: string;
+  message?: string;
+  interface?: string;
+  address?: string;
+  endpoint?: string;
+  revision: number;
+};
 const names = {
   qbittorrent: "qBittorrent",
   transmission: "Transmission",
@@ -64,6 +74,7 @@ export function DownloadClients() {
             reload={resource.reload}
           />
           <BuiltinCard reload={resource.reload} />
+          <VPNCard />
           <section className="panel system-panel">
             <h2>Named connections</h2>
             {!resource.data.items.some((c) => !c.builtin) && (
@@ -122,6 +133,147 @@ export function DownloadClients() {
         </p>
       </section>
     </>
+  );
+}
+const vpnStates: Record<string, string> = {
+  up: "Tunnel up",
+  starting: "Connecting…",
+  stopped: "Stopped",
+  failed: "Needs attention",
+};
+function VPNCard() {
+  const resource = useResource<VPN>("/vpn/mullvad");
+  const [address, setAddress] = useState(""),
+    [endpoint, setEndpoint] = useState(""),
+    [peerKey, setPeerKey] = useState(""),
+    [privateKey, setPrivateKey] = useState(""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const data = resource.data;
+  async function save(enabled: boolean) {
+    if (!data || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api("/vpn/mullvad", {
+        method: "PUT",
+        signal: AbortSignal.timeout(100000),
+        body: JSON.stringify({
+          revision: data.revision,
+          enabled,
+          address: address || data.address,
+          endpoint: endpoint || data.endpoint,
+          peer_key: peerKey,
+          ...(privateKey ? { private_key: privateKey } : {}),
+        }),
+      });
+      setPrivateKey("");
+      setPeerKey("");
+      resource.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="panel system-panel">
+      <h2>Mullvad VPN (kill switch)</h2>
+      <RequestState
+        loading={resource.loading}
+        error={resource.error}
+        retry={resource.reload}
+      />
+      {data && (
+        <>
+          <p>
+            An optional WireGuard tunnel for the <strong>built-in</strong>{" "}
+            torrent client only. The client binds directly to the tunnel
+            interface, so when the tunnel is down the built-in client stays
+            stopped instead of leaking onto the bare network. Metadata, search
+            and the rest of the app keep using the normal connection, and DNS
+            lookups still use the container's resolver.
+          </p>
+          <p>
+            Requires the container to run with the NET_ADMIN capability and{" "}
+            <code>REELSCAREY_KEEP_NET_ADMIN=1</code>. Copy the values from your
+            Mullvad account's WireGuard configuration file. The private key is
+            stored encrypted and never shown again.
+          </p>
+          <p>
+            Status:{" "}
+            <Badge
+              color={
+                data.state === "up"
+                  ? "green"
+                  : data.state === "failed"
+                    ? "red"
+                    : "gray"
+              }
+            >
+              {vpnStates[data.state] ?? data.state}
+            </Badge>
+            {data.message ? ` · ${data.message}` : ""}
+          </p>
+          <fieldset disabled={busy} className="backup-fields">
+            <label>
+              Tunnel address (e.g. 10.66.123.45/32)
+              <input
+                value={address || data.address || ""}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="From the Mullvad configuration"
+              />
+            </label>
+            <label>
+              Server public key
+              <input
+                value={peerKey}
+                onChange={(e) => setPeerKey(e.target.value)}
+                placeholder={
+                  data.endpoint ? "Saved — enter to change" : "From Mullvad"
+                }
+              />
+            </label>
+            <label>
+              Peer endpoint (host:port)
+              <input
+                value={endpoint || data.endpoint || ""}
+                onChange={(e) => setEndpoint(e.target.value)}
+                placeholder="From the Mullvad configuration"
+              />
+            </label>
+            <label>
+              Private key{" "}
+              {data.present ? "(leave blank to keep the saved key)" : ""}
+              <input
+                type="password"
+                value={privateKey}
+                onChange={(e) => setPrivateKey(e.target.value)}
+                autoComplete="off"
+              />
+            </label>
+            {data.enabled ? (
+              <Button
+                variant="soft"
+                disabled={busy}
+                onClick={() => void save(false)}
+              >
+                Disable tunnel
+              </Button>
+            ) : (
+              <Button disabled={busy} onClick={() => void save(true)}>
+                Save and connect
+              </Button>
+            )}
+          </fieldset>
+          {error && (
+            <p className="error-box" role="alert">
+              {error}
+            </p>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 const builtinStates: Record<string, string> = {

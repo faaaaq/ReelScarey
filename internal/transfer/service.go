@@ -33,6 +33,7 @@ type Service struct {
 	legacyError       string
 	importer          *Importer
 	bundled           bundledRuntime
+	tunnelGate        func() bool
 }
 
 func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Client, indexer Indexer) *Service {
@@ -45,6 +46,17 @@ func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Clien
 	s.importer = NewImporter(s)
 	s.bundled.notify = make(chan struct{}, 1)
 	return s
+}
+
+// SetTunnelGate supplies the VPN state consulted by the built-in client
+// supervisor. A nil gate means no VPN is configured.
+func (s *Service) SetTunnelGate(gate func() bool) { s.tunnelGate = gate }
+
+// tunnelReady reports whether the built-in daemon may run. When a VPN is
+// configured, the tunnel must be up: the kill switch keeps the torrent client
+// stopped instead of letting it fall back to the bare interface.
+func (s *Service) tunnelReady() bool {
+	return s.tunnelGate == nil || s.tunnelGate()
 }
 
 type IntegrationStatus struct {

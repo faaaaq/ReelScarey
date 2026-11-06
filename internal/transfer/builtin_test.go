@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -212,6 +213,47 @@ func TestBundledClientMissingBinaryFailsHonestly(t *testing.T) {
 		t.Fatal(saved, e)
 	}
 	awaitBundledState(t, f, "stopped")
+	cancel()
+	<-done
+}
+
+func TestBundledClientWaitsForVPNTunnel(t *testing.T) {
+	f := setupWorkflow(t)
+	t.Setenv("REELSCAREY_BUNDLED_QBT", bundledStubBinary(t))
+	tunnel := false
+	f.s.SetTunnelGate(func() bool { return tunnel })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f.s.SuperviseBundled(ctx, slog.New(slog.DiscardHandler))
+	}()
+	status, e := f.s.UpdateBundled(ctx, BundledUpdate{Enabled: boolPtr(true)})
+	if e != nil || !status.Enabled || status.State != "stopped" {
+		t.Fatal(status, e)
+	}
+	if !strings.Contains(status.Message, "VPN tunnel is down") {
+		t.Fatal("the kill-switch state was not honest", status)
+	}
+	tunnel = true
+	f.s.bundled.poke()
+	awaitBundledState(t, f, "running")
+	saved, e := f.s.BundledStatus(ctx)
+	if e != nil || saved.State != "running" || saved.Message != "" {
+		t.Fatal(saved, e)
+	}
+	// The generated configuration binds the daemon to the tunnel interface.
+	conf, e := os.ReadFile(filepath.Join(f.cfg.ConfigDir, "qbittorrent", "qBittorrent", "config", "qBittorrent.conf"))
+	if e != nil || !strings.Contains(string(conf), "Session\\Interface=reelscarey0") {
+		t.Fatal("the tunnel binding was not applied", string(conf), e)
+	}
+	tunnel = false
+	f.s.bundled.poke()
+	stopped := awaitBundledState(t, f, "stopped")
+	if !strings.Contains(stopped.Message, "VPN tunnel is down") {
+		t.Fatal(stopped)
+	}
 	cancel()
 	<-done
 }

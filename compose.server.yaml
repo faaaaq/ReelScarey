@@ -1,7 +1,7 @@
 # Ubuntu x86-64 server installation: no source build required.
 services:
   reelscarey:
-    image: ${REELSCAREY_IMAGE:-faaaaq/reelscarey:0.32.0}
+    image: ${REELSCAREY_IMAGE:-faaaaq/reelscarey:0.33.0}
     platform: linux/amd64
     user: '10001:10001'
     restart: unless-stopped
@@ -15,6 +15,11 @@ services:
     environment:
       REELSCAREY_PUBLIC_URL: ${REELSCAREY_PUBLIC_URL:?Set the exact browser URL in server.env}
       REELSCAREY_LOG_LEVEL: info
+    # Optional VPN support for the built-in torrent client: uncomment the
+    # capability together with REELSCAREY_KEEP_NET_ADMIN=1 in server.env. The
+    # tunnel only carries torrent traffic the client binds to it.
+    # cap_add:
+    #   - NET_ADMIN
     volumes:
       - config:/config
       - type: bind

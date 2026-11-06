@@ -1865,3 +1865,14 @@ No owner-server media or download client was used for these checks.
 - Frontend formatting, type checks, 190 interaction tests and the production
   bundle passed. Go tests and vet passed across all packages.
 
+## Version 0.33 Mullvad VPN kill switch
+
+- Stubbed tunnel lifecycle tests cover enable with generated route-suppressed
+  configuration, honest failure states, disable, redaction of the private key
+  in tool output, and refusal of incomplete configurations.
+- Kill-switch tests on the bundled-client supervisor cover the stopped state
+  with its explanation while the tunnel is down, the restart with the tunnel
+  interface binding when it returns, and the stop when it drops again.
+- Frontend formatting, type checks, 190 interaction tests and the production
+  bundle passed. Go tests and vet passed across all packages.
+

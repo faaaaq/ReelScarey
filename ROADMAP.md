@@ -657,3 +657,13 @@ exact-bencoded v1 infohash, duplicates are refused by hash, v2-only metadata is
 refused honestly, and the exact bytes queue through the normal reservation,
 client submission and verified import. Season packs cover the season's selected
 missing episodes; explicit episode numbers cover exactly those.
+
+## Version 0.33 Mullvad VPN kill switch
+
+The optional Mullvad tunnel comes up with routes suppressed (`Table = off`) so
+only the built-in torrent client — bound directly to `reelscarey0` — uses it.
+The client stops while the tunnel is down and starts again when it returns;
+everything else keeps the normal network. NET_ADMIN retention through the
+privilege drop is opt-in (`REELSCAREY_KEEP_NET_ADMIN=1` plus `cap_add`). The
+private key lives in the encrypted integration store, is never returned by the
+API, and is redacted from any tool output that reaches logs or status.
