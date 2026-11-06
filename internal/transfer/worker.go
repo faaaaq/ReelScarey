@@ -114,7 +114,11 @@ func (s *Service) process(ctx context.Context, j Job) error {
 		var size int64
 		err := s.db.QueryRowContext(ctx, `SELECT source_path,size_bytes FROM import_operations WHERE download_id=? AND file_index=-1`, j.ID).Scan(&source, &size)
 		if err == nil {
-			return s.importer.Execute(ctx, j, source, size)
+			if err = s.importer.Execute(ctx, j, source, size); err != nil {
+				return err
+			}
+			_ = s.cleanupExtract(ctx, j)
+			return nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err
@@ -199,32 +203,58 @@ func (s *Service) process(ctx context.Context, j Job) error {
 	}
 	return s.processCompleted(ctx, j, torrent.SavePath, files, c.DownloadPath)
 }
-func (s *Service) processCompleted(ctx context.Context, j Job, savePath string, files []TorrentFile, remoteRoot string) error {
+func completedVideoChoices(files []TorrentFile) ([]FileChoice, error) {
 	choices := make([]FileChoice, 0)
 	seen := map[int]bool{}
-	var chosen *TorrentFile
 	for n := range files {
 		f := &files[n]
 		if seen[f.Index] || f.Index < 0 {
-			return problem("client_response", "The completed download returned duplicate or invalid file indexes.")
+			return nil, problem("client_response", "The completed download returned duplicate or invalid file indexes.")
 		}
 		seen[f.Index] = true
 		if !video(f.Name) || extraVideo.MatchString(f.Name) || f.Priority <= 0 {
 			continue
 		}
 		if _, err := safeRelative(f.Name); err != nil {
-			return err
+			return nil, err
 		}
 		if f.Size <= 0 || math.IsNaN(f.Progress) || math.IsInf(f.Progress, 0) || f.Progress != 1 {
 			continue
 		}
 		choices = append(choices, FileChoice{Index: f.Index, Name: f.Name, Size: f.Size})
-		if j.Selected != nil && f.Index == *j.Selected {
-			chosen = f
+	}
+	return choices, nil
+}
+
+func (s *Service) processCompleted(ctx context.Context, j Job, savePath string, files []TorrentFile, remoteRoot string) error {
+	choices, err := completedVideoChoices(files)
+	if err != nil {
+		return err
+	}
+	if len(choices) == 0 {
+		extracted, extractErr := s.extractArchiveMedia(ctx, j, files, savePath, remoteRoot)
+		if extractErr != nil {
+			return extractErr
+		}
+		if len(extracted) > 0 {
+			files = append(files, extracted...)
+			choices, err = completedVideoChoices(files)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	if j.Kind == "series" {
 		return s.prepareTVMapping(ctx, j, choices, savePath, remoteRoot)
+	}
+	var chosen *TorrentFile
+	if j.Selected != nil {
+		for n := range files {
+			if files[n].Index == *j.Selected {
+				chosen = &files[n]
+				break
+			}
+		}
 	}
 	if j.Selected == nil && len(choices) == 1 {
 		for n := range files {
@@ -253,5 +283,9 @@ func (s *Service) processCompleted(ctx context.Context, j Job, savePath string, 
 	if err = s.owned(ctx, j, `UPDATE downloads SET state='importing',selected_file=?,choices='[]',updated_at=unixepoch()`, chosen.Index); err != nil {
 		return err
 	}
-	return s.importer.Execute(ctx, j, source, chosen.Size)
+	if err = s.importer.Execute(ctx, j, source, chosen.Size); err != nil {
+		return err
+	}
+	_ = s.cleanupExtract(ctx, j)
+	return nil
 }

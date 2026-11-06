@@ -346,6 +346,7 @@ func (s *Service) processTVImports(ctx context.Context, j Job) error {
 			return e
 		}
 	}
+	_ = s.cleanupExtract(ctx, j)
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e

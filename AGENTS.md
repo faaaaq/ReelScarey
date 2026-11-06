@@ -47,6 +47,11 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   inside queue reservations. Existing jobs retain their client and remote/local
   folder mapping; default changes must never reroute them. Uncertain NZBGet
   submissions reconcile without resubmitting. See docs/DOWNLOAD_CLIENTS.md.
+  Archive-only torrent jobs may be unpacked before import, but only inside a
+  verified per-job folder: no links/special files, bounded expanded size and
+  file count, verified manifests, original archives retained for seeding, and
+  extracted copies removed only after a successful import. Password-protected
+  or incomplete sets fail closed for manual review. See docs/ARCHIVES.md.
 - internal/library owns the shared catalog, TV seasons/episodes and revision-checked monitoring. Future providers live in
   their feature modules behind narrow, consumer-owned interfaces.
   It also owns read-only Wanted/Calendar projections. Reads must not scan disk,

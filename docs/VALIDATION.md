@@ -2042,3 +2042,17 @@ No owner-server media or download client was used for these checks.
   is appended to the organized filename.
 - The playlist batch action selects eligible missing episodes and, only after an
   explicit replacement choice, eligible episodes already in the library.
+
+## Version 0.37 Archive extraction
+
+- Archive set tests cover old-style and part-named RAR volumes, ZIP, 7z, .001
+  splits, missing first volumes and multiple sets. Error classification covers
+  passwords/encryption, incomplete volumes, CRC failures and generic extractor
+  failures.
+- A generated ZIP is extracted with the real 7z tool and imported through the
+  normal movie importer; the extraction manifest, virtual file list and cleanup
+  are verified. On the acceptance server the live RAR test extracted RAR5 single
+  and multi-volume fixtures with unrar and classified an encrypted fixture as a
+  password error.
+- Schema 52 adds the durable extraction path. Docker now installs unrar
+  (non-free) and p7zip-full in the runtime and test stages.

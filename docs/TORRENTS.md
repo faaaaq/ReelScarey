@@ -22,3 +22,6 @@ Stopping or removing a torrent on this page does not change a ReelScarey
 download record. Active imports still reconcile against the client and will
 report a failure if their torrent disappears. Manual torrents are independent
 downloads and are not imported into the library by this page.
+
+Archive-only releases are unpacked before import; see
+[Archive extraction](ARCHIVES.md) for formats, limits and cleanup.

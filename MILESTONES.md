@@ -265,3 +265,14 @@ See [announce feeds](docs/ANNOUNCE.md).
   imports no longer land as WebM.
 - [x] The playlist batch highlights library episodes that need replacement and
   offers Select eligible once replacement is enabled.
+
+## Version 0.37 Archive extraction
+
+- [x] Completed torrents that contain only an archive set are unpacked before
+  the normal movie/TV import.
+- [x] RAR/RAR5 single and multi-volume sets, ZIP, 7z and split .001 volumes are
+  supported. Password-protected and incomplete sets stop with explicit errors.
+- [x] Extraction is confined to the job folder, rejects links/special files,
+  caps expanded size/file count and reuses a verified manifest on retry.
+- [x] Extracted copies are removed after a successful import; originals remain
+  for seeding, and TV archives still require the existing mapping review.
