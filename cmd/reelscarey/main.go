@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/faaaaq/ReelScarey/internal/announce"
 	"github.com/faaaaq/ReelScarey/internal/auth"
 	"github.com/faaaaq/ReelScarey/internal/automation"
 	"github.com/faaaaq/ReelScarey/internal/backups"
@@ -34,7 +35,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.33.4-dev"
+var version = "0.34.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -131,6 +132,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	metadataRefresh := automation.NewMetadataRefresher(db, metadataService)
 	subtitleService := subtitle.New(db, secretStore, cfg, subtitle.NewOpenSubtitles())
 	vpnService := vpn.New(db, secretStore, cfg)
+	announceService := announce.New(db, secretStore, logger)
 	transferService.SetTunnelState(vpnService.TorrentState)
 	organizationService := organization.New(db, cfg)
 	organizationService.SetProbe(func(ctx context.Context, f *os.File) (string, error) {
@@ -183,7 +185,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if err != nil {
 		return false, err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore, Emby: embyService, EmbyMonitor: embyMonitor, VPN: vpnService, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore, Emby: embyService, EmbyMonitor: embyMonitor, VPN: vpnService, Announce: announceService, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return false, fmt.Errorf("listen: %w", err)
@@ -296,6 +298,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	}()
 	defer func() { workerCancel(); <-subtitleDone }()
 	defer func() { workerCancel(); <-vpnDone }()
+	announceDone := make(chan struct{})
+	go func() {
+		defer close(announceDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			announceService.Run(workerCtx)
+		}
+	}()
+	defer func() { workerCancel(); <-announceDone }()
 
 	embyDone := make(chan struct{})
 	go func() {

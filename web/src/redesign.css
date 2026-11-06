@@ -618,6 +618,27 @@ fieldset
 .checkbox-row input[type="checkbox"] {
   margin-top: 2px;
 }
+.announce-source,
+.announce-event {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ui-border);
+}
+.announce-source:last-child,
+.announce-event:last-child {
+  border-bottom: 0;
+}
+.announce-source .form-footer,
+.announce-event .form-footer {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.announce-event strong {
+  overflow-wrap: anywhere;
+}
 .ui-toolbar .ui-search {
   flex: 1 1 240px;
   min-width: 200px;

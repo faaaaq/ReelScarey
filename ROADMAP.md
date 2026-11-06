@@ -669,3 +669,11 @@ private key lives in the encrypted integration store, is never returned by the
 API, and is redacted from any tool output that reaches logs or status. The
 kill-switch toggle is separate: off permits unbound torrent traffic when the
 tunnel is down, and the UI states that exposure explicitly.
+
+## Version 0.34 IRC announce feeds
+
+Tracker IRC announce channels are captured through encrypted sources for
+IPTorrents, TorrentLeech, FileList, BeyondHD, AnimeBytes and MyAnonamouse.
+Announces are parsed with the trackers' real formats and stored as a bounded,
+deduped history with tracker links. Automatic grabbing is not part of this
+release; the next step adds download-URL fetching and a fenced queue guard.

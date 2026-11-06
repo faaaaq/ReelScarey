@@ -14,6 +14,7 @@ import {
   MonitorPlay,
   PanelLeftClose,
   PanelLeftOpen,
+  Radio,
   Search,
   Settings2,
   X,
@@ -89,6 +90,9 @@ const YouTubeSubscriptions = lazy(() =>
 const Indexers = lazy(() =>
   import("./pages/Indexers").then((m) => ({ default: m.Indexers })),
 );
+const Announces = lazy(() =>
+  import("./pages/Announces").then((m) => ({ default: m.Announces })),
+);
 const ItemDetails = lazy(() =>
   import("./pages/ItemDetails").then((m) => ({ default: m.ItemDetails })),
 );
@@ -137,6 +141,7 @@ const browseNavigation = [
 const toolsNavigation = [
   { path: "/automation", name: "Automation", icon: Clock3 },
   { path: "/subtitles", name: "Subtitles", icon: Captions },
+  { path: "/announces", name: "Announces", icon: Radio },
 ];
 
 const allNavigation = [
@@ -219,6 +224,7 @@ function AppShell() {
       "/metadata-refresh": "Metadata refresh",
       "/storage": "Storage",
       "/download-clients": "Download clients",
+      "/announces": "Announce feeds",
       "/timeline": "Event timeline",
       "/youtube/subscriptions": "YouTube subscriptions",
     };
@@ -385,6 +391,7 @@ function AppShell() {
             <Route path="/requests" element={<AdminRequests />} />
             <Route path="/organization" element={<Organization />} />
             <Route path="/indexers" element={<Indexers />} />
+            <Route path="/announces" element={<Announces />} />
             <Route path="/import" element={<ExistingLibrary />} />
             <Route path="/wanted" element={<Planning key="wanted" />} />
             <Route

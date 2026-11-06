@@ -173,6 +173,18 @@ See [download clients](docs/DOWNLOAD_CLIENTS.md).
 
 See the release endpoints in [API](docs/API.md).
 
+## Version 0.34 IRC announce feeds
+
+- [x] Encrypted IRC sources for IPTorrents, TorrentLeech, FileList, BeyondHD,
+  AnimeBytes and MyAnonamouse using their real announce formats.
+- [x] Bounded parsed history with tracker links; raw lines and passwords are
+  never stored in the event list.
+- [x] Sources can be paused, edited and removed; a failing connection shows
+  its error.
+- [ ] Automatic grabbing and download-URL fetching are the next step.
+
+See [announce feeds](docs/ANNOUNCE.md).
+
 ## Version 0.33 Mullvad VPN kill switch
 
 - [x] Encrypted Mullvad WireGuard configuration with a route-suppressed tunnel.

@@ -1924,3 +1924,19 @@ No owner-server media or download client was used for these checks.
   not force a reconnect; the frontend tests assert the exact request.
 - Frontend formatting, type checks, 192 interaction tests and the production
   bundle passed. Go tests and vet passed across all packages.
+
+## Version 0.34 IRC announce feeds
+
+- Parser tests use the published Autobrr sample announce lines for all six
+  supported trackers, plus rejection tests for unrelated channel chatter.
+  Size parsing covers binary and decimal units.
+- A fake IRC server test proves connect, PING/PONG, channel filtering, announce
+  delivery and context cancellation; the source lifecycle test covers encrypted
+  settings, blank-password retention, dedupe and bounded history.
+- The full Docker image was built on the acceptance server: frontend format,
+  type checks, 193 interaction tests and production bundle passed; all Go tests
+  and vet passed. A disposable acceptance container then verified schema 49,
+  setup, six definitions, source creation with an encrypted password, empty
+  event history and the VPN endpoint.
+- The acceptance container and its temporary directories were removed. The live
+  stack was inspected read-only and left untouched on 0.33.3.

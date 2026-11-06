@@ -873,3 +873,21 @@ the sample digest is never represented as a full-file SHA. See
 All routes retain administrator authentication, same-origin and CSRF checks.
 Files remain distinct by file ID/path, and replacements require a specific file.
 See [behavior, recovery and limits](MOVIE_VERSIONS.md).
+
+## IRC announce feeds (0.34)
+
+- `GET /api/v1/announce-sources` returns `{items,definitions}`. Items expose
+  tracker, name, enabled, revision, nick, server, port, TLS, channel,
+  `has_password`, `last_error` and `last_event_at`; passwords are never returned.
+- `POST /api/v1/announce-sources` with `{tracker,name,nick,account,password,invite,enabled}`
+  creates a source. `PUT /api/v1/announce-sources/{id}` requires the current
+  `revision`; a blank password or invite retains the saved value.
+- `DELETE /api/v1/announce-sources/{id}` requires `{revision}` and removes the
+  encrypted settings and captured events.
+- `GET /api/v1/announces?page=1` returns the newest 50 parsed events with
+  tracker, release name, category, size, freeleech, torrent ID, tracker info
+  URL and receive time. Raw IRC lines are not stored.
+- Supported definitions: IPTorrents, TorrentLeech, FileList, BeyondHD,
+  AnimeBytes and MyAnonamouse. The source starts paused unless `enabled` is
+  true; automatic grabbing is not available in this version. See
+  [announce feeds](ANNOUNCE.md).

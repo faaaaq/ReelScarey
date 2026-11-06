@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/faaaaq/ReelScarey/internal/announce"
 	"github.com/faaaaq/ReelScarey/internal/auth"
 	"github.com/faaaaq/ReelScarey/internal/automation"
 	"github.com/faaaaq/ReelScarey/internal/backups"
@@ -59,6 +60,7 @@ type Server struct {
 	emby             *emby.Service
 	embyMonitor      *emby.Monitor
 	vpn              *vpn.Service
+	announce         *announce.Service
 	franchises       metadata.FranchiseProvider
 	animeProvider    metadata.AnimeProvider
 	kitsuProvider    metadata.AnimeProvider
@@ -81,6 +83,7 @@ type Dependencies struct {
 	Emby             *emby.Service
 	EmbyMonitor      *emby.Monitor
 	VPN              *vpn.Service
+	Announce         *announce.Service
 	Bot              *discordbot.Service
 	Franchises       metadata.FranchiseProvider
 	Backups          *backups.Service
@@ -96,6 +99,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	s.youtube = youtube.NewStore(db)
 	s.backups = deps.Backups
 	s.vpn = deps.VPN
+	s.announce = deps.Announce
 	s.metadataRefresh = deps.MetadataRefresh
 	if s.metadataRefresh == nil && deps.Metadata != nil {
 		s.metadataRefresh = automation.NewMetadataRefresher(db, deps.Metadata)
@@ -291,6 +295,9 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/series/{id}/manual-torrent", method(http.MethodPost, s.manualSeriesTorrent))
 	mux.HandleFunc("/api/v1/library/movies/{id}/manual-torrent", method(http.MethodPost, s.manualMovieTorrent))
 	mux.HandleFunc("/api/v1/vpn/mullvad", s.vpnMullvad)
+	mux.HandleFunc("/api/v1/announce-sources", s.announceSources)
+	mux.HandleFunc("/api/v1/announce-sources/{id}", s.announceSource)
+	mux.HandleFunc("/api/v1/announces", method(http.MethodGet, s.announceEvents))
 	mux.HandleFunc("/api/v1/downloads", s.downloadCollection)
 	mux.HandleFunc("/api/v1/library/movies/{id}/versions", s.movieVersions)
 	mux.HandleFunc("/api/v1/downloads/{id}", method(http.MethodGet, s.downloadDetail))
@@ -505,6 +512,7 @@ func frontend(assets fs.FS) http.HandlerFunc {
 	routes["/download-clients"] = true
 	routes["/metadata-refresh"] = true
 	routes["/youtube/subscriptions"] = true
+	routes["/announces"] = true
 	serveIndex := func(w http.ResponseWriter, r *http.Request, status int) {
 		body, err := fs.ReadFile(assets, "index.html")
 		if err != nil {
