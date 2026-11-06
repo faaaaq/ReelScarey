@@ -639,6 +639,30 @@ fieldset
 .announce-event strong {
   overflow-wrap: anywhere;
 }
+.indexer-help {
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface-2);
+  padding: 10px 12px;
+  color: var(--ui-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.indexer-help summary {
+  cursor: pointer;
+  color: var(--ui-text);
+  font-weight: 600;
+}
+.indexer-help ol {
+  margin: 8px 0 0 18px;
+  padding: 0;
+}
+.indexer-help li {
+  margin: 5px 0;
+}
+.indexer-help code {
+  color: var(--ui-text);
+}
 .ui-toolbar .ui-search {
   flex: 1 1 240px;
   min-width: 200px;

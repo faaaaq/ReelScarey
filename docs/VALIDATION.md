@@ -1940,3 +1940,15 @@ No owner-server media or download client was used for these checks.
   event history and the VPN endpoint.
 - The acceptance container and its temporary directories were removed. The live
   stack was inspected read-only and left untouched on 0.33.3.
+
+## Version 0.34.1 IPTorrents setup guidance
+
+- The indexer dialog now explains, per source type, exactly how to obtain the
+  cookie and user agent, including DevTools → Network, HttpOnly cookies, exact
+  host matching, IP-bound sessions and browser challenges. Cookie and
+  user-agent labels and line breaks are stripped before saving.
+- The direct tracker check now accepts a signed-in page when its torrent table
+  parses, even without a logout link; a reached page with an unknown layout
+  reports the IPTorrents display settings instead of a false auth failure.
+- The full Docker image was built on the acceptance server; frontend format,
+  type checks, interaction tests and Go tests passed.

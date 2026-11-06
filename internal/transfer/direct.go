@@ -96,7 +96,7 @@ func (d *Direct) request(ctx context.Context, c IndexerConfig, method string, ta
 		return nil, unavailable("The tracker is rate limiting requests. Wait before trying again.")
 	}
 	if resp.StatusCode == 401 || resp.StatusCode == 403 || (resp.StatusCode >= 300 && resp.StatusCode < 400) {
-		return nil, problem("indexer_auth", "The tracker requires a fresh sign-in or browser challenge. Sign in in your browser, then update the saved session and matching user agent. Redirects and challenges are not followed automatically.")
+		return nil, problem("indexer_auth", "The tracker returned an authentication challenge or redirect. Sign in in your browser, complete any challenge, then re-copy the cookie and matching user agent from the exact configured host. Redirects are not followed automatically.")
 	}
 	if resp.StatusCode != 200 {
 		return nil, unavailable("The tracker did not return a successful response.")
@@ -404,11 +404,11 @@ func parseTrackerHTML(body []byte, base *url.URL, kind string, freeOnly bool) ([
 			table = n
 		}
 	}
-	if !logged {
-		return nil, problem("indexer_auth", "The tracker session is expired or a browser challenge is required. Sign in in your browser, then update the cookie and matching user agent.")
-	}
 	if table == nil {
-		return nil, problem("indexer_layout", "The tracker page layout is not recognized. For IPTorrents, use Icons for categories and show the files-count column in tracker settings.")
+		if logged {
+			return nil, problem("indexer_layout", "The signed-in tracker page was reached, but its torrent table layout is not recognized. For IPTorrents, use Icons for categories and show the files-count column in tracker settings.")
+		}
+		return nil, problem("indexer_auth", "The tracker did not show a signed-in page. Copy the cookie from a request to the exact configured host; tracker sessions can be bound to your public IP, and browser challenges must be completed first.")
 	}
 	seedCol, peerCol := -1, -1
 	headers := []string{}

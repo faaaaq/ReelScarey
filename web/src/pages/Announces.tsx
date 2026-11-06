@@ -208,6 +208,35 @@ export function Announces() {
         the torrent file manually. Passwords are encrypted and never shown
         again.
       </p>
+      <details className="indexer-help">
+        <summary>How to get the IRC values</summary>
+        <ol>
+          <li>
+            Register a bot nick on the tracker’s IRC network and group it with
+            your account when the tracker requires that. Do not use your main
+            nick unless the tracker explicitly allows it.
+          </li>
+          <li>
+            <strong>NickServ password:</strong> your tracker account password.
+            It is sent only to NickServ over TLS.
+          </li>
+          <li>
+            <strong>NickServ account:</strong> leave blank when the network
+            accepts <code>IDENTIFY password</code>; fill it when it requires{" "}
+            <code>IDENTIFY account password</code>.
+          </li>
+          <li>
+            <strong>Invite command:</strong> open the tracker’s IRC page and
+            paste the full command (for example{" "}
+            <code>Millie announce YOURKEY</code>). BeyondHD and AnimeBytes
+            usually require this; the others normally do not.
+          </li>
+          <li>
+            The server, port, TLS and channel come from the tracker definition
+            and are fixed. Enable the source; connection errors appear under it.
+          </li>
+        </ol>
+      </details>
       <RequestState
         loading={sources.loading || events.loading}
         error={sources.error || events.error}

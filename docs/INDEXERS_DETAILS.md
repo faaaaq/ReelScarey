@@ -25,6 +25,25 @@ sign-in; ReelScarey does not automate those challenges. Tracker layout changes
 may require an adapter update. Actual private-account verification must be done
 with the owner's saved session; protocol fixtures are not account acceptance.
 
+The setup dialog explains this inline. Common rejection causes:
+
+- The `Cookie:` or `User-Agent:` label was pasted; the form now removes those
+  labels and line breaks automatically, but header values only are expected.
+- `document.cookie` was used instead of DevTools → Network. Session cookies are
+  HttpOnly and do not appear there.
+- The cookie came from a different tracker mirror than the configured Website
+  URL. Use the exact host from the address bar, without a path.
+- The browser and the ReelScarey server use different public IPs (for example,
+  the browser is on a VPN). Private-tracker sessions can be IP-bound.
+- A browser challenge is pending, or the session expired. Sign in and copy
+  again after the challenge completes.
+- The browser user agent does not match the session. Copy the full value from
+  the same request; changing browser or updating it requires re-copying.
+
+A signed-in page is accepted when its torrent table parses, even if the tracker
+no longer renders a logout link. If the table is reached but its layout is not
+recognized, the error names the IPTorrents display settings to check.
+
 Secrets are encrypted with the application's local key. Cookies, feed URLs and
 API keys are write-only. Blank secret fields on edit preserve the saved value;
 changing the website or browser agent requires re-entering the associated secret.

@@ -69,6 +69,87 @@ const kinds = [
     help: "Read and filter the entries currently in a torrent feed. This does not search the tracker's complete archive.",
   },
 ];
+
+// Header values are commonly copied with their labels and line breaks. Remove
+// those before sending; the value itself is kept exactly otherwise.
+function cleanHeader(value: string) {
+  return value
+    .replace(/^(?:cookie|user-agent)\s*:\s*/i, "")
+    .replace(/[\r\n]+/g, " ")
+    .trim();
+}
+
+function IndexerHelp({ kind }: { kind: string }) {
+  if (kind === "iptorrents" || kind === "xspeeds") {
+    const home =
+      kind === "iptorrents"
+        ? "https://iptorrents.com"
+        : "https://www.xspeeds.eu";
+    return (
+      <details className="indexer-help">
+        <summary>How to get the session cookie and user agent</summary>
+        <ol>
+          <li>
+            Sign in at the exact tracker address in the browser and on the
+            network you will keep using. Tracker sessions can be bound to your
+            public IP; the ReelScarey server must use the same one.
+          </li>
+          <li>
+            Open DevTools (F12) → Network, reload the page, then click a torrent
+            listing or search request to the tracker host (not a CDN host).
+          </li>
+          <li>
+            Open <strong>Request Headers</strong>. Copy the <code>cookie</code>{" "}
+            value only — not the <code>Cookie:</code> label, and not{" "}
+            <code>document.cookie</code> (session cookies are HttpOnly). Keep it
+            on one line.
+          </li>
+          <li>
+            Copy the full <code>user-agent</code> value from the same request.
+          </li>
+          <li>
+            Set the Website URL to the exact host from the address bar, with no
+            path or trailing slash: <code>{home}</code>.
+          </li>
+          <li>
+            Complete any browser challenge first. Redirects and challenges are
+            not followed automatically. Re-enter the cookie if you change the
+            URL, user agent or browser.
+          </li>
+        </ol>
+      </details>
+    );
+  }
+  if (kind === "nyaa") {
+    return (
+      <div className="indexer-help">
+        <strong>No credentials are needed.</strong> Use{" "}
+        <code>https://nyaa.si</code>. It is a public searchable RSS source.
+      </div>
+    );
+  }
+  if (kind === "rss") {
+    return (
+      <div className="indexer-help">
+        <strong>Private feed:</strong> open the feed in the signed-in browser,
+        copy the complete URL including its passkey, and keep the Website URL on
+        the same origin. Add a cookie or user agent only if the feed requires
+        them.
+      </div>
+    );
+  }
+  if (kind === "torznab" || kind === "newznab") {
+    return (
+      <div className="indexer-help">
+        <strong>{kind === "newznab" ? "Newznab" : "Torznab"}:</strong> copy the
+        full API endpoint from the provider (often ending in{" "}
+        <code>/api?apikey=…</code>) and the API key. The host must be reachable
+        from the ReelScarey server.
+      </div>
+    );
+  }
+  return null;
+}
 export function Indexers() {
   const list = useResource<{ items: Indexer[] }>("/indexers");
   const [editing, setEditing] = useState<Indexer | null | undefined>();
@@ -315,25 +396,31 @@ function IndexerForm({
     if (busy) return;
     setBusy(true);
     setError("");
+    const cleanedCookie = cleanHeader(cookie);
+    const cleanedAgent = cleanHeader(agent);
     try {
       await api(initial ? `/indexers/${initial.id}` : "/indexers", {
         method: initial ? "PUT" : "POST",
         body: JSON.stringify({
-          name,
+          name: name.trim(),
           kind,
-          url,
+          url: url.trim(),
           enabled,
           revision: initial?.revision ?? 0,
-          user_agent: privateSite || kind === "rss" ? agent : "",
+          user_agent: privateSite || kind === "rss" ? cleanedAgent : "",
           freeleech_only: privateSite && free,
           cookie:
             privateSite || kind === "rss"
               ? clearCookie
                 ? ""
-                : cookie || undefined
+                : cleanedCookie || undefined
               : undefined,
-          api_key: apiIndexer ? (clearKey ? "" : key || undefined) : undefined,
-          feed_url: kind === "rss" ? feed || undefined : undefined,
+          api_key: apiIndexer
+            ? clearKey
+              ? ""
+              : key.trim() || undefined
+            : undefined,
+          feed_url: kind === "rss" ? feed.trim() || undefined : undefined,
         }),
       });
       setCookie("");
@@ -364,6 +451,7 @@ function IndexerForm({
         </select>
       </label>
       <p className="field-help">{kinds.find((k) => k.id === kind)?.help}</p>
+      <IndexerHelp kind={kind} />
       <label>
         Name
         <TextField.Root
@@ -378,7 +466,9 @@ function IndexerForm({
       <label>
         {apiIndexer
           ? `${kind === "newznab" ? "Newznab" : "Torznab"} API endpoint`
-          : "Website URL"}
+          : privateSite
+            ? "Website URL (exact host, no path)"
+            : "Website URL"}
         <TextField.Root
           aria-label="Indexer URL"
           value={url}
@@ -440,11 +530,12 @@ function IndexerForm({
       {(privateSite || kind === "rss") && (
         <>
           <label>
-            Session cookie{!privateSite && " (optional)"}
+            Session cookie (value only){!privateSite && " — optional"}
             <TextField.Root
               aria-label="Session cookie"
               type="password"
               autoComplete="off"
+              spellCheck={false}
               value={cookie}
               onChange={(e) => setCookie(e.target.value)}
               disabled={busy}
@@ -453,10 +544,12 @@ function IndexerForm({
           </label>
           <p className="field-help">
             {initial?.has_cookie
-              ? "A session is saved. Leave blank to keep it. "
+              ? "A session is saved. Leave blank to keep it. Re-enter it after changing the URL or user agent. "
               : ""}
-            Use the Cookie header value from your signed-in tracker browser
-            session. Keep it out of chat.
+            Copy only the value after <code>cookie:</code> from a signed-in
+            tracker request. Do not paste the <code>Cookie:</code> label or use{" "}
+            <code>document.cookie</code>; session cookies are HttpOnly. Labels
+            and line breaks are removed automatically. Keep it out of chat.
           </p>
           {kind === "rss" && initial?.has_cookie && (
             <label>
@@ -469,7 +562,7 @@ function IndexerForm({
             </label>
           )}
           <label>
-            Browser user agent
+            Browser user agent (exact value)
             <TextField.Root
               aria-label="Browser user agent"
               value={agent}
@@ -477,8 +570,15 @@ function IndexerForm({
               maxLength={512}
               required={privateSite}
               disabled={busy}
+              autoComplete="off"
+              spellCheck={false}
             />
           </label>
+          <p className="field-help">
+            Copy the full <code>user-agent</code> value from the same request.
+            The <code>User-Agent:</code> label and line breaks are removed
+            automatically.
+          </p>
         </>
       )}
       {privateSite && (
