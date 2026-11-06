@@ -83,6 +83,22 @@ func TestPlaylistPreviewIdentifiesShowAndPrefersFullEpisodes(t *testing.T) {
 	}
 }
 
+func TestPlaylistQueueKeepsOneSourcePerPlaylist(t *testing.T) {
+	ctx := context.Background()
+	s, inspector := playlistFixture(t)
+	url := inspector.result.Source.URL
+	if _, e := s.QueuePlaylist(ctx, PlaylistQueueInput{URL: url, ShowID: 1, Season: 1, Quality: "best", Entries: []string{"aaaaaaaaaaa"}, KeepSource: true}, inspector); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.QueuePlaylist(ctx, PlaylistQueueInput{URL: url, ShowID: 1, Season: 1, Quality: "best", Entries: []string{"bbbbbbbbbbb"}, KeepSource: true}, inspector); e != nil {
+		t.Fatal(e)
+	}
+	var sources int
+	if e := s.db.QueryRow(`SELECT COUNT(*) FROM youtube_series_sources WHERE media_id=1`).Scan(&sources); e != nil || sources != 1 {
+		t.Fatal("duplicate source created", sources, e)
+	}
+}
+
 func TestPlaylistQueueQueuesSelectedMissingAndRequiresReplacementConsent(t *testing.T) {
 	ctx := context.Background()
 	s, inspector := playlistFixture(t)

@@ -2,6 +2,7 @@ package youtube
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -462,11 +463,15 @@ func (s *Store) QueuePlaylist(ctx context.Context, in PlaylistQueueInput, inspec
 	}
 	var sourceID string
 	if in.KeepSource {
-		saved, err := s.SaveSeriesSource(work, in.ShowID, SeriesSourceInput{URL: source.URL, Mapping: "episode", Season: in.Season, StartEpisode: 1, Quality: quality, Subtitles: in.Subtitles, AutoImport: true, Enabled: false, Interval: 6, Reviewed: true})
-		if err != nil {
-			return nil, err
+		if e = s.db.QueryRowContext(work, `SELECT id FROM youtube_series_sources WHERE media_id=? AND source_url=?`, in.ShowID, source.URL).Scan(&sourceID); errors.Is(e, sql.ErrNoRows) {
+			saved, err := s.SaveSeriesSource(work, in.ShowID, SeriesSourceInput{URL: source.URL, Mapping: "episode", Season: in.Season, StartEpisode: 1, Quality: quality, Subtitles: in.Subtitles, AutoImport: true, Enabled: false, Interval: 6, Reviewed: true})
+			if err != nil {
+				return nil, err
+			}
+			sourceID = saved.ID
+		} else if e != nil {
+			return nil, e
 		}
-		sourceID = saved.ID
 	}
 	results := []PlaylistQueueResult{}
 	for _, entry := range inspection.Entries {
