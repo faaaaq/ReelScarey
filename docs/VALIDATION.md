@@ -1892,3 +1892,22 @@ No owner-server media or download client was used for these checks.
 - The VPN dependency was missing from the HTTP server's constructor call, so
   the card reported the service as unavailable. The dependency is wired and the
   endpoint verified on the affected deployment before this release.
+
+## Version 0.33.3 VPN connection with native wg/ip
+
+- A real Mullvad configuration was used inside the production image: the
+  interface came up, a socket bound to `reelscarey0` reached the internet
+  through the tunnel, an unbound socket used the normal network, and teardown
+  removed the interface and rules. The credential file was removed afterwards.
+- Root cause of the failed connection: `wg-quick` re-execs through `sudo`,
+  which the unprivileged application cannot run. The tunnel now uses `wg` and
+  `ip` directly with the retained NET_ADMIN capability.
+- `Address` accepts the full Mullvad list (`IPv4,IPv6`); IPv6 is optional when
+  the container lacks IPv6 support. The card accepts an uploaded `.conf`,
+  parses it in the browser and connects.
+- The card refreshes its revision after a failed attempt, removing the spurious
+  conflict on retry.
+- Generic form controls now have an explicit field background, border and
+  spacing; labels read as labels in both themes.
+- Frontend formatting, type checks, 191 interaction tests and the production
+  bundle passed. Go tests and vet passed across all packages.

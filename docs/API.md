@@ -760,8 +760,10 @@ Credentials are never returned. Save/test have bounded connection timeouts.
   state `up`, `starting`, `stopped` or `failed`. The private key is never
   returned. `PUT` with `{revision,enabled?,private_key?,address,peer_key,endpoint,allowed_ips?}`
   saves the encrypted configuration; enabling awaits the interface and reverts
-  to disabled when it does not come up. The built-in torrent client binds to
-  the tunnel and stops while it is down.
+  to disabled when it does not come up. `address` accepts one or more
+  comma-separated CIDRs (Mullvad supplies IPv4 and IPv6); `allowed_ips` is
+  optional. The built-in torrent client binds to the tunnel and stops while it
+  is down.
 
 `GET /api/v1/download-clients/builtin` reports the app-supervised built-in
   qBittorrent daemon: `{present,enabled,state,message?,revision,peer_port,active_jobs,name}`;

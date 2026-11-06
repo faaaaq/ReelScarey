@@ -206,6 +206,64 @@ it("supervises the built-in client and disables it with explicit review", async 
   );
   expect(confirm).toHaveBeenCalled();
 });
+it("uploads a Mullvad config and connects with the parsed values", async () => {
+  const config = `[Interface]
+PrivateKey = priv-key
+Address = 10.1.2.3/32,fc00::2/128
+DNS = 10.64.0.1
+
+[Peer]
+PublicKey = peer-key
+AllowedIPs = 0.0.0.0/0,::/0
+Endpoint = 1.2.3.4:51820
+`;
+  const requests = vi.fn(async (url: string, o?: RequestInit) => {
+    if (url.endsWith("/vpn/mullvad")) {
+      if (o?.method === "PUT") {
+        expect(JSON.parse(o.body as string)).toMatchObject({
+          enabled: true,
+          address: "10.1.2.3/32,fc00::2/128",
+          peer_key: "peer-key",
+          endpoint: "1.2.3.4:51820",
+          allowed_ips: "0.0.0.0/0,::/0",
+          private_key: "priv-key",
+        });
+        return Response.json({
+          present: true,
+          enabled: true,
+          state: "up",
+          revision: 2,
+        });
+      }
+      return Response.json({
+        present: false,
+        enabled: false,
+        state: "stopped",
+        revision: 0,
+      });
+    }
+    if (url.endsWith("/download-clients/builtin"))
+      return Response.json({ present: false, state: "stopped", revision: 0 });
+    return Response.json({
+      items: [],
+      defaults: { torrent: "", usenet: "", revision: 1 },
+    });
+  });
+  vi.stubGlobal("fetch", requests);
+  renderPage();
+  const input = await screen.findByLabelText(/Upload Mullvad config/);
+  const file = new File([config], "mullvad.conf", { type: "text/plain" });
+  Object.defineProperty(file, "text", { value: async () => config });
+  await userEvent.upload(input, file);
+  await waitFor(() =>
+    expect(
+      requests.mock.calls.some(
+        ([url, o]) => url.endsWith("/vpn/mullvad") && o?.method === "PUT",
+      ),
+    ).toBe(true),
+  );
+});
+
 it("sets up the built-in client from scratch without routing jobs", async () => {
   vi.spyOn(window, "confirm").mockReturnValue(true);
   const requests = vi.fn(async (url: string, o?: RequestInit) => {

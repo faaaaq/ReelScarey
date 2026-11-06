@@ -272,6 +272,7 @@ func (s *Service) startBundled(ctx context.Context, c ClientConfig, revision int
 	// socket to the tunnel interface, so it has no egress without the tunnel.
 	if s.tunnelReady() {
 		conf += "Session\\Interface=" + vpn.TunnelInterface + "\n"
+		conf += "Session\\InterfaceName=" + vpn.TunnelInterface + "\n"
 	}
 	if e := os.WriteFile(filepath.Join(confDir, "qBittorrent.conf"), []byte(conf), 0o600); e != nil {
 		return e

@@ -141,19 +141,61 @@ const vpnStates: Record<string, string> = {
   stopped: "Stopped",
   failed: "Needs attention",
 };
+function parseWireGuard(text: string) {
+  let section = "";
+  const values: Record<string, string> = {};
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || line.startsWith(";")) continue;
+    if (line.startsWith("[")) {
+      section = line.toLowerCase();
+      continue;
+    }
+    const split = line.indexOf("=");
+    if (split < 0) continue;
+    values[`${section}.${line.slice(0, split).trim().toLowerCase()}`] = line
+      .slice(split + 1)
+      .trim();
+  }
+  const parsed = {
+    address: values["[interface].address"] ?? "",
+    private_key: values["[interface].privatekey"] ?? "",
+    peer_key: values["[peer].publickey"] ?? "",
+    endpoint: values["[peer].endpoint"] ?? "",
+    allowed_ips: values["[peer].allowedips"] ?? "",
+  };
+  if (
+    !parsed.address ||
+    !parsed.private_key ||
+    !parsed.peer_key ||
+    !parsed.endpoint
+  ) {
+    throw new Error(
+      "The file is missing the tunnel address, private key, server public key or endpoint.",
+    );
+  }
+  return parsed;
+}
+
 function VPNCard() {
   const resource = useResource<VPN>("/vpn/mullvad");
   const [address, setAddress] = useState(""),
     [endpoint, setEndpoint] = useState(""),
     [peerKey, setPeerKey] = useState(""),
     [privateKey, setPrivateKey] = useState(""),
+    [allowedIPs, setAllowedIPs] = useState(""),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [notice, setNotice] = useState("");
   const data = resource.data;
-  async function save(enabled: boolean) {
+  async function save(
+    enabled: boolean,
+    overrides?: ReturnType<typeof parseWireGuard>,
+  ) {
     if (!data || busy) return;
     setBusy(true);
     setError("");
+    setNotice(enabled ? "Connecting the tunnel…" : "");
     try {
       await api("/vpn/mullvad", {
         method: "PUT",
@@ -161,19 +203,40 @@ function VPNCard() {
         body: JSON.stringify({
           revision: data.revision,
           enabled,
-          address: address || data.address,
-          endpoint: endpoint || data.endpoint,
-          peer_key: peerKey,
-          ...(privateKey ? { private_key: privateKey } : {}),
+          address: overrides?.address ?? (address || data.address || ""),
+          endpoint: overrides?.endpoint ?? (endpoint || data.endpoint || ""),
+          peer_key: overrides?.peer_key ?? peerKey,
+          allowed_ips: overrides?.allowed_ips ?? allowedIPs,
+          ...(overrides?.private_key || privateKey
+            ? { private_key: overrides?.private_key ?? privateKey }
+            : {}),
         }),
       });
       setPrivateKey("");
       setPeerKey("");
-      resource.reload();
+      setNotice("");
     } catch (e) {
       setError(messageFor(e));
     } finally {
+      // Reload in every case: a failed enable reverts the saved revision, so a
+      // stale revision would otherwise cause a spurious conflict on retry.
+      resource.reload();
       setBusy(false);
+    }
+  }
+  async function uploadConfig(file?: File) {
+    if (!file) return;
+    setError("");
+    try {
+      const parsed = parseWireGuard(await file.text());
+      setAddress(parsed.address);
+      setEndpoint(parsed.endpoint);
+      setPeerKey(parsed.peer_key);
+      setPrivateKey(parsed.private_key);
+      setAllowedIPs(parsed.allowed_ips);
+      await save(true, parsed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : messageFor(e));
     }
   }
   return (
@@ -196,10 +259,24 @@ function VPNCard() {
           </p>
           <p>
             Requires the container to run with the NET_ADMIN capability and{" "}
-            <code>REELSCAREY_KEEP_NET_ADMIN=1</code>. Copy the values from your
-            Mullvad account's WireGuard configuration file. The private key is
-            stored encrypted and never shown again.
+            <code>REELSCAREY_KEEP_NET_ADMIN=1</code>. Upload the WireGuard
+            configuration file from your Mullvad account and the app fills every
+            field and connects. The private key is stored encrypted and never
+            shown again.
           </p>
+          <p className="field-help">
+            Upload a <code>.conf</code> file exported by Mullvad. The tunnel
+            address may contain both IPv4 and IPv6 entries.
+          </p>
+          <label className="file-button">
+            <input
+              type="file"
+              accept=".conf,text/plain"
+              disabled={busy}
+              onChange={(e) => void uploadConfig(e.target.files?.[0])}
+            />
+            Upload Mullvad config
+          </label>
           <p>
             Status:{" "}
             <Badge
@@ -215,13 +292,14 @@ function VPNCard() {
             </Badge>
             {data.message ? ` · ${data.message}` : ""}
           </p>
+          {notice && <p role="status">{notice}</p>}
           <fieldset disabled={busy} className="backup-fields">
             <label>
-              Tunnel address (e.g. 10.66.123.45/32)
+              Tunnel address (IPv4 and optional IPv6, comma separated)
               <input
                 value={address || data.address || ""}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder="From the Mullvad configuration"
+                placeholder="10.66.123.45/32"
               />
             </label>
             <label>
@@ -239,7 +317,16 @@ function VPNCard() {
               <input
                 value={endpoint || data.endpoint || ""}
                 onChange={(e) => setEndpoint(e.target.value)}
-                placeholder="From the Mullvad configuration"
+                placeholder="185.184.222.3:51820"
+              />
+            </label>
+            <label>
+              Allowed addresses{" "}
+              <span className="field-help">(optional, from the file)</span>
+              <input
+                value={allowedIPs}
+                onChange={(e) => setAllowedIPs(e.target.value)}
+                placeholder="0.0.0.0/0, ::/0"
               />
             </label>
             <label>
@@ -304,6 +391,9 @@ function BuiltinCard({ reload }: { reload: () => void }) {
     } catch (e) {
       setError(messageFor(e));
     } finally {
+      // A failed enable can change the saved revision; refresh so a retry is
+      // not rejected as a stale edit.
+      resource.reload();
       setBusy(false);
     }
   }

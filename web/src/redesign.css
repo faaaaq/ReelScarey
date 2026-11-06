@@ -522,6 +522,88 @@ a.ui-stat:hover {
   outline-offset: 1px;
   border-color: var(--ui-accent);
 }
+/* Generic form controls outside the ui-field wrapper. Text fields must read as
+   fields, not blend into their labels. */
+form
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+    [type="range"]
+  ):not([type="color"]):not(.rt-TextFieldInput),
+form select,
+form textarea,
+fieldset
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+    [type="range"]
+  ):not([type="color"]):not(.rt-TextFieldInput),
+fieldset select,
+fieldset textarea {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+form
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+    [type="range"]
+  ):not([type="color"]):not(.rt-TextFieldInput):focus,
+form select:focus,
+form textarea:focus,
+fieldset
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+    [type="range"]
+  ):not([type="color"]):not(.rt-TextFieldInput):focus,
+fieldset select:focus,
+fieldset textarea:focus {
+  outline: 2px solid rgba(110, 168, 254, 0.45);
+  outline-offset: 1px;
+  border-color: var(--ui-accent);
+}
+form
+  > label:has(
+    > input:not([type="checkbox"]):not([type="radio"]):not([type="file"])
+  ),
+fieldset
+  > label:has(
+    > input:not([type="checkbox"]):not([type="radio"]):not([type="file"])
+  ),
+.settings-form
+  label:has(
+    > input:not([type="checkbox"]):not([type="radio"]):not([type="file"])
+  ) {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--ui-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.file-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 8px 14px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface-2);
+  color: var(--ui-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.file-button input[type="file"] {
+  max-width: 220px;
+  color: var(--ui-muted);
+  font-size: 12px;
+}
 .ui-toolbar .ui-search {
   flex: 1 1 240px;
   min-width: 200px;

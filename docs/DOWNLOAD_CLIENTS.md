@@ -57,6 +57,15 @@ capability-free. The private key is stored encrypted, never returned by the
 API, and redacted from any tool output that reaches logs or status messages.
 A failed connection reverts to disabled with the failure visible.
 
+Upload the `.conf` exported by Mullvad and the app fills every field and
+connects; the tunnel address may list both IPv4 and IPv6 entries. The tunnel is
+created with `wg` and `ip` directly rather than `wg-quick`, because `wg-quick`
+re-execs through `sudo` and the application intentionally runs unprivileged
+with only `NET_ADMIN`. Sockets bound to `reelscarey0` use a dedicated routing
+table; everything else keeps the main table, so application and web traffic
+never enter the tunnel. IPv6 is optional when the container has no IPv6
+support.
+
 Each job retains its client ID/type/name, remote completed root and local folder
 mapping. Credentials are encrypted with the existing configuration key and never
 returned by the API. Leaving a secret blank retains it; changing the address or

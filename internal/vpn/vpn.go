@@ -24,6 +24,10 @@ const (
 	defaultAllow = "0.0.0.0/0"
 	upTimeout    = 45 * time.Second
 	downTimeout  = 15 * time.Second
+	// routeTable and rulePriority carry only sockets bound to the tunnel.
+	// The main table keeps the normal default route for the application.
+	routeTable   = "51820"
+	rulePriority = "1000"
 )
 
 // TunnelInterface is the fixed WireGuard interface name the tunnel uses and
@@ -227,8 +231,14 @@ func validate(c *Config, keyRetained bool) error {
 		if c.PrivateKey != "" && !validKey(c.PrivateKey) {
 			return problem("invalid_vpn", "The WireGuard private key must be the 44-character base64 key from your Mullvad configuration.")
 		}
-		if _, _, e := net.ParseCIDR(c.Address); e != nil {
-			return problem("invalid_vpn", "The tunnel address must be a CIDR such as 10.66.123.45/32 from your Mullvad configuration.")
+		parts := strings.Split(c.Address, ",")
+		if len(parts) == 0 {
+			return problem("invalid_vpn", "The tunnel address must be one or more CIDRs from your Mullvad configuration.")
+		}
+		for _, part := range parts {
+			if _, _, e := net.ParseCIDR(strings.TrimSpace(part)); e != nil {
+				return problem("invalid_vpn", "The tunnel address must be one or more comma-separated CIDRs, for example 10.66.123.45/32.")
+			}
 		}
 		if !validKey(c.PeerKey) {
 			return problem("invalid_vpn", "The server public key must be the 44-character base64 key from your Mullvad configuration.")

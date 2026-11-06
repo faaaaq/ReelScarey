@@ -45,21 +45,21 @@ func (r *runtimeState) poke() {
 	}
 }
 
-func wgQuick() string {
-	if v := os.Getenv("REELSCAREY_WG_QUICK"); v != "" {
-		return v
-	}
-	if p, e := exec.LookPath("wg-quick"); e == nil {
-		return p
-	}
-	return ""
-}
-
 func wgBinary() string {
 	if v := os.Getenv("REELSCAREY_WG"); v != "" {
 		return v
 	}
 	if p, e := exec.LookPath("wg"); e == nil {
+		return p
+	}
+	return ""
+}
+
+func ipBinary() string {
+	if v := os.Getenv("REELSCAREY_IP"); v != "" {
+		return v
+	}
+	if p, e := exec.LookPath("ip"); e == nil {
 		return p
 	}
 	return ""
@@ -74,8 +74,10 @@ func backoff(attempts int) time.Duration {
 }
 
 // Supervise reconciles the tunnel with the saved configuration. Enabled means
-// the interface exists; anything else means it does not. The tunnel comes up
-// without routes, so only clients bound to it use it.
+// the interface exists; anything else means it does not. The tunnel is brought
+// up with plain wg/ip calls because wg-quick insists on root (it re-execs via
+// sudo), while the application intentionally runs as an unprivileged user with
+// only NET_ADMIN retained.
 func (s *Service) Supervise(ctx context.Context, logger *slog.Logger) {
 	if s.rt.notify == nil {
 		s.rt.notify = make(chan struct{}, 1)
@@ -105,18 +107,18 @@ func (s *Service) Supervise(ctx context.Context, logger *slog.Logger) {
 
 func (s *Service) reconcile(ctx context.Context, logger *slog.Logger, c Config, present bool) {
 	enabled := present && c.Enabled
-	up, checkErr := s.interfaceUp()
-	if wgBinary() == "" || wgQuick() == "" {
+	if wgBinary() == "" || ipBinary() == "" {
 		if enabled {
-			s.rt.set("failed", "The container does not include the WireGuard tools. Use the Docker image or install wg-quick and wg.")
+			s.rt.set("failed", "The container does not include wireguard-tools and iproute2. Use the Docker image or install them.")
 		}
 		return
 	}
+	up, checkErr := s.interfaceUp()
 	if checkErr != nil {
 		// The interface probe itself failed (permissions, missing kernel
 		// support): fail closed instead of pretending the tunnel is up.
 		if enabled {
-			s.rt.set("failed", "The tunnel state could not be verified. Ensure the container has the NET_ADMIN capability and REELSCAREY_KEEP_NET_ADMIN=1.")
+			s.rt.set("failed", "The tunnel state could not be verified. Ensure the container has NET_ADMIN and REELSCAREY_KEEP_NET_ADMIN=1.")
 		}
 		return
 	}
@@ -158,10 +160,48 @@ func (s *Service) reconcile(ctx context.Context, logger *slog.Logger, c Config, 
 	logger.Info("vpn tunnel is up", "interface", TunnelInterface)
 }
 
-// bringUp writes the generated configuration to temporary storage and brings
-// the interface up with routes suppressed: only clients bound to the
-// interface use the tunnel.
+// run executes a bounded helper command as the application user. wg and ip
+// need NET_ADMIN, which the entrypoint keeps as an ambient capability when the
+// operator opts in; they never need root.
+func run(ctx context.Context, binary string, args ...string) (string, error) {
+	runCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	out, e := exec.CommandContext(runCtx, binary, args...).CombinedOutput()
+	return strings.TrimSpace(string(out)), e
+}
+
+// addresses splits the saved comma-separated address list and reports which
+// families are present. Mullvad supplies an IPv4 and an IPv6 address.
+func addresses(raw string) (list []string, has4, has6 bool) {
+	for _, part := range strings.Split(raw, ",") {
+		addr := strings.TrimSpace(part)
+		if addr == "" {
+			continue
+		}
+		list = append(list, addr)
+		if strings.Contains(addr, ":") {
+			has6 = true
+		} else {
+			has4 = true
+		}
+	}
+	return list, has4, has6
+}
+
+// bringUp creates the interface, applies the WireGuard configuration and
+// installs a separate routing table selected only for sockets bound to the
+// interface. Everything else keeps using the main table, so the tunnel never
+// captures application or web traffic.
 func (s *Service) bringUp(ctx context.Context, c Config) error {
+	wg, ip := wgBinary(), ipBinary()
+	if wg == "" || ip == "" {
+		return problem("vpn_missing", "The container does not include wireguard-tools and iproute2.")
+	}
+	s.linkDown(ctx, ip)
+
+	if out, e := run(ctx, ip, "link", "add", TunnelInterface, "type", "wireguard"); e != nil {
+		return problem("vpn_start", "The WireGuard interface could not be created. "+out)
+	}
 	dir := filepath.Join(os.TempDir(), "reelscarey-vpn")
 	if e := os.MkdirAll(dir, 0o700); e != nil {
 		return e
@@ -172,7 +212,7 @@ func (s *Service) bringUp(ctx context.Context, c Config) error {
 		allowed = defaultAllow
 	}
 	var builder strings.Builder
-	builder.WriteString("[Interface]\nPrivateKey = " + c.PrivateKey + "\nAddress = " + c.Address + "\nTable = off\n")
+	builder.WriteString("[Interface]\nPrivateKey = " + c.PrivateKey + "\n")
 	builder.WriteString("[Peer]\nPublicKey = " + c.PeerKey + "\nAllowedIPs = " + allowed + "\nEndpoint = " + c.Endpoint + "\n")
 	if c.Keepalive > 0 {
 		builder.WriteString("PersistentKeepalive = " + fmt.Sprint(c.Keepalive) + "\n")
@@ -180,20 +220,43 @@ func (s *Service) bringUp(ctx context.Context, c Config) error {
 	if e := os.WriteFile(conf, []byte(builder.String()), 0o600); e != nil {
 		return e
 	}
-	quick := wgQuick()
-	if quick == "" {
-		return problem("vpn_missing", "The container does not include the WireGuard tools.")
+	if out, e := run(ctx, wg, "setconf", TunnelInterface, conf); e != nil {
+		_ = os.Remove(conf)
+		return problem("vpn_start", "The WireGuard configuration was rejected. "+out)
 	}
-	wgCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(wgCtx, quick, "up", conf)
-	output, e := cmd.CombinedOutput()
-	if e != nil {
-		detail := "The tunnel could not be started."
-		if len(output) > 0 {
-			detail += " " + strings.TrimSpace(redact(c, string(output)))
+	_ = os.Remove(conf)
+
+	list, has4, has6 := addresses(c.Address)
+	for _, addr := range list {
+		if out, e := run(ctx, ip, "addr", "add", addr, "dev", TunnelInterface); e != nil {
+			// IPv6 is optional: a container without IPv6 should still run the
+			// IPv4 tunnel rather than failing the whole connection.
+			if strings.Contains(addr, ":") {
+				continue
+			}
+			return problem("vpn_start", "The tunnel address "+addr+" could not be applied. "+out)
 		}
-		return problem("vpn_start", detail)
+	}
+	if out, e := run(ctx, ip, "link", "set", "mtu", "1420", "up", "dev", TunnelInterface); e != nil {
+		return problem("vpn_start", "The tunnel interface could not be enabled. "+out)
+	}
+	// Policy routing: only sockets bound to the tunnel use its default route.
+	if has4 {
+		if out, e := run(ctx, ip, "route", "add", "default", "dev", TunnelInterface, "table", routeTable); e != nil {
+			return problem("vpn_start", "The tunnel route could not be installed. "+out)
+		}
+		_, _ = run(ctx, ip, "rule", "del", "oif", TunnelInterface, "table", routeTable, "priority", rulePriority)
+		if out, e := run(ctx, ip, "rule", "add", "oif", TunnelInterface, "table", routeTable, "priority", rulePriority); e != nil {
+			return problem("vpn_start", "The tunnel routing rule could not be installed. "+out)
+		}
+	}
+	if has6 {
+		if out, e := run(ctx, ip, "-6", "route", "add", "default", "dev", TunnelInterface, "table", routeTable); e == nil {
+			_, _ = run(ctx, ip, "-6", "rule", "del", "oif", TunnelInterface, "table", routeTable, "priority", rulePriority)
+			_, _ = run(ctx, ip, "-6", "rule", "add", "oif", TunnelInterface, "table", routeTable, "priority", rulePriority)
+		} else if !strings.Contains(out, "not supported") && !strings.Contains(out, "Cannot assign") {
+			return problem("vpn_start", "The IPv6 tunnel route could not be installed. "+out)
+		}
 	}
 	deadline := time.Now().Add(upTimeout)
 	for {
@@ -211,36 +274,32 @@ func (s *Service) bringUp(ctx context.Context, c Config) error {
 	}
 }
 
-// teardown brings the interface down. The generated file lives in temporary
-// storage, so a missing file falls back to removing the interface directly.
+// teardown removes the routing rules and interface. Each step is best-effort:
+// a partially created interface must never block recovery.
 func (s *Service) teardown(logger *slog.Logger) {
 	s.rt.mu.Lock()
-	wasUp := s.rt.up
 	s.rt.up = false
 	s.rt.mu.Unlock()
-	conf := filepath.Join(os.TempDir(), "reelscarey-vpn", TunnelInterface+".conf")
-	quick := wgQuick()
-	if quick != "" {
-		if _, e := os.Stat(conf); e == nil {
-			cmd := exec.Command(quick, "down", conf)
-			if output, e := cmd.CombinedOutput(); e != nil {
-				logger.Warn("vpn teardown failed", "error", strings.TrimSpace(redact(Config{}, string(output))))
-			}
-		} else if wasUp {
-			if ip, e := exec.LookPath("ip"); e == nil {
-				_ = exec.Command(ip, "link", "del", TunnelInterface).Run()
-			}
-		}
-	}
+	s.linkDown(context.Background(), ipBinary())
 	s.rt.set("stopped", "")
 }
 
-// interfaceUp asks the wg tool whether the interface exists. A failing probe
-// is reported as an error so the caller can fail closed.
+func (s *Service) linkDown(ctx context.Context, ip string) {
+	if ip == "" {
+		return
+	}
+	_, _ = run(ctx, ip, "rule", "del", "oif", TunnelInterface, "table", routeTable, "priority", rulePriority)
+	_, _ = run(ctx, ip, "-6", "rule", "del", "oif", TunnelInterface, "table", routeTable, "priority", rulePriority)
+	_, _ = run(ctx, ip, "link", "del", TunnelInterface)
+	_ = os.Remove(filepath.Join(os.TempDir(), "reelscarey-vpn", TunnelInterface+".conf"))
+}
+
+// interfaceUp asks wg whether the interface exists. A failing probe is
+// reported as an error so the caller can fail closed.
 func (s *Service) interfaceUp() (bool, error) {
 	wg := wgBinary()
 	if wg == "" {
-		return false, problem("vpn_missing", "The container does not include the WireGuard tools.")
+		return false, problem("vpn_missing", "The container does not include wireguard-tools.")
 	}
 	cmd := exec.Command(wg, "show", TunnelInterface)
 	if _, e := cmd.CombinedOutput(); e != nil {

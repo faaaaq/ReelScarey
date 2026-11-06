@@ -37,54 +37,97 @@ func vpnFixture(t *testing.T) *Service {
 	return New(db, secrets, cfg)
 }
 
-// wgStub builds stand-ins for wg-quick and wg that keep tunnel state in a
-// file, require the route-suppressing Table setting, and exit 0 for interface
-// checks only while the tunnel is up.
-func wgStub(t *testing.T) (string, string) {
+// commandStubs builds stand-ins for wg and ip. The wg stub records the applied
+// configuration; the ip stub records addresses and keeps interface state, so
+// tests assert the real command sequence without touching the host network.
+func commandStubs(t *testing.T) (wg, ip, stateDir string) {
 	t.Helper()
 	dir := t.TempDir()
+	stateDir = filepath.Join(dir, "state")
+	if e := os.MkdirAll(stateDir, 0o700); e != nil {
+		t.Fatal(e)
+	}
 	src := filepath.Join(dir, "stubmain.go")
 	source := `package main
 
 import (
-	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 func main() {
-	state := os.TempDir() + "/reelscarey-vpn-stub-state"
-	if len(os.Args) < 2 {
+	state := os.Getenv("REELSCAREY_VPN_STUB_STATE")
+	name := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
+	args := os.Args[1:]
+	if name == "wg" {
+		if len(args) == 0 {
+			os.Exit(2)
+		}
+		switch args[0] {
+		case "setconf":
+			conf, e := os.ReadFile(args[2])
+			if e != nil {
+				os.Exit(1)
+			}
+			text := string(conf)
+			if !strings.Contains(text, "[Interface]") || !strings.Contains(text, "PrivateKey = ") || !strings.Contains(text, "[Peer]") || !strings.Contains(text, "AllowedIPs = ") {
+				os.Exit(1)
+			}
+			if e := os.WriteFile(filepath.Join(state, "applied.conf"), conf, 0o600); e != nil {
+				os.Exit(1)
+			}
+		case "show":
+			if _, e := os.Stat(filepath.Join(state, "interface")); e != nil {
+				os.Exit(1)
+			}
+		default:
+			os.Exit(2)
+		}
+		return
+	}
+	if len(args) == 0 {
 		os.Exit(2)
 	}
-	switch os.Args[1] {
-	case "up":
-		conf, e := os.ReadFile(os.Args[2])
+	if args[0] == "-6" {
+		args = args[1:]
+		if len(args) == 0 {
+			os.Exit(2)
+		}
+	}
+	switch args[0] {
+	case "link":
+		if len(args) < 2 {
+			os.Exit(2)
+		}
+		if args[1] == "add" {
+			_ = os.WriteFile(filepath.Join(state, "interface"), []byte("up"), 0o600)
+			return
+		}
+		if args[1] == "set" {
+			return
+		}
+		if args[1] == "del" {
+			_ = os.Remove(filepath.Join(state, "interface"))
+			_ = os.Remove(filepath.Join(state, "applied.conf"))
+			_ = os.Remove(filepath.Join(state, "addresses"))
+			return
+		}
+	case "addr":
+		if len(args) < 4 || args[1] != "add" {
+			os.Exit(2)
+		}
+		f, e := os.OpenFile(filepath.Join(state, "addresses"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		if e != nil {
-			fmt.Fprintln(os.Stderr, e)
 			os.Exit(1)
 		}
-		if !strings.Contains(string(conf), "Table = off") {
-			fmt.Fprintln(os.Stderr, "missing Table = off")
-			os.Exit(1)
-		}
-		if e := os.WriteFile(state, conf, 0o600); e != nil {
-			fmt.Fprintln(os.Stderr, e)
-			os.Exit(1)
-		}
-	case "down":
-		_ = os.Remove(state)
-	case "show":
-		if _, e := os.Stat(state); e != nil {
-			fmt.Fprintln(os.Stderr, "unable to access interface")
-			os.Exit(1)
-		}
-		if len(os.Args) > 2 {
-			fmt.Println("interface: " + os.Args[2])
-		}
-	default:
-		os.Exit(2)
+		_, _ = f.WriteString(args[2] + "\n")
+		_ = f.Close()
+		return
+	case "route", "rule":
+		return
 	}
+	os.Exit(2)
 }
 `
 	if e := os.WriteFile(src, []byte(source), 0o600); e != nil {
@@ -101,8 +144,7 @@ func main() {
 		}
 		return out
 	}
-	quick, wg := build("reelscarey-wg-quick-stub"), build("reelscarey-wg-stub")
-	return quick, wg
+	return build("wg"), build("ip"), stateDir
 }
 
 func awaitVPNState(t *testing.T, s *Service, state string) Status {
@@ -124,9 +166,10 @@ func awaitVPNState(t *testing.T, s *Service, state string) Status {
 }
 
 func TestVPNTunnelLifecycleAndRedaction(t *testing.T) {
-	quick, wg := wgStub(t)
-	t.Setenv("REELSCAREY_WG_QUICK", quick)
+	wg, ip, stateDir := commandStubs(t)
 	t.Setenv("REELSCAREY_WG", wg)
+	t.Setenv("REELSCAREY_IP", ip)
+	t.Setenv("REELSCAREY_VPN_STUB_STATE", stateDir)
 	s := vpnFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -139,19 +182,18 @@ func TestVPNTunnelLifecycleAndRedaction(t *testing.T) {
 	if _, e := s.Update(ctx, Update{Enabled: &enabled, PrivateKey: "not-base64!!", Address: "10.66.0.2/32", PeerKey: testPeerKey, Endpoint: "45.83.90.9:51820"}); e == nil {
 		t.Fatal("an invalid private key was accepted")
 	}
-	status, e := s.Update(ctx, Update{Enabled: &enabled, PrivateKey: testPrivateKey, Address: "10.66.0.2/32", PeerKey: testPeerKey, Endpoint: "45.83.90.9:51820"})
+	status, e := s.Update(ctx, Update{Enabled: &enabled, PrivateKey: testPrivateKey, Address: "10.66.0.2/32,fc00::2/128", PeerKey: testPeerKey, Endpoint: "45.83.90.9:51820", AllowedIPs: "0.0.0.0/0,::/0"})
 	if e != nil || !status.Present || !status.Enabled || status.State != "up" {
 		t.Fatal(status, e)
 	}
-	if status.Interface != TunnelInterface || status.Address != "10.66.0.2/32" {
-		t.Fatal(status)
+	applied, e := os.ReadFile(filepath.Join(stateDir, "applied.conf"))
+	if e != nil || !strings.Contains(string(applied), testPrivateKey) || !strings.Contains(string(applied), "Endpoint = 45.83.90.9:51820") {
+		t.Fatal("the generated WireGuard configuration is incomplete", string(applied), e)
 	}
-	// The generated configuration routes nothing and binds nothing globally.
-	raw, e := os.ReadFile(filepath.Join(os.TempDir(), "reelscarey-vpn", TunnelInterface+".conf"))
-	if e != nil || !strings.Contains(string(raw), "Table = off") || !strings.Contains(string(raw), testPrivateKey) {
-		t.Fatal(string(raw), e)
+	addrs, e := os.ReadFile(filepath.Join(stateDir, "addresses"))
+	if e != nil || !strings.Contains(string(addrs), "10.66.0.2/32") || !strings.Contains(string(addrs), "fc00::2/128") {
+		t.Fatal("both tunnel addresses were not applied", string(addrs), e)
 	}
-	// An echo of the configuration through a failing tool must be redacted.
 	broken := redact(Config{PrivateKey: testPrivateKey}, "PrivateKey = "+testPrivateKey+" is invalid")
 	if strings.Contains(broken, testPrivateKey) {
 		t.Fatal("the private key leaked into an error message")
@@ -162,14 +204,18 @@ func TestVPNTunnelLifecycleAndRedaction(t *testing.T) {
 		t.Fatal(saved, e)
 	}
 	awaitVPNState(t, s, "stopped")
+	if _, e := os.Stat(filepath.Join(stateDir, "interface")); !os.IsNotExist(e) {
+		t.Fatal("the interface survived disable")
+	}
 	cancel()
 	<-done
 }
 
 func TestVPNUpdateRejectsIncompleteEnable(t *testing.T) {
-	quick, wg := wgStub(t)
-	t.Setenv("REELSCAREY_WG_QUICK", quick)
+	wg, ip, stateDir := commandStubs(t)
 	t.Setenv("REELSCAREY_WG", wg)
+	t.Setenv("REELSCAREY_IP", ip)
+	t.Setenv("REELSCAREY_VPN_STUB_STATE", stateDir)
 	s := vpnFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
