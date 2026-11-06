@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Badge, Button } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
+import { useLiveResource } from "../useLiveResource";
 import { useResource } from "../useResource";
 
 type Definition = {
@@ -61,7 +62,7 @@ const emptyForm: Form = {
   account: "",
   password: "",
   invite: "",
-  enabled: true,
+  enabled: false,
 };
 
 function bytes(value: number) {
@@ -78,7 +79,7 @@ function bytes(value: number) {
 
 export function Announces() {
   const sources = useResource<Sources>("/announce-sources");
-  const events = useResource<Events>("/announces?page=1");
+  const events = useLiveResource<Events>("/announces?page=1", 10000);
   const [form, setForm] = useState<Form>(emptyForm);
   const [editing, setEditing] = useState<Source>();
   const [busy, setBusy] = useState(false);
@@ -142,8 +143,16 @@ export function Announces() {
           body: JSON.stringify(body),
         });
       }
-      setNotice(editing ? "Source saved." : "Source added.");
+      const wasEditing = !!editing;
+      const wasEnabled = form.enabled;
       reset();
+      setNotice(
+        wasEditing
+          ? "Source saved."
+          : wasEnabled
+            ? "Source added and enabled."
+            : "Source added paused. Enable it when you are ready to connect.",
+      );
       sources.reload();
     } catch (e) {
       setError(messageFor(e));
@@ -214,7 +223,9 @@ export function Announces() {
           <li>
             Register a bot nick on the tracker’s IRC network and group it with
             your account when the tracker requires that. Do not use your main
-            nick unless the tracker explicitly allows it.
+            nick, and use a nick different from any other IRC client or announce
+            tool you run — two clients with the same nick will disconnect each
+            other.
           </li>
           <li>
             <strong>NickServ password:</strong> your tracker account password.
@@ -328,8 +339,13 @@ export function Announces() {
                   setForm({ ...form, enabled: e.target.checked })
                 }
               />
-              Connect this source
+              Connect this source now
             </label>
+            <p className="field-help">
+              New sources start paused. Save it now and enable it when you are
+              ready to connect; a paused source keeps its encrypted credentials
+              without opening an IRC connection.
+            </p>
             {def && (
               <p className="field-help">
                 {def.tls ? "TLS" : "Plain"} · {def.server}:{def.port} ·{" "}

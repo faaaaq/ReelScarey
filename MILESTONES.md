@@ -211,3 +211,8 @@ See [announce feeds](docs/ANNOUNCE.md).
 - [x] Add, edit and remove custom collection folders with content and naming
   presets; the three built-ins are retained.
 - [x] General points to Media Management for every collection folder.
+## Version 0.34.3 IRC readiness
+
+- [x] Announce sources start paused; enabling is explicit.
+- [x] Live announce list refreshes while open.
+- [x] Dedicated-nick guidance for coexisting with another announce client.

@@ -693,3 +693,9 @@ Settings → Media Management embeds the shared collection editor. Movies, TV
 Shows and Anime are always visible; custom collections can be added with their
 own folder, content type and naming preset. General no longer implies that only
 movie and TV folders exist.
+## Version 0.34.3 IRC readiness
+
+Announce sources are saved paused and only connect when explicitly enabled. The
+live list refreshes while open, and the UI warns that a dedicated bot nick is
+required because two clients on the same nick disconnect each other. Live
+tracker acceptance remains deferred until the owner retires the other IRC client.

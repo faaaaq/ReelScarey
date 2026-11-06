@@ -60,3 +60,16 @@ error appears under the source.
   IPTorrents/XSpeeds/Nyaa/RSS/Torznab/Newznab adapters remain the search paths.
 - Automatic queueing and download-URL fetching are the next step. That will
   need each tracker's passkey/RSS key and a fenced queue guard.
+## Readiness and deferred live testing
+
+New sources are saved **paused** by default. Saving stores the encrypted IRC
+password without opening a connection; enable the source only when you are
+ready. Use a **dedicated bot nick** that no other IRC client or announce tool is
+using. Two clients connected with the same nick will disconnect each other, so
+the previous announce tool must be disconnected (or use a different nick)
+before live acceptance.
+
+The IRC client, parser, storage and UI are covered by fixtures, a fake IRC
+server and the full image build. Live tracker acceptance remains owner-scheduled
+and is intentionally not run against a tracker while another client owns the
+nick.

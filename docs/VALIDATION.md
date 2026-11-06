@@ -1965,3 +1965,11 @@ No owner-server media or download client was used for these checks.
   available.
 - Frontend Prettier, TypeScript and the App interaction suite passed; the full
   image build validates the complete suite.
+## Version 0.34.3 IRC readiness
+
+- New announce sources default to paused. The form stores encrypted credentials
+  without connecting; enabling remains an explicit action.
+- The announce list refreshes every 10 seconds while the page is open.
+- The UI explains that a dedicated bot nick is required and that two clients on
+  the same nick disconnect each other. Live tracker acceptance is deferred at
+  the owner's request; parser, fake-IRC and image-build checks remain in place.
