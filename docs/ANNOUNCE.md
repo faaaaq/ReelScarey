@@ -73,3 +73,16 @@ The IRC client, parser, storage and UI are covered by fixtures, a fake IRC
 server and the full image build. Live tracker acceptance remains owner-scheduled
 and is intentionally not run against a tracker while another client owns the
 nick.
+## Tracker download key (0.34.4)
+
+Each announce source can store the tracker credential used to build a direct
+download URL when automatic grabbing is enabled:
+
+- IPTorrents: **Passkey** from the details page.
+- TorrentLeech and BeyondHD: **RSS key** from the profile.
+- FileList and AnimeBytes: **Passkey** from the account page.
+- MyAnonamouse: **session cookie (mam_id)**.
+
+The key is encrypted with the application key, never returned by the API, and
+is not used until the automatic-grab step is enabled. Leaving the field blank
+on edit keeps the saved key. A source can be saved paused with the key now.

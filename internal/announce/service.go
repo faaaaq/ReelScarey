@@ -24,6 +24,10 @@ type SourceSettings struct {
 	Account  string `json:"account,omitempty"`
 	Password string `json:"password,omitempty"`
 	Invite   string `json:"invite,omitempty"`
+	// Key is the tracker download credential (passkey, RSS key or session
+	// cookie). It is stored encrypted and is not used until automatic grabbing
+	// is enabled.
+	Key string `json:"key,omitempty"`
 }
 
 type Source struct {
@@ -45,6 +49,8 @@ type SourceStatus struct {
 	Nick           string `json:"nick"`
 	Account        string `json:"account"`
 	HasPassword    bool   `json:"has_password"`
+	HasKey         bool   `json:"has_key"`
+	KeyLabel       string `json:"key_label"`
 	RequireAccount bool   `json:"require_account"`
 }
 
@@ -57,6 +63,7 @@ type SourceUpdate struct {
 	Account  string `json:"account"`
 	Password string `json:"password"`
 	Invite   string `json:"invite"`
+	Key      string `json:"key"`
 }
 
 type Event struct {
@@ -122,6 +129,7 @@ type DefinitionSummary struct {
 	Port           int    `json:"port"`
 	TLS            bool   `json:"tls"`
 	Channel        string `json:"channel"`
+	KeyLabel       string `json:"key_label"`
 	RequireAccount bool   `json:"require_account"`
 }
 
@@ -133,7 +141,7 @@ func (s *Service) Definitions() DefinitionList {
 		if !ok {
 			continue
 		}
-		out.Items = append(out.Items, DefinitionSummary{ID: d.ID, Name: d.Name, Server: d.Server, Port: d.Port, TLS: d.TLS, Channel: d.Channel, RequireAccount: d.RequireAccount})
+		out.Items = append(out.Items, DefinitionSummary{ID: d.ID, Name: d.Name, Server: d.Server, Port: d.Port, TLS: d.TLS, Channel: d.Channel, KeyLabel: d.KeyLabel, RequireAccount: d.RequireAccount})
 	}
 	return out
 }
@@ -166,12 +174,14 @@ func (s *Service) Sources(ctx context.Context) ([]SourceStatus, error) {
 		}
 		if d, ok := defs[st.Tracker]; ok {
 			st.Server, st.Port, st.TLS, st.Channel, st.RequireAccount = d.Server, d.Port, d.TLS, d.Channel, d.RequireAccount
+			st.KeyLabel = d.KeyLabel
 		}
 		settings, e := s.loadSettings(ctx, st.ID, sealed)
 		if e != nil {
 			st.LastError = "The saved IRC settings could not be read. Re-enter them."
 		} else {
 			st.HasPassword = settings.Password != ""
+			st.HasKey = settings.Key != ""
 			st.Nick = settings.Nick
 			st.Account = settings.Account
 		}
@@ -192,6 +202,7 @@ func (s *Service) SaveSource(ctx context.Context, id string, in SourceUpdate) (S
 	in.Nick = strings.TrimSpace(in.Nick)
 	in.Account = strings.TrimSpace(in.Account)
 	in.Invite = strings.TrimSpace(in.Invite)
+	in.Key = strings.TrimSpace(in.Key)
 	if len(in.Name) < 1 || len(in.Name) > 80 || strings.ContainsAny(in.Name, "\r\n\x00") {
 		return SourceStatus{}, problem("invalid_settings", "Give the announce source a name with 1–80 characters.")
 	}
@@ -200,6 +211,9 @@ func (s *Service) SaveSource(ctx context.Context, id string, in SourceUpdate) (S
 	}
 	if len(in.Invite) > 512 || strings.ContainsAny(in.Invite, "\r\n\x00") {
 		return SourceStatus{}, problem("invalid_settings", "The invite command is too long or contains control characters.")
+	}
+	if len(in.Key) > 512 || strings.ContainsAny(in.Key, "\r\n\x00") {
+		return SourceStatus{}, problem("invalid_settings", "The tracker key is too long or contains control characters.")
 	}
 	var sealed []byte
 	var prior SourceSettings
@@ -233,6 +247,9 @@ func (s *Service) SaveSource(ctx context.Context, id string, in SourceUpdate) (S
 	}
 	if in.Invite != "" {
 		settings.Invite = in.Invite
+	}
+	if in.Key != "" {
+		settings.Key = in.Key
 	}
 	if in.Enabled && def.RequireAccount && (settings.Account == "" || settings.Password == "") {
 		return SourceStatus{}, problem("invalid_settings", "This tracker requires a NickServ account and password before it can be enabled.")

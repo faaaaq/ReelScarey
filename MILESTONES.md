@@ -216,3 +216,9 @@ See [announce feeds](docs/ANNOUNCE.md).
 - [x] Announce sources start paused; enabling is explicit.
 - [x] Live announce list refreshes while open.
 - [x] Dedicated-nick guidance for coexisting with another announce client.
+## Version 0.34.4 tracker download key
+
+- [x] Encrypted tracker key field for announce sources (IPTorrents passkey,
+  TorrentLeech/BeyondHD RSS key, FileList/AnimeBytes passkey, MAM cookie).
+- [x] Key is write-only in the API and UI; blank edits keep it.
+- [x] Stored now, used when automatic grabbing is enabled.

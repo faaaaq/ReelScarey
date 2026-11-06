@@ -878,10 +878,14 @@ See [behavior, recovery and limits](MOVIE_VERSIONS.md).
 
 - `GET /api/v1/announce-sources` returns `{items,definitions}`. Items expose
   tracker, name, enabled, revision, nick, server, port, TLS, channel,
-  `has_password`, `last_error` and `last_event_at`; passwords are never returned.
-- `POST /api/v1/announce-sources` with `{tracker,name,nick,account,password,invite,enabled}`
+  `has_password`, `has_key`, `key_label`, `last_error` and `last_event_at`;
+  passwords and keys are never returned.
+- `POST /api/v1/announce-sources` with `{tracker,name,nick,account,password,invite,key,enabled}`
   creates a source. `PUT /api/v1/announce-sources/{id}` requires the current
-  `revision`; a blank password or invite retains the saved value.
+  `revision`; a blank password, invite or key retains the saved value. The key
+  is the tracker download credential (IPTorrents passkey, TorrentLeech/BeyondHD
+  RSS key, FileList/AnimeBytes passkey, MyAnonamouse session cookie) and is used
+  only by automatic grabbing when that step is enabled.
 - `DELETE /api/v1/announce-sources/{id}` requires `{revision}` and removes the
   encrypted settings and captured events.
 - `GET /api/v1/announces?page=1` returns the newest 50 parsed events with

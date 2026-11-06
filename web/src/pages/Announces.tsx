@@ -12,6 +12,7 @@ type Definition = {
   port: number;
   tls: boolean;
   channel: string;
+  key_label: string;
   require_account: boolean;
 };
 type Source = {
@@ -29,6 +30,8 @@ type Source = {
   nick: string;
   account: string;
   has_password: boolean;
+  has_key: boolean;
+  key_label: string;
   require_account: boolean;
 };
 type Event = {
@@ -52,6 +55,7 @@ type Form = {
   account: string;
   password: string;
   invite: string;
+  key: string;
   enabled: boolean;
 };
 
@@ -62,6 +66,7 @@ const emptyForm: Form = {
   account: "",
   password: "",
   invite: "",
+  key: "",
   enabled: false,
 };
 
@@ -93,6 +98,7 @@ export function Announces() {
       ...current,
       tracker: id,
       name: next?.name ?? current.name,
+      key: "",
     }));
   }
   function edit(source: Source) {
@@ -104,6 +110,7 @@ export function Announces() {
       account: source.account,
       password: "",
       invite: "",
+      key: "",
       enabled: source.enabled,
     });
     setNotice("");
@@ -129,6 +136,7 @@ export function Announces() {
         account: form.account,
         password: form.password,
         invite: form.invite,
+        ...(form.key ? { key: form.key } : {}),
         enabled: form.enabled,
         revision: editing?.revision ?? 0,
       };
@@ -320,6 +328,28 @@ export function Announces() {
               />
             </label>
             <label>
+              {def?.key_label || "Tracker key"}{" "}
+              {editing?.has_key ? "(saved; leave blank to keep)" : ""}
+              <input
+                type="password"
+                value={form.key}
+                onChange={(e) => setForm({ ...form, key: e.target.value })}
+                autoComplete="off"
+                maxLength={512}
+                placeholder={
+                  form.tracker === "iptorrents"
+                    ? "From your IPTorrents details page"
+                    : "From your tracker account"
+                }
+              />
+            </label>
+            <p className="field-help">
+              The {def?.key_label || "tracker key"} is encrypted and used for
+              automatic downloads when that step is enabled. It is not sent to
+              other hosts. For IPTorrents, copy the passkey from your details
+              page.
+            </p>
+            <label>
               Invite command{" "}
               <span className="field-help">
                 (BeyondHD/AnimeBytes; optional)
@@ -384,6 +414,7 @@ export function Announces() {
               <p className="field-help">
                 {source.tracker} · {source.server}:{source.port} ·{" "}
                 {source.channel} · nick {source.nick}
+                {source.has_key ? " · key saved" : ""}
               </p>
               {source.last_error && (
                 <p className="error-box" role="alert">

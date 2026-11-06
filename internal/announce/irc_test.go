@@ -106,17 +106,17 @@ func TestSourceLifecycleAndBoundedEvents(t *testing.T) {
 	s, done := announceFixture(t)
 	defer done()
 	ctx := context.Background()
-	source, e := s.SaveSource(ctx, "", SourceUpdate{Tracker: "iptorrents", Name: "IPT", Nick: "tester", Password: "secret", Enabled: true})
+	source, e := s.SaveSource(ctx, "", SourceUpdate{Tracker: "iptorrents", Name: "IPT", Nick: "tester", Password: "secret", Key: "tracker-passkey", Enabled: true})
 	if e != nil {
 		t.Fatal(e)
 	}
-	if source.Revision != 1 || !source.HasPassword || source.Server != "irc.iptorrents.com" || source.Channel != "#ipt.announce" {
+	if source.Revision != 1 || !source.HasPassword || !source.HasKey || source.Server != "irc.iptorrents.com" || source.Channel != "#ipt.announce" {
 		t.Fatal(source)
 	}
 	if source, e = s.SaveSource(ctx, source.ID, SourceUpdate{Tracker: "iptorrents", Name: "IPT", Nick: "tester", Enabled: false, Revision: 1}); e != nil {
 		t.Fatal(e)
 	}
-	if source.Revision != 2 || !source.HasPassword || source.Enabled {
+	if source.Revision != 2 || !source.HasPassword || !source.HasKey || source.Enabled {
 		t.Fatal(source)
 	}
 	parsed := Parsed{ReleaseName: "The Movie 2010", TorrentID: "1", InfoURL: "https://tracker/details.php?id=1"}

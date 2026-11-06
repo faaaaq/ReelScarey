@@ -1973,3 +1973,12 @@ No owner-server media or download client was used for these checks.
 - The UI explains that a dedicated bot nick is required and that two clients on
   the same nick disconnect each other. Live tracker acceptance is deferred at
   the owner's request; parser, fake-IRC and image-build checks remain in place.
+## Version 0.34.4 tracker download key
+
+- Announce sources store an encrypted tracker download key: IPTorrents passkey,
+  TorrentLeech/BeyondHD RSS key, FileList/AnimeBytes passkey or MyAnonamouse
+  session cookie. The API exposes only `has_key` and `key_label`; the key is
+  never returned.
+- The source test covers saving and retaining the key across a blank-key edit.
+  The Announce page adds a password field and shows "key saved" without
+  displaying it. The key is not used until automatic grabbing is enabled.

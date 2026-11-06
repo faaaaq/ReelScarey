@@ -699,3 +699,9 @@ Announce sources are saved paused and only connect when explicitly enabled. The
 live list refreshes while open, and the UI warns that a dedicated bot nick is
 required because two clients on the same nick disconnect each other. Live
 tracker acceptance remains deferred until the owner retires the other IRC client.
+## Version 0.34.4 tracker download key
+
+Announce sources can store the tracker download credential now, encrypted and
+write-only: IPTorrents passkey, TorrentLeech/BeyondHD RSS key, FileList/
+AnimeBytes passkey or MyAnonamouse session cookie. It is not used until the
+automatic-grab step is enabled.

@@ -25,6 +25,7 @@ type Definition struct {
 	RequireAccount bool
 	BinarySizes    bool
 	InfoPath       string
+	KeyLabel       string
 	Pattern        string
 	re             *regexp.Regexp
 }
@@ -56,32 +57,32 @@ func compileDefinitions() (map[string]Definition, error) {
 	raw := []Definition{
 		{
 			ID: "iptorrents", Name: "IPTorrents", Server: "irc.iptorrents.com", Port: 6697, TLS: true,
-			Channel: "#ipt.announce", BinarySizes: true, InfoPath: "/details.php?id={{torrentId}}",
+			Channel: "#ipt.announce", BinarySizes: true, InfoPath: "/details.php?id={{torrentId}}", KeyLabel: "Passkey",
 			Pattern: `^\[(?P<category>.+?)]\s+(?P<releaseName>.*?)\s*(?:(?P<freeleech>FREELEECH))?\s*-\s*(?P<baseUrl>https?://.+?/).+id=(?P<torrentId>\d+)\s*-\s*(?P<torrentSize>.*)$`,
 		},
 		{
 			ID: "torrentleech", Name: "TorrentLeech", Server: "irc.torrentleech.org", Port: 7021, TLS: true,
-			Channel: "#tlannounces", InfoPath: "/torrent/{{torrentId}}",
+			Channel: "#tlannounces", InfoPath: "/torrent/{{torrentId}}", KeyLabel: "RSS key",
 			Pattern: `^New Torrent Announcement:\s*<(?P<category>[^>]*)>\s*Name:'(?P<releaseName>.*)' uploaded by '(?P<uploader>[^']*)'\s*(?:(?P<freeleech>freeleech))?\s*-\s*(?P<baseUrl>https?://[^/]+/)torrent/(?P<torrentId>\d+)`,
 		},
 		{
 			ID: "filelist", Name: "FileList", Server: "irc.filelist.io", Port: 6697, TLS: true,
-			Channel: "#announce", InfoPath: "/details.php?id={{torrentId}}",
+			Channel: "#announce", InfoPath: "/details.php?id={{torrentId}}", KeyLabel: "Passkey",
 			Pattern: `^New Torrent:\s+(?P<releaseName>.*?)\s*(?:-- \[(?P<freeleech>FreeLeech)!]\s*)?(?:-- \[(?P<origin>Internal)!]\s*)?-- \[(?P<category>.*)]\s*\[(?P<torrentSize>.*)]\s*--\s*(?P<baseUrl>https?://filelist\.io/).*id=(?P<torrentId>\d+)\s*-- by (?P<uploader>.*)$`,
 		},
 		{
 			ID: "beyondhd", Name: "BeyondHD", Server: "irc.beyond-hd.me", Port: 6697, TLS: true,
-			Channel: "#bhd_announce", RequireAccount: true, InfoPath: "/torrents/autodl?id={{torrentId}}",
+			Channel: "#bhd_announce", RequireAccount: true, InfoPath: "/torrents/autodl?id={{torrentId}}", KeyLabel: "RSS key",
 			Pattern: `^New Torrent:\s+(?P<releaseName>.*?)\s*(?:\[(?P<freeleech>.*)]\s*)?Category:\s*(?P<category>.*?)\s+By:\s*(?P<uploader>.*?)\s+Size:\s*(?P<torrentSize>.*?)\s+Link:\s*(?P<baseUrl>https?://[^/]+/).*[&?]id=(?P<torrentId>\d+)`,
 		},
 		{
 			ID: "animebytes", Name: "AnimeBytes", Server: "irc.animefriends.moe", Port: 7000, TLS: true,
-			Channel: "#announce", InfoPath: "/torrents.php?id={{groupId}}&torrentid={{torrentId}}",
+			Channel: "#announce", InfoPath: "/torrents.php?id={{groupId}}&torrentid={{torrentId}}", KeyLabel: "Passkey",
 			Pattern: `^(?P<releaseName>.*?)\s{2,}\[(?P<year>\d+)]\s::\s(?P<releaseTags>.*?)\s*\|\|\s*(?P<baseUrl>https?://[^ ]+/).*[?&]id=(?P<groupId>\d+)&torrentid=(?P<torrentId>\d+).*?(?:\|\|\s*(?P<tags>[^|]*))?(?:\|\|\s*Uploaded by:\s*(?P<uploader>.*))?$`,
 		},
 		{
 			ID: "myanonamouse", Name: "MyAnonamouse", Server: "irc.myanonamouse.net", Port: 6697, TLS: true,
-			Channel: "#announce", RequireAccount: true, InfoPath: "/t/{{torrentId}}",
+			Channel: "#announce", RequireAccount: true, InfoPath: "/t/{{torrentId}}", KeyLabel: "Session cookie (mam_id)",
 			Pattern: `^(?P<releaseName>.*?By:\s*(?P<author>.+?)\s*\[(?P<language>[^\]]+)]\s*\[(?P<category>[^\]]+)]\s*\[(?P<subCategory>[^\]]+)]\s*\[(?P<container>[^\]]+)])\s*\[(?P<torrentSize>[^\]]+)]\s*-\s*(?P<tags>.+?)\s*-\s*(?P<baseUrl>https?://[^/]+/)t/(?P<torrentId>\d+)\s*(?P<releaseTags>VIP|Normal)?$`,
 		},
 	}
