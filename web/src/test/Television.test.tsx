@@ -81,6 +81,7 @@ function setup(
         files: [],
         history: [],
       });
+    if (url.includes("/youtube-sources")) return Response.json({ items: [] });
     return Response.json(
       { error: { message: "Unexpected test request" } },
       { status: 404 },

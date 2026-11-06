@@ -232,3 +232,16 @@ See [announce feeds](docs/ANNOUNCE.md).
   supported container, HDR transfer, chapter/attachment and packet check.
 - [x] Decorative page subtitles, section summaries and explanatory footers were
   removed; operational warnings and field help remain.
+
+## Version 0.35 Torrents, YouTube downloader and series sources
+
+- [x] Torrents page for the built-in qBittorrent: live rates, filters, progress,
+  speed/ETA, pause/resume/recheck, reviewed removal with optional data deletion,
+  details/files and manual magnet or `.torrent` adds.
+- [x] MeTube-style YouTube page with URL fetch, thumbnails, destination picker,
+  Best/1080p/720p quality, progress/speed/ETA, cancellable queue and the existing
+  reviewed import.
+- [x] Per-show YouTube playlist/channel sources with explicit SxxExx or playlist
+  order mapping, preview, paused creation, baseline and explicit backfill.
+- [x] Exact mapped episodes can auto-import after verification; existing files
+  and active downloads are skipped and recorded.

@@ -110,8 +110,16 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - internal/youtube owns explicit public source review, durable acquisition and
   reviewed journaled video/subtitle imports. Preserve canonical target IDs,
   no-overwrite publication, source evidence and shared transfer reservations;
-  custom collections must not fabricate provider identities. Sidecars require
-  explicit language choice, bounded content, review and recovery alongside video.
+  custom collections must not fabricate provider identities. Per-show sources
+  require an explicit playlist/channel and an explicit SxxExx or playlist-order
+  mapping reviewed by the owner; they start paused and only queue loaded,
+  monitored, missing episodes. Automatic import applies only to those exact
+  mapped acquisitions and still uses the verified journaled import; anything
+  uncertain stays awaiting review. Sidecars require explicit language choice,
+  bounded content, review and recovery alongside video.
+  The Torrents page manages only the supervised built-in client: manual inputs
+  are magnet links or bounded uploaded metainfo (never server-fetched URLs), and
+  destructive removal always requires an explicit reviewed choice.
 - internal/automation owns interval scheduling, leased searches and bounded audit
   history. It delegates downloads/imports to transfer; automatic queueing must be
   fenced inside the reservation transaction against changed policy and monitoring.

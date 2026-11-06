@@ -35,7 +35,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.34.5-dev"
+var version = "0.35.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -199,6 +199,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		}
 	}()
 	defer func() { workerCancel(); <-subscriptionsDone }()
+	seriesSourcesDone := make(chan struct{})
+	go func() {
+		defer close(seriesSourcesDone)
+		if youtubeInspector != nil && waitRecovery(workerCtx, cfg.ConfigDir) {
+			youtube.NewStore(db).RunSeriesSources(workerCtx, youtubeInspector, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-seriesSourcesDone }()
 	metadataDone := make(chan struct{})
 	go func() {
 		defer close(metadataDone)
@@ -240,7 +248,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		if youtubeInspector == nil || !waitRecovery(workerCtx, cfg.ConfigDir) {
 			return
 		}
-		worker := &youtube.Worker{Store: youtube.NewStore(db), Downloader: youtubeInspector, Prober: transfer.FFprobe{}, StagingRoot: youtubeStaging, MediaRoot: cfg.MediaDir, ConfigRoot: cfg.ConfigDir}
+		worker := &youtube.Worker{Store: youtube.NewStore(db), Downloader: youtubeInspector, Prober: transfer.FFprobe{}, StagingRoot: youtubeStaging, MediaRoot: cfg.MediaDir, ConfigRoot: cfg.ConfigDir, Config: cfg}
 		if e := worker.CleanupCommitted(workerCtx, cfg); e != nil && workerCtx.Err() == nil {
 			logger.Warn("YouTube staging cleanup deferred", "error", e)
 		}

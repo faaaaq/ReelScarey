@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
 )
 
@@ -30,6 +31,7 @@ type Worker struct {
 	StagingRoot string
 	MediaRoot   string
 	ConfigRoot  string
+	Config      config.Config
 }
 
 // ProcessOne claims one durable job. Every attempt gets a new private directory;
@@ -155,31 +157,46 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	}
 	var rawLanguages string
 	var automatic bool
-	e = db.QueryRowContext(work, `SELECT o.languages_json,o.automatic FROM youtube_jobs j JOIN youtube_subtitle_options o ON o.review_id=j.review_id WHERE j.id=?`, jobID).Scan(&rawLanguages, &automatic)
+	var quality string
+	e = db.QueryRowContext(work, `SELECT o.languages_json,o.automatic,COALESCE(j.quality,'best') FROM youtube_jobs j JOIN youtube_subtitle_options o ON o.review_id=j.review_id WHERE j.id=?`, jobID).Scan(&rawLanguages, &automatic, &quality)
 	if e != nil {
 		return fail(e)
 	}
 	var opts DownloadOptions
 	opts.Automatic = automatic
+	opts.Quality = quality
 	if e = json.Unmarshal([]byte(rawLanguages), &opts.Languages); e != nil || !validSubtitleOptions(opts) {
 		return fail(ErrInput)
+	}
+	lastProgress := time.Time{}
+	opts.Progress = func(downloaded, total, speed, eta int64) {
+		if time.Since(lastProgress) < time.Second {
+			return
+		}
+		lastProgress = time.Now()
+		progress := 0.0
+		if total > 0 {
+			progress = float64(downloaded) / float64(total)
+			if progress > 1 {
+				progress = 1
+			}
+		}
+		_, _ = db.ExecContext(work, `UPDATE youtube_jobs SET progress=?,downloaded_bytes=?,total_bytes=?,speed_bps=?,eta_seconds=?,updated_at=unixepoch() WHERE id=? AND state='downloading' AND lease_owner=?`, progress, downloaded, total, speed, eta, jobID, owner)
 	}
 	var name string
 	subtitleResults := []SubtitleFile{}
 	missing := []string{}
-	if len(opts.Languages) > 0 {
-		downloader, ok := w.Downloader.(subtitleDownloader)
-		if !ok {
-			return fail(ErrDownload)
-		}
-		var result DownloadResult
-		result, e = downloader.DownloadWithSubtitles(work, vid, filepath.Join(rootPath, dir), opts)
-		name = result.Video
-		subtitleResults = result.Subtitles
-		missing = result.MissingLanguages
-	} else {
-		name, e = w.Downloader.Download(work, vid, filepath.Join(rootPath, dir))
+	downloader, ok := w.Downloader.(subtitleDownloader)
+	if !ok {
+		return fail(ErrDownload)
 	}
+	result, e := downloader.DownloadWithSubtitles(work, vid, filepath.Join(rootPath, dir), opts)
+	if e != nil {
+		return fail(e)
+	}
+	name = result.Video
+	subtitleResults = result.Subtitles
+	missing = result.MissingLanguages
 	if e != nil {
 		return fail(e)
 	}
@@ -292,7 +309,7 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 			return fail(e)
 		}
 	}
-	res, e = tx.ExecContext(work, `UPDATE youtube_jobs SET state='awaiting_review',source_path=?,source_size=?,source_mtime=?,source_sha256=?,probe_json=?,message=?,lease_owner='',lease_until=0,updated_at=unixepoch() WHERE id=? AND state='downloading' AND lease_owner=? AND lease_until>=unixepoch()`, relative, opened.Size(), opened.ModTime().UnixNano(), sum, string(raw), message, jobID, owner)
+	res, e = tx.ExecContext(work, `UPDATE youtube_jobs SET state='awaiting_review',source_path=?,source_size=?,source_mtime=?,source_sha256=?,probe_json=?,message=?,progress=1,downloaded_bytes=?,total_bytes=?,speed_bps=0,eta_seconds=0,lease_owner='',lease_until=0,updated_at=unixepoch() WHERE id=? AND state='downloading' AND lease_owner=? AND lease_until>=unixepoch()`, relative, opened.Size(), opened.ModTime().UnixNano(), sum, string(raw), message, opened.Size(), opened.Size(), jobID, owner)
 	if e != nil {
 		_ = tx.Rollback()
 		return fail(e)
@@ -303,6 +320,18 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	}
 	if e = tx.Commit(); e != nil {
 		return fail(e)
+	}
+	if target.Kind == "episode" {
+		var auto bool
+		if e = db.QueryRowContext(work, `SELECT auto_import FROM youtube_jobs WHERE id=?`, jobID).Scan(&auto); e == nil && auto && w.Config.ConfigDir != "" {
+			review, reviewErr := w.Store.ReviewImport(work, w.Config, jobID)
+			if reviewErr == nil {
+				reviewErr = w.Store.ApproveImport(work, w.Config, review)
+			}
+			if reviewErr != nil {
+				_, _ = db.ExecContext(context.Background(), `UPDATE youtube_jobs SET message='Verified. Automatic import needs review before it can continue.' WHERE id=? AND state='awaiting_review'`, jobID)
+			}
+		}
 	}
 	return true, nil
 }

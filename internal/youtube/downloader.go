@@ -1,11 +1,13 @@
 package youtube
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -16,6 +18,9 @@ var subtitleLanguage = regexp.MustCompile(`^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0
 type DownloadOptions struct {
 	Languages []string `json:"languages"`
 	Automatic bool     `json:"automatic"`
+	Quality   string   `json:"quality,omitempty"`
+	// Progress is a live yt-dlp progress callback and is never serialized.
+	Progress func(downloaded, total, speed, eta int64) `json:"-"`
 }
 type SubtitleFile struct {
 	Language string `json:"language"`
@@ -27,8 +32,22 @@ type DownloadResult struct {
 	MissingLanguages []string       `json:"missing_languages"`
 }
 
+func normalizedQuality(value string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "best":
+		return "best", true
+	case "1080", "720":
+		return strings.ToLower(strings.TrimSpace(value)), true
+	default:
+		return "", false
+	}
+}
+
 func validSubtitleOptions(options DownloadOptions) bool {
 	if len(options.Languages) > 8 || options.Automatic && len(options.Languages) == 0 {
+		return false
+	}
+	if _, ok := normalizedQuality(options.Quality); !ok {
 		return false
 	}
 	seen := map[string]bool{}
@@ -79,7 +98,15 @@ func (i *Inspector) DownloadWithSubtitles(ctx context.Context, id, directory str
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Hour)
 	defer cancel()
-	args := []string{"--ignore-config", "--no-cache-dir", "--no-cookies", "--no-cookies-from-browser", "--no-warnings", "--no-progress", "--no-playlist", "--no-overwrites", "--no-write-info-json", "--no-write-thumbnail", "--no-write-playlist-metafiles", "--paths", dir, "-o", id + ".%(ext)s"}
+	args := []string{"--ignore-config", "--no-cache-dir", "--no-cookies", "--no-cookies-from-browser", "--no-warnings", "--no-playlist", "--no-overwrites", "--no-write-info-json", "--no-write-thumbnail", "--no-write-playlist-metafiles", "--paths", dir, "-o", id + ".%(ext)s"}
+	if quality, ok := normalizedQuality(options.Quality); ok && quality != "best" {
+		args = append(args, "-f", "bv*[height<="+quality+"]+ba/b[height<="+quality+"]/b")
+	}
+	if options.Progress != nil {
+		args = append(args, "--newline", "--progress-template", "download:reelscarey-progress %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.speed)s %(progress.eta)s")
+	} else {
+		args = append(args, "--no-progress")
+	}
 	if len(options.Languages) == 0 {
 		args = append(args, "--no-write-subs", "--no-write-auto-subs")
 	} else {
@@ -97,9 +124,43 @@ func (i *Inspector) DownloadWithSubtitles(ctx context.Context, id, directory str
 	args = append(args, "--", source("video", id).URL)
 	cmd := i.command(ctx, i.executable, args...)
 	cmd.Env = append(os.Environ(), "YTDLP_NO_PLUGINS=1")
-	stdout, stderr := &boundedBuffer{max: 64 << 10}, &boundedBuffer{max: 64 << 10}
-	cmd.Stdout, cmd.Stderr = stdout, stderr
-	if err := cmd.Run(); err != nil || stdout.exceeded || stderr.exceeded || ctx.Err() != nil {
+	stderr := &boundedBuffer{max: 64 << 10}
+	cmd.Stderr = stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return result, ErrDownload
+	}
+	if err = cmd.Start(); err != nil {
+		return result, ErrDownload
+	}
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 4096), 64<<10)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if options.Progress == nil || !strings.HasPrefix(line, "reelscarey-progress ") {
+			continue
+		}
+		fields := strings.Fields(strings.TrimPrefix(line, "reelscarey-progress "))
+		if len(fields) != 4 {
+			continue
+		}
+		var values [4]int64
+		valid := true
+		for n, field := range fields {
+			value, parseErr := strconv.ParseFloat(field, 64)
+			if parseErr != nil || value < 0 || value > 1<<50 {
+				valid = false
+				break
+			}
+			values[n] = int64(value)
+		}
+		if valid {
+			options.Progress(values[0], values[1], values[2], values[3])
+		}
+	}
+	scanErr := scanner.Err()
+	waitErr := cmd.Wait()
+	if waitErr != nil || scanErr != nil || stderr.exceeded || ctx.Err() != nil {
 		return result, ErrDownload
 	}
 	files, err = os.ReadDir(dir)

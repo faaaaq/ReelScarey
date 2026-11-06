@@ -41,6 +41,7 @@ type Entry struct {
 	Channel         string `json:"channel"`
 	DurationSeconds int64  `json:"duration_seconds"`
 	Published       string `json:"published"`
+	Thumbnail       string `json:"thumbnail"`
 }
 type Inspection struct {
 	Source    Source  `json:"source"`
@@ -149,6 +150,12 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 	return b.Buffer.Write(p)
 }
 
+type rawThumb struct {
+	URL    string `json:"url"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
 type rawEntry struct {
 	ID         string            `json:"id"`
 	Title      string            `json:"title"`
@@ -158,6 +165,7 @@ type rawEntry struct {
 	UploadDate string            `json:"upload_date"`
 	Type       string            `json:"_type"`
 	IEKey      string            `json:"ie_key"`
+	Thumbnails []rawThumb        `json:"thumbnails"`
 	Entries    []json.RawMessage `json:"entries"`
 }
 
@@ -242,7 +250,30 @@ func entry(e rawEntry, kind string) Entry {
 		published = d.Format("2006-01-02")
 	}
 	s := source(kind, e.ID)
-	return Entry{Kind: kind, ID: e.ID, URL: s.URL, Title: cleanText(e.Title, 300), Channel: cleanText(first(e.Channel, e.Uploader), 200), DurationSeconds: duration, Published: published}
+	return Entry{Kind: kind, ID: e.ID, URL: s.URL, Title: cleanText(e.Title, 300), Channel: cleanText(first(e.Channel, e.Uploader), 200), DurationSeconds: duration, Published: published, Thumbnail: thumbnail(e)}
+}
+
+// thumbnail accepts only well-known YouTube image hosts and falls back to the
+// fixed video thumbnail path, so an inspection cannot inject an arbitrary URL.
+func thumbnail(e rawEntry) string {
+	best, area := "", -1
+	for _, t := range e.Thumbnails {
+		u, err := url.Parse(t.URL)
+		if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" {
+			continue
+		}
+		host := strings.ToLower(u.Hostname())
+		if host != "i.ytimg.com" && host != "img.youtube.com" && host != "yt3.ggpht.com" && !strings.HasSuffix(host, ".ytimg.com") {
+			continue
+		}
+		if t.Width*t.Height > area {
+			best, area = t.URL, t.Width*t.Height
+		}
+	}
+	if best == "" && videoID.MatchString(e.ID) {
+		best = "https://i.ytimg.com/vi/" + e.ID + "/mqdefault.jpg"
+	}
+	return best
 }
 func first(a, b string) string {
 	if a != "" {

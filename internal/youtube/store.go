@@ -49,13 +49,22 @@ type Review struct {
 	Subtitles   DownloadOptions `json:"subtitles"`
 }
 type Job struct {
-	ID        string `json:"id"`
-	Video     Video  `json:"video"`
-	Target    Target `json:"target"`
-	State     string `json:"state"`
-	Message   string `json:"message"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	ID             string  `json:"id"`
+	Video          Video   `json:"video"`
+	Target         Target  `json:"target"`
+	TargetLabel    string  `json:"target_label"`
+	State          string  `json:"state"`
+	Message        string  `json:"message"`
+	Quality        string  `json:"quality"`
+	Progress       float64 `json:"progress"`
+	Downloaded     int64   `json:"downloaded_bytes"`
+	Total          int64   `json:"total_bytes"`
+	Speed          int64   `json:"speed_bps"`
+	ETA            int64   `json:"eta_seconds"`
+	AutoImport     bool    `json:"auto_import"`
+	SeriesSourceID string  `json:"series_source_id,omitempty"`
+	CreatedAt      int64   `json:"created_at"`
+	UpdatedAt      int64   `json:"updated_at"`
 }
 type File struct {
 	JobID        string `json:"job_id"`
@@ -217,7 +226,8 @@ func (s *Store) PreviewWithSubtitles(ctx context.Context, v Video, t Target, sub
 	if e != nil {
 		return Review{}, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_subtitle_options(review_id,languages_json,automatic) VALUES(?,?,?)`, key, string(languages), subtitles.Automatic); e != nil {
+	quality, _ := normalizedQuality(subtitles.Quality)
+	if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_subtitle_options(review_id,languages_json,automatic,quality) VALUES(?,?,?,?)`, key, string(languages), subtitles.Automatic, quality); e != nil {
 		return Review{}, e
 	}
 	if e = tx.Commit(); e != nil {
@@ -249,13 +259,13 @@ func (s *Store) Queue(ctx context.Context, reviewID string) (Job, error) {
 func (s *Store) queueTx(ctx context.Context, tx *sql.Tx, reviewID string) (Job, error) {
 	var v Video
 	var t Target
-	var snap string
+	var snap, quality string
 	var expiry, consumed int64
-	e := tx.QueryRowContext(ctx, `SELECT video_id,video_title,channel,target_kind,COALESCE(collection_id,0),COALESCE(media_id,0),COALESCE(episode_id,0),target_snapshot,expires_at,consumed_at FROM youtube_reviews WHERE id=?`, reviewID).Scan(&v.ID, &v.Title, &v.Channel, &t.Kind, &t.CollectionID, &t.MediaID, &t.EpisodeID, &snap, &expiry, &consumed)
+	e := tx.QueryRowContext(ctx, `SELECT r.video_id,r.video_title,r.channel,r.target_kind,COALESCE(r.collection_id,0),COALESCE(r.media_id,0),COALESCE(r.episode_id,0),r.target_snapshot,r.expires_at,r.consumed_at,COALESCE(o.quality,'best') FROM youtube_reviews r LEFT JOIN youtube_subtitle_options o ON o.review_id=r.id WHERE r.id=?`, reviewID).Scan(&v.ID, &v.Title, &v.Channel, &t.Kind, &t.CollectionID, &t.MediaID, &t.EpisodeID, &snap, &expiry, &consumed, &quality)
 	if e != nil || expiry < time.Now().Unix() || consumed != 0 {
 		return Job{}, ErrChanged
 	}
-	current, _, e := targetSnapshot(ctx, tx, t)
+	current, label, e := targetSnapshot(ctx, tx, t)
 	if e != nil {
 		return Job{}, e
 	}
@@ -267,7 +277,7 @@ func (s *Store) queueTx(ctx context.Context, tx *sql.Tx, reviewID string) (Job, 
 		return Job{}, e
 	}
 	now := time.Now().Unix()
-	_, e = tx.ExecContext(ctx, `INSERT INTO youtube_jobs(id,review_id,video_id,video_title,channel,target_kind,collection_id,media_id,episode_id,target_snapshot,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,'queued',?,?)`, key, reviewID, v.ID, v.Title, v.Channel, t.Kind, nullable(t.CollectionID), nullable(t.MediaID), nullable(t.EpisodeID), snap, now, now)
+	_, e = tx.ExecContext(ctx, `INSERT INTO youtube_jobs(id,review_id,video_id,video_title,channel,target_kind,collection_id,media_id,episode_id,target_snapshot,target_label,quality,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?)`, key, reviewID, v.ID, v.Title, v.Channel, t.Kind, nullable(t.CollectionID), nullable(t.MediaID), nullable(t.EpisodeID), snap, label, quality, now, now)
 	if e != nil {
 		return Job{}, ErrBusy
 	}
@@ -292,7 +302,7 @@ func (s *Store) queueTx(ctx context.Context, tx *sql.Tx, reviewID string) (Job, 
 	if n != 1 {
 		return Job{}, ErrChanged
 	}
-	return Job{ID: key, Video: v, Target: t, State: "queued", CreatedAt: now, UpdatedAt: now}, nil
+	return Job{ID: key, Video: v, Target: t, TargetLabel: label, Quality: quality, State: "queued", CreatedAt: now, UpdatedAt: now}, nil
 }
 
 // QueueBulk applies the complete reviewed selection or none of it. Every item
@@ -331,11 +341,11 @@ func (s *Store) QueueBulk(ctx context.Context, reviewIDs []string) ([]Job, error
 }
 func scanJob(row interface{ Scan(...any) error }) (Job, error) {
 	var j Job
-	e := row.Scan(&j.ID, &j.Video.ID, &j.Video.Title, &j.Video.Channel, &j.Target.Kind, &j.Target.CollectionID, &j.Target.MediaID, &j.Target.EpisodeID, &j.State, &j.Message, &j.CreatedAt, &j.UpdatedAt)
+	e := row.Scan(&j.ID, &j.Video.ID, &j.Video.Title, &j.Video.Channel, &j.Target.Kind, &j.Target.CollectionID, &j.Target.MediaID, &j.Target.EpisodeID, &j.TargetLabel, &j.State, &j.Message, &j.Quality, &j.Progress, &j.Downloaded, &j.Total, &j.Speed, &j.ETA, &j.AutoImport, &j.SeriesSourceID, &j.CreatedAt, &j.UpdatedAt)
 	return j, e
 }
 
-const jobFields = `id,video_id,video_title,channel,target_kind,COALESCE(collection_id,0),COALESCE(media_id,0),COALESCE(episode_id,0),state,message,created_at,updated_at`
+const jobFields = `id,video_id,video_title,channel,target_kind,COALESCE(collection_id,0),COALESCE(media_id,0),COALESCE(episode_id,0),target_label,state,message,quality,progress,downloaded_bytes,total_bytes,speed_bps,eta_seconds,auto_import,series_source_id,created_at,updated_at`
 
 func (s *Store) Job(ctx context.Context, id string) (Job, error) {
 	return scanJob(s.db.QueryRowContext(ctx, `SELECT `+jobFields+` FROM youtube_jobs WHERE id=?`, id))
@@ -370,7 +380,7 @@ func (s *Store) Cancel(ctx context.Context, jobID string) error {
 	if err := organization.EnsureMediaAvailable(ctx, s.db); err != nil {
 		return err
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE youtube_jobs SET state='cancelled',message='Cancelled. Any isolated downloaded files were retained.',updated_at=unixepoch() WHERE id=? AND state IN ('queued','awaiting_review','failed')`, jobID)
+	res, err := s.db.ExecContext(ctx, `UPDATE youtube_jobs SET state='cancelled',message='Cancelled. Any isolated downloaded files were retained.',lease_owner='',lease_until=0,updated_at=unixepoch() WHERE id=? AND state IN ('queued','downloading','awaiting_review','failed')`, jobID)
 	if err != nil {
 		return err
 	}

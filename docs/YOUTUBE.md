@@ -1,7 +1,14 @@
 # YouTube sourcing
 
-Use **YouTube** to inspect a public video, playlist or channel URL. Inspection
-returns at most 100 entries and indicates when results are truncated. Select a
+Use **YouTube** like a downloader: paste a public video, playlist or channel
+URL, fetch its entries, choose a video, choose a destination, quality
+(`Best`, `1080p` or `720p`) and optional subtitles, then add it to the queue.
+The queue shows each download's state, progress, speed and ETA. Cancel stops a
+running yt-dlp process; isolated files are retained for inspection. Verified
+files wait for an import review unless they came from an explicit per-show
+source configured for automatic import.
+
+Inspection returns at most 100 entries and indicates when results are truncated. Select a
 video, then choose a saved movie, a loaded TV episode, or a named custom
 collection. ReelScarey never infers a catalog match from a title. Custom
 collections and videos have their own identities rather than fabricated TMDb IDs.
@@ -57,3 +64,27 @@ existing sidecars. Both versions, the acquisition and subtitle bytes are retaine
 across rollback, and the appropriate YouTube video provenance is restored. Old
 or newly retained sidecars may have different timing; rollback does not erase
 them. Automatic subtitle timing correction is not provided.
+
+## Per-show YouTube sources
+
+A saved show can have an explicit YouTube playlist or channel source on its
+detail page. The mapping is never a title search:
+
+- **Episode number in title** reads an explicit `S01E02` or `1x02` token from
+  the video title and maps it to the loaded, monitored episode.
+- **Playlist order** maps the Nth video to `First episode + N - 1` in the
+  configured season. It requires a playlist and an explicit season.
+
+The owner previews the video-to-episode mapping before saving. New sources start
+paused. The first check records the current videos as a baseline; **Fill
+missing** explicitly clears that baseline and requests the mapped missing
+episodes. Future videos are checked on the source interval.
+
+Only episodes that are loaded, monitored and missing are queued. Episodes with
+an existing file or another active download are skipped with a recorded reason.
+When **Import verified exact matches without review** is enabled, a verified
+download from that source is approved automatically; the normal no-overwrite,
+journaled import still runs. If automatic approval cannot prove the exact
+evidence, the job remains awaiting review. Generated videos keep their YouTube
+identity and provenance.
+

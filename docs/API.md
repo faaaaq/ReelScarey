@@ -67,14 +67,22 @@ Authenticated POST `/api/v1/youtube/inspect` accepts `{url}` for a bounded
 public YouTube video, playlist or channel inspection. GET/POST
 `/api/v1/youtube/collections` lists or creates a named custom collection.
 POST `/api/v1/youtube/reviews` accepts an explicit `video_id`, target
-(`custom`, `movie` or `episode`) and `subtitles` (`languages` and `automatic`);
-the server independently inspects the video and returns a short-lived review.
-POST `/api/v1/youtube/reviews/{id}/queue` applies that review. GET
-`/api/v1/youtube/jobs` and `/api/v1/youtube/files` list job and custom-library
-state. GET `/api/v1/youtube/jobs/{id}/import-review` returns the verified media
-and subtitle evidence and destinations; POST `.../import` submits that exact
-review. POST `.../cancel` cancels jobs before publication. Mutations require
-CSRF and same origin. See [YouTube sourcing](YOUTUBE.md) for limits and setup.
+(`custom`, `movie` or `episode`) and `subtitles` (`languages`, `automatic` and
+`quality`: `best`, `1080` or `720`); the server independently inspects the video
+and returns a short-lived review. POST `/api/v1/youtube/reviews/{id}/queue`
+applies that review. GET `/api/v1/youtube/jobs` returns state, target label,
+quality, progress and speed/ETA for each job; POST `.../cancel` also stops a
+running download. GET `/api/v1/youtube/jobs/{id}/import-review` returns the
+verified media and subtitle evidence and destinations; POST `.../import` submits
+that exact review. GET `/api/v1/youtube/files` lists custom-library files.
+
+Per-show sources use GET/POST
+`/api/v1/library/series/{id}/youtube-sources` (create/update requires
+`reviewed: true`; new sources start paused), POST `.../youtube-sources/preview`
+for the explicit video-to-episode mapping, and POST/DELETE
+`.../youtube-sources/{source}` for a fenced check, an explicit baseline
+backfill (`{"action":"backfill"}`) or removal. Mutations require CSRF and same
+origin. See [YouTube sourcing](YOUTUBE.md) for limits and setup.
 
 ## Anime providers and release-order reviews
 
@@ -355,6 +363,10 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | POST | `/api/v1/downloads/{id}/retry` | `{}`; retry/resume blocked, failed or stopped tracking |
 | POST | `/api/v1/downloads/{id}/stop` | `{}`; stop blocked/failed local tracking, leaving client/files untouched |
 | POST | `/api/v1/downloads/{id}/file` | `{ "index": 3 }`; select a file from a choose_file job |
+| GET | `/api/v1/torrents` | Built-in qBittorrent overview: availability, transfer rates, state and bounded torrent list |
+| POST | `/api/v1/torrents` | `{ "magnet": "magnet:?..." }` or a raw `.torrent` body (`application/x-bittorrent`, ≤8 MiB); adds a manual torrent under the built-in client |
+| GET | `/api/v1/torrents/{hash}` | One torrent and its files |
+| POST | `/api/v1/torrents/{hash}/{action}` | `pause`, `resume`, `recheck`, or `remove` with `{ "reviewed": true, "delete_files": false }` |
 | GET | `/api/v1/library/series/{id}/seasons/{number}/releases?episode=1&query=title` | Search TV category 5000 for one missing episode; omit episode for selected missing episodes in a monitored season |
 | POST | `/api/v1/downloads/{id}/mapping` | Confirm a TV job's completed file/episode mapping and explicit skips |
 | GET/PUT | `/api/v1/automation` | Saved interval schedule, revision, next run, safe integration presence and state |

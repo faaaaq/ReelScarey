@@ -23,6 +23,9 @@ func (d testDownloader) DownloadWithSubtitles(ctx context.Context, id, dir strin
 	if err != nil {
 		return DownloadResult{}, err
 	}
+	if len(opts.Languages) == 0 {
+		return DownloadResult{Video: name, Subtitles: []SubtitleFile{}, MissingLanguages: []string{}}, nil
+	}
 	sub := id + ".en.vtt"
 	if err = os.WriteFile(filepath.Join(dir, sub), []byte("WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nGenerated\n"), 0600); err != nil {
 		return DownloadResult{}, err

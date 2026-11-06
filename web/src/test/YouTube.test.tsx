@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { YouTube } from "../pages/YouTube";
 
@@ -51,7 +52,9 @@ function mount() {
   vi.stubGlobal("fetch", fetch);
   render(
     <Theme>
-      <YouTube />
+      <MemoryRouter>
+        <YouTube />
+      </MemoryRouter>
     </Theme>,
   );
   return fetch;
@@ -61,73 +64,65 @@ describe("YouTube source review", () => {
   it("requires an explicit video and target review before queuing", async () => {
     const fetch = mount();
     await userEvent.type(
-      screen.getByLabelText("Video, playlist or channel URL"),
+      screen.getByLabelText("YouTube URL"),
       "https://www.youtube.com/playlist?list=PLabcdefghijk",
     );
-    await userEvent.click(
-      screen.getByRole("button", { name: "Inspect source" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Fetch" }));
     const results = await screen.findByRole("list", { name: "Source results" });
     expect(within(results).getByText(/XG DAYS #01/)).toBeVisible();
     expect(
-      screen.queryByRole("button", { name: "Queue download" }),
+      screen.queryByRole("button", { name: "Add to queue" }),
     ).not.toBeInTheDocument();
     await userEvent.click(
-      within(results).getByRole("button", { name: "Select video" }),
+      within(results).getByRole("button", { name: /XG DAYS #01/ }),
     );
     await userEvent.selectOptions(
-      await screen.findByLabelText("Custom collection"),
+      await screen.findByLabelText("Collection"),
       "2",
     );
-    await userEvent.click(
-      screen.getByRole("button", { name: "Review selection" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Review" }));
     const review = await screen.findByLabelText("Review YouTube download");
-    expect(review).toHaveTextContent("XG DAYS #01–30");
-    expect(review).toHaveTextContent("Destination: XG Days");
+    expect(review).toHaveTextContent("XG Days");
     const preview = fetch.mock.calls.find(([url]) =>
       url.endsWith("/youtube/reviews"),
     );
     expect(JSON.parse(String(preview?.[1]?.body))).toEqual({
       video_id: "limOfz2srCk",
       target: { kind: "custom", collection_id: 2 },
-      subtitles: { languages: ["en"], automatic: false },
+      subtitles: { languages: ["en"], automatic: false, quality: "best" },
     });
     await userEvent.click(
-      within(review).getByRole("button", { name: "Queue download" }),
+      within(review).getByRole("button", { name: "Add to queue" }),
     );
-    expect(await screen.findByText(/Download queued/)).toBeVisible();
+    expect(await screen.findByText("Queued.")).toBeVisible();
   });
 
   it("clears a review when its target changes", async () => {
     mount();
     await userEvent.type(
-      screen.getByLabelText("Video, playlist or channel URL"),
+      screen.getByLabelText("YouTube URL"),
       "https://youtu.be/limOfz2srCk",
     );
+    await userEvent.click(screen.getByRole("button", { name: "Fetch" }));
+    const results = await screen.findByRole("list", { name: "Source results" });
     await userEvent.click(
-      screen.getByRole("button", { name: "Inspect source" }),
-    );
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Select video" }),
+      within(results).getByRole("button", { name: /XG DAYS #01/ }),
     );
     await userEvent.selectOptions(
-      await screen.findByLabelText("Custom collection"),
+      await screen.findByLabelText("Collection"),
       "2",
     );
-    await userEvent.click(
-      screen.getByRole("button", { name: "Review selection" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Review" }));
     await screen.findByLabelText("Review YouTube download");
     await userEvent.selectOptions(
-      screen.getByLabelText("Destination type"),
+      screen.getByLabelText("Destination"),
       "movie",
     );
     expect(
       screen.queryByLabelText("Review YouTube download"),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Queue download" }),
+      screen.queryByRole("button", { name: "Add to queue" }),
     ).not.toBeInTheDocument();
   });
 
@@ -175,17 +170,19 @@ describe("YouTube source review", () => {
     vi.stubGlobal("fetch", fetch);
     render(
       <Theme>
-        <YouTube />
+        <MemoryRouter>
+          <YouTube />
+        </MemoryRouter>
       </Theme>,
     );
     await userEvent.click(
-      await screen.findByRole("button", { name: "Review and import" }),
+      await screen.findByRole("button", { name: "Review import" }),
     );
     const review = await screen.findByLabelText("Import review");
     expect(review).toHaveTextContent("YouTube/video.en.vtt");
     expect(review).toHaveTextContent("subtitle-hash");
     await userEvent.click(
-      within(review).getByRole("button", { name: "Approve import" }),
+      within(review).getByRole("button", { name: "Import" }),
     );
     const request = fetch.mock.calls.find(([url]) =>
       url.endsWith("/youtube/jobs/job123/import"),

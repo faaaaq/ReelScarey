@@ -2000,3 +2000,16 @@ No owner-server media or download client was used for these checks.
   place with no retained copy, then the generated test download was removed.
   Schema 49, the VPN tunnel and kill switch remained up, and the built-in client
   stayed enabled as the torrent default.
+
+## Version 0.35 Torrents, YouTube downloader and series sources
+
+- Torrent service tests cover disabled-client reporting, listing, pause,
+  recheck, reviewed removal with data deletion, invalid hashes and bounded
+  manual magnet/metainfo input with the built-in tag and folder.
+- YouTube tests cover quality serialization, progress fields, baseline then
+  exact SxxExx queueing, duplicate prevention, existing-file/unmonitored skips,
+  playlist-order preview and the reviewed import boundary. Automatic import is
+  only approved through the same verified import review.
+- Frontend tests cover the MeTube-style fetch/select/review/queue flow and the
+  import evidence dialog; the Series page test covers the added source panel.
+  Prettier, TypeScript, 194 interaction tests and the production build pass.
