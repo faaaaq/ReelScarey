@@ -18,7 +18,7 @@ if [ "$(id -u)" = 0 ]; then
   # drop: the container must also grant cap_add NET_ADMIN for the app process
   # to create the WireGuard interface. The default stays capability-free.
   if [ "${REELSCAREY_KEEP_NET_ADMIN:-0}" = "1" ] && command -v setpriv >/dev/null 2>&1; then
-    exec setpriv --reuid "$uid" --regid "$gid" --init-groups --inh-caps=+net_admin --ambient-caps=+net_admin /usr/local/lib/reelscarey "$@"
+    exec setpriv --reuid "$uid" --regid "$gid" --clear-groups --inh-caps=+net_admin --ambient-caps=+net_admin /usr/local/lib/reelscarey "$@"
   fi
   exec gosu "$uid:$gid" /usr/local/lib/reelscarey "$@"
 fi
