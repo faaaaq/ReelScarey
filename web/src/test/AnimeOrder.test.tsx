@@ -597,9 +597,11 @@ describe("Reviewed Anime identity, order and pack workflow", () => {
         name: "Merge proposed mappings into draft",
       }),
     ).toBeDisabled();
+    // The proposal opens in a modal; the draft behind it must stay unchanged.
     expect(
       screen.getByRole("textbox", {
         name: "Release label for S01E01 · Opening",
+        hidden: true,
       }),
     ).toHaveValue("");
     await userEvent.click(
@@ -638,6 +640,55 @@ describe("Reviewed Anime identity, order and pack workflow", () => {
         ),
       ).entries,
     ).toHaveLength(2);
+  });
+
+  it("labels added and removed mappings in the review and closes it without a write", async () => {
+    const initial = fixture();
+    initial.entries = [
+      {
+        episode_id: 103,
+        provider_id: 0,
+        release_title: "Retained release",
+        label: "13",
+      },
+    ];
+    const fetch = setup(undefined, initial);
+    await open();
+    expect(
+      within(
+        screen.getByRole("table", { name: "Canonical episode mappings" }),
+      ).getByText("Saved"),
+    ).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Clear mapping for S02E01" }),
+    );
+    await mapSpecial();
+    expect(screen.getByText("Cleared")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Review Anime mapping changes" }),
+    );
+    const review = await screen.findByRole("region", {
+      name: "Review Anime identity and episode changes",
+    });
+    const rows = within(
+      within(review).getByRole("table", { name: "Reviewed episode mappings" }),
+    ).getAllByRole("row");
+    expect(rows[1]).toHaveTextContent("AddedS00E01 · Special");
+    expect(rows[2]).toHaveTextContent("RemovedS02E01 · Return");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", {
+          name: "Review Anime identity and episode changes",
+        }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("button", { name: "Review Anime mapping changes" }),
+    ).toBeEnabled();
+    expect(
+      fetch.mock.calls.some(([, options]) => options?.method === "PUT"),
+    ).toBe(false);
   });
 
   it("rejects invalid and colliding typed labels before a provider-resolving review", async () => {
@@ -752,13 +803,18 @@ describe("Reviewed Anime identity, order and pack workflow", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Save reviewed Anime mapping" }),
     );
-    expect(screen.getByRole("button", { name: "Close editor" })).toBeDisabled();
+    // The editor behind the review modal is hidden from the accessibility
+    // tree but must still be locked.
+    expect(
+      screen.getByRole("button", { name: "Close editor", hidden: true }),
+    ).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Cancel review" }),
     ).toBeDisabled();
     expect(
       screen.getByRole("textbox", {
         name: "Release label for S00E01 · Special",
+        hidden: true,
       }),
     ).toBeDisabled();
     await act(async () => {

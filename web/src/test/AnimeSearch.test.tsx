@@ -159,6 +159,7 @@ describe("Explicit Anime automatic search policy", () => {
     expect(
       screen.getByText(/current provider mappings have not been approved/),
     ).toBeVisible();
+    expect(screen.getByText("Pending approval")).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Review search changes" }),
     ).toBeEnabled();

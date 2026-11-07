@@ -1,8 +1,18 @@
-import { useState } from "react";
-import { Button, TextArea } from "@radix-ui/themes";
+import { useId, useState } from "react";
+import { Button } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
 import { RequestState } from "../components";
 import { useResource } from "../useResource";
+import {
+  Alert,
+  DescriptionItem,
+  DescriptionList,
+  FormActions,
+  FormGroup,
+  Label,
+  Table,
+} from "../ui";
+import "./AnimeOrder.css";
 
 export type AnimeSearchPolicy = {
   media_id: number;
@@ -32,6 +42,14 @@ const modeLabels = {
   absolute: "Absolute episode number",
   mapped: "Saved provider mappings",
 };
+const modeHelp = {
+  disabled: "This show is excluded from automatic episode searches.",
+  season: "Searches use the saved TMDb season and episode numbers.",
+  absolute:
+    "Searches use only the absolute numbers entered for each episode; episodes without one are skipped.",
+  mapped:
+    "Searches use only the exact release titles and typed labels you reviewed. Episode order is never inferred.",
+};
 function titlesFrom(value: string) {
   return value
     .split(/\r?\n/)
@@ -52,26 +70,31 @@ export function AnimeSearch({ id }: { id: number }) {
   const resource = useResource<AnimeSearchPolicy>(open ? path : null);
   return (
     <section
-      className="panel settings-form"
+      className="rs-fieldset anime-section"
       aria-label="Anime automatic searches"
     >
-      <h2>Anime automatic searches</h2>
-      <p className="field-help">
-        Automatic searches start off for each anime show. Choose its release
-        numbering or reviewed provider mappings before enabling it. The schedule
-        and search-only or download mode remain controlled in Automation.
+      <div className="rs-legend">
+        <h2>Anime automatic searches</h2>
+        {!open && (
+          <div className="rs-legend-actions">
+            <Button
+              size="1"
+              variant="soft"
+              onClick={() => {
+                setOpen(true);
+                setSuccess(false);
+              }}
+            >
+              Edit automatic searches
+            </Button>
+          </div>
+        )}
+      </div>
+      <p className="rs-fieldset-description">
+        Off by default for each show. The schedule and search-only or download
+        mode stay in Automation.
       </p>
-      {!open ? (
-        <Button
-          variant="soft"
-          onClick={() => {
-            setOpen(true);
-            setSuccess(false);
-          }}
-        >
-          Edit automatic searches
-        </Button>
-      ) : (
+      {open && (
         <>
           <RequestState
             loading={resource.loading}
@@ -95,19 +118,50 @@ export function AnimeSearch({ id }: { id: number }) {
             />
           )}
           {!resource.data && !resource.loading && (
-            <Button variant="soft" color="gray" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
+            <FormActions>
+              <Button
+                variant="soft"
+                color="gray"
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </Button>
+            </FormActions>
           )}
         </>
       )}
       {success && (
-        <p role="status" className="save-success">
+        <Alert kind="success">
           Anime search settings saved. Other automation and monitoring settings
           are unchanged.
-        </p>
+        </Alert>
       )}
     </section>
+  );
+}
+
+function OptIn({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="rs-check">
+      <input
+        type="checkbox"
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span>{label}</span>
+    </label>
   );
 }
 
@@ -124,6 +178,7 @@ function AnimeSearchForm({
   close: () => void;
   saved: () => void;
 }) {
+  const ids = useId();
   const [mode, setMode] = useState(initial.mode);
   const [alternateText, setAlternateText] = useState(
     initial.alternate_titles.join("\n"),
@@ -144,17 +199,18 @@ function AnimeSearchForm({
   const choices = [...new Set(alternateTitles)].filter(
     (title) => title !== initial.canonical_title,
   );
+  const unapproved =
+    (initial.order_revision ?? 0) !== (initial.approved_order_revision ?? 0);
   const dirty =
     mode !== initial.mode ||
     includeSpecials !== (initial.include_specials ?? false) ||
     allowPacks !== (initial.allow_packs ?? false) ||
     Number(maxPackEpisodes) !== (initial.max_pack_episodes ?? 20) ||
-    (mode === "mapped" &&
-      (initial.order_revision ?? 0) !==
-        (initial.approved_order_revision ?? 0)) ||
+    (mode === "mapped" && unapproved) ||
     searchTitle !== initial.search_title ||
     JSON.stringify(alternateTitles) !==
       JSON.stringify(initial.alternate_titles);
+  const locked = saving || stale;
   function validate() {
     if (mode === "mapped") {
       if (!(initial.order_revision && (initial.mapped_count ?? 0) > 0))
@@ -246,13 +302,17 @@ function AnimeSearchForm({
     }
   }
   return (
-    <div className="settings-form">
-      <label>
-        Automatic search numbering
+    <div className="anime-form">
+      <FormGroup
+        label="Numbering"
+        htmlFor={`${ids}-mode`}
+        help={modeHelp[mode]}
+      >
         <select
+          id={`${ids}-mode`}
           aria-label="Anime automatic search numbering"
           value={mode}
-          disabled={saving || stale}
+          disabled={locked}
           onChange={(event) => {
             setMode(event.target.value as typeof mode);
             if (
@@ -271,114 +331,119 @@ function AnimeSearchForm({
             Saved provider mappings (including specials and packs)
           </option>
         </select>
-      </label>
-      <p className="field-help">
-        Season and episode uses the saved TMDb ordering. Absolute mode uses only
-        the episode numbers you entered in Library section; episodes without a
-        number are skipped. Saved provider mappings use only the exact release
-        titles and typed episode labels you reviewed. Specials and packs require
-        separate consent in mapped mode. Episode order is never inferred.
-      </p>
-      <dl className="detail-paths">
-        <dt>Loaded episodes</dt>
-        <dd>{initial.loaded_count}</dd>
-        <dt>Ready under saved settings</dt>
-        <dd>{initial.ready_count}</dd>
-        <dt>Without an absolute number</dt>
-        <dd>{initial.missing_number_count}</dd>
-        {mode === "mapped" && (
-          <>
-            <dt>Loaded episodes with a saved mapping</dt>
-            <dd>{initial.mapped_count ?? 0}</dd>
-            <dt>Loaded episodes without a mapping</dt>
-            <dd>{initial.missing_mapping_count ?? 0}</dd>
-            <dt>Current mapping revision</dt>
-            <dd>{initial.order_revision ?? 0}</dd>
-            <dt>Approved mapping revision</dt>
-            <dd>{initial.approved_order_revision ?? 0}</dd>
-          </>
-        )}
-      </dl>
-      <p className="field-help">
-        These counts describe saved numbering or mapping coverage, not download
-        eligibility. Searches still require monitored, released episodes; mapped
-        searches only select missing, unreserved episodes.
-      </p>
+      </FormGroup>
+      <FormGroup
+        label="Coverage"
+        help="Saved numbering coverage, not download eligibility. Searches still require monitored, released, missing episodes."
+      >
+        <DescriptionList>
+          <DescriptionItem title="Loaded episodes">
+            {initial.loaded_count}
+          </DescriptionItem>
+          <DescriptionItem title="Ready under saved settings">
+            {initial.ready_count}
+          </DescriptionItem>
+          <DescriptionItem title="Without an absolute number">
+            {initial.missing_number_count}
+          </DescriptionItem>
+          {mode === "mapped" && (
+            <>
+              <DescriptionItem title="Loaded episodes with a saved mapping">
+                {initial.mapped_count ?? 0}
+              </DescriptionItem>
+              <DescriptionItem title="Loaded episodes without a mapping">
+                {initial.missing_mapping_count ?? 0}
+              </DescriptionItem>
+              <DescriptionItem title="Mapping revision">
+                <span className="rs-row">
+                  {initial.order_revision ?? 0}
+                  {unapproved ? (
+                    <Label kind="warning">Pending approval</Label>
+                  ) : (
+                    <Label kind="success">Approved</Label>
+                  )}
+                </span>
+              </DescriptionItem>
+              <DescriptionItem title="Approved mapping revision">
+                {initial.approved_order_revision ?? 0}
+              </DescriptionItem>
+            </>
+          )}
+        </DescriptionList>
+      </FormGroup>
       {mode === "mapped" ? (
         <>
-          {(initial.order_revision ?? 0) !==
-            (initial.approved_order_revision ?? 0) && (
-            <p role="status" className="automation-notice">
+          {unapproved && (
+            <Alert kind="warning" title="Mappings need approval">
               The current provider mappings have not been approved for automatic
-              searching. Review the saved titles and episode labels in Anime
-              identity &amp; episode mapping, then review and save these
-              settings. Searches wait until you approve the current revision.
-            </p>
+              searching. Check them in Anime identity &amp; episode mapping,
+              then review and save these settings. Mapped searches wait until
+              you approve the current revision.
+            </Alert>
           )}
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              aria-label="Include mapped specials"
+          <FormGroup
+            label="Specials"
+            help="Includes season 0 and mappings labeled S00E, SP, OVA, ONA or OAD. Monitoring and valid release dates are still required."
+          >
+            <OptIn
+              label="Include mapped specials"
               checked={includeSpecials}
-              disabled={saving || stale}
-              onChange={(event) => {
-                setIncludeSpecials(event.target.checked);
+              disabled={locked}
+              onChange={(value) => {
+                setIncludeSpecials(value);
                 setReviewed(false);
               }}
             />
-            Include mapped specials
-          </label>
-          <p className="field-help">
-            Includes canonical season 0 and mappings labeled S00E, SP, OVA, ONA
-            or OAD, even when they belong to a regular catalog season.
-            Monitoring and valid release dates are still required.
-          </p>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              aria-label="Allow mapped episode packs"
+          </FormGroup>
+          <FormGroup
+            label="Packs"
+            help="A pack must name the complete contiguous group saved for one release title and label family. Every mapped episode in that group must qualify."
+          >
+            <OptIn
+              label="Allow mapped episode packs"
               checked={allowPacks}
-              disabled={saving || stale}
-              onChange={(event) => {
-                setAllowPacks(event.target.checked);
+              disabled={locked}
+              onChange={(value) => {
+                setAllowPacks(value);
                 setReviewed(false);
               }}
             />
-            Allow mapped episode packs
-          </label>
-          <label>
-            Maximum episodes per pack
+          </FormGroup>
+          <FormGroup
+            label="Maximum pack size"
+            htmlFor={`${ids}-max`}
+            help="2–100 episodes. The quality profile's size limit applies to the whole release."
+          >
             <input
+              id={`${ids}-max`}
+              className="anime-number"
               aria-label="Maximum episodes per mapped pack"
               type="number"
               min={2}
               max={100}
               step={1}
               value={maxPackEpisodes}
-              disabled={saving || stale || !allowPacks}
+              disabled={locked || !allowPacks}
               onChange={(event) => {
                 setMaxPackEpisodes(event.target.value);
                 setReviewed(false);
               }}
             />
-          </label>
-          <p className="field-help">
-            Packs must name the complete contiguous group saved for one release
-            title and label family. Every mapped episode in that group must
-            qualify; a batch or complete label alone is insufficient. The
-            quality profile's size limit applies to the whole release. Completed
-            files still require mapping review in Activity before import.
-          </p>
+          </FormGroup>
         </>
       ) : (
         <>
-          <label>
-            Alternate release titles, one per line
-            <TextArea
+          <FormGroup
+            label="Alternate titles"
+            htmlFor={`${ids}-aliases`}
+            help="Up to eight exact release names, one per line, 200 UTF-8 bytes each. They are matching evidence only; the catalog title is unchanged."
+          >
+            <textarea
+              id={`${ids}-aliases`}
               aria-label="Anime alternate release titles"
               rows={5}
               value={alternateText}
-              disabled={saving || stale}
+              disabled={locked}
               onChange={(event) => {
                 const next = event.target.value;
                 setAlternateText(next);
@@ -387,18 +452,17 @@ function AnimeSearchForm({
                 setReviewed(false);
               }}
             />
-          </label>
-          <p className="field-help">
-            Add up to eight exact names used by releases, such as a romanized or
-            translated title. Each may contain up to 200 UTF-8 bytes. These
-            names are matching evidence, not a change to the catalog title.
-          </p>
-          <label>
-            Title used for the search
+          </FormGroup>
+          <FormGroup
+            label="Search title"
+            htmlFor={`${ids}-title`}
+            help="Sent to indexers; must fit 180 UTF-8 bytes. Only single matching episodes are queued automatically; packs and ranges need manual selection."
+          >
             <select
+              id={`${ids}-title`}
               aria-label="Anime search title"
               value={searchTitle === initial.canonical_title ? "" : searchTitle}
-              disabled={saving || stale}
+              disabled={locked}
               onChange={(event) => {
                 setSearchTitle(event.target.value);
                 setReviewed(false);
@@ -411,73 +475,85 @@ function AnimeSearchForm({
                 </option>
               ))}
             </select>
-          </label>
-          <p className="field-help">
-            The chosen name is sent to indexers and must fit 180 UTF-8 bytes
-            when enabled. The canonical name and explicit alternate titles are
-            accepted for exact matching. Only a single matching episode can be
-            queued automatically; packs and ranges need manual selection.
-            Completed files still require mapping review in Activity before
-            import.
-          </p>
+          </FormGroup>
         </>
       )}
-      {error && (
-        <p role="alert" className="form-error">
-          {error}
+      <p className="rs-form-help anime-indent">
+        Completed files still require mapping review in Activity before import.
+      </p>
+      <details className="anime-details anime-indent">
+        <summary>How numbering modes work</summary>
+        <p>
+          Season and episode uses the saved TMDb ordering. Absolute mode uses
+          only the episode numbers you entered in the episode list. Saved
+          provider mappings use only the exact release titles and typed episode
+          labels you reviewed; specials and packs need their own consent.
+          Episode order is never inferred from provider titles or counts. Mapped
+          searches select only missing, unreserved episodes.
         </p>
-      )}
+      </details>
+      {error && <Alert kind="danger">{error}</Alert>}
       {reviewed && (
-        <section aria-label="Review Anime automatic search changes">
+        <section
+          className="anime-review"
+          aria-label="Review Anime automatic search changes"
+        >
           <h3>Review automatic search changes</h3>
-          <dl className="detail-paths">
-            <dt>Numbering</dt>
-            <dd>
-              {modeLabels[initial.mode]} → {modeLabels[mode]}
-            </dd>
-            {mode === "mapped" ? (
-              <>
-                <dt>Mapping revision being approved</dt>
-                <dd>{initial.order_revision ?? 0}</dd>
-                <dt>Mapped specials</dt>
-                <dd>{includeSpecials ? "Included" : "Excluded"}</dd>
-                <dt>Explicit range packs</dt>
-                <dd>
-                  {allowPacks
-                    ? `Allowed, up to ${maxPackEpisodes} episodes`
-                    : "Excluded"}
-                </dd>
-              </>
-            ) : (
-              <>
-                <dt>Search title</dt>
-                <dd>{searchTitle || initial.canonical_title}</dd>
-                <dt>Alternate titles</dt>
-                <dd>
-                  {alternateTitles.length
-                    ? alternateTitles.join(" · ")
-                    : "None"}
-                </dd>
-              </>
-            )}
-          </dl>
-          {mode === "disabled" ? (
-            <p>
-              This show will be excluded from automatic episode searches.
-              Existing downloads continue.
-            </p>
-          ) : (
-            <p>
-              This show can be included in enabled or requested searches. The
-              global Automation mode controls whether matches are listed or
-              downloaded. Existing files are preserved.
-              {mode === "mapped" &&
-                " Only exact saved mapping titles and labels are accepted. Every selected target must qualify, and file mapping review remains required before import."}
-            </p>
-          )}
+          <Table label="Reviewed search settings" className="anime-diff">
+            <tbody>
+              <tr>
+                <th scope="row">Numbering</th>
+                <td>
+                  {modeLabels[initial.mode]} → {modeLabels[mode]}
+                </td>
+              </tr>
+              {mode === "mapped" ? (
+                <>
+                  <tr>
+                    <th scope="row">Mapping revision being approved</th>
+                    <td>{initial.order_revision ?? 0}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Mapped specials</th>
+                    <td>{includeSpecials ? "Included" : "Excluded"}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Explicit range packs</th>
+                    <td>
+                      {allowPacks
+                        ? `Allowed, up to ${maxPackEpisodes} episodes`
+                        : "Excluded"}
+                    </td>
+                  </tr>
+                </>
+              ) : (
+                <>
+                  <tr>
+                    <th scope="row">Search title</th>
+                    <td>{searchTitle || initial.canonical_title}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Alternate titles</th>
+                    <td>
+                      {alternateTitles.length
+                        ? alternateTitles.join(" · ")
+                        : "None"}
+                    </td>
+                  </tr>
+                </>
+              )}
+            </tbody>
+          </Table>
+          <p className="rs-form-help">
+            {mode === "disabled"
+              ? "This show will be excluded from automatic episode searches. Existing downloads continue."
+              : "This show can be included in enabled or requested searches. The Automation mode decides whether matches are listed or downloaded. Existing files are preserved."}
+            {mode === "mapped" &&
+              " Only exact saved mapping titles and labels are accepted, every selected target must qualify, and file mapping review remains required before import."}
+          </p>
         </section>
       )}
-      <div className="monitoring-dialog-actions">
+      <FormActions>
         <Button color="gray" variant="soft" disabled={saving} onClick={close}>
           {dirty ? "Cancel" : "Done"}
         </Button>
@@ -494,7 +570,7 @@ function AnimeSearchForm({
             Review search changes
           </Button>
         )}
-      </div>
+      </FormActions>
     </div>
   );
 }
