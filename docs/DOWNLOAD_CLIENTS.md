@@ -7,24 +7,31 @@ as the torrent or Usenet default. Existing Settings connections remain available
 through the explicit **Settings connection** choice. No existing job is rerouted
 when a default changes, and a failed named client never silently falls back.
 
-## Built-in qBittorrent (0.31)
+## Built-in qBittorrent (0.31, included by default since 0.38.4)
 
-The Docker image ships `qbittorrent-nox`, and the application can supervise it
-directly. **Set up built-in client** on the Download clients page creates the
-saved connection, starts the daemon inside the container, waits for its API and
-tests it before the connection is enabled. The daemon's API listens only on the
-container's loopback interface, so the application is the only client and
-nothing is exposed beyond the peer port.
+The Docker image ships `qbittorrent-nox`, and the application supervises it
+directly. The supervision loop creates the saved connection, enables it and
+makes it the torrent default automatically whenever the binary is present and
+the owner has not disabled it before, so a new installation can download
+without any setup. The daemon's API listens only on the container's loopback
+interface, so the application is the only client and nothing is exposed beyond
+the peer port.
 
-- The connection is an ordinary named torrent client: it starts paused, and new
-  jobs reach it only after it is chosen as the torrent default. Existing jobs
-  never change their client.
+- **Included by default (0.38.4, owner decision):** when no torrent default is
+  chosen and the qBittorrent Settings connection is not configured, release
+  downloads use the built-in client. Disabling it on the Download clients page
+  clears its torrent default and stops the daemon; the supervision loop never
+  re-enables a client the owner turned off. Turning it on again restores the
+  same behaviour. The old explicit **Set up built-in client** flow remains for
+  deployments where the daemon could not be provisioned.
+- Existing jobs never change their client: they keep the client and folder
+  mapping they were bound to, including after a default change.
 - The daemon writes only inside `downloads/builtin` under the download mount.
   On a hardened installation the download mount is read-only by default; set
   `DOWNLOADS_READ_ONLY=false` in `server.env` and prepare the folder with
   `install -d -o <uid> -g <gid> "$DOWNLOADS_PATH/builtin"` (the container user
-  is `10001:10001` in the shipped compose file) before enabling it. Disabling
-  the client refuses while jobs are active or it is the torrent default.
+  is `10001:10001` in the shipped compose file). Disabling the client refuses
+  while jobs are active.
 - The peer port defaults to 6881 and can be changed on the page; the compose
   file publishes it as `REELSCAREY_QBT_PORT` (TCP and UDP). Changing it
   restarts the daemon briefly; completed state resumes from fastresume.

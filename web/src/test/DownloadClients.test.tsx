@@ -192,9 +192,9 @@ it("supervises the built-in client and disables it with explicit review", async 
     await screen.findByRole("heading", { name: "Built-in qBittorrent" }),
   ).toBeInTheDocument();
   expect(await screen.findByText("Running")).toBeInTheDocument();
-  expect(screen.getByText(/starts paused/)).toBeInTheDocument();
+  expect(screen.getByText(/Included and on by default/)).toBeInTheDocument();
   expect(screen.getByText(/2 active jobs use this client/)).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "Disable" }));
+  await userEvent.click(screen.getByRole("button", { name: "Turn off" }));
   await waitFor(() =>
     expect(
       requests.mock.calls.some(

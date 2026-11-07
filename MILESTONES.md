@@ -333,3 +333,14 @@ See [announce feeds](docs/ANNOUNCE.md).
 - [x] Season episodes refresh in place; scroll position kept.
 - [x] Optional as_of_date tolerated.
 
+
+## Version 0.38.4 built-in client included by default
+
+- [x] Supervision loop provisions the built-in client (binary present, never
+  owner-disabled) and assigns the torrent default when none is chosen.
+- [x] Disabling the built-in client clears its default; it is never re-enabled
+  automatically. Active jobs keep their client.
+- [x] Release downloads resolve default, then Settings connection, then the
+  built-in client; queue reservations re-derive the same choice.
+- [x] Releases page treats an enabled built-in client as a ready torrent
+  target; Download clients card copy explains the default and opt-out.

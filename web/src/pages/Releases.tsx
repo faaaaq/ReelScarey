@@ -89,6 +89,13 @@ function ReleaseBrowser() {
   const indexer = useResource<IntegrationStatus>("/indexers/status");
   const client = useResource<IntegrationStatus>("/integrations/qbittorrent");
   const sab = useResource<IntegrationStatus>("/integrations/sabnzbd");
+  // The included client makes torrent downloads ready without any setup.
+  const clients = useResource<{
+    items: { builtin?: boolean; enabled: boolean }[];
+  }>("/download-clients");
+  const builtinReady = (clients.data?.items ?? []).some(
+    (item) => item.builtin && item.enabled,
+  );
   const replacementFiles = useResource<{
     items: { id: number; path: string }[];
   }>(valid ? `/organization/files?media_id=${movieID}` : null);
@@ -176,7 +183,7 @@ function ReleaseBrowser() {
   const configuredFor = (release: Release) =>
     release.protocol === "usenet"
       ? sab.data?.configured
-      : client.data?.configured;
+      : client.data?.configured || builtinReady;
   const rows = useMemo(() => {
     const list = (items ?? []).filter(
       (r) =>
@@ -358,11 +365,12 @@ function ReleaseBrowser() {
           client.data &&
           sab.data &&
           !client.data.configured &&
-          !sab.data.configured && (
+          !sab.data.configured &&
+          !builtinReady && (
             <Alert kind="warning">
               <p>
-                <Link to="/settings">Connect qBittorrent or SABnzbd</Link> to
-                download.
+                <Link to="/download-clients">Turn on the built-in client</Link>{" "}
+                or connect qBittorrent or SABnzbd to download.
               </p>
             </Alert>
           )}
@@ -504,9 +512,15 @@ function ReleaseBrowser() {
                               {!ready && (
                                 <Link
                                   className="rs-small"
-                                  to={`/settings#${usenet ? "sabnzbd" : "qbittorrent"}`}
+                                  to={
+                                    usenet
+                                      ? "/settings#sabnzbd"
+                                      : "/download-clients"
+                                  }
                                 >
-                                  Connect {usenet ? "SABnzbd" : "qBittorrent"}
+                                  {usenet
+                                    ? "Connect SABnzbd"
+                                    : "Set up a download client"}
                                 </Link>
                               )}
                               <IconButton
@@ -516,7 +530,9 @@ function ReleaseBrowser() {
                                 title={
                                   ready
                                     ? "Send to download client"
-                                    : `Connect ${usenet ? "SABnzbd" : "qBittorrent"} first`
+                                    : usenet
+                                      ? "Connect SABnzbd first"
+                                      : "Set up a download client first"
                                 }
                                 loading={pending === release.id}
                                 disabled={!!pending || !ready}

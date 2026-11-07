@@ -152,6 +152,7 @@ func (s *Service) SuperviseBundled(ctx context.Context, logger *slog.Logger) {
 	defer ticker.Stop()
 	defer s.stopBundled()
 	for {
+		s.provisionBundled(ctx, logger)
 		c, revision, desired, e := s.bundledDesired(ctx)
 		if e != nil {
 			if ctx.Err() != nil {

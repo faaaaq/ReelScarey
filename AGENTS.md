@@ -43,7 +43,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   automatically resubmit. Only completed post-processing in an exact dedicated
   mapped output folder may supply import candidates.
   Named qBittorrent/SABnzbd/NZBGet connections start paused and require explicit
-  per-protocol defaults. Fence the selected profile/default/credential snapshot
+  per-protocol defaults. Exception, owner decision in 0.38.4: the bundled
+  built-in client is provisioned and enabled automatically and becomes the
+  torrent fallback when no default is chosen; turning it off clears its default
+  and the supervisor never re-enables it. Fence the selected profile/default/credential snapshot
   inside queue reservations. Existing jobs retain their client and remote/local
   folder mapping; default changes must never reroute them. Uncertain NZBGet
   submissions reconcile without resubmitting. See docs/DOWNLOAD_CLIENTS.md.

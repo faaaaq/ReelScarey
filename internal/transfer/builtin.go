@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -66,6 +68,37 @@ func (s *Service) bundledRow(ctx context.Context) (present, enabled bool, revisi
 		return false, false, 0, scan
 	}
 	return true, e, r, nil
+}
+
+// provisionBundled includes the supervised client on deployments that ship
+// qbittorrent-nox: a fresh or upgraded installation downloads with it without
+// extra setup. An owner who disabled the client is never re-enabled, and
+// deployments without the binary are left alone. It never holds the
+// configuration lock: UpdateBundled holds it across its waits, and the
+// supervision loop must stay free to reconcile while those run. A concurrent
+// creator is detected afterwards and left alone. The daemon itself is started
+// by the ordinary supervision loop.
+func (s *Service) provisionBundled(ctx context.Context, logger *slog.Logger) {
+	binary := bundledBinary()
+	if binary == "" {
+		return
+	}
+	if _, e := os.Stat(binary); e != nil {
+		return
+	}
+	present, _, _, e := s.bundledRow(ctx)
+	if e != nil || present {
+		return
+	}
+	if _, e = s.createBundled(ctx); e != nil {
+		// A concurrent UpdateBundled enable may have created the connection
+		// first; that is the same outcome, so only real failures are logged.
+		if again, _, _, rowErr := s.bundledRow(ctx); rowErr != nil || !again {
+			logger.Warn("built-in client could not be enabled by default", "error", e)
+		}
+		return
+	}
+	logger.Info("built-in qBittorrent client enabled by default")
 }
 
 // BundledStatus never requires the daemon: a stopped or failed state is
@@ -229,6 +262,12 @@ func (s *Service) createBundled(ctx context.Context) (BundledStatus, error) {
 	if _, e = tx.ExecContext(ctx, `INSERT INTO download_clients(id,name,kind,enabled,builtin,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`, builtinClientID, builtinClientName, "qbittorrent", true, true, now, now); e != nil {
 		return BundledStatus{}, e
 	}
+	// The included client is the torrent fallback: when no default is chosen,
+	// a new installation downloads with it immediately. An owner-chosen
+	// default is never overwritten.
+	if _, e = tx.ExecContext(ctx, `UPDATE download_client_preferences SET torrent=?,revision=revision+1 WHERE id=1 AND torrent=''`, builtinClientID); e != nil {
+		return BundledStatus{}, e
+	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO integration_configs(name,ciphertext) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET ciphertext=excluded.ciphertext,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')`, clientSecretName(builtinClientID), sealed); e != nil {
 		return BundledStatus{}, e
 	}
@@ -254,24 +293,31 @@ func (s *Service) setBundledEnabled(ctx context.Context, enabled bool) error {
 	return tx.Commit()
 }
 
-// disableBundled refuses while jobs are active or the client is the torrent
-// default, mirroring the named-client pause rules.
+// disableBundled refuses while jobs are active, mirroring the named-client
+// pause rules. Turning the included client off clears its torrent default so
+// the owner is prompted to connect their own client; existing jobs keep the
+// client they were bound to.
 func (s *Service) disableBundled(ctx context.Context) error {
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
-	d, e := defaultsTx(ctx, tx)
-	if e != nil {
-		return e
-	}
 	var active int
 	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE client_key=? AND state<>'completed'`, builtinClientID).Scan(&active); e != nil {
 		return e
 	}
-	if active > 0 || d.Torrent == builtinClientID {
-		return problem("active_downloads", "Choose another torrent default and finish this client's jobs before disabling the built-in client.")
+	if active > 0 {
+		return problem("active_downloads", "Finish this client's jobs or choose another default before disabling the built-in client.")
+	}
+	d, e := defaultsTx(ctx, tx)
+	if e != nil {
+		return e
+	}
+	if d.Torrent == builtinClientID {
+		if _, e = tx.ExecContext(ctx, `UPDATE download_client_preferences SET torrent='',revision=revision+1 WHERE id=1 AND torrent=?`, builtinClientID); e != nil {
+			return e
+		}
 	}
 	r, e := tx.ExecContext(ctx, `UPDATE download_clients SET enabled=0,revision=revision+1,updated_at=? WHERE id=?`, time.Now().Unix(), builtinClientID)
 	if e != nil {

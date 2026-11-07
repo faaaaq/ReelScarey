@@ -72,7 +72,11 @@ func awaitBundledState(t *testing.T, f *workflowFixture, state string) BundledSt
 	}
 }
 
-func TestBundledClientEnableDisableLifecycle(t *testing.T) {
+// The included client is provisioned by the supervision loop: a deployment
+// with qbittorrent-nox downloads with it immediately, and it becomes the
+// torrent default when no default is chosen. Disabling it clears that default
+// and is never silently undone.
+func TestBundledClientIncludedByDefault(t *testing.T) {
 	f := setupWorkflow(t)
 	t.Setenv("REELSCAREY_BUNDLED_QBT", bundledStubBinary(t))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -82,11 +86,11 @@ func TestBundledClientEnableDisableLifecycle(t *testing.T) {
 		defer close(done)
 		f.s.SuperviseBundled(ctx, slog.New(slog.DiscardHandler))
 	}()
-	status, e := f.s.UpdateBundled(ctx, BundledUpdate{Enabled: boolPtr(true)})
-	if e != nil || !status.Present || !status.Enabled {
-		t.Fatal(status, e)
+	status := awaitBundledState(t, f, "running")
+	if !status.Present || !status.Enabled {
+		t.Fatal(status)
 	}
-	if status.PeerPort != defaultBuiltinPeer || status.State != "running" {
+	if status.PeerPort != defaultBuiltinPeer {
 		t.Fatal(status)
 	}
 	conf, e := os.ReadFile(filepath.Join(f.cfg.ConfigDir, "qbittorrent", "qBittorrent", "config", "qBittorrent.conf"))
@@ -106,30 +110,32 @@ func TestBundledClientEnableDisableLifecycle(t *testing.T) {
 	if listed == nil || !listed.Builtin || !listed.Enabled {
 		t.Fatal("built-in connection missing from the client list", clients)
 	}
-	// The connection starts paused: it becomes the torrent default only after
-	// an explicit owner choice.
 	defaults, e := f.s.ClientDefaults(ctx)
-	if e != nil {
-		t.Fatal(e)
+	if e != nil || defaults.Torrent != builtinClientID {
+		t.Fatal("the included client did not become the torrent default", defaults, e)
 	}
-	if _, e = f.s.SaveClientDefaults(ctx, ClientDefaults{Torrent: builtinClientID, Revision: defaults.Revision}); e != nil {
-		t.Fatal("the tested built-in client could not become the default", e)
-	}
-	if _, e = f.s.UpdateBundled(ctx, BundledUpdate{Enabled: boolPtr(false), Revision: status.Revision}); e == nil {
-		t.Fatal("disabling the torrent default was accepted")
-	}
-	defaults, e = f.s.ClientDefaults(ctx)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if _, e = f.s.SaveClientDefaults(ctx, ClientDefaults{Torrent: "", Revision: defaults.Revision}); e != nil {
-		t.Fatal(e)
-	}
+	// Opting out clears the included client's default and stops the daemon.
 	saved, e := f.s.UpdateBundled(ctx, BundledUpdate{Enabled: boolPtr(false), Revision: status.Revision})
 	if e != nil || saved.Enabled {
 		t.Fatal(saved, e)
 	}
+	defaults, e = f.s.ClientDefaults(ctx)
+	if e != nil || defaults.Torrent != "" {
+		t.Fatal("disabling the built-in client kept the torrent default", defaults, e)
+	}
 	awaitBundledState(t, f, "stopped")
+	// The supervisor never re-enables an owner-disabled client.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		check, e := f.s.BundledStatus(ctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if check.Enabled {
+			t.Fatal("the disabled built-in client was re-enabled", check)
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
 	cancel()
 	<-done
 	if _, e = os.Stat(filepath.Join(f.cfg.ConfigDir, "qbittorrent")); e != nil {
@@ -148,10 +154,7 @@ func TestBundledClientPeerPortChangeRestartsDaemon(t *testing.T) {
 		defer close(done)
 		f.s.SuperviseBundled(ctx, logger)
 	}()
-	status, e := f.s.UpdateBundled(ctx, BundledUpdate{Enabled: boolPtr(true)})
-	if e != nil || status.State != "running" {
-		t.Fatal(status, e)
-	}
+	status := awaitBundledState(t, f, "running")
 	port := 6999
 	saved, e := f.s.UpdateBundled(ctx, BundledUpdate{PeerPort: &port, Revision: status.Revision})
 	if e != nil || saved.PeerPort != 6999 || saved.State != "running" {
@@ -229,12 +232,34 @@ func TestBundledClientWaitsForVPNTunnel(t *testing.T) {
 		defer close(done)
 		f.s.SuperviseBundled(ctx, slog.New(slog.DiscardHandler))
 	}()
-	status, e := f.s.UpdateBundled(ctx, BundledUpdate{Enabled: boolPtr(true)})
-	if e != nil || !status.Enabled || status.State != "stopped" {
-		t.Fatal(status, e)
+	// The included client is provisioned enabled; with the kill switch on and
+	// the tunnel down it stays stopped with the honest explanation.
+	deadline := time.Now().Add(20 * time.Second)
+	var status BundledStatus
+	for {
+		s, e := f.s.BundledStatus(ctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if s.Enabled {
+			status = s
+			if s.State == "stopped" {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the included client never became enabled and stopped: %+v", s)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if status.State != "stopped" {
+		t.Fatal(status)
 	}
 	if !strings.Contains(status.Message, "kill switch") {
 		t.Fatal("the kill-switch state was not honest", status)
+	}
+	if d, e := f.s.ClientDefaults(ctx); e != nil || d.Torrent != builtinClientID {
+		t.Fatal("the included client did not become the torrent default", d, e)
 	}
 	allowed, bind = true, true
 	f.s.bundled.poke()

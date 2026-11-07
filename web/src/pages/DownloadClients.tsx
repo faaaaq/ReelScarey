@@ -509,7 +509,8 @@ function BuiltinCard({ reload }: { reload: () => void }) {
             own container. Its API stays on the container's loopback interface,
             so nothing outside the app can reach it. Torrent data is written to
             the shared download folder and imported with the same verification
-            as every other client.
+            as every other client. It is included and turned on by default, so a
+            new installation can download without any setup.
           </p>
           <p>
             Status:{" "}
@@ -530,15 +531,14 @@ function BuiltinCard({ reload }: { reload: () => void }) {
             <p>
               {data.active_jobs} active{" "}
               {data.active_jobs === 1 ? "job" : "jobs"} use this client. It
-              cannot be disabled until they finish.
+              cannot be turned off until they finish.
             </p>
           )}
-          {enabled && (
-            <p>
-              This connection is enabled but starts paused: choose it as the
-              torrent default above to send new jobs to it.
-            </p>
-          )}
+          <p className="rs-form-help">
+            {enabled
+              ? "Included and on by default: downloads use it unless another client is the torrent default. Turning it off clears that default, and ReelScarey then asks you to connect your own client."
+              : "Turned off. ReelScarey asks you to connect your own download client until this is turned on again."}
+          </p>
           <fieldset disabled={busy} className="backup-fields">
             {data.present ? (
               <>
@@ -569,13 +569,13 @@ function BuiltinCard({ reload }: { reload: () => void }) {
                     onClick={() => {
                       if (
                         window.confirm(
-                          "Disable the built-in qBittorrent client? Its downloads stay in the download folder for retry.",
+                          "Turn off the built-in qBittorrent client? Its torrent default is cleared and its downloads stay in the download folder for retry.",
                         )
                       )
                         void update({ enabled: false });
                     }}
                   >
-                    Disable
+                    Turn off
                   </Button>
                 ) : (
                   <Button
@@ -583,13 +583,13 @@ function BuiltinCard({ reload }: { reload: () => void }) {
                     onClick={() => {
                       if (
                         window.confirm(
-                          "Enable the built-in qBittorrent client? The app will start its daemon inside this container.",
+                          "Turn on the built-in qBittorrent client? The app starts its daemon inside this container and downloads use it again.",
                         )
                       )
                         void update({ enabled: true });
                     }}
                   >
-                    Enable
+                    Turn on
                   </Button>
                 )}
               </>

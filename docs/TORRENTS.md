@@ -46,8 +46,9 @@ browser.
 
 The page only manages the built-in client. External qBittorrent, Transmission,
 SABnzbd and NZBGet connections keep their existing job-level controls and are
-not exposed as a general client console. The built-in client must be enabled in
-Download clients; otherwise the page explains how to enable it.
+not exposed as a general client console. The built-in client is included and
+enabled by default; turning it off in Download clients makes this page explain
+how to turn it back on.
 
 ## Intentionally excluded
 

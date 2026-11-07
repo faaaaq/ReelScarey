@@ -486,7 +486,7 @@ function ConnectionSettings() {
     <PageBody>
       <PageHeading
         title="Primary Connections"
-        description="Manual release searches use these single connections. Named clients, the built-in client and defaults are managed in Download Clients."
+        description="Used when no client is chosen as a default. Torrent downloads fall back to the built-in client when qBittorrent is not connected here. Named clients, defaults and the built-in client are managed in Download Clients."
       />
       <IntegrationSettings kind="torznab" />
       <IntegrationSettings kind="qbittorrent" />

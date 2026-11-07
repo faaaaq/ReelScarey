@@ -746,3 +746,15 @@ permanently, with a Show again link. Toggling an episode's monitoring refreshes
 the season in place instead of remounting it, so the page keeps its scroll
 position. A missing as_of_date no longer crashes the calendar.
 
+
+## Version 0.38.4 built-in client included by default
+
+Owner decision: the supervised built-in qBittorrent client is provisioned and
+enabled automatically on deployments that ship qbittorrent-nox, and it becomes
+the torrent default when no default is chosen, so a new installation can
+download without setup. Turning it off clears its torrent default, keeps
+existing jobs on their client, and the supervisor never re-enables it. Release
+downloads fall back to it when no default is chosen and the qBittorrent
+Settings connection is not configured; the Releases page treats it as a ready
+torrent client. docs/UI.md sidebar Requests entry unchanged. See
+[DOWNLOAD_CLIENTS.md](docs/DOWNLOAD_CLIENTS.md).

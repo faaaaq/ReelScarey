@@ -222,8 +222,8 @@ describe("Usenet setup and release routing", () => {
       within(torrent).getByRole("button", { name: "Download" }),
     ).toBeDisabled();
     expect(
-      within(torrent).getByRole("link", { name: "Connect qBittorrent" }),
-    ).toHaveAttribute("href", "/settings#qbittorrent");
+      within(torrent).getByRole("link", { name: "Set up a download client" }),
+    ).toHaveAttribute("href", "/download-clients");
     await userEvent.click(
       within(nzb).getByRole("button", { name: "Download" }),
     );
@@ -234,5 +234,63 @@ describe("Usenet setup and release routing", () => {
     expect(JSON.parse(String(post?.[1]?.body))).toEqual({
       release_id: "a".repeat(32),
     });
+  });
+  it("makes torrent downloads ready with the included built-in client alone", async () => {
+    const fetch = setup((url) => {
+      if (url.endsWith("/library/movies/1"))
+        return Response.json({ id: 1, title: "Owned Movie", year: 2026 });
+      if (url.endsWith("/indexers/status"))
+        return Response.json({ configured: true });
+      if (
+        url.endsWith("/integrations/qbittorrent") ||
+        url.endsWith("/integrations/sabnzbd")
+      )
+        return Response.json({ configured: false });
+      if (url.endsWith("/download-clients"))
+        return Response.json({
+          items: [
+            {
+              id: "9".repeat(32),
+              name: "Built-in qBittorrent",
+              kind: "qbittorrent",
+              enabled: true,
+              builtin: true,
+            },
+          ],
+          defaults: { torrent: "", usenet: "", revision: 1 },
+        });
+      if (url.includes("/releases?"))
+        return Response.json({
+          items: [
+            {
+              id: "b".repeat(32),
+              title: "Included client release",
+              protocol: "torrent",
+              size_bytes: 100,
+              seeders: 4,
+              peers: 5,
+            },
+          ],
+        });
+      if (url.endsWith("/downloads"))
+        return Response.json({ created: true }, { status: 202 });
+    });
+    mount("/releases?movie=1");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Search releases" }),
+    );
+    const row = (await screen.findByText("Included client release")).closest(
+      "tr",
+    )!;
+    expect(within(row).getByRole("button", { name: "Download" })).toBeEnabled();
+    expect(
+      within(row).queryByRole("link", { name: "Set up a download client" }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      within(row).getByRole("button", { name: "Download" }),
+    );
+    await waitFor(() =>
+      expect(fetch.mock.calls.some(([, o]) => o?.method === "POST")).toBe(true),
+    );
   });
 });

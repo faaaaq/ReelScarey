@@ -341,88 +341,125 @@ func (s *Service) TestDownloadClient(ctx context.Context, key string) error {
 	return s.testDownloadClient(ctx, c.kind, c)
 }
 
-func (s *Service) selectedClient(ctx context.Context, protocol string) (ClientConfig, error) {
-	var c ClientConfig
-	tx, e := s.db.BeginTx(ctx, nil)
+// clientSelection identifies the client a release download will use and where
+// its credential lives. It is resolved before queueing and again inside the
+// reservation transaction, so a changed default, a paused client or a resealed
+// secret fails the job instead of silently rerouting it.
+type clientSelection struct {
+	key      string // download_clients id; "" for the legacy settings connection
+	kind     string
+	label    string
+	name     string // integration_configs secret name
+	revision int    // download_clients revision; 0 for the settings connection
+	defaults int    // download_client_preferences revision
+}
+
+func selectClientTx(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, protocol string) (clientSelection, error) {
+	d, e := defaultsTx(ctx, q)
 	if e != nil {
-		return c, e
+		return clientSelection{}, e
 	}
-	defer tx.Rollback()
-	d, e := defaultsTx(ctx, tx)
-	if e != nil {
-		return c, e
-	}
-	key := d.Torrent
-	kind := "qbittorrent"
-	name := "qbittorrent"
+	sel := clientSelection{kind: "qbittorrent", label: "qBittorrent (Settings)", defaults: d.Revision}
 	if protocol == "usenet" {
-		key = d.Usenet
-		kind = "sabnzbd"
-		name = "sabnzbd"
+		sel.key, sel.kind, sel.label = d.Usenet, "sabnzbd", "SABnzbd (Settings)"
 	} else if protocol != "torrent" && protocol != "" {
-		return c, problem("invalid_release", "Choose a supported download protocol.")
+		return clientSelection{}, problem("invalid_release", "Choose a supported download protocol.")
+	} else {
+		sel.key = d.Torrent
 	}
-	label := map[string]string{"qbittorrent": "qBittorrent (Settings)", "sabnzbd": "SABnzbd (Settings)"}[kind]
-	revision := 0
-	if key != "" {
+	if sel.key != "" {
 		var enabled bool
-		if e = tx.QueryRowContext(ctx, `SELECT kind,name,enabled,revision FROM download_clients WHERE id=?`, key).Scan(&kind, &label, &enabled, &revision); e != nil {
-			return c, e
+		if e = q.QueryRowContext(ctx, `SELECT kind,name,enabled,revision FROM download_clients WHERE id=?`, sel.key).Scan(&sel.kind, &sel.label, &enabled, &sel.revision); e != nil {
+			return clientSelection{}, e
 		}
-		if !enabled || clientProtocol(kind) != protocol {
-			return c, problem("client_not_configured", "The selected default is paused or belongs to another protocol.")
+		if !enabled || clientProtocol(sel.kind) != protocol {
+			return clientSelection{}, problem("client_not_configured", "The selected default is paused or belongs to another protocol.")
 		}
-		name = clientSecretName(key)
+		sel.name = clientSecretName(sel.key)
+		return sel, nil
+	}
+	// No default is chosen. The settings connection keeps working for owners
+	// who configured it; otherwise the included built-in client is the torrent
+	// fallback, so a fresh installation can download without extra setup.
+	settings := "qbittorrent"
+	if protocol == "usenet" {
+		settings = "sabnzbd"
 	}
 	var sealed []byte
-	if e = tx.QueryRowContext(ctx, `SELECT ciphertext FROM integration_configs WHERE name=?`, name).Scan(&sealed); errors.Is(e, sql.ErrNoRows) {
-		return c, problem("client_not_configured", "Connect a matching download client in Settings or Download clients.")
-	} else if e != nil {
-		return c, e
+	e = q.QueryRowContext(ctx, `SELECT ciphertext FROM integration_configs WHERE name=?`, settings).Scan(&sealed)
+	if e == nil {
+		sel.name = settings
+		return sel, nil
 	}
-	plain, e := s.secrets.Open("config:"+name, sealed)
-	if e != nil {
-		return c, e
+	if !errors.Is(e, sql.ErrNoRows) {
+		return clientSelection{}, e
 	}
-	if e = json.Unmarshal(plain, &c); e != nil {
-		return c, e
+	if protocol == "torrent" {
+		var enabled bool
+		var revision int
+		e = q.QueryRowContext(ctx, `SELECT enabled,revision FROM download_clients WHERE id=?`, builtinClientID).Scan(&enabled, &revision)
+		switch {
+		case e == nil && enabled:
+			return clientSelection{
+				key:      builtinClientID,
+				kind:     "qbittorrent",
+				label:    builtinClientName,
+				name:     clientSecretName(builtinClientID),
+				revision: revision,
+				defaults: d.Revision,
+			}, nil
+		case e != nil && !errors.Is(e, sql.ErrNoRows):
+			return clientSelection{}, e
+		}
 	}
-	c.profileKey = key
-	c.kind = kind
-	c.label = label
-	c.profileRevision = revision
-	c.defaultsRevision = d.Revision
-	c.ciphertext = sealed
-	return c, tx.Commit()
+	return clientSelection{}, problem("client_not_configured", "Enable the built-in client in Download clients, or connect a matching client in Settings.")
 }
+
+func (s *Service) selectedClient(ctx context.Context, protocol string) (ClientConfig, error) {
+	sel, e := selectClientTx(ctx, s.db, protocol)
+	if e != nil {
+		return ClientConfig{}, e
+	}
+	return s.openSelection(ctx, sel)
+}
+
+func (s *Service) openSelection(ctx context.Context, sel clientSelection) (ClientConfig, error) {
+	var sealed []byte
+	if e := s.db.QueryRowContext(ctx, `SELECT ciphertext FROM integration_configs WHERE name=?`, sel.name).Scan(&sealed); e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			return ClientConfig{}, problem("client_not_configured", "Connect a matching download client in Settings or Download clients.")
+		}
+		return ClientConfig{}, e
+	}
+	plain, e := s.secrets.Open("config:"+sel.name, sealed)
+	if e != nil {
+		return ClientConfig{}, e
+	}
+	var c ClientConfig
+	if e = json.Unmarshal(plain, &c); e != nil {
+		return ClientConfig{}, e
+	}
+	c.profileKey = sel.key
+	c.kind = sel.kind
+	c.label = sel.label
+	c.profileRevision = sel.revision
+	c.defaultsRevision = sel.defaults
+	c.ciphertext = sealed
+	return c, nil
+}
+
 func validateSelectedClient(ctx context.Context, tx *sql.Tx, c ClientConfig) error {
-	d, e := defaultsTx(ctx, tx)
+	sel, e := selectClientTx(ctx, tx, clientProtocol(c.kind))
 	if e != nil {
 		return e
 	}
-	key := d.Torrent
-	name := "qbittorrent"
-	if clientProtocol(c.kind) == "usenet" {
-		key = d.Usenet
-		name = "sabnzbd"
-	}
-	if d.Revision != c.defaultsRevision || key != c.profileKey {
+	if sel.key != c.profileKey || sel.revision != c.profileRevision || sel.defaults != c.defaultsRevision {
 		return clientChanged()
 	}
-	if key != "" {
-		var revision int
-		var enabled bool
-		var kind string
-		if e = tx.QueryRowContext(ctx, `SELECT revision,enabled,kind FROM download_clients WHERE id=?`, key).Scan(&revision, &enabled, &kind); e != nil {
-			return e
-		}
-		if revision != c.profileRevision || !enabled || kind != c.kind {
-			return clientChanged()
-		}
-		name = clientSecretName(key)
-	}
 	var sealed []byte
-	if e = tx.QueryRowContext(ctx, `SELECT ciphertext FROM integration_configs WHERE name=?`, name).Scan(&sealed); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT ciphertext FROM integration_configs WHERE name=?`, sel.name).Scan(&sealed); e != nil {
 		return e
 	}
 	if !bytes.Equal(sealed, c.ciphertext) {

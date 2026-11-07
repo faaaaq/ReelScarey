@@ -33,9 +33,10 @@ func TestRealBundledClientLifecycle(t *testing.T) {
 		defer close(done)
 		f.s.SuperviseBundled(ctx, slog.New(slog.DiscardHandler))
 	}()
-	status, e := f.s.UpdateBundled(ctx, BundledUpdate{Enabled: boolPtr(true)})
-	if e != nil || !status.Present || !status.Enabled || status.State != "running" {
-		t.Fatal(status, e)
+	// The included client is provisioned by the supervision loop itself.
+	status := awaitBundledState(t, f, "running")
+	if !status.Present || !status.Enabled {
+		t.Fatal(status)
 	}
 	conf, e := os.ReadFile(filepath.Join(f.cfg.ConfigDir, "qbittorrent", "qBittorrent", "config", "qBittorrent.conf"))
 	if e != nil || !strings.Contains(string(conf), "WebUI\\Address=127.0.0.1") || !strings.Contains(string(conf), "Session\\Port=6881") {

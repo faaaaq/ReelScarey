@@ -2117,3 +2117,13 @@ Run locally on Windows (development tools only; Docker remains the target):
 - Visual check with fixtures: dismissal state, restore link and unchanged
   scroll position after an episode monitor toggle.
 
+
+## Version 0.38.4 built-in client included by default
+
+- gofmt clean for changed files; go vet ./internal/... passed.
+- go test ./internal/transfer ./internal/httpapi ./internal/automation passed,
+  including rewritten built-in lifecycle tests (provision, opt-out persistence,
+  kill switch, peer port) and a new selection-order test.
+- Frontend format:check, check, full test suite and build passed.
+- The opt-in live bundled lifecycle (REELSCAREY_LIVE_BUNDLED) and Docker smoke
+  tests were not run locally; CI runs the bundled lifecycle on Linux.
