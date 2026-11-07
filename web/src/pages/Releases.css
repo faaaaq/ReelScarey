@@ -1,0 +1,78 @@
+/* Manual release search (Sonarr/Radarr Interactive Search). */
+
+.rel-search {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+}
+.rel-purpose {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.rel-purpose label {
+  font-weight: 700;
+  color: var(--rs-text-strong);
+}
+.rel-purpose select {
+  flex: 1 1 280px;
+  min-width: 0;
+  max-width: 640px;
+}
+.rel-query {
+  display: flex;
+  gap: 8px;
+}
+.rel-query > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.rel-table td {
+  font-size: 13px;
+}
+.rel-age {
+  white-space: nowrap;
+  color: var(--rs-muted);
+}
+.rel-title {
+  min-width: 260px;
+}
+.rel-title-text {
+  margin-right: 6px;
+  color: var(--rs-text-strong);
+  overflow-wrap: anywhere;
+}
+.rel-col-indexer {
+  white-space: nowrap;
+}
+.rel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.rel-attach-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.rel-attach-field label {
+  font-weight: 700;
+  color: var(--rs-text-strong);
+}
+
+@media (max-width: 768px) {
+  .rel-query {
+    flex-direction: column;
+  }
+  .rel-col-indexer {
+    display: none;
+  }
+  .rel-title {
+    min-width: 180px;
+  }
+}

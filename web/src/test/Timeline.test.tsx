@@ -54,5 +54,19 @@ describe("event timeline", () => {
     expect(
       screen.queryByRole("button", { name: "Load older events" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Recent download" }),
+    ).toHaveAttribute("href", "/activity?job=abcd");
+    const calls = fetch.mock.calls.length;
+    await userEvent.click(
+      screen.getByRole("button", { name: "Event type: All events" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitemradio", { name: "Request" }),
+    );
+    expect(await screen.findByText(/1 of 2 loaded events/)).toBeVisible();
+    expect(screen.queryByText("Recent download")).not.toBeInTheDocument();
+    expect(screen.getByText("Older request")).toBeVisible();
+    expect(fetch.mock.calls.length).toBe(calls);
   });
 });

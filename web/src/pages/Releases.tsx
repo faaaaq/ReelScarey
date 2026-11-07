@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from "react";
-import { Button, TextField } from "@radix-ui/themes";
-import { Download, Search } from "lucide-react";
+import { useId, useMemo, useState, type FormEvent } from "react";
+import { Button, IconButton, TextField } from "@radix-ui/themes";
+import { ArrowLeft, Download, ListFilter, Search, Upload } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   api,
@@ -10,8 +10,27 @@ import {
   type Release,
 } from "../api";
 import { PageHeading, RequestState } from "../components";
+import {
+  Alert,
+  EmptyState,
+  Label,
+  Modal,
+  ModalClose,
+  PageBody,
+  PageToolbar,
+  SortHeader,
+  Table,
+  ToolbarButton,
+  ToolbarSection,
+  ToolbarSeparator,
+  episodeCode,
+  type Kind,
+  type SortState,
+} from "../ui";
 import { useResource } from "../useResource";
 import type { MovieVersionSettings } from "./MovieVersions";
+import { ToolbarMenu } from "./activity/ToolbarMenu";
+import "./Releases.css";
 
 export function bytes(size: number) {
   if (size <= 0) return "Size unknown";
@@ -23,6 +42,30 @@ export function Releases() {
   const [params] = useSearchParams();
   return <ReleaseBrowser key={params.toString()} />;
 }
+
+type SortKey = "rank" | "age" | "title" | "indexer" | "size" | "peers";
+
+function publishedTime(release: Release) {
+  const value = release.published_at ? Date.parse(release.published_at) : NaN;
+  return Number.isFinite(value) ? value : null;
+}
+function age(release: Release) {
+  const time = publishedTime(release);
+  if (time === null) return "—";
+  const minutes = Math.max(0, Math.round((Date.now() - time) / 60000));
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  const days = Math.round(hours / 24);
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
+function seedKind(seeders: number | null): Kind {
+  if (seeders === null || seeders === undefined) return "default";
+  if (seeders === 0) return "danger";
+  if (seeders < 5) return "warning";
+  return "success";
+}
+
 function ReleaseBrowser() {
   const [params] = useSearchParams();
   const tv = params.has("series");
@@ -68,10 +111,19 @@ function ReleaseBrowser() {
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [torrentFile, setTorrentFile] = useState<File>();
-  const [episodeInput, setEpisodeInput] = useState("");
-  const [attaching, setAttaching] = useState(false);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [protocol, setProtocol] = useState("all");
+  const [sort, setSort] = useState<SortState<SortKey>>({
+    key: "rank",
+    direction: "asc",
+  });
+  const purposeID = useId();
   const navigate = useNavigate();
+  const target = tv
+    ? episode
+      ? episodeCode(season, episode)
+      : `Season ${season}`
+    : "";
   const suggested = movie.data
     ? tv
       ? `${movie.data.title} S${String(season).padStart(2, "0")}${episode ? `E${String(episode).padStart(2, "0")}` : ""}`
@@ -121,8 +173,409 @@ function ReleaseBrowser() {
       setPending("");
     }
   }
-  async function attachTorrent() {
-    if (!torrentFile || attaching || !valid || replacementID) return;
+  const configuredFor = (release: Release) =>
+    release.protocol === "usenet"
+      ? sab.data?.configured
+      : client.data?.configured;
+  const rows = useMemo(() => {
+    const list = (items ?? []).filter(
+      (r) =>
+        protocol === "all" ||
+        (protocol === "usenet"
+          ? r.protocol === "usenet"
+          : r.protocol !== "usenet"),
+    );
+    if (sort.key === "rank") return list;
+    const value = (r: Release): number | string => {
+      switch (sort.key) {
+        case "age":
+          return -(publishedTime(r) ?? -Infinity);
+        case "title":
+          return r.title.toLowerCase();
+        case "indexer":
+          return (r.indexer ?? "").toLowerCase();
+        case "size":
+          return r.size_bytes;
+        default:
+          return r.seeders ?? -1;
+      }
+    };
+    const sign = sort.direction === "asc" ? 1 : -1;
+    return [...list].sort((a, b) => {
+      const x = value(a),
+        y = value(b);
+      return (x < y ? -1 : x > y ? 1 : 0) * sign;
+    });
+  }, [items, protocol, sort]);
+  const back = tv
+    ? `/series/${movieID}`
+    : valid
+      ? `/movies/${movieID}`
+      : "/movies";
+  const showPurpose = !tv || !!replacementFiles.data?.items.length;
+  return (
+    <>
+      <PageToolbar>
+        <ToolbarSection>
+          <ToolbarButton
+            icon={ArrowLeft}
+            label={tv ? "Back to show" : "Back to movie"}
+            to={back}
+          />
+          <ToolbarSeparator />
+          <ToolbarButton
+            icon={Upload}
+            label="Attach torrent"
+            disabled={!valid || !!replacementID}
+            title={
+              replacementID
+                ? "Replacements must come from a searched release."
+                : undefined
+            }
+            onClick={() => setAttachOpen(true)}
+          />
+        </ToolbarSection>
+        <ToolbarSection align="right">
+          <ToolbarMenu
+            icon={ListFilter}
+            label="Filter"
+            menuLabel="Protocol"
+            value={protocol}
+            options={[
+              { value: "all", label: "All protocols" },
+              { value: "torrent", label: "Torrent" },
+              { value: "usenet", label: "Usenet" },
+            ]}
+            onChange={setProtocol}
+            disabled={!items?.length}
+          />
+        </ToolbarSection>
+      </PageToolbar>
+      <PageBody>
+        <PageHeading
+          title={
+            movie.data
+              ? `Releases for ${movie.data.title}`
+              : tv
+                ? "TV releases"
+                : "Movie releases"
+          }
+          description={target || undefined}
+        />
+        {!valid && (
+          <Alert kind="danger" role="alert">
+            Choose a valid {tv ? "episode or season" : "movie"} from your
+            library first.
+          </Alert>
+        )}
+        <RequestState
+          loading={
+            movie.loading || indexer.loading || client.loading || sab.loading
+          }
+          error={movie.error || indexer.error || client.error || sab.error}
+          retry={() => {
+            movie.reload();
+            indexer.reload();
+            client.reload();
+            sab.reload();
+          }}
+        />
+        {indexer.data && !indexer.data.configured && (
+          <EmptyState
+            icon={Search}
+            title="No indexer connected"
+            actions={
+              <Button asChild>
+                <Link to="/indexers">Connect indexer</Link>
+              </Button>
+            }
+          >
+            <p>
+              Add a tracker, RSS feed, Torznab or Newznab endpoint to search.
+            </p>
+          </EmptyState>
+        )}
+        {movie.data && indexer.data?.configured && (
+          <form className="rel-search" onSubmit={search}>
+            {showPurpose && (
+              <div className="rel-purpose">
+                <label htmlFor={purposeID}>Download purpose</label>
+                <select
+                  id={purposeID}
+                  value={purpose}
+                  disabled={searching || !!pending}
+                  onChange={(e) => setPurpose(e.target.value)}
+                >
+                  <option value="">
+                    Normal import (existing files are protected)
+                  </option>
+                  {!tv && (
+                    <option value="additional">
+                      Keep existing files and add another version
+                    </option>
+                  )}
+                  {!tv && versions.data?.enabled && (
+                    <>
+                      <option value="hd">HD version (up to 1080p)</option>
+                      <option value="uhd">4K version (2160p)</option>
+                    </>
+                  )}
+                  {replacementFiles.data?.items.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      Acquire replacement for {f.path}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="rel-query">
+              <TextField.Root
+                aria-label="Release search"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={suggested}
+                maxLength={200}
+                disabled={searching || !!pending}
+              />
+              <Button type="submit" disabled={searching || !!pending}>
+                <Search size={16} aria-hidden="true" />
+                {searching ? "Searching…" : "Search releases"}
+              </Button>
+            </div>
+            {showPurpose && (
+              <p className="rs-muted rs-small">
+                {replacementID
+                  ? "Replacement downloads are verified and kept for a separate review before anything changes."
+                  : movieVersion
+                    ? "This version gets its own filename; existing copies are never overwritten."
+                    : "Existing library files are never replaced."}
+              </p>
+            )}
+          </form>
+        )}
+        {movie.data &&
+          indexer.data?.configured &&
+          client.data &&
+          sab.data &&
+          !client.data.configured &&
+          !sab.data.configured && (
+            <Alert kind="warning">
+              <p>
+                <Link to="/settings">Connect qBittorrent or SABnzbd</Link> to
+                download.
+              </p>
+            </Alert>
+          )}
+        {error && (
+          <Alert kind="danger" role="alert">
+            {error}
+          </Alert>
+        )}
+        {warnings.length > 0 && (
+          <Alert kind="warning" title="Some indexers need attention">
+            <p>Results from the available sources are shown.</p>
+            {warnings.map((warning) => (
+              <p key={warning}>{warning}</p>
+            ))}
+            <p>
+              <Link to="/indexers">Review indexer connections</Link>
+            </p>
+          </Alert>
+        )}
+        {movie.data && indexer.data?.configured && items && (
+          <>
+            {items.length === 0 ? (
+              <EmptyState icon={Search} title="No supported releases found">
+                <p>
+                  Try another title or check the indexer’s {tv ? "TV" : "movie"}{" "}
+                  categories and API endpoint.
+                </p>
+              </EmptyState>
+            ) : (
+              <>
+                <p className="rs-muted rs-small">
+                  {items.length} {items.length === 1 ? "release" : "releases"}{" "}
+                  from your enabled indexers
+                  {rows.length !== items.length
+                    ? ` · ${rows.length} shown by the protocol filter`
+                    : ""}
+                  .{" "}
+                  {tv &&
+                    "TV files still need your episode mapping confirmation in Activity."}
+                </p>
+                <Table label="Releases" className="rel-table">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="is-shrink">
+                        Source
+                      </th>
+                      <SortHeader
+                        column="age"
+                        label="Age"
+                        sort={sort}
+                        onSort={setSort}
+                        className="is-shrink"
+                      />
+                      <SortHeader
+                        column="title"
+                        label="Title"
+                        sort={sort}
+                        onSort={setSort}
+                      />
+                      <SortHeader
+                        column="indexer"
+                        label="Indexer"
+                        sort={sort}
+                        onSort={setSort}
+                        className="rel-col-indexer"
+                      />
+                      <SortHeader
+                        column="size"
+                        label="Size"
+                        sort={sort}
+                        onSort={setSort}
+                        className="is-numeric"
+                      />
+                      <SortHeader
+                        column="peers"
+                        label="Peers"
+                        sort={sort}
+                        onSort={setSort}
+                        className="is-shrink"
+                      />
+                      <th scope="col" className="is-actions">
+                        <span className="sr-only">Download</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((release) => {
+                      const ready = configuredFor(release);
+                      const usenet = release.protocol === "usenet";
+                      return (
+                        <tr key={release.id}>
+                          <td>
+                            <Label kind={usenet ? "purple" : "info"} outline>
+                              {usenet ? "nzb" : "torrent"}
+                            </Label>
+                          </td>
+                          <td
+                            className="rel-age"
+                            title={
+                              publishedTime(release) !== null
+                                ? new Date(
+                                    release.published_at,
+                                  ).toLocaleString()
+                                : "Publication date unknown"
+                            }
+                          >
+                            {age(release)}
+                          </td>
+                          <td className="rel-title">
+                            <span className="rel-title-text">
+                              {release.title}
+                            </span>
+                            {release.freeleech && (
+                              <Label kind="success">Freeleech</Label>
+                            )}
+                          </td>
+                          <td className="rel-col-indexer">
+                            {release.indexer ?? "Torznab"}
+                          </td>
+                          <td className="is-numeric">
+                            {bytes(release.size_bytes)}
+                          </td>
+                          <td className="is-numeric">
+                            {usenet ? (
+                              <span className="rs-muted">—</span>
+                            ) : (
+                              <span
+                                title={`Seeders: ${release.seeders ?? "unknown"} · Peers: ${release.peers ?? "unknown"}`}
+                              >
+                                <Label kind={seedKind(release.seeders)}>
+                                  {release.seeders ?? "?"} /{" "}
+                                  {release.peers ?? "?"}
+                                </Label>
+                              </span>
+                            )}
+                          </td>
+                          <td className="is-actions">
+                            <div className="rel-actions">
+                              {!ready && (
+                                <Link
+                                  className="rs-small"
+                                  to={`/settings#${usenet ? "sabnzbd" : "qbittorrent"}`}
+                                >
+                                  Connect {usenet ? "SABnzbd" : "qBittorrent"}
+                                </Link>
+                              )}
+                              <IconButton
+                                size="1"
+                                variant="soft"
+                                aria-label="Download"
+                                title={
+                                  ready
+                                    ? "Send to download client"
+                                    : `Connect ${usenet ? "SABnzbd" : "qBittorrent"} first`
+                                }
+                                loading={pending === release.id}
+                                disabled={!!pending || !ready}
+                                onClick={() => void download(release.id)}
+                              >
+                                <Download size={15} aria-hidden="true" />
+                              </IconButton>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </Table>
+              </>
+            )}
+          </>
+        )}
+      </PageBody>
+      {valid && !replacementID && (
+        <AttachTorrent
+          open={attachOpen}
+          onOpenChange={setAttachOpen}
+          tv={tv}
+          movieID={movieID}
+          season={season}
+          movieVersion={movieVersion}
+          onQueued={() => navigate("/activity")}
+        />
+      )}
+    </>
+  );
+}
+
+function AttachTorrent({
+  open,
+  onOpenChange,
+  tv,
+  movieID,
+  season,
+  movieVersion,
+  onQueued,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  tv: boolean;
+  movieID: number;
+  season: number;
+  movieVersion: string;
+  onQueued: () => void;
+}) {
+  const [torrentFile, setTorrentFile] = useState<File>();
+  const [episodeInput, setEpisodeInput] = useState("");
+  const [attaching, setAttaching] = useState(false);
+  const [error, setError] = useState("");
+  const fileID = useId();
+  const episodesID = useId();
+  async function attach() {
+    if (!torrentFile || attaching) return;
     setAttaching(true);
     setError("");
     try {
@@ -137,7 +590,7 @@ function ReleaseBrowser() {
           signal: AbortSignal.timeout(60000),
         },
       );
-      navigate("/activity");
+      onQueued();
     } catch (e) {
       setError(messageFor(e));
     } finally {
@@ -145,257 +598,62 @@ function ReleaseBrowser() {
     }
   }
   return (
-    <>
-      <PageHeading
-        title={
-          movie.data
-            ? `Releases for ${movie.data.title}`
-            : tv
-              ? "TV releases"
-              : "Movie releases"
-        }
-      />
-      <Link className="text-link" to={tv ? `/series/${movieID}` : "/movies"}>
-        {tv ? "Back to show" : "Back to movies"}
-      </Link>
-      {(!tv || !!replacementFiles.data?.items.length) && (
-        <section className="panel automation-panel">
-          <label>
-            Download purpose{" "}
-            <select
-              value={purpose}
-              disabled={searching || !!pending}
-              onChange={(e) => setPurpose(e.target.value)}
-            >
-              <option value="">
-                Normal import (existing files are protected)
-              </option>
-              {!tv && (
-                <option value="additional">
-                  Keep existing files and add another version
-                </option>
-              )}
-              {!tv && versions.data?.enabled && (
-                <>
-                  <option value="hd">HD version (up to 1080p)</option>
-                  <option value="uhd">4K version (2160p)</option>
-                </>
-              )}
-              {replacementFiles.data?.items.map((f) => (
-                <option key={f.id} value={f.id}>
-                  Acquire replacement for {f.path}
-                </option>
-              ))}
-            </select>
-          </label>
-          {!tv && (
-            <p>
-              Additional versions get separate filenames. HD and 4K downloads
-              fill their own missing version; an existing copy is never
-              overwritten.
-            </p>
-          )}
-          <p>
-            Replacement downloads are verified and retained for a separate
-            review. TV mapping must cover every episode in the selected file.
-          </p>
-        </section>
-      )}
-      {!valid && (
-        <p role="alert">
-          Choose a valid {tv ? "episode or season" : "movie"} from your library
-          first.
-        </p>
-      )}
-      {valid && !replacementID && (
-        <section className="panel">
-          <h2>Attach a .torrent file</h2>
-          <p>
-            Already have the exact release you want — for example from a tracker
-            without an API? Upload its .torrent file and the app queues it for
-            this {tv ? "series" : "movie"} with the same duplicate checks,
-            client submission and verified import as a searched release.
-          </p>
-          {tv && (
-            <p>
-              With no episode numbers the torrent is treated as a season pack
-              covering the selected missing episodes. The import still requires
-              the episode mapping review before anything is registered.
-            </p>
-          )}
-          <label>
-            Torrent file{" "}
-            <input
-              type="file"
-              accept=".torrent,application/x-bittorrent"
-              onChange={(e) => setTorrentFile(e.target.files?.[0])}
-              disabled={attaching}
-            />
-          </label>
-          {tv && (
-            <label>
-              Episode numbers (optional, e.g. 2 or 2,3){" "}
-              <input
-                value={episodeInput}
-                onChange={(e) => setEpisodeInput(e.target.value)}
-                placeholder="Whole season when empty"
-                disabled={attaching}
-              />
-            </label>
-          )}
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Attach a .torrent file"
+      description={`Queue an exact release you already have for this ${tv ? "series" : "movie"}. It goes through the same duplicate checks, client submission and verified import as a searched release.`}
+      footer={
+        <>
+          <ModalClose>
+            <Button variant="soft" color="gray">
+              Cancel
+            </Button>
+          </ModalClose>
           <Button
             disabled={!torrentFile || attaching}
-            onClick={() => void attachTorrent()}
+            onClick={() => void attach()}
           >
             {attaching ? "Attaching…" : "Attach and queue"}
           </Button>
-        </section>
-      )}
-      <RequestState
-        loading={
-          movie.loading || indexer.loading || client.loading || sab.loading
-        }
-        error={movie.error || indexer.error || client.error || sab.error}
-        retry={() => {
-          movie.reload();
-          indexer.reload();
-          client.reload();
-          sab.reload();
-        }}
-      />
-      {indexer.data && !indexer.data.configured && (
-        <section className="panel connect-prompt">
-          <h2>No indexer connected.</h2>
-          <p>Add a tracker, RSS feed, Torznab or Newznab endpoint.</p>
-          <Button asChild>
-            <Link to="/indexers">Connect indexer</Link>
-          </Button>
-        </section>
-      )}
-      {movie.data && indexer.data?.configured && (
-        <>
-          <form className="movie-search-form release-search" onSubmit={search}>
-            <TextField.Root
-              aria-label="Release search"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={suggested}
-              maxLength={200}
-              disabled={searching || !!pending}
-            />
-            <Button type="submit" disabled={searching || !!pending}>
-              <Search size={16} />
-              {searching ? "Searching…" : "Search releases"}
-            </Button>
-          </form>
-          {client.data &&
-            sab.data &&
-            !client.data.configured &&
-            !sab.data.configured && (
-              <p className="search-disclaimer">
-                <Link to="/settings" className="text-link">
-                  Connect qBittorrent or SABnzbd
-                </Link>{" "}
-                to download.
-              </p>
-            )}
-          {items && (
-            <>
-              <p className="search-result-count">
-                {items.length} {items.length === 1 ? "release" : "releases"}{" "}
-                from your enabled indexers.
-              </p>
-              {items.length === 0 ? (
-                <section className="panel search-intro">
-                  <h2>No supported releases found.</h2>
-                  <p>
-                    Try another title or check the indexer’s{" "}
-                    {tv ? "TV" : "movie"} categories and API endpoint.
-                  </p>
-                </section>
-              ) : (
-                <div className="release-list">
-                  {items.map((release) => (
-                    <article className="panel release-row" key={release.id}>
-                      <div>
-                        <h2>{release.title}</h2>
-                        <p className="field-help">
-                          {release.indexer ?? "Torznab"}
-                          {release.protocol === "usenet"
-                            ? " · Usenet · SABnzbd"
-                            : " · Torrent · qBittorrent"}
-                          {release.freeleech ? " · Freeleech" : ""}
-                        </p>
-                        <p>
-                          {bytes(release.size_bytes)} ·{" "}
-                          {release.protocol === "usenet"
-                            ? "NZB"
-                            : `${release.seeders ?? "Unknown"} seeders · ${release.peers ?? "Unknown"} peers`}
-                          {release.published_at
-                            ? ` · ${new Date(release.published_at).toLocaleDateString()}`
-                            : ""}
-                        </p>
-                      </div>
-                      <Button
-                        disabled={
-                          !!pending ||
-                          !(release.protocol === "usenet"
-                            ? sab.data?.configured
-                            : client.data?.configured)
-                        }
-                        onClick={() => void download(release.id)}
-                      >
-                        <Download size={16} />
-                        {pending === release.id ? "Sending…" : "Download"}
-                      </Button>
-                      {!(release.protocol === "usenet"
-                        ? sab.data?.configured
-                        : client.data?.configured) && (
-                        <Link
-                          className="text-link"
-                          to={`/settings#${release.protocol === "usenet" ? "sabnzbd" : "qbittorrent"}`}
-                        >
-                          Connect{" "}
-                          {release.protocol === "usenet"
-                            ? "SABnzbd"
-                            : "qBittorrent"}
-                        </Link>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-          <p className="search-disclaimer">
-            {tv
-              ? "TV files require your episode mapping confirmation in Activity. "
-              : ""}
-            Existing library files are never replaced.
-          </p>
         </>
-      )}
-      {error && (
-        <p role="alert" className="movie-error">
-          {error}
-        </p>
-      )}
-      {warnings.length > 0 && (
-        <div className="error-box" role="status">
-          <div>
-            <p>
-              Some indexers need attention. Results from available sources are
-              shown.
-            </p>
-            {warnings.map((warning) => (
-              <p key={warning}>{warning}</p>
-            ))}
-            <Link className="text-link" to="/indexers">
-              Review indexer connections
-            </Link>
-          </div>
+      }
+    >
+      <div className="rel-attach-field">
+        <label htmlFor={fileID}>Torrent file</label>
+        <input
+          id={fileID}
+          type="file"
+          accept=".torrent,application/x-bittorrent"
+          onChange={(e) => setTorrentFile(e.target.files?.[0])}
+          disabled={attaching}
+        />
+      </div>
+      {tv && (
+        <div className="rel-attach-field">
+          <label htmlFor={episodesID}>
+            Episode numbers (optional, e.g. 2 or 2,3)
+          </label>
+          <input
+            id={episodesID}
+            type="text"
+            value={episodeInput}
+            onChange={(e) => setEpisodeInput(e.target.value)}
+            placeholder="Whole season when empty"
+            disabled={attaching}
+          />
+          <p className="rs-form-help">
+            Without episode numbers the torrent counts as a season pack for the
+            missing episodes. Episode mapping is still reviewed in Activity
+            before import.
+          </p>
         </div>
       )}
-    </>
+      {error && (
+        <Alert kind="danger" role="alert">
+          {error}
+        </Alert>
+      )}
+    </Modal>
   );
 }

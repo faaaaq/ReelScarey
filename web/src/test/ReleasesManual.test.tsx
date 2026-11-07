@@ -41,6 +41,9 @@ it("attaches an uploaded torrent to the movie and opens Activity", async () => {
   });
   vi.stubGlobal("fetch", requests);
   renderReleases("/releases?movie=7");
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Attach torrent" }),
+  );
   const input = await screen.findByLabelText("Torrent file");
   await userEvent.upload(
     input,
@@ -79,6 +82,9 @@ it("offers season-pack attachment with explicit episode numbers for series", asy
   });
   vi.stubGlobal("fetch", requests);
   renderReleases("/releases?series=9&season=1");
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Attach torrent" }),
+  );
   const input = await screen.findByLabelText("Torrent file");
   await userEvent.upload(
     input,

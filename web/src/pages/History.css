@@ -1,0 +1,72 @@
+/* History (event timeline), Playback and the recent activity tray rows. */
+
+.hist-table td {
+  vertical-align: middle;
+}
+.hist-icon {
+  width: 1%;
+  padding-right: 0;
+  color: var(--rs-muted);
+}
+.hist-icon svg {
+  display: block;
+}
+.hist-type,
+.hist-date {
+  white-space: nowrap;
+}
+.hist-title {
+  min-width: 200px;
+  overflow-wrap: anywhere;
+  color: var(--rs-text-strong);
+}
+.hist-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Compact rows in the header's recent activity tray. */
+.hist-event {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rs-border);
+}
+.hist-event:last-child {
+  border-bottom: 0;
+}
+.hist-event-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--rs-muted);
+}
+.hist-event-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.hist-event-type {
+  color: var(--rs-text-strong);
+  font-weight: 500;
+  font-size: 13px;
+  text-transform: none;
+}
+.hist-event-title {
+  overflow-wrap: anywhere;
+}
+.hist-event-time {
+  flex: none;
+  color: var(--rs-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .hist-title {
+    min-width: 140px;
+  }
+}

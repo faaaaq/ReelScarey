@@ -1,0 +1,311 @@
+/* Wanted (Sonarr Wanted → Missing) and Calendar (Sonarr Calendar). */
+
+.plan-filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.plan-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--rs-border-strong);
+  border-radius: var(--rs-radius);
+  overflow: hidden;
+}
+.plan-status-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 0;
+  border-right: 1px solid var(--rs-border-strong);
+  background: var(--rs-surface);
+  color: var(--rs-text);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.plan-status-button:last-child {
+  border-right: 0;
+}
+.plan-status-button:hover:not(:disabled) {
+  background: var(--rs-surface-2);
+  color: var(--rs-text-strong);
+}
+.plan-status-button[aria-pressed="true"] {
+  background: var(--rs-selected);
+  color: var(--rs-text-strong);
+  box-shadow: inset 0 -2px 0 var(--rs-brand);
+}
+.plan-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--rs-surface-3);
+  color: var(--rs-text-strong);
+  font-size: 11.5px;
+  line-height: 17px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.plan-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--rs-border-strong);
+  flex: none;
+}
+.plan-dot.is-success {
+  background: var(--rs-success);
+}
+.plan-dot.is-danger {
+  background: var(--rs-danger);
+}
+.plan-dot.is-info {
+  background: var(--rs-info);
+}
+.plan-dot.is-purple {
+  background: var(--rs-purple);
+}
+.plan-dot.is-warning {
+  background: var(--rs-warning);
+}
+.plan-dot.is-disabled {
+  background: var(--rs-disabled);
+}
+.plan-dot.is-default {
+  background: var(--rs-muted);
+}
+.plan-search {
+  display: flex;
+  gap: 8px;
+  flex: 0 1 380px;
+  min-width: 0;
+}
+.plan-search > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Table (Wanted and Agenda) */
+.plan-table td {
+  vertical-align: top;
+}
+.plan-kind {
+  color: var(--rs-muted);
+}
+.plan-kind svg {
+  display: block;
+  margin-top: 3px;
+}
+.plan-col-title {
+  min-width: 200px;
+}
+.plan-title-link {
+  color: var(--rs-text-strong);
+}
+.plan-title-link:hover {
+  color: var(--rs-link-hover);
+}
+.plan-sub {
+  display: block;
+  margin-top: 2px;
+  color: var(--rs-muted);
+  font-size: 12.5px;
+}
+.plan-code,
+.plan-date {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.plan-labels {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Calendar month navigation */
+.plan-month-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.plan-month-buttons {
+  display: inline-flex;
+  gap: 4px;
+}
+.plan-month-title {
+  flex: 1;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 300;
+}
+.plan-month-input {
+  width: 170px;
+}
+
+/* Month grid */
+.plan-calendar {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface);
+  overflow: hidden;
+}
+.plan-weekdays,
+.plan-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.plan-weekday {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--rs-border);
+  color: var(--rs-text-strong);
+  font-weight: 700;
+  font-size: 13px;
+  text-align: center;
+}
+.plan-day {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 110px;
+  min-width: 0;
+  padding: 4px;
+  border-right: 1px solid var(--rs-border);
+  border-bottom: 1px solid var(--rs-border);
+}
+.plan-week > .plan-day:last-child {
+  border-right: 0;
+}
+.plan-week:last-child > .plan-day {
+  border-bottom: 0;
+}
+.plan-day.is-outside {
+  background: var(--rs-surface-2);
+}
+.plan-day.is-outside .plan-day-number {
+  color: var(--rs-faint);
+}
+.plan-day.is-today {
+  background: var(--rs-selected);
+}
+.plan-day-number {
+  align-self: flex-end;
+  padding: 0 2px;
+  color: var(--rs-muted);
+  font-size: 12.5px;
+}
+.plan-day.is-today .plan-day-number {
+  color: var(--rs-brand);
+  font-weight: 700;
+}
+.plan-event {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 2px 5px;
+  border: 1px solid var(--rs-border);
+  border-left: 4px solid var(--rs-muted);
+  border-radius: 3px;
+  background: var(--rs-surface-2);
+  color: var(--rs-text);
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+}
+.plan-event:hover {
+  background: var(--rs-surface-3);
+  color: var(--rs-text-strong);
+}
+.plan-event.is-success {
+  border-left-color: var(--rs-success);
+}
+.plan-event.is-danger {
+  border-left-color: var(--rs-danger);
+}
+.plan-event.is-info {
+  border-left-color: var(--rs-info);
+}
+.plan-event.is-purple {
+  border-left-color: var(--rs-purple);
+}
+.plan-event.is-warning {
+  border-left-color: var(--rs-warning);
+}
+.plan-event.is-disabled {
+  border-left-color: var(--rs-disabled);
+  opacity: 0.75;
+}
+.plan-event-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--rs-text-strong);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.plan-event-title svg {
+  flex: none;
+  color: var(--rs-muted);
+}
+.plan-event-sub {
+  color: var(--rs-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.plan-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  color: var(--rs-muted);
+}
+.plan-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.plan-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+@media (max-width: 768px) {
+  .plan-search {
+    flex-basis: 100%;
+  }
+  .plan-col-episode-title {
+    display: none;
+  }
+  .plan-month-title {
+    order: -1;
+    flex-basis: 100%;
+    text-align: left;
+  }
+  .plan-weekday {
+    padding: 4px 2px;
+    font-size: 11px;
+  }
+  .plan-day {
+    min-height: 64px;
+    padding: 2px;
+  }
+  .plan-event {
+    padding: 1px 3px;
+    font-size: 10.5px;
+  }
+  .plan-event-sub {
+    display: none;
+  }
+}
+
+.plan-event.is-default {
+  border-left-color: var(--rs-muted);
+}

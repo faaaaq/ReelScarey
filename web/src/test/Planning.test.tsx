@@ -134,18 +134,19 @@ describe("wanted and release planning", () => {
     const fetch = setup();
     mount("/wanted?status=all&monitored=all");
     const film = (
-      await screen.findByRole("heading", { name: "Saved Movie (2026)" })
-    ).closest("article")!;
+      await screen.findByRole("link", { name: "Saved Movie" })
+    ).closest("tr")!;
+    expect(within(film).getByText("Missing")).toBeVisible();
     expect(
       within(film).getByRole("link", { name: "Find releases" }),
     ).toHaveAttribute("href", "/releases?movie=1");
-    const tv = screen.getByText(/S01E03 · The Arrival/).closest("article")!;
+    const tv = screen.getByText("S01E03").closest("tr")!;
+    expect(within(tv).getByText("The Arrival")).toBeVisible();
     expect(
       within(tv).getByRole("link", { name: "Find releases" }),
     ).toHaveAttribute("href", "/releases?series=2&season=1&episode=3");
-    const review = screen
-      .getByText(/S01E04 · Review needed/)
-      .closest("article")!;
+    const review = screen.getByText("S01E04").closest("tr")!;
+    expect(within(review).getByText("Needs attention")).toBeVisible();
     expect(
       within(review).getByRole("link", { name: "View activity" }),
     ).toHaveAttribute("href", `/activity?job=${"a".repeat(32)}`);
@@ -162,9 +163,19 @@ describe("wanted and release planning", () => {
     const fetch = setup();
     mount("/wanted?kind=series&status=all&monitored=all&page=3");
     await screen.findByText("Date unavailable");
-    expect(screen.getByLabelText("Media type")).toHaveValue("series");
-    expect(screen.getByLabelText("Monitoring filter")).toHaveValue("all");
-    await userEvent.selectOptions(screen.getByLabelText("Media type"), "movie");
+    expect(
+      screen.getByRole("button", { name: "Media type: TV episodes" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Monitoring filter: Include paused" }),
+    ).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Media type: TV episodes" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitemradio", { name: "Movies" }),
+    );
+    await screen.findByRole("button", { name: "Media type: Movies" });
     await userEvent.type(
       screen.getByLabelText("Find in saved catalog"),
       "100%_Movie",
@@ -202,13 +213,21 @@ describe("wanted and release planning", () => {
     expect(params.get("monitored")).toBe("all");
     expect(params.has("month")).toBe(false);
     expect(params.has("page")).toBe(false);
-    const available = screen
-      .getByText(/S01E03 · The Arrival/)
-      .closest("article")!;
+    const day = screen.getByRole("cell", { name: "Oct 25, 2026" });
+    await userEvent.click(
+      within(day).getByRole("button", { name: /Saved Show.*S01E03/ }),
+    );
+    const available = await screen.findByRole("dialog", {
+      name: "Saved Show (2026)",
+    });
     expect(within(available).getByText("In library")).toBeVisible();
+    expect(within(available).getByText(/The Arrival/)).toBeVisible();
     expect(
       within(available).queryByRole("link", { name: "Find releases" }),
     ).not.toBeInTheDocument();
+    expect(
+      within(available).getByRole("link", { name: "View show" }),
+    ).toHaveAttribute("href", "/series/2");
   });
   it("navigates months and retains media and monitoring filters", async () => {
     const fetch = setup();
@@ -229,10 +248,27 @@ describe("wanted and release planning", () => {
     expect(params.get("kind")).toBe("movie");
     expect(params.get("monitored")).toBe("all");
     expect(params.get("month")).toBe("2027-02");
-    await userEvent.click(
-      screen.getByRole("button", { name: "Current month" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Today" }));
     await screen.findByRole("heading", { name: "October 2026" });
+  });
+  it("switches to an agenda list that keeps release and activity links", async () => {
+    localStorage.removeItem("reelscarey.calendar.view");
+    setup();
+    mount("/calendar?month=2026-10");
+    await screen.findByRole("heading", { name: "October 2026" });
+    expect(screen.getByRole("table", { name: "October 2026" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Agenda" }));
+    const agenda = await screen.findByRole("table", {
+      name: "Calendar agenda",
+    });
+    const film = within(agenda)
+      .getByRole("link", { name: "Saved Movie" })
+      .closest("tr")!;
+    expect(
+      within(film).getByRole("link", { name: "Find releases" }),
+    ).toHaveAttribute("href", "/releases?movie=1");
+    expect(localStorage.getItem("reelscarey.calendar.view")).toBe("agenda");
+    localStorage.removeItem("reelscarey.calendar.view");
   });
   it("keeps count shortcuts scoped to the current title filters", async () => {
     const fetch = setup();

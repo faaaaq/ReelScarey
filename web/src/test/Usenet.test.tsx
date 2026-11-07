@@ -213,11 +213,9 @@ describe("Usenet setup and release routing", () => {
       screen.getByRole("button", { name: "Search releases" }),
     );
     const nzb = (await screen.findByText("Owned Usenet release")).closest(
-      "article",
+      "tr",
     )!;
-    const torrent = screen
-      .getByText("Owned torrent release")
-      .closest("article")!;
+    const torrent = screen.getByText("Owned torrent release").closest("tr")!;
     expect(within(nzb).getByRole("button", { name: "Download" })).toBeEnabled();
     expect(within(nzb).queryByText(/seeders/)).not.toBeInTheDocument();
     expect(

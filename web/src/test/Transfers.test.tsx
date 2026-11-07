@@ -160,6 +160,13 @@ describe("release downloads and imports", () => {
       }
     });
     mount("/activity");
+    expect(await screen.findByText("Needs attention")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Confirm files & import" }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Review files for TV fixture" }),
+    );
     await screen.findByRole("heading", { name: "Review episode files" });
     expect(
       screen.getByRole("button", { name: "Confirm files & import" }),
@@ -179,6 +186,7 @@ describe("release downloads and imports", () => {
       screen.getByRole("button", { name: "Confirm files & import" }),
     );
     await screen.findByText("Verifying & importing");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     const sent = fetch.mock.calls.find(([url]) =>
       url.endsWith(`/downloads/${job.id}/mapping`),
     );
@@ -228,6 +236,11 @@ describe("release downloads and imports", () => {
         );
     });
     mount("/activity");
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Review files for Test Movie",
+      }),
+    );
     await screen.findByRole("heading", { name: "Review episode files" });
     await userEvent.click(
       screen.getByRole("checkbox", {
@@ -294,14 +307,21 @@ describe("release downloads and imports", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Search releases" }),
     );
-    expect(
-      await screen.findByRole("heading", { name: release.title }),
-    ).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: "Download" }));
+    const row = (await screen.findByText(release.title)).closest("tr")!;
+    expect(within(row).getByText("torrent")).toBeVisible();
+    expect(within(row).getByText("4 / 6")).toBeVisible();
+    await userEvent.click(
+      within(row).getByRole("button", { name: "Download" }),
+    );
     expect(
       await screen.findByRole("heading", { name: "Activity" }),
     ).toBeVisible();
-    await screen.findByText("50% · 953.7 MiB of 1.9 GiB · downloading");
+    await screen.findByText("953.7 MiB of 1.9 GiB");
+    expect(
+      screen.getByRole("progressbar", {
+        name: "Download progress for Test Movie",
+      }),
+    ).toHaveAttribute("aria-valuenow", "50");
     const sent = fetch.mock.calls.find(
       ([url, options]) =>
         url.endsWith("/downloads") && options?.method === "POST",
@@ -352,7 +372,8 @@ describe("release downloads and imports", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The client is not configured",
     );
-    expect(screen.getByRole("heading", { name: release.title })).toBeVisible();
+    expect(screen.getByText(release.title)).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Activity" })).toBeNull();
   });
   it("requires a file choice before resuming an ambiguous import", async () => {
     let current = {
@@ -385,6 +406,9 @@ describe("release downloads and imports", () => {
         });
     });
     mount("/activity");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Choose file for Test Movie" }),
+    );
     await screen.findByLabelText("Movie file to import");
     expect(
       screen.getByRole("button", { name: "Import selected file" }),
@@ -401,6 +425,68 @@ describe("release downloads and imports", () => {
       url.endsWith(`/downloads/${job.id}/file`),
     );
     expect(JSON.parse(String(sent?.[1]?.body))).toEqual({ index: 7 });
+  });
+  it("opens a deep-linked job in a details dialog and highlights its row", async () => {
+    setup((url) =>
+      url.endsWith(`/downloads/${job.id}`) ? Response.json(job) : undefined,
+    );
+    mount(`/activity?job=${job.id}`);
+    const dialog = await screen.findByRole("dialog", { name: "Test Movie" });
+    expect(await within(dialog).findByText(release.title)).toBeVisible();
+    expect(within(dialog).getByText("Downloading")).toBeVisible();
+    const queue = await screen.findByRole("table", {
+      name: "Queue",
+      hidden: true,
+    });
+    expect(
+      within(queue)
+        .getByRole("link", { name: "Test Movie", hidden: true })
+        .closest("tr"),
+    ).toHaveClass("is-selected");
+    await userEvent.click(
+      within(dialog).getAllByRole("button", { name: "Close" }).at(-1)!,
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+  });
+  it("filters the loaded queue page by state without new requests", async () => {
+    const fetch = setup((url) =>
+      url.includes("/downloads?page=")
+        ? Response.json({
+            items: [
+              job,
+              {
+                ...job,
+                id: "c".repeat(32),
+                movie_title: "Blocked Movie",
+                state: "blocked",
+                error_code: "choose_file",
+              },
+            ],
+            page: 1,
+            total: 2,
+            limit: 24,
+          })
+        : undefined,
+    );
+    mount("/activity");
+    await screen.findByRole("link", { name: "Blocked Movie" });
+    const before = fetch.mock.calls.length;
+    await userEvent.click(
+      screen.getByRole("button", { name: "Show only these" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("link", { name: "Test Movie" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("link", { name: "Blocked Movie" })).toBeVisible();
+    expect(
+      fetch.mock.calls
+        .slice(before)
+        .every(([url]) => !String(url).includes("state=")),
+    ).toBe(true);
   });
   it("saves qBittorrent credentials once and omits them on later edits", async () => {
     let configured = false;
