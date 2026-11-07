@@ -52,8 +52,9 @@ assert.equal(JSON.stringify(client).includes(clientBody.password), false)
 const { password: _secret, ...clientUpdate } = clientBody
 const enabledClient = await json(`/download-clients/${client.id}`, { method: 'PUT', body: JSON.stringify({ ...clientUpdate, enabled: true, revision: client.revision }) })
 // The built-in client is provisioned by the app itself, so the saved
-// preference revision is read instead of assuming a fresh value.
-const currentDefaults = await json('/download-clients/defaults')
+// preference revision is read instead of assuming a fresh value. Defaults are
+// reported with the client list; the defaults path itself only accepts PUT.
+const currentDefaults = (await json('/download-clients')).defaults
 await json('/download-clients/defaults', { method: 'PUT', body: JSON.stringify({ torrent: client.id, usenet: '', revision: currentDefaults.revision }) })
 const subtitlePreferences = (await json('/subtitles/preferences')).preferences
 await json('/subtitles/preferences', { method: 'PUT', body: JSON.stringify({ ...subtitlePreferences, download_format: 'original' }) })
