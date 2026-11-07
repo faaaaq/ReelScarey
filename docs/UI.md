@@ -116,3 +116,18 @@ Page-specific layout lives next to the page (for example
 `web/src/pages/Torrents.css`, imported by the page). Prefix its classes with a
 short page namespace (`tor-`, `lib-`, `det-`) and use only tokens for color.
 Do not add global element selectors in page files.
+
+## Library and Calendar actions (0.38.6)
+
+- Calendar entries open a dialog with the saved synopsis and three actions:
+  View show/movie, Manual search (release review) and Automatic search (the
+  scheduled pipeline for that exact target, with the outcome reported inline).
+- The Calendar toolbar can search every missing monitored movie or TV episode in
+  one confirmed action; both report how many targets were searched and how many
+  downloads were queued.
+- Series details offer Search (one title), Search All Monitored (every monitored
+  missing episode) and per-episode automatic search, manual search, Replace and
+  Remove from library (the file stays on disk). Seasons list newest first.
+- The TV Shows and Anime libraries end with a confirmed "Monitor all future
+  episodes" action.
+- The Calendar remembers its month, filters and view; Reset clears them.

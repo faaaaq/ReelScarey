@@ -354,3 +354,12 @@ See [announce feeds](docs/ANNOUNCE.md).
   item-results endpoints, Search buttons on movie/show details and episodes.
 - [x] Unambiguous TV downloads auto-map and import with an honest event;
   ambiguous ones keep the review flow.
+
+## Version 0.38.6 calendar actions, bulk searches and episode lifecycle
+
+- [x] Calendar dialog synopsis, manual/automatic search, inline outcome.
+- [x] Confirmed bulk searches for missing monitored movies or episodes.
+- [x] Remembered calendar filters/view with Reset.
+- [x] Series Search All Monitored, newest-first seasons, episode replace and
+  reviewed unlink (file kept).
+- [x] Library-wide Monitor all future episodes for TV and Anime.

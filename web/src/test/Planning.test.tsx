@@ -255,7 +255,15 @@ describe("wanted and release planning", () => {
       name: "Saved Show (2026)",
     });
     expect(within(available).getByText("In library")).toBeVisible();
-    expect(within(available).getByText(/The Arrival/)).toBeVisible();
+    expect(
+      within(available).getAllByText(/The Arrival/).length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(available).getByRole("button", { name: "Automatic search" }),
+    ).toBeVisible();
+    expect(
+      within(available).getByRole("link", { name: "Manual search" }),
+    ).toBeVisible();
     expect(
       within(available).queryByRole("link", { name: "Find releases" }),
     ).not.toBeInTheDocument();
@@ -335,7 +343,7 @@ describe("wanted and release planning", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Choose valid planning filters.",
     );
-    await userEvent.click(screen.getByRole("link", { name: "Reset filters" }));
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
     await screen.findByText("Date unavailable");
     expect(fetch.mock.calls.some(([, o]) => o?.method === "POST")).toBe(false);
   });
@@ -363,4 +371,72 @@ describe("wanted and release planning", () => {
     await screen.findByRole("heading", { name: "December 9999" });
     expect(screen.getByRole("button", { name: "Next month" })).toBeDisabled();
   });
+});
+
+it("confirms bulk calendar searches and reports what the run did", async () => {
+  const posts: unknown[] = [];
+  setup((url, options) => {
+    if (url.endsWith("/automation/search-bulk") && options?.method === "POST") {
+      posts.push(JSON.parse(String(options.body)));
+      return Response.json({ requested: true }, { status: 202 });
+    }
+    if (url.endsWith("/automation/runs"))
+      return Response.json([
+        {
+          id: "run-1",
+          started_at: Math.floor(Date.now() / 1000),
+          finished_at: Math.floor(Date.now() / 1000) + 1,
+          state: "completed",
+          message: "Search complete.",
+          mode: "download",
+          checked: 4,
+          queued: 2,
+        },
+      ]);
+    return undefined;
+  });
+  mount("/calendar?month=2026-10");
+  await screen.findByRole("heading", { name: "October 2026" });
+  await userEvent.click(screen.getByRole("button", { name: "Search movies" }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search every missing monitored movie?",
+  });
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: "Start search" }),
+  );
+  expect(
+    await screen.findByText(/Searched 4 items and queued 2 downloads/),
+  ).toBeVisible();
+  expect(posts).toEqual([{ scope: "movie" }]);
+});
+
+it("remembers the last calendar filters until Reset", async () => {
+  setup();
+  const { unmount } = render(
+    <Theme>
+      <MemoryRouter
+        initialEntries={["/calendar?month=2026-10&kind=series&monitored=all"]}
+      >
+        <App />
+      </MemoryRouter>
+    </Theme>,
+  );
+  await screen.findByRole("heading", { name: "October 2026" });
+  unmount();
+  setup();
+  render(
+    <Theme>
+      <MemoryRouter initialEntries={["/calendar"]}>
+        <App />
+      </MemoryRouter>
+    </Theme>,
+  );
+  await screen.findByRole("heading", { name: "October 2026" });
+  expect(screen.getByLabelText("Calendar month")).toHaveValue("2026-10");
+  await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+  await waitFor(() =>
+    expect(
+      window.localStorage.getItem("reelscarey.calendar.filters") || "",
+    ).toBe(""),
+  );
 });

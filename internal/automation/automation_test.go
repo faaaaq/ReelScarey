@@ -428,23 +428,23 @@ func TestBoundedCursorMonitoringDatesAndTVSelections(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	targets, e := f.s.targets(ctx, "", 25, "", "")
+	targets, e := f.s.targets(ctx, "", 25, "", "", "")
 	if e != nil || len(targets) != 3 || targets[0].EpisodeID == nil {
 		t.Fatal(targets, e)
 	}
 	cursor := targets[0].Key
-	rotated, e := f.s.targets(ctx, cursor, 2, "", "")
+	rotated, e := f.s.targets(ctx, cursor, 2, "", "", "")
 	if e != nil || len(rotated) != 2 || rotated[0].MediaID != 1 || rotated[1].MediaID != 4 {
 		t.Fatal(rotated, e)
 	}
-	wrapped, e := f.s.targets(ctx, rotated[1].Key, 2, "", "")
+	wrapped, e := f.s.targets(ctx, rotated[1].Key, 2, "", "", "")
 	if e != nil || len(wrapped) != 2 || wrapped[0].EpisodeID == nil || wrapped[1].MediaID != 1 {
 		t.Fatal(wrapped, e)
 	}
 	if _, e = f.db.Exec(`UPDATE seasons SET monitored=0 WHERE id=1`); e != nil {
 		t.Fatal(e)
 	}
-	targets, e = f.s.targets(ctx, "", 25, "", "")
+	targets, e = f.s.targets(ctx, "", 25, "", "", "")
 	if e != nil || len(targets) != 2 {
 		t.Fatal(targets, e)
 	}
@@ -682,5 +682,40 @@ func TestItemSearchScopesTheRunAndContinuesAcrossBatches(t *testing.T) {
 	jobs, e = f2.w.List(ctx, 1)
 	if e != nil || len(jobs.Items) != 2 {
 		t.Fatal("the focused show did not search both episodes", jobs, e)
+	}
+}
+
+// A bulk request narrows the run to one media kind and queues only that kind.
+func TestBulkSearchScopesToMoviesOrEpisodes(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	if _, e := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,category,monitored,release_date) VALUES(5,'series',5,'Show',2020,'standard',1,'2020-01-01');INSERT INTO series_details(media_id) VALUES(5);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,5,10,1,'Season','','2020-01-01',1,1,'loaded');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,11,1,'One','','2020-01-01',1)`); e != nil {
+		t.Fatal(e)
+	}
+	configure(t, f.s, true, "search", 10)
+	if e := f.s.RequestBulk(ctx, "movie"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	runs, _ := f.s.Runs(ctx)
+	results, _ := f.s.Results(ctx, runs[0].ID)
+	if len(results) != 1 || results[0].MediaID != 1 {
+		t.Fatal("the movie scope searched TV or nothing", results)
+	}
+	if e := f.s.RequestBulk(ctx, "series"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	runs, _ = f.s.Runs(ctx)
+	results, _ = f.s.Results(ctx, runs[0].ID)
+	if len(results) != 1 || results[0].EpisodeID == nil || results[0].MediaID != 5 {
+		t.Fatal("the episode scope searched movies or nothing", results)
+	}
+	if e := f.s.RequestBulk(ctx, "movies"); e == nil {
+		t.Fatal("an unknown scope was accepted")
 	}
 }

@@ -773,3 +773,17 @@ filename parses to exactly that episode; everything else keeps the explicit
 mapping review and the automatic path journals an "imported automatically"
 event. See [AUTOMATION.md](docs/AUTOMATION.md) and
 [TV_DOWNLOADS.md](docs/TV_DOWNLOADS.md).
+
+## Version 0.38.6 calendar actions, bulk searches and episode lifecycle
+
+Calendar entries show the saved synopsis and offer manual and automatic search,
+with the run's outcome reported inline. The Calendar can search every missing
+monitored movie or TV episode behind a confirmation and reports the result. The
+Calendar remembers its last month, filters and view until Reset. Series details
+gain Search All Monitored, newest-first seasons, and per-episode automatic
+search, manual replacement search and a reviewed Remove from library that keeps
+the file on disk. The TV Shows and Anime libraries end with a confirmed
+Monitor all future episodes action. Unambiguous single-episode TV downloads
+still import without review; ambiguous ones keep the review. See
+[UI.md](docs/UI.md), [AUTOMATION.md](docs/AUTOMATION.md) and
+[TV_DOWNLOADS.md](docs/TV_DOWNLOADS.md).

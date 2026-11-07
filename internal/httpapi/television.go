@@ -204,6 +204,85 @@ func (s *Server) refreshTV(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sendSeries(w, r, id)
 }
+
+// unlinkEpisodeFile removes one episode's library association after review.
+// The file itself stays on disk; watching, seeding sources and other episodes
+// that share the file are untouched.
+func (s *Server) unlinkEpisodeFile(w http.ResponseWriter, r *http.Request) {
+	id, ok := tvID(w, r)
+	if !ok {
+		return
+	}
+	episode, e := strconv.ParseInt(r.PathValue("episode"), 10, 64)
+	if e != nil || episode < 1 {
+		fail(w, 400, "invalid_selection", "Choose a saved episode.")
+		return
+	}
+	var body struct {
+		Revision int64 `json:"revision"`
+		Reviewed bool  `json:"reviewed"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !body.Reviewed || body.Revision < 1 {
+		fail(w, 400, "review_required", "Review removing this episode from the library first.")
+		return
+	}
+	if e = s.library.UnlinkEpisodeFile(r.Context(), id, body.Revision, episode); e != nil {
+		s.tvError(w, e)
+		return
+	}
+	s.sendSeries(w, r, id)
+}
+
+func (s *Server) monitorAllEpisodes(w http.ResponseWriter, r *http.Request) {
+	id, ok := tvID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Revision int64 `json:"revision"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if body.Revision < 1 {
+		fail(w, 400, "invalid_monitoring", "Reload this show and try again.")
+		return
+	}
+	if err := s.library.MonitorAllEpisodes(r.Context(), id, body.Revision); err != nil {
+		if errors.Is(err, library.ErrMonitoringInput) {
+			fail(w, 400, "invalid_monitoring", "Reload this show and try again.")
+			return
+		}
+		s.tvError(w, err)
+		return
+	}
+	s.sendSeries(w, r, id)
+}
+
+// monitorAllShows is the explicit one-time bulk action behind "Monitor all
+// future episodes" on the TV Shows and Anime libraries.
+func (s *Server) monitorAllShows(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Category string `json:"category"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	count, err := s.library.MonitorAllShows(r.Context(), body.Category)
+	if err != nil {
+		if errors.Is(err, library.ErrMonitoringInput) {
+			fail(w, 400, "invalid_monitoring", "Choose the standard or anime library.")
+			return
+		}
+		s.tvError(w, err)
+		return
+	}
+	send(w, 200, map[string]int{"shows": count})
+}
+
 func (s *Server) monitorTV(w http.ResponseWriter, r *http.Request) {
 	id, ok := tvID(w, r)
 	if !ok {

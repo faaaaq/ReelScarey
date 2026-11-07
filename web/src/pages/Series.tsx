@@ -3,11 +3,13 @@ import { Button } from "@radix-ui/themes";
 import {
   ChevronDown,
   FolderTree,
+  ListChecks,
   RefreshCw,
+  FileX,
   SearchCheck,
   Settings2,
 } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
   api,
   messageFor,
@@ -37,6 +39,7 @@ import {
   TitleSearchButton,
   useItemSearch,
 } from "./details/ItemSearch";
+import { bulkSearchMessage, useBulkSearch } from "./details/bulkSearch";
 import { AnimeSettings } from "./AnimeSettings";
 import { AnimeSearch } from "./AnimeSearch";
 import { AnimeOrder } from "./AnimeOrder";
@@ -95,7 +98,8 @@ export function Series() {
 function seasonOrder(a: TVSeason, b: TVSeason) {
   if (a.number === 0) return 1;
   if (b.number === 0) return -1;
-  return a.number - b.number;
+  // Newest season first, like Sonarr, so the current season is at the top.
+  return b.number - a.number;
 }
 
 function SeriesView({ initial }: { initial: TVSeries }) {
@@ -145,6 +149,31 @@ function SeriesView({ initial }: { initial: TVSeries }) {
       setPending(false);
     }
   };
+  async function removeFile(episodeID: number, code: string) {
+    if (
+      !window.confirm(
+        `Remove ${code} from the library? The file stays on disk and the episode becomes missing again.`,
+      )
+    )
+      return;
+    setPending(true);
+    setError("");
+    try {
+      const out = await api<TVSeries>(
+        `/library/series/${show.id}/episodes/${episodeID}/remove-file`,
+        {
+          method: "POST",
+          body: JSON.stringify({ revision: show.revision, reviewed: true }),
+        },
+      );
+      setShow(out);
+      setAttempt((n) => n + 1);
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending(false);
+    }
+  }
   async function reload() {
     if (pending) return;
     setPending(true);
@@ -188,6 +217,7 @@ function SeriesView({ initial }: { initial: TVSeries }) {
   const anime = show.category === "anime";
   const data = details.data;
   const itemSearch = useItemSearch();
+  const bulk = useBulkSearch();
   return (
     <>
       <PageToolbar>
@@ -207,6 +237,21 @@ function SeriesView({ initial }: { initial: TVSeries }) {
             onTrigger={(mediaID) => itemSearch.trigger(mediaID)}
           />
           <ToolbarButton
+            icon={ListChecks}
+            label="Search All Monitored"
+            title="Search every monitored, missing episode of this show now"
+            spinning={bulk.state.status === "running"}
+            disabled={bulk.state.status === "running"}
+            onClick={() =>
+              void bulk.run(() =>
+                api("/automation/search-item", {
+                  method: "POST",
+                  body: JSON.stringify({ media_id: show.id }),
+                }),
+              )
+            }
+          />
+          <ToolbarButton
             icon={FolderTree}
             label="Organize"
             to={`/organization?media_id=${show.id}`}
@@ -214,6 +259,35 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           <ToolbarButton icon={Settings2} label="Automation" to="/automation" />
         </ToolbarSection>
       </PageToolbar>
+      {bulk.state.status !== "idle" && (
+        <PageBody>
+          <Alert
+            kind={
+              bulk.state.status === "error"
+                ? "danger"
+                : bulk.state.status === "running"
+                  ? "info"
+                  : "success"
+            }
+            role="status"
+            dismissKey="series-bulk-search"
+          >
+            <p>{bulkSearchMessage(bulk.state)}</p>
+            <div className="rs-row">
+              <Link className="rs-link-button rs-small" to="/automation">
+                Open Automation for details
+              </Link>
+              <button
+                type="button"
+                className="rs-link-button rs-small"
+                onClick={bulk.reset}
+              >
+                Dismiss
+              </button>
+            </div>
+          </Alert>
+        </PageBody>
+      )}
       {itemSearch.result && (
         <PageBody>
           <ItemSearchResultAlert
@@ -419,6 +493,7 @@ function SeriesView({ initial }: { initial: TVSeries }) {
                             onEpisodeSearch={(episodeID) =>
                               itemSearch.trigger(show.id, episodeID)
                             }
+                            onRemoveFile={removeFile}
                           />
                         ))}
                       </div>
@@ -514,6 +589,7 @@ function SeasonBlock({
   onSelect,
   searchPending,
   onEpisodeSearch,
+  onRemoveFile,
 }: {
   show: TVSeries;
   season: TVSeason;
@@ -527,6 +603,7 @@ function SeasonBlock({
   onSelect: (checked: boolean) => void;
   searchPending: boolean;
   onEpisodeSearch: (episodeID: number) => void;
+  onRemoveFile?: (episodeID: number, code: string) => void;
 }) {
   const panelID = `season-${season.id}`;
   return (
@@ -597,6 +674,7 @@ function SeasonBlock({
             update={update}
             searchPending={searchPending}
             onEpisodeSearch={onEpisodeSearch}
+            onRemoveFile={onRemoveFile}
           />
         </div>
       )}
@@ -612,6 +690,7 @@ function SeasonEpisodes({
   attempt,
   searchPending,
   onEpisodeSearch,
+  onRemoveFile,
 }: {
   show: TVSeries;
   season: TVSeason;
@@ -620,6 +699,7 @@ function SeasonEpisodes({
   attempt: number;
   searchPending: boolean;
   onEpisodeSearch: (episodeID: number) => void;
+  onRemoveFile?: (episodeID: number, code: string) => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
@@ -842,27 +922,53 @@ function SeasonEpisodes({
                       )}
                     </td>
                     <td className="is-actions">
-                      {!e.available && (
-                        <span
-                          className="rs-row"
-                          style={{ justifyContent: "flex-end" }}
-                        >
-                          <button
-                            type="button"
-                            className="det-icon-link"
-                            aria-label={`Automatic search for ${episodeCode(season.number, e.number)} ${e.title}`}
-                            title="Automatic search now: download mode queues the best match, search-only mode saves results for review"
-                            disabled={searchPending}
-                            onClick={() => onEpisodeSearch(e.id)}
-                          >
-                            <SearchCheck size={16} aria-hidden="true" />
-                          </button>
-                          <IconLink
-                            to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}`}
-                            label={`Search for ${episodeCode(season.number, e.number)} ${e.title}`}
-                          />
-                        </span>
-                      )}
+                      <span
+                        className="rs-row"
+                        style={{ justifyContent: "flex-end" }}
+                      >
+                        {!e.available && (
+                          <>
+                            <button
+                              type="button"
+                              className="det-icon-link"
+                              aria-label={`Automatic search for ${episodeCode(season.number, e.number)} ${e.title}`}
+                              title="Automatic search now: download mode queues the best match, search-only mode saves results for review"
+                              disabled={searchPending}
+                              onClick={() => onEpisodeSearch(e.id)}
+                            >
+                              <SearchCheck size={16} aria-hidden="true" />
+                            </button>
+                            <IconLink
+                              to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}`}
+                              label={`Search for ${episodeCode(season.number, e.number)} ${e.title}`}
+                            />
+                          </>
+                        )}
+                        {e.available && e.file_id && (
+                          <>
+                            <IconLink
+                              to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}&purpose=${e.file_id}`}
+                              label={`Replace the file for ${episodeCode(season.number, e.number)} ${e.title}`}
+                            />
+                            <button
+                              type="button"
+                              className="det-icon-link"
+                              aria-label={`Remove ${episodeCode(season.number, e.number)} ${e.title} from the library`}
+                              title="Remove this episode from the library. The file stays on disk."
+                              disabled={pending || onRemoveFile === undefined}
+                              onClick={() =>
+                                onRemoveFile &&
+                                onRemoveFile(
+                                  e.id,
+                                  episodeCode(season.number, e.number),
+                                )
+                              }
+                            >
+                              <FileX size={16} aria-hidden="true" />
+                            </button>
+                          </>
+                        )}
+                      </span>
                     </td>
                   </tr>
                 );

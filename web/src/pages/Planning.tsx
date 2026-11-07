@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
+import { api } from "../api";
 import {
   CalendarDays,
   ChevronLeft,
@@ -35,6 +36,8 @@ import {
   useHiddenNotices,
   type Kind,
 } from "../ui";
+import { ItemSearchResultAlert, useItemSearch } from "./details/ItemSearch";
+import { bulkSearchMessage, useBulkSearch } from "./details/bulkSearch";
 import { useResource } from "../useResource";
 import { Pager } from "./activity/Pager";
 import { ToolbarMenu } from "./activity/ToolbarMenu";
@@ -62,6 +65,7 @@ export type PlanningEntry = {
   download_state: string;
   protocol: string;
   poster_url: string;
+  overview?: string;
 };
 export type PlanningData = {
   items: PlanningEntry[];
@@ -101,6 +105,7 @@ const wantedStatuses = [
   "undated",
 ];
 const viewKey = "reelscarey.calendar.view";
+const calendarFiltersKey = "reelscarey.calendar.filters";
 
 function dateLabel(value: string, month = false) {
   const date = new Date(`${value}${month ? "-01" : ""}T12:00:00Z`);
@@ -193,6 +198,44 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
       : "month",
   );
   const [opened, setOpened] = useState<PlanningEntry>();
+  const bulk = useBulkSearch();
+  const [scope, setScope] = useState<"movie" | "series" | null>(null);
+  // The Calendar remembers the last filters and month; Reset clears them.
+  const [ready, setReady] = useState(!calendar);
+  useEffect(() => {
+    if (!calendar) return;
+    if (params.toString()) {
+      setReady(true);
+      return;
+    }
+    try {
+      const saved = localStorage.getItem(calendarFiltersKey);
+      if (saved) setParams(new URLSearchParams(saved), { replace: true });
+    } catch {
+      /* Storage can be unavailable; defaults stay. */
+    }
+    setReady(true);
+    // Restore once per visit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!calendar || !ready) return;
+    try {
+      localStorage.setItem(calendarFiltersKey, params.toString());
+    } catch {
+      /* Storage can be unavailable. */
+    }
+  }, [calendar, ready, params]);
+  function resetAll() {
+    try {
+      localStorage.removeItem(calendarFiltersKey);
+    } catch {
+      /* Storage can be unavailable. */
+    }
+    setInput("");
+    setView("month");
+    setParams({}, { replace: true });
+  }
   function setView(next: "month" | "agenda") {
     setViewState(next);
     try {
@@ -252,7 +295,23 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
           />
           <ToolbarSeparator />
           {calendar ? (
-            <ToolbarButton icon={List} label="Wanted" to="/wanted" />
+            <>
+              <ToolbarButton icon={List} label="Wanted" to="/wanted" />
+              <ToolbarButton
+                icon={Film}
+                label="Search movies"
+                title="Search every missing monitored movie now"
+                disabled={bulk.state.status === "running"}
+                onClick={() => setScope("movie")}
+              />
+              <ToolbarButton
+                icon={Tv}
+                label="Search episodes"
+                title="Search every missing monitored TV episode now"
+                disabled={bulk.state.status === "running"}
+                onClick={() => setScope("series")}
+              />
+            </>
           ) : (
             <ToolbarButton
               icon={CalendarDays}
@@ -302,11 +361,38 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
             ]}
             onChange={(value) => change("monitored", value)}
           />
-          <ToolbarButton icon={RotateCcw} label="Reset filters" to={base} />
+          <ToolbarButton icon={RotateCcw} label="Reset" onClick={resetAll} />
         </ToolbarSection>
       </PageToolbar>
       <PageBody>
         <PageHeading title={calendar ? "Calendar" : "Wanted"} />
+        {calendar && bulk.state.status !== "idle" && (
+          <Alert
+            kind={
+              bulk.state.status === "error"
+                ? "danger"
+                : bulk.state.status === "running"
+                  ? "info"
+                  : "success"
+            }
+            role="status"
+            dismissKey="calendar-bulk-search"
+          >
+            <p>{bulkSearchMessage(bulk.state)}</p>
+            <div className="rs-row">
+              <Link className="rs-link-button rs-small" to="/automation">
+                Open Automation for details
+              </Link>
+              <button
+                type="button"
+                className="rs-link-button rs-small"
+                onClick={bulk.reset}
+              >
+                Dismiss
+              </button>
+            </div>
+          </Alert>
+        )}
         <div className="plan-filterbar">
           <div className="plan-status" role="group" aria-label="Status">
             <button
@@ -544,6 +630,54 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
       </PageBody>
       {opened && (
         <EntryModal entry={opened} onClose={() => setOpened(undefined)} />
+      )}
+      {scope && (
+        <Modal
+          open
+          onOpenChange={(open) => !open && setScope(null)}
+          title={
+            scope === "movie"
+              ? "Search every missing monitored movie?"
+              : "Search every missing monitored episode?"
+          }
+          footer={
+            <>
+              <ModalClose>
+                <Button variant="soft" color="gray">
+                  Cancel
+                </Button>
+              </ModalClose>
+              <Button
+                onClick={() => {
+                  const target = scope;
+                  setScope(null);
+                  void bulk.run(() =>
+                    api("/automation/search-bulk", {
+                      method: "POST",
+                      body: JSON.stringify({ scope: target }),
+                    }),
+                  );
+                }}
+              >
+                Start search
+              </Button>
+            </>
+          }
+        >
+          <p>
+            ReelScarey searches{" "}
+            {scope === "movie"
+              ? "every missing monitored movie"
+              : "every missing monitored TV episode"}{" "}
+            with your saved quality profiles. In download mode the best matching
+            release of each is queued; in search-only mode the results are saved
+            for review in Automation.
+          </p>
+          <p className="rs-muted">
+            Large libraries can take several runs. Nothing is overwritten and
+            existing files stay as they are.
+          </p>
+        </Modal>
       )}
     </>
   );
@@ -817,6 +951,10 @@ function EntryModal({
   onClose: () => void;
 }) {
   const tv = entry.kind === "series";
+  const search = useItemSearch();
+  function automatic() {
+    search.trigger(entry.media_id, entry.episode_id ?? undefined);
+  }
   return (
     <Modal
       open
@@ -827,7 +965,13 @@ function EntryModal({
           <Button asChild variant="soft">
             <Link to={entryPath(entry)}>{tv ? "View show" : "View movie"}</Link>
           </Button>
-          <EntryAction entry={entry} />
+          <Button asChild variant="soft">
+            <Link to={releasePath(entry)}>Manual search</Link>
+          </Button>
+          <Button disabled={!!search.pending} onClick={automatic}>
+            <Search size={15} aria-hidden="true" />
+            {search.pending ? "Searching…" : "Automatic search"}
+          </Button>
           <ModalClose>
             <Button variant="soft" color="gray">
               Close
@@ -836,6 +980,16 @@ function EntryModal({
         </>
       }
     >
+      {tv && entry.episode_title && (
+        <p className="plan-modal-episode">
+          {entryCode(entry)} · {entry.episode_title}
+        </p>
+      )}
+      {entry.overview ? (
+        <p className="plan-modal-synopsis">{entry.overview}</p>
+      ) : (
+        <p className="rs-muted">No synopsis is saved for this title yet.</p>
+      )}
       <DescriptionList>
         <DescriptionItem title={tv ? "Episode" : "Type"}>
           {tv
@@ -855,7 +1009,9 @@ function EntryModal({
         )}
         {entry.download_id && (
           <DescriptionItem title="Download">
-            {downloadText(entry)}
+            <Link to={`/activity?job=${encodeURIComponent(entry.download_id)}`}>
+              {downloadText(entry)}
+            </Link>
           </DescriptionItem>
         )}
         {(entry.runtime_minutes || entry.series_status) && (
@@ -872,6 +1028,7 @@ function EntryModal({
           {metadataNote(entry)}
         </DescriptionItem>
       </DescriptionList>
+      <ItemSearchResultAlert result={search.result} onDismiss={search.reset} />
     </Modal>
   );
 }

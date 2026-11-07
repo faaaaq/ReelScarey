@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, SearchCheck } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api, messageFor } from "../../api";
 import { Alert, ToolbarButton, ToolbarSection } from "../../ui";
 
@@ -111,9 +112,9 @@ export function ItemSearchResultAlert({
         ? "danger"
         : "info";
   const titles: Record<string, string> = {
-    queued: "Search queued a download",
-    match: "Search found a matching release",
-    no_match: "No matching release",
+    queued: "Download queued",
+    match: "A matching release is available",
+    no_match: "No matching release found",
     needs_attention: "Search needs attention",
     timeout: "Search still running",
     error: "Search could not start",
@@ -126,13 +127,23 @@ export function ItemSearchResultAlert({
       dismissKey="item-search"
     >
       <p>{result.message}</p>
-      <button
-        type="button"
-        className="rs-link-button rs-small"
-        onClick={onDismiss}
-      >
-        Hide
-      </button>
+      <div className="rs-row">
+        {result.download_id && (
+          <Link
+            className="rs-link-button rs-small"
+            to={`/activity?job=${encodeURIComponent(result.download_id)}`}
+          >
+            View the download in Activity
+          </Link>
+        )}
+        <button
+          type="button"
+          className="rs-link-button rs-small"
+          onClick={onDismiss}
+        >
+          Dismiss
+        </button>
+      </div>
     </Alert>
   );
 }

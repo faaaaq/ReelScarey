@@ -2148,3 +2148,14 @@ Run locally on Windows (development tools only; Docker remains the target):
   path for ambiguous labels.
 - The live qBittorrent and Docker acceptance suites were not run locally; the
   publish workflow's release-candidate verification runs them on the tag.
+
+## Version 0.38.6 calendar actions, bulk searches and episode lifecycle
+
+- gofmt clean; go vet and the full Go suite passed (schema assertions moved to
+  54 for migration 054). New tests cover synopsis propagation, monitor-all
+  scoping, bulk search scoping, and per-episode unlink.
+- Frontend format:check, check, the full suite (39 files, 225 tests) and the
+  build passed. New tests cover calendar bulk confirmation and reported counts,
+  remembered filters and Reset, and the popup's search actions.
+- Live qBittorrent and Docker acceptance were not run locally; the publish
+  workflow verifies the release candidate on the tag.

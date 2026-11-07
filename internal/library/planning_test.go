@@ -213,3 +213,73 @@ func TestPlanningReflectsChangesAndRetainsSavedStateAfterReopen(t *testing.T) {
 		t.Fatal("leap day lost", leap, e)
 	}
 }
+
+func TestPlanningCarriesSynopsisAndMonitorAllCoversShowsWithoutTouchingSpecials(t *testing.T) {
+	ctx := context.Background()
+	s, db := planningFixture(t)
+	if _, e := db.Exec(`UPDATE media_items SET overview='A saved movie synopsis.' WHERE id=1;UPDATE episodes SET overview='A saved episode synopsis.' WHERE id=1001`); e != nil {
+		t.Fatal(e)
+	}
+	page, e := s.Calendar(ctx, PlanningFilter{Kind: "all", Status: "all", Month: "2026-10"}, planningNow)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var movie, episode bool
+	for _, v := range page.Items {
+		if v.MediaID == 1 && v.Kind == "movie" && v.Overview == "A saved movie synopsis." {
+			movie = true
+		}
+		if v.EpisodeID != nil && *v.EpisodeID == 1001 && v.Overview == "A saved episode synopsis." {
+			episode = true
+		}
+	}
+	if !movie || !episode {
+		t.Fatal("planner entries lost their synopsis", page.Items)
+	}
+
+	// Per-show monitor-all turns the show, its regular seasons and episodes
+	// on and leaves specials alone.
+	var revision int64
+	if e = db.QueryRow(`SELECT revision FROM series_details WHERE media_id=10`).Scan(&revision); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`UPDATE media_items SET monitored=0 WHERE id=10;UPDATE seasons SET monitored=0 WHERE id=102;UPDATE episodes SET monitored=0 WHERE id=1008`); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.MonitorAllEpisodes(ctx, 10, revision); e != nil {
+		t.Fatal(e)
+	}
+	for _, q := range []struct {
+		sql  string
+		want int
+	}{
+		{`SELECT monitored FROM media_items WHERE id=10`, 1},
+		{`SELECT COUNT(*) FROM seasons WHERE series_id=10 AND number>0 AND monitored=0`, 0},
+		{`SELECT COUNT(*) FROM episodes WHERE season_id IN (SELECT id FROM seasons WHERE series_id=10 AND number>0) AND monitored=0`, 0},
+		{`SELECT monitored FROM seasons WHERE id=104`, 0},
+	} {
+		var got int
+		if e = db.QueryRow(q.sql).Scan(&got); e != nil || got != q.want {
+			t.Fatal(q.sql, got, e)
+		}
+	}
+	if e = s.MonitorAllEpisodes(ctx, 10, revision); !errors.Is(e, ErrRevision) {
+		t.Fatal("a stale revision was accepted", e)
+	}
+
+	// The library-wide action covers every show in scope in one call.
+	if _, e = db.Exec(`UPDATE media_items SET monitored=0;UPDATE seasons SET monitored=0;UPDATE episodes SET monitored=0`); e != nil {
+		t.Fatal(e)
+	}
+	count, e := s.MonitorAllShows(ctx, "")
+	if e != nil || count != 2 {
+		t.Fatal(count, e)
+	}
+	var on int
+	if e = db.QueryRow(`SELECT COUNT(*) FROM media_items WHERE kind='series' AND monitored=1`).Scan(&on); e != nil || on != 2 {
+		t.Fatal(on, e)
+	}
+	if _, e = s.MonitorAllShows(ctx, "movies"); !errors.Is(e, ErrMonitoringInput) {
+		t.Fatal("an unknown scope was accepted", e)
+	}
+}

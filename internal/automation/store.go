@@ -38,6 +38,9 @@ func invalid(message string) error { return &Error{"invalid_automation", message
 
 var ErrLease = errors.New("search lease was lost or its settings changed")
 
+// problemInvalidScope rejects an unsupported bulk-search scope.
+var problemInvalidScope = &Error{"invalid_automation", "Choose the movie or TV episode scope."}
+
 type Schedule struct {
 	Enabled          bool   `json:"enabled"`
 	Mode             string `json:"mode"`
@@ -49,17 +52,18 @@ type Schedule struct {
 	Requested        bool   `json:"requested"`
 	FocusMedia       string `json:"focus_media"`
 	FocusEpisode     string `json:"focus_episode"`
+	FocusKind        string `json:"focus_kind"`
 	State            string `json:"state"`
 	Message          string `json:"message"`
 	IndexerConnected bool   `json:"indexer_connected"`
 	ClientConnected  bool   `json:"client_connected"`
 }
 
-const scheduleColumns = `enabled,mode,interval_minutes,batch_size,default_profile_id,revision,next_run,requested,focus_media,focus_episode,state,message`
+const scheduleColumns = `enabled,mode,interval_minutes,batch_size,default_profile_id,revision,next_run,requested,focus_media,focus_episode,focus_kind,state,message`
 
 func scanSchedule(row interface{ Scan(...any) error }) (Schedule, error) {
 	var v Schedule
-	e := row.Scan(&v.Enabled, &v.Mode, &v.Interval, &v.Batch, &v.DefaultProfile, &v.Revision, &v.NextRun, &v.Requested, &v.FocusMedia, &v.FocusEpisode, &v.State, &v.Message)
+	e := row.Scan(&v.Enabled, &v.Mode, &v.Interval, &v.Batch, &v.DefaultProfile, &v.Revision, &v.NextRun, &v.Requested, &v.FocusMedia, &v.FocusEpisode, &v.FocusKind, &v.State, &v.Message)
 	return v, e
 }
 func (s *Service) Get(ctx context.Context) (Schedule, error) {
@@ -156,7 +160,20 @@ func (s *Service) RequestItem(ctx context.Context, mediaID int64, episodeID *int
 	}
 	// A running search is not disturbed: the finish logic preserves requests
 	// made while it was active and starts the focused run immediately after.
-	if _, e = s.db.ExecContext(ctx, `UPDATE search_schedule SET requested=1,focus_media=?,focus_episode=?,next_run=0 WHERE id=1`, focusMedia, focusEpisode); e != nil {
+	if _, e = s.db.ExecContext(ctx, `UPDATE search_schedule SET requested=1,focus_media=?,focus_episode=?,focus_kind='',next_run=0 WHERE id=1`, focusMedia, focusEpisode); e != nil {
+		return e
+	}
+	return nil
+}
+
+// RequestBulk scopes the next search run to every missing monitored movie or
+// TV episode. It backs the Calendar's one-click searches; the run follows the
+// saved mode exactly like any other scheduled run.
+func (s *Service) RequestBulk(ctx context.Context, kind string) error {
+	if kind != "movie" && kind != "series" {
+		return problemInvalidScope
+	}
+	if _, e := s.db.ExecContext(ctx, `UPDATE search_schedule SET requested=1,focus_media='',focus_episode='',focus_kind=?,next_run=0 WHERE id=1`, kind); e != nil {
 		return e
 	}
 	return nil

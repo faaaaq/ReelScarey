@@ -99,6 +99,7 @@ export type TVSeason = {
 };
 export type TVEpisode = {
   available?: boolean;
+  file_id?: number;
   file_path?: string;
   id: number;
   tmdb_id: number;

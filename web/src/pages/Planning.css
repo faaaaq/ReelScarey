@@ -309,3 +309,13 @@
 .plan-event.is-default {
   border-left-color: var(--rs-muted);
 }
+
+.plan-modal-episode {
+  color: var(--rs-muted);
+  font-size: 13px;
+}
+.plan-modal-synopsis {
+  line-height: 1.55;
+  max-height: 14em;
+  overflow-y: auto;
+}

@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
+  api,
+  messageFor,
   type LibraryPage,
   type MediaItem,
   type CatalogProfileContext,
@@ -25,6 +27,8 @@ import {
   Alert,
   EmptyState,
   Label,
+  Modal,
+  ModalClose,
   PageBody,
   PageToolbar,
   Table,
@@ -787,7 +791,104 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
             </div>
           </div>
         )}
+        {kind !== "movie" && (
+          <MonitorAllFutureEpisodes
+            category={kind === "anime" ? "anime" : "standard"}
+            onDone={resource.reload}
+          />
+        )}
       </PageBody>
     </>
+  );
+}
+
+/**
+ * One-time bulk action: monitor the show, its regular seasons and episodes for
+ * every show in this collection. Kept at the bottom of the page because it is
+ * normally used once, and always behind an explicit confirmation.
+ */
+function MonitorAllFutureEpisodes({
+  category,
+  onDone,
+}: {
+  category: "standard" | "anime";
+  onDone: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const label = category === "anime" ? "anime shows" : "TV shows";
+  async function apply() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const out = await api<{ shows: number }>(
+        "/library/monitor-all-episodes",
+        {
+          method: "POST",
+          body: JSON.stringify({ category }),
+        },
+      );
+      setMessage(
+        `Monitoring turned on for ${out.shows} ${label} including all regular seasons and episodes. Specials keep their current choices.`,
+      );
+      onDone();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
+  }
+  return (
+    <section className="lib-maintenance" aria-label="Library maintenance">
+      <div>
+        <h2>Monitor all future episodes</h2>
+        <p>
+          Turns monitoring on for every {category === "anime" ? "anime" : ""}{" "}
+          show, its regular seasons and its episodes. Use it once when setting
+          up a library; individual choices can still be changed afterwards.
+        </p>
+        {message && <Alert kind="success">{message}</Alert>}
+        {error && <Alert kind="danger">{error}</Alert>}
+      </div>
+      <div>
+        <Button
+          variant="soft"
+          disabled={busy}
+          onClick={() => setConfirming(true)}
+        >
+          Monitor all future episodes
+        </Button>
+      </div>
+      {confirming && (
+        <Modal
+          open
+          onOpenChange={(open) => !open && setConfirming(false)}
+          title={`Monitor every episode of your ${label}?`}
+          footer={
+            <>
+              <ModalClose>
+                <Button variant="soft" color="gray">
+                  Cancel
+                </Button>
+              </ModalClose>
+              <Button disabled={busy} onClick={() => void apply()}>
+                {busy ? "Updating…" : "Monitor everything"}
+              </Button>
+            </>
+          }
+        >
+          <p>
+            Every show in this collection will be monitored, including all
+            regular seasons and their episodes. Specials are left exactly as
+            they are. This does not download anything by itself; the automation
+            schedule decides what to search.
+          </p>
+        </Modal>
+      )}
+    </section>
   );
 }

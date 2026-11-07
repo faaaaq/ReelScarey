@@ -370,3 +370,23 @@
     width: 60px;
   }
 }
+
+.lib-maintenance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rs-border);
+}
+.lib-maintenance h2 {
+  font-size: 15px;
+  font-weight: 500;
+}
+.lib-maintenance p {
+  color: var(--rs-muted);
+  max-width: 70ch;
+  margin-top: 4px;
+}

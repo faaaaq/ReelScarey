@@ -106,6 +106,25 @@ func (s *Server) automationSearchItem(w http.ResponseWriter, r *http.Request) {
 	send(w, 202, map[string]bool{"requested": true})
 }
 
+// automationSearchBulk starts a focused search for every missing monitored
+// movie or TV episode after an explicit owner action on the Calendar page.
+func (s *Server) automationSearchBulk(w http.ResponseWriter, r *http.Request) {
+	if !s.automationReady(w) {
+		return
+	}
+	var in struct {
+		Scope string `json:"scope"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	if e := s.automation.RequestBulk(r.Context(), in.Scope); e != nil {
+		s.automationError(w, e)
+		return
+	}
+	send(w, 202, map[string]bool{"requested": true})
+}
+
 // automationItemResults reports the latest recorded search outcome for one
 // title (and optionally one episode), so library pages can show what the
 // focused search decided without opening Automation.

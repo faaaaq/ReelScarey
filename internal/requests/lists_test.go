@@ -113,7 +113,9 @@ func TestIMDbMDBListSyncRequiresOwnedIMDbSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	var sealed []byte
-	if err=db.QueryRow(`SELECT ciphertext FROM request_lists WHERE id=?`,list.ID).Scan(&sealed); err!=nil || strings.Contains(string(sealed),key) { t.Fatal("MDBList key was not encrypted",err) }
+	if err = db.QueryRow(`SELECT ciphertext FROM request_lists WHERE id=?`, list.ID).Scan(&sealed); err != nil || strings.Contains(string(sealed), key) {
+		t.Fatal("MDBList key was not encrypted", err)
+	}
 	s.client = &http.Client{Timeout: time.Second, Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
 		if r.URL.Host != "api.mdblist.com" || r.URL.Query().Get("apikey") != key {
 			t.Fatal("wrong MDBList request")
@@ -149,16 +151,36 @@ func TestIMDbMDBListSyncRequiresOwnedIMDbSource(t *testing.T) {
 }
 
 func TestIMDbMDBListPaginationMustBeComplete(t *testing.T) {
-	s:=&Lists{}
-	key:=strings.Repeat("z",32)
-	s.client=&http.Client{Timeout:time.Second,Transport:roundTrip(func(r *http.Request)(*http.Response,error){
-		h:=make(http.Header); body:=`[{"id":123,"source":"IMDb"}]`
-		if strings.HasSuffix(r.URL.Path,"/items") {
-			if r.URL.Query().Get("cursor")=="" { h.Set("X-Has-More","true"); body=`{"movies":[{"id":603,"title":"First"}],"shows":[],"pagination":{"next_cursor":"next"}}` } else { h.Set("X-Has-More","false"); body=`{"movies":[],"shows":[{"id":1396,"title":"Second"}],"pagination":{}}` }
+	s := &Lists{}
+	key := strings.Repeat("z", 32)
+	s.client = &http.Client{Timeout: time.Second, Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		h := make(http.Header)
+		body := `[{"id":123,"source":"IMDb"}]`
+		if strings.HasSuffix(r.URL.Path, "/items") {
+			if r.URL.Query().Get("cursor") == "" {
+				h.Set("X-Has-More", "true")
+				body = `{"movies":[{"id":603,"title":"First"}],"shows":[],"pagination":{"next_cursor":"next"}}`
+			} else {
+				h.Set("X-Has-More", "false")
+				body = `{"movies":[],"shows":[{"id":1396,"title":"Second"}],"pagination":{}}`
+			}
 		}
-		return &http.Response{StatusCode:200,Header:h,Body:io.NopCloser(strings.NewReader(body))},nil
+		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(body))}, nil
 	})}
-	items,err:=s.fetchIMDbMDBList(context.Background(),"123",key); if err!=nil || len(items)!=2 { t.Fatal(items,err) }
-	s.client.Transport=roundTrip(func(r *http.Request)(*http.Response,error){h:=make(http.Header); body:=`[{"id":123,"source":"IMDb"}]`; if strings.HasSuffix(r.URL.Path,"/items") { h.Set("X-Has-More","true"); body=`{"movies":[{"id":603,"title":"First"}],"shows":[],"pagination":{}}` }; return &http.Response{StatusCode:200,Header:h,Body:io.NopCloser(strings.NewReader(body))},nil})
-	if _,err=s.fetchIMDbMDBList(context.Background(),"123",key); err==nil { t.Fatal("incomplete pagination accepted") }
+	items, err := s.fetchIMDbMDBList(context.Background(), "123", key)
+	if err != nil || len(items) != 2 {
+		t.Fatal(items, err)
+	}
+	s.client.Transport = roundTrip(func(r *http.Request) (*http.Response, error) {
+		h := make(http.Header)
+		body := `[{"id":123,"source":"IMDb"}]`
+		if strings.HasSuffix(r.URL.Path, "/items") {
+			h.Set("X-Has-More", "true")
+			body = `{"movies":[{"id":603,"title":"First"}],"shows":[],"pagination":{}}`
+		}
+		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	if _, err = s.fetchIMDbMDBList(context.Background(), "123", key); err == nil {
+		t.Fatal("incomplete pagination accepted")
+	}
 }

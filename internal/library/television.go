@@ -25,6 +25,7 @@ type TVEpisode struct {
 	Monitored          bool   `json:"monitored"`
 	EffectiveMonitored bool   `json:"effective_monitored"`
 	Available          bool   `json:"available"`
+	FileID             *int64 `json:"file_id,omitempty"`
 	FilePath           string `json:"file_path"`
 }
 type TVSeries struct {
@@ -99,13 +100,13 @@ func (s *Store) TVSeason(ctx context.Context, id int64, number int) (TVSeasonDet
 	if e != nil {
 		return out, e
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT e.id,e.tmdb_id,e.number,e.title,e.overview,e.air_date,e.runtime_minutes,e.monitored,ef.media_file_id IS NOT NULL,COALESCE(mf.relative_path,'') FROM episodes e LEFT JOIN episode_files ef ON ef.episode_id=e.id LEFT JOIN media_files mf ON mf.id=ef.media_file_id WHERE e.season_id=? ORDER BY e.number`, out.Season.ID)
+	rows, e := tx.QueryContext(ctx, `SELECT e.id,e.tmdb_id,e.number,e.title,e.overview,e.air_date,e.runtime_minutes,e.monitored,ef.media_file_id IS NOT NULL,COALESCE(mf.relative_path,''),ef.media_file_id FROM episodes e LEFT JOIN episode_files ef ON ef.episode_id=e.id LEFT JOIN media_files mf ON mf.id=ef.media_file_id WHERE e.season_id=? ORDER BY e.number`, out.Season.ID)
 	if e != nil {
 		return out, e
 	}
 	for rows.Next() {
 		var v TVEpisode
-		if e = rows.Scan(&v.ID, &v.TMDbID, &v.Number, &v.Title, &v.Overview, &v.AirDate, &v.RuntimeMinutes, &v.Monitored, &v.Available, &v.FilePath); e != nil {
+		if e = rows.Scan(&v.ID, &v.TMDbID, &v.Number, &v.Title, &v.Overview, &v.AirDate, &v.RuntimeMinutes, &v.Monitored, &v.Available, &v.FilePath, &v.FileID); e != nil {
 			rows.Close()
 			return out, e
 		}
@@ -336,6 +337,103 @@ func (s *Store) MonitorEpisodes(ctx context.Context, id, revision int64, season 
 		if _, e = tx.ExecContext(ctx, `UPDATE episodes SET monitored=? WHERE id=?`, monitored, episodeID); e != nil {
 			return e
 		}
+	}
+	return tx.Commit()
+}
+
+// MonitorAllEpisodes turns monitoring on for the show, its regular seasons and
+// every loaded episode. Specials keep their explicit choices. The whole change
+// is one revision-fenced transaction, so a stale editor cannot be overwritten.
+func (s *Store) MonitorAllEpisodes(ctx context.Context, id, revision int64) error {
+	if revision < 1 {
+		return ErrMonitoringInput
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	if e = bumpSeries(ctx, tx, id, revision); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET monitored=1 WHERE id=? AND kind='series'`, id); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE seasons SET monitored=1 WHERE series_id=? AND number>0`, id); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE episodes SET monitored=1 WHERE season_id IN (SELECT id FROM seasons WHERE series_id=? AND number>0)`, id); e != nil {
+		return e
+	}
+	return tx.Commit()
+}
+
+// MonitorAllShows applies MonitorAllEpisodes to every show in one scope. It is
+// an explicit bulk owner action, so it does not require per-show revisions; the
+// category is fixed to the three saved collections.
+func (s *Store) MonitorAllShows(ctx context.Context, category string) (int, error) {
+	if category != "" && category != "standard" && category != "anime" {
+		return 0, ErrMonitoringInput
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return 0, e
+	}
+	defer tx.Rollback()
+	scope := `SELECT id FROM media_items WHERE kind='series'`
+	args := []any{}
+	if category != "" {
+		scope += ` AND category=?`
+		args = append(args, category)
+	}
+	var count int
+	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM (`+scope+`)`, args...).Scan(&count); e != nil {
+		return 0, e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET monitored=1 WHERE id IN (`+scope+`)`, args...); e != nil {
+		return 0, e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE seasons SET monitored=1 WHERE number>0 AND series_id IN (`+scope+`)`, args...); e != nil {
+		return 0, e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE episodes SET monitored=1 WHERE season_id IN (SELECT id FROM seasons WHERE number>0 AND series_id IN (`+scope+`))`, args...); e != nil {
+		return 0, e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE series_details SET revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE media_id IN (`+scope+`)`, args...); e != nil {
+		return 0, e
+	}
+	return count, tx.Commit()
+}
+
+// UnlinkEpisodeFile removes the library association for one episode without
+// deleting any file. The episode becomes missing and searchable again, and a
+// shared file keeps serving its other episodes. Physical deletion stays a
+// separate reviewed catalog action so an owner's original is never removed by
+// a per-episode control.
+func (s *Store) UnlinkEpisodeFile(ctx context.Context, seriesID, revision int64, episodeID int64) error {
+	if revision < 1 || episodeID < 1 {
+		return ErrMonitoringInput
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	var count int
+	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE e.id=? AND s.series_id=?`, episodeID, seriesID).Scan(&count); e != nil {
+		return e
+	}
+	if count != 1 {
+		return sql.ErrNoRows
+	}
+	if e = bumpSeries(ctx, tx, seriesID, revision); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `DELETE FROM episode_files WHERE episode_id=?`, episodeID); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'title',?,(SELECT title FROM media_items WHERE id=?),'episode removed from library; file kept on disk')`, seriesID, seriesID); e != nil {
+		return e
 	}
 	return tx.Commit()
 }
