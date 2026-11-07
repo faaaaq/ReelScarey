@@ -251,6 +251,7 @@ export async function api<T>(
     credentials: "same-origin",
     signal: options.signal ?? AbortSignal.timeout(30000),
   });
+  if (response.status === 204) return undefined as T;
   const body = await response.json();
   if (!response.ok) {
     if (

@@ -5,6 +5,16 @@ client (qBittorrent 4.5.x, Web API 2.8.x). It lists every torrent in that client
 with progress, download/upload speed, ETA, seeds/peers, ratio, queue position,
 limits, share limits and state, and refreshes while the page is open.
 
+The page is laid out like the qBittorrent Web UI: a toolbar (add links/files,
+resume, pause, force resume, delete, queue moves, recheck, reannounce, a text
+filter and a column chooser), a collapsible filter sidebar (status, source,
+category, tag and tracker, with counts), a sortable multi-select torrent table
+with a right-click menu, a resizable properties panel (General, Trackers, Peers,
+HTTP Sources, Content) for a single selected torrent, and a status bar with
+connection state, DHT nodes, the alternative speed toggle and the global
+download/upload limits. Column, sort, sidebar and panel choices are kept in the
+browser.
+
 - **Add** a magnet link or upload a `.torrent` file. Manual torrents are saved
   under `builtin/ReelScarey/manual` and tagged `reelscarey-manual`; the server
   never fetches a remote torrent URL for this page.
