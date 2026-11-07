@@ -202,7 +202,12 @@ describe("wanted and release planning", () => {
       "/calendar?month=2026-10&kind=series&query=Saved&monitored=all&page=2",
     );
     await screen.findByRole("heading", { name: "October 2026" });
-    expect(screen.getByText(/2 seasons need/)).toBeVisible();
+    expect(
+      screen.getByText(/2 seasons' episodes are not loaded/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Metadata refresh schedule" }),
+    ).toHaveAttribute("href", "/metadata-refresh");
     expect(screen.getByText(/theatrical releases/)).toBeVisible();
     const link = screen.getByRole("link", { name: "Review undated items" });
     const params = new URL(String(link.getAttribute("href")), "http://fixture")

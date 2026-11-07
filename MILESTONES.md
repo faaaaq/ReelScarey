@@ -319,3 +319,10 @@ See [announce feeds](docs/ANNOUNCE.md).
   client and VPN as sections.
 - [x] Connection forms, Indexers, Subtitles, Backups, Requests and YouTube
   moved to toolbars, fieldsets and tables.
+
+## Version 0.38.2 announce feeds and calendar coverage
+
+- [x] Announce Feeds tables and dialog editor.
+- [x] Clear unloaded-season note with a Metadata refresh link.
+- [x] Shared dialog header alignment fix.
+

@@ -397,14 +397,21 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
         {data && (
           <>
             {data.coverage.unloaded_seasons > 0 && (
-              <Alert kind="warning">
+              <Alert
+                kind="info"
+                title={`${data.coverage.unloaded_seasons} ${
+                  data.coverage.unloaded_seasons === 1
+                    ? "season's episodes are"
+                    : "seasons' episodes are"
+                } not loaded yet`}
+              >
                 <p>
-                  {data.coverage.unloaded_seasons}{" "}
-                  {data.coverage.unloaded_seasons === 1
-                    ? "season needs"
-                    : "seasons need"}{" "}
-                  episode metadata. Load episodes from{" "}
-                  <Link to="/series">TV shows</Link> to include them.
+                  Episode lists are fetched from TMDb per season, so episodes
+                  from these seasons are not shown here. Turn on the{" "}
+                  <Link to="/metadata-refresh">Metadata refresh schedule</Link>{" "}
+                  to load them gradually, or open a show in{" "}
+                  <Link to="/series">TV Shows</Link> and expand a season to load
+                  it now.
                 </p>
               </Alert>
             )}

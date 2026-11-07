@@ -2102,3 +2102,10 @@ Run locally on Windows (development tools only; Docker remains the target):
 - go vet ./..., go test ./... and go build ./cmd/reelscarey passed.
 - Visual review against a disposable local backend with an empty database.
   Live qBittorrent and Docker acceptance were not run locally.
+
+## Version 0.38.2 announce feeds and calendar coverage
+
+- npm format:check, check, test (39 files, 220 tests) and build passed.
+- go vet ./..., go test ./... and go build ./cmd/reelscarey passed.
+- Visual review against a disposable local backend; live acceptance not run.
+

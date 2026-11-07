@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { render, screen, within } from "@testing-library/react";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
 import { it, expect, vi } from "vitest";
@@ -77,4 +78,10 @@ it("lists announce sources and captured releases", async () => {
   ).toBeInTheDocument();
   expect(screen.getByText("Open on tracker")).toBeInTheDocument();
   expect(screen.getByText("Enabled")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Add Source" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByText("Add an announce source")).toBeVisible();
+  expect(
+    within(dialog).getByRole("button", { name: "Add source" }),
+  ).toBeVisible();
 });

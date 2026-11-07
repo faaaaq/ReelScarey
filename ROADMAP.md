@@ -730,3 +730,11 @@ Connection forms (TMDb, Torznab, qBittorrent, SABnzbd) use label-left rows.
 Indexers, Subtitles, Backups, Requests and YouTube gained page toolbars;
 Subtitles stacks provider then preferences, and Requests shows requested
 titles and accounts as tables with approve/decline actions.
+
+## Version 0.38.2 announce feeds and calendar coverage
+
+Announce Feeds lists sources and recent announces as tables, with add/edit in a
+dialog. The Calendar and Wanted coverage note now explains that unloaded seasons
+have no episode list yet and links to the Metadata refresh schedule. Dialog
+headers keep the close button at the right edge.
+
