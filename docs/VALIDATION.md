@@ -2127,3 +2127,8 @@ Run locally on Windows (development tools only; Docker remains the target):
 - Frontend format:check, check, full test suite and build passed.
 - The opt-in live bundled lifecycle (REELSCAREY_LIVE_BUNDLED) and Docker smoke
   tests were not run locally; CI runs the bundled lifecycle on Linux.
+- The first v0.38.4 publish attempt failed in the backup container smoke: it
+  assumed a fresh preference revision and a single saved client. The script now
+  reads the live revision and finds the named client by id; the tag was
+  re-pointed to the fix and the publish re-run. Nothing was pushed by the
+  failed attempt (it verifies before pushing).

@@ -51,7 +51,10 @@ assert.equal(client.enabled, false)
 assert.equal(JSON.stringify(client).includes(clientBody.password), false)
 const { password: _secret, ...clientUpdate } = clientBody
 const enabledClient = await json(`/download-clients/${client.id}`, { method: 'PUT', body: JSON.stringify({ ...clientUpdate, enabled: true, revision: client.revision }) })
-await json('/download-clients/defaults', { method: 'PUT', body: JSON.stringify({ torrent: client.id, usenet: '', revision: 1 }) })
+// The built-in client is provisioned by the app itself, so the saved
+// preference revision is read instead of assuming a fresh value.
+const currentDefaults = await json('/download-clients/defaults')
+await json('/download-clients/defaults', { method: 'PUT', body: JSON.stringify({ torrent: client.id, usenet: '', revision: currentDefaults.revision }) })
 const subtitlePreferences = (await json('/subtitles/preferences')).preferences
 await json('/subtitles/preferences', { method: 'PUT', body: JSON.stringify({ ...subtitlePreferences, download_format: 'original' }) })
 let settings = await json('/settings')
@@ -106,10 +109,12 @@ assert.equal(versionFiles.file_count, hasVersionFiles ? 2 : 0)
 assert.deepEqual(versionFiles.files.map(f => f.version_label).sort(), hasVersionFiles ? ['1080p', '4K (2160p)'] : [])
 assert.equal((await json('/subtitles/preferences')).preferences.download_format, 'original')
 const restoredClients = await json('/download-clients')
-assert.equal(restoredClients.items.length, 1)
-assert.equal(restoredClients.items[0].id, client.id)
-assert.equal(restoredClients.items[0].revision, enabledClient.revision)
-assert.equal(restoredClients.items[0].local_folder, 'owned-client')
+// The backup includes the app-provisioned built-in client next to the
+// named one; find the named client by id instead of assuming a single row.
+const restoredNamed = restoredClients.items.find(c => c.id === client.id)
+assert.ok(restoredNamed)
+assert.equal(restoredNamed.revision, enabledClient.revision)
+assert.equal(restoredNamed.local_folder, 'owned-client')
 assert.equal(restoredClients.defaults.torrent, client.id)
 assert.equal(JSON.stringify(restoredClients).includes(clientBody.password), false)
 await json(`/download-clients/${client.id}/test`, { method: 'POST', body: '{}' })
