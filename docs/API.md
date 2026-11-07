@@ -375,10 +375,13 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | POST | `/api/v1/downloads/{id}/retry` | `{}`; retry/resume blocked, failed or stopped tracking |
 | POST | `/api/v1/downloads/{id}/stop` | `{}`; stop blocked/failed local tracking, leaving client/files untouched |
 | POST | `/api/v1/downloads/{id}/file` | `{ "index": 3 }`; select a file from a choose_file job |
-| GET | `/api/v1/torrents` | Built-in qBittorrent overview: availability, transfer rates, state and bounded torrent list |
+| GET | `/api/v1/torrents` | Built-in qBittorrent overview: availability, transfer rates/limits, server switches, state and bounded torrent list with `origin`/`job_id`; see [Torrents page API](#torrents-page-api) |
 | POST | `/api/v1/torrents` | `{ "magnet": "magnet:?..." }` or a raw `.torrent` body (`application/x-bittorrent`, ≤8 MiB); adds a manual torrent under the built-in client |
-| GET | `/api/v1/torrents/{hash}` | One torrent and its files |
+| GET | `/api/v1/torrents/{hash}` | One torrent with files, properties, redacted trackers/web seeds, peers and downsampled pieces |
 | POST | `/api/v1/torrents/{hash}/{action}` | `pause`, `resume`, `recheck`, or `remove` with `{ "reviewed": true, "delete_files": false }` |
+| POST | `/api/v1/torrents/actions` | `{ "hashes": [...], "action": "...", ... }`; bulk action for 1–500 torrents; 204 |
+| POST | `/api/v1/torrents/{hash}/files` | `{ "indexes": [0], "priority": 0 }`; file priorities of manual/external torrents; 204 |
+| POST | `/api/v1/torrents/speed-limits` | `{ "alt_enabled"?, "download_limit"?, "upload_limit"? }`; global limits; 204 |
 | GET | `/api/v1/library/series/{id}/seasons/{number}/releases?episode=1&query=title` | Search TV category 5000 for one missing episode; omit episode for selected missing episodes in a monitored season |
 | POST | `/api/v1/downloads/{id}/mapping` | Confirm a TV job's completed file/episode mapping and explicit skips |
 | GET/PUT | `/api/v1/automation` | Saved interval schedule, revision, next run, safe integration presence and state |
@@ -919,3 +922,107 @@ See [behavior, recovery and limits](MOVIE_VERSIONS.md).
   AnimeBytes and MyAnonamouse. The source starts paused unless `enabled` is
   true; automatic grabbing is not available in this version. See
   [announce feeds](ANNOUNCE.md).
+
+## Torrents page API
+
+All `/api/v1/torrents` routes are administrator-only (request accounts receive
+`403 administrator_required`), require an authenticated session, and every
+`POST` requires the CSRF header and same-origin validation. They manage only the
+supervised built-in qBittorrent (4.5.x, Web API 2.8.x); when it is not enabled,
+mutations return `409 builtin_unavailable` after input validation. The native
+qBittorrent Web UI is not proxied. Tracker and web seed URLs are always reduced
+to `scheme://host[:port]` (pseudo entries such as `** [DHT] **` are unchanged,
+unparseable values become `(hidden)`), and `magnet_uri` is never returned.
+See [Torrents](TORRENTS.md) for the page and its intentional limits.
+
+`GET /api/v1/torrents`:
+
+```json
+{
+  "available": true, "state": "running|disconnected|disabled", "message": "",
+  "transfer": { "dl_info_speed": 0, "up_info_speed": 0, "dl_info_data": 0,
+    "up_info_data": 0, "connection_status": "connected|firewalled|disconnected",
+    "dht_nodes": 0, "dl_rate_limit": 0, "up_rate_limit": 0 },
+  "server": { "alt_speed_enabled": false, "queueing_enabled": true,
+    "alt_dl_limit": 0, "alt_up_limit": 0 },
+  "items": [{ "hash": "", "name": "", "state": "", "save_path": "", "progress": 0,
+    "amount_left": 0, "total_size": 0, "completed": 0, "tags": "", "category": "",
+    "downloaded": 0, "uploaded": 0, "dlspeed": 0, "upspeed": 0, "eta": 0,
+    "ratio": 0, "num_seeds": 0, "num_leechs": 0, "added_on": 0,
+    "completion_on": 0, "content_path": "", "priority": 0, "num_complete": 0,
+    "num_incomplete": 0, "dl_limit": 0, "up_limit": 0, "seq_dl": false,
+    "f_l_piece_prio": false, "force_start": false, "super_seeding": false,
+    "auto_tmm": false, "time_active": 0, "seeding_time": 0, "last_activity": 0,
+    "availability": 0, "ratio_limit": -2, "seeding_time_limit": -2,
+    "downloaded_session": 0, "uploaded_session": 0,
+    "tracker": "https://tracker.example", "origin": "job",
+    "job_id": "0123456789abcdef0123456789abcdef" }]
+}
+```
+
+`server` is `null` while the built-in client is unavailable. Overview limits are
+bytes per second and `0` means unlimited; `dl_rate_limit`/`up_rate_limit` are
+the currently effective global limits (the alternative limits while
+`alt_speed_enabled` is true). Per-torrent `dl_limit`/`up_limit`, `priority`,
+`ratio_limit` and `seeding_time_limit` are qBittorrent's values unchanged
+(limits ≤0 are unlimited, queue `priority` is 0 when not queued, share limits
+use -2 for global and -1 for unlimited). Only `queueing_enabled`, `alt_dl_limit`
+and `alt_up_limit` are read from the client preferences (qBittorrent 4.5
+reports them in bytes per second despite its documentation saying KiB/s). `origin` is derived from the tags: `reelscarey-<job id>`
+is `job` (with `job_id`), `reelscarey-manual` is `manual`, and anything else is
+`external`; `job_id` is omitted for the other origins.
+
+`GET /api/v1/torrents/{hash}` returns `{ torrent, files, properties, trackers,
+peers, webseeds, pieces }`: `torrent` has the list item shape; `files` are
+`{index, name, size, progress, priority, availability, is_seed}`; `properties`
+are `{save_path, creation_date, piece_size, comment, total_wasted,
+total_uploaded, total_downloaded, up_limit, dl_limit, time_elapsed,
+seeding_time, nb_connections, nb_connections_limit, share_ratio, addition_date,
+completion_date, created_by, dl_speed_avg, dl_speed, up_speed_avg, up_speed,
+eta, last_seen, peers, peers_total, seeds, seeds_total, pieces_have, pieces_num,
+reannounce, total_size}` as reported by qBittorrent (integers; `share_ratio` is
+a number; `comment` ≤2000 characters); `trackers` are `{url, status, tier,
+num_peers, num_seeds, num_leeches, num_downloaded, msg}` (`tier` is -1 for
+pseudo entries, `msg` ≤500 characters with URLs redacted); `peers` are `{ip,
+port, client, country_code, connection, flags, progress, dl_speed, up_speed,
+downloaded, uploaded, relevance}`, ordered by combined rate then address and
+capped at 2000; `webseeds` are `{url}`; `pieces` holds at most 512 buckets of
+near-equal size where `2` means every piece in the bucket is complete, `0`
+means every piece is missing, and `1` means any other mix (downloading or
+partially complete). Invalid or oversized client lists (more than 10000
+files/trackers/web seeds or 1,000,000 piece states) fail with
+`502 client_response`; a torrent removed meanwhile returns `404 not_found`.
+
+`POST /api/v1/torrents/actions` (body ≤128 KiB, 204 on success):
+
+```json
+{ "hashes": ["<40 hex>"], "action": "set_share_limits",
+  "enabled": true, "limit": 0, "ratio_limit": -2, "seeding_time_limit": -2,
+  "delete_files": false, "reviewed": true }
+```
+
+`hashes` contains 1–500 info hashes (case-insensitive, deduplicated). Actions:
+`pause`, `resume`, `recheck`, `reannounce`, `queue_top`, `queue_bottom`,
+`queue_up`, `queue_down`; `force_start`, `sequential`, `first_last_piece` and
+`super_seeding` require `enabled`; `set_download_limit`/`set_upload_limit`
+require `limit` (0–2000000000 bytes/s, 0 = unlimited); `set_share_limits`
+requires `ratio_limit` (-2 global, -1 unlimited, or 0–9998) and
+`seeding_time_limit` in minutes (-2, -1 or 0–525600); `remove` requires
+`reviewed: true` (else `400 review_required`) and honours `delete_files`.
+Parameters an action does not use are ignored. `sequential` and
+`first_last_piece` change only torrents whose current state differs from
+`enabled` (`404 not_found` if a selected torrent is missing). Queue actions
+return `409 queueing_disabled` when queueing is off in the client. Unknown
+actions or invalid parameters return `400 invalid_selection`.
+
+`POST /api/v1/torrents/{hash}/files` with `{ "indexes": [0, 2], "priority": 0 }`
+(0 do not download, 1 normal, 6 high, 7 maximum; 1–10000 unique indexes that
+exist in the torrent; body ≤128 KiB) returns 204. Torrents with origin `job` are
+refused with `409 managed_torrent`; `409 file_priority_rejected` means
+qBittorrent has not loaded the metadata yet or a file no longer exists.
+
+`POST /api/v1/torrents/speed-limits` with any of `{ "alt_enabled": true,
+"download_limit": 0, "upload_limit": 0 }` (at least one) returns 204. The
+alternative mode is toggled only when it differs from `alt_enabled`; the limits
+(bytes/s, 0 = unlimited, ≤2000000000) then apply to whichever mode is active
+afterwards, as qBittorrent's own global limit endpoints do.

@@ -107,18 +107,25 @@ func (q *QBittorrent) session(ctx context.Context, c ClientConfig) (*http.Client
 	return client, nil
 }
 func (q *QBittorrent) request(ctx context.Context, c ClientConfig, method, api, ct string, body io.Reader) ([]byte, error) {
+	data, _, err := q.requestStatus(ctx, c, method, api, ct, body)
+	return data, err
+}
+
+// requestStatus also reports the HTTP status, so callers can map documented
+// qBittorrent conflicts (409) to a specific problem.
+func (q *QBittorrent) requestStatus(ctx context.Context, c ClientConfig, method, api, ct string, body io.Reader) ([]byte, int, error) {
 	client, err := q.session(ctx, c)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	data, status, err := qbtRequest(ctx, c, client, method, api, ct, body)
 	if status == 401 || status == 403 {
 		q.mu.Lock()
 		delete(q.sessions, clientKey(c))
 		q.mu.Unlock()
-		return nil, unavailable("The qBittorrent session expired. Reconnecting with the saved credentials.")
+		return nil, status, unavailable("The qBittorrent session expired. Reconnecting with the saved credentials.")
 	}
-	return data, err
+	return data, status, err
 }
 func (q *QBittorrent) Test(ctx context.Context, c ClientConfig) (string, error) {
 	data, err := q.request(ctx, c, http.MethodGet, "app/webapiVersion", "", nil)

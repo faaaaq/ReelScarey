@@ -10,11 +10,16 @@ import (
 
 func enableFixtureBuiltin(t *testing.T, f *workflowFixture) {
 	t.Helper()
+	enableFixtureBuiltinAt(t, f, "http://127.0.0.1:8085")
+}
+
+func enableFixtureBuiltinAt(t *testing.T, f *workflowFixture, clientURL string) {
+	t.Helper()
 	ctx := context.Background()
 	if _, e := f.db.Exec(`INSERT INTO download_clients(id,name,kind,enabled,builtin,revision,created_at,updated_at) VALUES(?,?,?,1,1,1,1,1)`, builtinClientID, builtinClientName, "qbittorrent"); e != nil {
 		t.Fatal(e)
 	}
-	c := ClientConfig{URL: "http://127.0.0.1:8085", Username: "reelscarey", Password: "fixture", DownloadPath: filepath.Join(f.cfg.DownloadsDir, "builtin")}
+	c := ClientConfig{URL: clientURL, Username: "reelscarey", Password: "fixture", DownloadPath: filepath.Join(f.cfg.DownloadsDir, "builtin")}
 	raw, e := json.Marshal(c)
 	if e != nil {
 		t.Fatal(e)

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"net/http"
@@ -150,21 +151,67 @@ type Torrent struct {
 	AddedOn      int64   `json:"added_on"`
 	CompletionOn int64   `json:"completion_on"`
 	ContentPath  string  `json:"content_path"`
+
+	Priority          int     `json:"priority"`
+	NumComplete       int     `json:"num_complete"`
+	NumIncomplete     int     `json:"num_incomplete"`
+	DLLimit           int64   `json:"dl_limit"`
+	UPLimit           int64   `json:"up_limit"`
+	SequentialDL      bool    `json:"seq_dl"`
+	FirstLastPiece    bool    `json:"f_l_piece_prio"`
+	ForceStart        bool    `json:"force_start"`
+	SuperSeeding      bool    `json:"super_seeding"`
+	AutoTMM           bool    `json:"auto_tmm"`
+	TimeActive        int64   `json:"time_active"`
+	SeedingTime       int64   `json:"seeding_time"`
+	LastActivity      int64   `json:"last_activity"`
+	Availability      float64 `json:"availability"`
+	RatioLimit        float64 `json:"ratio_limit"`
+	SeedingTimeLimit  int64   `json:"seeding_time_limit"`
+	DownloadedSession int64   `json:"downloaded_session"`
+	UploadedSession   int64   `json:"uploaded_session"`
+	// Tracker is always reduced to scheme://host[:port]; private tracker URLs
+	// carry passkeys in their path, query or user information.
+	Tracker string `json:"tracker"`
+	// Origin and JobID are derived by ReelScarey from the torrent tags and are
+	// never accepted from the client response.
+	Origin string `json:"origin,omitempty"`
+	JobID  string `json:"job_id,omitempty"`
 }
+
+// UnmarshalJSON redacts the tracker as soon as a client response is decoded,
+// so no later caller can forward a raw announce URL by accident.
+func (t *Torrent) UnmarshalJSON(b []byte) error {
+	type plain Torrent
+	var v plain
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*t = Torrent(v)
+	t.Tracker = RedactTrackerURL(t.Tracker)
+	t.Origin, t.JobID = "", ""
+	return nil
+}
+
 type TransferInfo struct {
-	DLSpeed    int64  `json:"dl_info_speed"`
-	UPSpeed    int64  `json:"up_info_speed"`
-	Downloaded int64  `json:"dl_info_data"`
-	Uploaded   int64  `json:"up_info_data"`
-	Connection string `json:"connection_status"`
+	DLSpeed     int64  `json:"dl_info_speed"`
+	UPSpeed     int64  `json:"up_info_speed"`
+	Downloaded  int64  `json:"dl_info_data"`
+	Uploaded    int64  `json:"up_info_data"`
+	Connection  string `json:"connection_status"`
+	DHTNodes    int64  `json:"dht_nodes"`
+	DLRateLimit int64  `json:"dl_rate_limit"`
+	UPRateLimit int64  `json:"up_rate_limit"`
 }
 
 type TorrentFile struct {
-	Index    int     `json:"index"`
-	Name     string  `json:"name"`
-	Size     int64   `json:"size"`
-	Progress float64 `json:"progress"`
-	Priority int     `json:"priority"`
+	Index        int     `json:"index"`
+	Name         string  `json:"name"`
+	Size         int64   `json:"size"`
+	Progress     float64 `json:"progress"`
+	Priority     int     `json:"priority"`
+	Availability float64 `json:"availability"`
+	IsSeed       bool    `json:"is_seed"`
 }
 type Client interface {
 	Test(context.Context, ClientConfig) (string, error)

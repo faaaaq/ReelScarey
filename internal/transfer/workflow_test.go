@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -47,6 +48,19 @@ type fixtureClient struct {
 	lastTag      string
 	lastSave     string
 	lastPayload  Payload
+	lastHashes   []string
+	lastValue    string
+	commands     int
+	commandErr   error
+	altSpeed     bool
+	toggles      int
+	globalLimits map[bool]int64
+	server       TorrentServer
+	properties   TorrentProperties
+	trackers     []TorrentTracker
+	peers        []TorrentPeer
+	webseeds     []TorrentWebSeed
+	pieces       []int
 }
 
 func (*fixtureClient) Test(context.Context, ClientConfig) (string, error) { return "2.11.3", nil }
@@ -96,6 +110,52 @@ func (f *fixtureClient) Delete(_ context.Context, _ ClientConfig, _ []string, de
 	f.action = "remove"
 	f.deleteFiles = deleteFiles
 	return nil
+}
+func (f *fixtureClient) Command(_ context.Context, _ ClientConfig, command string, hashes []string, value string) error {
+	f.action, f.lastHashes, f.lastValue = command, append([]string(nil), hashes...), value
+	f.commands++
+	return f.commandErr
+}
+func (f *fixtureClient) SetShareLimits(_ context.Context, _ ClientConfig, hashes []string, ratio float64, minutes int64) error {
+	f.action, f.lastHashes, f.lastValue = "share_limits", hashes, fmt.Sprint(ratio, "/", minutes)
+	return nil
+}
+func (f *fixtureClient) SetFilePriority(_ context.Context, _ ClientConfig, hash string, indexes []int, priority int) error {
+	f.action, f.lastValue = "file_priority", fmt.Sprint(hash, indexes, priority)
+	return nil
+}
+func (f *fixtureClient) SpeedLimitsMode(context.Context, ClientConfig) (bool, error) {
+	return f.altSpeed, nil
+}
+func (f *fixtureClient) ToggleSpeedLimitsMode(context.Context, ClientConfig) error {
+	f.altSpeed = !f.altSpeed
+	f.toggles++
+	return nil
+}
+func (f *fixtureClient) SetGlobalLimit(_ context.Context, _ ClientConfig, upload bool, limit int64) error {
+	if f.globalLimits == nil {
+		f.globalLimits = map[bool]int64{}
+	}
+	f.globalLimits[upload] = limit
+	return nil
+}
+func (f *fixtureClient) ServerPreferences(context.Context, ClientConfig) (TorrentServer, error) {
+	return f.server, nil
+}
+func (f *fixtureClient) Properties(context.Context, ClientConfig, string) (TorrentProperties, error) {
+	return f.properties, nil
+}
+func (f *fixtureClient) Trackers(context.Context, ClientConfig, string) ([]TorrentTracker, error) {
+	return f.trackers, nil
+}
+func (f *fixtureClient) Peers(context.Context, ClientConfig, string) ([]TorrentPeer, error) {
+	return f.peers, nil
+}
+func (f *fixtureClient) WebSeeds(context.Context, ClientConfig, string) ([]TorrentWebSeed, error) {
+	return f.webseeds, nil
+}
+func (f *fixtureClient) PieceStates(context.Context, ClientConfig, string) ([]int, error) {
+	return f.pieces, nil
 }
 
 type fixtureProbe struct {
