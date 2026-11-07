@@ -276,3 +276,10 @@ See [announce feeds](docs/ANNOUNCE.md).
   caps expanded size/file count and reuses a verified manifest on retry.
 - [x] Extracted copies are removed after a successful import; originals remain
   for seeding, and TV archives still require the existing mapping review.
+
+## Version 0.37.1 YouTube progress for fragmented formats
+
+- [x] yt-dlp progress placeholders such as NA no longer discard the whole
+  update; downloaded bytes and speed keep moving for fragmented streams.
+- [x] The queue shows downloaded bytes with an indeterminate bar when yt-dlp
+  cannot provide a total size.

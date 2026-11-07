@@ -1494,12 +1494,16 @@ function JobCard({
         {job.state === "downloading" && (
           <div className="yt-progress">
             <progress
-              value={job.progress}
+              value={job.total_bytes > 0 ? job.progress : undefined}
               max={1}
               aria-label={`Download progress for ${job.video.title}`}
             />
             <span>
-              {percent}%
+              {job.total_bytes > 0
+                ? `${percent}% of ${bytes(job.total_bytes)}`
+                : job.downloaded_bytes > 0
+                  ? bytes(job.downloaded_bytes)
+                  : "Starting…"}
               {speed(job.speed_bps) ? ` · ${speed(job.speed_bps)}` : ""}
               {eta(job.eta_seconds) ? ` · ${eta(job.eta_seconds)}` : ""}
             </span>

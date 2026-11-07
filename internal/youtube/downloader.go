@@ -43,6 +43,32 @@ func normalizedQuality(value string) (string, bool) {
 	}
 }
 
+// parseProgressLine accepts yt-dlp's "NA" placeholders for unknown totals and
+// rates. Fragmented formats often have no total; the downloaded byte count and
+// speed are still useful and must not be discarded.
+func parseProgressLine(line string) ([4]int64, bool) {
+	var values [4]int64
+	const prefix = "reelscarey-progress "
+	if !strings.HasPrefix(line, prefix) {
+		return values, false
+	}
+	fields := strings.Fields(strings.TrimPrefix(line, prefix))
+	if len(fields) != 4 {
+		return values, false
+	}
+	for n, field := range fields {
+		if strings.EqualFold(field, "NA") || field == "-" {
+			continue
+		}
+		value, err := strconv.ParseFloat(field, 64)
+		if err != nil || value < 0 || value > 1<<50 {
+			return values, false
+		}
+		values[n] = int64(value)
+	}
+	return values, true
+}
+
 func validSubtitleOptions(options DownloadOptions) bool {
 	if len(options.Languages) > 8 || options.Automatic && len(options.Languages) == 0 {
 		return false
@@ -136,25 +162,7 @@ func (i *Inspector) DownloadWithSubtitles(ctx context.Context, id, directory str
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 4096), 64<<10)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if options.Progress == nil || !strings.HasPrefix(line, "reelscarey-progress ") {
-			continue
-		}
-		fields := strings.Fields(strings.TrimPrefix(line, "reelscarey-progress "))
-		if len(fields) != 4 {
-			continue
-		}
-		var values [4]int64
-		valid := true
-		for n, field := range fields {
-			value, parseErr := strconv.ParseFloat(field, 64)
-			if parseErr != nil || value < 0 || value > 1<<50 {
-				valid = false
-				break
-			}
-			values[n] = int64(value)
-		}
-		if valid {
+		if values, ok := parseProgressLine(scanner.Text()); ok && options.Progress != nil {
 			options.Progress(values[0], values[1], values[2], values[3])
 		}
 	}

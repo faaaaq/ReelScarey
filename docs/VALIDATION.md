@@ -2059,3 +2059,9 @@ No owner-server media or download client was used for these checks.
 - A queued playlist job is processed end to end with an explicit language list
   and 1080 quality; this covers the subtitle-options language array column that
   the worker reads.
+
+## Version 0.37.1 YouTube progress for fragmented formats
+
+- The progress parser accepts NA totals/rates, and the queue renders downloaded
+  bytes with an indeterminate bar instead of a false 0%. A unit test covers the
+  NA line and rejects unrelated or invalid progress lines.
