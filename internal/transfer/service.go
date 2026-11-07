@@ -33,11 +33,16 @@ type Service struct {
 	legacyError       string
 	importer          *Importer
 	bundled           bundledRuntime
+	usenet            bundledRuntime
 	tunnelState       func() (allowed, bind bool)
+	// shareMu serializes seeding-limit passes; shareHandledSet deduplicates
+	// actions within one process lifetime (activity_events is authoritative).
+	shareMu         sync.Mutex
+	shareHandledSet map[string]bool
 }
 
 func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Client, indexer Indexer) *Service {
-	s := &Service{db: db, secrets: secrets, cfg: cfg, client: client, indexer: indexer}
+	s := &Service{db: db, secrets: secrets, cfg: cfg, client: client, indexer: indexer, shareHandledSet: map[string]bool{}}
 	s.adapters = map[string]Indexer{"iptorrents": NewDirect("iptorrents"), "xspeeds": NewDirect("xspeeds"), "nyaa": NewDirect("nyaa"), "rss": NewDirect("rss")}
 	s.adapters["newznab"] = NewNewznab()
 	s.sab = NewSABnzbd()
@@ -45,6 +50,9 @@ func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Clien
 	s.transmission = NewTransmission()
 	s.importer = NewImporter(s)
 	s.bundled.notify = make(chan struct{}, 1)
+	s.bundled.label = "built-in qBittorrent client"
+	s.usenet.notify = make(chan struct{}, 1)
+	s.usenet.label = "built-in Usenet client"
 	return s
 }
 

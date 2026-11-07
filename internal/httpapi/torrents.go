@@ -191,6 +191,50 @@ func (s *Server) torrentSpeedLimits(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// torrentSharePolicy reads or replaces the automatic seeding limit. The PUT
+// body is a full replacement fenced by the saved revision.
+func (s *Server) torrentSharePolicy(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		out, err := s.transfer.SharePolicy(r.Context())
+		if err != nil {
+			s.transferError(w, err)
+			return
+		}
+		send(w, 200, out)
+	case http.MethodPut:
+		var in transfer.SharePolicyUpdate
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		out, err := s.transfer.SaveSharePolicy(r.Context(), in)
+		if err != nil {
+			s.transferError(w, err)
+			return
+		}
+		send(w, 200, out)
+	default:
+		w.Header().Set("Allow", "GET, PUT")
+		fail(w, 405, "method_not_allowed", "Use GET or PUT.")
+	}
+}
+
+// torrentSharePolicyRun evaluates the saved policy once.
+func (s *Server) torrentSharePolicyRun(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	out, err := s.transfer.RunSharePolicy(r.Context())
+	if err != nil {
+		s.transferError(w, err)
+		return
+	}
+	send(w, 200, out)
+}
+
 // torrentAdd keeps one POST route for the two explicit manual inputs.
 func (s *Server) torrentAdd(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") == "application/x-bittorrent" {

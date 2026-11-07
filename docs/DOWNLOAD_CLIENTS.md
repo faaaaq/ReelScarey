@@ -36,10 +36,61 @@ the peer port.
   file publishes it as `REELSCAREY_QBT_PORT` (TCP and UDP). Changing it
   restarts the daemon briefly; completed state resumes from fastresume.
 - Disabling stops the daemon; retained seeding resumes when it is enabled
-  again. The daemon's lifecycle status — running, starting, stopped or failed
-  with its message — is shown on the page and never invented.
+  again. The daemon's lifecycle status - running, starting, stopped or failed
+  with its message - is shown on the page and never invented.
+- **Automatic seeding limit.** The Torrents page saves a ratio and/or
+  seeding-time limit with an action (pause, remove the torrent entry, or remove
+  and delete files). A supervised pass runs at most once a minute while the
+  client is enabled and reachable. It only acts on completed torrents, skips
+  torrents bound to unfinished ReelScarey jobs, and skips ReelScarey torrents
+  unless they are explicitly included. Their files are never deleted: an
+  include plus "remove and delete" only removes the torrent entry. The pass
+  records one History entry per torrent hash and action and retries errors on
+  the next tick. See [Torrents](TORRENTS.md#automatic-seeding-limit).
 - Generic client editing and deletion refuse the built-in connection; use its
   own controls. It can still be tested from the client list.
+
+## Built-in SABnzbd (headless)
+
+The Docker image also ships Debian's `sabnzbdplus` and `par2`, and the
+application supervises one private Usenet daemon the same way it supervises
+qBittorrent. This is the **bundled downloader**; external SABnzbd 4/5 and NZBGet
+connections remain fully supported and are not affected by it.
+
+- **Never automatic.** A new installation has no Usenet default and no bundled
+  Usenet row. Saving a news server on the **Usenet** page creates a paused
+  supervised Usenet connection (fixed id
+  `6f1c2b3a4d5e4f60718293a4b5c6d7e8`); the owner must turn it on explicitly.
+  The supervisor never enables a client the owner did not turn on, and never
+  starts one without a news server.
+- **Private loopback daemon.** SABnzbd listens only on `127.0.0.1:8086` with a
+  generated API key. Its profile is `config/sabnzbd`; incomplete data is
+  `downloads/builtin-usenet/incomplete`; completed output is
+  `downloads/builtin-usenet/ReelScarey/reelscarey-<job>`. The generated category
+  is `reelscarey`, folder `ReelScarey`, no script, and folder renaming stays on.
+  On a hardened installation set `DOWNLOADS_READ_ONLY=false` and prepare
+  `downloads/builtin-usenet` with
+  `install -d -o <uid> -g <gid> "$DOWNLOADS_PATH/builtin-usenet"`.
+- **News server settings.** Host, port, TLS flag, username, password and 1–64
+  connections are encrypted through securestore. The API never returns the
+  password; changing the host or username requires re-entering it. Test
+  connection is a short TCP reachability probe only, not an account check.
+- **Routing.** The row is an ordinary Usenet client of kind `sabnzbd`. Turning
+  it on does **not** make it the Usenet default; choose it under **Usenet
+  default** here. Existing jobs keep the client and folder mapping they were
+  reserved with. Turning it off clears its Usenet default and refuses while its
+  jobs are active.
+- **Queue page.** The `Usenet` page lists the bounded SABnzbd queue, supports
+  multi-select pause/resume/delete, uploads only `.nzb` files (no URL fetch), and
+  sets an absolute speed limit. Deleting a job still tracked by an unfinished
+  ReelScarey download is refused. See [Usenet](USENET.md#bundled-sabnzbd).
+- Generic client editing and deletion refuse the built-in connection; use the
+  Usenet page. The saved connection can still be tested through
+  `POST /api/v1/download-clients/{id}/test`.
+- **Provider and indexer limits are unchanged.** ReelScarey does not provide
+  NNTP access, quota, retention scoring or an indexer; those stay with your
+  provider and Newznab/Torznab indexers. Repair and unpacking use SABnzbd's
+  installed `par2`, `unrar` and `7z` tools.
 
 ## Mullvad VPN kill switch (0.33)
 
@@ -134,12 +185,12 @@ with, even after a default change. Test connection re-checks the saved client
 without saving changes. Removing or pausing a client requires another default
 and no unfinished jobs.
 
-The application still does not bundle a Usenet download daemon, NNTP client,
-PAR2 repair, unpacker or Usenet queue. Building that would duplicate SABnzbd and
-NZBGet (article download, connection pooling, repair/unpack, history, quota,
-failover and security) inside the single container; it is a large separate
-project and is intentionally not part of the named-client work. External clients
-remain the supported path.
+The application now ships an optional supervised SABnzbd daemon and Usenet
+queue in the Docker image, described above. External SABnzbd and NZBGet
+connections remain supported for owners who need a separate daemon, NAS or
+shared mount. The bundled instance is a downloader only: your NNTP provider,
+indexer, quota and retention remain external, and ReelScarey does not implement
+article download, repair or unpacking itself.
 
 Both clients use a unique job name and dedicated output folder. Uncertain
 submissions reconcile against the queue/history and never automatically submit

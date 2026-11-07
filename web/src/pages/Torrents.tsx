@@ -19,6 +19,7 @@ import {
   Ellipsis,
   FastForward,
   FilePlus,
+  Gauge,
   HardDrive,
   Link2,
   Megaphone,
@@ -62,6 +63,7 @@ import {
   AddLinksDialog,
   DeleteDialog,
   ShareLimitDialog,
+  SharePolicyDialog,
   SpeedLimitDialog,
   type AddFailure,
 } from "./torrents/dialogs";
@@ -75,9 +77,12 @@ import {
   originOf,
   readStored,
   searchTerms,
+  sharePolicySummary,
   writeStored,
   type Filters,
   type Overview,
+  type SharePolicy,
+  type SharePolicyRun,
   type Torrent,
 } from "./torrents/model";
 import { PropertiesPanel } from "./torrents/PropertiesPanel";
@@ -146,6 +151,10 @@ function storedSort(): Sort {
 
 export function Torrents() {
   const overview = useLiveResource<Overview>("/torrents", 2000);
+  const sharePolicy = useLiveResource<SharePolicy>(
+    "/torrents/share-policy",
+    30000,
+  );
   const navigate = useNavigate();
   const narrow = useNarrow();
 
@@ -170,6 +179,7 @@ export function Torrents() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [limitDialog, setLimitDialog] = useState<LimitDialog>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [sharePolicyOpen, setSharePolicyOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
 
@@ -298,6 +308,23 @@ export function Torrents() {
       setBusy(false);
       reload();
     }
+  }
+
+  async function saveSharePolicy(next: SharePolicy) {
+    await api<SharePolicy>("/torrents/share-policy", {
+      method: "PUT",
+      body: JSON.stringify(next),
+    });
+    sharePolicy.reload();
+    setMessage({ kind: "success", text: "Seeding policy saved." });
+  }
+
+  async function runSharePolicy() {
+    const result = await api<SharePolicyRun>("/torrents/share-policy/run", {
+      method: "POST",
+    });
+    sharePolicy.reload();
+    return result;
   }
 
   async function addLinks(links: string[]): Promise<AddFailure[]> {
@@ -754,6 +781,14 @@ export function Torrents() {
               <DropdownMenuEntries entries={menuEntries} />
             </DropdownMenu.Content>
           </DropdownMenu.Root>
+          <ToolbarSeparator />
+          <ToolbarButton
+            icon={Gauge}
+            label="Seeding policy"
+            title="Automatically limit seeding for this client"
+            className="tor-tool"
+            onClick={() => setSharePolicyOpen(true)}
+          />
         </ToolbarSection>
         <ToolbarSection align="right">
           <div className="tor-search">
@@ -938,6 +973,14 @@ export function Torrents() {
             : `${visible.length} of ${items.length} torrents`}
           {selected.length > 0 && `, ${selected.length} selected`}
         </span>
+        {sharePolicy.data && (
+          <span
+            className="tor-status-item rs-muted"
+            title="Automatic seeding limit for the built-in client"
+          >
+            Seeding limit: {sharePolicySummary(sharePolicy.data)}
+          </span>
+        )}
         <span className="tor-status-spacer" />
         <button
           type="button"
@@ -1067,6 +1110,13 @@ export function Torrents() {
             seeding_time_limit: minutes,
           })
         }
+      />
+      <SharePolicyDialog
+        open={sharePolicyOpen}
+        onOpenChange={setSharePolicyOpen}
+        policy={sharePolicy.data}
+        onSave={saveSharePolicy}
+        onRun={runSharePolicy}
       />
     </div>
   );

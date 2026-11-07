@@ -1,9 +1,24 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "@radix-ui/themes";
+import {
+  Alert,
+  Check,
+  DescriptionItem,
+  DescriptionList,
+  FieldSet,
+  FormActions,
+  FormGroup,
+  Label,
+  Modal,
+  Table,
+  formatBytes,
+} from "../ui";
+import type { Kind } from "../ui";
 import { api, messageFor } from "../api";
 import { useLiveResource } from "../useLiveResource";
 import type { SubtitleTrack } from "./Subtitles";
-import "./Admin.css";
+import "./Subtitles.css";
+
 type Track = SubtitleTrack & { path: string; source: string };
 type Edit = SubtitleTrack & {
   id: string;
@@ -22,32 +37,48 @@ type Edit = SubtitleTrack & {
   expires_at: number;
   created_at: number;
 };
+const variantName: Record<SubtitleTrack["variant"], string> = {
+  full: "Full subtitles",
+  signs: "Signs / songs",
+  forced: "Forced",
+};
+function readable(value: string) {
+  return value.replaceAll("_", " ");
+}
+function stateKind(state: string): Kind {
+  if (state === "blocked") return "danger";
+  if (state === "completed") return "success";
+  if (state === "review") return "warning";
+  return "info";
+}
 export function SubtitleEdits({
   fileID,
   tracks,
   reload,
+  embedded = false,
 }: {
   fileID: number;
   tracks: Track[];
   reload: () => void;
+  embedded?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const editable = tracks.filter(
+    (track) => track.source !== "embedded" && !!track.path,
+  );
+  const editor = <Editor fileID={fileID} tracks={editable} reload={reload} />;
+  if (embedded) return editor;
   return (
-    <div>
+    <div className="rs-stack">
       <Button
         variant="soft"
-        disabled={!tracks.some((t) => t.source !== "embedded" && !!t.path)}
+        disabled={!editable.length}
+        aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
         {open ? "Hide subtitle editing" : "Edit or replace a saved subtitle"}
       </Button>
-      {open && (
-        <Editor
-          fileID={fileID}
-          tracks={tracks.filter((t) => t.source !== "embedded" && !!t.path)}
-          reload={reload}
-        />
-      )}
+      {open && editor}
     </div>
   );
 }
@@ -74,7 +105,14 @@ function Editor({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  const trackID = useId();
+  const actionID = useId();
+  const offsetID = useId();
+  const fileIDInput = useId();
   const track = tracks[selected] ?? tracks[0];
+  const history = resource.data?.items.filter(
+    (edit) => edit.state !== "review",
+  );
   async function perform(task: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -114,35 +152,46 @@ function Editor({
       setChecked(false);
     });
   }
+  async function apply(edit: Edit) {
+    await perform(async () => {
+      await api(`/subtitles/edits/${edit.id}/apply`, {
+        method: "POST",
+        body: JSON.stringify({ reviewed: true }),
+      });
+      setReview(undefined);
+      setChecked(false);
+      setNotice("Reviewed subtitle change queued.");
+      resource.reload();
+      reload();
+    });
+  }
   return (
-    <section className="rs-stack" aria-label="Subtitle editing">
-      <h3>Subtitle replacement and timing</h3>
-      <p>
-        Supported UTF-8 SRT, VTT, ASS and SSA files up to 4 MiB. The previous
-        version is retained privately inside the media root. Positive offsets
-        delay subtitles; negative offsets show them earlier. Changes that would
-        create negative cue times are refused.
-      </p>
-      <fieldset disabled={busy || !!review} className="backup-fields">
-        <label>
-          Saved track
+    <FieldSet
+      legend="Edits"
+      headingLevel={3}
+      className="sub-edits-fieldset"
+      description="SRT, VTT, ASS or SSA up to 4 MiB. The current version stays available for rollback."
+    >
+      <fieldset disabled={busy || !!review} className="rs-stack">
+        <FormGroup label="Saved track" htmlFor={trackID}>
           <select
+            id={trackID}
             value={selected}
-            onChange={(e) => setSelected(Number(e.target.value))}
+            onChange={(event) => setSelected(Number(event.target.value))}
           >
-            {tracks.map((t, i) => (
-              <option key={t.language + t.variant} value={i}>
-                {t.language} · {t.variant} · {t.path}
+            {tracks.map((value, index) => (
+              <option key={value.language + value.variant} value={index}>
+                {value.language} · {variantName[value.variant]} · {value.path}
               </option>
             ))}
           </select>
-        </label>
-        <label>
-          Change
+        </FormGroup>
+        <FormGroup label="Change" htmlFor={actionID}>
           <select
+            id={actionID}
             value={action}
-            onChange={(e) => {
-              setAction(e.target.value);
+            onChange={(event) => {
+              setAction(event.target.value);
               setContent("");
               setReferenceFormat("");
             }}
@@ -151,30 +200,44 @@ function Editor({
             <option value="replace">Upload replacement</option>
             <option value="align">Align with a reference subtitle</option>
           </select>
-        </label>
+        </FormGroup>
         {action === "offset" ? (
-          <label>
-            Timing offset (milliseconds)
+          <FormGroup
+            label="Timing offset (ms)"
+            htmlFor={offsetID}
+            help="Positive values delay subtitles; negative values show them earlier. Negative cue times are refused."
+          >
             <input
+              id={offsetID}
               type="number"
               required
               min={-600000}
               max={600000}
               value={offset}
-              onChange={(e) => setOffset(Number(e.target.value))}
+              onChange={(event) => setOffset(Number(event.target.value))}
             />
-          </label>
+          </FormGroup>
         ) : (
-          <label>
-            {action === "align"
-              ? "Reference subtitle with correct timing"
-              : "Replacement file in the same format"}
+          <FormGroup
+            label={
+              action === "align"
+                ? "Reference subtitle with correct timing"
+                : "Replacement subtitle in the same format"
+            }
+            htmlFor={fileIDInput}
+            help={
+              action === "align"
+                ? "Same language and cut; at least six unique matching cues are required. Weak matches are refused, and only cue times change."
+                : "The new file is validated before anything is written."
+            }
+          >
             <input
+              id={fileIDInput}
               type="file"
               accept=".srt,.vtt,.ass,.ssa"
-              onChange={(e) =>
+              onChange={(event) =>
                 void (async () => {
-                  const file = e.target.files?.[0];
+                  const file = event.target.files?.[0];
                   setContent("");
                   setReferenceFormat("");
                   if (!file) return;
@@ -193,127 +256,155 @@ function Editor({
                 })()
               }
             />
-          </label>
+          </FormGroup>
         )}
-        {action === "align" && (
-          <p>
-            Use a correctly timed subtitle in the same language and cut. At
-            least six unique matching dialogue cues spanning one minute are
-            needed. The app estimates the offset and small timing drift locally,
-            preserving the saved track's text and styles. Weak matches are
-            refused.
-          </p>
-        )}
-        <Button
-          disabled={
-            !track ||
-            ((action === "replace" || action === "align") && !content) ||
-            (!offset && action === "offset")
-          }
-          onClick={() => void preview()}
-        >
-          Review subtitle change
-        </Button>
-      </fieldset>
-      {review && (
-        <section className="rs-panel rs-stack">
-          <h3>Review subtitle change</h3>
-          <p>
-            {review.cues} timed cues · {review.size_bytes} bytes ·{" "}
-            {review.action === "offset"
-              ? `${review.offset_ms} ms timing adjustment`
-              : review.action}
-          </p>
-          <p>{review.destination}</p>
-          <p>{review.message}</p>
-          <p>
-            Old checksum: {review.old_sha256.slice(0, 12)}… · New:{" "}
-            {review.new_sha256.slice(0, 12)}…
-          </p>
-          <label>
-            <input
-              type="checkbox"
-              checked={checked}
-              disabled={busy}
-              onChange={(e) => setChecked(e.target.checked)}
-            />{" "}
-            I reviewed this subtitle change and understand the current version
-            will be retained for rollback.
-          </label>
-          <div className="rs-form-actions">
+        <div className="sub-form-actions">
+          <FormActions>
             <Button
-              variant="soft"
-              disabled={busy}
-              onClick={() => setReview(undefined)}
-            >
-              Cancel review
-            </Button>
-            <Button
-              disabled={busy || !checked}
-              onClick={() =>
-                void perform(async () => {
-                  await api(`/subtitles/edits/${review.id}/apply`, {
-                    method: "POST",
-                    body: JSON.stringify({ reviewed: true }),
-                  });
-                  setReview(undefined);
-                  setNotice("Reviewed subtitle change queued.");
-                  resource.reload();
-                  reload();
-                })
+              disabled={
+                !track ||
+                ((action === "replace" || action === "align") && !content) ||
+                (!offset && action === "offset")
               }
+              onClick={() => void preview()}
             >
-              Apply reviewed subtitle change
+              Review subtitle change
             </Button>
-          </div>
-        </section>
+          </FormActions>
+        </div>
+      </fieldset>
+      {error && !review && <Alert kind="danger">{error}</Alert>}
+      {resource.error && !review && (
+        <Alert kind="danger">{resource.error}</Alert>
       )}
-      {(error || resource.error) && (
-        <p role="alert" className="rs-alert is-danger">
-          {error || resource.error}
-        </p>
+      {notice && <Alert kind="success">{notice}</Alert>}
+      {history && history.length > 0 ? (
+        <Table label="Subtitle edit history">
+          <thead>
+            <tr>
+              <th scope="col">Track</th>
+              <th scope="col">Change</th>
+              <th scope="col">Status</th>
+              <th scope="col">Created</th>
+              <th scope="col" className="is-actions">
+                Action
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((edit) => (
+              <tr key={edit.id}>
+                <th scope="row">
+                  {edit.language} · {variantName[edit.variant]}
+                </th>
+                <td>{readable(edit.action)}</td>
+                <td>
+                  <Label kind={stateKind(edit.state)}>
+                    {readable(edit.state)}
+                  </Label>
+                  <span className="sub-edit-message">{edit.message}</span>
+                </td>
+                <td className="sub-muted">
+                  {new Date(edit.created_at * 1000).toLocaleString()}
+                </td>
+                <td className="is-actions">
+                  {edit.state === "blocked" ? (
+                    <Button
+                      size="1"
+                      variant="soft"
+                      disabled={busy}
+                      onClick={() =>
+                        void perform(async () => {
+                          await api(`/subtitles/edits/${edit.id}/retry`, {
+                            method: "POST",
+                            body: "{}",
+                          });
+                          resource.reload();
+                        })
+                      }
+                    >
+                      Retry subtitle recovery
+                    </Button>
+                  ) : edit.phase === "committed" ? (
+                    <Button
+                      size="1"
+                      variant="soft"
+                      disabled={busy || !!review}
+                      onClick={() => void preview(edit)}
+                    >
+                      Review previous subtitle
+                    </Button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      ) : (
+        <p className="rs-muted">No completed subtitle edits yet.</p>
       )}
-      {notice && <p role="status">{notice}</p>}
-      <h3>Subtitle edit history</h3>
-      {resource.data?.items
-        .filter((v) => v.state !== "review")
-        .map((v) => (
-          <div className="backup-row" key={v.id}>
-            <div>
-              <strong>
-                {v.language} · {v.variant} · {v.action}
-              </strong>
-              <p>
-                {v.message} ({v.state})
-              </p>
-              <small>{new Date(v.created_at * 1000).toLocaleString()}</small>
-            </div>
-            {v.state === "blocked" ? (
+      {review && (
+        <Modal
+          open
+          onOpenChange={(open) => {
+            if (!open && !busy) {
+              setReview(undefined);
+              setChecked(false);
+            }
+          }}
+          title="Review subtitle change"
+          size="small"
+          footer={
+            <>
               <Button
-                disabled={busy}
-                onClick={() =>
-                  void perform(async () => {
-                    await api(`/subtitles/edits/${v.id}/retry`, {
-                      method: "POST",
-                      body: "{}",
-                    });
-                    resource.reload();
-                  })
-                }
-              >
-                Retry subtitle recovery
-              </Button>
-            ) : v.phase === "committed" ? (
-              <Button
-                disabled={busy || !!review}
                 variant="soft"
-                onClick={() => void preview(v)}
+                disabled={busy}
+                onClick={() => {
+                  setReview(undefined);
+                  setChecked(false);
+                }}
               >
-                Review previous subtitle
+                Cancel review
               </Button>
-            ) : null}
-          </div>
-        ))}
-    </section>
+              <Button
+                disabled={busy || !checked}
+                onClick={() => void apply(review)}
+              >
+                Apply reviewed subtitle change
+              </Button>
+            </>
+          }
+        >
+          <DescriptionList>
+            <DescriptionItem title="Change">
+              {review.action === "offset"
+                ? `${review.offset_ms} ms timing adjustment`
+                : readable(review.action)}
+            </DescriptionItem>
+            <DescriptionItem title="Cues">
+              {review.cues} timed cues
+            </DescriptionItem>
+            <DescriptionItem title="Size">
+              {formatBytes(review.size_bytes)}
+            </DescriptionItem>
+            <DescriptionItem title="Destination">
+              {review.destination}
+            </DescriptionItem>
+            <DescriptionItem title="Checksum">
+              {review.old_sha256.slice(0, 12)}… →{" "}
+              {review.new_sha256.slice(0, 12)}…
+            </DescriptionItem>
+          </DescriptionList>
+          <p>{review.message}</p>
+          <Check
+            label="I reviewed this subtitle change and understand the current version will be retained for rollback."
+            checked={checked}
+            disabled={busy}
+            onChange={setChecked}
+          />
+          {error && <Alert kind="danger">{error}</Alert>}
+        </Modal>
+      )}
+    </FieldSet>
   );
 }

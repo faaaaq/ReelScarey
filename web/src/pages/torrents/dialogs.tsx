@@ -1,7 +1,17 @@
 import { useId, useState, type FormEvent } from "react";
 import { Button } from "@radix-ui/themes";
+import { messageFor } from "../../api";
 import { Alert, Check, Modal, ModalClose, formatSpeed } from "../../ui";
-import { KiB, originOf, type Torrent } from "./model";
+import {
+  KiB,
+  formatSeedingMinutes,
+  originOf,
+  shareActionLabels,
+  type ShareAction,
+  type SharePolicy,
+  type SharePolicyRun,
+  type Torrent,
+} from "./model";
 
 export const maxMagnetLines = 50;
 
@@ -484,6 +494,260 @@ export function ShareLimitDialog({
         )}
         {problem && <Alert kind="danger">{problem}</Alert>}
       </form>
+    </Modal>
+  );
+}
+
+/**
+ * Application-enforced seeding limit for the built-in client. qBittorrent
+ * itself only pauses on its share limits, so ReelScarey evaluates the client's
+ * reported ratio/time and can pause, remove or remove-and-delete.
+ */
+export function SharePolicyDialog({
+  open,
+  onOpenChange,
+  policy,
+  onSave,
+  onRun,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  policy: SharePolicy | undefined;
+  onSave: (next: SharePolicy) => Promise<void>;
+  onRun: () => Promise<SharePolicyRun>;
+}) {
+  const formId = useId();
+  const [enabled, setEnabled] = useState(false);
+  const [action, setAction] = useState<ShareAction>("pause");
+  const [ratio, setRatio] = useState("2.0");
+  const [hours, setHours] = useState("0");
+  const [minutes, setMinutes] = useState("0");
+  const [includeJobs, setIncludeJobs] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [problem, setProblem] = useState("");
+  const [runResult, setRunResult] = useState<SharePolicyRun | null>(null);
+  const [lastOpen, setLastOpen] = useState(open);
+  const [seeded, setSeeded] = useState(false);
+  if (open !== lastOpen) {
+    setLastOpen(open);
+    if (!open) setSeeded(false);
+  }
+  // Populate once per opening, including when the policy finishes loading
+  // after the dialog was opened.
+  if (open && policy && !seeded) {
+    setEnabled(policy.enabled);
+    setAction(policy.action);
+    setRatio(policy.max_ratio > 0 ? String(policy.max_ratio) : "0");
+    setHours(String(Math.floor(policy.max_seeding_minutes / 60)));
+    setMinutes(String(policy.max_seeding_minutes % 60));
+    setIncludeJobs(policy.include_reelscarey);
+    setProblem("");
+    setRunResult(null);
+    setSeeded(true);
+  }
+
+  function parse(): { ratio: number; totalMinutes: number } | string {
+    const ratioValue = ratio.trim() === "" ? 0 : Number(ratio);
+    if (!Number.isFinite(ratioValue) || ratioValue < 0 || ratioValue > 1000) {
+      return "Enter a maximum ratio between 0 and 1000, or 0 to disable it.";
+    }
+    if (ratioValue > 0 && ratioValue < 0.1) {
+      return "The maximum ratio must be at least 0.1, or 0 to disable it.";
+    }
+    const h = hours.trim() === "" ? 0 : Number(hours);
+    const m = minutes.trim() === "" ? 0 : Number(minutes);
+    if (!Number.isInteger(h) || h < 0 || h > 8760) {
+      return "Enter a whole number of hours between 0 and 8760.";
+    }
+    if (!Number.isInteger(m) || m < 0 || m > 59) {
+      return "Enter a whole number of minutes between 0 and 59.";
+    }
+    const totalMinutes = h * 60 + m;
+    if (enabled && ratioValue === 0 && totalMinutes === 0) {
+      return "An enabled seeding limit needs a ratio, a seeding time, or both.";
+    }
+    return { ratio: ratioValue, totalMinutes };
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setProblem("");
+    if (!policy) return;
+    const parsed = parse();
+    if (typeof parsed === "string") {
+      setProblem(parsed);
+      return;
+    }
+    setBusy(true);
+    try {
+      await onSave({
+        ...policy,
+        enabled,
+        action,
+        max_ratio: parsed.ratio,
+        max_seeding_minutes: parsed.totalMinutes,
+        include_reelscarey: includeJobs,
+      });
+      onOpenChange(false);
+    } catch (e) {
+      setProblem(messageFor(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function run() {
+    setProblem("");
+    setRunning(true);
+    try {
+      setRunResult(await onRun());
+    } catch (e) {
+      setProblem(messageFor(e));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const working = busy || running;
+
+  return (
+    <Modal
+      open={open}
+      onOpenChange={(next) => !working && onOpenChange(next)}
+      title="Seeding policy"
+      footer={
+        <>
+          <ModalClose>
+            <Button variant="soft" disabled={working}>
+              Cancel
+            </Button>
+          </ModalClose>
+          <Button
+            variant="soft"
+            disabled={working || !policy}
+            onClick={() => void run()}
+          >
+            {running ? "Running…" : "Run now"}
+          </Button>
+          <Button type="submit" form={formId} disabled={working || !policy}>
+            {busy ? "Saving…" : "Save"}
+          </Button>
+        </>
+      }
+    >
+      {policy ? (
+        <form id={formId} onSubmit={submit} className="tor-dialog-form">
+          <Check
+            label="Enforce an automatic seeding limit"
+            description="ReelScarey checks this client's completed torrents about once a minute and applies the limit itself."
+            checked={enabled}
+            onChange={setEnabled}
+            disabled={working}
+          />
+          <label className="tor-field" htmlFor={`${formId}-action`}>
+            <span>When a limit is reached</span>
+            <select
+              id={`${formId}-action`}
+              value={action}
+              disabled={working}
+              onChange={(e) => setAction(e.target.value as ShareAction)}
+            >
+              <option value="pause">Pause the torrent</option>
+              <option value="remove">Remove the torrent</option>
+              <option value="remove_and_delete">
+                Remove the torrent and delete its files
+              </option>
+            </select>
+          </label>
+          <div className="tor-policy-grid">
+            <label className="tor-field" htmlFor={`${formId}-ratio`}>
+              <span>Maximum ratio</span>
+              <input
+                id={`${formId}-ratio`}
+                type="number"
+                min={0}
+                max={1000}
+                step={0.1}
+                inputMode="decimal"
+                value={ratio}
+                disabled={working}
+                onChange={(e) => setRatio(e.target.value)}
+              />
+            </label>
+            <div className="tor-field">
+              <span>Maximum seeding time</span>
+              <div className="tor-policy-time">
+                <input
+                  aria-label="Seeding time hours"
+                  type="number"
+                  min={0}
+                  max={8760}
+                  step={1}
+                  inputMode="numeric"
+                  value={hours}
+                  disabled={working}
+                  onChange={(e) => setHours(e.target.value)}
+                />
+                <span>h</span>
+                <input
+                  aria-label="Seeding time minutes"
+                  type="number"
+                  min={0}
+                  max={59}
+                  step={1}
+                  inputMode="numeric"
+                  value={minutes}
+                  disabled={working}
+                  onChange={(e) => setMinutes(e.target.value)}
+                />
+                <span>min</span>
+              </div>
+            </div>
+          </div>
+          <p className="rs-form-help">
+            Enter 0 to disable the ratio or the time rule. At least one rule is
+            required while the limit is on. Currently:{" "}
+            {shareActionLabels[action].toLowerCase()}.
+          </p>
+          <Check
+            label="Include ReelScarey downloads"
+            description="Their torrent entries can be paused or removed when the limit is reached, but ReelScarey never deletes their files: the reviewed import and seeding source must survive."
+            checked={includeJobs}
+            onChange={setIncludeJobs}
+            disabled={working}
+          />
+          {problem && <Alert kind="danger">{problem}</Alert>}
+          {runResult && (
+            <p className="rs-form-help" role="status">
+              Checked {runResult.checked}{" "}
+              {runResult.checked === 1 ? "torrent" : "torrents"}; acted on{" "}
+              {runResult.acted}.
+            </p>
+          )}
+          <p className="rs-form-help">
+            Current saved limit:{" "}
+            {policy.enabled
+              ? [
+                  policy.max_ratio > 0
+                    ? `ratio ${policy.max_ratio.toFixed(1)}`
+                    : "",
+                  policy.max_seeding_minutes > 0
+                    ? formatSeedingMinutes(policy.max_seeding_minutes)
+                    : "",
+                  shareActionLabels[policy.action].toLowerCase(),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : "off"}
+            .
+          </p>
+        </form>
+      ) : (
+        <p className="rs-form-help" role="status">
+          Loading the saved seeding policy…
+        </p>
+      )}
     </Modal>
   );
 }

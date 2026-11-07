@@ -3,6 +3,7 @@ import {
   ArrowDownUp,
   CalendarDays,
   Clapperboard,
+  CloudDownload,
   Film,
   Inbox,
   LayoutDashboard,
@@ -163,6 +164,12 @@ export const navigation: NavItem[] = [
     match: (p) => starts(p, "/torrents"),
   },
   {
+    label: "Usenet",
+    to: "/usenet",
+    icon: CloudDownload,
+    match: (p) => starts(p, "/usenet"),
+  },
+  {
     label: "Requests",
     to: "/requests",
     icon: Inbox,
@@ -232,6 +239,7 @@ const titles: Record<string, string> = {
   "/releases": "Releases",
   "/wanted": "Wanted",
   "/torrents": "Torrents",
+  "/usenet": "Usenet",
   "/requests": "Requests",
   "/settings": "Settings",
   "/settings/general": "General settings",

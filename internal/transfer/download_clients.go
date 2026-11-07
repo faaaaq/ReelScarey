@@ -144,8 +144,8 @@ func (s *Service) SaveDownloadClient(ctx context.Context, in DownloadClientUpdat
 	if !textOK(strings.TrimSpace(in.Name), 60) || clientProtocol(in.Kind) == "" || (in.ID != "" && (len(in.ID) != 32 || keyError != nil || strings.ToLower(in.ID) != in.ID)) || (in.ID == "" && in.Revision != 0) {
 		return result, problem("invalid_settings", "Use a unique name and a supported download client.")
 	}
-	if in.ID == builtinClientID {
-		return result, problem("invalid_selection", "The built-in client is supervised by the application. Use its dedicated controls instead.")
+	if in.ID == builtinClientID || in.ID == builtinUsenetClientID {
+		return result, problem("invalid_selection", "A built-in client is supervised by the application. Use its dedicated controls instead.")
 	}
 	in.Name = strings.TrimSpace(in.Name)
 	if in.LocalFolder != "" && (!fs.ValidPath(in.LocalFolder) || in.LocalFolder == "." || strings.ContainsAny(in.LocalFolder, "\\:\x00") || len(in.LocalFolder) > 250) {
@@ -301,8 +301,8 @@ func (s *Service) SaveClientDefaults(ctx context.Context, in ClientDefaults) (Cl
 func (s *Service) DeleteDownloadClient(ctx context.Context, key string, revision int) error {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
-	if key == builtinClientID {
-		return problem("invalid_selection", "The built-in client cannot be removed. Disable it instead.")
+	if key == builtinClientID || key == builtinUsenetClientID {
+		return problem("invalid_selection", "A built-in client cannot be removed. Disable it instead.")
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -413,8 +413,9 @@ func selectClientTx(ctx context.Context, q interface {
 		case e != nil && !errors.Is(e, sql.ErrNoRows):
 			return clientSelection{}, e
 		}
+		return clientSelection{}, problem("client_not_configured", "Enable the built-in client in Download clients, or connect a matching client in Settings.")
 	}
-	return clientSelection{}, problem("client_not_configured", "Enable the built-in client in Download clients, or connect a matching client in Settings.")
+	return clientSelection{}, problem("client_not_configured", "Turn on the built-in Usenet client and choose it as the Usenet default in Download clients, or connect SABnzbd/NZBGet in Settings.")
 }
 
 func (s *Service) selectedClient(ctx context.Context, protocol string) (ClientConfig, error) {

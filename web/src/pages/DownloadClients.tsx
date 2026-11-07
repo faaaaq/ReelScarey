@@ -162,6 +162,11 @@ export function DownloadClients() {
               pointing at the completed folder plus <code>/ReelScarey</code>.
             </li>
             <li>
+              <strong>Built-in SABnzbd:</strong> configure its news server and
+              turn it on from the Usenet page. It is never enabled automatically
+              because it needs your NNTP account.
+            </li>
+            <li>
               Mount completed client folders under the app's download mount. TV
               files still require episode review.
             </li>

@@ -1,0 +1,186 @@
+/* Subtitle pages. Layout only; colors come from the shared --rs tokens. */
+
+.sub-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  color: var(--rs-muted);
+  font-size: 13px;
+}
+
+.sub-provider-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--rs-text);
+}
+
+.sub-provider-message {
+  color: var(--rs-muted);
+  font-size: 13px;
+}
+
+.sub-form-actions {
+  padding-left: 264px;
+}
+@media (max-width: 900px) {
+  .sub-form-actions {
+    padding-left: 0;
+  }
+}
+
+.sub-add-language {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.sub-add-language label {
+  font-weight: 700;
+  color: var(--rs-text-strong);
+}
+.sub-add-language select {
+  min-width: 180px;
+}
+
+.sub-details {
+  color: var(--rs-muted);
+  font-size: 13px;
+}
+.sub-details summary {
+  cursor: pointer;
+  color: var(--rs-link);
+}
+.sub-details > p {
+  margin-top: 6px;
+}
+
+.sub-file {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+}
+.sub-file-title {
+  color: var(--rs-link);
+  font-weight: 500;
+  text-decoration: none;
+}
+.sub-file-title:hover {
+  color: var(--rs-link-hover);
+  text-decoration: underline;
+}
+.sub-file-path {
+  font-family: var(--rs-mono);
+  font-size: 12px;
+  color: var(--rs-muted);
+  overflow-wrap: anywhere;
+}
+
+.sub-tracks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sub-muted {
+  color: var(--rs-muted);
+  font-size: 12.5px;
+}
+.sub-edit-message {
+  display: block;
+  color: var(--rs-muted);
+  font-size: 12.5px;
+}
+
+.sub-job {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 170px;
+}
+.sub-job-message {
+  color: var(--rs-muted);
+  font-size: 12.5px;
+}
+.sub-job-time {
+  color: var(--rs-faint);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.sub-row-error {
+  display: block;
+  margin-top: 4px;
+  color: var(--rs-danger);
+  font-size: 12.5px;
+  text-align: right;
+}
+
+.sub-candidate {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--rs-border);
+}
+.sub-candidate:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.sub-candidate-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.sub-candidate-head strong {
+  margin-right: auto;
+  overflow-wrap: anywhere;
+}
+.sub-candidate-meta {
+  color: var(--rs-muted);
+  font-size: 13px;
+}
+.sub-candidate-reasons {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--rs-muted);
+  font-size: 13px;
+}
+.sub-candidate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.sub-edits-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rs-border);
+}
+.sub-edits-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.sub-edits-fieldset .rs-legend {
+  padding-bottom: 6px;
+}
+.sub-edits-fieldset .rs-legend h3 {
+  font-size: 16px;
+  font-weight: 500;
+}

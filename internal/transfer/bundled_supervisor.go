@@ -55,6 +55,10 @@ type bundledRuntime struct {
 	tunnelReadyCache bool
 	tunnelBindCache  bool
 	notify           chan struct{}
+	// label names the supervised daemon in honest process-exit messages.
+	label string
+	// redact lists secrets removed from captured crash output.
+	redact []string
 }
 
 func (r *bundledRuntime) snapshot() (string, string) {
@@ -111,10 +115,20 @@ func (r *bundledRuntime) reap() {
 	}
 	select {
 	case <-wait:
-		detail := "The built-in client stopped unexpectedly."
+		label := r.label
+		if label == "" {
+			label = "built-in client"
+		}
+		detail := "The " + label + " stopped unexpectedly."
 		if r.stderr != nil && strings.TrimSpace(r.stderr.String()) != "" {
 			detail += " " + strings.TrimSpace(r.stderr.String())
 		}
+		for _, secret := range r.redact {
+			if secret != "" {
+				detail = strings.ReplaceAll(detail, secret, "[redacted]")
+			}
+		}
+		detail = cleanClientText(detail, 1200)
 		r.cmd, r.wait = nil, nil
 		r.attempts++
 		r.lastAttempt = time.Now()
@@ -335,8 +349,10 @@ func (s *Service) startBundled(ctx context.Context, c ClientConfig, revision int
 }
 
 // stopBundled terminates the supervised daemon gracefully, then forces it.
-func (s *Service) stopBundled() {
-	r := &s.bundled
+func (s *Service) stopBundled() { s.stopRuntime(&s.bundled) }
+
+// stopRuntime is shared by the supervised torrent and Usenet daemons.
+func (s *Service) stopRuntime(r *bundledRuntime) {
 	r.procMu.Lock()
 	cmd := r.cmd
 	wait := r.wait

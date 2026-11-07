@@ -145,6 +145,12 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/download-clients/builtin", s.downloadClientBuiltin)
 	mux.HandleFunc("/api/v1/download-clients/{id}", s.downloadClient)
 	mux.HandleFunc("/api/v1/download-clients/{id}/test", method(http.MethodPost, s.testDownloadClient))
+	mux.HandleFunc("/api/v1/usenet", s.usenetOverview)
+	mux.HandleFunc("/api/v1/usenet/news", s.usenetNews)
+	mux.HandleFunc("/api/v1/usenet/news/test", method(http.MethodPost, s.usenetNewsTest))
+	mux.HandleFunc("/api/v1/usenet/queue", s.usenetQueue)
+	mux.HandleFunc("/api/v1/usenet/queue/actions", method(http.MethodPost, s.usenetQueueActions))
+	mux.HandleFunc("/api/v1/usenet/speed-limits", method(http.MethodPost, s.usenetSpeedLimit))
 	mux.HandleFunc("/api/v1/system/storage/migration", method(http.MethodGet, s.storageMigration))
 	mux.HandleFunc("/api/v1/system/metadata-refresh", s.metadataRefreshSettings)
 	mux.HandleFunc("/api/v1/library/series/{id}/subtitles", s.showSubtitlePreferences)
@@ -229,6 +235,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/torrents", s.torrents)
 	mux.HandleFunc("/api/v1/torrents/actions", method(http.MethodPost, s.torrentBulkAction))
 	mux.HandleFunc("/api/v1/torrents/speed-limits", method(http.MethodPost, s.torrentSpeedLimits))
+	mux.HandleFunc("/api/v1/torrents/share-policy", s.torrentSharePolicy)
+	mux.HandleFunc("/api/v1/torrents/share-policy/run", method(http.MethodPost, s.torrentSharePolicyRun))
 	mux.HandleFunc("/api/v1/torrents/{hash}", method(http.MethodGet, s.torrentDetail))
 	mux.HandleFunc("/api/v1/torrents/{hash}/files", method(http.MethodPost, s.torrentFilePriority))
 	mux.HandleFunc("/api/v1/torrents/{hash}/{action}", method(http.MethodPost, s.torrentAction))
@@ -535,6 +543,7 @@ func frontend(assets fs.FS) http.HandlerFunc {
 	routes["/youtube/subscriptions"] = true
 	routes["/announces"] = true
 	routes["/torrents"] = true
+	routes["/usenet"] = true
 	serveIndex := func(w http.ResponseWriter, r *http.Request, status int) {
 		body, err := fs.ReadFile(assets, "index.html")
 		if err != nil {

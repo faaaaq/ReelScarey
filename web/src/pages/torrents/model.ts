@@ -72,6 +72,46 @@ export type Overview = {
   items: Torrent[];
 };
 
+export type ShareAction = "pause" | "remove" | "remove_and_delete";
+
+/** Application-enforced seeding limit for the built-in client. */
+export type SharePolicy = {
+  enabled: boolean;
+  action: ShareAction;
+  max_ratio: number;
+  max_seeding_minutes: number;
+  include_reelscarey: boolean;
+  revision: number;
+  updated_at: number;
+};
+
+export type SharePolicyRun = { checked: number; acted: number };
+
+export const shareActionLabels: Record<ShareAction, string> = {
+  pause: "Pause",
+  remove: "Remove torrent",
+  remove_and_delete: "Remove torrent and delete files",
+};
+
+/** Short status-bar summary such as "ratio 2.0 · 3 h · pause". */
+export function sharePolicySummary(policy: SharePolicy) {
+  if (!policy.enabled) return "off";
+  const parts: string[] = [];
+  if (policy.max_ratio > 0) parts.push(`ratio ${policy.max_ratio.toFixed(1)}`);
+  if (policy.max_seeding_minutes > 0)
+    parts.push(formatSeedingMinutes(policy.max_seeding_minutes));
+  parts.push(shareActionLabels[policy.action].toLowerCase());
+  return parts.join(" · ");
+}
+
+export function formatSeedingMinutes(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours > 0 && rest > 0) return `${hours} h ${rest} min`;
+  if (hours > 0) return `${hours} h`;
+  return `${rest} min`;
+}
+
 export type TorrentFile = {
   index: number;
   name: string;

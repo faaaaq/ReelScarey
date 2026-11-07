@@ -95,6 +95,16 @@ const otherTorrent = torrent({
   job_id: undefined,
 });
 
+const policyFixture = {
+  enabled: false,
+  action: "pause",
+  max_ratio: 2,
+  max_seeding_minutes: 0,
+  include_reelscarey: false,
+  revision: 1,
+  updated_at: 1700000000,
+};
+
 function overview(overrides: Record<string, unknown> = {}) {
   return {
     available: true,
@@ -199,6 +209,7 @@ type Call = { url: string; method: string; body: unknown };
 
 function mount(payload: unknown, options: { failMagnet?: string } = {}) {
   const calls: Call[] = [];
+  let policy = { ...policyFixture };
   const fetch = vi.fn(async (url: string, init: RequestInit = {}) => {
     const method = init.method ?? "GET";
     let body: unknown = init.body;
@@ -206,6 +217,18 @@ function mount(payload: unknown, options: { failMagnet?: string } = {}) {
     calls.push({ url, method, body });
     if (method === "GET" && url === "/api/v1/torrents")
       return Response.json(payload);
+    if (method === "GET" && url === "/api/v1/torrents/share-policy")
+      return Response.json(policy);
+    if (method === "PUT" && url === "/api/v1/torrents/share-policy") {
+      policy = {
+        ...(body as typeof policyFixture),
+        revision: policy.revision + 1,
+        updated_at: 1700000100,
+      };
+      return Response.json(policy);
+    }
+    if (method === "POST" && url === "/api/v1/torrents/share-policy/run")
+      return Response.json({ checked: 3, acted: 2 });
     if (method === "GET" && url.startsWith("/api/v1/torrents/")) {
       const hash = url.slice("/api/v1/torrents/".length);
       const t = [jobTorrent, manualTorrent, otherTorrent].find(
@@ -246,6 +269,10 @@ function mount(payload: unknown, options: { failMagnet?: string } = {}) {
 
 function posts(calls: Call[], url: string) {
   return calls.filter((c) => c.method === "POST" && c.url === url);
+}
+
+function puts(calls: Call[], url: string) {
+  return calls.filter((c) => c.method === "PUT" && c.url === url);
 }
 
 function row(name: string) {
@@ -714,5 +741,62 @@ describe("Torrents", () => {
       "Fixture.Release.1080p",
       "Ubuntu.ISO",
     ]);
+  });
+
+  it("saves the seeding policy and reports the manual run", async () => {
+    const user = userEvent.setup();
+    const { calls } = mount(overview());
+    await screen.findByText("Fixture.Release.1080p");
+    await waitFor(() =>
+      expect(screen.getByLabelText("Transfer rates")).toHaveTextContent(
+        "Seeding limit: off",
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Seeding policy" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Seeding policy",
+    });
+    await user.click(
+      within(dialog).getByLabelText(/Enforce an automatic seeding limit/),
+    );
+    await user.selectOptions(
+      within(dialog).getByLabelText("When a limit is reached"),
+      "remove_and_delete",
+    );
+    const ratio = within(dialog).getByLabelText("Maximum ratio");
+    await user.clear(ratio);
+    await user.type(ratio, "1.5");
+    const hours = within(dialog).getByLabelText("Seeding time hours");
+    await user.clear(hours);
+    await user.type(hours, "2");
+    await user.click(
+      within(dialog).getByLabelText(/Include ReelScarey downloads/),
+    );
+    expect(within(dialog).getByText(/never deletes their files/)).toBeVisible();
+
+    await user.click(within(dialog).getByRole("button", { name: "Run now" }));
+    expect(
+      await within(dialog).findByText(/Checked 3 torrents; acted on 2\./),
+    ).toBeVisible();
+    expect(posts(calls, "/api/v1/torrents/share-policy/run")).toHaveLength(1);
+
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(puts(calls, "/api/v1/torrents/share-policy")).toHaveLength(1),
+    );
+    expect(puts(calls, "/api/v1/torrents/share-policy")[0].body).toEqual({
+      ...policyFixture,
+      enabled: true,
+      action: "remove_and_delete",
+      max_ratio: 1.5,
+      max_seeding_minutes: 120,
+      include_reelscarey: true,
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText("Transfer rates")).toHaveTextContent(
+        "Seeding limit: ratio 1.5 · 2 h · remove torrent and delete files",
+      ),
+    );
   });
 });

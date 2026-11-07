@@ -3,7 +3,10 @@
 ReelScarey's interface follows the Sonarr/Radarr design language. Owners who
 know those tools should find their way around without reading anything. The
 Torrents page is the deliberate exception: it is modeled on the qBittorrent
-WebUI because it fronts the supervised built-in qBittorrent client.
+WebUI because it fronts the supervised built-in qBittorrent client. The Usenet
+page stays in the shared language: it fronts the supervised bundled SABnzbd
+instance with a clean queue and a settings section, not a clone of SABnzbd's
+WebUI.
 
 Docker remains the only supported deployment.
 
@@ -28,9 +31,9 @@ Docker remains the only supported deployment.
   and the account menu (sign out). Global search (`Ctrl/Cmd+K` or `/`) finds
   saved titles, jumps to pages and offers "Search TMDb" for new titles.
 - **Sidebar** (210px): Dashboard, Movies, TV Shows, Anime, YouTube, Calendar,
-  Activity, Wanted, Torrents, Requests, Settings and System. Like Sonarr, a
-  section shows its child links only while it is active. The structure is
-  defined once in `web/src/navigation.ts`, along with document titles.
+  Activity, Wanted, Torrents, Usenet, Requests, Settings and System. Like
+  Sonarr, a section shows its child links only while it is active. The structure
+  is defined once in `web/src/navigation.ts`, along with document titles.
 - Mobile (≤768px): the sidebar becomes a drawer opened from the header.
 
 ## Page anatomy
@@ -153,6 +156,28 @@ Do not add global element selectors in page files.
   queue has no completed filter and links to `/timeline`.
 - Automation keeps schedules, profiles and run history. Per-title quality
   profiles are assigned with Bulk profiles on the library pages.
+
+## Usenet page
+
+`/usenet` fronts the supervised bundled SABnzbd instance and uses the shared
+tokens and primitives, not the Torrents console layout. It has:
+
+- a status strip with the honest lifecycle state, installed/configured flags,
+  queue state, rate, remaining size, ETA, current absolute speed limit and the
+  count of active ReelScarey jobs;
+- a dense queue table with per-row labels, progress, size, remaining, speed and
+  ETA, page-scoped multi-select and bulk pause/resume/delete;
+- a reviewed delete dialog that requires the review checkbox and offers the
+  optional `del_files` choice;
+- an Add NZB dialog accepting uploaded files only (never a URL);
+- a news-server form (host, port, TLS, username, password, connections) and an
+  explicit turn-on/turn-off control for the daemon. Turning it on never changes
+  the Usenet default; the page links to Download clients for that choice.
+
+When the binary is missing, no news server is saved, the client is off or the
+daemon is not answering, the queue area is an `EmptyState` that says exactly
+what to do instead of showing an empty working queue. The API key and NNTP
+password are never rendered.
 
 ## Work in progress notices
 

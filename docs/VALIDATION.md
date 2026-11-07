@@ -2179,3 +2179,40 @@ Run locally on Windows (development tools only; Docker remains the target):
   and the single-page fallback.
 - Live provider/Docker acceptance was not run locally; the publish workflow
   verifies the release candidate on the tag.
+
+## 2026-11-07: faster release builds and configurable runners
+
+- `Dockerfile` accepts `RUN_GO_TESTS` (default `1`). The backend stage runs
+  `go test ./... && go vet ./...` only when it is `1`; `go build` always runs.
+  `docker-publish.yml` passes `RUN_GO_TESTS=0` to the release-candidate and
+  publishing builds; local/manual `docker build` and the acceptance image keep
+  the default so their in-image tests still run.
+- `ci.yml` and `docker-publish.yml` build through
+  `docker/build-push-action@v7` with GitHub Actions BuildKit cache scopes
+  (`reelscarey-ci`, `reelscarey-publish`, `reelscarey-transmission`,
+  `mode=max`, `ignore-error=true`). The acceptance image build moved from
+  `docker build` to the same action with `load: true`, and the disposable
+  Transmission test image now uses buildx cache explicitly.
+- Push/tag/schedule/manual jobs select runners from `REELSCAREY_RUNNER`,
+  `REELSCAREY_ACCEPTANCE_RUNNER` and `REELSCAREY_PUBLISH_RUNNER` (default
+  `reelscarey-ci`). Pull-request jobs are pinned to `ubuntu-latest` so fork
+  code never runs on a self-hosted machine.
+- Verified locally: file review, YAML parsing of both workflows with PyYAML
+  6.0.3, and `actionlint` 1.7.7 (built from source, run on both workflow
+  files) with no findings. The Dockerfile's `RUN_GO_TESTS` shell conditional
+  was executed in a POSIX shell and skips the tests for `0` while the
+  following build line still runs. Docker is unavailable and no workflow run,
+  image build or container smoke test was performed for this change, so no
+  build-time improvement is claimed until CI measures it.
+
+## Version 0.39.0 bundled Usenet, seeding limits and subtitle redesign
+
+- gofmt clean; go vet and the full Go suite passed (schema 56). New tests cover
+  the seeding policy evaluation and API, and the bundled Usenet lifecycle
+  (stub binary + fake API), queue, deletion review and settings.
+- Frontend format:check, check, the full suite (41 files, 246 tests) and the
+  build passed. The overwritten legacy Usenet test file was restored and the
+  new page tests moved to UsenetPage.test.tsx.
+- Not run locally: a Docker image build and the gated live SABnzbd test
+  (REELSCAREY_LIVE_BUNDLED_SAB=1). The publish workflow builds the release
+  candidate; verify the image and the live daemon before relying on them.

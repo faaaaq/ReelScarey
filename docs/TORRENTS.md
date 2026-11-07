@@ -6,14 +6,14 @@ with progress, download/upload speed, ETA, seeds/peers, ratio, queue position,
 limits, share limits and state, and refreshes while the page is open.
 
 The page is laid out like the qBittorrent Web UI: a toolbar (add links/files,
-resume, pause, force resume, delete, queue moves, recheck, reannounce, a text
-filter and a column chooser), a collapsible filter sidebar (status, source,
-category, tag and tracker, with counts), a sortable multi-select torrent table
-with a right-click menu, a resizable properties panel (General, Trackers, Peers,
-HTTP Sources, Content) for a single selected torrent, and a status bar with
-connection state, DHT nodes, the alternative speed toggle and the global
-download/upload limits. Column, sort, sidebar and panel choices are kept in the
-browser.
+resume, pause, force resume, delete, queue moves, recheck, reannounce, a seeding
+policy dialog, a text filter and a column chooser), a collapsible filter sidebar
+(status, source, category, tag and tracker, with counts), a sortable multi-select
+torrent table with a right-click menu, a resizable properties panel (General,
+Trackers, Peers, HTTP Sources, Content) for a single selected torrent, and a
+status bar with connection state, DHT nodes, the alternative speed toggle, the
+global download/upload limits and the saved seeding limit. Column, sort, sidebar
+and panel choices are kept in the browser.
 
 - **Add** a magnet link or upload a `.torrent` file. Manual torrents are saved
   under `builtin/ReelScarey/manual` and tagged `reelscarey-manual`; the server
@@ -43,6 +43,41 @@ browser.
   download/upload limits. The limits apply to whichever mode is active, which
   is how qBittorrent itself applies them. The overview also shows whether
   queueing is enabled and the alternative limits.
+
+## Automatic seeding limit
+
+qBittorrent pauses a torrent when its own share limit is reached and never
+removes torrents or data. ReelScarey therefore enforces the owner's seeding
+limit itself: **Seeding policy** in the toolbar opens a dialog with an enabled
+switch, the action to apply, a maximum ratio, a maximum seeding time (hours and
+minutes) and an option to include ReelScarey downloads. The status bar shows the
+saved summary, for example `Seeding limit: ratio 2.0 · pause`.
+
+- The ratio rule accepts 0.1–1000 and the time rule 0–525600 minutes. `0`
+  disables an individual rule, and an enabled limit needs at least one rule.
+- `Pause` stops the torrent, `Remove torrent` removes its entry without data,
+  and `Remove torrent and delete files` also deletes the downloaded data.
+- A supervised pass runs at most once a minute, and only while the built-in
+  client is enabled and reachable. It evaluates every torrent whose reported
+  `progress` is 1 and `amount_left` is 0; active downloads are never touched.
+- Torrents bound to a ReelScarey download job that has not finished are skipped
+  entirely. Torrents submitted by ReelScarey are skipped unless **Include
+  ReelScarey downloads** is on, and their files are **never deleted**: for those
+  torrents `Remove torrent and delete files` degrades to removing the torrent
+  entry only, so the reviewed import and the seeding source survive. The dialog
+  states this explicitly.
+- Already paused torrents are left alone, even if they exceed the limit.
+- Every applied action writes one History entry (`kind=download`, object is the
+  torrent hash, state `seeding limit reached: <action>`). A hash/action pair is
+  recorded once; the durable entry also survives a restart, so a resumed torrent
+  is not acted on again for the same action.
+- Client errors are logged and retried by the next pass; a failing pass never
+  stops the application. **Run now** evaluates the saved policy immediately and
+  reports how many torrents were checked and acted on.
+
+The policy is stored in SQLite with a revision, so two editors cannot silently
+overwrite each other. It applies only to the supervised built-in client; named
+external clients keep their own share limits.
 
 The page only manages the built-in client. External qBittorrent, Transmission,
 SABnzbd and NZBGet connections keep their existing job-level controls and are

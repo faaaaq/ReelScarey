@@ -18,8 +18,14 @@ COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY web/embed.go ./web/embed.go
 COPY --from=frontend /src/web/dist ./web/dist
-RUN --mount=type=cache,target=/root/.cache/go-build go test ./... && go vet ./...
-ARG VERSION=0.38.8-dev
+# The default keeps the historic behaviour for local and manual builds. The
+# release workflow passes RUN_GO_TESTS=0 because the application checks already
+# ran the Go suite natively and the release candidate is smoke-tested; running
+# it again under QEMU emulation is the single most expensive build step.
+ARG RUN_GO_TESTS=1
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    if [ "$RUN_GO_TESTS" = "1" ]; then go test ./... && go vet ./...; fi
+ARG VERSION=0.39.0-dev
 RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/reelscarey ./cmd/reelscarey
 
 FROM debian:bookworm-slim AS youtube-tools
@@ -30,8 +36,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && /opt/reelscarey-yt-dlp/bin/python -m pip uninstall -y pip setuptools
 
 FROM debian:bookworm-slim AS runtime
+# sabnzbdplus is in Debian's contrib component; par2 is in main. The sources
+# line above enables both, and unrar comes from non-free for SABnzbd.
 RUN sed -i 's/^Components: main$/Components: main contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources \
-    && apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg python3 gosu tzdata qbittorrent-nox wireguard-tools iproute2 iptables util-linux p7zip-full unrar \
+    && apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg python3 gosu tzdata qbittorrent-nox sabnzbdplus par2 wireguard-tools iproute2 iptables util-linux p7zip-full unrar \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 reelscarey \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin reelscarey \

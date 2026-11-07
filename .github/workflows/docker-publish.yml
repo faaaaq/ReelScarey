@@ -18,7 +18,11 @@ concurrency:
 jobs:
   publish:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    runs-on: [self-hosted, linux, x64, reelscarey-ci]
+    # Publish is triggered only by a v* tag or an explicit manual dispatch, so
+    # it may use a self-hosted runner. REELSCAREY_PUBLISH_RUNNER lets the owner
+    # put releases on a second machine so they no longer queue behind a long
+    # checks/acceptance run on REELSCAREY_RUNNER.
+    runs-on: ${{ vars.REELSCAREY_PUBLISH_RUNNER || vars.REELSCAREY_RUNNER || 'reelscarey-ci' }}
 
     steps:
       - name: Checkout repository
@@ -50,11 +54,17 @@ jobs:
           load: true
           platforms: linux/amd64
           tags: reelscarey:release-test
-          build-args: VERSION=${{ steps.version.outputs.value }}
+          # The application checks run the full Go suite natively (including
+          # the race suite in acceptance). The published artifact is verified
+          # below, so the emulated image build does not repeat `go test`/`go
+          # vet`; a plain local `docker build` still runs them by default.
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+            RUN_GO_TESTS=0
           provenance: false
           sbom: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=reelscarey-publish
+          cache-to: type=gha,mode=max,scope=reelscarey-publish,ignore-error=true
 
       - name: Verify release startup, backup restore and storage recovery
         run: |
@@ -77,8 +87,11 @@ jobs:
             ${{ vars.DOCKERHUB_USERNAME }}/reelscarey:latest
             ${{ vars.DOCKERHUB_USERNAME }}/reelscarey:${{ steps.version.outputs.value }}
             ${{ vars.DOCKERHUB_USERNAME }}/reelscarey:sha-${{ github.sha }}
-          build-args: VERSION=${{ steps.version.outputs.value }}
-          cache-from: type=gha
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+            RUN_GO_TESTS=0
+          cache-from: type=gha,scope=reelscarey-publish
+          cache-to: type=gha,mode=max,scope=reelscarey-publish,ignore-error=true
           provenance: mode=max
           sbom: true
           labels: |

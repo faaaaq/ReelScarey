@@ -668,6 +668,19 @@
 .tor-share-custom .rs-check {
   padding-top: 0;
 }
+.tor-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.tor-policy-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tor-policy-time input {
+  width: 80px;
+}
 
 /* Narrow screens: the filter sidebar becomes a drawer. */
 .tor-drawer-backdrop {

@@ -1,0 +1,121 @@
+/* Usenet page: a clean queue and settings view in the shared app language.
+   Layout only; every color comes from the shared --rs-* tokens. */
+
+.use-app {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--rs-header-height));
+  min-height: calc(100dvh - var(--rs-header-height));
+}
+
+.use-statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  font-size: 13px;
+}
+.use-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--rs-muted);
+  white-space: nowrap;
+}
+.use-status-item strong {
+  color: var(--rs-text-strong);
+  font-weight: 600;
+}
+.use-status-name {
+  color: var(--rs-text-strong);
+  font-weight: 600;
+}
+.use-status-spacer {
+  flex: 1 1 auto;
+}
+
+.use-app .rs-alert {
+  margin-bottom: 12px;
+}
+
+.use-table .use-check {
+  width: 38px;
+  text-align: center;
+}
+.use-table tr.is-selected {
+  background: var(--rs-selected);
+}
+.use-table td {
+  vertical-align: middle;
+}
+.use-name {
+  max-width: 480px;
+  overflow: hidden;
+  color: var(--rs-text-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.use-sub {
+  font-size: 11px;
+  color: var(--rs-muted);
+}
+.use-number {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.use-progress {
+  min-width: 130px;
+}
+.use-empty {
+  padding: 26px;
+  text-align: center;
+  color: var(--rs-muted);
+}
+
+.use-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 22px;
+  scroll-margin-top: 80px;
+}
+.use-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.use-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 0 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.use-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.use-file-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--rs-text);
+}
+
+@media (max-width: 768px) {
+  .use-status-spacer {
+    display: none;
+  }
+  .use-name {
+    max-width: 220px;
+  }
+}

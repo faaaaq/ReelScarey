@@ -216,6 +216,10 @@ See [existing-library workflow](docs/EXISTING_LIBRARY.md).
 - [ ] Owner Newznab/SABnzbd/shared-mount acceptance requires private setup.
 - [x] Usenet retention/propagation filters and explained source/codec scoring.
 - [x] Multiple named SABnzbd clients and NZBGet were completed in version 0.24.
+- [x] Optional bundled headless SABnzbd daemon (`sabnzbdplus` + `par2` in the
+  image), encrypted NNTP settings, supervised lifecycle, Usenet queue/settings
+  page, explicit opt-in and selectable Usenet default. External SABnzbd/NZBGet
+  remain supported; no provider, quota or indexer is bundled.
 
 See [Usenet setup and limits](docs/USENET.md). IPTorrents and XSpeeds account
 testing remains deferred.
@@ -810,3 +814,19 @@ libraries (bounded at 5000). The library pages drop pagination in favour of an
 A-Z jump bar, Subtitles and YouTube show a first-visit Work in progress overlay,
 Organize Files leaves the navigation (still reachable from Media Management) and
 Automation no longer lists every saved title. See [UI.md](docs/UI.md).
+
+## Version 0.39.0 bundled Usenet, seeding limits and subtitle redesign
+
+The Docker image now ships a supervised SABnzbd daemon as an opt-in built-in
+Usenet client: it starts only after news-server credentials are saved, is
+registered as a selectable Usenet client (never auto-enabled), and the new
+Usenet page manages its queue, reviewed deletions, speed limit, NZB upload and
+settings. External SABnzbd/NZBGet remain supported. A supervised seeding policy
+can pause, remove or remove-and-delete completed built-in torrents once a ratio
+or seeding time is reached, with ReelScarey job files never deleted. The
+Subtitles page is rebuilt into provider, languages/tracks, automatic matching
+and activity sections. Image builds use a persistent BuildKit cache, release
+builds skip duplicate in-image Go tests, and runners are configurable for a
+second self-hosted machine. See [USENET.md](docs/USENET.md),
+[TORRENTS.md](docs/TORRENTS.md), [UI.md](docs/UI.md) and
+[RELEASING.md](docs/RELEASING.md).

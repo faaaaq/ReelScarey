@@ -94,21 +94,21 @@ func (f *fixtureClient) List(context.Context, ClientConfig) ([]Torrent, error) {
 	}
 	return f.list, nil
 }
-func (f *fixtureClient) Pause(context.Context, ClientConfig, []string) error {
-	f.action = "pause"
+func (f *fixtureClient) Pause(_ context.Context, _ ClientConfig, hashes []string) error {
+	f.action, f.lastHashes = "pause", append([]string(nil), hashes...)
 	return nil
 }
-func (f *fixtureClient) Resume(context.Context, ClientConfig, []string) error {
-	f.action = "resume"
+func (f *fixtureClient) Resume(_ context.Context, _ ClientConfig, hashes []string) error {
+	f.action, f.lastHashes = "resume", append([]string(nil), hashes...)
 	return nil
 }
-func (f *fixtureClient) Recheck(context.Context, ClientConfig, []string) error {
-	f.action = "recheck"
+func (f *fixtureClient) Recheck(_ context.Context, _ ClientConfig, hashes []string) error {
+	f.action, f.lastHashes = "recheck", append([]string(nil), hashes...)
 	return nil
 }
-func (f *fixtureClient) Delete(_ context.Context, _ ClientConfig, _ []string, deleteFiles bool) error {
-	f.action = "remove"
-	f.deleteFiles = deleteFiles
+func (f *fixtureClient) Delete(_ context.Context, _ ClientConfig, hashes []string, deleteFiles bool) error {
+	f.action, f.deleteFiles = "remove", deleteFiles
+	f.lastHashes = append([]string(nil), hashes...)
 	return nil
 }
 func (f *fixtureClient) Command(_ context.Context, _ ClientConfig, command string, hashes []string, value string) error {

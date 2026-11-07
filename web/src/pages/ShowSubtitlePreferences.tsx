@@ -1,12 +1,19 @@
 import { useId, useState } from "react";
 import { Button } from "@radix-ui/themes";
-import { X } from "lucide-react";
 import { api, messageFor } from "../api";
 import { RequestState } from "../components";
-import { Alert, Check, FieldSet, FormActions, FormGroup, Label } from "../ui";
+import {
+  Alert,
+  Check,
+  FieldSet,
+  FormActions,
+  FormGroup,
+  Label,
+  Table,
+} from "../ui";
 import { useResource } from "../useResource";
 import type { SubtitlePreferences, SubtitleTrack } from "./Subtitles";
-import "./details/Details.css";
+import "./Subtitles.css";
 
 type Response = {
   inherited: boolean;
@@ -15,6 +22,11 @@ type Response = {
   global_revision: number;
   languages: { code: string; name: string }[];
 };
+const variantName: Record<SubtitleTrack["variant"], string> = {
+  full: "Full subtitles",
+  signs: "Signs / songs",
+  forced: "Forced",
+};
 export function ShowSubtitlePreferences({ id }: { id: number }) {
   const [open, setOpen] = useState(false);
   return (
@@ -22,7 +34,12 @@ export function ShowSubtitlePreferences({ id }: { id: number }) {
       legend="Subtitles"
       description="Optional per-show override of the global subtitle preferences."
       actions={
-        <Button size="1" variant="soft" onClick={() => setOpen(!open)}>
+        <Button
+          size="1"
+          variant="soft"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
           {open ? "Hide subtitle preferences" : "Edit subtitle preferences"}
         </Button>
       }
@@ -67,7 +84,9 @@ function Form({
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const policyID = useId(),
-    hearingID = useId();
+    hearingID = useId(),
+    languageID = useId(),
+    trackID = useId();
   async function save(inherit = false) {
     setBusy(true);
     setError("");
@@ -114,29 +133,36 @@ function Form({
         />
       </FormGroup>
       <FormGroup label="Tracks" help="Up to nine language and type pairs.">
-        {form.tracks.length ? (
-          <ul className="det-track-list">
-            {form.tracks.map((t) => (
-              <li key={t.language + t.variant}>
-                <Label>
-                  {name(t.language)} · {t.variant}
-                </Label>
-                <button
-                  type="button"
-                  className="det-monitor"
-                  aria-label={`Remove ${t.language} ${t.variant}`}
-                  onClick={() =>
-                    setForm({
-                      ...form,
-                      tracks: form.tracks.filter((v) => v !== t),
-                    })
-                  }
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              </li>
-            ))}
-          </ul>
+        {form.tracks.length > 0 ? (
+          <Table label="Show subtitle tracks">
+            <tbody>
+              {form.tracks.map((track) => (
+                <tr key={track.language + track.variant}>
+                  <th scope="row">{name(track.language)}</th>
+                  <td>{variantName[track.variant]}</td>
+                  <td className="is-actions">
+                    <Button
+                      type="button"
+                      size="1"
+                      variant="ghost"
+                      color="gray"
+                      aria-label={`Remove ${name(track.language)} ${variantName[track.variant]}`}
+                      onClick={() =>
+                        setForm({
+                          ...form,
+                          tracks: form.tracks.filter(
+                            (value) => value !== track,
+                          ),
+                        })
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
         ) : (
           <span className="rs-form-help is-warning">
             Add at least one track before saving.
@@ -144,33 +170,38 @@ function Form({
         )}
         <div className="rs-row">
           <select
+            id={languageID}
             aria-label="Subtitle language"
             value={language}
-            onChange={(e) => setLanguage(e.target.value)}
+            onChange={(event) => setLanguage(event.target.value)}
           >
-            {data.languages.map((l) => (
-              <option key={l.code} value={l.code}>
-                {l.name}
+            {data.languages.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.name}
               </option>
             ))}
           </select>
           <select
+            id={trackID}
             aria-label="Subtitle track type"
             value={variant}
-            onChange={(e) =>
-              setVariant(e.target.value as SubtitleTrack["variant"])
+            onChange={(event) =>
+              setVariant(event.target.value as SubtitleTrack["variant"])
             }
           >
-            <option value="full">Full subtitles</option>
-            <option value="signs">Signs / songs</option>
-            <option value="forced">Forced</option>
+            {(["full", "signs", "forced"] as const).map((value) => (
+              <option key={value} value={value}>
+                {variantName[value]}
+              </option>
+            ))}
           </select>
           <Button
             type="button"
             variant="soft"
             disabled={
               form.tracks.some(
-                (t) => t.language === language && t.variant === variant,
+                (track) =>
+                  track.language === language && track.variant === variant,
               ) || form.tracks.length >= 9
             }
             onClick={() =>
@@ -188,10 +219,10 @@ function Form({
         <select
           id={policyID}
           value={form.match_policy}
-          onChange={(e) =>
+          onChange={(event) =>
             setForm({
               ...form,
-              match_policy: e.target
+              match_policy: event.target
                 .value as SubtitlePreferences["match_policy"],
             })
           }
@@ -204,10 +235,10 @@ function Form({
         <select
           id={hearingID}
           value={form.hearing_impaired}
-          onChange={(e) =>
+          onChange={(event) =>
             setForm({
               ...form,
-              hearing_impaired: e.target
+              hearing_impaired: event.target
                 .value as SubtitlePreferences["hearing_impaired"],
             })
           }

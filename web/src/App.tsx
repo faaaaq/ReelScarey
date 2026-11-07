@@ -35,6 +35,9 @@ const DownloadActivity = lazy(() =>
 const Torrents = lazy(() =>
   import("./pages/Torrents").then((m) => ({ default: m.Torrents })),
 );
+const Usenet = lazy(() =>
+  import("./pages/Usenet").then((m) => ({ default: m.Usenet })),
+);
 const Releases = lazy(() =>
   import("./pages/Releases").then((m) => ({ default: m.Releases })),
 );
@@ -344,6 +347,7 @@ function AppShell() {
             <Route path="/releases" element={<Releases />} />
             <Route path="/activity" element={<DownloadActivity />} />
             <Route path="/torrents" element={<Torrents />} />
+            <Route path="/usenet" element={<Usenet />} />
             <Route path="/watch-activity" element={<WatchActivity />} />
             <Route path="/timeline" element={<Timeline />} />
             <Route path="/automation" element={<Automation />} />

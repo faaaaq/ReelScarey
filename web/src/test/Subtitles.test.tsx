@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
@@ -67,6 +67,30 @@ const file: SubtitleFile = {
     },
   ],
 };
+function jobFile(
+  id: number,
+  title: string,
+  state: string,
+  tracks: SubtitleFile["tracks"] = [],
+): SubtitleFile {
+  return {
+    id,
+    media_id: id + 10,
+    kind: "movie",
+    title,
+    path: `Movies/${title.replaceAll(" ", "")}/${title}.mkv`,
+    episodes: "",
+    tracks,
+    job: {
+      state,
+      mode: "automatic",
+      requested: false,
+      message: `Job ${state}.`,
+      next_run: 0,
+      updated_at: 1,
+    },
+  };
+}
 function setup(extra?: (url: string, o?: RequestInit) => Response | undefined) {
   let current = initial;
   const fetch = vi.fn(async (url: string, o?: RequestInit) => {
@@ -147,7 +171,7 @@ describe("subtitles", () => {
   it("saves original subtitle format explicitly while retaining SRT as the default", async () => {
     const fetch = setup();
     mount();
-    await screen.findByRole("button", { name: "Save subtitle preferences" });
+    await screen.findByRole("button", { name: "Save languages & tracks" });
     expect(
       screen.getByRole("combobox", { name: /Download format/ }),
     ).toHaveValue("srt");
@@ -156,7 +180,7 @@ describe("subtitles", () => {
       "original",
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Save subtitle preferences" }),
+      screen.getByRole("button", { name: "Save languages & tracks" }),
     );
     await screen.findByText("Subtitle preferences saved.");
     const call = fetch.mock.calls.find(([, o]) => o?.method === "PUT");
@@ -169,8 +193,12 @@ describe("subtitles", () => {
   it("starts with separate English full, signs and forced tracks and saves without Torznab", async () => {
     const fetch = setup();
     mount();
-    await screen.findByRole("button", { name: "Save subtitle preferences" });
-    for (const name of ["Full subtitles", "Signs / songs", "Forced"])
+    await screen.findByRole("button", { name: "Save matching rules" });
+    for (const name of [
+      "English Full subtitles",
+      "English Signs / songs",
+      "English Forced",
+    ])
       expect(screen.getByLabelText(name)).toBeChecked();
     expect(
       screen.getByLabelText("Automatically download matching subtitles"),
@@ -182,7 +210,7 @@ describe("subtitles", () => {
       screen.getByLabelText("Automatically download matching subtitles"),
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Save subtitle preferences" }),
+      screen.getByRole("button", { name: "Save matching rules" }),
     );
     await screen.findByText("Subtitle preferences saved.");
     const call = fetch.mock.calls.find(([, o]) => o?.method === "PUT");
@@ -204,16 +232,16 @@ describe("subtitles", () => {
         : undefined,
     );
     mount();
-    await screen.findByRole("button", { name: "Save subtitle preferences" });
-    await userEvent.click(screen.getByLabelText("Forced"));
+    await screen.findByRole("button", { name: "Save languages & tracks" });
+    await userEvent.click(screen.getByLabelText("English Forced"));
     await userEvent.click(
-      screen.getByRole("button", { name: "Save subtitle preferences" }),
+      screen.getByRole("button", { name: "Save languages & tracks" }),
     );
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Preferences changed; reload.",
     );
-    expect(screen.getByLabelText("Forced")).not.toBeChecked();
-    expect(screen.getByLabelText("Signs / songs")).toBeChecked();
+    expect(screen.getByLabelText("English Forced")).not.toBeChecked();
+    expect(screen.getByLabelText("English Signs / songs")).toBeChecked();
   });
   it("never fills saved secrets and sends only supplied replacements", async () => {
     const fetch = setup((url) =>
@@ -310,5 +338,77 @@ describe("subtitles", () => {
     expect(
       screen.queryByRole("button", { name: "Download subtitle" }),
     ).not.toBeInTheDocument();
+  });
+  it("orders the provider, language, matching and media sections", async () => {
+    setup();
+    mount();
+    await screen.findByRole("button", { name: "Save & test OpenSubtitles" });
+    const headings = [
+      "Provider",
+      "Languages & tracks",
+      "Automatic matching",
+      "Media files",
+    ].map((name) => screen.getByRole("heading", { level: 2, name }));
+    for (let index = 1; index < headings.length; index += 1)
+      expect(
+        headings[index - 1].compareDocumentPosition(headings[index]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    expect(screen.getByText("OpenSubtitles not connected")).toBeVisible();
+  });
+  it("labels activity states and reports a provider cooldown", async () => {
+    const files = [
+      jobFile(1, "Queued movie", "queued", [
+        {
+          language: "en",
+          variant: "full",
+          source: "downloaded",
+          path: "Movies/Queued/Queued.en.srt",
+          state: "available",
+          message: "",
+          updated_at: 1,
+        },
+      ]),
+      jobFile(2, "Downloading movie", "running"),
+      jobFile(3, "Review movie", "needs_review"),
+      jobFile(4, "Failed movie", "blocked"),
+      jobFile(5, "Done movie", "completed"),
+    ];
+    setup((url) =>
+      url.endsWith("/providers/opensubtitles")
+        ? Response.json({
+            ...provider,
+            provider: "opensubtitles",
+            configured: true,
+            username: "saved-account",
+            state: "provider_quota",
+            message: "Daily download limit reached.",
+            cooldown_until: Math.floor(Date.now() / 1000) + 3600,
+            remaining: 0,
+          })
+        : url.includes("/subtitles/files?page=")
+          ? Response.json({
+              items: files,
+              page: 1,
+              total: files.length,
+              limit: 24,
+            })
+          : undefined,
+    );
+    mount();
+    const table = await screen.findByRole("table", {
+      name: "Subtitle media files",
+    });
+    for (const label of [
+      "Queued",
+      "Downloading",
+      "Awaiting review",
+      "Failed",
+      "Done",
+    ])
+      expect(within(table).getByText(label)).toBeVisible();
+    expect(within(table).getByText("English · Full subtitles")).toBeVisible();
+    expect(screen.getByText("Provider cooldown")).toBeVisible();
+    expect(screen.getByText(/Retry after/)).toBeVisible();
   });
 });

@@ -22,7 +22,10 @@ jobs:
   # workflow builds the same Dockerfile and runs the release-candidate smoke
   # scripts, so tag pushes do not need this job.
   test:
-    runs-on: [self-hosted, linux, x64, reelscarey-ci]
+    # Pull requests can come from forks, so they never run on a self-hosted
+    # machine. Push/schedule/dispatch jobs use the configured runner label;
+    # the default stays the existing self-hosted Linux x64 runner.
+    runs-on: ${{ (github.event_name == 'pull_request' && 'ubuntu-latest') || vars.REELSCAREY_RUNNER || 'reelscarey-ci' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -60,9 +63,15 @@ jobs:
   acceptance:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     needs: test
-    runs-on: [self-hosted, linux, x64, reelscarey-ci]
+    # Only manual dispatch and the nightly schedule reach this job, so it may
+    # use a self-hosted runner. Point REELSCAREY_ACCEPTANCE_RUNNER (or
+    # REELSCAREY_RUNNER) at a second machine to stop releases queueing behind
+    # a long acceptance run.
+    runs-on: ${{ vars.REELSCAREY_ACCEPTANCE_RUNNER || vars.REELSCAREY_RUNNER || 'reelscarey-ci' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -102,7 +111,9 @@ jobs:
           REELSCAREY_LIVE_BUNDLED: '1'
       - name: Real Transmission movie and reviewed TV imports
         run: |
-          docker build -f scripts/transmission-test.Dockerfile -t reelscarey:transmission-test .
+          docker buildx build --load -f scripts/transmission-test.Dockerfile -t reelscarey:transmission-test \
+            --cache-from type=gha,scope=reelscarey-transmission \
+            --cache-to type=gha,mode=max,scope=reelscarey-transmission,ignore-error=true .
           docker run --rm reelscarey:transmission-test
       - name: Generated subtitle media and embedded track detection
         run: go test -race ./internal/subtitle -run 'TestRealSubtitle(Media|OriginalFormats|SubDLFormats)' -count=1 -v -timeout=3m
@@ -154,12 +165,26 @@ jobs:
           go test -race ./internal/transfer -run TestRealNZBGet -count=1 -v -timeout=4m
         env:
           REELSCAREY_LIVE_NZBGET: '1'
+      - name: Build the container image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          tags: reelscarey:ci
+          # The acceptance job already ran the race suite natively, so this
+          # build keeps the Dockerfile default (RUN_GO_TESTS=1) as an
+          # independent check of the image; the persistent cache only avoids
+          # re-downloading base layers and rebuilding unchanged stages.
+          cache-from: type=gha,scope=reelscarey-ci
+          cache-to: type=gha,mode=max,scope=reelscarey-ci,ignore-error=true
+          provenance: false
+          sbom: false
       - name: Build and smoke-test the container
         shell: bash
         run: |
           set -euo pipefail
           docker compose config --quiet
-          docker build -t reelscarey:ci .
           docker run -d --name reelscarey-ci --user 10001:10001 --memory=512m --cpus=1 --pids-limit=256 --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m --tmpfs /downloads:ro,nosuid,noexec,size=16m -p 127.0.0.1:8787:8787 reelscarey:ci
           trap 'docker logs reelscarey-ci; docker rm -fv reelscarey-ci' EXIT
           node scripts/container-smoke.mjs

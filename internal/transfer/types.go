@@ -92,7 +92,16 @@ type ClientConfig struct {
 	APIKey       string `json:"api_key,omitempty"`
 	// PeerPort is the BitTorrent listen port of the app-supervised built-in
 	// client. External clients manage their own listen port, so it stays 0.
-	PeerPort                int `json:"peer_port,omitempty"`
+	PeerPort int `json:"peer_port,omitempty"`
+	// The built-in Usenet client stores its NNTP provider inside the same
+	// encrypted client configuration. These fields are never returned by the
+	// API; the safe status exposes host/port/TLS/connections only.
+	NewsHost                string `json:"news_host,omitempty"`
+	NewsPort                int    `json:"news_port,omitempty"`
+	NewsTLS                 bool   `json:"news_tls,omitempty"`
+	NewsUsername            string `json:"news_username,omitempty"`
+	NewsPassword            string `json:"news_password,omitempty"`
+	NewsConnections         int    `json:"news_connections,omitempty"`
 	profileKey, kind, label string
 	profileRevision         int
 	defaultsRevision        int

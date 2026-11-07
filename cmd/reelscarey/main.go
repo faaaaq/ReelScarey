@@ -35,7 +35,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.38.8-dev"
+var version = "0.39.0-dev"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -283,6 +283,22 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			transferService.SuperviseBundled(workerCtx, logger)
 		}
 	}()
+	usenetBuiltinDone := make(chan struct{})
+	go func() {
+		defer close(usenetBuiltinDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			transferService.SuperviseBundledUsenet(workerCtx, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-usenetBuiltinDone }()
+	seedingDone := make(chan struct{})
+	go func() {
+		defer close(seedingDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			transferService.SuperviseSeeding(workerCtx, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-seedingDone }()
 	automationDone := make(chan struct{})
 	go func() {
 		defer close(automationDone)

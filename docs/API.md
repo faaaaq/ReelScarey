@@ -385,6 +385,12 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | POST | `/api/v1/torrents/actions` | `{ "hashes": [...], "action": "...", ... }`; bulk action for 1–500 torrents; 204 |
 | POST | `/api/v1/torrents/{hash}/files` | `{ "indexes": [0], "priority": 0 }`; file priorities of manual/external torrents; 204 |
 | POST | `/api/v1/torrents/speed-limits` | `{ "alt_enabled"?, "download_limit"?, "upload_limit"? }`; global limits; 204 |
+| GET/PUT | `/api/v1/usenet` | Bundled SABnzbd status + bounded queue; enable/disable with `{revision, enabled}` |
+| GET/PUT | `/api/v1/usenet/news` | Safe news-server status; save encrypted host/port/TLS/username/password/connections |
+| POST | `/api/v1/usenet/news/test` | `{}` or submitted host/port; short TCP reachability check only |
+| GET/POST | `/api/v1/usenet/queue` | Queue list, or a raw `.nzb` body (`application/x-nzb`, ≤4 MiB) |
+| POST | `/api/v1/usenet/queue/actions` | `{ "ids": [...], "action": "pause\|resume\|delete", "reviewed", "delete_files" }`; 204 |
+| POST | `/api/v1/usenet/speed-limits` | `{ "download_limit": 0 }`; absolute bytes/s or 0 for no limit; 204 |
 | GET | `/api/v1/library/series/{id}/seasons/{number}/releases?episode=1&query=title` | Search TV category 5000 for one missing episode; omit episode for selected missing episodes in a monitored season |
 | POST | `/api/v1/downloads/{id}/mapping` | Confirm a TV job's completed file/episode mapping and explicit skips |
 | GET/PUT | `/api/v1/automation` | Saved interval schedule, revision, next run, safe integration presence and state |
@@ -825,6 +831,14 @@ Credentials are never returned. Save/test have bounded connection timeouts.
   connection; see [Download clients](DOWNLOAD_CLIENTS.md) for the writable
   download folder and peer-port requirements.
 
+The bundled Usenet client is a `builtin:true` row with the fixed id
+`6f1c2b3a4d5e4f60718293a4b5c6d7e8` and kind `sabnzbd`. It starts paused and only
+appears after a news server is saved. It is selectable as the Usenet default and
+is managed by the `/api/v1/usenet` routes above; generic save/delete endpoints
+refuse it. Enabling it never changes the Usenet default automatically, and
+existing jobs keep their bound client. See
+[Usenet](USENET.md#bundled-sabnzbd).
+
 Download rows additionally expose client_key, client_kind and client_label.
 Each new job stores its original remote root and local folder privately. See
 [Download clients](DOWNLOAD_CLIENTS.md) for mounting and Usenet category setup.
@@ -1048,3 +1062,112 @@ qBittorrent has not loaded the metadata yet or a file no longer exists.
 alternative mode is toggled only when it differs from `alt_enabled`; the limits
 (bytes/s, 0 = unlimited, ≤2000000000) then apply to whichever mode is active
 afterwards, as qBittorrent's own global limit endpoints do.
+
+`GET /api/v1/torrents/share-policy` returns the saved automatic seeding limit:
+
+```json
+{ "enabled": false, "action": "pause|remove|remove_and_delete",
+  "max_ratio": 2.0, "max_seeding_minutes": 0,
+  "include_reelscarey": false, "revision": 1, "updated_at": 1700000000 }
+```
+
+`max_ratio` accepts 0 (disabled) or 0.1–1000; `max_seeding_minutes` accepts
+0 (disabled) or 0–525600; an enabled policy needs at least one rule.
+`updated_at` is a Unix timestamp. `PUT` with the same shape (CSRF and
+same-origin required) replaces the policy and returns the saved row; `revision`
+must match or the call returns `409 revision_conflict`. Invalid actions, bounds
+or an enabled policy without a rule return `400 invalid_selection`.
+
+`POST /api/v1/torrents/share-policy/run` evaluates the saved policy once and
+returns `{ "checked": 0, "acted": 0 }`. `checked` counts completed torrents
+evaluated against the rules; `acted` counts applied actions. A disabled policy
+returns zeros. When the policy is enabled but the built-in client is not
+configured or enabled, the call returns `409 builtin_unavailable`. The
+supervised pass that runs at most once a minute never reports that as an error.
+See [Torrents](TORRENTS.md#automatic-seeding-limit) for the safety rules,
+including the job-torrent skip and the no-delete guarantee.
+
+## Usenet page API (bundled SABnzbd)
+
+All `/api/v1/usenet` routes are administrator-only; request accounts receive
+`403 administrator_required`. Every write requires CSRF and same-origin
+validation. They manage only the application-supervised SABnzbd daemon: the API
+key and NNTP password are never returned and completed output is never deleted
+by these routes. External SABnzbd/NZBGet connections keep their own job-level
+controls. See [Usenet](USENET.md#bundled-sabnzbd) for setup and limits.
+
+`GET /api/v1/usenet` returns `{status, queue}`:
+
+```json
+{
+  "status": { "present": true, "installed": true, "enabled": true,
+    "configured": true, "state": "running|starting|stopped|failed",
+    "message": "", "revision": 3, "active_jobs": 0, "name": "Built-in SABnzbd",
+    "host": "news.example.com", "username": "fixture", "port": 563,
+    "tls": true, "connections": 8 },
+  "queue": { "available": true, "state": "Downloading", "message": "",
+    "paused": false, "speed": 0, "remaining": 0, "eta": "0:10:00",
+    "limit_bytes": 0, "limit_percent": 100,
+    "items": [{ "id": "SABnzbd_nzo_x", "name": "", "size": 0,
+      "remaining": 0, "progress": 0.25, "status": "Downloading",
+      "speed": 0, "eta": "0:05:00", "category": "reelscarey",
+      "priority": "Normal" }] }
+}
+```
+
+`present` means a paused or enabled `builtin_usenet` row exists; `installed`
+means the binary is present; `configured` means a valid news server is saved;
+`state` is the supervised process state. `queue.available` is false with an
+honest message when the daemon is disabled, unconfigured, not installed or not
+answering; that case is still `200`, not an error. `queue.items` is bounded to
+1,000 jobs. SABnzbd downloads one job at a time, so only the active item carries
+a non-zero `speed`. Progress is a 0–1 fraction; sizes are bytes.
+
+`PUT /api/v1/usenet` with `{ "revision": 3, "enabled": true|false }` starts or
+stops the daemon. Enabling requires a saved news server and waits for its
+loopback API before returning; disabling refuses while tracked jobs are active
+(`409 active_downloads`) and clears this client's Usenet default. A stale
+revision returns `409 revision_conflict`. The response is the status object.
+Turning it on never makes it the Usenet default; use
+`PUT /api/v1/download-clients/defaults`.
+
+`GET /api/v1/usenet/news` returns
+`{configured, host, username, port, tls, connections}` (no password).
+`PUT /api/v1/usenet/news` accepts
+`{host, port, tls, username, password?, connections}`. Host/port/connections are
+validated; password is omitted to retain the saved value and is required again
+when the host or username changes. Saving creates the paused `builtin_usenet`
+row on first use and does not contact the provider. The response is the status
+object.
+
+`POST /api/v1/usenet/news/test` with `{}` tests the saved provider, or with
+`{host, port, ...}` tests submitted values. It is a short TCP reachability check
+only; a missing server returns `502 upstream_unavailable`, never a crash.
+
+`GET /api/v1/usenet/queue` returns the queue object alone.
+
+`POST /api/v1/usenet/queue` requires `Content-Type: application/x-nzb` and an
+NZB body ≤4 MiB; it returns `202 {"added":true,"id":"SABnzbd_nzo_..."}`. The
+server never fetches a caller-supplied URL, uses category `reelscarey`, and
+does not link the upload to a library job or import it. Invalid descriptors
+return `400 unsupported_nzb`.
+
+`POST /api/v1/usenet/queue/actions` (body ≤128 KiB, 204 on success):
+
+```json
+{ "ids": ["SABnzbd_nzo_x"], "action": "pause|resume|delete",
+  "delete_files": false, "reviewed": true }
+```
+
+`ids` contains 1–500 SABnzbd ids (deduplicated). Delete requires
+`reviewed:true` (else `400 review_required`) and sends SABnzbd's `del_files=1`
+when requested. A job still tracked by an unfinished ReelScarey download is
+refused with `409 active_downloads`; use Activity to stop that download.
+Disabled/unconfigured clients return `409 builtin_unavailable` or
+`409 client_not_configured`.
+
+`POST /api/v1/usenet/speed-limits` with `{ "download_limit": 0 }` sets an
+absolute SABnzbd limit in bytes per second for the running daemon; `0` removes
+it. Non-zero values must be 1024–2000000000 (SABnzbd reads bare 1–100 as a
+percentage, so ReelScarey rejects that ambiguous range). SABnzbd's own saved
+percentage is not changed and applies again after a restart. Returns 204.

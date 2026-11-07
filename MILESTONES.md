@@ -379,3 +379,12 @@ See [announce feeds](docs/ANNOUNCE.md).
 - [x] Library page=all (max 5000) and "The "-insensitive alphabetical order.
 - [x] A-Z jump bar, no pagination, WIP overlays, nav/Automation cleanup.
 - [x] Failed-before label on manual searches and persisted library filters.
+
+## Version 0.39.0 bundled Usenet, seeding limits and subtitle redesign
+
+- [x] Supervised opt-in SABnzbd with encrypted news server, queue page,
+  reviewed deletion and NZB upload; registered as a Usenet client.
+- [x] Seeding policy: pause/remove/remove-and-delete at ratio or seeding time;
+  job torrent files protected; supervised 60-second enforcement.
+- [x] Subtitles page rebuilt (provider, languages/tracks, matching, activity).
+- [x] BuildKit cache, RUN_GO_TESTS switch and configurable self-hosted runners.
