@@ -57,9 +57,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     >
       <Theme
         appearance={mode}
-        accentColor="green"
-        grayColor="slate"
+        accentColor="blue"
+        grayColor="gray"
         radius="small"
+        panelBackground="solid"
       >
         {children}
       </Theme>

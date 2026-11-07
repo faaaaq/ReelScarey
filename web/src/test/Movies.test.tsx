@@ -306,7 +306,8 @@ describe("authentication and movies", () => {
     );
     mount();
     await screen.findByRole("heading", { name: "My library" });
-    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Account:/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Sign in" })).toBeVisible(),
     );

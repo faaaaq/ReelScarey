@@ -1,39 +1,22 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import {
-  Activity,
-  ArrowDownToLine,
-  Captions,
-  Clapperboard,
-  Film as BrandIcon,
-  Clock3,
-  CalendarDays,
-  ListFilter,
-  Film,
-  LayoutDashboard,
-  LogOut,
-  Menu,
-  MonitorPlay,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Radio,
-  Search,
-  Settings2,
-  X,
-} from "lucide-react";
+import { Button, DropdownMenu } from "@radix-ui/themes";
+import { ChevronDown, LogOut, Menu, User, X } from "lucide-react";
 import {
   Link,
-  NavLink,
   Navigate,
+  NavLink,
   Route,
   Routes,
   useLocation,
 } from "react-router-dom";
-import { PageHeading } from "./components";
-import { CommandPalette } from "./components/CommandPalette";
+import { GlobalSearch } from "./components/GlobalSearch";
 import { PageLoadBoundary } from "./components/PageLoadBoundary";
 import { HistoryTray } from "./components/HistoryTray";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { AuthGate, useAuth } from "./auth";
+import { childActive, navigation, pageTitle, type Place } from "./navigation";
+import { Alert, EmptyState, LoadingIndicator, PageBody } from "./ui";
+
 const Dashboard = lazy(() =>
   import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })),
 );
@@ -127,45 +110,11 @@ const Timeline = lazy(() =>
   import("./pages/Timeline").then((m) => ({ default: m.Timeline })),
 );
 
-const libraryNavigation = [
-  { path: "/", name: "Dashboard", icon: LayoutDashboard },
-  { path: "/movies", name: "Movies", icon: Film },
-  { path: "/series", name: "TV shows", icon: MonitorPlay },
-  { path: "/anime", name: "Anime", icon: Clapperboard },
-  { path: "/youtube", name: "YouTube", icon: MonitorPlay },
-];
-
-const browseNavigation = [
-  { path: "/search", name: "Search", icon: Search },
-  { path: "/wanted", name: "Wanted", icon: ListFilter },
-  { path: "/calendar", name: "Calendar", icon: CalendarDays },
-  { path: "/activity", name: "Activity", icon: Activity },
-];
-
-const toolsNavigation = [
-  { path: "/torrents", name: "Torrents", icon: ArrowDownToLine },
-  { path: "/automation", name: "Automation", icon: Clock3 },
-  { path: "/subtitles", name: "Subtitles", icon: Captions },
-  { path: "/announces", name: "Announces", icon: Radio },
-];
-
-const allNavigation = [
-  ...libraryNavigation,
-  ...browseNavigation,
-  ...toolsNavigation,
-];
-
 export default function App() {
   return (
     <AuthGate>
       <PageLoadBoundary>
-        <Suspense
-          fallback={
-            <div role="status" className="panel">
-              Loading…
-            </div>
-          }
-        >
+        <Suspense fallback={<LoadingIndicator />}>
           <RoleApp />
         </Suspense>
       </PageLoadBoundary>
@@ -178,75 +127,115 @@ function RoleApp() {
   return session.role === "requester" ? <RequesterHome /> : <AppShell />;
 }
 
-function AppShell() {
+function AccountMenu({ onError }: { onError: (message: string) => void }) {
   const { session, signOut } = useAuth();
-  const [signOutError, setSignOutError] = useState("");
   const [signingOut, setSigningOut] = useState(false);
   async function logout() {
     setSigningOut(true);
-    setSignOutError("");
+    onError("");
     try {
       await signOut();
     } catch {
-      setSignOutError("Could not sign out. Try again.");
+      onError("Could not sign out. Try again.");
     } finally {
       setSigningOut(false);
     }
   }
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger>
+        <button
+          type="button"
+          className="rs-account-button"
+          aria-label={`Account: ${session.username}`}
+        >
+          <User size={18} aria-hidden="true" />
+          <span className="rs-account-name">{session.username}</span>
+          <ChevronDown size={14} aria-hidden="true" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="end">
+        <DropdownMenu.Label>Signed in as {session.username}</DropdownMenu.Label>
+        <DropdownMenu.Separator />
+        <DropdownMenu.Item disabled={signingOut} onSelect={() => void logout()}>
+          <LogOut size={15} aria-hidden="true" />
+          {signingOut ? "Signing out…" : "Sign out"}
+        </DropdownMenu.Item>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  );
+}
+
+function Sidebar({ place, open }: { place: Place; open: boolean }) {
+  return (
+    <aside
+      className={`rs-sidebar ${open ? "is-open" : ""}`}
+      id="main-navigation"
+    >
+      <nav className="rs-nav" aria-label="Main navigation">
+        {navigation.map((item) => {
+          const active = item.match(place);
+          const Icon = item.icon;
+          return (
+            <div
+              key={item.to}
+              className={`rs-nav-item ${active ? "is-active" : ""}`}
+            >
+              <Link
+                className="rs-nav-link"
+                to={item.to}
+                aria-current={
+                  active && place.pathname === item.to ? "page" : undefined
+                }
+              >
+                <Icon aria-hidden="true" />
+                <span>{item.label}</span>
+              </Link>
+              {active && item.children && (
+                <div className="rs-nav-children">
+                  {item.children.map((child) => {
+                    const current = childActive(child, place);
+                    return (
+                      <NavLink
+                        key={child.to}
+                        to={child.to}
+                        end
+                        className={() =>
+                          `rs-nav-child ${current ? "active" : ""}`
+                        }
+                        aria-current={current ? "page" : undefined}
+                      >
+                        {child.label}
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </nav>
+    </aside>
+  );
+}
+
+function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return window.localStorage.getItem("reelscarey-sidebar") === "collapsed";
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        "reelscarey-sidebar",
-        collapsed ? "collapsed" : "expanded",
-      );
-    } catch {
-      /* Keep the current sidebar state for this session. */
-    }
-  }, [collapsed]);
+  const [accountError, setAccountError] = useState("");
   const location = useLocation();
+  const place = { pathname: location.pathname, search: location.search };
   const previousPath = useRef(location.pathname);
   const menuButton = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     setMenuOpen(false);
-    const titles: Record<string, string> = {
-      "/backups": "Backups",
-      "/organization": "Organize library",
-      "/setup": "Setup",
-      "/system": "System checks",
-      "/import": "Import library",
-      "/indexers": "Indexers",
-      "/settings": "Settings",
-      "/releases": "Releases",
-      "/requests": "Requests",
-      "/metadata-refresh": "Metadata refresh",
-      "/storage": "Storage",
-      "/download-clients": "Download clients",
-      "/announces": "Announce feeds",
-      "/timeline": "Event timeline",
-      "/youtube/subscriptions": "YouTube subscriptions",
-    };
-    const title =
-      titles[location.pathname] ??
-      allNavigation.find((item) => item.path === location.pathname)?.name ??
-      (/^\/series\/[^/]+$/.test(location.pathname)
-        ? "TV show"
-        : /^\/movies\/[^/]+$/.test(location.pathname)
-          ? "Movie details"
-          : "Page not found");
-    document.title = `${title} · ReelScarey`;
+    document.title = `${pageTitle(location.pathname)} · ReelScarey`;
     if (previousPath.current !== location.pathname) {
       document.getElementById("main-content")?.focus({ preventScroll: true });
       previousPath.current = location.pathname;
     }
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
+
   useEffect(() => {
     function close(event: KeyboardEvent) {
       if (event.key === "Escape" && menuOpen) {
@@ -263,115 +252,54 @@ function AppShell() {
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [menuOpen]);
+
   return (
-    <div className={`app-shell ${collapsed ? "is-collapsed" : ""}`}>
+    <div className="rs-app">
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
-      <header className="mobile-bar">
-        <Link to="/" className="wordmark">
-          <BrandIcon size={21} />
-          ReelScarey
-        </Link>
-        <div className="mobile-actions">
-          <ThemeToggle />
+      <header className="rs-header">
+        <div className="rs-header-logo">
           <button
             ref={menuButton}
+            type="button"
+            className="rs-header-button rs-menu-toggle"
             aria-label={menuOpen ? "Close navigation" : "Open navigation"}
             aria-expanded={menuOpen}
             aria-controls="main-navigation"
             onClick={() => setMenuOpen(!menuOpen)}
           >
-            {menuOpen ? <X /> : <Menu />}
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
+          <Link to="/" className="rs-logo" aria-label="ReelScarey dashboard">
+            <span className="rs-logo-mark">
+              <ReelMark />
+            </span>
+            <span className="rs-logo-text">ReelScarey</span>
+          </Link>
+        </div>
+        <GlobalSearch />
+        <div className="rs-header-actions">
+          <HistoryTray />
+          <ThemeToggle />
+          <AccountMenu onError={setAccountError} />
         </div>
       </header>
-      <aside
-        className={`sidebar ${menuOpen ? "is-open" : ""}`}
-        id="main-navigation"
-      >
-        <div className="sidebar-brand">
-          <Link to="/" className="brand" aria-label="ReelScarey dashboard">
-            <span className="brand-mark">
-              <BrandIcon size={21} />
-            </span>
-            <div className="wordmark">ReelScarey</div>
-          </Link>
-          <button
-            type="button"
-            className="sidebar-toggle"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            onClick={() => setCollapsed(!collapsed)}
-          >
-            {collapsed ? (
-              <PanelLeftOpen size={16} />
-            ) : (
-              <PanelLeftClose size={16} />
-            )}
-          </button>
-        </div>
-        <p className="nav-label">Library</p>
-        <nav aria-label="Main navigation">
-          {libraryNavigation.map(({ path, name, icon: Icon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              end={path === "/"}
-              aria-label={name}
-              title={name}
-            >
-              <Icon size={18} strokeWidth={1.7} />
-              <span>{name}</span>
-            </NavLink>
-          ))}
-          <p className="nav-label">Browse</p>
-          {browseNavigation.map(({ path, name, icon: Icon }) => (
-            <NavLink key={path} to={path} aria-label={name} title={name}>
-              <Icon size={18} strokeWidth={1.7} />
-              <span>{name}</span>
-            </NavLink>
-          ))}
-          <p className="nav-label">Tools</p>
-          {toolsNavigation.map(({ path, name, icon: Icon }) => (
-            <NavLink key={path} to={path} aria-label={name} title={name}>
-              <Icon size={18} strokeWidth={1.7} />
-              <span>{name}</span>
-            </NavLink>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <nav aria-label="Administration">
-            <NavLink to="/settings" aria-label="Settings" title="Settings">
-              <Settings2 size={18} strokeWidth={1.7} />
-              <span>Settings</span>
-            </NavLink>
-          </nav>
-          <div className="account-control">
-            <span>{session.username}</span>
-            <button
-              aria-label={signingOut ? "Signing out" : "Sign out"}
-              title={signingOut ? "Signing out" : "Sign out"}
-              onClick={() => void logout()}
-              disabled={signingOut}
-            >
-              <LogOut size={15} />
-              <span>{signingOut ? "Signing out…" : "Sign out"}</span>
-            </button>
-            {signOutError && <p role="alert">{signOutError}</p>}
-          </div>
-        </div>
-      </aside>
-      <main id="main-content" tabIndex={-1}>
-        <div className="topbar">
-          <CommandPalette />
-          <div className="topbar-spacer" />
-          <div className="topbar-actions">
-            <ThemeToggle />
-            <HistoryTray />
-          </div>
-        </div>
-        <div className="page-content">
+      <Sidebar place={place} open={menuOpen} />
+      <button
+        type="button"
+        className={`rs-sidebar-backdrop ${menuOpen ? "is-open" : ""}`}
+        aria-hidden="true"
+        tabIndex={-1}
+        onClick={() => setMenuOpen(false)}
+      />
+      <main id="main-content" className="rs-main" tabIndex={-1}>
+        {accountError && (
+          <PageBody>
+            <Alert kind="danger">{accountError}</Alert>
+          </PageBody>
+        )}
+        <Suspense fallback={<LoadingIndicator />}>
           <Routes>
             <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="/" element={<Dashboard />} />
@@ -393,6 +321,7 @@ function AppShell() {
               element={<Library key="anime" kind="anime" />}
             />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/settings/:section" element={<Settings />} />
             <Route path="/requests" element={<AdminRequests />} />
             <Route path="/organization" element={<Organization />} />
             <Route path="/indexers" element={<Indexers />} />
@@ -422,17 +351,43 @@ function AppShell() {
             <Route
               path="*"
               element={
-                <>
-                  <PageHeading title="Page not found" />
-                  <Link to="/" className="text-link">
-                    Back to dashboard
-                  </Link>
-                </>
+                <PageBody>
+                  <EmptyState
+                    title="Page not found"
+                    actions={
+                      <Button asChild variant="soft">
+                        <Link to="/">Back to dashboard</Link>
+                      </Button>
+                    }
+                  >
+                    This address does not match a page in ReelScarey.
+                  </EmptyState>
+                </PageBody>
               }
             />
           </Routes>
-        </div>
+        </Suspense>
       </main>
     </div>
+  );
+}
+
+function ReelMark() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <circle
+        cx="12"
+        cy="12"
+        r="9.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <circle cx="12" cy="7.2" r="2" fill="currentColor" />
+      <circle cx="12" cy="16.8" r="2" fill="currentColor" />
+      <circle cx="7.2" cy="12" r="2" fill="currentColor" />
+      <circle cx="16.8" cy="12" r="2" fill="currentColor" />
+      <circle cx="12" cy="12" r="1" fill="currentColor" />
+    </svg>
   );
 }

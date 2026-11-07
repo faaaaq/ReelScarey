@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import { Theme } from "@radix-ui/themes";
 import { expect, it, vi } from "vitest";
 import App from "../App";
 vi.mock("../auth", () => ({
@@ -27,9 +28,11 @@ it.each([
   "names the existing %s page for browser and assistive technology",
   async (path, title) => {
     render(
-      <MemoryRouter initialEntries={[path]}>
-        <App />
-      </MemoryRouter>,
+      <Theme>
+        <MemoryRouter initialEntries={[path]}>
+          <App />
+        </MemoryRouter>
+      </Theme>,
     );
     await screen.findByRole("heading", { name: title });
     await waitFor(() => expect(document.title).toBe(`${title} · ReelScarey`));
@@ -38,9 +41,11 @@ it.each([
 it("returns keyboard focus when navigation closes and focuses content after a route change", async () => {
   const user = userEvent.setup();
   render(
-    <MemoryRouter initialEntries={["/storage"]}>
-      <App />
-    </MemoryRouter>,
+    <Theme>
+      <MemoryRouter initialEntries={["/storage"]}>
+        <App />
+      </MemoryRouter>
+    </Theme>,
   );
   await screen.findByRole("heading", { name: "Storage" });
   const toggle = screen.getByRole("button", { name: "Open navigation" });

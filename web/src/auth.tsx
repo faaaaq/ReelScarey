@@ -71,13 +71,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, []);
   if (loading || error)
     return (
-      <div className="auth-shell">
-        <div className="panel auth-card">
-          <RequestState
-            loading={loading}
-            error={error}
-            retry={() => setAttempt((n) => n + 1)}
-          />
+      <div className="rs-auth">
+        <div className="rs-auth-card">
+          <div className="rs-auth-body">
+            <RequestState
+              loading={loading}
+              error={error}
+              retry={() => setAttempt((n) => n + 1)}
+            />
+          </div>
         </div>
       </div>
     );
@@ -148,19 +150,19 @@ function AuthForm({
     }
   }
   return (
-    <div className="auth-shell">
-      <section className="panel auth-card">
-        <div className="auth-brand">
-          <span className="brand-mark">
-            <Film size={23} />
+    <div className="rs-auth">
+      <section className="rs-auth-card">
+        <div className="rs-auth-head">
+          <span className="rs-logo-mark">
+            <Film size={18} />
           </span>
-          <span className="wordmark">ReelScarey</span>
+          <span>ReelScarey</span>
         </div>
-        <h1>{setup ? "Create administrator" : "Sign in"}</h1>
-        <form onSubmit={submit}>
-          <fieldset disabled={pending}>
+        <form onSubmit={submit} className="rs-auth-body">
+          <h1>{setup ? "Create administrator" : "Sign in"}</h1>
+          <fieldset disabled={pending} className="rs-stack">
             {setup && (
-              <>
+              <div className="rs-auth-field">
                 <label htmlFor="setup-code">Setup code</label>
                 <TextField.Root
                   id="setup-code"
@@ -174,69 +176,70 @@ function AuthForm({
                   maxLength={128}
                   aria-describedby="setup-code-help"
                   autoComplete="off"
-                  size="3"
+                  size="2"
                 >
                   <TextField.Slot>
                     <KeyRound size={16} />
                   </TextField.Slot>
                 </TextField.Root>
-                <p className="field-help" id="setup-code-help">
+                <p className="rs-form-help" id="setup-code-help">
                   Copy all 43 characters from the one-time{" "}
                   <code>setup-token</code> file in your config folder. This
                   confirms you own this installation.
                 </p>
-                <details className="setup-help">
+                <details className="rs-small">
                   <summary>Using Docker?</summary>
-                  <p>Run this on the server and enter the code above:</p>
+                  <p className="rs-muted" style={{ margin: "6px 0" }}>
+                    Run this on the server and enter the code above:
+                  </p>
                   <code>
                     docker compose exec reelscarey reelscarey setup-token
                   </code>
                 </details>
-              </>
+              </div>
             )}
-            <label htmlFor="auth-username">Username</label>
-            <TextField.Root
-              id="auth-username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              minLength={setup ? 3 : 1}
-              maxLength={40}
-              pattern={setup ? "[A-Za-z0-9_\\-]+" : undefined}
-              autoComplete="username"
-              autoCapitalize="none"
-              spellCheck={false}
-              size="3"
-            />
-            <label htmlFor="auth-password">Password</label>
-            <TextField.Root
-              id="auth-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={setup ? 12 : 1}
-              maxLength={256}
-              autoComplete={setup ? "new-password" : "current-password"}
-              size="3"
-            />
-            {setup && (
-              <p className="field-help">
-                At least 12 characters. Use a unique password.
-              </p>
-            )}
+            <div className="rs-auth-field">
+              <label htmlFor="auth-username">Username</label>
+              <TextField.Root
+                id="auth-username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                minLength={setup ? 3 : 1}
+                maxLength={40}
+                pattern={setup ? "[A-Za-z0-9_\\-]+" : undefined}
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                size="2"
+              />
+            </div>
+            <div className="rs-auth-field">
+              <label htmlFor="auth-password">Password</label>
+              <TextField.Root
+                id="auth-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={setup ? 12 : 1}
+                maxLength={256}
+                autoComplete={setup ? "new-password" : "current-password"}
+                size="2"
+              />
+              {setup && (
+                <p className="rs-form-help">
+                  At least 12 characters. Use a unique password.
+                </p>
+              )}
+            </div>
           </fieldset>
           {error && (
-            <p className="form-error" role="alert">
+            <p className="rs-form-error" role="alert">
               {error}
             </p>
           )}
-          <Button
-            size="3"
-            type="submit"
-            disabled={pending}
-            className="auth-submit"
-          >
+          <Button size="2" type="submit" disabled={pending}>
             {setup ? <ShieldCheck size={18} /> : <LogIn size={18} />}
             {pending
               ? "Please wait…"

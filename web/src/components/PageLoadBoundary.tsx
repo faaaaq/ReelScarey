@@ -13,10 +13,14 @@ export class PageLoadBoundary extends Component<
   render() {
     if (this.state.failed) {
       return (
-        <section className="panel system-panel" role="alert">
+        <section className="rs-empty" role="alert">
           <h1>This page could not be loaded</h1>
           <p>Reload to get the current application and try again.</p>
-          <button onClick={() => window.location.reload()}>
+          <button
+            type="button"
+            className="rs-link-button"
+            onClick={() => window.location.reload()}
+          >
             Reload application
           </button>
         </section>

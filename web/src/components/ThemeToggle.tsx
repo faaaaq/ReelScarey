@@ -7,15 +7,15 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="icon-button"
+      className="rs-header-button"
       aria-label={`Switch to ${next} theme`}
       title={`Switch to ${next} theme`}
       onClick={toggle}
     >
       {mode === "dark" ? (
-        <Sun size={16} aria-hidden="true" />
+        <Sun size={19} aria-hidden="true" />
       ) : (
-        <Moon size={16} aria-hidden="true" />
+        <Moon size={19} aria-hidden="true" />
       )}
     </button>
   );

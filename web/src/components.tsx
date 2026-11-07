@@ -1,12 +1,15 @@
-import { Badge, Button, Spinner } from "@radix-ui/themes";
-import { AlertCircle, ArrowRight, type LucideIcon } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Button } from "@radix-ui/themes";
+import { AlertCircle } from "lucide-react";
 import type { ReactNode } from "react";
+import { LoadingIndicator } from "./ui";
 
+/**
+ * Page title row. `eyebrow` is accepted for compatibility but intentionally
+ * not rendered: decorative page labels are not part of the design.
+ */
 export function PageHeading({
   title,
   description,
-  eyebrow,
   children,
 }: {
   title: string;
@@ -15,9 +18,8 @@ export function PageHeading({
   children?: ReactNode;
 }) {
   return (
-    <header className="page-heading flex flex-wrap items-end justify-between gap-4">
+    <header className="page-heading">
       <div className="page-heading-copy">
-        {eyebrow && <p className="page-eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
         {description && <p className="page-description">{description}</p>}
       </div>
@@ -35,57 +37,21 @@ export function RequestState({
   error: string;
   retry: () => void;
 }) {
-  if (loading)
-    return (
-      <div className="request-state" role="status">
-        <Spinner /> Loading your library…
-      </div>
-    );
+  if (loading) return <LoadingIndicator label="Loading…" />;
   if (error)
     return (
-      <div className="error-box" role="alert">
-        <AlertCircle size={20} />
-        <div>
-          <strong>Could not load this page</strong>
+      <div className="rs-alert is-danger" role="alert">
+        <AlertCircle size={18} aria-hidden="true" />
+        <div className="rs-alert-content">
+          <span className="rs-alert-title">Could not load this page</span>
           <p>{error}</p>
-          <Button variant="soft" onClick={retry}>
-            Try again
-          </Button>
+          <div>
+            <Button size="1" variant="soft" color="gray" onClick={retry}>
+              Try again
+            </Button>
+          </div>
         </div>
       </div>
     );
   return null;
-}
-
-export function FuturePage({
-  icon: Icon,
-  title,
-  description,
-  phase,
-  children,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-  phase: string;
-  children?: ReactNode;
-}) {
-  return (
-    <section className="empty-state panel">
-      <span className="empty-icon">
-        <Icon size={32} strokeWidth={1.4} aria-hidden="true" />
-      </span>
-      <Badge color="gray" variant="soft">
-        {phase}
-      </Badge>
-      <h2>{title}</h2>
-      <p>{description}</p>
-      {children}
-      <Button asChild variant="soft">
-        <Link to="/settings">
-          View library settings <ArrowRight size={16} />
-        </Link>
-      </Button>
-    </section>
-  );
 }
