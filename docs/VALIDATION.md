@@ -2132,3 +2132,8 @@ Run locally on Windows (development tools only; Docker remains the target):
   reads the live revision and finds the named client by id; the tag was
   re-pointed to the fix and the publish re-run. Nothing was pushed by the
   failed attempt (it verifies before pushing).
+- Published: the first two tag runs failed in the backup container smoke (a
+  hardcoded preference revision, then a GET with no route). The script now
+  reads the revision from the client list. The tag was re-pointed and the
+  final run passed, including the release-candidate startup, backup restore
+  and storage recovery verification.
