@@ -1,29 +1,90 @@
-import { Button } from "@radix-ui/themes";
-import { ArrowUpRight, Clapperboard, Film, Plus, Tv } from "lucide-react";
+import { Fragment } from "react";
+import { FolderInput, Plus, RefreshCw, Tv } from "lucide-react";
 import { Link } from "react-router-dom";
 import { type Dashboard as DashboardData, type System } from "../api";
 import { PageHeading, RequestState } from "../components";
+import {
+  DescriptionItem,
+  DescriptionList,
+  Label,
+  PageBody,
+  PageToolbar,
+  Panel,
+  Table,
+  ToolbarButton,
+  ToolbarSection,
+  ToolbarSeparator,
+  episodeCode,
+  type Kind,
+} from "../ui";
 import { useResource } from "../useResource";
 import type { PlanningData, PlanningEntry } from "./Planning";
+import "./Dashboard.css";
 
-function CatalogLine({ item }: { item: PlanningEntry }) {
+function PlanningTable({
+  label,
+  items,
+}: {
+  label: string;
+  items: PlanningEntry[];
+}) {
   return (
-    <li className="ui-list-row">
-      <Link
-        to={`/${item.kind === "movie" ? "movies" : "series"}/${item.media_id}`}
-      >
-        <strong>{item.title}</strong>
-        <span>
-          {item.kind === "series"
-            ? `S${String(item.season).padStart(2, "0")}E${String(item.episode).padStart(2, "0")} · `
-            : ""}
-          {item.episode_title || item.year || "Year unknown"}
-        </span>
-      </Link>
-      <time>{item.date}</time>
-    </li>
+    <Table label={label}>
+      <thead>
+        <tr>
+          <th scope="col">Title</th>
+          <th scope="col">Episode</th>
+          <th scope="col" className="is-numeric">
+            Date
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((item) => (
+          <tr key={`${item.media_id}-${item.episode_id}`}>
+            <th scope="row">
+              <Link
+                to={`/${item.kind === "movie" ? "movies" : "series"}/${item.media_id}`}
+              >
+                {item.title}
+              </Link>
+            </th>
+            <td className="dash-episode">
+              {item.kind === "series" &&
+              item.season !== null &&
+              item.episode !== null
+                ? `${episodeCode(item.season, item.episode)} · ${item.episode_title || "Untitled"}`
+                : item.year || "Movie"}
+            </td>
+            <td className="is-numeric">{item.date || "—"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </Table>
   );
 }
+
+const wantedCounts: { key: string; label: string; to: string; kind: Kind }[] = [
+  { key: "missing", label: "Missing", to: "/wanted", kind: "danger" },
+  {
+    key: "downloading",
+    label: "In progress",
+    to: "/wanted?status=downloading",
+    kind: "primary",
+  },
+  {
+    key: "attention",
+    label: "Needs attention",
+    to: "/wanted?status=attention",
+    kind: "warning",
+  },
+];
+
+const pathNames: Record<string, string> = {
+  config: "Configuration",
+  media: "Media library",
+  downloads: "Downloads",
+};
 
 export function Dashboard() {
   const dashboard = useResource<DashboardData>("/dashboard");
@@ -32,173 +93,147 @@ export function Dashboard() {
   const upcoming = useResource<PlanningData>("/calendar?status=upcoming");
   const error = dashboard.error || system.error;
   const loading = dashboard.loading || system.loading;
+  function reload() {
+    dashboard.reload();
+    system.reload();
+    wanted.reload();
+    upcoming.reload();
+  }
+  const counts = dashboard.data?.counts;
+  const summary = counts
+    ? [
+        {
+          to: "/movies",
+          text: `${counts.movies} ${counts.movies === 1 ? "movie" : "movies"}`,
+        },
+        {
+          to: "/series",
+          text: `${counts.series} ${counts.series === 1 ? "TV show" : "TV shows"}`,
+        },
+        { to: "/anime", text: `${counts.anime ?? 0} anime` },
+      ]
+    : [];
   return (
     <>
-      <PageHeading
-        eyebrow="Overview"
-        title={dashboard.data?.library_name ?? "Library"}
-      >
-        <Button asChild size="2">
-          <Link to="/search">
-            <Plus size={16} />
-            Add a title
-          </Link>
-        </Button>
-      </PageHeading>
-      <RequestState
-        loading={loading}
-        error={error}
-        retry={() => {
-          dashboard.reload();
-          system.reload();
-        }}
-      />
-      {!loading && !error && dashboard.data && system.data && (
-        <div className="ui-stack">
-          <section className="ui-stat-grid" aria-label="Catalog totals">
-            <Link className="ui-stat" to="/movies">
-              <span className="ui-stat-top">
-                <Film size={15} aria-hidden="true" /> Movies
-              </span>
-              <strong>{dashboard.data.counts.movies}</strong>
-              <span>In catalog</span>
-            </Link>
-            <Link className="ui-stat" to="/series">
-              <span className="ui-stat-top">
-                <Tv size={15} aria-hidden="true" /> TV shows
-              </span>
-              <strong>{dashboard.data.counts.series}</strong>
-              <span>In catalog</span>
-            </Link>
-            <Link className="ui-stat" to="/anime">
-              <span className="ui-stat-top">
-                <Clapperboard size={15} aria-hidden="true" /> Anime
-              </span>
-              <strong>{dashboard.data.counts.anime ?? 0}</strong>
-              <span>In catalog</span>
-            </Link>
-          </section>
-
-          <div className="ui-grid-2">
-            <section className="panel">
-              <div className="ui-section-head">
-                <div>
-                  <h2>Wanted</h2>
-                </div>
-                <Link className="text-link" to="/wanted">
-                  View all <ArrowUpRight size={13} />
-                </Link>
-              </div>
-              <RequestState
-                loading={wanted.loading}
-                error={wanted.error}
-                retry={wanted.reload}
-              />
-              {wanted.data && !wanted.error && !wanted.loading && (
-                <>
-                  <div className="ui-count-row">
-                    <Link className="ui-count" to="/wanted">
-                      <strong>{wanted.data.counts?.missing ?? 0}</strong>
-                      <span>Missing</span>
-                    </Link>
-                    <Link className="ui-count" to="/wanted?status=downloading">
-                      <strong>{wanted.data.counts?.downloading ?? 0}</strong>
-                      <span>In progress</span>
-                    </Link>
-                    <Link className="ui-count" to="/wanted?status=attention">
-                      <strong>{wanted.data.counts?.attention ?? 0}</strong>
-                      <span>Needs attention</span>
-                    </Link>
-                  </div>
-                  {wanted.data.items?.length ? (
-                    <ul className="ui-list">
-                      {wanted.data.items.slice(0, 4).map((item) => (
-                        <CatalogLine
-                          key={`${item.media_id}-${item.episode_id}`}
-                          item={item}
-                        />
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="ui-empty-note">
-                      No monitored, dated items are missing.
-                    </p>
-                  )}
-                </>
-              )}
-            </section>
-
-            <section className="panel">
-              <div className="ui-section-head">
-                <div>
-                  <h2>Later this month</h2>
-                </div>
-                <Link className="text-link" to="/calendar">
-                  Calendar <ArrowUpRight size={13} />
-                </Link>
-              </div>
-              <RequestState
-                loading={upcoming.loading}
-                error={upcoming.error}
-                retry={upcoming.reload}
-              />
-              {upcoming.data && !upcoming.error && !upcoming.loading && (
-                <>
-                  {upcoming.data.items?.length ? (
-                    <ul className="ui-list">
-                      {upcoming.data.items.slice(0, 4).map((item) => (
-                        <CatalogLine
-                          key={`${item.media_id}-${item.episode_id}`}
-                          item={item}
-                        />
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="ui-empty-note">
-                      No upcoming dates in the saved catalog for this month.
-                    </p>
-                  )}
-                  <p className="ui-note">
-                    Saved release dates, in UTC. Load season episodes to include
-                    them. Movie dates may be theatrical releases.
-                  </p>
-                </>
-              )}
-            </section>
-          </div>
-
-          <section className="panel">
-            <div className="ui-section-head">
-              <div>
-                <h2>Storage</h2>
-              </div>
-              <Link className="text-link" to="/settings">
-                Folder settings <ArrowUpRight size={13} />
-              </Link>
-            </div>
-            <dl className="ui-path-list">
-              {Object.entries(system.data.paths).map(([key, value]) => (
-                <div key={key}>
-                  <dt>
-                    {key === "config"
-                      ? "Configuration"
-                      : key === "media"
-                        ? "Media library"
-                        : "Downloads"}
-                  </dt>
-                  <dd>{value}</dd>
-                </div>
+      <PageToolbar label="Dashboard actions">
+        <ToolbarSection>
+          <ToolbarButton icon={Plus} label="Add Movie" to="/search" />
+          <ToolbarButton icon={Tv} label="Add Show" to="/search?kind=series" />
+          <ToolbarButton
+            icon={FolderInput}
+            label="Library Import"
+            to="/import"
+          />
+          <ToolbarSeparator />
+          <ToolbarButton
+            icon={RefreshCw}
+            label="Refresh"
+            spinning={loading}
+            onClick={reload}
+          />
+        </ToolbarSection>
+      </PageToolbar>
+      <PageBody>
+        <PageHeading title={dashboard.data?.library_name ?? "Library"} />
+        <RequestState loading={loading} error={error} retry={reload} />
+        {!loading && !error && dashboard.data && system.data && (
+          <>
+            <p className="dash-summary">
+              {summary.map((entry, index) => (
+                <Fragment key={entry.to}>
+                  {index > 0 && <span aria-hidden="true"> · </span>}
+                  <Link to={entry.to}>{entry.text}</Link>
+                </Fragment>
               ))}
-            </dl>
-            <div className="ui-footer-line">
-              <span>Connected · {system.data.version}</span>
-              <Link className="text-link" to="/system">
-                Run system checks
-              </Link>
+            </p>
+
+            <div className="dash-columns">
+              <Panel
+                title="Wanted"
+                actions={<Link to="/wanted">View all</Link>}
+              >
+                <RequestState
+                  loading={wanted.loading}
+                  error={wanted.error}
+                  retry={wanted.reload}
+                />
+                {wanted.data && !wanted.error && !wanted.loading && (
+                  <div className="dash-panel-body">
+                    <div className="dash-counts">
+                      {wantedCounts.map((count) => (
+                        <Link key={count.key} to={count.to}>
+                          <Label kind={count.kind}>
+                            {wanted.data!.counts?.[count.key] ?? 0}{" "}
+                            {count.label}
+                          </Label>
+                        </Link>
+                      ))}
+                    </div>
+                    {wanted.data.items?.length ? (
+                      <PlanningTable
+                        label="Wanted titles"
+                        items={wanted.data.items.slice(0, 6)}
+                      />
+                    ) : (
+                      <p className="rs-muted">
+                        No monitored, dated items are missing.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </Panel>
+
+              <Panel
+                title="Upcoming"
+                actions={<Link to="/calendar">Calendar</Link>}
+              >
+                <RequestState
+                  loading={upcoming.loading}
+                  error={upcoming.error}
+                  retry={upcoming.reload}
+                />
+                {upcoming.data && !upcoming.error && !upcoming.loading && (
+                  <div className="dash-panel-body">
+                    {upcoming.data.items?.length ? (
+                      <PlanningTable
+                        label="Upcoming this month"
+                        items={upcoming.data.items.slice(0, 6)}
+                      />
+                    ) : (
+                      <p className="rs-muted">
+                        No upcoming dates in the saved catalog this month.
+                      </p>
+                    )}
+                    <p className="rs-muted rs-small">
+                      Saved release dates in UTC; load season episodes to
+                      include them. Movie dates may be theatrical.
+                    </p>
+                  </div>
+                )}
+              </Panel>
             </div>
-          </section>
-        </div>
-      )}
+
+            <Panel
+              title="System"
+              actions={<Link to="/system">System status</Link>}
+            >
+              <DescriptionList>
+                <DescriptionItem title="Status">
+                  Connected · {system.data.version}
+                </DescriptionItem>
+                {Object.entries(system.data.paths ?? {}).map(([key, value]) => (
+                  <DescriptionItem key={key} title={pathNames[key] ?? key}>
+                    <span className="rs-mono">{value}</span>
+                  </DescriptionItem>
+                ))}
+              </DescriptionList>
+              <p className="dash-system-links rs-small">
+                <Link to="/settings">Folder settings</Link>
+              </p>
+            </Panel>
+          </>
+        )}
+      </PageBody>
     </>
   );
 }

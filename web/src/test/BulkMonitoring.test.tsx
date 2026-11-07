@@ -88,7 +88,11 @@ function mount(kind: "movie" | "series" = "movie") {
     </Theme>,
   );
 }
+async function enterSelectMode() {
+  await userEvent.click(await screen.findByRole("button", { name: "Select" }));
+}
 async function selectOne() {
+  await enterSelectMode();
   await screen.findByRole("checkbox", { name: "Select Saved title" });
   await userEvent.click(
     screen.getByRole("checkbox", { name: "Select Saved title" }),
@@ -131,9 +135,12 @@ describe("reviewed bulk monitoring", () => {
   it("reviews current state and applies exact expectations, then refreshes the visible catalog", async () => {
     const fetch = setup();
     mount();
-    await screen.findByRole("checkbox", {
-      name: "Select all titles on this page",
-    });
+    await screen.findByRole("link", { name: "Open Saved title details" });
+    expect(
+      screen.queryByRole("checkbox", { name: "Select Saved title" }),
+    ).not.toBeInTheDocument();
+    await enterSelectMode();
+    expect(screen.getByText("0 selected on this page")).toBeVisible();
     await userEvent.click(
       screen.getByRole("checkbox", { name: "Select all titles on this page" }),
     );
@@ -183,10 +190,12 @@ describe("reviewed bulk monitoring", () => {
     expect(
       screen.getByRole("checkbox", { name: "Select all titles on this page" }),
     ).toBePartiallyChecked();
-    await userEvent.click(screen.getByRole("button", { name: "Table view" }));
+    expect(screen.getByText("1 selected on this page")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Table" }));
     expect(
       screen.getByRole("checkbox", { name: "Select Saved title" }),
     ).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
     await userEvent.selectOptions(
       screen.getByLabelText("Library monitoring"),
       "paused",
@@ -290,6 +299,7 @@ describe("reviewed bulk monitoring", () => {
   it("finishes an unchanged selection without sending a mutation", async () => {
     const fetch = setup();
     mount();
+    await enterSelectMode();
     await screen.findByRole("checkbox", { name: "Select Second saved title" });
     await userEvent.click(
       screen.getByRole("checkbox", { name: "Select Second saved title" }),

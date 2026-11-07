@@ -1,19 +1,29 @@
-import { useState, type ReactNode } from "react";
-import { Badge, Button, Dialog, Switch } from "@radix-ui/themes";
-import { Check, ChevronLeft, ChevronRight, Film, Plus } from "lucide-react";
+import { useId, useState, type MouseEvent, type ReactNode } from "react";
+import { Button, Switch } from "@radix-ui/themes";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Film,
+  Plus,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, messageFor, type Movie } from "./api";
 import { RequestState } from "./components";
+import { FormGroup, Label, Modal } from "./ui";
 import { useResource } from "./useResource";
+import "./movieComponents.css";
 
 export function Poster({
   movie,
+  className,
 }: {
   movie: Pick<Movie, "poster_url" | "title">;
+  className?: string;
 }) {
   const [failed, setFailed] = useState(false);
   return (
-    <div className="movie-poster">
+    <div className={className ? `lib-poster ${className}` : "lib-poster"}>
       {movie.poster_url && !failed ? (
         <img
           src={movie.poster_url}
@@ -23,46 +33,82 @@ export function Poster({
           onError={() => setFailed(true)}
         />
       ) : (
-        <div className="poster-fallback">
-          <Film size={35} strokeWidth={1} />
+        <div className="lib-poster-fallback">
+          <Film size={32} strokeWidth={1} aria-hidden="true" />
           <span>Artwork unavailable</span>
         </div>
       )}
     </div>
   );
 }
+
+/**
+ * Add New result row: poster thumbnail, title and year, labels, a clamped
+ * overview and actions. `onOpen` makes the whole row open the details;
+ * buttons and links inside the row keep their own behaviour.
+ */
 export function MovieCard({
   movie,
   children,
   href,
+  labels,
+  onOpen,
 }: {
   movie: Movie;
   children: ReactNode;
   href?: string;
+  labels?: ReactNode;
+  onOpen?: () => void;
 }) {
+  function open(event: MouseEvent<HTMLElement>) {
+    if (!onOpen) return;
+    if ((event.target as HTMLElement).closest("button, a, input, select"))
+      return;
+    onOpen();
+  }
   return (
-    <article className="panel movie-card">
+    <article
+      className={onOpen ? "add-result is-interactive" : "add-result"}
+      onClick={open}
+    >
       {href ? (
-        <Link to={href} aria-label={`Open ${movie.title} details`}>
+        <Link
+          className="add-result-poster"
+          to={href}
+          aria-label={`Open ${movie.title} details`}
+        >
           <Poster movie={movie} />
         </Link>
       ) : (
-        <Poster movie={movie} />
+        <div className="add-result-poster">
+          <Poster movie={movie} />
+        </div>
       )}
-      <div className="movie-card-copy">
-        <h2>{href ? <Link to={href}>{movie.title}</Link> : movie.title}</h2>
-        <p className="movie-meta">
-          {movie.year ?? "Release date unknown"}
-          {movie.runtime_minutes ? ` · ${movie.runtime_minutes} min` : ""}
-        </p>
-        <p className="movie-overview">
+      <div className="add-result-body">
+        <div className="add-result-head">
+          <h2 className="add-result-title">
+            {href ? <Link to={href}>{movie.title}</Link> : movie.title}
+          </h2>
+          {movie.year && (
+            <span className="add-result-year">({movie.year})</span>
+          )}
+        </div>
+        <div className="add-result-meta">
+          {!movie.year && <span>Release date unknown</span>}
+          {movie.runtime_minutes ? (
+            <span>{movie.runtime_minutes} min</span>
+          ) : null}
+          {labels}
+        </div>
+        <p className="add-result-overview">
           {movie.overview || "No synopsis is available yet."}
         </p>
-        {children}
       </div>
+      <div className="add-result-actions">{children}</div>
     </article>
   );
 }
+
 export function AddMovieButton({
   id,
   added,
@@ -71,6 +117,7 @@ export function AddMovieButton({
   kind = "movie",
   category,
   createFolder = false,
+  variant = "soft",
 }: {
   id: number;
   added: boolean;
@@ -79,6 +126,7 @@ export function AddMovieButton({
   kind?: "movie" | "series";
   category?: "anime";
   createFolder?: boolean;
+  variant?: "solid" | "soft";
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -101,6 +149,7 @@ export function AddMovieButton({
       );
       if (createFolder) {
         try {
+          if (!result?.item) throw new Error("The new title was not returned.");
           const folder = await api<{ path: string }>(
             `/library/items/${result.item.id}/create-folder`,
             { method: "POST", body: "{}" },
@@ -121,27 +170,33 @@ export function AddMovieButton({
   }
   if (added)
     return (
-      <div>
-        <Badge color="green" size="2">
-          <Check size={14} /> In library
-        </Badge>
-        {folderMessage && <p role="status">{folderMessage}</p>}
+      <div className="add-button">
+        <Label kind="success" large>
+          In library
+        </Label>
+        {folderMessage && (
+          <p role="status" className="add-button-message">
+            {folderMessage}
+          </p>
+        )}
       </div>
     );
   return (
-    <div>
-      <Button disabled={pending} onClick={() => void add()}>
-        <Plus size={16} />
+    <div className="add-button">
+      <Button variant={variant} disabled={pending} onClick={() => void add()}>
+        <Plus size={16} aria-hidden="true" />
         {pending ? "Adding…" : kind === "series" ? "Add show" : "Add movie"}
       </Button>
       {error && (
-        <p role="alert" className="movie-error">
+        <p role="alert" className="add-button-error">
           {error}
         </p>
       )}
     </div>
   );
 }
+
+/** Sonarr-style add modal: summary on top, add options, then actions. */
 export function MovieDetails({
   id,
   title,
@@ -164,110 +219,128 @@ export function MovieDetails({
   );
   const [monitored, setMonitored] = useState(true);
   const [createFolder, setCreateFolder] = useState(false);
+  const monitorId = useId(),
+    folderId = useId();
+  const noun = kind === "series" ? "show" : "movie";
+  const data = details.data;
   return (
-    <Dialog.Root
+    <Modal
       open
       onOpenChange={(value) => {
         if (!value) close();
       }}
+      size="large"
+      title={
+        data ? `${data.title}${data.year ? ` (${data.year})` : ""}` : title
+      }
+      description={`${kind === "series" ? "TV show" : "Movie"} details from TMDb.`}
+      footer={
+        <>
+          {data && added && (
+            <Button asChild variant="soft" className="is-left">
+              <Link
+                to={
+                  category === "anime"
+                    ? "/anime"
+                    : kind === "series"
+                      ? "/series"
+                      : "/movies"
+                }
+                onClick={close}
+              >
+                Open library
+              </Link>
+            </Button>
+          )}
+          <Button variant="soft" color="gray" onClick={close}>
+            Close
+          </Button>
+          {data && (
+            <AddMovieButton
+              kind={kind}
+              category={category}
+              id={id}
+              added={added}
+              onAdded={onAdded}
+              monitored={monitored}
+              createFolder={createFolder}
+              variant="solid"
+            />
+          )}
+        </>
+      }
     >
-      <Dialog.Content maxWidth="650px">
-        <Dialog.Title>{details.data?.title ?? title}</Dialog.Title>
-        <Dialog.Description size="2">
-          {kind === "series" ? "TV show" : "Movie"} details from TMDb.
-        </Dialog.Description>
-        <RequestState
-          loading={details.loading}
-          error={details.error}
-          retry={details.reload}
-        />
-        {details.data && (
-          <>
-            <div className="movie-details">
-              <Poster movie={details.data} />
-              <div>
-                <p className="movie-meta">
-                  {details.data.year ?? "Release date unknown"}
-                  {details.data.runtime_minutes
-                    ? ` · ${details.data.runtime_minutes} min`
-                    : ""}
-                </p>
-                <p>
-                  {details.data.overview || "No synopsis is available yet."}
-                </p>
-                <a
-                  className="text-link"
-                  href={`https://www.themoviedb.org/${kind === "series" ? "tv" : "movie"}/${id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  View on TMDb
-                </a>
+      <RequestState
+        loading={details.loading}
+        error={details.error}
+        retry={details.reload}
+      />
+      {data && (
+        <>
+          <div className="add-modal-summary">
+            <Poster movie={data} />
+            <div>
+              <div className="add-modal-meta">
+                <span>{data.year ?? "Release date unknown"}</span>
+                {data.runtime_minutes ? (
+                  <span>{data.runtime_minutes} min</span>
+                ) : null}
+                {category === "anime" && <span>Anime</span>}
               </div>
+              <p className="add-modal-overview">
+                {data.overview || "No synopsis is available yet."}
+              </p>
+              <a
+                href={`https://www.themoviedb.org/${kind === "series" ? "tv" : "movie"}/${id}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View on TMDb <ExternalLink size={12} aria-hidden="true" />
+              </a>
             </div>
-            {!added && (
-              <>
-                <label className="monitor-choice">
-                  <Switch checked={monitored} onCheckedChange={setMonitored} />{" "}
-                  Monitor this {kind === "series" ? "show" : "movie"}
-                </label>
-                <label className="monitor-choice">
+          </div>
+          {!added && (
+            <div className="add-modal-form">
+              <FormGroup
+                label="Monitor"
+                htmlFor={monitorId}
+                help={
+                  kind === "series"
+                    ? "Monitored shows can be searched automatically. Specials start unselected."
+                    : "Monitored movies can be searched automatically."
+                }
+              >
+                <span className="add-modal-switch">
                   <Switch
+                    id={monitorId}
+                    aria-label={`Monitor this ${noun}`}
+                    checked={monitored}
+                    onCheckedChange={setMonitored}
+                  />
+                </span>
+              </FormGroup>
+              <FormGroup
+                label="Create folder"
+                htmlFor={folderId}
+                help="Create the destination folder in the library now."
+              >
+                <span className="add-modal-switch">
+                  <Switch
+                    id={folderId}
+                    aria-label="Create the destination folder now"
                     checked={createFolder}
                     onCheckedChange={setCreateFolder}
-                  />{" "}
-                  Create the destination folder now
-                </label>
-                {kind === "series" && (
-                  <p className="field-help">Specials start unselected.</p>
-                )}
-              </>
-            )}
-            <div className="movie-dialog-actions">
-              <AddMovieButton
-                kind={kind}
-                category={category}
-                id={id}
-                added={added}
-                onAdded={onAdded}
-                monitored={monitored}
-                createFolder={createFolder}
-              />
-              {added && (
-                <Button asChild variant="soft">
-                  <Link
-                    to={
-                      category === "anime"
-                        ? "/anime"
-                        : kind === "series"
-                          ? "/series"
-                          : "/movies"
-                    }
-                    onClick={close}
-                  >
-                    Open library
-                  </Link>
-                </Button>
-              )}
-              <Dialog.Close>
-                <Button variant="soft" color="gray">
-                  Close
-                </Button>
-              </Dialog.Close>
+                  />
+                </span>
+              </FormGroup>
             </div>
-          </>
-        )}
-        {!details.data && (
-          <Dialog.Close>
-            <Button variant="soft" color="gray">
-              Close
-            </Button>
-          </Dialog.Close>
-        )}
-      </Dialog.Content>
-    </Dialog.Root>
+          )}
+        </>
+      )}
+    </Modal>
   );
 }
+
 export function Pagination({
   page,
   pages,
@@ -279,23 +352,27 @@ export function Pagination({
 }) {
   if (pages <= 1) return null;
   return (
-    <nav className="pagination" aria-label="Pagination">
+    <nav className="rs-pagination" aria-label="Pagination">
       <Button
         variant="soft"
+        color="gray"
+        size="1"
         disabled={page <= 1}
         onClick={() => onPage(page - 1)}
       >
-        <ChevronLeft size={16} /> Previous
+        <ChevronLeft size={14} aria-hidden="true" /> Previous
       </Button>
       <span>
         Page {page} of {pages}
       </span>
       <Button
         variant="soft"
+        color="gray"
+        size="1"
         disabled={page >= pages}
         onClick={() => onPage(page + 1)}
       >
-        Next <ChevronRight size={16} />
+        Next <ChevronRight size={14} aria-hidden="true" />
       </Button>
     </nav>
   );

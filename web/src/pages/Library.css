@@ -1,0 +1,372 @@
+/* Library index, mass editor and review dialogs (lib- namespace). */
+
+.lib-body {
+  padding-bottom: 28px;
+}
+.lib-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.lib-title {
+  font-size: 22px;
+  font-weight: 300;
+}
+.lib-search {
+  display: flex;
+  gap: 6px;
+  width: min(360px, 100%);
+}
+.lib-search > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.lib-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+  padding: 12px 14px;
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+}
+.lib-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12.5px;
+  color: var(--rs-muted);
+}
+.lib-filter select {
+  min-width: 170px;
+  font-size: 14px;
+}
+
+/* Poster grid ----------------------------------------------------------- */
+
+.lib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(162px, 1fr));
+  gap: 18px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lib-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--rs-surface);
+  border-radius: var(--rs-radius);
+  border: 1px solid var(--rs-border);
+  overflow: hidden;
+}
+.lib-card.is-selected {
+  outline: 2px solid var(--rs-brand);
+}
+.lib-card-art {
+  display: block;
+  position: relative;
+}
+.lib-card-art .lib-poster {
+  border-radius: 0;
+}
+.lib-card-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--rs-hover);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.lib-card-art:hover::after,
+.lib-card-art:focus-visible::after {
+  opacity: 1;
+}
+.lib-card-select {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface);
+  box-shadow: var(--rs-shadow);
+}
+.lib-card-select input {
+  width: 18px;
+  height: 18px;
+}
+.lib-status-bar {
+  display: block;
+  height: 5px;
+  background: var(--rs-disabled);
+}
+.lib-status-bar.is-success {
+  background: var(--rs-success);
+}
+.lib-status-bar.is-primary {
+  background: var(--rs-primary);
+}
+.lib-status-bar.is-danger {
+  background: var(--rs-danger);
+}
+.lib-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px 8px;
+  min-width: 0;
+}
+.lib-card-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.lib-card-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lib-card-title a {
+  color: var(--rs-text-strong);
+}
+.lib-card-title a:hover {
+  color: var(--rs-link-hover);
+}
+.lib-card-meta {
+  display: flex;
+  gap: 8px;
+  color: var(--rs-muted);
+  font-size: 12.5px;
+}
+.lib-card-info .lib-profile {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lib-monitor {
+  display: inline-flex;
+  flex: none;
+  color: var(--rs-faint);
+  padding-top: 2px;
+}
+.lib-monitor.is-monitored {
+  color: var(--rs-text-strong);
+}
+.lib-monitor-text {
+  white-space: nowrap;
+}
+.lib-select-group {
+  min-width: 0;
+}
+.lib-profile {
+  color: var(--rs-muted);
+  font-size: 12.5px;
+}
+
+/* Overview list --------------------------------------------------------- */
+
+.lib-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lib-overview-row {
+  display: flex;
+  gap: 14px;
+  padding: 10px;
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  min-width: 0;
+}
+.lib-overview-row.is-selected {
+  border-color: var(--rs-brand);
+  background: var(--rs-selected);
+}
+.lib-overview-select {
+  padding-top: 4px;
+}
+.lib-overview-poster {
+  flex: none;
+  width: 84px;
+  overflow: hidden;
+  border-radius: var(--rs-radius);
+}
+.lib-overview-poster .lib-poster {
+  border-radius: 0;
+}
+.lib-overview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.lib-overview-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.lib-overview-title {
+  font-size: 18px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.lib-overview-title a {
+  color: var(--rs-text-strong);
+}
+.lib-overview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 13px;
+}
+.lib-overview-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--rs-text);
+}
+
+/* Table and footer ------------------------------------------------------ */
+
+.lib-table-region {
+  min-width: 0;
+}
+.lib-table-region:focus-visible {
+  outline: 2px solid var(--rs-brand);
+}
+.lib-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rs-border);
+}
+.lib-totals {
+  color: var(--rs-muted);
+}
+.lib-per-page {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.lib-per-page select {
+  min-width: 0;
+}
+
+/* Sticky select-mode footer (Sonarr mass editor) ------------------------ */
+
+.lib-select-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+  margin: 0 -20px -28px;
+  padding: 10px 20px;
+  background: var(--rs-toolbar-bg);
+  border-top: 1px solid var(--rs-toolbar-border);
+  box-shadow: var(--rs-shadow);
+}
+.lib-select-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+.lib-select-summary strong {
+  color: var(--rs-text-strong);
+  font-weight: 500;
+}
+.lib-select-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.lib-select-editors {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.lib-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 10px;
+}
+.lib-editor-label {
+  align-self: center;
+  color: var(--rs-text-strong);
+  font-weight: 500;
+}
+.lib-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--rs-muted);
+}
+.lib-editor-field select {
+  font-size: 14px;
+}
+
+/* Review dialogs -------------------------------------------------------- */
+
+.lib-review-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--rs-surface-2);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+}
+
+@media (max-width: 768px) {
+  .lib-grid {
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: 12px 10px;
+  }
+  .lib-search {
+    width: 100%;
+  }
+  .lib-filter select {
+    min-width: 140px;
+  }
+  .lib-select-bar {
+    margin: 0 -20px -28px;
+  }
+  .lib-select-editors {
+    align-items: stretch;
+    width: 100%;
+  }
+  .lib-overview-poster {
+    width: 60px;
+  }
+}

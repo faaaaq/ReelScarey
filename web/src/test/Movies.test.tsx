@@ -236,6 +236,7 @@ describe("authentication and movies", () => {
         : undefined,
     );
     mount("/search?query=Fixture&page=1");
+    expect(await screen.findByLabelText("Movie title")).toHaveValue("Fixture");
     await userEvent.click(
       await screen.findByRole("button", { name: "Add movie" }),
     );

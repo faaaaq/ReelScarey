@@ -116,7 +116,13 @@ describe("foundation UI", () => {
     expect(await screen.findByText(/^Connected ·/)).toBeVisible();
     await userEvent.click(screen.getByRole("link", { name: /^Movies$/ }));
     expect(await screen.findByText("No movies in the library")).toBeVisible();
-    expect(screen.getByRole("link", { name: /Add movies/i })).toBeVisible();
+    expect(screen.getByRole("link", { name: /Add movies/i })).toHaveAttribute(
+      "href",
+      "/search",
+    );
+    expect(
+      screen.getByRole("toolbar", { name: "Movies actions" }),
+    ).toHaveTextContent(/Add New.*Library Import/);
     expect(
       fetch.mock.calls.some(
         ([url]) => url === "/api/v1/library?kind=movie&page=1",

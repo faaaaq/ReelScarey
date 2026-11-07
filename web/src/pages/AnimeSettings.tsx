@@ -1,9 +1,18 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { api, messageFor, type AnimeLibrarySettings } from "../api";
 import { RequestState } from "../components";
 import { Pagination } from "../movieComponents";
+import {
+  Alert,
+  FieldSet,
+  FormActions,
+  FormGroup,
+  Table,
+  episodeCode,
+} from "../ui";
 import { useResource } from "../useResource";
+import "./AnimeSettings.css";
 
 export function AnimeSettings({
   id,
@@ -17,66 +26,77 @@ export function AnimeSettings({
   const path = `/library/items/${id}/anime`;
   const resource = useResource<AnimeLibrarySettings>(open ? path : null);
   return (
-    <section
-      className="panel settings-form"
-      aria-label="Library section and anime numbering"
-    >
-      <h2>Library section</h2>
-      {!open ? (
-        <>
-          <p className="field-help">
-            Choose Movies, TV shows or Anime, and review absolute episode
-            numbers for anime shows.
-          </p>
-          <Button
-            variant="soft"
-            onClick={() => {
-              setOpen(true);
-              setSuccess(false);
-            }}
-          >
-            Edit library section
-          </Button>
-          {success && (
-            <p role="status" className="save-success">
-              Library section and episode numbering saved.
-            </p>
-          )}
-        </>
-      ) : (
-        <>
-          <RequestState
-            loading={resource.loading}
-            error={resource.error}
-            retry={resource.reload}
-          />
-          {resource.data && !resource.loading && !resource.error && (
-            <AnimeSettingsForm
-              key={`${resource.data.revision}-${resource.data.numbering_revision}`}
-              initial={resource.data}
-              path={path}
-              reload={resource.reload}
-              close={() => setOpen(false)}
-              saved={() => {
-                setOpen(false);
-                setSuccess(true);
-                onSaved?.();
+    <section aria-label="Library section and anime numbering">
+      <FieldSet
+        legend="Library section"
+        actions={
+          !open && (
+            <Button
+              size="1"
+              variant="soft"
+              onClick={() => {
+                setOpen(true);
+                setSuccess(false);
               }}
-            />
-          )}
-          {!resource.data && !resource.loading && (
-            <Button variant="soft" color="gray" onClick={() => setOpen(false)}>
-              Cancel
+            >
+              Edit library section
             </Button>
-          )}
-        </>
-      )}
+          )
+        }
+      >
+        {!open ? (
+          <>
+            <p className="rs-muted">
+              Choose Movies, TV Shows or Anime, and review absolute episode
+              numbers for anime shows.
+            </p>
+            {success && (
+              <Alert kind="success" role="status">
+                Library section and episode numbering saved.
+              </Alert>
+            )}
+          </>
+        ) : (
+          <>
+            <RequestState
+              loading={resource.loading}
+              error={resource.error}
+              retry={resource.reload}
+            />
+            {resource.data && !resource.loading && !resource.error && (
+              <AnimeSettingsForm
+                key={`${resource.data.revision}-${resource.data.numbering_revision}`}
+                initial={resource.data}
+                path={path}
+                reload={resource.reload}
+                close={() => setOpen(false)}
+                saved={() => {
+                  setOpen(false);
+                  setSuccess(true);
+                  onSaved?.();
+                }}
+              />
+            )}
+            {!resource.data && !resource.loading && (
+              <FormActions>
+                <Button
+                  variant="soft"
+                  color="gray"
+                  onClick={() => setOpen(false)}
+                >
+                  Cancel
+                </Button>
+              </FormActions>
+            )}
+          </>
+        )}
+      </FieldSet>
     </section>
   );
 }
 
 function episodeLabel(episode: AnimeLibrarySettings["episodes"][number]) {
-  return `S${String(episode.season).padStart(2, "0")}E${String(episode.number).padStart(2, "0")} · ${episode.title}`;
+  return `${episodeCode(episode.season, episode.number)} · ${episode.title}`;
 }
 
 function AnimeSettingsForm({
@@ -110,6 +130,8 @@ function AnimeSettingsForm({
   const [saving, setSaving] = useState(false);
   const [stale, setStale] = useState(false);
   const [error, setError] = useState("");
+  const sectionId = useId(),
+    seasonId = useId();
   const episodes = initial.episodes.filter(
     (episode) => episode.season === season,
   );
@@ -119,7 +141,7 @@ function AnimeSettingsForm({
       (episode.absolute_number === null ? "" : String(episode.absolute_number)),
   );
   const dirty = category !== initial.category || changed.length > 0;
-  const standardLabel = initial.kind === "movie" ? "Movies" : "TV shows";
+  const standardLabel = initial.kind === "movie" ? "Movies" : "TV Shows";
   function validate() {
     const seen = new Set<number>();
     for (const episode of initial.episodes) {
@@ -180,10 +202,14 @@ function AnimeSettingsForm({
     }
   }
   return (
-    <div className="settings-form">
-      <label>
-        Library section
+    <div className="rs-stack">
+      <FormGroup
+        label="Library section"
+        htmlFor={sectionId}
+        help="Keeps the title identity, monitoring and episode choices. Existing files stay in place until you organize them."
+      >
         <select
+          id={sectionId}
           aria-label="Library section"
           value={category}
           disabled={saving || stale}
@@ -195,34 +221,25 @@ function AnimeSettingsForm({
           <option value="standard">{standardLabel}</option>
           <option value="anime">Anime</option>
         </select>
-      </label>
-      <p className="field-help">
-        Changing section keeps the title identity, monitoring and episode
-        choices. Existing files stay in place; organize them separately after
-        reviewing their destinations.
-      </p>
+      </FormGroup>
       {initial.kind === "series" && (
-        <>
-          <h3>Absolute episode numbers</h3>
-          <p className="field-help">
-            Enter numbers from the release's episode order. Blank means unknown.
-            These aliases keep the saved TMDb season and episode identities;
-            numbers are never inferred from season order. Load missing seasons
-            from the episode list before editing them here.
-          </p>
+        <FieldSet
+          legend="Absolute episode numbers"
+          headingLevel={3}
+          description="Numbers from the release's episode order; blank means unknown. They keep the saved TMDb seasons and episodes and are never inferred. Load missing seasons from the episode list first."
+        >
           {category === "anime" && (
-            <p className="field-help">
+            <p className="rs-form-help is-warning">
               Automatic Anime searches are off until enabled in this show's
               Automatic Anime search settings. Absolute mode requires these
-              explicit numbers. Completed episode files still need mapping
-              review.
+              explicit numbers, and completed files still need mapping review.
             </p>
           )}
           {seasons.length > 0 ? (
             <>
-              <label>
-                Season
+              <FormGroup label="Season" htmlFor={seasonId}>
                 <select
+                  id={seasonId}
                   aria-label="Numbering season"
                   disabled={saving || stale}
                   value={season}
@@ -237,33 +254,41 @@ function AnimeSettingsForm({
                     </option>
                   ))}
                 </select>
-              </label>
-              <ul className="episode-list" aria-label="Episode numbering">
-                {episodes.slice((page - 1) * 50, page * 50).map((episode) => (
-                  <li key={episode.episode_id}>
-                    <div>
-                      <strong>{episodeLabel(episode)}</strong>
-                    </div>
-                    <label>
+              </FormGroup>
+              <Table label="Episode numbering">
+                <thead>
+                  <tr>
+                    <th scope="col">Episode</th>
+                    <th scope="col" className="is-shrink">
                       Absolute number
-                      <TextField.Root
-                        aria-label={`Absolute number for ${episodeLabel(episode)}`}
-                        inputMode="numeric"
-                        maxLength={6}
-                        value={numbers[episode.episode_id] ?? ""}
-                        disabled={saving || stale}
-                        onChange={(event) => {
-                          setNumbers((current) => ({
-                            ...current,
-                            [episode.episode_id]: event.target.value,
-                          }));
-                          setReviewed(false);
-                        }}
-                      />
-                    </label>
-                  </li>
-                ))}
-              </ul>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {episodes.slice((page - 1) * 50, page * 50).map((episode) => (
+                    <tr key={episode.episode_id}>
+                      <th scope="row">{episodeLabel(episode)}</th>
+                      <td className="is-shrink">
+                        <TextField.Root
+                          className="lib-anime-number"
+                          aria-label={`Absolute number for ${episodeLabel(episode)}`}
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={numbers[episode.episode_id] ?? ""}
+                          disabled={saving || stale}
+                          onChange={(event) => {
+                            setNumbers((current) => ({
+                              ...current,
+                              [episode.episode_id]: event.target.value,
+                            }));
+                            setReviewed(false);
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
               <Pagination
                 page={page}
                 pages={Math.ceil(episodes.length / 50)}
@@ -271,20 +296,19 @@ function AnimeSettingsForm({
               />
             </>
           ) : (
-            <p>No episodes are loaded yet.</p>
+            <p className="rs-muted">No episodes are loaded yet.</p>
           )}
-        </>
+        </FieldSet>
       )}
-      {error && (
-        <p role="alert" className="form-error">
-          {error}
-        </p>
-      )}
+      {error && <Alert kind="danger">{error}</Alert>}
       {reviewed && (
-        <section aria-label="Review library section changes">
+        <section
+          className="lib-anime-review"
+          aria-label="Review library section changes"
+        >
           <h3>Review changes</h3>
           <p>
-            {initial.category === "anime" ? "Anime" : standardLabel} →{" "}
+            Section: {initial.category === "anime" ? "Anime" : standardLabel} →{" "}
             {category === "anime" ? "Anime" : standardLabel}
           </p>
           <p>
@@ -292,24 +316,23 @@ function AnimeSettingsForm({
             {changed.length === 1 ? "number" : "numbers"} will change.
           </p>
           {changed.length > 0 && (
-            <ul className="episode-list">
-              {changed.map((episode) => (
-                <li key={episode.episode_id}>
-                  <span>{episodeLabel(episode)}</span>
-                  <span>
-                    {episode.absolute_number ?? "Unknown"} →{" "}
-                    {numbers[episode.episode_id] || "Unknown"}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <Table label="Changed absolute numbers">
+              <tbody>
+                {changed.map((episode) => (
+                  <tr key={episode.episode_id}>
+                    <th scope="row">{episodeLabel(episode)}</th>
+                    <td>
+                      {episode.absolute_number ?? "Unknown"} →{" "}
+                      {numbers[episode.episode_id] || "Unknown"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
           )}
         </section>
       )}
-      <div className="monitoring-dialog-actions">
-        <Button variant="soft" color="gray" disabled={saving} onClick={close}>
-          {dirty ? "Cancel" : "Done"}
-        </Button>
+      <FormActions>
         {stale ? (
           <Button variant="soft" onClick={reload}>
             Reload saved section and numbering
@@ -323,7 +346,10 @@ function AnimeSettingsForm({
             Review changes
           </Button>
         )}
-      </div>
+        <Button variant="soft" color="gray" disabled={saving} onClick={close}>
+          {dirty ? "Cancel" : "Done"}
+        </Button>
+      </FormActions>
     </div>
   );
 }

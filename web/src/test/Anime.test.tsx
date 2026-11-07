@@ -143,10 +143,14 @@ describe("Anime library and explicit numbering", () => {
       "href",
       "/series/12",
     );
-    expect(screen.getByRole("link", { name: "Add anime" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Add New" })).toHaveAttribute(
       "href",
       "/search?kind=anime&format=series",
     );
+    expect(
+      screen.getByRole("link", { name: "Library Import" }),
+    ).toHaveAttribute("href", "/import?collection=anime");
+    await userEvent.click(screen.getByRole("button", { name: "Select" }));
     await userEvent.click(
       screen.getByRole("checkbox", { name: "Select all titles on this page" }),
     );

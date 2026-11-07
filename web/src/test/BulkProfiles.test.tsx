@@ -140,7 +140,13 @@ function mount(path = "/movies") {
     </Theme>,
   );
 }
+async function enterSelectMode() {
+  const button = await screen.findByRole("button", { name: "Select" });
+  if (button.getAttribute("aria-pressed") !== "true")
+    await userEvent.click(button);
+}
 async function select(name = "First title") {
+  await enterSelectMode();
   await userEvent.click(
     await screen.findByRole("checkbox", { name: `Select ${name}` }),
   );
@@ -170,6 +176,7 @@ describe("reviewed quality profile assignment", () => {
   it("shows target rules, applies exact reviewed revisions and refreshes assignment labels", async () => {
     const { fetch } = setup();
     mount();
+    await enterSelectMode();
     await userEvent.click(
       await screen.findByRole("checkbox", {
         name: "Select all titles on this page",
@@ -212,7 +219,7 @@ describe("reviewed quality profile assignment", () => {
       expect(screen.getAllByText("Ultra HD · assigned")).toHaveLength(2),
     );
     expect(
-      screen.getAllByText("Paused", { selector: ".catalog-card-meta span" }),
+      screen.getAllByText("Paused", { selector: ".lib-monitor-text" }),
     ).toHaveLength(1);
   });
   it("treats pinning the current default profile as a real assignment change", async () => {
@@ -362,7 +369,7 @@ describe("reviewed quality profile assignment", () => {
       "default",
     );
     await select();
-    await userEvent.click(screen.getByRole("button", { name: "Poster view" }));
+    await userEvent.click(screen.getByRole("button", { name: "Posters" }));
     expect(
       screen.getByRole("checkbox", { name: "Select First title" }),
     ).toBeChecked();

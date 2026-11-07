@@ -1,0 +1,15 @@
+/* Library section and absolute numbering editor (lib- namespace). */
+
+.lib-anime-number {
+  width: 110px;
+}
+.lib-anime-review {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--rs-surface-2);
+  border: 1px solid var(--rs-border);
+  border-left: 4px solid var(--rs-warning);
+  border-radius: var(--rs-radius);
+}

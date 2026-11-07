@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
@@ -75,6 +75,7 @@ describe("catalog browsing", () => {
     });
     mount("/movies?view=table&query=Saved");
     await screen.findByRole("link", { name: "Saved title 48" });
+    await userEvent.click(screen.getByRole("button", { name: "Select" }));
     const display = screen.getByRole("combobox", {
       name: "Library items per page",
     });
@@ -116,7 +117,9 @@ describe("catalog browsing", () => {
       screen.getByLabelText("Search saved titles"),
       "100%_ film",
     );
-    await userEvent.click(screen.getByRole("button", { name: /^Filter$/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Apply title filter" }),
+    );
     await waitFor(() =>
       expect(screen.getByLabelText("Current address")).not.toHaveTextContent(
         "page=2",
@@ -139,7 +142,7 @@ describe("catalog browsing", () => {
     mount("/movies?page=2&sort=added");
     await screen.findByRole("link", { name: "Open Saved title details" });
     const count = fetch.mock.calls.length;
-    await userEvent.click(screen.getByRole("button", { name: "Table view" }));
+    await userEvent.click(screen.getByRole("button", { name: "Table" }));
     expect(screen.getByRole("table")).toBeVisible();
     expect(fetch).toHaveBeenCalledTimes(count);
     expect(screen.getByLabelText("Current address")).toHaveTextContent(
@@ -149,17 +152,20 @@ describe("catalog browsing", () => {
       "href",
       "/releases?movie=11",
     );
-    await userEvent.click(screen.getByRole("button", { name: "Poster view" }));
+    await userEvent.click(screen.getByRole("button", { name: "Overview" }));
+    expect(screen.getByRole("list", { name: "Movies overview" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Posters" }));
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Movies posters" })).toBeVisible();
     expect(fetch).toHaveBeenCalledTimes(count);
   });
   it("sort and monitoring changes preserve the other filters and reset pagination", async () => {
     const fetch = mock();
     mount("/movies?page=2&query=Saved&status=available&view=table");
     await screen.findByRole("table");
-    await userEvent.selectOptions(
-      screen.getByLabelText("Sort library"),
-      "title_desc",
+    await userEvent.click(screen.getByRole("button", { name: "Sort library" }));
+    await userEvent.click(
+      await screen.findByRole("menuitemradio", { name: "Title Z–A" }),
     );
     await userEvent.selectOptions(
       screen.getByLabelText("Library monitoring"),
@@ -174,6 +180,33 @@ describe("catalog browsing", () => {
     expect(q.get("sort")).toBe("title_desc");
     expect(q.get("page")).toBe("1");
     expect(screen.getByRole("table")).toBeVisible();
+  });
+  it("shows active filters and clears them while keeping sort and view", async () => {
+    const fetch = mock();
+    mount("/movies?status=missing&sort=year_desc&view=table");
+    await screen.findByRole("table");
+    expect(
+      screen.getByRole("region", { name: "Library filters" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Filter (1)" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Clear filters" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("Current address")).toHaveTextContent(
+        /^\/movies\?sort=year_desc&view=table$/,
+      ),
+    );
+    const q = new URL(fetch.mock.calls.at(-1)![0], "http://local").searchParams;
+    expect(q.has("status")).toBe(false);
+    expect(q.get("sort")).toBe("year_desc");
+    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+    expect(
+      screen.queryByRole("region", { name: "Library filters" }),
+    ).not.toBeInTheDocument();
   });
   it("recovers empty later pages without discarding filters", async () => {
     mock((url) =>
@@ -219,7 +252,7 @@ describe("catalog browsing", () => {
     await screen.findByRole("table", { name: "TV library" });
     expect(
       screen.getByText("Episode files registered", {
-        selector: ".catalog-state",
+        selector: ".rs-label",
       }),
     ).toBeVisible();
     expect(screen.getByText(/not full episode coverage/)).toBeVisible();
@@ -227,7 +260,11 @@ describe("catalog browsing", () => {
       "href",
       "/series/11",
     );
-    expect(screen.getByText("Paused", { selector: "td" })).toBeVisible();
+    expect(
+      within(screen.getByRole("table")).getByText("Paused", {
+        selector: ".lib-monitor-text",
+      }),
+    ).toBeInTheDocument();
   });
   it("lets invalid bookmarks recover through clear filters", async () => {
     mock((url) =>

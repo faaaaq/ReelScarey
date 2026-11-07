@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Button, Dialog } from "@radix-ui/themes";
+import { Button } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
+import { Alert, LoadingIndicator, Modal, Table } from "../ui";
+import "./Library.css";
 
 type ReviewItem = {
   id: number;
@@ -18,17 +20,25 @@ type Result = {
   monitored: boolean;
 };
 
+/**
+ * Mass-editor monitoring control for an explicit, page-scoped selection.
+ * Nothing is written until the exact saved state has been reviewed.
+ */
 export function BulkMonitoring({
   kind,
   ids,
   onClear,
   onApplied,
+  label,
   children,
 }: {
   kind: "movie" | "series";
   ids: number[];
-  onClear: () => void;
+  /** Optional clear action; the library footer renders its own. */
+  onClear?: () => void;
   onApplied: (message: string) => void;
+  /** Optional group label shown before the controls (mixed Anime pages). */
+  label?: ReactNode;
   children?: ReactNode;
 }) {
   const [monitored, setMonitored] = useState(false),
@@ -107,12 +117,13 @@ export function BulkMonitoring({
   }
   const changed =
     review?.items.filter((item) => item.monitored !== monitored).length ?? 0;
+  const state = (value: boolean) => (value ? "Monitored" : "Paused");
   return (
     <>
-      <div className="bulk-toolbar" role="region" aria-label="Selected titles">
-        <strong>{ids.length} selected on this page</strong>
-        <label>
-          Monitoring action
+      <div className="lib-editor" role="region" aria-label="Selected titles">
+        {label && <span className="lib-editor-label">{label}</span>}
+        <label className="lib-editor-field">
+          <span>Monitoring</span>
           <select
             aria-label="Monitoring action"
             value={monitored ? "resume" : "pause"}
@@ -122,73 +133,25 @@ export function BulkMonitoring({
             <option value="resume">Resume monitoring</option>
           </select>
         </label>
-        <Button variant="soft" onClick={() => void loadReview()}>
+        <Button size="2" variant="soft" onClick={() => void loadReview()}>
           Review monitoring
         </Button>
         {children}
-        <Button variant="ghost" color="gray" onClick={onClear}>
-          Clear selection
-        </Button>
+        {onClear && (
+          <Button size="2" variant="ghost" color="gray" onClick={onClear}>
+            Clear selection
+          </Button>
+        )}
       </div>
-      <Dialog.Root
+      <Modal
         open={open}
         onOpenChange={(v) => {
           if (!v) close();
         }}
-      >
-        <Dialog.Content maxWidth="620px">
-          <Dialog.Title>
-            {monitored ? "Resume" : "Pause"} monitoring
-          </Dialog.Title>
-          <Dialog.Description>
-            Review the exact titles below. Changes are applied together only if
-            their saved preferences still match this review.
-          </Dialog.Description>
-          {busy === "preview" && (
-            <p role="status">Loading current monitoring preferences…</p>
-          )}
-          {error && (
-            <p role="alert" className="form-error">
-              {error}
-            </p>
-          )}
-          {review && (
-            <>
-              <p className="catalog-note">
-                {changed} {changed === 1 ? "title will" : "titles will"} change;{" "}
-                {review.items.length - changed} already{" "}
-                {monitored ? "monitored" : "paused"}.
-              </p>
-              <ul className="monitoring-review">
-                {review.items.map((item) => (
-                  <li key={item.id}>
-                    <div>
-                      <strong>{item.title}</strong>
-                      <span>
-                        {item.year ?? "Year unknown"} · ID {item.id}
-                      </span>
-                    </div>
-                    <span>
-                      {item.monitored ? "Monitored" : "Paused"} →{" "}
-                      {monitored ? "Monitored" : "Paused"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          <p className="catalog-note">
-            Resumed titles can be picked up by enabled automatic searches.
-            Pausing monitoring keeps existing downloads running. This action
-            does not start a search or download.
-          </p>
-          {kind === "series" && (
-            <p className="catalog-note">
-              Only show monitoring changes. Season and episode choices are
-              retained.
-            </p>
-          )}
-          <div className="monitoring-dialog-actions">
+        title={`${monitored ? "Resume" : "Pause"} monitoring`}
+        description="Changes apply together, and only if each title's saved preferences still match this review."
+        footer={
+          <>
             <Button
               variant="soft"
               color="gray"
@@ -220,9 +183,60 @@ export function BulkMonitoring({
                 Done
               </Button>
             )}
-          </div>
-        </Dialog.Content>
-      </Dialog.Root>
+          </>
+        }
+      >
+        {busy === "preview" && (
+          <LoadingIndicator label="Loading current monitoring preferences…" />
+        )}
+        {error && <Alert kind="danger">{error}</Alert>}
+        {review && (
+          <>
+            <p>
+              {changed} {changed === 1 ? "title will" : "titles will"} change;{" "}
+              {review.items.length - changed} already{" "}
+              {monitored ? "monitored" : "paused"}.
+            </p>
+            <Table label="Titles to review">
+              <thead>
+                <tr>
+                  <th scope="col">Title</th>
+                  <th scope="col">Year</th>
+                  <th scope="col">ID</th>
+                  <th scope="col">Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {review.items.map((item) => (
+                  <tr key={item.id}>
+                    <th scope="row">{item.title}</th>
+                    <td>{item.year ?? "—"}</td>
+                    <td className="is-numeric">{item.id}</td>
+                    <td
+                      className={
+                        item.monitored === monitored ? "rs-muted" : undefined
+                      }
+                    >
+                      {state(item.monitored)} → {state(monitored)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </>
+        )}
+        <p className="rs-muted rs-small">
+          Resumed titles can be picked up by enabled automatic searches. Pausing
+          keeps existing downloads running. Nothing is searched or downloaded by
+          this action.
+        </p>
+        {kind === "series" && (
+          <p className="rs-muted rs-small">
+            Only show monitoring changes. Season and episode choices are
+            retained.
+          </p>
+        )}
+      </Modal>
     </>
   );
 }

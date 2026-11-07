@@ -1,0 +1,34 @@
+/* Dashboard (dash- namespace). */
+
+.dash-summary {
+  color: var(--rs-muted);
+  font-size: 15px;
+  margin-top: -8px;
+}
+.dash-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+.dash-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dash-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dash-episode {
+  color: var(--rs-muted);
+}
+.dash-system-links {
+  margin-top: 12px;
+}
+@media (max-width: 1000px) {
+  .dash-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

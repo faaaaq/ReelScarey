@@ -1,0 +1,51 @@
+/* Add New search (add- namespace). */
+
+.add-page {
+  max-width: 1200px;
+}
+.add-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.add-kind-group {
+  display: inline-flex;
+  border: 1px solid var(--rs-border-strong);
+  border-radius: var(--rs-radius);
+  overflow: hidden;
+}
+.add-kind-link {
+  padding: 5px 14px;
+  color: var(--rs-text);
+  background: var(--rs-surface);
+  font-size: 13.5px;
+}
+.add-kind-link + .add-kind-link {
+  border-left: 1px solid var(--rs-border-strong);
+}
+.add-kind-link:hover {
+  color: var(--rs-text-strong);
+  background: var(--rs-surface-2);
+}
+.add-kind-link.is-current {
+  background: var(--rs-selected);
+  color: var(--rs-link);
+  box-shadow: inset 0 -2px 0 var(--rs-brand);
+}
+.add-search {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.add-search-field {
+  flex: 1;
+  min-width: 0;
+}
+.add-hint {
+  margin-top: -8px;
+}
+.add-results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

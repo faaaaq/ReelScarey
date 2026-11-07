@@ -1,12 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { Button, Dialog } from "@radix-ui/themes";
+import { useEffect, useId, useRef, useState } from "react";
+import { Button } from "@radix-ui/themes";
 import {
   api,
   messageFor,
   type CatalogProfileContext,
   type ProfileSummary,
 } from "../api";
+import {
+  Alert,
+  DescriptionItem,
+  DescriptionList,
+  FormGroup,
+  LoadingIndicator,
+  Modal,
+  Table,
+} from "../ui";
 import type { Profile } from "./Automation";
+import "./Library.css";
 
 type Choice = { use_default: boolean; profile_id: number | null };
 type ReviewItem = {
@@ -33,6 +43,10 @@ type Result = {
   use_default: boolean;
 };
 
+/**
+ * Mass-editor quality profile control. The complete review, including the
+ * target rules and schedule revision, is sent back with the write.
+ */
 export function BulkProfiles({
   kind,
   ids,
@@ -51,6 +65,7 @@ export function BulkProfiles({
     [error, setError] = useState(""),
     [stale, setStale] = useState(true);
   const request = useRef<AbortController | null>(null);
+  const targetId = useId();
   useEffect(() => () => request.current?.abort(), []);
   async function loadReview(value: string) {
     request.current?.abort();
@@ -138,129 +153,19 @@ export function BulkProfiles({
     : "";
   return (
     <>
-      <Button variant="soft" onClick={() => void loadReview(choice)}>
+      <Button size="2" variant="soft" onClick={() => void loadReview(choice)}>
         Assign quality profile
       </Button>
-      <Dialog.Root
+      <Modal
         open={open}
         onOpenChange={(value) => {
           if (!value) close();
         }}
-      >
-        <Dialog.Content maxWidth="700px">
-          <Dialog.Title>Assign quality profile</Dialog.Title>
-          <Dialog.Description>
-            Review profile assignments for the exact selected titles.
-            Monitoring, existing files and downloads stay unchanged.
-          </Dialog.Description>
-          <label className="profile-target">
-            Target quality profile
-            <select
-              aria-label="Target quality profile"
-              value={choice}
-              disabled={busy === "apply"}
-              onChange={(e) => void loadReview(e.target.value)}
-            >
-              <option value="default">
-                Follow schedule default ({defaultProfile.name})
-              </option>
-              {profiles.map((profile) => (
-                <option key={profile.id} value={String(profile.id)}>
-                  {profile.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {busy === "preview" && (
-            <p role="status">Loading current assignments and profile rules…</p>
-          )}
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
-          {review && (
-            <>
-              <p className="catalog-note">
-                {changed}{" "}
-                {changed === 1 ? "assignment will" : "assignments will"} change;{" "}
-                {review.items.length - changed} unchanged.
-              </p>
-              <p className="catalog-note">
-                {review.target.use_default
-                  ? "These titles will follow future changes to the schedule default."
-                  : "These titles will keep this explicit profile when the schedule default changes."}
-              </p>
-              <section
-                className="profile-review-rules"
-                aria-label="Target profile rules"
-              >
-                <h2>{review.target_profile.name}</h2>
-                <dl>
-                  <div>
-                    <dt>Allowed resolutions</dt>
-                    <dd>
-                      {review.target_profile.qualities
-                        .map((q) => `${q}p`)
-                        .join(", ")}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Upgrade cutoff</dt>
-                    <dd>{review.target_profile.cutoff}p</dd>
-                  </div>
-                  <div>
-                    <dt>Release language</dt>
-                    <dd>{review.target_profile.language}</dd>
-                  </div>
-                  <div>
-                    <dt>Minimum torrent seeders</dt>
-                    <dd>{review.target_profile.min_seeders}</dd>
-                  </div>
-                  <div>
-                    <dt>Maximum release size</dt>
-                    <dd>{review.target_profile.max_size_gib} GiB</dd>
-                  </div>
-                  {review.target_profile.required_terms && (
-                    <div>
-                      <dt>Required terms</dt>
-                      <dd>{review.target_profile.required_terms}</dd>
-                    </div>
-                  )}
-                  {review.target_profile.rejected_terms && (
-                    <div>
-                      <dt>Rejected terms</dt>
-                      <dd>{review.target_profile.rejected_terms}</dd>
-                    </div>
-                  )}
-                </dl>
-              </section>
-              <ul className="monitoring-review profile-review-items">
-                {review.items.map((item) => (
-                  <li key={item.id}>
-                    <div>
-                      <strong>{item.title}</strong>
-                      <span>
-                        {item.year ?? "Year unknown"} · ID {item.id}
-                      </span>
-                      <p>
-                        {item.profile_id === null
-                          ? "Schedule default: "
-                          : "Assigned: "}
-                        {item.effective_profile.name} → {targetLabel}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          <p className="catalog-note">
-            Enabled searches use these profiles for future decisions. This
-            action starts no search or download and replaces no files. Release
-            labels do not verify audio language.
-          </p>
-          <div className="monitoring-dialog-actions">
+        size="large"
+        title="Assign quality profile"
+        description="Monitoring, existing files and downloads stay unchanged. Nothing is searched, downloaded or replaced."
+        footer={
+          <>
             <Button
               variant="soft"
               color="gray"
@@ -292,9 +197,114 @@ export function BulkProfiles({
                 Done
               </Button>
             )}
-          </div>
-        </Dialog.Content>
-      </Dialog.Root>
+          </>
+        }
+      >
+        <FormGroup
+          label="Quality profile"
+          htmlFor={targetId}
+          help={
+            review
+              ? review.target.use_default
+                ? "These titles will follow future changes to the schedule default."
+                : "These titles will keep this explicit profile when the schedule default changes."
+              : undefined
+          }
+        >
+          <select
+            id={targetId}
+            aria-label="Target quality profile"
+            value={choice}
+            disabled={busy === "apply"}
+            onChange={(e) => void loadReview(e.target.value)}
+          >
+            <option value="default">
+              Follow schedule default ({defaultProfile.name})
+            </option>
+            {profiles.map((profile) => (
+              <option key={profile.id} value={String(profile.id)}>
+                {profile.name}
+              </option>
+            ))}
+          </select>
+        </FormGroup>
+        {busy === "preview" && (
+          <LoadingIndicator label="Loading current assignments and profile rules…" />
+        )}
+        {error && <Alert kind="danger">{error}</Alert>}
+        {review && (
+          <>
+            <section
+              className="lib-review-rules"
+              aria-label="Target profile rules"
+            >
+              <h3>{review.target_profile.name}</h3>
+              <DescriptionList>
+                <DescriptionItem title="Allowed resolutions">
+                  {review.target_profile.qualities
+                    .map((q) => `${q}p`)
+                    .join(", ")}
+                </DescriptionItem>
+                <DescriptionItem title="Upgrade cutoff">
+                  {review.target_profile.cutoff}p
+                </DescriptionItem>
+                <DescriptionItem title="Release language">
+                  {review.target_profile.language}
+                </DescriptionItem>
+                <DescriptionItem title="Minimum torrent seeders">
+                  {review.target_profile.min_seeders}
+                </DescriptionItem>
+                <DescriptionItem title="Maximum release size">
+                  {review.target_profile.max_size_gib} GiB
+                </DescriptionItem>
+                {review.target_profile.required_terms && (
+                  <DescriptionItem title="Required terms">
+                    {review.target_profile.required_terms}
+                  </DescriptionItem>
+                )}
+                {review.target_profile.rejected_terms && (
+                  <DescriptionItem title="Rejected terms">
+                    {review.target_profile.rejected_terms}
+                  </DescriptionItem>
+                )}
+              </DescriptionList>
+            </section>
+            <p>
+              {changed} {changed === 1 ? "assignment will" : "assignments will"}{" "}
+              change; {review.items.length - changed} unchanged.
+            </p>
+            <Table label="Assignments to review">
+              <thead>
+                <tr>
+                  <th scope="col">Title</th>
+                  <th scope="col">Year</th>
+                  <th scope="col">ID</th>
+                  <th scope="col">Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {review.items.map((item) => (
+                  <tr key={item.id}>
+                    <th scope="row">{item.title}</th>
+                    <td>{item.year ?? "—"}</td>
+                    <td className="is-numeric">{item.id}</td>
+                    <td>
+                      {item.profile_id === null
+                        ? "Schedule default: "
+                        : "Assigned: "}
+                      {item.effective_profile.name} → {targetLabel}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </>
+        )}
+        <p className="rs-muted rs-small">
+          Enabled searches use these profiles for future decisions. Release
+          labels do not verify audio language.
+        </p>
+      </Modal>
     </>
   );
 }
