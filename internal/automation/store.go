@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/quality"
@@ -46,17 +47,19 @@ type Schedule struct {
 	Revision         int    `json:"revision"`
 	NextRun          int64  `json:"next_run"`
 	Requested        bool   `json:"requested"`
+	FocusMedia       string `json:"focus_media"`
+	FocusEpisode     string `json:"focus_episode"`
 	State            string `json:"state"`
 	Message          string `json:"message"`
 	IndexerConnected bool   `json:"indexer_connected"`
 	ClientConnected  bool   `json:"client_connected"`
 }
 
-const scheduleColumns = `enabled,mode,interval_minutes,batch_size,default_profile_id,revision,next_run,requested,state,message`
+const scheduleColumns = `enabled,mode,interval_minutes,batch_size,default_profile_id,revision,next_run,requested,focus_media,focus_episode,state,message`
 
 func scanSchedule(row interface{ Scan(...any) error }) (Schedule, error) {
 	var v Schedule
-	e := row.Scan(&v.Enabled, &v.Mode, &v.Interval, &v.Batch, &v.DefaultProfile, &v.Revision, &v.NextRun, &v.Requested, &v.State, &v.Message)
+	e := row.Scan(&v.Enabled, &v.Mode, &v.Interval, &v.Batch, &v.DefaultProfile, &v.Revision, &v.NextRun, &v.Requested, &v.FocusMedia, &v.FocusEpisode, &v.State, &v.Message)
 	return v, e
 }
 func (s *Service) Get(ctx context.Context) (Schedule, error) {
@@ -126,6 +129,35 @@ func (s *Service) Request(ctx context.Context) error {
 	n, _ := r.RowsAffected()
 	if n != 1 {
 		return &Error{"automation_busy", "A search is already requested or running."}
+	}
+	return nil
+}
+
+// RequestItem scopes the next search run to one show, movie or episode after
+// an explicit owner action on a library page. The run follows the saved mode
+// exactly like any other scheduled run: download mode queues the best
+// matching release, search-only mode records candidates for review.
+func (s *Service) RequestItem(ctx context.Context, mediaID int64, episodeID *int64) error {
+	var episodeCount int
+	e := s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE s.series_id=m.id AND e.id=?) FROM media_items m WHERE m.id=?`, episodeID, mediaID).Scan(&episodeCount)
+	if errors.Is(e, sql.ErrNoRows) {
+		return &Error{"not_found", "This title is not in the saved library."}
+	}
+	if e != nil {
+		return e
+	}
+	if episodeID != nil && (*episodeID == 0 || episodeCount != 1) {
+		return &Error{"not_found", "This episode does not belong to the saved show."}
+	}
+	focusMedia := strconv.FormatInt(mediaID, 10)
+	focusEpisode := ""
+	if episodeID != nil {
+		focusEpisode = strconv.FormatInt(*episodeID, 10)
+	}
+	// A running search is not disturbed: the finish logic preserves requests
+	// made while it was active and starts the focused run immediately after.
+	if _, e = s.db.ExecContext(ctx, `UPDATE search_schedule SET requested=1,focus_media=?,focus_episode=?,next_run=0 WHERE id=1`, focusMedia, focusEpisode); e != nil {
+		return e
 	}
 	return nil
 }

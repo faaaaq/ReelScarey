@@ -262,9 +262,6 @@ func Evaluate(p Profile, t Target, r Release) Decision {
 	} else {
 		d.Score = 100000 + q*100
 	}
-	if r.Protocol != "usenet" && r.Seeders != nil {
-		d.Score += min(*r.Seeders, 99)
-	}
 	scoreEvidence(p.Scoring, r, tokens, &d)
 	d.Eligible = len(d.Reasons) == 0
 	return d

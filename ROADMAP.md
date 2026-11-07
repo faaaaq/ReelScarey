@@ -758,3 +758,18 @@ downloads fall back to it when no default is chosen and the qBittorrent
 Settings connection is not configured; the Releases page treats it as a ready
 torrent client. docs/UI.md sidebar Requests entry unchanged. See
 [DOWNLOAD_CLIENTS.md](docs/DOWNLOAD_CLIENTS.md).
+
+## Version 0.38.5 seeder priority, title searches and unambiguous TV imports
+
+Automatic ranking now lets torrent seeders dominate within a resolution, so
+the best-seeded eligible release wins when the search runs; source, codec and
+preferred-term bonuses rank just below it. **Search** buttons on movies, shows
+and episodes trigger one focused automatic search for that title (the ordinary
+scheduled pipeline with its lease, mode and fences); a show search continues
+across batches until its missing episodes are done, and the latest outcome per
+title is readable per item. A TV download imports without review only when one
+video completed, one episode is reserved, no replacement is registered and the
+filename parses to exactly that episode; everything else keeps the explicit
+mapping review and the automatic path journals an "imported automatically"
+event. See [AUTOMATION.md](docs/AUTOMATION.md) and
+[TV_DOWNLOADS.md](docs/TV_DOWNLOADS.md).

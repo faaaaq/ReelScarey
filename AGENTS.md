@@ -31,8 +31,14 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   Ambiguous Discord delivery is never silently retried. See docs/REQUESTS.md.
 - internal/metadata owns TMDb normalization and its MovieProvider/SeriesProvider boundaries.
 - internal/transfer owns Torznab/qBittorrent adapters, encrypted integration
-  settings, release selections, leased download jobs, TV episode reservations/
-  reviewed file mappings and per-file journaled imports. TV shares the importer.
+  settings, release selections, leased download jobs, TV episode
+  reservations/reviewed file mappings and per-file journaled imports. TV shares
+  the importer. Owner decision in 0.38.5: a TV download imports without review
+  only when exactly one video completed, exactly one episode is reserved, no
+  replacement is registered, and the filename parses to precisely that episode;
+  packs, multi-file releases, replacements and ambiguous labels keep the
+  explicit mapping review, and the automatic path journals an "imported
+  automatically" event.
   It also owns explicit existing-library discovery and in-place registration.
   Manual registration requires review. Automatic registration requires an explicit
   matching job, exact title/episode evidence, whole-scan duplicate checks and a
@@ -174,8 +180,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   lockfile; regenerate locks without an existing node_modules directory.
 - Linux CI installs qBittorrent-nox and FFmpeg from Ubuntu packages and runs the
   opt-in REELSCAREY_LIVE_QBT=1 test with its own localhost client, protocol
-  fixtures, private movie/TV torrents and generated web-seeded videos. TV mapping
-  must be confirmed explicitly before import, including in integration tests.
+  fixtures, private movie/TV torrents and generated web-seeded videos. TV
+  mapping requires explicit confirmation unless the download is unambiguous
+  (one video, one reserved episode, exact filename evidence); ambiguous
+  fixtures keep the review flow, including in integration tests.
 - Test input boundaries, persistence across reopen, migration rollback, API
   contracts, and meaningful user behavior. Use temporary directories only.
 - Generated organization acceptance uses REELSCAREY_LIVE_ORGANIZATION=1 with

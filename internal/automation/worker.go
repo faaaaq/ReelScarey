@@ -8,6 +8,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"log/slog"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/quality"
@@ -58,19 +59,40 @@ func scanTarget(row interface{ Scan(...any) error }) (searchTarget, error) {
 	}
 	return t, e
 }
-func (s *Service) targets(ctx context.Context, cursor string, limit int) ([]searchTarget, error) {
+func (s *Service) targets(ctx context.Context, cursor string, limit int, focusMedia, focusEpisode string) ([]searchTarget, error) {
 	date := s.now().UTC().Format("2006-01-02")
 	out := []searchTarget{}
+	filter := ""
+	args := []any{}
+	if focusMedia != "" {
+		id, e := strconv.ParseInt(focusMedia, 10, 64)
+		if e != nil {
+			return nil, e
+		}
+		filter += " AND media_id=?"
+		args = append(args, id)
+	}
+	if focusEpisode != "" {
+		id, e := strconv.ParseInt(focusEpisode, 10, 64)
+		if e != nil {
+			return nil, e
+		}
+		filter += " AND episode_id=?"
+		args = append(args, id)
+	}
 	for pass := 0; pass < 2 && len(out) < limit; pass++ {
-		suffix := ` WHERE key>? ORDER BY key LIMIT ?`
-		bound := cursor
+		suffix := ` WHERE key>?` + filter + ` ORDER BY key LIMIT ?`
+		args2 := append([]any{date, date, cursor}, args...)
+		args2 = append(args2, limit-len(out))
 		if pass == 1 {
 			if cursor == "" {
 				break
 			}
-			suffix = ` WHERE key<=? ORDER BY key LIMIT ?`
+			suffix = ` WHERE key<=?` + filter + ` ORDER BY key LIMIT ?`
+			args2 = append([]any{date, date, cursor}, args...)
+			args2 = append(args2, limit-len(out))
 		}
-		rows, e := s.db.QueryContext(ctx, targetSQL+suffix, date, date, bound, limit-len(out))
+		rows, e := s.db.QueryContext(ctx, targetSQL+suffix, args2...)
 		if e != nil {
 			return nil, e
 		}
@@ -89,6 +111,35 @@ func (s *Service) targets(ctx context.Context, cursor string, limit int) ([]sear
 		}
 	}
 	return out, nil
+}
+
+// focusRemaining counts the focused targets that still need a search, so a
+// title search larger than one batch continues instead of stopping.
+func (s *Service) focusRemaining(ctx context.Context, focusMedia, focusEpisode string) (int, error) {
+	if focusMedia == "" {
+		return 0, nil
+	}
+	date := s.now().UTC().Format("2006-01-02")
+	filter := ` AND media_id=?`
+	media, e := strconv.ParseInt(focusMedia, 10, 64)
+	if e != nil {
+		return 0, e
+	}
+	args := []any{date, date, media}
+	if focusEpisode != "" {
+		id, e := strconv.ParseInt(focusEpisode, 10, 64)
+		if e != nil {
+			return 0, e
+		}
+		filter += ` AND episode_id=?`
+		args = append(args, id)
+	}
+	var count int
+	query := `SELECT COUNT(*) FROM (SELECT media_id,episode_id FROM (` + targetSQL + `) WHERE 1=1` + filter + `)`
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 type claim struct {
@@ -252,6 +303,39 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 			attempts = 0
 		}
 	}
+	// A focused title search continues across ticks until its targets are
+	// done, keeps pending requests made while another run was active, and is
+	// cleared once nothing is left. Retry and interruption keep the run's own
+	// focus so the cursor resumes where it stopped; retries keep their
+	// backoff delay.
+	requestedOut := state == "retrying" || (state == "interrupted" && c.Requested)
+	focusMedia, focusEpisode := "", ""
+	var pendingRequested bool
+	var pendingFocusMedia, pendingFocusEpisode string
+	_ = s.db.QueryRowContext(finish, `SELECT requested,focus_media,focus_episode FROM search_schedule WHERE id=1`).Scan(&pendingRequested, &pendingFocusMedia, &pendingFocusEpisode)
+	if !requestedOut && pendingRequested && !c.Requested {
+		requestedOut = true
+	}
+	if !requestedOut && c.Requested && (pendingFocusMedia != c.FocusMedia || pendingFocusEpisode != c.FocusEpisode) {
+		requestedOut = true
+	}
+	// A finished focused run continues immediately while focused targets
+	// remain; once none are left it returns to the saved cadence.
+	if !requestedOut && c.Requested && c.FocusMedia != "" && state != "retrying" && state != "interrupted" {
+		if remaining, e := s.focusRemaining(finish, c.FocusMedia, c.FocusEpisode); e == nil && remaining > 0 {
+			requestedOut = true
+		}
+	}
+	if requestedOut {
+		if pendingFocusMedia != "" {
+			focusMedia, focusEpisode = pendingFocusMedia, pendingFocusEpisode
+		} else {
+			focusMedia, focusEpisode = c.FocusMedia, c.FocusEpisode
+		}
+		if state != "retrying" {
+			next = s.now().Unix()
+		}
+	}
 	tx, err := s.db.BeginTx(finish, nil)
 	if err != nil {
 		return true, err
@@ -260,8 +344,7 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 	if _, err = tx.ExecContext(finish, `UPDATE automation_runs SET finished_at=?,state=?,message=? WHERE id=? AND state='running'`, s.now().Unix(), state, message, c.ID); err != nil {
 		return true, err
 	}
-	requested := state == "retrying" || (state == "interrupted" && c.Requested)
-	if _, err = tx.ExecContext(finish, `UPDATE search_schedule SET next_run=?,requested=?,attempts=?,state=?,message=?,lease_owner='',lease_until=0 WHERE id=1 AND lease_owner=? AND revision=?`, next, requested, attempts, state, message, c.ID, c.Revision); err != nil {
+	if _, err = tx.ExecContext(finish, `UPDATE search_schedule SET next_run=?,requested=?,focus_media=?,focus_episode=?,attempts=?,state=?,message=?,lease_owner='',lease_until=0 WHERE id=1 AND lease_owner=? AND revision=?`, next, boolInt(requestedOut), focusMedia, focusEpisode, attempts, state, message, c.ID, c.Revision); err != nil {
 		return true, err
 	}
 	// A changed schedule keeps its new intent, but releases this worker's lease.
@@ -291,7 +374,7 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 	if c.Mode == "download" && !client.Configured {
 		return "waiting_client", "Connect qBittorrent or SABnzbd before automatic downloads can start.", nil
 	}
-	targets, e := s.targets(ctx, c.Cursor, c.Batch)
+	targets, e := s.targets(ctx, c.Cursor, c.Batch, c.FocusMedia, c.FocusEpisode)
 	if e != nil {
 		return "", "", e
 	}

@@ -194,7 +194,7 @@ func TestReviewAnimeMetainfoFetchCannotReusePolicyOrIdentityChangedAwayAndBack(t
 	}
 }
 
-func TestReviewAnimeQueuePersistsDeduplicatesAndStillRequiresEpisodeFileReview(t *testing.T) {
+func TestReviewAnimeQueuePersistsDeduplicatesAndImportsUnambiguousFiles(t *testing.T) {
 	f := animeSearchAutomationReviewFixture(t)
 	ctx := context.Background()
 	animeSearchAutomationReviewPolicy(t, f, "season")
@@ -243,11 +243,17 @@ func TestReviewAnimeQueuePersistsDeduplicatesAndStillRequiresEpisodeFileReview(t
 		t.Fatal(err)
 	}
 	job, err := w.Job(ctx, jobID)
-	if err != nil || job.State != "blocked" || job.ErrorCode != "map_episodes" {
-		t.Fatal("automatic Anime download bypassed episode-file review", job.State, job.ErrorCode, err)
+	if err != nil || job.State != "importing" || job.ErrorCode != "" {
+		t.Fatal("an unambiguous automatic Anime download did not import by itself", job.State, job.ErrorCode, err)
 	}
+	var confirmed int
+	if err = db.QueryRow(`SELECT mapping_confirmed FROM download_tv WHERE download_id=?`, jobID).Scan(&confirmed); err != nil || confirmed != 1 {
+		t.Fatal("the automatic Anime mapping was not journaled", confirmed, err)
+	}
+	// The journaled import (ffprobe verification, registration) runs on the
+	// next claim; nothing reaches the library before it.
 	var files int
 	if err = db.QueryRow(`SELECT COUNT(*) FROM media_files`).Scan(&files); err != nil || files != 0 {
-		t.Fatal("unreviewed Anime files imported", files, err)
+		t.Fatal("files appeared before the journaled import", files, err)
 	}
 }

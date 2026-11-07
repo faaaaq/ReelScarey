@@ -55,10 +55,38 @@ func TestAutomationAPIRequiresAuthCSRFAndRevisions(t *testing.T) {
 		h.ServeHTTP(w, r)
 		return w
 	}
-	for _, path := range []string{"/automation", "/automation/runs", "/automation/items", "/quality-profiles", "/library/movies/1/versions"} {
+	for _, path := range []string{"/automation", "/automation/runs", "/automation/items", "/automation/item-results", "/quality-profiles", "/library/movies/1/versions"} {
 		if w := request("GET", path, "", false, false); w.Code != 401 {
 			t.Fatal(path, w.Code, w.Body.String())
 		}
+	}
+	if w := request("POST", "/automation/search-item", `{"media_id":1}`, false, false); w.Code != 401 {
+		t.Fatal("search-item must authenticate", w.Code)
+	}
+	if w := request("POST", "/automation/search-item", `{"media_id":1}`, true, false); w.Code != 403 {
+		t.Fatal("search-item must require CSRF", w.Code)
+	}
+	if _, e = db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title) VALUES(7,'movie',7,'Focus movie')`); e != nil {
+		t.Fatal(e)
+	}
+	if w := request("POST", "/automation/search-item", `{"media_id":7}`, true, true); w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var focusMedia string
+	if e = db.QueryRow(`SELECT focus_media FROM search_schedule WHERE id=1`).Scan(&focusMedia); e != nil || focusMedia != "7" {
+		t.Fatal("the focused search was not recorded", focusMedia, e)
+	}
+	if w := request("POST", "/automation/search-item", `{"media_id":999}`, true, true); w.Code != 404 {
+		t.Fatal("unknown titles must be refused", w.Code)
+	}
+	if w := request("GET", "/automation/item-results?media_id=7", "", true, false); w.Code != 200 || !strings.Contains(w.Body.String(), `"outcome":"none"`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if _, e = db.Exec(`INSERT INTO automation_runs(id,started_at,state,mode) VALUES('r1',1,'completed','search');INSERT INTO automation_results(run_id,media_id,episode_id,target,outcome,message,decisions) VALUES('r1',7,NULL,'Focus movie','match','A release matched.','[]')`); e != nil {
+		t.Fatal(e)
+	}
+	if w := request("GET", "/automation/item-results?media_id=7", "", true, false); w.Code != 200 || !strings.Contains(w.Body.String(), `"outcome":"match"`) {
+		t.Fatal(w.Code, w.Body.String())
 	}
 	schedule := `{"enabled":true,"mode":"search","interval_minutes":60,"batch_size":5,"default_profile_id":1,"revision":1}`
 	if _, e = db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title) VALUES(101,'movie',101,'Version movie'),(102,'series',102,'Version show')`); e != nil {

@@ -92,6 +92,72 @@ function setup(
 }
 
 describe("TV catalog and monitoring", () => {
+  it("triggers focused automatic searches for the show and a single episode", async () => {
+    const posts: { url: string; body: unknown }[] = [];
+    setup((url, options) => {
+      if (url.endsWith("/library/series/7")) return Response.json(show);
+      if (url.endsWith("/seasons/1"))
+        return Response.json({
+          season: show.seasons[0],
+          revision: show.revision,
+          series_monitored: true,
+          episodes: [
+            {
+              id: 9,
+              tmdb_id: 45,
+              number: 1,
+              title: "Pilot",
+              overview: "",
+              air_date: "2025-01-09",
+              runtime_minutes: null,
+              monitored: true,
+              effective_monitored: true,
+            },
+            {
+              id: 10,
+              tmdb_id: 46,
+              number: 2,
+              title: "Second",
+              overview: "",
+              air_date: "2025-01-16",
+              runtime_minutes: null,
+              monitored: true,
+              effective_monitored: true,
+            },
+          ],
+        });
+      if (
+        url.endsWith("/automation/search-item") &&
+        options?.method === "POST"
+      ) {
+        posts.push({ url, body: JSON.parse(String(options.body)) });
+        return Response.json({ requested: true }, { status: 202 });
+      }
+      if (url.includes("/automation/item-results"))
+        return Response.json({
+          outcome: "queued",
+          message: "Download queued.",
+          started_at: Math.floor(Date.now() / 1000),
+        });
+      return undefined;
+    });
+    mount("/series/7");
+    await screen.findByRole("heading", { name: "Test TV series" });
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0].body).toEqual({ media_id: 7 });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Season 1" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Automatic search for S01E02 Second",
+      }),
+    );
+    await waitFor(() => expect(posts).toHaveLength(2));
+    expect(posts[1].body).toEqual({ media_id: 7, episode_id: 10 });
+  });
+
   it("applies monitoring to selected seasons after confirmation", async () => {
     vi.stubGlobal(
       "confirm",

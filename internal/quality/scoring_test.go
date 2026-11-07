@@ -17,8 +17,21 @@ func TestSourceCodecBonusesAndRetentionRemainBelowResolutionAndIdentity(t *testi
 	preferred.ID = "preferred"
 	preferred.Title = "Example.2020.1080p.BluRay.REMUX.x265.PROPER"
 	a, b := Evaluate(p, target, base), Evaluate(p, target, preferred)
-	if !a.Eligible || !b.Eligible || b.Score <= a.Score || b.Codec != "h265" || b.Source != "remux" || len(b.ScoringReasons) != 3 {
+	if !a.Eligible || !b.Eligible || b.Score <= a.Score || b.Codec != "h265" || b.Source != "remux" || len(b.ScoringReasons) != 4 {
 		t.Fatal(a, b)
+	}
+	// The best-seeded release wins within one resolution even when its source
+	// and codec preferences rank lower.
+	seeded := base
+	seeded.ID = "seeded"
+	many := 4000
+	few := 5
+	seeded.Seeders = &many
+	sparse := base
+	sparse.ID = "sparse"
+	sparse.Seeders = &few
+	if Evaluate(p, target, seeded).Score <= Evaluate(p, target, sparse).Score {
+		t.Fatal("seeders did not dominate the preference bonuses")
 	}
 	low := preferred
 	low.Title = "Example.2020.720p.BluRay.REMUX.x265.PROPER"

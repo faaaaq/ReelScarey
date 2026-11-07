@@ -38,17 +38,33 @@ audio tracks. Exact matching intentionally favors false negatives over unrelated
 automatic downloads. Review history when legitimate releases are excluded.
 
 Eligible releases rank by the cutoff first, then lower allowed resolutions from
-highest to lowest, then above-cutoff resolutions from lowest to highest. Known
-seed count breaks resolution ties, capped at 99; title order breaks remaining
-ties. The indexer supplies at most 50 candidates; the ten highest ranked decisions
+highest to lowest, then above-cutoff resolutions from lowest to highest. Within
+one resolution, the known torrent seed count dominates (doubled, capped at
+4000 seeds), so the best-seeded available release wins when the search runs;
+source, codec and preferred-term bonuses rank just below it. Usenet releases
+have no seed bonus. Title order breaks remaining ties. The indexer supplies at
+most 50 candidates; the ten highest ranked decisions
 and their rejection reasons are retained per target. Manual release choices are
 not silently blocked by these automation-only rules.
+
+## Title searches from library pages
+
+**Search** buttons on a movie, show or episode (and in the Activity review
+flows) trigger one focused automatic search for that title via
+`POST /automation/search-item`. The run is the ordinary scheduled pipeline with
+its lease, retries, batching and mode: download mode queues the best matching
+release, search-only mode records candidates for review. A show-scoped search
+continues across runs until its missing monitored episodes are done. The
+latest recorded outcome per title is readable at
+`GET /automation/item-results`.
 
 ## Modes and file safety
 
 Search mode records decisions without queuing downloads. Download mode queues
 the best matching **missing** target through the existing transfer service. A
-completed TV download always waits for episode/file review in Activity. Existing
+completed TV download waits for episode/file review in Activity unless it is
+unambiguous (one video, one reserved episode, exact filename evidence) and then
+imports automatically with the same journaling; see TV_DOWNLOADS.md. Existing
 hash/target reservations, encrypted payloads, authenticated client submission,
 source retention, collision refusal and journaled imports are shared with manual
 downloads. A queue policy check runs transactionally after metainfo retrieval and

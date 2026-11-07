@@ -17,7 +17,7 @@ INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date) VALUES
 	if e != nil {
 		t.Fatal(e)
 	}
-	before, e := f.s.targets(ctx, "", 10)
+	before, e := f.s.targets(ctx, "", 10, "", "")
 	if e != nil || len(before) != 2 {
 		t.Fatal(before, e)
 	}
@@ -29,7 +29,7 @@ INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date) VALUES
 	if _, e = s.SaveAnime(ctx, 2, library.AnimeUpdate{Category: "anime", Revision: review.Revision, NumberingRevision: review.NumberingRevision}); e != nil {
 		t.Fatal(e)
 	}
-	after, e := f.s.targets(ctx, "", 10)
+	after, e := f.s.targets(ctx, "", 10, "", "")
 	if e != nil || len(after) != 1 || after[0].MediaID != 1 || after[0].TV {
 		t.Fatal("anime episode order was assumed or film was excluded", after, e)
 	}

@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@radix-ui/themes";
-import { ChevronDown, FolderTree, RefreshCw, Settings2 } from "lucide-react";
+import {
+  ChevronDown,
+  FolderTree,
+  RefreshCw,
+  SearchCheck,
+  Settings2,
+} from "lucide-react";
 import { useParams } from "react-router-dom";
 import {
   api,
@@ -26,6 +32,11 @@ import {
 } from "../ui";
 import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
+import {
+  ItemSearchResultAlert,
+  TitleSearchButton,
+  useItemSearch,
+} from "./details/ItemSearch";
 import { AnimeSettings } from "./AnimeSettings";
 import { AnimeSearch } from "./AnimeSearch";
 import { AnimeOrder } from "./AnimeOrder";
@@ -176,6 +187,7 @@ function SeriesView({ initial }: { initial: TVSeries }) {
   );
   const anime = show.category === "anime";
   const data = details.data;
+  const itemSearch = useItemSearch();
   return (
     <>
       <PageToolbar>
@@ -189,6 +201,11 @@ function SeriesView({ initial }: { initial: TVSeries }) {
             onClick={() => void update("/refresh", "POST")}
           />
           <ToolbarSeparator />
+          <TitleSearchButton
+            mediaID={show.id}
+            pending={!!itemSearch.pending}
+            onTrigger={(mediaID) => itemSearch.trigger(mediaID)}
+          />
           <ToolbarButton
             icon={FolderTree}
             label="Organize"
@@ -197,6 +214,14 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           <ToolbarButton icon={Settings2} label="Automation" to="/automation" />
         </ToolbarSection>
       </PageToolbar>
+      {itemSearch.result && (
+        <PageBody>
+          <ItemSearchResultAlert
+            result={itemSearch.result}
+            onDismiss={itemSearch.reset}
+          />
+        </PageBody>
+      )}
       <DetailHeader
         item={show}
         title={show.title}
@@ -390,13 +415,16 @@ function SeriesView({ initial }: { initial: TVSeries }) {
                                   : current.filter((id) => id !== season.id),
                               )
                             }
+                            searchPending={!!itemSearch.pending}
+                            onEpisodeSearch={(episodeID) =>
+                              itemSearch.trigger(show.id, episodeID)
+                            }
                           />
                         ))}
                       </div>
                       <p className="rs-form-help">
                         Regular seasons start monitored; specials do not.
-                        Completed TV downloads wait for mapping review in
-                        Activity.
+                        Ambiguous downloads wait for mapping review in Activity.
                       </p>
                     </>
                   )}
@@ -484,6 +512,8 @@ function SeasonBlock({
   selected,
   selectDisabled,
   onSelect,
+  searchPending,
+  onEpisodeSearch,
 }: {
   show: TVSeries;
   season: TVSeason;
@@ -495,6 +525,8 @@ function SeasonBlock({
   selected: boolean;
   selectDisabled: boolean;
   onSelect: (checked: boolean) => void;
+  searchPending: boolean;
+  onEpisodeSearch: (episodeID: number) => void;
 }) {
   const panelID = `season-${season.id}`;
   return (
@@ -563,6 +595,8 @@ function SeasonBlock({
             season={season}
             pending={pending}
             update={update}
+            searchPending={searchPending}
+            onEpisodeSearch={onEpisodeSearch}
           />
         </div>
       )}
@@ -576,12 +610,16 @@ function SeasonEpisodes({
   pending,
   update,
   attempt,
+  searchPending,
+  onEpisodeSearch,
 }: {
   show: TVSeries;
   season: TVSeason;
   pending: boolean;
   update: Update;
   attempt: number;
+  searchPending: boolean;
+  onEpisodeSearch: (episodeID: number) => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
@@ -805,10 +843,25 @@ function SeasonEpisodes({
                     </td>
                     <td className="is-actions">
                       {!e.available && (
-                        <IconLink
-                          to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}`}
-                          label={`Search for ${episodeCode(season.number, e.number)} ${e.title}`}
-                        />
+                        <span
+                          className="rs-row"
+                          style={{ justifyContent: "flex-end" }}
+                        >
+                          <button
+                            type="button"
+                            className="det-icon-link"
+                            aria-label={`Automatic search for ${episodeCode(season.number, e.number)} ${e.title}`}
+                            title="Automatic search now: download mode queues the best match, search-only mode saves results for review"
+                            disabled={searchPending}
+                            onClick={() => onEpisodeSearch(e.id)}
+                          >
+                            <SearchCheck size={16} aria-hidden="true" />
+                          </button>
+                          <IconLink
+                            to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}`}
+                            label={`Search for ${episodeCode(season.number, e.number)} ${e.title}`}
+                          />
+                        </span>
                       )}
                     </td>
                   </tr>

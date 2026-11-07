@@ -23,6 +23,11 @@ import { AnimeOrder } from "./AnimeOrder";
 import { ItemOrganization } from "./Organization";
 import { MovieCollection } from "./MovieCollection";
 import { RelatedTitles } from "./RelatedTitles";
+import {
+  ItemSearchResultAlert,
+  TitleSearchButton,
+  useItemSearch,
+} from "./details/ItemSearch";
 import { AutomaticFranchise } from "./AutomaticFranchise";
 import { MovieVersions } from "./MovieVersions";
 import {
@@ -55,6 +60,7 @@ function MovieView({ id }: { id: number }) {
   const details = useItemDetails(id);
   const data = details.data;
   const item = data?.item;
+  const search = useItemSearch();
   return (
     <>
       <PageToolbar>
@@ -74,6 +80,11 @@ function MovieView({ id }: { id: number }) {
               to={`/releases?movie=${id}`}
             />
           )}
+          <TitleSearchButton
+            mediaID={Number(id)}
+            pending={!!search.pending}
+            onTrigger={(mediaID) => search.trigger(mediaID)}
+          />
           <ToolbarSeparator />
           <ToolbarButton
             icon={FolderTree}
@@ -83,6 +94,14 @@ function MovieView({ id }: { id: number }) {
           <ToolbarButton icon={Settings2} label="Automation" to="/automation" />
         </ToolbarSection>
       </PageToolbar>
+      {search.result && (
+        <PageBody>
+          <ItemSearchResultAlert
+            result={search.result}
+            onDismiss={search.reset}
+          />
+        </PageBody>
+      )}
       {!data ? (
         <PageBody>
           <RequestState

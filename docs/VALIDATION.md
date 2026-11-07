@@ -2137,3 +2137,14 @@ Run locally on Windows (development tools only; Docker remains the target):
   reads the revision from the client list. The tag was re-pointed and the
   final run passed, including the release-candidate startup, backup restore
   and storage recovery verification.
+
+## Version 0.38.5 seeder priority, title searches and unambiguous TV imports
+
+- gofmt clean for changed files; go vet and the full go test suite passed
+  (schema version assertions moved to 53 for migration 053).
+- Frontend format:check, check, the full test suite (39 files, 223 tests) and
+  the build passed. New tests cover seed dominance, focused-search scoping
+  and batch continuation, the new API routes, auto-import and the review
+  path for ambiguous labels.
+- The live qBittorrent and Docker acceptance suites were not run locally; the
+  publish workflow's release-candidate verification runs them on the tag.

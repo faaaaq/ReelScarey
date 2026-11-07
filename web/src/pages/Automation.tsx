@@ -781,10 +781,12 @@ function ProfileForm({
           </label>
         </div>
         <p className="rs-form-help">
-          Source, codec and preferred-term bonuses rank eligible releases within
-          a resolution. They use release labels, not verified stream quality.
-          Usenet age filters reject unknown publication dates when enabled;
-          torrent ranking is unaffected by retention.
+          Torrent seeders dominate within a resolution: among eligible releases,
+          the best-seeded one wins when the search runs. Source, codec and
+          preferred-term bonuses break near-ties below that. They use release
+          labels, not verified stream quality. Usenet age filters reject unknown
+          publication dates when enabled; torrent ranking is unaffected by
+          retention.
         </p>
         <p className="rs-form-help">
           Separate terms with commas. Every required term must match. Camera

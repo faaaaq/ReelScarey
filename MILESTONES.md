@@ -344,3 +344,13 @@ See [announce feeds](docs/ANNOUNCE.md).
   built-in client; queue reservations re-derive the same choice.
 - [x] Releases page treats an enabled built-in client as a ready torrent
   target; Download clients card copy explains the default and opt-out.
+
+## Version 0.38.5 seeder priority, title searches and unambiguous TV imports
+
+- [x] Seeders doubled and capped at 4000 dominate the preference bonuses
+  within a resolution; documented in the profile help text.
+- [x] Focused title searches: search_schedule focus columns (migration 053),
+  batch continuation, preserved mid-run requests, POST search-item and GET
+  item-results endpoints, Search buttons on movie/show details and episodes.
+- [x] Unambiguous TV downloads auto-map and import with an honest event;
+  ambiguous ones keep the review flow.

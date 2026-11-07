@@ -101,6 +101,17 @@ func scoreEvidence(s Scoring, r Release, tokens string, d *Decision) {
 		}
 		seen[term] = true
 	}
+	// Torrent seeders dominate the preference bonuses within one resolution:
+	// among eligible releases the best-seeded one wins at scan time. The
+	// resolution order itself still leads, and usenet releases keep their
+	// retention rules instead.
+	if r.Protocol != "usenet" && r.Seeders != nil {
+		points := min(max(*r.Seeders, 0), 4000) * 2
+		d.Score += points
+		if points > 0 {
+			d.ScoringReasons = append(d.ScoringReasons, fmt.Sprintf("Seeders: +%d", points))
+		}
+	}
 	if r.Protocol != "usenet" {
 		return
 	}

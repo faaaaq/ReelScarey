@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func setupTV(t *testing.T) (*workflowFixture, int64, []TVTarget) {
@@ -63,6 +64,89 @@ func completeTV(t *testing.T, f *workflowFixture, j Job) {
 		f.client.files = append(f.client.files, TorrentFile{Index: n, Name: name, Size: int64(len("owned fixture video " + name)), Progress: 1, Priority: 1})
 	}
 }
+
+// A release with exactly one completed video whose filename parses to
+// precisely the one reserved episode imports without review; everything else
+// keeps the explicit mapping review.
+func TestTVSingleEpisodeImportsAutomatically(t *testing.T) {
+	f, id, targets := setupTV(t)
+	ctx := context.Background()
+	out, e := f.s.SearchTV(ctx, id, 1, 2, "")
+	if e != nil || len(out) != 1 {
+		t.Fatal(out, e)
+	}
+	j, created, e := f.s.Queue(ctx, out[0].ID)
+	if e != nil || !created || j.Kind != "series" || len(j.Targets) != 1 {
+		t.Fatal(j, e)
+	}
+	if j.Targets[0].EpisodeID != targets[1].EpisodeID {
+		t.Fatal("the single-episode search reserved the wrong episode", j.Targets)
+	}
+	f.tick(t)
+	f.source(t, j, "Test.Show.S01E02.mkv", []byte("owned fixture video"))
+	f.client.torrent.Progress = 1
+	f.client.torrent.AmountLeft = 0
+	f.client.torrent.State = "uploading"
+	f.client.files = []TorrentFile{{Index: 0, Name: "Test.Show.S01E02.mkv", Size: int64(len("owned fixture video")), Progress: 1, Priority: 1}}
+	f.tick(t)
+	current, e := f.s.Job(ctx, j.ID)
+	if e != nil || current.ErrorCode == "map_episodes" || current.State != "importing" {
+		t.Fatal("an unambiguous single-episode download waited for review", current, e)
+	}
+	var confirmed int
+	if e = f.db.QueryRow(`SELECT mapping_confirmed FROM download_tv WHERE download_id=?`, j.ID).Scan(&confirmed); e != nil || confirmed != 1 {
+		t.Fatal("the automatic mapping was not journaled", confirmed, e)
+	}
+	f.tick(t)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		current, e = f.s.Job(ctx, j.ID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if current.State == "completed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the automatic import never completed", current)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if f.probe.calls != 1 {
+		t.Fatal("the automatic import skipped ffprobe verification", f.probe.calls)
+	}
+	season, e := library.New(f.db).TVSeason(ctx, id, 1)
+	if e != nil || !season.Episodes[1].Available {
+		t.Fatal("the episode was not registered", season, e)
+	}
+	var events int
+	if e = f.db.QueryRow(`SELECT COUNT(*) FROM activity_events WHERE kind='download' AND object_id=? AND state LIKE 'imported automatically%'`, j.ID).Scan(&events); e != nil || events != 1 {
+		t.Fatal("the automatic import left no honest event", events, e)
+	}
+
+	// The same download without an exact episode label keeps the review.
+	f2, id2, _ := setupTV(t)
+	out2, e := f2.s.SearchTV(ctx, id2, 1, 2, "")
+	if e != nil || len(out2) != 1 {
+		t.Fatal(out2, e)
+	}
+	j2, _, e := f2.s.Queue(ctx, out2[0].ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	f2.tick(t)
+	f2.source(t, j2, "Test.Show.Season.Pack.mkv", []byte("owned fixture video"))
+	f2.client.torrent.Progress = 1
+	f2.client.torrent.AmountLeft = 0
+	f2.client.torrent.State = "uploading"
+	f2.client.files = []TorrentFile{{Index: 0, Name: "Test.Show.Season.Pack.mkv", Size: 19, Progress: 1, Priority: 1}}
+	f2.tick(t)
+	current2, e := f2.s.Job(ctx, j2.ID)
+	if e != nil || current2.ErrorCode != "map_episodes" {
+		t.Fatal("an ambiguous label bypassed review", current2, e)
+	}
+}
+
 func TestTVMultiEpisodeImportReopenAndSourceRetention(t *testing.T) {
 	for _, copyMode := range []bool{false, true} {
 		t.Run(map[bool]string{false: "link", true: "copy"}[copyMode], func(t *testing.T) {

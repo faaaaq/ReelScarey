@@ -2,7 +2,9 @@ package automation
 
 import (
 	"context"
+	"crypto/sha1"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -21,10 +23,11 @@ import (
 )
 
 type indexer struct {
-	calls   int
-	err     error
-	onFetch func()
-	title   string
+	calls    int
+	err      error
+	onFetch  func()
+	title    string
+	titleFor func(query string) string
 }
 
 func TestNewznabAutomationUsesSABAndDoesNotApplyTorrentSeedRules(t *testing.T) {
@@ -99,19 +102,29 @@ func TestNewznabAutomationUsesSABAndDoesNotApplyTorrentSeedRules(t *testing.T) {
 }
 
 func (*indexer) Test(context.Context, transfer.IndexerConfig) error { return nil }
-func (i *indexer) Search(context.Context, transfer.IndexerConfig, string) ([]transfer.Candidate, error) {
+func (i *indexer) Search(_ context.Context, _ transfer.IndexerConfig, query string) ([]transfer.Candidate, error) {
 	i.calls++
 	if i.err != nil {
 		return nil, i.err
 	}
 	n := 5
-	return []transfer.Candidate{{Release: transfer.Release{Title: i.title, Size: 2 << 30, Seeders: &n}}}, nil
+	title := i.title
+	if i.titleFor != nil {
+		title = i.titleFor(query)
+	}
+	return []transfer.Candidate{{Release: transfer.Release{Title: title, Size: 2 << 30, Seeders: &n}}}, nil
 }
-func (i *indexer) Fetch(context.Context, transfer.IndexerConfig, transfer.Candidate) (transfer.Payload, string, error) {
+func (i *indexer) Fetch(_ context.Context, _ transfer.IndexerConfig, c transfer.Candidate) (transfer.Payload, string, error) {
 	if i.onFetch != nil {
 		i.onFetch()
 	}
+	// The dynamic search fixture derives the info hash from the title so
+	// distinct episodes do not collide on one torrent.
 	h := strings.Repeat("a", 40)
+	if i.titleFor != nil {
+		sum := sha1.Sum([]byte(c.Title))
+		h = hex.EncodeToString(sum[:])
+	}
 	return transfer.Payload{Magnet: "magnet:?xt=urn:btih:" + h}, h, nil
 }
 
@@ -415,23 +428,23 @@ func TestBoundedCursorMonitoringDatesAndTVSelections(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	targets, e := f.s.targets(ctx, "", 25)
+	targets, e := f.s.targets(ctx, "", 25, "", "")
 	if e != nil || len(targets) != 3 || targets[0].EpisodeID == nil {
 		t.Fatal(targets, e)
 	}
 	cursor := targets[0].Key
-	rotated, e := f.s.targets(ctx, cursor, 2)
+	rotated, e := f.s.targets(ctx, cursor, 2, "", "")
 	if e != nil || len(rotated) != 2 || rotated[0].MediaID != 1 || rotated[1].MediaID != 4 {
 		t.Fatal(rotated, e)
 	}
-	wrapped, e := f.s.targets(ctx, rotated[1].Key, 2)
+	wrapped, e := f.s.targets(ctx, rotated[1].Key, 2, "", "")
 	if e != nil || len(wrapped) != 2 || wrapped[0].EpisodeID == nil || wrapped[1].MediaID != 1 {
 		t.Fatal(wrapped, e)
 	}
 	if _, e = f.db.Exec(`UPDATE seasons SET monitored=0 WHERE id=1`); e != nil {
 		t.Fatal(e)
 	}
-	targets, e = f.s.targets(ctx, "", 25)
+	targets, e = f.s.targets(ctx, "", 25, "", "")
 	if e != nil || len(targets) != 2 {
 		t.Fatal(targets, e)
 	}
@@ -505,7 +518,7 @@ func TestUpgradeSuggestionsPreserveRegisteredFilesAndHonorCutoff(t *testing.T) {
 	}
 }
 
-func TestAutomaticTVUsesReservationsAndStillRequiresMappingReview(t *testing.T) {
+func TestAutomaticTVUsesReservationsAndImportsUnambiguousEpisodes(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
 	_, e := f.db.Exec(`DELETE FROM media_items;INSERT INTO media_items(id,kind,tmdb_id,title,year,monitored) VALUES(5,'series',5,'Show',2020,1);INSERT INTO series_details(media_id) VALUES(5);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,5,10,1,'Season','','2020-01-01',1,1,'2020-01-01');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,11,1,'One','','2020-01-01',1)`)
@@ -532,13 +545,19 @@ func TestAutomaticTVUsesReservationsAndStillRequiresMappingReview(t *testing.T) 
 		t.Fatal(e)
 	}
 	job, e = f.w.Job(ctx, job.ID)
-	if e != nil || job.State != "blocked" || job.ErrorCode != "map_episodes" {
-		t.Fatal(job.State, job.ErrorCode, e)
+	if e != nil || job.State != "importing" || job.ErrorCode != "" {
+		t.Fatal("an unambiguous automatic episode did not import by itself", job.State, job.ErrorCode, e)
 	}
+	var confirmed int
+	if e = f.db.QueryRow(`SELECT mapping_confirmed FROM download_tv WHERE download_id=?`, job.ID).Scan(&confirmed); e != nil || confirmed != 1 {
+		t.Fatal("the automatic mapping was not journaled", confirmed, e)
+	}
+	// The journaled import (ffprobe verification, registration) runs on the
+	// next claim; nothing reaches the library before it.
 	var count int
 	_ = f.db.QueryRow(`SELECT COUNT(*) FROM media_files`).Scan(&count)
 	if count != 0 {
-		t.Fatal("unreviewed automatic episode was imported")
+		t.Fatal("files appeared before the journaled import")
 	}
 	// Simulate an already registered lower-resolution file to exercise TV upgrade
 	// discovery. No real media is replaced or opened by this scheduler test.
@@ -584,5 +603,84 @@ func TestInterruptedOneOffRetainsIntentForRestart(t *testing.T) {
 	_ = f.db.QueryRow(`SELECT COUNT(*) FROM downloads`).Scan(&count)
 	if count != 1 {
 		t.Fatal("one-off intent lost across cancellation", count)
+	}
+}
+
+// A title search requested from a library page scopes the next run to that
+// title, queues it in download mode, and continues across batches until the
+// focused targets are done.
+func TestItemSearchScopesTheRunAndContinuesAcrossBatches(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	if _, e := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,monitored,release_date) VALUES(2,'movie',2,'B Test Movie',2020,1,'2020-01-01')`); e != nil {
+		t.Fatal(e)
+	}
+	configure(t, f.s, true, "download", 10)
+	if e := f.s.RequestItem(ctx, 1, nil); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	jobs, e := f.w.List(ctx, 1)
+	if e != nil || len(jobs.Items) != 1 || jobs.Items[0].MovieID != 1 {
+		t.Fatal("the focused run searched outside its title", jobs, e)
+	}
+	runs, _ := f.s.Runs(ctx)
+	results, _ := f.s.Results(ctx, runs[0].ID)
+	if len(results) != 1 || results[0].MediaID != 1 || results[0].Outcome != "queued" {
+		t.Fatal(results)
+	}
+
+	// Show focus with a batch of one: the run continues until both missing
+	// episodes are done, then the focus clears and the cadence returns.
+	f2 := setup(t)
+	if _, e := f2.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,category,monitored) VALUES(5,'series',5,'Show',2020,'standard',1);INSERT INTO series_details(media_id) VALUES(5);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,5,10,1,'Season','','2020-01-01',2,1,'loaded');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,11,1,'One','','2020-01-01',1),(2,1,12,2,'Two','','2020-01-02',1)`); e != nil {
+		t.Fatal(e)
+	}
+	f2.i.titleFor = func(query string) string { return strings.ReplaceAll(query, " ", ".") + ".1080p.English.WEB" }
+	v, e := f2.s.Get(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f2.s.Update(ctx, Update{Enabled: true, Mode: "download", Interval: 15, Batch: 1, DefaultProfile: 1, Revision: v.Revision}); e != nil {
+		t.Fatal(e)
+	}
+	if e = f2.s.RequestItem(ctx, 5, nil); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f2.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	schedule, e := f2.s.Get(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !schedule.Requested || schedule.FocusMedia == "" {
+		t.Fatal("the focused search stopped before finishing its batch", schedule)
+	}
+	if _, e = f2.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	runs2, _ := f2.s.Runs(ctx)
+	results2, _ := f2.s.Results(ctx, runs2[0].ID)
+	for _, r := range results2 {
+		t.Log("run2 result:", r.MediaID, r.EpisodeID, r.Outcome, r.Message)
+	}
+	var episodeJobs int
+	if err := f2.db.QueryRow(`SELECT COUNT(*) FROM episode_downloads`).Scan(&episodeJobs); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("episode reservations:", episodeJobs)
+	schedule, e = f2.s.Get(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if schedule.Requested || schedule.FocusMedia != "" || schedule.FocusEpisode != "" {
+		t.Fatal("the finished title search kept its focus", schedule)
+	}
+	jobs, e = f2.w.List(ctx, 1)
+	if e != nil || len(jobs.Items) != 2 {
+		t.Fatal("the focused show did not search both episodes", jobs, e)
 	}
 }

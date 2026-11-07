@@ -21,17 +21,23 @@ to a different target set. An identical retry returns its existing job. This avo
 adopting or editing unrelated qBittorrent torrents. Loss of an add response uses
 the existing hash/tag reconciliation and durable worker leases.
 
-Completed TV downloads always stop for review before any media write. Activity
-lists complete, selected, supported videos, excluding archives/samples/trailers.
-The path snapshot must remain in the job's dedicated download directory. Filename
-patterns S01E01, S01E01E02, S01E01-E03 and 1x01-02 provide suggestions only; wrong
-seasons, ambiguous tokens, nonconsecutive groups and unknown episodes produce no
+Completed TV downloads stop for review before any media write when the mapping
+is not unambiguous: more than one completed video, more than one reserved
+episode, a replaced registered version, or a filename without exact episode
+evidence all keep the explicit review. Activity lists complete, selected,
+supported videos, excluding archives/samples/trailers. The path snapshot must
+remain in the job's dedicated download directory. Filename patterns S01E01,
+S01E01E02, S01E01-E03 and 1x01-02 provide suggestions only; wrong seasons,
+ambiguous tokens, nonconsecutive groups and unknown episodes produce no
 suggestion. Date/absolute-number filenames can be assigned manually.
 
-Assign every target episode to a listed file or explicitly skip it. A shared file
-can cover up to 20 consecutive target episodes in one season. Confirm that you
-reviewed the assignments, then select Confirm files & import. At least one episode
-must be imported. The server validates the complete partition, rejects duplicate/
+Assign every target episode to a listed file or explicitly skip it when a
+review is required. Unambiguous downloads map themselves: the server records
+the same mapping the review would have confirmed, journals an "imported
+automatically" event, and runs the identical ffprobe verification and journaled
+import. A shared file can cover up to 20 consecutive target episodes in one
+season. Confirm that you reviewed the assignments, then select Confirm files &
+import. At least one episode must be imported. The server validates the complete partition, rejects duplicate/
 foreign targets and unknown file indexes, stores its own path/size snapshot, and
 locks the mapping before import. Skipped episodes release their reservations.
 Mapping cannot change once confirmed; stop tracking/review rather than altering

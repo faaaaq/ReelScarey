@@ -22,7 +22,11 @@ func (s *Server) automationError(w http.ResponseWriter, err error) {
 	var p *automation.Error
 	if errors.As(err, &p) {
 		status := 400
-		if p.Code != "invalid_automation" {
+		switch p.Code {
+		case "invalid_automation":
+		case "not_found":
+			status = 404
+		default:
 			status = 409
 		}
 		fail(w, status, p.Code, p.Message)
@@ -76,6 +80,66 @@ func (s *Server) automationRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 202, map[string]bool{"requested": true})
+}
+
+// automationSearchItem starts a focused automatic search for one title after
+// an explicit owner action on a library page.
+func (s *Server) automationSearchItem(w http.ResponseWriter, r *http.Request) {
+	if !s.automationReady(w) {
+		return
+	}
+	var in struct {
+		MediaID   int64  `json:"media_id"`
+		EpisodeID *int64 `json:"episode_id"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	if in.MediaID < 1 {
+		fail(w, 400, "invalid_selection", "Choose a saved title.")
+		return
+	}
+	if e := s.automation.RequestItem(r.Context(), in.MediaID, in.EpisodeID); e != nil {
+		s.automationError(w, e)
+		return
+	}
+	send(w, 202, map[string]bool{"requested": true})
+}
+
+// automationItemResults reports the latest recorded search outcome for one
+// title (and optionally one episode), so library pages can show what the
+// focused search decided without opening Automation.
+func (s *Server) automationItemResults(w http.ResponseWriter, r *http.Request) {
+	if !s.automationReady(w) {
+		return
+	}
+	media, e := strconv.ParseInt(r.URL.Query().Get("media_id"), 10, 64)
+	if e != nil || media < 1 {
+		fail(w, 400, "invalid_selection", "Choose a saved title.")
+		return
+	}
+	episode := int64(0)
+	if v := r.URL.Query().Get("episode_id"); v != "" {
+		if episode, e = strconv.ParseInt(v, 10, 64); e != nil || episode < 1 {
+			fail(w, 400, "invalid_selection", "Choose a saved episode.")
+			return
+		}
+	}
+	var (
+		outcome, message, downloadID string
+		runID                        string
+		started                      int64
+	)
+	e = s.db.QueryRowContext(r.Context(), `SELECT r.outcome,COALESCE(r.message,''),COALESCE(r.download_id,''),r.run_id,au.started_at FROM automation_results r JOIN automation_runs au ON au.id=r.run_id WHERE r.media_id=? AND (?=0 OR r.episode_id=?) ORDER BY r.id DESC LIMIT 1`, media, episode, episode).Scan(&outcome, &message, &downloadID, &runID, &started)
+	if errors.Is(e, sql.ErrNoRows) {
+		send(w, 200, map[string]any{"outcome": "none"})
+		return
+	}
+	if e != nil {
+		s.internal(w, "automation item results", e)
+		return
+	}
+	send(w, 200, map[string]any{"outcome": outcome, "message": message, "download_id": downloadID, "run_id": runID, "started_at": started})
 }
 func (s *Server) automationRuns(w http.ResponseWriter, r *http.Request) {
 	if !s.automationReady(w) {

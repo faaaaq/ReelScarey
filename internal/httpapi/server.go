@@ -248,6 +248,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/youtube/jobs/{id}/cancel", method(http.MethodPost, s.youtubeCancel))
 	mux.HandleFunc("/api/v1/youtube/files", method(http.MethodGet, s.youtubeFiles))
 	mux.HandleFunc("/api/v1/automation/run", method(http.MethodPost, s.automationRequest))
+	mux.HandleFunc("/api/v1/automation/search-item", method(http.MethodPost, s.automationSearchItem))
+	mux.HandleFunc("/api/v1/automation/item-results", method(http.MethodGet, s.automationItemResults))
 	mux.HandleFunc("/api/v1/automation/runs", method(http.MethodGet, s.automationRuns))
 	mux.HandleFunc("/api/v1/automation/runs/{id}", method(http.MethodGet, s.automationResults))
 	mux.HandleFunc("/api/v1/automation/items", method(http.MethodGet, s.automationItems))
