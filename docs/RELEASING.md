@@ -19,10 +19,15 @@ BuildKit provenance must not be described as a signed release. No successful
 publication or signature is implied by the presence of this workflow.
 
 Before publishing, run the application checks and disposable Docker acceptance,
-verify backup/restore, and inspect the actual workflow result. Hosted runner
-billing, quota or permissions failures must be reported separately from local
-checks. Public distribution still requires the owner's license choice. Do not
-silently select a license, enable a paid plan or change visibility to clear a gate.
+verify backup/restore, and inspect the actual workflow result. The fast
+application checks run on branch pushes and pull requests; the live
+qBittorrent/SABnzbd/NZBGet/FFmpeg and container acceptance suite is manual.
+Run it before a release with `gh workflow run ci.yml`; the publish workflow
+also builds a release candidate and runs its container smoke scripts before
+pushing. Hosted runner billing, quota or permissions failures must be reported
+separately from local checks. Public distribution still requires the owner's
+license choice. Do not silently select a license, enable a paid plan or change
+visibility to clear a gate.
 
 The Ubuntu x86-64 live-testing release builds a local candidate and runs backup,
 existing-workflow and storage-recovery acceptance before publishing. After login,

@@ -1,6 +1,7 @@
 name: Application checks
 on:
   push:
+    branches: ['**']
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -8,12 +9,16 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  # Fast checks run on every branch push and pull request. The publish
+  # workflow builds the same Dockerfile and runs the release-candidate smoke
+  # scripts, so tag pushes do not need this job.
   test:
     runs-on: [self-hosted, linux, x64, reelscarey-ci]
     steps:
@@ -42,6 +47,28 @@ jobs:
         run: |
           go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
           npm audit --audit-level=high --prefix web
+      - run: go build -o bin/reelscarey ./cmd/reelscarey
+      - run: node scripts/smoke.mjs
+
+  # Live acceptance is intentionally manual: it starts disposable qBittorrent,
+  # SABnzbd and NZBGet runtimes, generates media, and builds/smokes containers.
+  # Run it before a release with `gh workflow run ci.yml`, or let the publish
+  # workflow's release-candidate smoke scripts cover the image.
+  acceptance:
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: [self-hosted, linux, x64, reelscarey-ci]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Public AniList identity and title-search acceptance
         run: go test -race ./internal/metadata -run TestLiveAniListIdentity -count=1 -v -timeout=30s
         env:
@@ -122,8 +149,6 @@ jobs:
           go test -race ./internal/transfer -run TestRealNZBGet -count=1 -v -timeout=4m
         env:
           REELSCAREY_LIVE_NZBGET: '1'
-      - run: go build -o bin/reelscarey ./cmd/reelscarey
-      - run: node scripts/smoke.mjs
       - name: Build and smoke-test the container
         shell: bash
         run: |
