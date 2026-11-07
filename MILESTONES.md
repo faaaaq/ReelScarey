@@ -283,3 +283,13 @@ See [announce feeds](docs/ANNOUNCE.md).
   update; downloaded bytes and speed keep moving for fragmented streams.
 - [x] The queue shows downloaded bytes with an indeterminate bar when yt-dlp
   cannot provide a total size.
+
+## Version 0.37.2 Canonical YouTube replacement names
+
+- [x] Reviewed YouTube replacements now compute the current canonical show,
+  season, episode and quality-tagged destination instead of keeping the old
+  filename with a new extension.
+- [x] YouTube provenance follows the canonical replacement path.
+- [x] Active YouTube jobs keep an indeterminate bar with downloaded bytes/speed;
+  fragmented fragment totals never drive a false percentage, and the verified
+  completion records the real file size.

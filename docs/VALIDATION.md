@@ -2065,3 +2065,14 @@ No owner-server media or download client was used for these checks.
 - The progress parser accepts NA totals/rates, and the queue renders downloaded
   bytes with an indeterminate bar instead of a false 0%. A unit test covers the
   NA line and rejects unrelated or invalid progress lines.
+
+## Version 0.37.2 Canonical YouTube replacement names
+
+- Organization replacement planning recomputes the YouTube acquisition
+  destination from the captured show snapshot, episode mapping and inspected
+  probe quality. The swap review therefore shows and applies the canonical
+  quality-tagged filename; provenance is updated to the same path.
+- Active YouTube jobs ignore fragment-sized totals from yt-dlp and render an
+  indeterminate bar with downloaded bytes/speed; the verified completion stores
+  the real total. This prevents a short fragment from appearing as 84% of a
+  one-hour episode.

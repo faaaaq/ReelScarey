@@ -103,8 +103,12 @@ func TestYouTubeReplacementWithSelectedSubtitlesAndRollback(t *testing.T) {
 	if e = org.Tick(ctx); e != nil {
 		t.Fatal(e)
 	}
-	if b, e := os.ReadFile(name); e != nil || string(b) != string(incoming) {
-		t.Fatal(e)
+	afterPath := filepath.Join(cfg.MediaDir, filepath.FromSlash(p.Replacement.After.Path))
+	if b, e := os.ReadFile(afterPath); e != nil || string(b) != string(incoming) {
+		t.Fatal("canonical replacement not published", p.Replacement.After.Path, e)
+	}
+	if _, e := os.Stat(name); !os.IsNotExist(e) {
+		t.Fatal("old replacement path still exists", e)
 	}
 	if _, e = os.Stat(filepath.Join(cfg.MediaDir, filepath.FromSlash(p.Replacement.AcquisitionSubtitles[0].File.Destination))); e != nil {
 		t.Fatal(e)

@@ -174,14 +174,10 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 			return
 		}
 		lastProgress = time.Now()
-		progress := 0.0
-		if total > 0 {
-			progress = float64(downloaded) / float64(total)
-			if progress > 1 {
-				progress = 1
-			}
-		}
-		_, _ = db.ExecContext(work, `UPDATE youtube_jobs SET progress=?,downloaded_bytes=?,total_bytes=?,speed_bps=?,eta_seconds=?,updated_at=unixepoch() WHERE id=? AND state='downloading' AND lease_owner=?`, progress, downloaded, total, speed, eta, jobID, owner)
+		// Fragmented streams report a fragment-sized total that is not the
+		// episode size. Keep the active job indeterminate and show downloaded
+		// bytes; the verified completion records the real total.
+		_, _ = db.ExecContext(work, `UPDATE youtube_jobs SET progress=0,total_bytes=0,downloaded_bytes=?,speed_bps=?,eta_seconds=?,updated_at=unixepoch() WHERE id=? AND state='downloading' AND lease_owner=?`, downloaded, speed, eta, jobID, owner)
 	}
 	var name string
 	subtitleResults := []SubtitleFile{}

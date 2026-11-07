@@ -19,7 +19,7 @@ COPY internal/ ./internal/
 COPY web/embed.go ./web/embed.go
 COPY --from=frontend /src/web/dist ./web/dist
 RUN go test ./... && go vet ./...
-ARG VERSION=0.37.1-dev
+ARG VERSION=0.37.2-dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/reelscarey ./cmd/reelscarey
 
 FROM debian:bookworm-slim AS youtube-tools

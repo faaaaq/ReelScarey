@@ -347,7 +347,9 @@ func (s *Service) PreviewRollback(ctx context.Context, planID string) (Plan, err
 	now := time.Now().Unix()
 	pid := id()
 	restored := previous.Before
-	restored.Path = strings.TrimSuffix(before.Path, path.Ext(before.Path)) + path.Ext(previous.Before.Path)
+	// Rollback restores the exact path the file had before the replacement,
+	// even when the reviewed replacement moved it to a canonical destination.
+	restored.Path = previous.Before.Path
 	var restoredYouTube *YouTubeVersion
 	if previous.BeforeYouTube != nil {
 		copy := *previous.BeforeYouTube

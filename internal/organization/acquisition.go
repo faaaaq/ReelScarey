@@ -129,6 +129,24 @@ func (s *Service) PreviewAcquisition(ctx context.Context, kind, job string) (Pla
 	now := time.Now().Unix()
 	pid := id()
 	after := ReplacementMetadata{Path: strings.TrimSuffix(before.Path, path.Ext(before.Path)) + strings.ToLower(path.Ext(source)), Size: size, SHA: sha, Probe: probe, FileIndex: index, ImportedAt: now, Origin: "existing", SourceName: path.Base(source)}
+	if kind == "youtube" {
+		// A YouTube replacement is a new encode, not just a container swap.
+		// Recompute the canonical destination so the reviewed swap also applies
+		// the current show/episode naming and the inspected quality tag.
+		var probeInfo struct {
+			Width  int  `json:"width"`
+			Height int  `json:"height"`
+			HDR    bool `json:"hdr"`
+		}
+		if json.Unmarshal([]byte(probe), &probeInfo) == nil {
+			if snapshot, snapshotErr := s.CaptureTx(ctx, tx, mediaID); snapshotErr == nil {
+				snapshot.Quality = QualityTag(probeInfo.Width, probeInfo.Height, probeInfo.HDR)
+				if destination, destinationErr := Destination(snapshot, eps, source); destinationErr == nil {
+					after.Path = destination
+				}
+			}
+		}
+	}
 	r := &Replacement{FileID: fileID, MediaID: mediaID, Title: title, Before: before, After: after, BeforeYouTube: yt, Original: old, Incoming: incoming, Backup: path.Join(".reelscarey-versions", ".reelscarey-version-"+pid), Episodes: eps, AcquisitionKind: kind, AcquisitionJob: job}
 	if kind == "download" {
 		r.After.DownloadID = &job
@@ -144,7 +162,7 @@ func (s *Service) PreviewAcquisition(ctx context.Context, kind, job string) (Pla
 		}
 		r.After.Origin = "existing"
 		r.After.SourceName = videoTitle
-		r.AfterYouTube = &YouTubeVersion{JobID: job, VideoID: vid, Title: videoTitle, Path: strings.TrimSuffix(before.Path, path.Ext(before.Path)) + strings.ToLower(path.Ext(source)), Size: size, SHA: sha, Probe: probe, ImportedAt: now}
+		r.AfterYouTube = &YouTubeVersion{JobID: job, VideoID: vid, Title: videoTitle, Path: after.Path, Size: size, SHA: sha, Probe: probe, ImportedAt: now}
 		rows, e := tx.QueryContext(ctx, `SELECT language,destination_path,size_bytes,sha256 FROM youtube_subtitle_imports WHERE job_id=? AND phase='committed' ORDER BY language`, job)
 		if e != nil {
 			return Plan{}, e
