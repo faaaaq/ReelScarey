@@ -36,7 +36,7 @@ jobs:
           cache: true
       - run: npm ci && npm run format:check && npm run check && npm test && npm run build
         working-directory: web
-      - run: go test -race ./...
+      - run: go test ./...
       - name: Cross-filesystem folder move and recovery
         run: |
           fixture="$RUNNER_TEMP/reelscarey-cross-fixture"
@@ -72,6 +72,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Race-enabled full test suite
+        run: go test -race ./...
       - name: Public AniList identity and title-search acceptance
         run: go test -race ./internal/metadata -run TestLiveAniListIdentity -count=1 -v -timeout=30s
         env:
