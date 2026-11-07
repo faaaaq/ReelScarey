@@ -26,7 +26,7 @@ func (*fixtureIndexer) Test(context.Context, IndexerConfig) error { return nil }
 func (f *fixtureIndexer) Search(_ context.Context, c IndexerConfig, q string) ([]Candidate, error) {
 	f.query = q
 	f.category = c.Category
-	return []Candidate{{Release: Release{Title: "Test.Movie.2026.1080p", Size: 12345}, Magnet: testMagnet, Generation: c.Generation}}, nil
+	return []Candidate{{Release: Release{Title: "Test.Movie.2026.1080p", Size: 12345, Published: "2026-10-22T10:00:00Z", InfoURL: "https://indexer.invalid/details/fixture"}, Magnet: testMagnet, Generation: c.Generation}}, nil
 }
 func (f *fixtureIndexer) Fetch(_ context.Context, _ IndexerConfig, v Candidate) (Payload, string, error) {
 	if f.hash != "" {
@@ -287,6 +287,10 @@ func TestMovieDownloadImportAndIdempotency(t *testing.T) {
 			if f.indexer.query != "Test: Movie 2026" {
 				t.Fatal(f.indexer.query)
 			}
+			var published, info string
+			if e := f.db.QueryRow(`SELECT published_at,info_url FROM release_candidates`).Scan(&published, &info); e != nil || published != "2026-10-22T10:00:00Z" || info != "https://indexer.invalid/details/fixture" {
+				t.Fatal("release dates/details were not persisted", published, info, e)
+			}
 			f.tick(t)
 			data := []byte(strings.Repeat("test video bytes ", 10000))
 			f.complete(t, j, data)
@@ -294,6 +298,14 @@ func TestMovieDownloadImportAndIdempotency(t *testing.T) {
 			job, e := f.s.Job(context.Background(), j.ID)
 			if e != nil || job.State != "completed" || f.client.adds != 1 {
 				t.Fatal(job, e)
+			}
+			queue, e := f.s.List(context.Background(), 1)
+			if e != nil || len(queue.Items) != 0 || queue.Total != 0 {
+				t.Fatal("completed job remained in the queue list", queue, e)
+			}
+			var completedEvents int
+			if e = f.db.QueryRow(`SELECT COUNT(*) FROM activity_events WHERE kind='download' AND object_id=? AND state='completed'`, j.ID).Scan(&completedEvents); e != nil || completedEvents != 1 {
+				t.Fatal("completed job has no single History event", completedEvents, e)
 			}
 			var relative, mode, phase string
 			if e = f.db.QueryRow(`SELECT relative_path FROM media_files WHERE download_id=?`, j.ID).Scan(&relative); e != nil {
@@ -325,6 +337,13 @@ func TestMovieDownloadImportAndIdempotency(t *testing.T) {
 			item, e := library.New(f.db).ByID(context.Background(), f.movie.ID)
 			if e != nil || item.Status != "available" {
 				t.Fatal(item, e)
+			}
+			completed, e := f.s.Job(context.Background(), j.ID)
+			if e != nil || completed.State != "completed" {
+				t.Fatal("direct completed job read failed", completed, e)
+			}
+			if e = f.db.QueryRow(`SELECT COUNT(*) FROM activity_events WHERE kind='download' AND object_id=? AND state='completed'`, j.ID).Scan(&completedEvents); e != nil || completedEvents != 1 {
+				t.Fatal("repeat tick duplicated the completion event", completedEvents, e)
 			}
 		})
 	}

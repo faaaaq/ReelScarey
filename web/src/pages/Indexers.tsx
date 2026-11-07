@@ -41,6 +41,40 @@ export type Indexer = {
   last_error: string;
   last_result_count: number;
 };
+type IndexerPreset = {
+  id: string;
+  label: string;
+  name: string;
+  kind: "torznab" | "newznab";
+  url: string;
+  prowlarr?: boolean;
+};
+// Presets only fill the existing add form. They are never sent to the API.
+const presets: IndexerPreset[] = [
+  {
+    id: "nzbgeek",
+    label: "NZBGeek (Usenet)",
+    name: "NZBGeek",
+    kind: "newznab",
+    url: "https://api.nzbgeek.info/api",
+  },
+  {
+    id: "prowlarr-torrent",
+    label: "Prowlarr (Torrent)",
+    name: "Prowlarr (Torrent)",
+    kind: "torznab",
+    url: "http://prowlarr:9696/{indexerId}/api",
+    prowlarr: true,
+  },
+  {
+    id: "prowlarr-usenet",
+    label: "Prowlarr (Usenet)",
+    name: "Prowlarr (Usenet)",
+    kind: "newznab",
+    url: "http://prowlarr:9696/{indexerId}/api",
+    prowlarr: true,
+  },
+];
 const kinds = [
   {
     id: "newznab",
@@ -380,6 +414,8 @@ function IndexerForm({
   initial: Indexer | null;
   done: () => void;
 }) {
+  const [presetID, setPresetID] = useState("");
+  const preset = presets.find((value) => value.id === presetID);
   const [kind, setKind] = useState(initial?.kind ?? "iptorrents");
   const [name, setName] = useState(initial?.name ?? "IPTorrents");
   const [url, setURL] = useState(initial?.url ?? "https://iptorrents.com");
@@ -397,6 +433,7 @@ function IndexerForm({
   const apiIndexer = kind === "torznab" || kind === "newznab";
   function changeKind(value: string) {
     const selected = kinds.find((k) => k.id === value)!;
+    setPresetID("");
     setKind(value);
     setName(selected.name);
     setURL(selected.url);
@@ -407,6 +444,15 @@ function IndexerForm({
     setFree(false);
     setClearCookie(false);
     setClearKey(false);
+    setError("");
+  }
+  function applyPreset(value: string) {
+    setPresetID(value);
+    const selected = presets.find((preset) => preset.id === value);
+    if (!selected) return;
+    setKind(selected.kind);
+    setName(selected.name);
+    setURL(selected.url);
     setError("");
   }
   async function submit(e: FormEvent) {
@@ -453,6 +499,32 @@ function IndexerForm({
   }
   return (
     <form className="indexer-form" onSubmit={submit}>
+      {!initial && (
+        <>
+          <label className="indexer-preset">
+            Preset
+            <select
+              aria-label="Indexer preset"
+              value={presetID}
+              disabled={busy}
+              onChange={(e) => applyPreset(e.target.value)}
+            >
+              <option value="">Custom indexer</option>
+              {presets.map((value) => (
+                <option key={value.id} value={value.id}>
+                  {value.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {preset?.prowlarr && (
+            <p className="rs-form-help indexer-preset-help">
+              Replace <code>{"{indexerId}"}</code> with the numeric Prowlarr
+              indexer ID shown in Prowlarr&apos;s indexer settings.
+            </p>
+          )}
+        </>
+      )}
       <label>
         Indexer type
         <select
@@ -506,12 +578,15 @@ function IndexerForm({
               value={key}
               onChange={(e) => setKey(e.target.value)}
               disabled={busy}
+              required={!initial?.has_api_key && !!preset}
             />
           </label>
           <p className="rs-form-help">
             {initial?.has_api_key
               ? "A key is saved. Leave blank to keep it."
-              : "Leave blank only if this endpoint allows public access."}
+              : preset
+                ? "This preset requires an API key."
+                : "Leave blank only if this endpoint allows public access."}
           </p>
           {initial?.has_api_key && (
             <label>

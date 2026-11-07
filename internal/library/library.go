@@ -54,6 +54,16 @@ type Page struct {
 }
 
 const PageSize = 48
+
+// MaxAllItems bounds page=all so one request cannot materialize an unbounded
+// catalog response.
+const MaxAllItems = 5000
+
+// TitleSort orders alphabetically by title without a leading "The ", while the
+// stored and displayed title stays unchanged. SQLite's lower() is ASCII-only,
+// matching the existing COLLATE NOCASE behavior.
+const TitleSort = "(CASE WHEN lower(title) LIKE 'the %' THEN substr(title,5) ELSE title END)"
+
 const columns = "id, kind, tmdb_id, title, year, monitored, status, overview, poster_path, release_date, runtime_minutes, category, category_revision"
 
 type scanner interface{ Scan(...any) error }
@@ -72,6 +82,10 @@ func (s *Store) List(ctx context.Context, kind string, page int) (Page, error) {
 
 var ErrBrowseInput = errors.New("Choose valid library filters and a page between 1 and 100000.")
 
+// ErrBrowseAllLimit means page=all matched more than MaxAllItems. The caller
+// must narrow the filters or request a numbered page.
+var ErrBrowseAllLimit = errors.New("This library view has more than 5000 items. Narrow the filters or choose a page.")
+
 type BrowseFilter struct {
 	Kind, Query, Status, Monitored, Sort, Profile string
 	Page                                          int
@@ -81,10 +95,10 @@ type BrowseFilter struct {
 // Browse reads saved catalog state only. Ordering SQL comes from a fixed allowlist.
 func (s *Store) Browse(ctx context.Context, f BrowseFilter) (Page, error) {
 	orders := map[string]string{
-		"title":      "title COLLATE NOCASE, id",
-		"title_desc": "title COLLATE NOCASE DESC, id",
-		"year_desc":  "year IS NULL, year DESC, title COLLATE NOCASE, id",
-		"year":       "year IS NULL, year, title COLLATE NOCASE, id",
+		"title":      TitleSort + " COLLATE NOCASE, id",
+		"title_desc": TitleSort + " COLLATE NOCASE DESC, id",
+		"year_desc":  "year IS NULL, year DESC, " + TitleSort + " COLLATE NOCASE, id",
+		"year":       "year IS NULL, year, " + TitleSort + " COLLATE NOCASE, id",
 		"added":      "id DESC",
 	}
 	if f.Sort == "" {
@@ -140,6 +154,9 @@ func (s *Store) Browse(ctx context.Context, f BrowseFilter) (Page, error) {
 	}
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items"+where, args...).Scan(&out.Total); err != nil {
 		return Page{}, err
+	}
+	if f.All && out.Total > MaxAllItems {
+		return Page{}, ErrBrowseAllLimit
 	}
 	query := "SELECT " + columns + ",(SELECT profile_id FROM item_automation a WHERE a.media_id=media_items.id) FROM media_items" + where + " ORDER BY " + orders[f.Sort]
 	if f.All {

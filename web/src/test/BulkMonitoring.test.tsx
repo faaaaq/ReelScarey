@@ -140,9 +140,9 @@ describe("reviewed bulk monitoring", () => {
       screen.queryByRole("checkbox", { name: "Select Saved title" }),
     ).not.toBeInTheDocument();
     await enterSelectMode();
-    expect(screen.getByText("0 selected on this page")).toBeVisible();
+    expect(screen.getByText("0 selected")).toBeVisible();
     await userEvent.click(
-      screen.getByRole("checkbox", { name: "Select all titles on this page" }),
+      screen.getByRole("checkbox", { name: "Select all shown" }),
     );
     const dialog = await review();
     await within(dialog).findByRole("button", { name: "Pause 1 title" });
@@ -179,18 +179,20 @@ describe("reviewed bulk monitoring", () => {
     expect(
       screen.queryByRole("region", { name: "Selected titles" }),
     ).not.toBeInTheDocument();
-    expect(
-      fetch.mock.calls.filter(([url]) => url.includes("/library?")),
-    ).toHaveLength(2);
+    const libraryCalls = fetch.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes("/library?"));
+    expect(libraryCalls.length).toBeGreaterThanOrEqual(2);
+    expect(libraryCalls.at(-1)).toContain("page=1");
   });
   it("preserves selection between layouts and clears it on filter or page changes", async () => {
     setup();
     mount();
     await selectOne();
     expect(
-      screen.getByRole("checkbox", { name: "Select all titles on this page" }),
+      screen.getByRole("checkbox", { name: "Select all shown" }),
     ).toBePartiallyChecked();
-    expect(screen.getByText("1 selected on this page")).toBeVisible();
+    expect(screen.getByText("1 selected")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Table" }));
     expect(
       screen.getByRole("checkbox", { name: "Select Saved title" }),

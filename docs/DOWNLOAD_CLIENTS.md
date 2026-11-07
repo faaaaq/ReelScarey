@@ -107,6 +107,40 @@ may include its proxy base path or end in `/jsonrpc`. Configure category
 `reelscarey` with destination `<completed root>/ReelScarey`. Use a dedicated
 NZBGet profile with no global/category extensions or renaming scripts.
 
+### Add an external SABnzbd or NZBGet connection
+
+Open **Settings → Download clients → Add client**, choose **SABnzbd** or
+**NZBGet**, and fill in:
+
+- **Name:** a unique label, for example `NAS SABnzbd`.
+- **Server URL:** the client's own address as the ReelScarey container sees it,
+  such as `http://sabnzbd:8080` or `http://nzbget:6789`. NZBGet may include a
+  reverse-proxy base path or end in `/jsonrpc`; it is stored without the suffix
+  and appended when called.
+- **SABnzbd API key:** the full API key, not the NZB-only key.
+- **NZBGet username/password:** a dedicated account with API access.
+- **Completed folder:** the client's absolute completed root, for example
+  `/downloads` or `/completed`.
+- **Local subfolder:** optional relative path under ReelScarey's download mount
+  when that completed tree is mounted elsewhere.
+
+Saving tests the connection and stores credentials encrypted; the new client
+starts paused. Enable it explicitly, then choose it under **Usenet default**.
+Each protocol has its own default: a SABnzbd or NZBGet connection cannot be the
+torrent default, and a torrent client cannot be the Usenet default. NZB-type
+releases route through the enabled Usenet default; Torrent releases never do.
+Existing jobs keep the client, address and folder mapping they were reserved
+with, even after a default change. Test connection re-checks the saved client
+without saving changes. Removing or pausing a client requires another default
+and no unfinished jobs.
+
+The application still does not bundle a Usenet download daemon, NNTP client,
+PAR2 repair, unpacker or Usenet queue. Building that would duplicate SABnzbd and
+NZBGet (article download, connection pooling, repair/unpack, history, quota,
+failover and security) inside the single container; it is a large separate
+project and is intentionally not part of the named-client work. External clients
+remain the supported path.
+
 Both clients use a unique job name and dedicated output folder. Uncertain
 submissions reconcile against the queue/history and never automatically submit
 the NZB again. Retain original job names, categories and history. Duplicate,

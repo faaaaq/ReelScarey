@@ -47,6 +47,12 @@
   color: var(--rs-text-strong);
   overflow-wrap: anywhere;
 }
+.rel-title-text a {
+  color: var(--rs-text-strong);
+}
+.rel-title-text a:hover {
+  color: var(--rs-link-hover);
+}
 .rel-col-indexer {
   white-space: nowrap;
 }

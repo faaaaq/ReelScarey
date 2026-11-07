@@ -2169,3 +2169,13 @@ Run locally on Windows (development tools only; Docker remains the target):
   purpose list.
 - Live and Docker acceptance were not run locally; the publish workflow verifies
   the release candidate on the tag.
+
+## Version 0.38.8 search links, queue history and single-page libraries
+
+- gofmt clean; go vet and the full Go suite passed (schema assertions 55).
+- Frontend format:check, check, the full suite (40 files, 236 tests) and the
+  build passed. New tests cover feed date layouts, info links, completed-queue
+  exclusion and history events, NZBGeek prefill, A-Z grouping, WIP persistence
+  and the single-page fallback.
+- Live provider/Docker acceptance was not run locally; the publish workflow
+  verifies the release candidate on the tag.

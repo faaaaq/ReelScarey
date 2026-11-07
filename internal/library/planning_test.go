@@ -101,6 +101,20 @@ func TestWantedDistinguishesDatesMonitoringRegistrationAndReservations(t *testin
 		t.Fatal("planning reads mutated state", before, after, e)
 	}
 }
+func TestPlanningTitleOrderIgnoresLeadingThe(t *testing.T) {
+	s, db := planningFixture(t)
+	if _, e := db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,monitored,release_date) VALUES(20,'movie',20,'The Apple fruit',2026,1,'2026-10-13'),(21,'movie',21,'Banana fruit',2026,1,'2026-10-13')`); e != nil {
+		t.Fatal(e)
+	}
+	out, e := s.Wanted(context.Background(), PlanningFilter{Status: "all", Query: "fruit"}, planningNow)
+	if e != nil || len(out.Items) != 2 {
+		t.Fatal(out, e)
+	}
+	if out.Items[0].Title != "The Apple fruit" || out.Items[1].Title != "Banana fruit" {
+		t.Fatalf("planning order did not ignore the leading article: %+v", out.Items)
+	}
+}
+
 func TestCalendarIncludesSharedEpisodesOnceAndUsesUTCDateOnly(t *testing.T) {
 	s, _ := planningFixture(t)
 	ctx := context.Background()

@@ -6,6 +6,7 @@ import {
   CircleSlash,
   Clock,
   Download,
+  History,
   Info,
   ListFilter,
   RefreshCw,
@@ -59,10 +60,9 @@ const versionNames: Record<string, string> = {
   replacement: "Reviewed replacement",
 };
 const filters = [
-  { value: "all", label: "All" },
+  { value: "all", label: "All on queue" },
   { value: "attention", label: "Needs attention" },
   { value: "active", label: "In progress" },
-  { value: "completed", label: "In library" },
   { value: "cancelled", label: "Tracking stopped" },
 ];
 const active = new Set(["queued", "submitting", "downloading", "importing"]);
@@ -73,8 +73,9 @@ function needsAttention(job: DownloadJob) {
 function matchesFilter(job: DownloadJob, filter: string) {
   if (filter === "attention") return needsAttention(job);
   if (filter === "active") return active.has(job.state);
-  if (filter === "completed") return job.state === "completed";
   if (filter === "cancelled") return job.state === "cancelled";
+  // Completed downloads leave the queue and live in History.
+  if (filter === "completed") return false;
   return true;
 }
 function stateOf(job: DownloadJob) {
@@ -118,7 +119,11 @@ export function Activity() {
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") ?? 1);
   const focus = params.get("job");
-  const filter = params.get("state") ?? "all";
+  // Completed is no longer a queue filter; old bookmarks fall back to all.
+  const requestedFilter = params.get("state") ?? "all";
+  const filter = filters.some((option) => option.value === requestedFilter)
+    ? requestedFilter
+    : "all";
   const [data, setData] = useState<DownloadPage>();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -183,6 +188,7 @@ export function Activity() {
             spinning={loading && !!data}
             onClick={reload}
           />
+          <ToolbarButton icon={History} label="History" to="/timeline" />
         </ToolbarSection>
         <ToolbarSection align="right">
           <ToolbarMenu
@@ -201,7 +207,14 @@ export function Activity() {
         </ToolbarSection>
       </PageToolbar>
       <PageBody>
-        <PageHeading title="Activity" />
+        <PageHeading
+          title="Activity"
+          description="Active downloads only. Completed items appear in History."
+        />
+        <p className="rs-muted rs-small">
+          Finished downloads are kept in <Link to="/timeline">History</Link>,
+          never on this queue.
+        </p>
         {focus && !focusValid && (
           <Alert kind="danger" role="alert">
             Choose a valid download from its library item.
@@ -235,14 +248,22 @@ export function Activity() {
           (items.length === 0 ? (
             <EmptyState
               icon={Download}
-              title="Queue is empty"
+              title="No active downloads"
               actions={
-                <Button asChild variant="soft">
-                  <Link to="/wanted">Open Wanted</Link>
-                </Button>
+                <>
+                  <Button asChild variant="soft">
+                    <Link to="/wanted">Open Wanted</Link>
+                  </Button>
+                  <Button asChild variant="soft">
+                    <Link to="/timeline">View history</Link>
+                  </Button>
+                </>
               }
             >
-              <p>Downloads appear here after you choose a release.</p>
+              <p>
+                Downloads appear here after you choose a release. Completed
+                items are kept in History.
+              </p>
             </EmptyState>
           ) : (
             <>

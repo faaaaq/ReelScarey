@@ -3,7 +3,10 @@ package transfer
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -25,6 +28,111 @@ func namedTorrent(t *testing.T, f *workflowFixture, name, url, local string) Dow
 	}
 	return saved
 }
+
+// Both external Usenet clients are ordinary named connections: they are
+// tested before saving, start paused, are scoped to the usenet protocol, can be
+// chosen as its default, and release downloads resolve them through that
+// default. No owner account or real daemon is involved here.
+func TestNamedUsenetClientsAreTestableScopedAndDefaulted(t *testing.T) {
+	ctx := context.Background()
+	f := setupWorkflow(t)
+	sab := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/sab/api" || r.URL.Query().Get("apikey") != "sab-private-key" {
+			w.WriteHeader(403)
+			return
+		}
+		if r.URL.Query().Get("mode") == "version" {
+			fmt.Fprint(w, `{"version":"5.1.3"}`)
+			return
+		}
+		fmt.Fprint(w, `{"categories":["reelscarey"]}`)
+	}))
+	defer sab.Close()
+	nzbget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/jsonrpc" {
+			w.WriteHeader(404)
+			return
+		}
+		var body struct {
+			Method string `json:"method"`
+			ID     int    `json:"id"`
+		}
+		if e := json.NewDecoder(r.Body).Decode(&body); e != nil || body.ID != 1 {
+			w.WriteHeader(400)
+			return
+		}
+		switch body.Method {
+		case "version":
+			fmt.Fprint(w, `{"id":1,"result":"26.3","error":null}`)
+		case "config":
+			fmt.Fprint(w, `{"id":1,"result":[{"Name":"Category1.Name","Value":"reelscarey"},{"Name":"Category1.DestDir","Value":"/completed/ReelScarey"},{"Name":"Category1.Extensions","Value":""},{"Name":"Extensions","Value":""},{"Name":"ScriptOrder","Value":""}],"error":null}`)
+		default:
+			w.WriteHeader(400)
+		}
+	}))
+	defer nzbget.Close()
+
+	sabKey := "sab-private-key"
+	created, e := f.s.SaveDownloadClient(ctx, DownloadClientUpdate{Name: "External SAB", Kind: "sabnzbd", URL: sab.URL + "/sab", APIKey: &sabKey, DownloadPath: "/completed"})
+	if e != nil || created.Enabled || created.Revision != 1 {
+		t.Fatal("SAB was not testable and paused", created, e)
+	}
+	created, e = f.s.SaveDownloadClient(ctx, DownloadClientUpdate{ID: created.ID, Name: created.Name, Kind: created.Kind, URL: created.URL, DownloadPath: "/completed", Revision: created.Revision, Enabled: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	d, e := f.s.ClientDefaults(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	d.Usenet = created.ID
+	if d, e = f.s.SaveClientDefaults(ctx, d); e != nil {
+		t.Fatal("SAB could not become the usenet default", e)
+	}
+	selected, e := f.s.selectedClient(ctx, "usenet")
+	if e != nil || selected.profileKey != created.ID || selected.kind != "sabnzbd" || selected.URL != created.URL {
+		t.Fatal("usenet release did not route to the named SAB client", selected, e)
+	}
+	if e = f.s.TestDownloadClient(ctx, created.ID); e != nil {
+		t.Fatal("saved SAB connection did not test", e)
+	}
+
+	user, pass := "nzbget-user", "nzbget-private-password"
+	createdNZB, e := f.s.SaveDownloadClient(ctx, DownloadClientUpdate{Name: "External NZBGet", Kind: "nzbget", URL: nzbget.URL, Username: user, Password: &pass, DownloadPath: "/completed"})
+	if e != nil || createdNZB.Enabled || createdNZB.Revision != 1 {
+		t.Fatal("NZBGet was not testable and paused", createdNZB, e)
+	}
+	createdNZB, e = f.s.SaveDownloadClient(ctx, DownloadClientUpdate{ID: createdNZB.ID, Name: createdNZB.Name, Kind: createdNZB.Kind, URL: createdNZB.URL, Username: user, DownloadPath: "/completed", Revision: createdNZB.Revision, Enabled: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	d, e = f.s.ClientDefaults(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	d.Usenet = createdNZB.ID
+	if d, e = f.s.SaveClientDefaults(ctx, d); e != nil {
+		t.Fatal("NZBGet could not become the usenet default", e)
+	}
+	selected, e = f.s.selectedClient(ctx, "usenet")
+	if e != nil || selected.profileKey != createdNZB.ID || selected.kind != "nzbget" || selected.URL != createdNZB.URL {
+		t.Fatal("usenet release did not route to the named NZBGet client", selected, e)
+	}
+	if e = f.s.TestDownloadClient(ctx, createdNZB.ID); e != nil {
+		t.Fatal("saved NZBGet connection did not test", e)
+	}
+
+	d.Usenet = ""
+	d.Torrent = createdNZB.ID
+	if _, e = f.s.SaveClientDefaults(ctx, d); e == nil {
+		t.Fatal("a usenet client was accepted as the torrent default")
+	}
+	d.Torrent = ""
+	if _, e = f.s.SaveClientDefaults(ctx, d); e != nil {
+		t.Fatal(e)
+	}
+}
+
 func TestNamedClientsKeepExistingJobBindingsAndEncryptedCredentials(t *testing.T) {
 	ctx := context.Background()
 	f := setupWorkflow(t)

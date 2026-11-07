@@ -96,11 +96,13 @@ type JobPage struct {
 }
 
 func (s *Service) List(ctx context.Context, page int) (JobPage, error) {
+	// Completed jobs belong to History. The direct job endpoint still returns
+	// them so item history can link to an old download.
 	out := JobPage{Items: []Job{}, Page: page, Limit: 24}
-	if e := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM downloads").Scan(&out.Total); e != nil {
+	if e := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM downloads WHERE state<>'completed'").Scan(&out.Total); e != nil {
 		return out, e
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT `+jobColumns+` FROM downloads d JOIN media_items m ON m.id=d.movie_id ORDER BY d.created_at DESC,d.id LIMIT 24 OFFSET ?`, (page-1)*24)
+	rows, e := s.db.QueryContext(ctx, `SELECT `+jobColumns+` FROM downloads d JOIN media_items m ON m.id=d.movie_id WHERE d.state<>'completed' ORDER BY d.created_at DESC,d.id LIMIT 24 OFFSET ?`, (page-1)*24)
 	if e != nil {
 		return out, e
 	}

@@ -13,7 +13,27 @@ in this list; their edit link opens Settings. Prowlarr is optional.
 | XSpeeds | HTTPS homepage, signed-in Cookie header and matching browser User-Agent | Direct website search, optional freeleech filter |
 | NYAA | HTTPS homepage; default `https://nyaa.si`; no credentials | Public searchable RSS |
 | Torznab | API endpoint and optional API key | Independent searchable endpoint; optional Prowlarr/Jackett |
+| Newznab | Usenet API endpoint and required API key | Independent searchable NZB endpoint; use SABnzbd or NZBGet |
 | Private torrent RSS | Website origin and complete private feed URL; optional cookie/agent | Filters entries currently in the feed; does not search its archive |
+
+## Indexer presets
+
+The Indexers page offers one-click starting values; they are UI conveniences,
+not separate server-side kinds. All secrets are still entered by the owner and
+encrypted with the application key.
+
+| Preset | Kind | Endpoint to enter | Credential |
+| --- | --- | --- | --- |
+| NZBGeek | Newznab | `https://api.nzbgeek.info/api` | NZBGeek API key |
+| Prowlarr | Torznab | `http://prowlarr:9696/<indexer-id>/api` | the indexer's API key shown by Prowlarr |
+| Prowlarr (Usenet) | Newznab | `http://prowlarr:9696/<indexer-id>/api` | the indexer's API key shown by Prowlarr |
+
+`<indexer-id>` is Prowlarr's numeric indexer ID. The host must be reachable
+from the ReelScarey container; `prowlarr` is an example Docker service name.
+Prowlarr is optional: each tracker or Usenet indexer can also be connected
+directly. The application appends `t=caps`, `t=search` and `apikey` itself, so
+do not paste a URL that already contains a query string. It never contacts a
+provider except through the configured endpoint.
 
 For private trackers, sign in normally in your browser. In the browser's network
 tools, select a request to the tracker's torrent listing and copy the **Cookie**
@@ -71,6 +91,13 @@ absolute episode numbering and ambiguous season mappings are not inferred.
 Downloaded TV files still require explicit mapping review before import.
 Website HTML does not always provide publication dates or seed counts; unknown
 values remain unknown and may make automatic quality selection ineligible.
+Torznab/Newznab/RSS publication dates are normalized to RFC3339 UTC when the
+provider sends a parsable `pubDate` (including RFC1123Z, RFC3339 and ISO-like
+forms); direct tracker tables use a recognized absolute date cell. Relative text
+such as "today", a missing value or an invalid date stays blank. Release results
+also include the
+provider's own `info_url` when a `<comments>` element or direct tracker details
+link exists. The server never constructs or fetches that page.
 
 ## Movie and TV detail pages
 

@@ -4,8 +4,6 @@ import { Badge, Button, TextField } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
-import { Pagination } from "../movieComponents";
-import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
 import "./Admin.css";
 
@@ -77,14 +75,6 @@ type Result = {
     scoring_reasons?: string[];
   }[];
 };
-type Assignment = {
-  media_id: number;
-  title: string;
-  kind: string;
-  profile_id: number | null;
-  revision: number;
-  monitored: boolean;
-};
 const languages = [
   "any",
   "english",
@@ -125,7 +115,12 @@ export function Automation() {
           />
           <RunHistory />
           <Profiles profiles={profiles.data.items} reload={profiles.reload} />
-          <Assignments profiles={profiles.data.items} />
+          <p className="rs-muted rs-small">
+            Per-title quality profiles live with the library: choose{" "}
+            <Link to="/movies">Movies</Link>, <Link to="/series">TV Shows</Link>{" "}
+            or <Link to="/anime">Anime</Link>, then use Select and{" "}
+            <strong>Bulk profiles</strong>.
+          </p>
         </>
       )}
     </PageBody>
@@ -806,127 +801,6 @@ function ProfileForm({
       {success && (
         <p role="status" className="rs-alert is-success">
           Profile saved.
-        </p>
-      )}
-    </form>
-  );
-}
-function Assignments({ profiles }: { profiles: Profile[] }) {
-  const [page, setPage] = useState(1);
-  const items = useResource<{
-    items: Assignment[];
-    page: number;
-    total: number;
-    limit: number;
-  }>(`/automation/items?page=${page}`);
-  return (
-    <section className="rs-panel automation-panel">
-      <h2>Library preferences</h2>
-      <RequestState
-        loading={items.loading}
-        error={items.error}
-        retry={items.reload}
-      />
-      {items.data && !items.data.items.length && (
-        <p>Add a movie or show to choose its profile here.</p>
-      )}
-      {items.data?.items.map((item) => (
-        <AssignmentForm
-          key={`${item.media_id}-${item.revision}`}
-          item={item}
-          profiles={profiles}
-          reload={items.reload}
-        />
-      ))}
-      {items.data && (
-        <Pagination
-          page={page}
-          pages={Math.ceil(items.data.total / items.data.limit)}
-          onPage={setPage}
-        />
-      )}
-    </section>
-  );
-}
-function AssignmentForm({
-  item,
-  profiles,
-  reload,
-}: {
-  item: Assignment;
-  profiles: Profile[];
-  reload: () => void;
-}) {
-  const [profile, setProfile] = useState(item.profile_id ?? 0);
-  const [monitored, setMonitored] = useState(item.monitored);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await api(`/automation/items/${item.media_id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          profile_id: profile || null,
-          revision: item.revision,
-          ...(item.kind === "movie" ? { monitored } : {}),
-        }),
-      });
-      reload();
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <form className="automation-assignment" onSubmit={save}>
-      <div>
-        <strong>{item.title}</strong>
-        <p className="rs-form-help">
-          {item.kind === "movie" ? (
-            "Movie"
-          ) : (
-            <Link to={`/series/${item.media_id}`} className="rs-link-button">
-              TV monitoring
-            </Link>
-          )}
-        </p>
-      </div>
-      <label>
-        <span className="sr-only">Quality profile for {item.title}</span>
-        <select
-          disabled={busy}
-          value={profile}
-          onChange={(e) => setProfile(Number(e.target.value))}
-        >
-          <option value={0}>Schedule default</option>
-          {profiles.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      {item.kind === "movie" && (
-        <label className="rs-check">
-          <input
-            disabled={busy}
-            type="checkbox"
-            checked={monitored}
-            onChange={(e) => setMonitored(e.target.checked)}
-          />
-          Monitor
-        </label>
-      )}
-      <Button disabled={busy} type="submit" variant="soft">
-        Save {item.title}
-      </Button>
-      {error && (
-        <p role="alert" className="rs-form-error">
-          {error}
         </p>
       )}
     </form>

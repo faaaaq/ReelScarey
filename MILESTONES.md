@@ -370,3 +370,12 @@ See [announce feeds](docs/ANNOUNCE.md).
   and the free-choice list is limited to the reviewed season/episode.
 - [x] Episode removal deletes the media file and registration through a staged
   rename with rollback; shared files and seeding sources are refused.
+
+## Version 0.38.8 search links, queue history and single-page libraries
+
+- [x] Tracker details links and correct release ages (RFC1123/RFC850/ISO dates).
+- [x] Queue excludes completed jobs; one History event per completion.
+- [x] NZBGeek/Prowlarr indexer presets; external SABnzbd/NZBGet verified.
+- [x] Library page=all (max 5000) and "The "-insensitive alphabetical order.
+- [x] A-Z jump bar, no pagination, WIP overlays, nav/Automation cleanup.
+- [x] Failed-before label on manual searches and persisted library filters.

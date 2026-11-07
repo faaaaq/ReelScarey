@@ -429,6 +429,10 @@ func (s *Server) listLibrary(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	items, err := s.library.Browse(ctx, library.BrowseFilter{Kind: kind, Page: page, All: all, Query: values.Get("query"), Status: values.Get("status"), Monitored: values.Get("monitored"), Sort: values.Get("sort"), Profile: values.Get("profile")})
+	if errors.Is(err, library.ErrBrowseAllLimit) {
+		fail(w, 400, "library_too_large", err.Error())
+		return
+	}
 	if errors.Is(err, library.ErrBrowseInput) {
 		fail(w, 400, "invalid_library", err.Error())
 		return

@@ -87,6 +87,75 @@ describe("Usenet setup and release routing", () => {
       "X-CSRF-Token": "fixture-csrf",
     });
   });
+  it("prefills and posts the NZBGeek Newznab preset", async () => {
+    let posted: Record<string, unknown> | undefined;
+    const fetch = setup((url, options) => {
+      if (url.endsWith("/indexers") && options?.method === "POST") {
+        posted = JSON.parse(String(options.body));
+        return Response.json({ id: "fixture" }, { status: 201 });
+      }
+      if (url.endsWith("/indexers")) return Response.json({ items: [] });
+    });
+    mount("/indexers");
+    await screen.findByRole("heading", { name: "Indexers" });
+    await userEvent.click(screen.getByRole("button", { name: "Add Indexer" }));
+    await userEvent.selectOptions(
+      screen.getByLabelText("Indexer preset"),
+      "nzbgeek",
+    );
+    expect(screen.getByLabelText("Indexer type")).toHaveValue("newznab");
+    expect(screen.getByLabelText("Indexer name")).toHaveValue("NZBGeek");
+    expect(screen.getByLabelText("Indexer URL")).toHaveValue(
+      "https://api.nzbgeek.info/api",
+    );
+    expect(screen.getByLabelText("Indexer API key")).toBeRequired();
+    expect(fetch.mock.calls.some(([, o]) => o?.method === "POST")).toBe(false);
+    await userEvent.type(
+      screen.getByLabelText("Indexer API key"),
+      "nzbgeek-fixture-key",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save & test connection" }),
+    );
+    await screen.findByText("Indexer verified and saved.");
+    expect(posted).toMatchObject({
+      name: "NZBGeek",
+      kind: "newznab",
+      url: "https://api.nzbgeek.info/api",
+      enabled: true,
+      revision: 0,
+      api_key: "nzbgeek-fixture-key",
+    });
+    expect(posted).not.toHaveProperty("preset");
+  });
+  it("offers editable Prowlarr presets with an indexer ID explanation", async () => {
+    setup((url) =>
+      url.endsWith("/indexers") ? Response.json({ items: [] }) : undefined,
+    );
+    mount("/indexers");
+    await screen.findByRole("heading", { name: "Indexers" });
+    await userEvent.click(screen.getByRole("button", { name: "Add Indexer" }));
+    const preset = screen.getByLabelText("Indexer preset");
+    await userEvent.selectOptions(preset, "prowlarr-torrent");
+    expect(screen.getByLabelText("Indexer type")).toHaveValue("torznab");
+    expect(screen.getByLabelText("Indexer URL")).toHaveValue(
+      "http://prowlarr:9696/{indexerId}/api",
+    );
+    expect(screen.getByText(/numeric Prowlarr/)).toBeVisible();
+    await userEvent.clear(screen.getByLabelText("Indexer URL"));
+    await userEvent.type(
+      screen.getByLabelText("Indexer URL"),
+      "http://prowlarr:9696/12/api",
+    );
+    expect(screen.getByLabelText("Indexer URL")).toHaveValue(
+      "http://prowlarr:9696/12/api",
+    );
+    await userEvent.selectOptions(preset, "prowlarr-usenet");
+    expect(screen.getByLabelText("Indexer type")).toHaveValue("newznab");
+    expect(screen.getByLabelText("Indexer name")).toHaveValue(
+      "Prowlarr (Usenet)",
+    );
+  });
   it("saves SABnzbd's API key and completed path, then preserves the saved key on edit", async () => {
     let saved = false;
     const fetch = setup((url, o) => {

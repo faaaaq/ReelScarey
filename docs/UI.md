@@ -131,3 +131,44 @@ Do not add global element selectors in page files.
 - The TV Shows and Anime libraries end with a confirmed "Monitor all future
   episodes" action.
 - The Calendar remembers its month, filters and view; Reset clears them.
+
+## Library and search (0.38.7)
+
+- Movies, TV Shows and Anime request the whole collection (`page=all`) and
+  render one grouped list. A sticky A–Z index on the right jumps to each letter
+  that is present; titles are grouped by first letter after ignoring one leading
+  "The ", with non-letters under `#`. If the server returns fewer items than the
+  total, or rejects `page=all` past its cap, the page falls back to the
+  paginated view and says so.
+- Filters, sort and view live in the URL. Changing a filter resets only the
+  legacy page parameter. Selection stays visible with checkboxes; "Select all
+  shown" is capped at 200 IDs and states the cap. Bulk review dialogs are
+  unchanged.
+- Manual release search links a release title to its tracker page (`info_url`)
+  in a new tab when the indexer supplies one, and leaves it as text otherwise.
+  Age uses RFC3339, RFC1123Z or Go time layouts and shows an em dash when the
+  date is absent or unreadable. Recent failed download titles get a "Failed
+  before" label; loading that history never blocks results.
+- Activity is the active queue only. Completed downloads move to History; the
+  queue has no completed filter and links to `/timeline`.
+- Automation keeps schedules, profiles and run history. Per-title quality
+  profiles are assigned with Bulk profiles on the library pages.
+
+## Work in progress notices
+
+Subtitles and YouTube show a first-visit "Work in progress" dialog. Continue
+closes it for that visit; "Don't show again" stores the per-page choice in
+localStorage through `web/src/ui/notices.ts`. The dialog is keyboard dismissible
+and never focuses a destructive action.
+
+## Settings and organizing
+
+The Indexers add form starts with optional, UI-only presets: NZBGeek (Newznab)
+and Prowlarr Torrent/Usenet (Torznab/Newznab). They prefill name, type and an
+editable URL; the Prowlarr template requires replacing `{indexerId}` with the
+numeric Prowlarr indexer ID. Presets never submit on their own and are not part
+of the saved indexer payload.
+
+The sidebar and Settings index do not list a separate Organize Files area.
+Settings → Media Management links to the existing route as "Reorganize
+registered files"; the route itself is unchanged.

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
@@ -103,6 +103,75 @@ it("offers season-pack attachment with explicit episode numbers for series", asy
       ),
     ).toBe(true),
   );
+});
+
+it("links titles to the tracker, shows a dash for missing age and flags a failed title", async () => {
+  const releases = [
+    {
+      id: "linked",
+      movie_id: 7,
+      title: "Linked.Release.1080p",
+      protocol: "torrent",
+      size_bytes: 1000,
+      seeders: 4,
+      peers: 1,
+      published_at: "2026-10-01T12:00:00Z",
+      info_url: "https://tracker.example/t/1",
+    },
+    {
+      id: "undated",
+      movie_id: 7,
+      title: "Undated.Release.1080p",
+      protocol: "torrent",
+      size_bytes: 2000,
+      seeders: 2,
+      peers: 1,
+      published_at: "",
+    },
+  ];
+  const requests = stubFetch((url) => {
+    if (url.startsWith("/api/v1/releases?"))
+      return Response.json({ items: releases });
+    if (url.endsWith("/events"))
+      return Response.json({
+        items: [
+          {
+            id: 1,
+            occurred_at: 1700000000,
+            kind: "download",
+            object_id: "a".repeat(32),
+            title: "Undated.Release.1080p",
+            state: "failed",
+          },
+        ],
+      });
+    if (url.includes("/library/movies/7"))
+      return Response.json({
+        id: 7,
+        title: "Fixture Movie",
+        year: 2020,
+        kind: "movie",
+        tmdb_id: 1,
+      });
+    if (url.includes("/organization/files"))
+      return Response.json({ items: [] });
+    if (url.endsWith("/versions")) return Response.json({ enabled: false });
+    return Response.json({ configured: true, items: [] });
+  });
+  vi.stubGlobal("fetch", requests);
+  renderReleases("/releases?movie=7");
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Search releases" }),
+  );
+  const link = await screen.findByRole("link", {
+    name: "Linked.Release.1080p",
+  });
+  expect(link).toHaveAttribute("href", "https://tracker.example/t/1");
+  expect(link).toHaveAttribute("target", "_blank");
+  expect(link).toHaveAttribute("rel", "noreferrer");
+  const undated = screen.getByText("Undated.Release.1080p").closest("tr")!;
+  expect(undated.querySelector(".rel-age")).toHaveTextContent("—");
+  expect(within(undated).getByText("Failed before")).toBeVisible();
 });
 
 it("locks a replacement search to the file it was started from", async () => {

@@ -50,6 +50,11 @@ function mount() {
     );
   });
   vi.stubGlobal("fetch", fetch);
+  // The first-visit overlay has its own test; these tests cover the page.
+  window.localStorage.setItem(
+    "reelscarey-notice:work-in-progress:youtube",
+    "hidden",
+  );
   render(
     <Theme>
       <MemoryRouter>
@@ -172,6 +177,10 @@ describe("YouTube source review", () => {
       );
     });
     vi.stubGlobal("fetch", fetch);
+    window.localStorage.setItem(
+      "reelscarey-notice:work-in-progress:youtube",
+      "hidden",
+    );
     render(
       <Theme>
         <MemoryRouter>
@@ -279,6 +288,10 @@ describe("YouTube source review", () => {
       );
     });
     vi.stubGlobal("fetch", fetch);
+    window.localStorage.setItem(
+      "reelscarey-notice:work-in-progress:youtube",
+      "hidden",
+    );
     render(
       <Theme>
         <MemoryRouter>

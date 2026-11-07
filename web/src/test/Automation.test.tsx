@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
@@ -259,25 +259,25 @@ describe("automation", () => {
     expect(await screen.findByText(/Search requested/)).toBeVisible();
     expect(fetch.mock.calls.some(([, o]) => o?.method === "PUT")).toBe(false);
   });
-  it("saves an item's profile and movie monitoring with its revision", async () => {
-    let body: unknown;
-    setup((url, o) => {
-      if (url.endsWith("/automation/items/1") && o?.method === "PUT") {
-        body = JSON.parse(String(o.body));
-        return Response.json({ saved: true });
-      }
-      return undefined;
-    });
+  it("keeps per-title profiles out of Automation and points to Bulk profiles", async () => {
+    setup();
     mount();
-    const save = await screen.findByRole("button", {
-      name: "Save Fixture Movie",
-    });
-    const form = save.closest("form")!;
-    await userEvent.selectOptions(within(form).getByRole("combobox"), "1");
-    await userEvent.click(within(form).getByLabelText("Monitor"));
-    await userEvent.click(save);
-    await waitFor(() =>
-      expect(body).toEqual({ profile_id: 1, revision: 0, monitored: false }),
+    await screen.findByText("Searches are waiting for an indexer.");
+    expect(screen.queryByText("Library preferences")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fixture Movie")).not.toBeInTheDocument();
+    const main = within(screen.getByRole("main"));
+    expect(main.getByText(/Bulk profiles/)).toBeVisible();
+    expect(main.getByRole("link", { name: "Movies" })).toHaveAttribute(
+      "href",
+      "/movies",
+    );
+    expect(main.getByRole("link", { name: "TV Shows" })).toHaveAttribute(
+      "href",
+      "/series",
+    );
+    expect(main.getByRole("link", { name: "Anime" })).toHaveAttribute(
+      "href",
+      "/anime",
     );
   });
 });

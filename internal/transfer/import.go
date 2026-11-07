@@ -618,6 +618,9 @@ func (i *Importer) commitPublished(ctx context.Context, j Job, p importPlan, fol
 		if _, e = tx.ExecContext(ctx, `UPDATE downloads SET state='completed',progress=1,error_code='',error_message='',updated_at=unixepoch() WHERE id=?`, j.ID); e != nil {
 			return e
 		}
+		if e = recordDownloadCompleted(ctx, tx, j.ID, j.Title); e != nil {
+			return e
+		}
 	}
 	if e = tx.Commit(); e != nil {
 		return e

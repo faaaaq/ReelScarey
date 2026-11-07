@@ -152,7 +152,7 @@ describe("Anime library and explicit numbering", () => {
     ).toHaveAttribute("href", "/import?collection=anime");
     await userEvent.click(screen.getByRole("button", { name: "Select" }));
     await userEvent.click(
-      screen.getByRole("checkbox", { name: "Select all titles on this page" }),
+      screen.getByRole("checkbox", { name: "Select all shown" }),
     );
     const movies = screen.getByRole("region", {
       name: "Selected anime movies",

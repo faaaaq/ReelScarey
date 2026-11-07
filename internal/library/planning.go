@@ -198,7 +198,7 @@ func (s *Store) planning(ctx context.Context, f PlanningFilter, now time.Time, c
 		return out, e
 	}
 	selectedArgs = append(selectedArgs, out.Limit, (out.Page-1)*out.Limit)
-	rows, e = tx.QueryContext(ctx, planningCTE+`SELECT kind,media_id,episode_id,title,year,episode_title,season,episode,date,monitored,monitoring_reason,available,status,download_id,download_state,protocol,poster_path,movie_version,overview FROM filtered`+selected+` ORDER BY date='',date,title COLLATE NOCASE,media_id,COALESCE(episode_id,0),movie_version LIMIT ? OFFSET ?`, selectedArgs...)
+	rows, e = tx.QueryContext(ctx, planningCTE+`SELECT kind,media_id,episode_id,title,year,episode_title,season,episode,date,monitored,monitoring_reason,available,status,download_id,download_state,protocol,poster_path,movie_version,overview FROM filtered`+selected+` ORDER BY date='',date,`+TitleSort+` COLLATE NOCASE,media_id,COALESCE(episode_id,0),movie_version LIMIT ? OFFSET ?`, selectedArgs...)
 	if e != nil {
 		return out, e
 	}

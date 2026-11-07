@@ -15,9 +15,9 @@ import (
 // Independently authored protocol fixtures contain no tracker account data.
 func trackerPage(kind, origin string) string {
 	if kind == "iptorrents" {
-		return `<a href="/lout.php">Log out</a><table id="torrents"><tr><th>Name</th><th>Size</th><th title="Sort by seeders">S</th><th title="Sort by leechers">L</th></tr><tr><td><a class="hv" href="/t/1">Test.Movie.2026.1080p</a><span class="free">Free</span><a href="` + origin + `/download.php/1/test.torrent">Download</a></td><td>1.5 GiB</td><td>12</td><td>3</td></tr></table>`
+		return `<a href="/lout.php">Log out</a><table id="torrents"><tr><th>Name</th><th>Size</th><th title="Sort by seeders">S</th><th title="Sort by leechers">L</th></tr><tr><td><a class="hv" href="/t/1">Test.Movie.2026.1080p</a><span class="free">Free</span><a href="` + origin + `/download.php/1/test.torrent">Download</a></td><td>1.5 GiB</td><td>12</td><td>3</td><td>2026-10-22 10:00:00</td></tr></table>`
 	}
-	return `<a href="logout.php">Log out</a><table id="sortabletable"><tr><td>Movie</td><td><a href="details.php?id=1">Test.Movie.2026.1080p</a><img alt="Free Torrent"><a href="` + origin + `/download.php?id=1">Download</a></td><td>1</td><td>today</td><td>1.5 GiB</td><td>2</td><td>12</td><td>3</td></tr></table>`
+	return `<a href="logout.php">Log out</a><table id="sortabletable"><tr><td>Movie</td><td><a href="details.php?id=1">Test.Movie.2026.1080p</a><img alt="Free Torrent"><a href="` + origin + `/download.php?id=1">Download</a></td><td>1</td><td>today</td><td>1.5 GiB</td><td>2</td><td>12</td><td>3</td><td>2026-10-22 10:00:00</td></tr></table>`
 }
 
 func TestDirectPrivateTrackerProtocols(t *testing.T) {
@@ -51,7 +51,11 @@ func TestDirectPrivateTrackerProtocols(t *testing.T) {
 					t.Fatal(items, e)
 				}
 				v := items[0]
-				if v.Size != 1610612736 || v.Seeders == nil || *v.Seeders != 12 || v.Peers == nil || *v.Peers != 15 || !v.Freeleech || !strings.HasPrefix(v.URL, server.URL+"/download.php") {
+				wantInfo := server.URL + "/details.php?id=1"
+				if kind == "iptorrents" {
+					wantInfo = server.URL + "/t/1"
+				}
+				if v.Size != 1610612736 || v.Seeders == nil || *v.Seeders != 12 || v.Peers == nil || *v.Peers != 15 || !v.Freeleech || !strings.HasPrefix(v.URL, server.URL+"/download.php") || v.InfoURL != wantInfo || v.Published != "2026-10-22T10:00:00Z" {
 					t.Fatalf("bad normalization: %+v", v)
 				}
 			}
@@ -94,9 +98,9 @@ func TestDirectRejectsChallengesForeignLinksAndMalformedFeeds(t *testing.T) {
 
 func TestNYAAAndPrivateRSSNormalization(t *testing.T) {
 	base, _ := url.Parse("https://nyaa.si")
-	feed := `<rss xmlns:nyaa="https://nyaa.si/xmlns/nyaa"><channel><item><title>Fixture S01E01</title><link>https://nyaa.si/download/1.torrent</link><nyaa:size>700 MiB</nyaa:size><nyaa:seeders>8</nyaa:seeders><nyaa:leechers>2</nyaa:leechers><nyaa:infoHash>` + testHash + `</nyaa:infoHash><pubDate>Fri, 23 Oct 2026 00:00:00 GMT</pubDate></item><item><title>duplicate</title><link>/download/1.torrent</link></item><item><title>foreign</title><link>https://other.invalid/a.torrent</link></item></channel></rss>`
+	feed := `<rss xmlns:nyaa="https://nyaa.si/xmlns/nyaa"><channel><item><title>Fixture S01E01</title><link>https://nyaa.si/download/1.torrent</link><guid>https://nyaa.si/view/1</guid><nyaa:size>700 MiB</nyaa:size><nyaa:seeders>8</nyaa:seeders><nyaa:leechers>2</nyaa:leechers><nyaa:infoHash>` + testHash + `</nyaa:infoHash><pubDate>Fri, 23 Oct 2026 00:00:00 +0000</pubDate></item><item><title>duplicate</title><link>/download/1.torrent</link></item><item><title>foreign</title><link>https://other.invalid/a.torrent</link></item></channel></rss>`
 	items, e := parseDirectRSS([]byte(feed), base)
-	if e != nil || len(items) != 1 || items[0].Hash != testHash || items[0].Size != 734003200 || *items[0].Peers != 10 || items[0].Published == "" {
+	if e != nil || len(items) != 1 || items[0].Hash != testHash || items[0].Size != 734003200 || *items[0].Peers != 10 || items[0].Published != "2026-10-23T00:00:00Z" || items[0].InfoURL != "https://nyaa.si/view/1" {
 		t.Fatal(items, e)
 	}
 	calls := 0

@@ -44,64 +44,54 @@ function mock(response?: (url: string) => Response | undefined) {
       response?.(url) ??
       Response.json({
         items: [item],
-        total: 40,
-        collection_total: 60,
-        page: Number(
-          new URL(url, "http://local").searchParams.get("page") ?? 1,
-        ),
-        limit: 24,
+        total: 1,
+        collection_total: 1,
+        page: 1,
+        limit: 1,
       }),
   );
   vi.stubGlobal("fetch", fetch);
   return fetch;
 }
 describe("catalog browsing", () => {
-  it("shows all matching titles and switches back to the first 48-item page", async () => {
-    const items = Array.from({ length: 49 }, (_, index) => ({
-      ...item,
-      id: index + 1,
-      title: "Saved title " + (index + 1),
-    }));
-    const fetch = mock((url) => {
-      const all =
-        new URL(url, "http://local").searchParams.get("page") === "all";
-      return Response.json({
-        items: all ? items : items.slice(0, 48),
-        total: 49,
-        collection_total: 49,
-        page: 1,
-        limit: all ? 49 : 48,
-      });
-    });
+  it("requests every title on one page without pagination or per-page controls", async () => {
+    const fetch = mock();
     mount("/movies?view=table&query=Saved");
-    await screen.findByRole("link", { name: "Saved title 48" });
-    await userEvent.click(screen.getByRole("button", { name: "Select" }));
-    const display = screen.getByRole("combobox", {
-      name: "Library items per page",
-    });
-    expect(display).toHaveValue("48");
-    expect(
-      screen.queryByRole("link", { name: "Saved title 49" }),
-    ).not.toBeInTheDocument();
-    await userEvent.selectOptions(display, "all");
-    expect(
-      await screen.findByRole("link", { name: "Saved title 49" }),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("checkbox", {
-        name: "Select all titles on this page",
-      }),
-    ).not.toBeInTheDocument();
+    await screen.findByRole("table", { name: "Movie library" });
     const request = new URL(fetch.mock.calls.at(-1)![0], "http://local");
     expect(request.searchParams.get("page")).toBe("all");
     expect(request.searchParams.get("query")).toBe("Saved");
-    await userEvent.selectOptions(display, "48");
-    await screen.findByRole("checkbox", {
-      name: "Select all titles on this page",
-    });
     expect(
-      screen.queryByRole("link", { name: "Saved title 49" }),
+      screen.queryByRole("combobox", { name: "Library items per page" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Previous|Next/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/all shown/)).toBeVisible();
+  });
+  it("bounds Select all shown at 200 titles", async () => {
+    const items = Array.from({ length: 250 }, (_, index) => ({
+      ...item,
+      id: index + 1,
+      title: `Saved title ${index + 1}`,
+    }));
+    mock(() =>
+      Response.json({
+        items,
+        total: items.length,
+        collection_total: items.length,
+        page: 1,
+        limit: items.length,
+      }),
+    );
+    mount("/movies?view=table");
+    await screen.findByRole("link", { name: "Saved title 1" });
+    await userEvent.click(screen.getByRole("button", { name: "Select" }));
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Select all shown" }),
+    );
+    expect(screen.getByText("200 selected")).toBeVisible();
+    expect(screen.getByText(/covers up to 200 movies/)).toBeVisible();
   });
   it("retains bookmarks and sends literal filters to the server while resetting pages", async () => {
     const fetch = mock();
@@ -131,22 +121,22 @@ describe("catalog browsing", () => {
     expect(last.searchParams.get("sort")).toBe("year_desc");
     expect(last.searchParams.get("monitored")).toBe("monitored");
     expect(last.searchParams.has("view")).toBe(false);
-    expect(last.searchParams.get("page")).toBe("1");
+    expect(last.searchParams.get("page")).toBe("all");
     await userEvent.click(screen.getByRole("button", { name: "Browser back" }));
     await waitFor(() =>
       expect(screen.getByLabelText("Search saved titles")).toHaveValue("Saved"),
     );
   });
-  it("switches poster and table layouts without fetching again or losing the current page", async () => {
+  it("switches poster and table layouts without fetching again or losing the sort", async () => {
     const fetch = mock();
-    mount("/movies?page=2&sort=added");
+    mount("/movies?sort=added");
     await screen.findByRole("link", { name: "Open Saved title details" });
     const count = fetch.mock.calls.length;
     await userEvent.click(screen.getByRole("button", { name: "Table" }));
     expect(screen.getByRole("table")).toBeVisible();
     expect(fetch).toHaveBeenCalledTimes(count);
     expect(screen.getByLabelText("Current address")).toHaveTextContent(
-      "page=2",
+      "sort=added",
     );
     expect(screen.getByRole("link", { name: "Find releases" })).toHaveAttribute(
       "href",
@@ -178,7 +168,7 @@ describe("catalog browsing", () => {
     expect(q.get("status")).toBe("available");
     expect(q.get("query")).toBe("Saved");
     expect(q.get("sort")).toBe("title_desc");
-    expect(q.get("page")).toBe("1");
+    expect(q.get("page")).toBe("all");
     expect(screen.getByRole("table")).toBeVisible();
   });
   it("shows active filters and clears them while keeping sort and view", async () => {
@@ -208,18 +198,142 @@ describe("catalog browsing", () => {
       screen.queryByRole("region", { name: "Library filters" }),
     ).not.toBeInTheDocument();
   });
-  it("recovers empty later pages without discarding filters", async () => {
-    mock((url) =>
-      new URL(url, "http://local").searchParams.get("page") === "9"
-        ? Response.json({
-            items: [],
-            total: 1,
-            collection_total: 9,
-            page: 9,
-            limit: 24,
-          })
-        : undefined,
+  it("groups titles by first letter, ignoring The, with an A–Z jump bar", async () => {
+    const items = [
+      { ...item, id: 1, title: "The Alpha" },
+      { ...item, id: 2, title: "Beta" },
+      { ...item, id: 3, title: "42" },
+      { ...item, id: 4, title: "the zeta" },
+    ];
+    mock(() =>
+      Response.json({
+        items,
+        total: items.length,
+        collection_total: items.length,
+        page: 1,
+        limit: items.length,
+      }),
     );
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    mount("/movies");
+    await screen.findByRole("link", { name: "Open The Alpha details" });
+    const jump = screen.getByRole("navigation", { name: "Jump to letter" });
+    for (const letter of ["A", "B", "Z", "#"])
+      expect(
+        within(jump).getByRole("button", {
+          name: new RegExp(
+            letter === "#" ? "other titles" : `Jump to ${letter}`,
+          ),
+        }),
+      ).toBeVisible();
+    for (const letter of ["A", "B", "Z", "#"])
+      expect(
+        screen.getByRole("heading", { name: letter === "#" ? "#" : letter }),
+      ).toBeVisible();
+    await userEvent.click(
+      within(jump).getByRole("button", { name: "Jump to Z" }),
+    );
+    expect(scroll).toHaveBeenCalledWith({ block: "start" });
+  });
+  it("falls back to pages with a clear note when the server ignores page=all", async () => {
+    const items = Array.from({ length: 60 }, (_, index) => ({
+      ...item,
+      id: index + 1,
+      title: `Saved title ${index + 1}`,
+    }));
+    const fetch = mock((url) => {
+      const page = new URL(url, "http://local").searchParams.get("page");
+      if (page === "all")
+        return Response.json({
+          items: items.slice(0, 24),
+          total: 60,
+          collection_total: 60,
+          page: 1,
+          limit: 24,
+        });
+      const n = Number(page);
+      return Response.json({
+        items: items.slice((n - 1) * 24, n * 24),
+        total: 60,
+        collection_total: 60,
+        page: n,
+        limit: 24,
+      });
+    });
+    mount("/movies?page=2&query=Saved&view=table");
+    expect(await screen.findByText("Showing one page at a time")).toBeVisible();
+    expect(
+      screen.getByText(/more than the server returns at once/),
+    ).toBeVisible();
+    await screen.findByRole("table");
+    expect(screen.getByText("Page 2 of 3")).toBeVisible();
+    expect(fetch.mock.calls[0][0]).toContain("page=all");
+    expect(
+      screen.queryByRole("combobox", { name: "Library items per page" }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Previous/ }));
+    expect(await screen.findByText("Page 1 of 3")).toBeVisible();
+    expect(screen.getByLabelText("Current address")).toHaveTextContent(
+      "query=Saved",
+    );
+    expect(screen.getByLabelText("Current address")).toHaveTextContent(
+      "view=table",
+    );
+  });
+  it("falls back to pages when page=all exceeds the server cap", async () => {
+    const items = Array.from({ length: 60 }, (_, index) => ({
+      ...item,
+      id: index + 1,
+      title: `Saved title ${index + 1}`,
+    }));
+    mock((url) => {
+      const page = new URL(url, "http://local").searchParams.get("page");
+      if (page === "all")
+        return Response.json(
+          {
+            error: {
+              message:
+                "This library view has more than 5000 items. Narrow the filters or choose a page.",
+            },
+          },
+          { status: 400 },
+        );
+      const n = Number(page);
+      return Response.json({
+        items: items.slice((n - 1) * 24, n * 24),
+        total: 60,
+        collection_total: 60,
+        page: n,
+        limit: 24,
+      });
+    });
+    mount("/movies?page=2&view=table");
+    expect(await screen.findByText("Showing one page at a time")).toBeVisible();
+    expect(
+      screen.getByText(/more movies than the server returns in one response/),
+    ).toBeVisible();
+    await screen.findByRole("table");
+    expect(screen.getByText("Page 2 of 3")).toBeVisible();
+  });
+  it("recovers an empty fallback page without discarding filters", async () => {
+    mock((url) => {
+      const page = new URL(url, "http://local").searchParams.get("page");
+      if (page === "all")
+        return Response.json({
+          items: [{ ...item, id: 1, title: "Saved title 1" }],
+          total: 60,
+          collection_total: 60,
+          page: 1,
+          limit: 24,
+        });
+      return Response.json({
+        items: page === "1" ? [{ ...item, id: 1, title: "Saved title 1" }] : [],
+        total: 60,
+        collection_total: 24,
+        page: Number(page),
+        limit: 24,
+      });
+    });
     mount("/movies?page=9&query=Saved&view=table");
     await screen.findByRole("heading", { name: "No movies on this page" });
     await userEvent.click(

@@ -1,5 +1,11 @@
 import { Rss } from "lucide-react";
-import { PageBody, PageToolbar, ToolbarButton, ToolbarSection } from "../ui";
+import {
+  PageBody,
+  PageToolbar,
+  ToolbarButton,
+  ToolbarSection,
+  WorkInProgress,
+} from "../ui";
 import { Link } from "react-router-dom";
 import { useMemo, useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
@@ -502,6 +508,13 @@ export function YouTube() {
 
   return (
     <>
+      <WorkInProgress noticeKey="work-in-progress:youtube">
+        <p>
+          YouTube source review, downloads and imports are still being built
+          out. Nothing is queued until you review a source and confirm the
+          target.
+        </p>
+      </WorkInProgress>
       <PageToolbar>
         <ToolbarSection>
           <ToolbarButton

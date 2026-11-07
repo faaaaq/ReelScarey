@@ -4,3 +4,4 @@ export * from "./Modal";
 export * from "./Table";
 export * from "./format";
 export * from "./notices";
+export * from "./WorkInProgress";

@@ -42,11 +42,6 @@ const groups: { name: string; items: Area[] }[] = [
         description: "Collections, root folders and naming presets.",
       },
       {
-        title: "Organize Files",
-        to: "/organization",
-        description: "Folder and file naming rules, and reviewed renames.",
-      },
-      {
         title: "Metadata",
         to: "/metadata-refresh",
         description: "Scheduled TMDb catalog and episode refreshes.",
@@ -432,7 +427,7 @@ function MediaSettings() {
       <FieldSet legend="Related">
         <ul className="adm-settings-list">
           <li>
-            <Link to="/organization">Organize Files</Link>
+            <Link to="/organization">Reorganize registered files</Link>
             <p>Naming templates and reviewed renames of existing files.</p>
           </li>
           <li>

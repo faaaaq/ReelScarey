@@ -147,13 +147,15 @@ export type Release = {
   indexer?: string;
   indexer_id?: string;
   freeleech?: boolean;
+  /** Tracker page for this exact release; absent when the source has none. */
+  info_url?: string | null;
   id: string;
   movie_id: number;
   title: string;
   size_bytes: number;
   seeders: number | null;
   peers: number | null;
-  published_at: string;
+  published_at?: string | null;
 };
 export type DownloadJob = {
   movie_version?: string;

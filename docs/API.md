@@ -241,7 +241,7 @@ CSRF/origin validation. See [provider behavior and limits](INDEXERS_DETAILS.md).
 | POST | `/api/v1/library/items/{id}/metadata` | `{}`; refresh canonical TMDb cast/credits/genres/rating/external links and save locally |
 
 Managed input fields: `name` (1–80), `kind` (`iptorrents`, `xspeeds`, `nyaa`,
-`rss`, `torznab`), `url`, `enabled`, `revision`, `user_agent`, `freeleech_only`,
+`rss`, `torznab`, `newznab`), `url`, `enabled`, `revision`, `user_agent`, `freeleech_only`,
 optional write-only `cookie`, `api_key`, `feed_url`. Omitted secrets preserve saved
 values; an explicit empty string clears a supported optional secret. Changed
 origin/agent requires fresh associated secrets. Maximum twelve managed sources.
@@ -251,9 +251,12 @@ Revision conflicts return 409. The legacy connection edits through its original
 integration API; it supports testing/removal from this list.
 
 Movie and TV release responses now add `warnings` for unavailable sources.
-Each release may add `indexer_id`, `indexer` and `freeleech`. Selections remain
-opaque, encrypted and expiring. Sources are rechecked at queue time. Search errors
-from all sources fail the request; partial failures retain healthy results.
+Each release may add `indexer_id`, `indexer`, `freeleech` and `info_url`, the
+provider's own details page when one was supplied. `info_url` is empty when the
+source gave no page; it is never fabricated and the server never fetches it.
+Selections remain opaque, encrypted and expiring. Sources are rechecked at queue
+time. Search errors from all sources fail the request; partial failures retain
+healthy results.
 
 Item details returns `item`, nullable `information`, `metadata_updated_at`,
 `media_root`, `library_root`, `file_count`, `total_size_bytes`, `history_count`,
@@ -367,11 +370,11 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | GET/PUT/DELETE | `/api/v1/integrations/qbittorrent` | Safe status; test/encrypt configuration; disconnect when no active jobs |
 | POST | `/api/v1/integrations/{name}/test` | Test saved Torznab/qBittorrent connection |
 | GET | `/api/v1/releases?movie_id=1&query=title` | Search enabled indexers; materialize encrypted short-lived selections |
-| GET | `/api/v1/downloads?page=1` | Activity: items, page, total, limit 24 |
+| GET | `/api/v1/downloads?page=1` | Activity queue: items, page, total, limit 24; completed jobs are excluded and remain readable through the direct job route |
 | POST | `/api/v1/downloads` | `{ "release_id": "..." }`; 202 queued or 200 existing; item + created |
 | POST | `/api/v1/library/movies/{id}/manual-torrent[?movie_version=additional]` | Raw `.torrent` body (≤4 MiB); registers the upload as this movie's selected release and queues it through the normal pipeline; 202 queued or 200 existing |
 | POST | `/api/v1/library/series/{id}/manual-torrent?season=1[&episodes=2,3]` | Raw `.torrent` body; with no episodes the torrent covers the season's selected missing episodes; import still requires the mapping review |
-| GET | `/api/v1/downloads/{id}` | One durable job with progress/error fields |
+| GET | `/api/v1/downloads/{id}` | One durable job with progress/error fields, including a completed job no longer listed in the queue |
 | POST | `/api/v1/downloads/{id}/retry` | `{}`; retry/resume blocked, failed or stopped tracking |
 | POST | `/api/v1/downloads/{id}/stop` | `{}`; stop blocked/failed local tracking, leaving client/files untouched |
 | POST | `/api/v1/downloads/{id}/file` | `{ "index": 3 }`; select a file from a choose_file job |
@@ -407,7 +410,13 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | POST | `/api/v1/subtitles/files/{id}/retry` | `{}`; 202 retry preserving job intent/selection |
 | POST | `/api/v1/subtitles/candidates/{id}/download` | `{ "reviewed": true }`; 202 queue an opaque, unexpired subtitle choice |
 
-Library responses contain `items`, `page`, `total`, and `limit: 24`. Page bounds
+Library responses contain `items`, `page`, `total`, `limit`, and
+`collection_total`. Numbered page bounds are 1–100000; `page=all` returns every
+matching item up to 5000 with `page: 1` and `limit: total`, preserving the same
+shape for one-list rendering. More than 5000 matches returns 400
+`library_too_large`; narrow the filters or request a numbered page. Alphabetical
+sorts (title, title descending, and the title tie-break in year sorts) ignore a
+leading case-insensitive `The ` without changing stored or displayed titles.
 
 Manual torrent uploads treat the owner's file as the release selection: the
 server parses the metainfo (name, size, v1/hybrid infohash), refuses torrents
@@ -415,9 +424,11 @@ that are already attached to a job or that use v2-only metadata, and queues the
 exact bytes through the normal reservation, client submission, reconcile-by-hash
 and verified import. The upload binds to the chosen movie, or to the chosen
 season and episodes for a series; the per-file TV mapping review is still
-required before registration. Selections expire like searched releases.are 1–100000; ordering is case-insensitive title then ID. Search responses contain
-`items`, `page`, `total_pages` (capped at 500), and `total_results`. Queries accept
-1–200 characters without control characters; search pages accept 1–500.
+required before registration. Selections expire like searched releases.
+
+Search responses contain `items`, `page`, `total_pages` (capped at 500), and
+`total_results`. Queries accept 1–200 characters without control characters;
+search pages accept 1–500.
 
 Add movie body: `{ "tmdb_id": 11, "monitored": true }` (`monitored` defaults
 true). The server fetches metadata; caller-supplied titles, artwork or paths are
@@ -478,13 +489,18 @@ Settings responses contain configured/url and, for qBittorrent, username and
 download_path. Tests and saves call real services; failed saves preserve old data.
 
 Release responses contain items with id (opaque), movie_id, title, size_bytes,
-seeders/peers (nullable) and published_at. Selection expiry is 30 minutes;
-searches/settings changes invalidate unqueued older selections. No download URLs
-or magnets appear in responses. Queue payloads accept a release ID only.
-Activity exposes state, progress, bytes, client_state, attempts, safe error fields,
-file choices and timestamps; encrypted submission payloads/credentials are omitted.
-States are queued, submitting, downloading, importing, blocked, failed, completed
-and cancelled. See MOVIE_WORKFLOW.md for leases, retry and import semantics.
+seeders/peers (nullable), published_at and info_url. published_at is RFC3339 UTC
+when the provider supplied a parsable date and `""` when it did not; the UI shows
+a dash for unknown. info_url is the provider's details page or `""`. Selection
+expiry is 30 minutes; searches/settings changes invalidate unqueued older
+selections. No download URLs or magnets appear in responses. Queue payloads
+accept a release ID only. Activity exposes state, progress, bytes, client_state,
+attempts, safe error fields, file choices and timestamps; encrypted submission
+payloads/credentials are omitted. States are queued, submitting, downloading,
+importing, blocked, failed, completed and cancelled. A job that completes after
+its import records one `download` activity event with state `completed` for the
+Timeline; repeated reconciliation never duplicates it. See MOVIE_WORKFLOW.md for
+leases, retry and import semantics.
 
 Movie DTOs include tmdb_id, title, overview, year (nullable), release_date,
 poster_path, poster_url, and runtime_minutes (nullable). Saved library items

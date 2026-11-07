@@ -59,7 +59,7 @@ func TestAuthenticatedReleaseDownloadAPI(t *testing.T) {
 					fmt.Fprint(w, `<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><item><title>TV.S01E01</title><guid>tv-one</guid><torznab:attr name="magneturl" value="magnet:?xt=urn:btih:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"/></item></channel></rss>`)
 					return
 				}
-				fmt.Fprint(w, `<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><item><title>Test.Movie.2026</title><guid>one</guid><torznab:attr name="magneturl" value="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"/></item></channel></rss>`)
+				fmt.Fprintf(w, `<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><item><title>Test.Movie.2026</title><guid>one</guid><comments>http://%s/details/one</comments><pubDate>Thu, 22 Oct 2026 10:00:00 +0000</pubDate><torznab:attr name="magneturl" value="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"/></item></channel></rss>`, r.Host)
 			}
 		case "/api/v2/auth/login":
 			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "test-session", Path: "/"})
@@ -130,6 +130,9 @@ func TestAuthenticatedReleaseDownloadAPI(t *testing.T) {
 	if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &results) != nil || len(results.Items) != 1 {
 		t.Fatal(out.Code, out.Body)
 	}
+	if results.Items[0].Published != "2026-10-22T10:00:00Z" || results.Items[0].InfoURL == "" || !strings.HasPrefix(results.Items[0].InfoURL, upstream.URL+"/details/") {
+		t.Fatal("release date/details missing from API response", results.Items[0])
+	}
 	if strings.Contains(out.Body.String(), "magnet:") || strings.Contains(out.Body.String(), "test-private") {
 		t.Fatal("transport payload exposed")
 	}
@@ -160,6 +163,19 @@ func TestAuthenticatedReleaseDownloadAPI(t *testing.T) {
 	}
 	if out = request(handler, "GET", "/api/v1/downloads?page=-1", "", &session, false); out.Code != 400 {
 		t.Fatal("invalid pagination accepted")
+	}
+	movieJobID := page.Items[0].ID
+	if _, e = db.Exec(`UPDATE downloads SET state='completed' WHERE id=?`, movieJobID); e != nil {
+		t.Fatal(e)
+	}
+	out = request(handler, "GET", "/api/v1/downloads?page=1", "", &session, false)
+	if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &page) != nil || len(page.Items) != 0 || page.Total != 0 {
+		t.Fatal("completed download remained in the queue", out.Code, out.Body)
+	}
+	out = request(handler, "GET", "/api/v1/downloads/"+movieJobID, "", &session, false)
+	var completedJob transfer.Job
+	if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &completedJob) != nil || completedJob.State != "completed" {
+		t.Fatal("direct completed job read failed", out.Code, out.Body)
 	}
 	show := metadata.Series{Movie: metadata.Movie{TMDbID: 456, Title: "TV fixture"}, Seasons: []metadata.SeasonSummary{{TMDbID: 457, Number: 1, Title: "Season 1", EpisodeCount: 1}}}
 	item, _, e := library.New(db).AddSeries(ctx, show, true)

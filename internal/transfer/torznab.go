@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type Torznab struct{ HTTP *http.Client }
@@ -39,6 +38,7 @@ type feed struct {
 		Title     string `xml:"title"`
 		GUID      string `xml:"guid"`
 		Link      string `xml:"link"`
+		Comments  string `xml:"comments"`
 		Date      string `xml:"pubDate"`
 		Enclosure struct {
 			URL    string `xml:"url,attr"`
@@ -186,6 +186,7 @@ func (t *Torznab) Search(ctx context.Context, c IndexerConfig, query string) ([]
 			v.Magnet = v.URL
 			v.URL = ""
 		}
+		date := item.Date
 		for _, a := range item.Attrs {
 			switch strings.ToLower(a.Name) {
 			case "size":
@@ -201,6 +202,10 @@ func (t *Torznab) Search(ctx context.Context, c IndexerConfig, query string) ([]
 				v.Magnet = a.Value
 			case "infohash":
 				v.Hash = strings.ToLower(a.Value)
+			case "publishdate", "pubdate", "date", "usenetdate":
+				if strings.TrimSpace(date) == "" {
+					date = a.Value
+				}
 			}
 		}
 		if v.Size < 0 {
@@ -236,9 +241,8 @@ func (t *Torznab) Search(ctx context.Context, c IndexerConfig, query string) ([]
 				continue
 			}
 		}
-		if d, e := http.ParseTime(item.Date); e == nil {
-			v.Published = d.UTC().Format(time.RFC3339)
-		}
+		v.Published = feedTime(date)
+		v.InfoURL = releaseInfoURL(item.Comments)
 		out = append(out, v)
 		if len(out) == 50 {
 			break

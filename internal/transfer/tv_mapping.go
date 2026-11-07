@@ -395,6 +395,9 @@ func (s *Service) processTVImports(ctx context.Context, j Job) error {
 	if n != 1 {
 		return ErrLease
 	}
+	if e = recordDownloadCompleted(ctx, tx, j.ID, j.Title); e != nil {
+		return e
+	}
 	if _, e = tx.ExecContext(ctx, `DELETE FROM episode_downloads WHERE download_id=?`, j.ID); e != nil {
 		return e
 	}

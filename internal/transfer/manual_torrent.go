@@ -36,7 +36,7 @@ func (s *Service) storeCandidate(ctx context.Context, movieID int64, v Candidate
 		return "", e
 	}
 	now := time.Now().Unix()
-	if _, e = tx.ExecContext(ctx, `INSERT INTO release_candidates(id,movie_id,title,size_bytes,seeders,peers,published_at,payload,expires_at) VALUES(?,?,?,?,?,?,?,?,?)`, v.ID, movieID, v.Title, v.Size, v.Seeders, v.Peers, v.Published, sealed, now+manualCandidateTTL); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO release_candidates(id,movie_id,title,size_bytes,seeders,peers,published_at,info_url,payload,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, v.ID, movieID, v.Title, v.Size, v.Seeders, v.Peers, v.Published, v.InfoURL, sealed, now+manualCandidateTTL); e != nil {
 		return "", e
 	}
 	return v.ID, tx.Commit()
@@ -64,7 +64,7 @@ func (s *Service) QueueManualTorrent(ctx context.Context, movieID int64, version
 	releaseID, e := s.storeCandidate(ctx, movieID, Candidate{
 		Release: Release{
 			ID: ID(), MovieID: movieID, Title: mt.Name, Size: mt.Size,
-			Published:   time.Now().UTC().Format(time.RFC1123Z),
+			Published:   time.Now().UTC().Format(time.RFC3339),
 			IndexerName: "Manual upload",
 		},
 		Hash:    mt.InfoHash,
@@ -111,7 +111,7 @@ func (s *Service) QueueManualSeriesTorrent(ctx context.Context, seriesID int64, 
 	releaseID, e := s.storeCandidate(ctx, seriesID, Candidate{
 		Release: Release{
 			ID: ID(), MovieID: seriesID, Title: mt.Name, Size: mt.Size,
-			Published:   time.Now().UTC().Format(time.RFC1123Z),
+			Published:   time.Now().UTC().Format(time.RFC3339),
 			IndexerName: "Manual upload",
 		},
 		Hash:    mt.InfoHash,

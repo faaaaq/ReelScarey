@@ -256,6 +256,8 @@ func parseDirectRSS(body []byte, base *url.URL) ([]Candidate, error) {
 			Items []struct {
 				Title     string `xml:"title"`
 				Link      string `xml:"link"`
+				GUID      string `xml:"guid"`
+				Comments  string `xml:"comments"`
 				Date      string `xml:"pubDate"`
 				Hash      string `xml:"infoHash"`
 				Size      string `xml:"size"`
@@ -322,9 +324,21 @@ func parseDirectRSS(body []byte, base *url.URL) ([]Candidate, error) {
 			}
 			v.Hash = h
 		}
-		if parsed, e := http.ParseTime(item.Date); e == nil {
-			v.Published = parsed.UTC().Format(time.RFC3339)
+		// A separate item link, GUID or comments element can be the tracker's
+		// details page. Accept only a same-origin page that is not the download
+		// itself; never invent one when the feed omits it.
+		for _, candidate := range []string{item.Comments, item.Link, item.GUID} {
+			if strings.TrimSpace(candidate) == "" {
+				continue
+			}
+			page, magnet, ok := releaseLink(base, candidate)
+			if !ok || magnet != "" || page == v.URL {
+				continue
+			}
+			v.InfoURL = page
+			break
 		}
+		v.Published = feedTime(item.Date)
 		out = append(out, v)
 		if len(out) == 100 {
 			break
@@ -435,7 +449,7 @@ func parseTrackerHTML(body []byte, base *url.URL, kind string, freeOnly bool) ([
 		if row.Type != html.ElementNode || row.Data != "tr" {
 			continue
 		}
-		var title, download string
+		var title, download, details string
 		free := false
 		cells := []*html.Node{}
 		for n := row.FirstChild; n != nil; n = n.NextSibling {
@@ -460,6 +474,7 @@ func parseTrackerHTML(body []byte, base *url.URL, kind string, freeOnly bool) ([
 			if (kind == "iptorrents" && strings.Contains(" "+attr(n, "class")+" ", " hv ")) || (kind == "xspeeds" && strings.Contains(href, "details.php?id=")) {
 				if title == "" {
 					title = nodeText(n)
+					details = href
 				}
 			}
 			if strings.Contains(href, "download.php") {
@@ -479,10 +494,23 @@ func parseTrackerHTML(body []byte, base *url.URL, kind string, freeOnly bool) ([
 		}
 		seen[link] = true
 		v := Candidate{Release: Release{Title: title, Freeleech: free}, URL: link}
+		if details != "" {
+			if page, magnet, ok := releaseLink(base, details); ok && magnet == "" && page != link {
+				v.InfoURL = page
+			}
+		}
 		for _, cell := range cells {
-			if size := humanSize(nodeText(cell)); size > 0 {
-				v.Size = size
-				break
+			text := nodeText(cell)
+			if v.Size == 0 {
+				if size := humanSize(text); size > 0 {
+					v.Size = size
+				}
+			}
+			// Trackers use several date layouts in their table; only a value
+			// that actually parses becomes published_at. Relative text such as
+			// "today" stays unknown rather than being guessed.
+			if v.Published == "" {
+				v.Published = feedTime(text)
 			}
 		}
 		if kind == "xspeeds" && seedCol < 0 && len(cells) >= 8 {

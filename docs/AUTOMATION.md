@@ -17,6 +17,8 @@ required term must appear; any excluded term rejects the candidate. Terms match
 normalized whole words/phrases, ignoring case and punctuation. At most 20 profiles
 are supported. Profiles are edited in place with revision checks; deletion is not
 exposed. Item assignments choose a profile or follow the schedule default.
+Assignment and Wanted/Calendar alphabetical ordering ignore a leading
+case-insensitive `The ` while displaying the saved title unchanged.
 
 Searches only include effectively monitored targets with known calendar release/
 air dates on or before today's UTC date. TV shows, seasons and episodes must all

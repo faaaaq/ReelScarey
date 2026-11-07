@@ -651,6 +651,13 @@ a.scan-metric:hover {
   color: var(--rs-text-strong);
 }
 
+/* Add-indexer preset row spans the form grid above its fields. */
+.indexer-preset,
+.indexer-preset-help {
+  grid-column: 1 / -1;
+  max-width: 640px;
+}
+
 /* Help disclosures. */
 .indexer-help {
   color: var(--rs-muted);

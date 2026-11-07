@@ -123,6 +123,9 @@ func TestTVSingleEpisodeImportsAutomatically(t *testing.T) {
 	if e = f.db.QueryRow(`SELECT COUNT(*) FROM activity_events WHERE kind='download' AND object_id=? AND state LIKE 'imported automatically%'`, j.ID).Scan(&events); e != nil || events != 1 {
 		t.Fatal("the automatic import left no honest event", events, e)
 	}
+	if e = f.db.QueryRow(`SELECT COUNT(*) FROM activity_events WHERE kind='download' AND object_id=? AND state='completed'`, j.ID).Scan(&events); e != nil || events != 1 {
+		t.Fatal("the completed TV job left no History event", events, e)
+	}
 
 	// The same download without an exact episode label keeps the review.
 	f2, id2, _ := setupTV(t)

@@ -186,7 +186,6 @@ export const navigation: NavItem[] = [
       ),
     children: [
       { label: "Media Management", to: "/settings/media" },
-      { label: "Organize Files", to: "/organization" },
       { label: "Indexers", to: "/indexers" },
       { label: "Announce Feeds", to: "/announces" },
       { label: "Download Clients", to: "/download-clients" },

@@ -797,3 +797,16 @@ an episode now deletes the media copy from disk as well as the library record,
 staged so a failed commit restores the file; files shared by several episodes,
 tracked replacements and download-folder seeding sources are refused. See
 [TV_DOWNLOADS.md](docs/TV_DOWNLOADS.md) and [API.md](docs/API.md).
+
+## Version 0.38.8 search links, queue history and single-page libraries
+
+Release titles link to the tracker's details page in a new tab, and search
+results show a correct age again: feed dates are parsed from RFC1123 and other
+common layouts, not only GMT. The Activity queue lists active downloads only;
+completions are recorded once in History. Indexers gain NZBGeek and Prowlarr
+presets (UI-side; the adapter kinds stay Torznab/Newznab). The library API sorts
+alphabetically ignoring a leading "The" and returns every match for one-page
+libraries (bounded at 5000). The library pages drop pagination in favour of an
+A-Z jump bar, Subtitles and YouTube show a first-visit Work in progress overlay,
+Organize Files leaves the navigation (still reachable from Media Management) and
+Automation no longer lists every saved title. See [UI.md](docs/UI.md).

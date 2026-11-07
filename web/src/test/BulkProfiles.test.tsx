@@ -179,7 +179,7 @@ describe("reviewed quality profile assignment", () => {
     await enterSelectMode();
     await userEvent.click(
       await screen.findByRole("checkbox", {
-        name: "Select all titles on this page",
+        name: "Select all shown",
       }),
     );
     const dialog = await open();
@@ -386,7 +386,7 @@ describe("reviewed quality profile assignment", () => {
     const q = new URL(fetch.mock.calls.at(-1)![0], "http://local").searchParams;
     expect(q.get("profile")).toBe("2");
     expect(q.get("sort")).toBe("year_desc");
-    expect(q.get("page")).toBe("1");
+    expect(q.get("page")).toBe("all");
   });
   it("ignores a late preview for the previous target", async () => {
     let finishDefault!: (r: Response) => void;

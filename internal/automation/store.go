@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/quality"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
 )
@@ -199,7 +200,7 @@ func (s *Service) Assignments(ctx context.Context, page int) (AssignmentPage, er
 	if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_items`).Scan(&out.Total); e != nil {
 		return out, e
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT m.id,m.title,m.kind,m.monitored,a.profile_id,COALESCE(a.revision,0) FROM media_items m LEFT JOIN item_automation a ON a.media_id=m.id ORDER BY m.title COLLATE NOCASE,m.id LIMIT 24 OFFSET ?`, (page-1)*24)
+	rows, e := s.db.QueryContext(ctx, `SELECT m.id,m.title,m.kind,m.monitored,a.profile_id,COALESCE(a.revision,0) FROM media_items m LEFT JOIN item_automation a ON a.media_id=m.id ORDER BY `+library.TitleSort+` COLLATE NOCASE,m.id LIMIT 24 OFFSET ?`, (page-1)*24)
 	if e != nil {
 		return out, e
 	}

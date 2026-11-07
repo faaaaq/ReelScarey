@@ -150,7 +150,7 @@ func (s *Service) SearchAutomaticAnimeOrder(ctx context.Context, seriesID int64,
 		if e != nil {
 			return nil, e
 		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO release_candidates(id,movie_id,title,size_bytes,seeders,peers,published_at,payload,expires_at,scope) VALUES(?,?,?,?,?,?,?,?,?,?)`, item.ID, seriesID, item.Title, item.Size, item.Seeders, item.Peers, item.Published, sealed, now+1800, scope); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO release_candidates(id,movie_id,title,size_bytes,seeders,peers,published_at,info_url,payload,expires_at,scope) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, item.ID, seriesID, item.Title, item.Size, item.Seeders, item.Peers, item.Published, item.InfoURL, sealed, now+1800, scope); e != nil {
 			return nil, e
 		}
 		out = append(out, item.Release)

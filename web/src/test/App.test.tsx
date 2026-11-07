@@ -125,7 +125,7 @@ describe("foundation UI", () => {
     ).toHaveTextContent(/Add New.*Library Import/);
     expect(
       fetch.mock.calls.some(
-        ([url]) => url === "/api/v1/library?kind=movie&page=1",
+        ([url]) => url === "/api/v1/library?kind=movie&page=all",
       ),
     ).toBe(true);
   });
@@ -145,8 +145,14 @@ describe("foundation UI", () => {
       "href",
       "/announces",
     );
+    expect(
+      main.queryByRole("link", { name: "Organize Files" }),
+    ).not.toBeInTheDocument();
     await userEvent.click(main.getByRole("link", { name: "Media Management" }));
     expect(await screen.findByText("Collections & folders")).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Reorganize registered files" }),
+    ).toHaveAttribute("href", "/organization");
     expect(screen.getByLabelText("Collection name 3")).toHaveValue("Anime");
     expect(
       screen.getByRole("button", { name: "Add collection" }),

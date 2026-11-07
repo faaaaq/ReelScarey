@@ -11,6 +11,10 @@ import {
 } from "../api";
 import { PageHeading, RequestState } from "../components";
 import {
+  eventStateKind,
+  type Event as HistoryEvent,
+} from "../components/EventRow";
+import {
   Alert,
   EmptyState,
   Label,
@@ -45,11 +49,32 @@ export function Releases() {
 
 type SortKey = "rank" | "age" | "title" | "indexer" | "size" | "peers";
 
-function publishedTime(release: Release) {
-  const value = release.published_at ? Date.parse(release.published_at) : NaN;
-  return Number.isFinite(value) ? value : null;
+/**
+ * Release dates arrive as RFC3339, RFC1123Z or Go's default time layout
+ * depending on the indexer. Parse each explicitly so an unreadable date stays
+ * an honest em dash instead of an empty cell.
+ */
+export function publishedTime(release: Release) {
+  const raw =
+    typeof release.published_at === "string" ? release.published_at.trim() : "";
+  if (!raw) return null;
+  if (/^\d{9,13}$/.test(raw)) {
+    const epoch = Number(raw);
+    return epoch > 0 ? (raw.length <= 10 ? epoch * 1000 : epoch) : null;
+  }
+  const go = raw.match(
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s*([+-]\d{2}:?\d{2}|Z|UTC|GMT)?/,
+  );
+  let value = NaN;
+  if (go) {
+    const zone = go[3] ?? "Z";
+    const normalisedZone = zone === "UTC" || zone === "GMT" ? "Z" : zone;
+    value = Date.parse(`${go[1]}T${go[2]}${normalisedZone}`);
+  }
+  if (!Number.isFinite(value)) value = Date.parse(raw);
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
-function age(release: Release) {
+export function age(release: Release) {
   const time = publishedTime(release);
   if (time === null) return "—";
   const minutes = Math.max(0, Math.round((Date.now() - time) / 60000));
@@ -58,6 +83,23 @@ function age(release: Release) {
   if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"}`;
   const days = Math.round(hours / 24);
   return `${days} ${days === 1 ? "day" : "days"}`;
+}
+/** Only trust an absolute web URL from the tracker; never invent one. */
+export function releaseInfoURL(release: Release) {
+  const value = release.info_url?.trim();
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.username || url.password) return null;
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+function normaliseTitle(value: string) {
+  return value.trim().toLocaleLowerCase();
 }
 function seedKind(seeders: number | null): Kind {
   if (seeders === null || seeders === undefined) return "default";
@@ -89,6 +131,18 @@ function ReleaseBrowser() {
   const indexer = useResource<IntegrationStatus>("/indexers/status");
   const client = useResource<IntegrationStatus>("/integrations/qbittorrent");
   const sab = useResource<IntegrationStatus>("/integrations/sabnzbd");
+  // Best effort: recent failed download events warn before a repeat attempt.
+  // A missing or slow history never blocks the search results.
+  const history = useResource<{ items: HistoryEvent[] }>("/events");
+  const failedTitles = useMemo(() => {
+    const failed = new Set<string>();
+    for (const event of history.data?.items ?? []) {
+      if (event.kind !== "download") continue;
+      if (eventStateKind(event.state) !== "danger") continue;
+      failed.add(normaliseTitle(event.title));
+    }
+    return failed;
+  }, [history.data]);
   // The included client makes torrent downloads ready without any setup.
   const clients = useResource<{
     items: { builtin?: boolean; enabled: boolean }[];
@@ -485,6 +539,11 @@ function ReleaseBrowser() {
                     {rows.map((release) => {
                       const ready = configuredFor(release);
                       const usenet = release.protocol === "usenet";
+                      const published = publishedTime(release);
+                      const info = releaseInfoURL(release);
+                      const failedBefore = failedTitles.has(
+                        normaliseTitle(release.title),
+                      );
                       return (
                         <tr key={release.id}>
                           <td>
@@ -495,10 +554,8 @@ function ReleaseBrowser() {
                           <td
                             className="rel-age"
                             title={
-                              publishedTime(release) !== null
-                                ? new Date(
-                                    release.published_at,
-                                  ).toLocaleString()
+                              published !== null
+                                ? `Published ${new Date(published).toLocaleString()}`
                                 : "Publication date unknown"
                             }
                           >
@@ -506,10 +563,24 @@ function ReleaseBrowser() {
                           </td>
                           <td className="rel-title">
                             <span className="rel-title-text">
-                              {release.title}
+                              {info ? (
+                                <a href={info} target="_blank" rel="noreferrer">
+                                  {release.title}
+                                </a>
+                              ) : (
+                                release.title
+                              )}
                             </span>
                             {release.freeleech && (
                               <Label kind="success">Freeleech</Label>
+                            )}
+                            {failedBefore && (
+                              <Label
+                                kind="danger"
+                                title="A previous download with this release title failed."
+                              >
+                                Failed before
+                              </Label>
                             )}
                           </td>
                           <td className="rel-col-indexer">

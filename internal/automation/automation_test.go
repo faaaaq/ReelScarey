@@ -195,6 +195,20 @@ func configure(t *testing.T, s *Service, enabled bool, mode string, batch int) {
 		t.Fatal(e)
 	}
 }
+func TestAssignmentTitleOrderIgnoresLeadingThe(t *testing.T) {
+	f := setup(t)
+	if _, e := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,monitored,release_date) VALUES(2,'movie',2,'The Apple',2021,1,'2021-01-01'),(3,'movie',3,'Banana',2021,1,'2021-01-01')`); e != nil {
+		t.Fatal(e)
+	}
+	page, e := f.s.Assignments(context.Background(), 1)
+	if e != nil || len(page.Items) != 3 {
+		t.Fatal(page, e)
+	}
+	if page.Items[0].Title != "A Test Movie" || page.Items[1].Title != "The Apple" || page.Items[2].Title != "Banana" {
+		t.Fatalf("assignment title order did not ignore the leading article: %+v", page.Items)
+	}
+}
+
 func TestSearchOnlyThenAutomaticQueuePersistsAndDeduplicates(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()

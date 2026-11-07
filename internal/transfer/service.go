@@ -326,7 +326,7 @@ func (s *Service) Search(ctx context.Context, movieID int64, query string) ([]Re
 		if e != nil {
 			return nil, e
 		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO release_candidates(id,movie_id,title,size_bytes,seeders,peers,published_at,payload,expires_at) VALUES(?,?,?,?,?,?,?,?,?)`, v.ID, movieID, v.Title, v.Size, v.Seeders, v.Peers, v.Published, sealed, now+1800); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO release_candidates(id,movie_id,title,size_bytes,seeders,peers,published_at,info_url,payload,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, v.ID, movieID, v.Title, v.Size, v.Seeders, v.Peers, v.Published, v.InfoURL, sealed, now+1800); e != nil {
 			return nil, e
 		}
 		out = append(out, v.Release)

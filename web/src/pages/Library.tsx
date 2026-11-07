@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { Button, DropdownMenu, TextField } from "@radix-ui/themes";
 import {
   ArrowDownUp,
@@ -49,6 +49,34 @@ const sorts = [
   { value: "year", label: "Year, oldest first" },
   { value: "added", label: "Recently added" },
 ];
+
+/** Matches the server's title sort: ignore one leading "The ". */
+export function firstLetter(title: string) {
+  const trimmed = title
+    .trim()
+    .replace(/^the\s+/i, "")
+    .trimStart();
+  const letter = trimmed.charAt(0).toUpperCase();
+  return /^[A-Z]$/.test(letter) ? letter : "#";
+}
+export function groupedTitles(items: MediaItem[]) {
+  const groups = new Map<string, MediaItem[]>();
+  for (const item of items) {
+    const letter = firstLetter(item.title);
+    const rows = groups.get(letter);
+    if (rows) rows.push(item);
+    else groups.set(letter, [item]);
+  }
+  return [...groups.entries()];
+}
+function groupID(letter: string) {
+  return `lib-letter-${letter === "#" ? "other" : letter.toLowerCase()}`;
+}
+function sortLetters(letters: string[]) {
+  return [...letters].sort((a, b) =>
+    a === "#" ? 1 : b === "#" ? -1 : a.localeCompare(b),
+  );
+}
 
 function ProfileLabel({ item }: { item: MediaItem }) {
   const profile = item.quality_profile;
@@ -129,16 +157,28 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const [params, setParams] = useSearchParams();
   const [input, setInput] = useState(params.get("query") ?? "");
   useEffect(() => setInput(params.get("query") ?? ""), [params]);
-  const showAll = params.get("page") === "all";
-  const page = showAll ? 1 : Number(params.get("page") ?? 1);
-  const apiParams = new URLSearchParams({
-    kind,
-    page: params.get("page") ?? "1",
-  });
+  const pageParam = params.get("page") ?? "";
+  const requestedPage = /^[1-9][0-9]*$/.test(pageParam) ? Number(pageParam) : 1;
+  // Ask for the whole collection. A server that ignores `page=all` returns a
+  // normal page; the mismatch below falls back to the paginated view.
+  const apiParams = new URLSearchParams({ kind, page: "all" });
   for (const [key, value] of params)
     if (key !== "view" && key !== "page" && key !== "kind")
       apiParams.append(key, value);
-  const resource = useResource<LibraryPage>(`/library?${apiParams.toString()}`);
+  const all = useResource<LibraryPage>(`/library?${apiParams.toString()}`);
+  // The server may reject page=all past its cap, or return a normal page if
+  // the option is unknown. Both cases fall back to the paginated view.
+  const allLimitReached =
+    !!all.error &&
+    /more than\s+\d+\s+items|narrow the filters/i.test(all.error);
+  const capped =
+    allLimitReached || (!!all.data && all.data.total > all.data.items.length);
+  const pageParams = new URLSearchParams(apiParams);
+  pageParams.set("page", String(requestedPage));
+  const paged = useResource<LibraryPage>(
+    capped ? `/library?${pageParams.toString()}` : null,
+  );
+  const resource = capped ? paged : all;
   const selectionScope = apiParams.toString();
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
@@ -146,7 +186,11 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   useEffect(() => {
     setSelected([]);
     setMonitoringMessage("");
-  }, [selectionScope]);
+  }, [selectionScope, requestedPage]);
+  function reload() {
+    all.reload();
+    if (capped) paged.reload();
+  }
   function toggle(id: number, checked: boolean) {
     setSelected((current) =>
       checked
@@ -179,7 +223,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
     else next.delete(key);
-    if (!showAll && key !== "view" && key !== "page") next.delete("page");
+    if (key !== "view" && key !== "page") next.delete("page");
     setParams(next);
   }
   function submit(e: FormEvent) {
@@ -190,15 +234,16 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const [savedProfileContext, setSavedProfileContext] =
     useState<CatalogProfileContext>();
   useEffect(() => {
-    if (data?.profile_context) setSavedProfileContext(data.profile_context);
-  }, [data]);
+    const context = all.data?.profile_context ?? data?.profile_context;
+    if (context) setSavedProfileContext(context);
+  }, [all.data, data]);
   const profileContext = data?.profile_context ?? savedProfileContext;
   const activeFilters = ["status", "monitored", "profile"].filter(
     (k) => !!params.get(k) && params.get(k) !== "all",
   ).length;
   const filtered = activeFilters > 0 || !!params.get("query");
   const [filtersOpen, setFiltersOpen] = useState(activeFilters > 0);
-  const canSelect = selecting && !showAll;
+  const canSelect = selecting;
   const selectedGroups = !canSelect
     ? []
     : kind === "anime"
@@ -219,12 +264,24 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const sort = params.get("sort") ?? "title";
   const ready = !resource.loading && !resource.error && !!data;
   const items = data?.items ?? [];
+  const page = capped ? (data?.page ?? requestedPage) : 1;
+  const groups = groupedTitles(items);
+  const letters = sortLetters(groups.map(([letter]) => letter));
+  // Bulk reviews stay bounded so one click cannot queue an unbounded write.
+  const selectable = items.slice(0, 200);
+  const selectLimit = Math.min(items.length, 200);
   const allSelected =
-    items.length > 0 && items.every((item) => selected.includes(item.id));
+    selectable.length > 0 &&
+    selectable.every((item) => selected.includes(item.id));
+  function jump(letter: string) {
+    document
+      .getElementById(groupID(letter))
+      ?.scrollIntoView({ block: "start" });
+  }
   function applied(message: string) {
     setSelected([]);
     setMonitoringMessage(message);
-    resource.reload();
+    reload();
   }
   function selectBox(item: MediaItem) {
     return (
@@ -252,12 +309,6 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
             icon={ListChecks}
             label="Select"
             active={selecting}
-            disabled={showAll}
-            title={
-              showAll
-                ? "Selection works one page at a time. Switch back to 48 per page."
-                : undefined
-            }
             onClick={() => {
               setSelecting((value) => !value);
               setSelected([]);
@@ -344,6 +395,21 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
           </form>
         </div>
 
+        {ready && letters.length > 1 && (
+          <nav className="lib-az" aria-label="Jump to letter">
+            {letters.map((letter) => (
+              <button
+                key={letter}
+                type="button"
+                aria-label={`Jump to ${letter === "#" ? "other titles" : letter}`}
+                onClick={() => jump(letter)}
+              >
+                {letter}
+              </button>
+            ))}
+          </nav>
+        )}
+
         {filtersOpen && (
           <section className="lib-filters" aria-label="Library filters">
             <label className="lib-filter">
@@ -423,10 +489,21 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
           </Alert>
         )}
 
+        {capped && (
+          <Alert kind="warning" title="Showing one page at a time">
+            <p>
+              {allLimitReached
+                ? `This library view has more ${noun} than the server returns in one response. Narrow the filters, or use the page controls below.`
+                : `This library has ${all.data?.total ?? 0} matching ${noun}, more than the server returns at once. Use the page controls below.`}{" "}
+              The A–Z index jumps within the current page.
+            </p>
+          </Alert>
+        )}
+
         <RequestState
           loading={resource.loading}
           error={resource.error}
-          retry={resource.reload}
+          retry={reload}
         />
         {!resource.loading && resource.error && (
           <div>
@@ -476,143 +553,178 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                       </th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {items.map((item) => (
-                      <tr
-                        key={item.id}
-                        className={
-                          canSelect && selected.includes(item.id)
-                            ? "is-selected"
-                            : undefined
-                        }
-                      >
-                        {canSelect && (
-                          <td className="is-shrink">{selectBox(item)}</td>
-                        )}
-                        <td className="is-shrink">
-                          <MonitorIcon monitored={item.monitored} />
-                        </td>
-                        <th scope="row">
-                          <Link to={detailsPath(item)}>{item.title}</Link>
+                  {groups.map(([letter, rows]) => (
+                    <tbody key={letter}>
+                      <tr className="lib-group-row">
+                        <th
+                          scope="colgroup"
+                          colSpan={(canSelect ? 8 : 7) + (anime ? 1 : 0)}
+                        >
+                          <h2
+                            className="lib-group-heading"
+                            id={groupID(letter)}
+                          >
+                            {letter}
+                          </h2>
                         </th>
-                        <td className="is-shrink">{item.year ?? "—"}</td>
-                        {anime && (
-                          <td>{item.kind === "movie" ? "Movie" : "Show"}</td>
-                        )}
-                        <td>
-                          <ProfileLabel item={item} />
-                        </td>
-                        <td>
-                          <Label kind={statusKind(item)}>
-                            {statusLabel(item)}
-                          </Label>
-                        </td>
-                        <td className="is-actions">
-                          <ItemAction item={item} />
-                        </td>
                       </tr>
-                    ))}
-                  </tbody>
+                      {rows.map((item) => (
+                        <tr
+                          key={item.id}
+                          className={
+                            canSelect && selected.includes(item.id)
+                              ? "is-selected"
+                              : undefined
+                          }
+                        >
+                          {canSelect && (
+                            <td className="is-shrink">{selectBox(item)}</td>
+                          )}
+                          <td className="is-shrink">
+                            <MonitorIcon monitored={item.monitored} />
+                          </td>
+                          <th scope="row">
+                            <Link to={detailsPath(item)}>{item.title}</Link>
+                          </th>
+                          <td className="is-shrink">{item.year ?? "—"}</td>
+                          {anime && (
+                            <td>{item.kind === "movie" ? "Movie" : "Show"}</td>
+                          )}
+                          <td>
+                            <ProfileLabel item={item} />
+                          </td>
+                          <td>
+                            <Label kind={statusKind(item)}>
+                              {statusLabel(item)}
+                            </Label>
+                          </td>
+                          <td className="is-actions">
+                            <ItemAction item={item} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  ))}
                 </Table>
               </div>
             ) : view === "overview" ? (
               <ul className="lib-overview" aria-label={`${title} overview`}>
-                {items.map((item) => (
-                  <li
-                    key={item.id}
-                    className={
-                      canSelect && selected.includes(item.id)
-                        ? "lib-overview-row is-selected"
-                        : "lib-overview-row"
-                    }
-                  >
-                    {canSelect && (
-                      <span className="lib-overview-select">
-                        {selectBox(item)}
-                      </span>
-                    )}
-                    <Link
-                      className="lib-overview-poster"
-                      to={detailsPath(item)}
-                      aria-label={`Open ${item.title} details`}
-                    >
-                      <Poster movie={item} />
-                      <span
-                        className={`lib-status-bar is-${statusKind(item)}`}
-                        title={statusLabel(item)}
-                      />
-                    </Link>
-                    <div className="lib-overview-body">
-                      <div className="lib-overview-head">
-                        <MonitorIcon monitored={item.monitored} />
-                        <h2 className="lib-overview-title">
-                          <Link to={detailsPath(item)}>{item.title}</Link>
-                        </h2>
-                        <span className="rs-muted">{item.year ?? ""}</span>
-                      </div>
-                      <div className="lib-overview-meta">
-                        <Label kind={statusKind(item)}>
-                          {statusLabel(item)}
-                        </Label>
-                        {anime && (
-                          <Label outline>
-                            {item.kind === "movie" ? "Movie" : "Show"}
-                          </Label>
+                {groups.map(([letter, rows]) => (
+                  <Fragment key={letter}>
+                    <li className="lib-group-row">
+                      <h2 className="lib-group-heading" id={groupID(letter)}>
+                        {letter}
+                      </h2>
+                    </li>
+                    {rows.map((item) => (
+                      <li
+                        key={item.id}
+                        className={
+                          canSelect && selected.includes(item.id)
+                            ? "lib-overview-row is-selected"
+                            : "lib-overview-row"
+                        }
+                      >
+                        {canSelect && (
+                          <span className="lib-overview-select">
+                            {selectBox(item)}
+                          </span>
                         )}
-                        <ProfileLabel item={item} />
-                        <ItemAction item={item} />
-                      </div>
-                      {item.overview && (
-                        <p className="lib-overview-text">{item.overview}</p>
-                      )}
-                    </div>
-                  </li>
+                        <Link
+                          className="lib-overview-poster"
+                          to={detailsPath(item)}
+                          aria-label={`Open ${item.title} details`}
+                        >
+                          <Poster movie={item} />
+                          <span
+                            className={`lib-status-bar is-${statusKind(item)}`}
+                            title={statusLabel(item)}
+                          />
+                        </Link>
+                        <div className="lib-overview-body">
+                          <div className="lib-overview-head">
+                            <MonitorIcon monitored={item.monitored} />
+                            <h2 className="lib-overview-title">
+                              <Link to={detailsPath(item)}>{item.title}</Link>
+                            </h2>
+                            <span className="rs-muted">{item.year ?? ""}</span>
+                          </div>
+                          <div className="lib-overview-meta">
+                            <Label kind={statusKind(item)}>
+                              {statusLabel(item)}
+                            </Label>
+                            {anime && (
+                              <Label outline>
+                                {item.kind === "movie" ? "Movie" : "Show"}
+                              </Label>
+                            )}
+                            <ProfileLabel item={item} />
+                            <ItemAction item={item} />
+                          </div>
+                          {item.overview && (
+                            <p className="lib-overview-text">{item.overview}</p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </Fragment>
                 ))}
               </ul>
             ) : (
               <ul className="lib-grid" aria-label={`${title} posters`}>
-                {items.map((item) => (
-                  <li
-                    className={
-                      canSelect && selected.includes(item.id)
-                        ? "lib-card is-selected"
-                        : "lib-card"
-                    }
-                    key={item.id}
-                  >
-                    {canSelect && (
-                      <span className="lib-card-select">{selectBox(item)}</span>
-                    )}
-                    <Link
-                      className="lib-card-art"
-                      to={detailsPath(item)}
-                      aria-label={`Open ${item.title} details`}
-                    >
-                      <Poster movie={item} />
-                    </Link>
-                    <span
-                      className={`lib-status-bar is-${statusKind(item)}`}
-                      title={statusLabel(item)}
-                    />
-                    <div className="lib-card-info">
-                      <div className="lib-card-line">
-                        <h2 className="lib-card-title">
-                          <Link to={detailsPath(item)}>{item.title}</Link>
-                        </h2>
-                        <MonitorIcon monitored={item.monitored} />
-                      </div>
-                      <div className="lib-card-meta">
-                        <span>{item.year ?? "Year unknown"}</span>
-                        {anime && (
-                          <span>
-                            {item.kind === "movie" ? "Movie" : "Show"}
+                {groups.map(([letter, rows]) => (
+                  <Fragment key={letter}>
+                    <li className="lib-group-row">
+                      <h2 className="lib-group-heading" id={groupID(letter)}>
+                        {letter}
+                      </h2>
+                    </li>
+                    {rows.map((item) => (
+                      <li
+                        className={
+                          canSelect && selected.includes(item.id)
+                            ? "lib-card is-selected"
+                            : "lib-card"
+                        }
+                        key={item.id}
+                      >
+                        {canSelect && (
+                          <span className="lib-card-select">
+                            {selectBox(item)}
                           </span>
                         )}
-                        <span className="sr-only">{statusLabel(item)}</span>
-                      </div>
-                      <ProfileLabel item={item} />
-                    </div>
-                  </li>
+                        <Link
+                          className="lib-card-art"
+                          to={detailsPath(item)}
+                          aria-label={`Open ${item.title} details`}
+                        >
+                          <Poster movie={item} />
+                        </Link>
+                        <span
+                          className={`lib-status-bar is-${statusKind(item)}`}
+                          title={statusLabel(item)}
+                        />
+                        <div className="lib-card-info">
+                          <div className="lib-card-line">
+                            <h2 className="lib-card-title">
+                              <Link to={detailsPath(item)}>{item.title}</Link>
+                            </h2>
+                            <MonitorIcon monitored={item.monitored} />
+                          </div>
+                          <div className="lib-card-meta">
+                            <span>{item.year ?? "Year unknown"}</span>
+                            {anime && (
+                              <span>
+                                {item.kind === "movie" ? "Movie" : "Show"}
+                              </span>
+                            )}
+                            <span className="sr-only">{statusLabel(item)}</span>
+                          </div>
+                          <ProfileLabel item={item} />
+                        </div>
+                      </li>
+                    ))}
+                  </Fragment>
                 ))}
               </ul>
             )
@@ -680,31 +792,20 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                       : ""
                   }${
                     items.length
-                      ? ` · ${(data.page - 1) * data.limit + 1}–${(data.page - 1) * data.limit + items.length} shown`
+                      ? capped
+                        ? ` · showing ${(page - 1) * data.limit + 1}–${(page - 1) * data.limit + items.length}`
+                        : " · all shown"
                       : ""
                   }`
                 : ""}
             </p>
-            {ready && !showAll && (
+            {ready && capped && (
               <Pagination
                 page={data.page}
                 pages={Math.ceil(data.total / data.limit)}
                 onPage={(p) => change("page", String(p))}
               />
             )}
-            <label className="lib-filter lib-per-page">
-              <span>Per page</span>
-              <select
-                aria-label="Library items per page"
-                value={showAll ? "all" : "48"}
-                onChange={(event) =>
-                  change("page", event.target.value === "all" ? "all" : "")
-                }
-              >
-                <option value="48">48</option>
-                <option value="all">Show all</option>
-              </select>
-            </label>
           </footer>
         )}
         {ready && !movies && (
@@ -720,7 +821,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
               <label className="lib-select-page">
                 <input
                   type="checkbox"
-                  aria-label="Select all titles on this page"
+                  aria-label="Select all shown"
                   checked={allSelected}
                   ref={(element) => {
                     if (element)
@@ -729,16 +830,18 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                   }}
                   onChange={(e) => {
                     setSelected(
-                      e.target.checked ? items.map((item) => item.id) : [],
+                      e.target.checked ? selectable.map((item) => item.id) : [],
                     );
                     setMonitoringMessage("");
                   }}
                 />
-                <span aria-hidden="true">Select page</span>
+                <span aria-hidden="true">Select all shown</span>
               </label>
-              <strong>{selected.length} selected on this page</strong>
+              <strong>{selected.length} selected</strong>
               <span className="rs-muted rs-small">
-                Clears when filters or pages change.
+                Select all shown covers up to {selectLimit}{" "}
+                {selectLimit === 1 ? singular : noun}; filters{" "}
+                {capped ? "and pages " : ""}clear the selection.
               </span>
               {selected.length > 0 && (
                 <Button
@@ -772,11 +875,11 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                     }
                     onApplied={applied}
                   >
-                    {data.profile_context && (
+                    {profileContext && (
                       <BulkProfiles
                         kind={group.kind}
                         ids={group.ids}
-                        context={data.profile_context}
+                        context={profileContext}
                         onApplied={applied}
                       />
                     )}
@@ -794,7 +897,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
         {kind !== "movie" && (
           <MonitorAllFutureEpisodes
             category={kind === "anime" ? "anime" : "standard"}
-            onDone={resource.reload}
+            onDone={reload}
           />
         )}
       </PageBody>

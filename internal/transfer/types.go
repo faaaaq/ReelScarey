@@ -110,6 +110,10 @@ type Release struct {
 	Seeders     *int   `json:"seeders"`
 	Peers       *int   `json:"peers"`
 	Published   string `json:"published_at"`
+	// InfoURL is the tracker's own details page when the provider supplied
+	// one. It is never synthesized, fetched server-side or treated as a
+	// download link.
+	InfoURL string `json:"info_url"`
 }
 type Candidate struct {
 	Release

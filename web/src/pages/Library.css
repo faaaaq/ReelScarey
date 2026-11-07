@@ -266,13 +266,69 @@
 .lib-totals {
   color: var(--rs-muted);
 }
-.lib-per-page {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
+
+/* A–Z jump index and letter groups ------------------------------------- */
+
+.lib-az {
+  position: fixed;
+  right: 10px;
+  top: 50%;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 78vh;
+  padding: 6px 4px;
+  overflow-y: auto;
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  box-shadow: var(--rs-shadow);
+  transform: translateY(-50%);
 }
-.lib-per-page select {
-  min-width: 0;
+.lib-az button {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--rs-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lib-az button:hover {
+  background: var(--rs-hover);
+  color: var(--rs-text-strong);
+}
+.lib-az button:focus-visible {
+  outline: 2px solid var(--rs-brand);
+  outline-offset: 1px;
+}
+.lib-group-heading {
+  scroll-margin-top: 84px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--rs-muted);
+  text-transform: uppercase;
+}
+.lib-grid > .lib-group-row,
+.lib-overview > .lib-group-row {
+  margin: 0;
+  list-style: none;
+}
+.lib-grid > .lib-group-row {
+  grid-column: 1 / -1;
+  padding-top: 4px;
+}
+.lib-overview > .lib-group-row {
+  padding-top: 6px;
+}
+.lib-group-row th {
+  padding: 8px 12px 4px;
+  background: var(--rs-surface-2);
+  text-align: left;
 }
 
 /* Sticky select-mode footer (Sonarr mass editor) ------------------------ */
@@ -368,6 +424,15 @@
   }
   .lib-overview-poster {
     width: 60px;
+  }
+  .lib-az {
+    right: 4px;
+    padding: 4px 2px;
+  }
+  .lib-az button {
+    min-width: 18px;
+    height: 18px;
+    font-size: 11px;
   }
 }
 

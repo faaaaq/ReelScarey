@@ -102,6 +102,64 @@ func TestBrowseFiltersStableSortsAndReadOnly(t *testing.T) {
 	}
 }
 
+func TestBrowseTitleSortIgnoresLeadingThe(t *testing.T) {
+	ctx := context.Background()
+	db, e := database.Open(ctx, t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	for _, v := range []struct{ title string }{{"The Alpha"}, {"Beta"}, {"the alpha 2"}, {"Gamma"}} {
+		if _, e = db.Exec(`INSERT INTO media_items(kind,tmdb_id,title) VALUES('movie',(SELECT COALESCE(MAX(tmdb_id),0)+1 FROM media_items),?)`, v.title); e != nil {
+			t.Fatal(e)
+		}
+	}
+	store := New(db)
+	for _, tc := range []struct {
+		sort string
+		ids  string
+	}{
+		{"title", "1,3,2,4"},
+		{"title_desc", "4,2,3,1"},
+	} {
+		out, e := store.Browse(ctx, BrowseFilter{Kind: "movie", Page: 1, Sort: tc.sort})
+		if e != nil {
+			t.Fatal(e)
+		}
+		ids := []string{}
+		for _, item := range out.Items {
+			ids = append(ids, fmt.Sprint(item.ID))
+			if item.Title == "" {
+				t.Fatal("sort changed a displayed title")
+			}
+		}
+		if strings.Join(ids, ",") != tc.ids {
+			t.Fatalf("%s order = %v, want %s (titles must stay unchanged)", tc.sort, ids, tc.ids)
+		}
+	}
+}
+
+func TestBrowseAllIsBounded(t *testing.T) {
+	ctx := context.Background()
+	db, e := database.Open(ctx, t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	if _, e = db.Exec(`WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<5001)
+INSERT INTO media_items(kind,tmdb_id,title) SELECT 'movie',10000+n,'Bulk '||n FROM seq`); e != nil {
+		t.Fatal(e)
+	}
+	store := New(db)
+	if _, e = store.Browse(ctx, BrowseFilter{Kind: "movie", Page: 1, All: true}); !errors.Is(e, ErrBrowseAllLimit) {
+		t.Fatal("unbounded page=all accepted", e)
+	}
+	page, e := store.Browse(ctx, BrowseFilter{Kind: "movie", Page: 1})
+	if e != nil || len(page.Items) != PageSize || page.Total != 5001 {
+		t.Fatal("numbered pages must keep working", page.Total, len(page.Items), e)
+	}
+}
+
 func TestBrowseRejectsUnboundedOrUnrecognizedFilters(t *testing.T) {
 	db, e := database.Open(context.Background(), t.TempDir())
 	if e != nil {

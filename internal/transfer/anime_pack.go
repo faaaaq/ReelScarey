@@ -129,7 +129,7 @@ func (s *Service) SearchAnimePack(ctx context.Context, seriesID int64, episodeID
 		if e != nil {
 			return nil, e
 		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO release_candidates(id,movie_id,title,size_bytes,seeders,peers,published_at,payload,expires_at,scope) VALUES(?,?,?,?,?,?,?,?,?,?)`, v.ID, seriesID, v.Title, v.Size, v.Seeders, v.Peers, v.Published, sealed, now+1800, scope); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO release_candidates(id,movie_id,title,size_bytes,seeders,peers,published_at,info_url,payload,expires_at,scope) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, v.ID, seriesID, v.Title, v.Size, v.Seeders, v.Peers, v.Published, v.InfoURL, sealed, now+1800, scope); e != nil {
 			return nil, e
 		}
 		out = append(out, v.Release)

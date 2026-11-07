@@ -107,6 +107,11 @@ function setup(extra?: (url: string, o?: RequestInit) => Response | undefined) {
   return fetch;
 }
 function mount() {
+  // The first-visit overlay has its own test; these tests cover the page.
+  window.localStorage.setItem(
+    "reelscarey-notice:work-in-progress:subtitles",
+    "hidden",
+  );
   render(
     <Theme>
       <MemoryRouter initialEntries={["/subtitles"]}>

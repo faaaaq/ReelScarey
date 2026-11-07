@@ -2,7 +2,13 @@ import { useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
-import { PageBody, PageToolbar, ToolbarButton, ToolbarSection } from "../ui";
+import {
+  PageBody,
+  PageToolbar,
+  ToolbarButton,
+  ToolbarSection,
+  WorkInProgress,
+} from "../ui";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { Pagination } from "../movieComponents";
@@ -99,6 +105,13 @@ export function Subtitles() {
   );
   return (
     <>
+      <WorkInProgress noticeKey="work-in-progress:subtitles">
+        <p>
+          Subtitle checks, provider downloads and track choices are still being
+          built out. Existing subtitle files and saved preferences are kept, and
+          downloads only start after you request them.
+        </p>
+      </WorkInProgress>
       <PageToolbar>
         <ToolbarSection>
           <ToolbarButton
@@ -113,7 +126,10 @@ export function Subtitles() {
         </ToolbarSection>
       </PageToolbar>
       <PageBody>
-        <PageHeading title="Subtitles" />
+        <PageHeading
+          title="Subtitles"
+          description="Connect a provider, choose tracks, then review imported media."
+        />
         <RequestState
           loading={prefs.loading || provider.loading}
           error={prefs.error || provider.error}
@@ -216,7 +232,7 @@ function PreferenceForm({
   return (
     <form className="rs-fieldset subtitle-preferences" onSubmit={save}>
       <div className="rs-legend">
-        <h2>Language & track preferences</h2>
+        <h2>Languages & tracks</h2>
         <Badge color={data.preferences.enabled ? "green" : "gray"}>
           {data.preferences.enabled ? "Automatic" : "Manual"}
         </Badge>
@@ -235,8 +251,8 @@ function PreferenceForm({
         </label>
         {!provider.configured && (
           <p className="automation-notice">
-            Save your preferences now. Automatic downloads will wait for
-            OpenSubtitles; Torznab is not required.
+            Preferences can be saved now. Automatic downloads wait until a
+            provider is connected.
           </p>
         )}
         <div className="subtitle-language-list">
@@ -340,8 +356,8 @@ function PreferenceForm({
               </option>
             </select>
             <span className="rs-form-help">
-              Original format preserves provider styles. Existing sidecars and
-              staged imports keep their format.
+              Original format keeps provider styles; existing sidecars keep
+              their format.
             </span>
           </label>
           <label>
@@ -408,11 +424,10 @@ function PreferenceForm({
           Automatically check monitored items only
         </label>
         <p className="rs-form-help">
-          Existing embedded tracks and sidecars are checked first.
-          Provider-labeled AI and machine translations are excluded. Signs/songs
-          requires an explicit label; forced tracks use a provider flag or
-          label. A provider file is assigned one type, so it is not downloaded
-          twice as both signs and forced.
+          Existing embedded tracks and sidecars are checked first. Provider
+          machine translations are excluded. Signs/songs needs an explicit
+          label; forced tracks use a provider flag or label. A file is assigned
+          one type, never downloaded twice as both.
         </p>
         <div className="rs-form-actions">
           <Button type="submit" disabled={form.tracks.length === 0}>
@@ -679,8 +694,13 @@ function MediaFiles({
 }) {
   const [page, setPage] = useState(1);
   return (
-    <section>
-      <PageHeading title="Subtitle activity" />
+    <section
+      className="rs-fieldset subtitle-activity"
+      aria-labelledby="subtitle-activity"
+    >
+      <div className="rs-legend">
+        <h2 id="subtitle-activity">Activity</h2>
+      </div>
       <FilePage
         key={page}
         page={page}
@@ -719,9 +739,8 @@ function FilePage({
         <div className="rs-panel search-intro">
           <h2>Subtitles follow your imported media.</h2>
           <p>
-            Once a movie or episode has been safely imported, it appears here
-            for existing-subtitle checks, provider search and downloads. Torznab
-            setup can wait while you prepare your subtitle preferences.
+            Imported movies and episodes appear here for existing-track checks,
+            provider search and downloads.
           </p>
           <Button asChild variant="soft">
             <Link to="/movies">Open library</Link>

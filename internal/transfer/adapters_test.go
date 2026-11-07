@@ -32,7 +32,7 @@ func TestTorznabContractAndCredentialContainment(t *testing.T) {
 			if r.URL.Query().Get("q") != "A & B 2026" || r.URL.Query().Get("cat") != "2000" || r.URL.Query().Get("extended") != "1" {
 				t.Error("incorrect search contract")
 			}
-			fmt.Fprintf(w, `<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><item><title>A &amp; B.2026</title><guid>one</guid><pubDate>Thu, 22 Oct 2026 10:00:00 GMT</pubDate><enclosure url="%s/download?apikey=test-key" length="123"/><torznab:attr name="seeders" value="0"/><torznab:attr name="peers" value="4"/><torznab:attr name="magneturl" value="magnet:?xt=urn:btih:%s"/></item><item><title>foreign</title><link>%s/bad</link></item></channel></rss>`, base, testHash, foreign.URL)
+			fmt.Fprintf(w, `<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><item><title>A &amp; B.2026</title><guid>one</guid><comments>https://tracker.invalid/details/one</comments><pubDate>Thu, 22 Oct 2026 10:00:00 +0000</pubDate><enclosure url="%s/download?apikey=test-key" length="123"/><torznab:attr name="seeders" value="0"/><torznab:attr name="peers" value="4"/><torznab:attr name="magneturl" value="magnet:?xt=urn:btih:%s"/></item><item><title>foreign</title><link>%s/bad</link></item></channel></rss>`, base, testHash, foreign.URL)
 		}
 	}))
 	defer server.Close()
@@ -46,7 +46,7 @@ func TestTorznabContractAndCredentialContainment(t *testing.T) {
 	if e != nil || len(out) != 1 {
 		t.Fatal(out, e)
 	}
-	if out[0].Seeders == nil || *out[0].Seeders != 0 || out[0].Size != 123 || out[0].Published == "" {
+	if out[0].Seeders == nil || *out[0].Seeders != 0 || out[0].Size != 123 || out[0].Published != "2026-10-22T10:00:00Z" || out[0].InfoURL != "https://tracker.invalid/details/one" {
 		t.Fatal(out[0])
 	}
 	public, _ := json.Marshal(out[0].Release)
