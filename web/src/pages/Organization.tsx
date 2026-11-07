@@ -1,3 +1,4 @@
+import { PageBody } from "../ui";
 import { useEffect, useRef, useState } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { Link, useSearchParams } from "react-router-dom";
@@ -7,6 +8,7 @@ import { Pagination } from "../movieComponents";
 import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
 import { bytes } from "./Releases";
+import "./Admin.css";
 
 type Library = {
   key: string;
@@ -104,8 +106,8 @@ export function Organization() {
   const config = useResource<Config>("/organization");
   const [tab, setTab] = useState("files");
   return (
-    <>
-      <PageHeading title="Organize library" />
+    <PageBody>
+      <PageHeading title="Organize Files" />
       <RequestState
         loading={config.loading}
         error={config.error}
@@ -113,10 +115,10 @@ export function Organization() {
       />
       {config.data && (
         <>
-          <section className="panel organization-root">
+          <section className="rs-panel organization-root">
             <h2>Main media directory</h2>
             <code>{config.data.main_root}</code>
-            <p className="field-help">
+            <p className="rs-form-help">
               All collection folders are inside this directory. Set
               REELSCAREY_MEDIA_DIR when starting ReelScarey. Changing the main
               directory requires stopping the app and migrating the entire media
@@ -124,18 +126,20 @@ export function Organization() {
             </p>
           </section>
           <nav className="search-kind" aria-label="Organization views">
-            <Button
-              variant={tab === "files" ? "solid" : "soft"}
+            <button
+              type="button"
+              aria-pressed={tab === "files"}
               onClick={() => setTab("files")}
             >
               Move & organize files
-            </Button>
-            <Button
-              variant={tab === "settings" ? "solid" : "soft"}
+            </button>
+            <button
+              type="button"
+              aria-pressed={tab === "settings"}
               onClick={() => setTab("settings")}
             >
               Folders & naming
-            </Button>
+            </button>
           </nav>
           {tab === "settings" ? (
             <Naming
@@ -148,7 +152,7 @@ export function Organization() {
           )}
         </>
       )}
-    </>
+    </PageBody>
   );
 }
 function Naming({ config, saved }: { config: Config; saved: () => void }) {
@@ -185,7 +189,7 @@ function Naming({ config, saved }: { config: Config; saved: () => void }) {
     }
   }
   return (
-    <section className="panel settings-form organization-settings">
+    <section className="rs-panel rs-stack organization-settings">
       <h2>Folders & naming</h2>
       <p>
         Applies to newly queued downloads. Queued jobs keep their saved rules.
@@ -199,7 +203,7 @@ function Naming({ config, saved }: { config: Config; saved: () => void }) {
           >
             <summary>
               {library.name}{" "}
-              <span className="field-help">
+              <span className="rs-form-help">
                 {library.folder} · {library.preset}
               </span>
             </summary>
@@ -235,7 +239,7 @@ function Naming({ config, saved }: { config: Config; saved: () => void }) {
                 </select>
               </label>
             )}
-            <p className="field-help">
+            <p className="rs-form-help">
               {library.content === "mixed"
                 ? "Movies and TV Shows subfolders keep the two content types separate for your media server."
                 : "Each title gets its own folder."}
@@ -327,7 +331,7 @@ function Naming({ config, saved }: { config: Config; saved: () => void }) {
         >
           Add collection
         </Button>
-        <p className="field-help">
+        <p className="rs-form-help">
           Custom paths use / between folders. Tokens:{" "}
           {
             "{title}, {year}, {tmdb_id}, {season:02}, {episode:02}, {episode_range}, {episode_title}"
@@ -340,11 +344,11 @@ function Naming({ config, saved }: { config: Config; saved: () => void }) {
         </p>
       </fieldset>
       {error && (
-        <p role="alert" className="form-error">
+        <p role="alert" className="rs-form-error">
           {error}
         </p>
       )}
-      <div className="form-footer">
+      <div className="rs-form-actions">
         <Button
           disabled={
             pending ||
@@ -749,7 +753,7 @@ function Reorganize({ config }: { config: Config }) {
   }
   return (
     <>
-      <section className="panel organization-selection">
+      <section className="rs-panel organization-selection">
         <h2>Move or organize registered files</h2>
         <p>
           Review up to 50 files from this page. The plan checks video identity,
@@ -787,7 +791,7 @@ function Reorganize({ config }: { config: Config }) {
         />
         {files.data && (
           <>
-            <p className="field-help">
+            <p className="rs-form-help">
               {files.data.total} registered{" "}
               {files.data.total === 1 ? "file" : "files"} · selections clear
               when filters or pages change.
@@ -835,7 +839,7 @@ function Reorganize({ config }: { config: Config }) {
                     />
                     <span>
                       <strong>{file.title}</strong>
-                      <span className="field-help">
+                      <span className="rs-form-help">
                         {file.category === "anime" ? "Anime · " : ""}
                         {file.kind === "movie"
                           ? "Movie"
@@ -879,7 +883,7 @@ function Reorganize({ config }: { config: Config }) {
             {!files.data.items.length && (
               <p>
                 No registered files match.{" "}
-                <Link className="text-link" to="/import">
+                <Link className="rs-link-button" to="/import">
                   Import an existing library
                 </Link>{" "}
                 to register files before organizing them.
@@ -890,7 +894,7 @@ function Reorganize({ config }: { config: Config }) {
               pages={Math.ceil(files.data.total / files.data.limit)}
               onPage={filter}
             />
-            <p className="field-help">
+            <p className="rs-form-help">
               Integrity results describe the moment each file was checked. Each
               check reads the full file and can take a while.
             </p>
@@ -914,7 +918,7 @@ function Reorganize({ config }: { config: Config }) {
           </>
         )}
         {versionsFile && (
-          <div className="system-panel">
+          <div className="rs-stack">
             <h3>Saved versions for file {versionsFile}</h3>
             <RequestState
               loading={versions.loading}
@@ -933,7 +937,7 @@ function Reorganize({ config }: { config: Config }) {
                       : ""}
                   </p>
                   {item.replacement?.metadata_only ? (
-                    <p className="field-help">
+                    <p className="rs-form-help">
                       {item.replacement.previous_title == null
                         ? "Previous title not recorded"
                         : item.replacement.previous_title === ""
@@ -963,7 +967,7 @@ function Reorganize({ config }: { config: Config }) {
           </div>
         )}
         {replacementSource && (
-          <div className="system-panel">
+          <div className="rs-stack">
             <p>
               Select exactly one registered file to replace with the discovered
               video. The source must have the same file extension and media
@@ -980,7 +984,7 @@ function Reorganize({ config }: { config: Config }) {
             </Button>
           </div>
         )}
-        <p className="field-help">
+        <p className="rs-form-help">
           Choose one registered MP4, M4V, Matroska, MOV, AVI or WebM file to
           review an embedded title update using its saved movie or episode
           information.
@@ -1013,7 +1017,7 @@ function Reorganize({ config }: { config: Config }) {
             </select>
           </label>
         </fieldset>
-        <p className="field-help">
+        <p className="rs-form-help">
           Choosing another collection also sets it for these titles’ future
           imports after the batch commits. Unselected existing files retain
           their locations.
@@ -1031,7 +1035,7 @@ function Reorganize({ config }: { config: Config }) {
           />{" "}
           Also update embedded titles after organization
         </label>
-        <p className="field-help">
+        <p className="rs-form-help">
           Choose MP4, M4V, Matroska, MOV, AVI or WebM files, or review an entire
           title folder. The verified title update replaces the original in place
           and records the previous title in the job history. No duplicate video
@@ -1041,7 +1045,7 @@ function Reorganize({ config }: { config: Config }) {
         </p>
         {mediaID && (
           <>
-            <p className="field-help">
+            <p className="rs-form-help">
               Move registered files for this title in one review (up to 100
               files), or choose an entire-folder review to include extras.
             </p>
@@ -1059,7 +1063,7 @@ function Reorganize({ config }: { config: Config }) {
             >
               Review entire folder and extras
             </Button>
-            <p className="field-help">
+            <p className="rs-form-help">
               Moves the whole title folder with its existing names, including
               artwork, unregistered files and empty folders. Across filesystems,
               it verifies a staged copy before removing the original files.
@@ -1080,13 +1084,13 @@ function Reorganize({ config }: { config: Config }) {
           </p>
         )}
         {error && (
-          <p role="alert" className="form-error">
+          <p role="alert" className="rs-form-error">
             {error}
           </p>
         )}
       </section>
       {acquisitionKind && acquisitionJob && (
-        <section className="panel">
+        <section className="rs-panel">
           <h2>Acquired replacement</h2>
           <p>
             Review the verified incoming video and retained previous version
@@ -1101,10 +1105,7 @@ function Reorganize({ config }: { config: Config }) {
         </section>
       )}
       {plan && (
-        <section
-          className="panel system-panel"
-          aria-label="Organization review"
-        >
+        <section className="rs-panel rs-stack" aria-label="Organization review">
           <h2>
             {plan.state === "review"
               ? "Review file changes"
@@ -1123,7 +1124,7 @@ function Reorganize({ config }: { config: Config }) {
                       : "Needs attention")}
           </p>
           {!plan.replacement && (
-            <p className="field-help">
+            <p className="rs-form-help">
               {plan.files.filter((f) => !f.unchanged).length}{" "}
               {plan.files.filter((f) => !f.unchanged).length === 1
                 ? "file"
@@ -1193,7 +1194,7 @@ function Reorganize({ config }: { config: Config }) {
                 />{" "}
                 I reviewed all paths and subtitle changes
               </label>
-              <div className="form-footer">
+              <div className="rs-form-actions">
                 <Button
                   disabled={!reviewed || !!pending || stale}
                   onClick={() => void apply()}
@@ -1216,7 +1217,7 @@ function Reorganize({ config }: { config: Config }) {
           )}
         </section>
       )}
-      <section className="panel system-panel">
+      <section className="rs-panel rs-stack">
         {mediaID && (
           <div>
             <h2>Remove this title</h2>
@@ -1412,7 +1413,7 @@ function PlanFiles({ plan }: { plan: Plan }) {
             <code>{plan.folder_move.destination}</code>
           </p>
           {plan.folder_move.stage && (
-            <p className="field-help">
+            <p className="rs-form-help">
               Saved staging folder: <code>{plan.folder_move.stage}</code>
             </p>
           )}
@@ -1446,11 +1447,11 @@ function PlanFiles({ plan }: { plan: Plan }) {
               <code>{f.destination}</code>
             </div>
             {f.embedded_title && (
-              <p className="field-help">Embedded title: {f.embedded_title}</p>
+              <p className="rs-form-help">Embedded title: {f.embedded_title}</p>
             )}
             {f.companions.map((c) => (
               <div
-                className="organization-path-change field-help"
+                className="organization-path-change rs-form-help"
                 key={c.source}
               >
                 <code>{c.source}</code>
@@ -1500,7 +1501,7 @@ export function ItemOrganization({ id }: { id: number }) {
     }
   }
   return (
-    <section className="panel settings-form">
+    <section className="rs-panel rs-stack">
       <h2>File organization</h2>
       {!open ? (
         <Button variant="soft" onClick={() => setOpen(true)}>
@@ -1542,11 +1543,11 @@ export function ItemOrganization({ id }: { id: number }) {
                   ))}
                 </select>
               </label>
-              <p className="field-help">
+              <p className="rs-form-help">
                 Saving does not move existing files. The server checks
                 compatibility with this title’s movie or show format.
               </p>
-              <div className="form-footer">
+              <div className="rs-form-actions">
                 <Button disabled={pending} onClick={() => void save()}>
                   {pending ? "Saving…" : "Save collection"}
                 </Button>
@@ -1560,7 +1561,7 @@ export function ItemOrganization({ id }: { id: number }) {
             </>
           )}
           {error && (
-            <p role="alert" className="form-error">
+            <p role="alert" className="rs-form-error">
               {error}
             </p>
           )}

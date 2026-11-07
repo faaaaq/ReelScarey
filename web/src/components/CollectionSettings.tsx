@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
+import "../pages/Admin.css";
 
 export type CollectionLibrary = {
   key: string;
@@ -65,7 +66,7 @@ export function CollectionSettings({
     }
   }
   return (
-    <section className="panel settings-form organization-settings">
+    <section className="rs-panel rs-stack organization-settings">
       <h2>Collections & folders</h2>
       <p>
         Built-in: Movies, TV Shows and Anime. Custom collections are created
@@ -80,7 +81,7 @@ export function CollectionSettings({
           >
             <summary>
               {library.name}{" "}
-              <span className="field-help">
+              <span className="rs-form-help">
                 {library.folder} · {library.preset}
               </span>
             </summary>
@@ -116,7 +117,7 @@ export function CollectionSettings({
                 </select>
               </label>
             )}
-            <p className="field-help">
+            <p className="rs-form-help">
               {library.content === "mixed"
                 ? "Movies and TV Shows subfolders keep the two content types separate for your media server."
                 : "Each title gets its own folder."}
@@ -208,7 +209,7 @@ export function CollectionSettings({
         >
           Add collection
         </Button>
-        <p className="field-help">
+        <p className="rs-form-help">
           Custom paths use / between folders. Tokens:{" "}
           {
             "{title}, {year}, {tmdb_id}, {season:02}, {episode:02}, {episode_range}, {episode_title}"
@@ -221,11 +222,11 @@ export function CollectionSettings({
         </p>
       </fieldset>
       {error && (
-        <p role="alert" className="form-error">
+        <p role="alert" className="rs-form-error">
           {error}
         </p>
       )}
-      <div className="form-footer">
+      <div className="rs-form-actions">
         <Button
           disabled={
             pending ||

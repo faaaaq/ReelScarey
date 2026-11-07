@@ -1,3 +1,4 @@
+import { PageBody } from "../ui";
 import { useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
@@ -5,6 +6,7 @@ import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useLiveResource } from "../useLiveResource";
 import { YouTubeBulk } from "./YouTubeBulk";
+import "./Admin.css";
 type Sub = {
   id: string;
   source_url: string;
@@ -69,7 +71,7 @@ export function YouTubeSubscriptions() {
     }
   }
   return (
-    <>
+    <PageBody>
       <PageHeading title="YouTube subscriptions" />
       <p>
         <Link to="/youtube">Back to YouTube acquisition and import review</Link>
@@ -79,7 +81,7 @@ export function YouTubeSubscriptions() {
         error={subs.error}
         retry={subs.reload}
       />
-      <form className="panel system-panel" onSubmit={(e) => void add(e)}>
+      <form className="rs-panel rs-stack" onSubmit={(e) => void add(e)}>
         <h2>Add a subscription</h2>
         <fieldset disabled={busy} className="backup-fields">
           <label>
@@ -124,7 +126,7 @@ export function YouTubeSubscriptions() {
           Older uploads may fall outside this window.
         </p>
         {error && (
-          <p role="alert" className="error-box">
+          <p role="alert" className="rs-alert is-danger">
             {error}
           </p>
         )}
@@ -136,7 +138,7 @@ export function YouTubeSubscriptions() {
           reload={subs.reload}
         />
       ))}
-    </>
+    </PageBody>
   );
 }
 function Subscription({
@@ -187,7 +189,7 @@ function Subscription({
     }
   }
   return (
-    <section className="panel system-panel">
+    <section className="rs-panel rs-stack">
       <h2>{initial.title}</h2>
       <p>{initial.source_url}</p>
       <p>
@@ -277,7 +279,7 @@ function Subscription({
             require review.
           </label>
         )}
-        <div className="button-row">
+        <div className="rs-form-actions">
           <Button
             disabled={form.mode === "acquire" && !checked}
             onClick={() => void action()}
@@ -322,7 +324,7 @@ function Subscription({
         </div>
       </fieldset>
       {error && (
-        <p role="alert" className="error-box">
+        <p role="alert" className="rs-alert is-danger">
           {error}
         </p>
       )}

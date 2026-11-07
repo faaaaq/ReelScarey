@@ -1,8 +1,10 @@
+import { PageBody } from "../ui";
 import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
+import "./Admin.css";
 
 type Client = {
   id: string;
@@ -49,7 +51,7 @@ const names = {
 export function DownloadClients() {
   const resource = useResource<State>("/download-clients");
   return (
-    <>
+    <PageBody>
       <PageHeading title="Download clients" />
       <RequestState
         loading={resource.loading}
@@ -66,7 +68,7 @@ export function DownloadClients() {
           />
           <BuiltinCard reload={resource.reload} />
           <VPNCard />
-          <section className="panel system-panel">
+          <section className="rs-panel rs-stack">
             <h2>Named connections</h2>
             {!resource.data.items.some((c) => !c.builtin) && (
               <p>No named clients saved.</p>
@@ -86,7 +88,7 @@ export function DownloadClients() {
                 />
               ))}
           </section>
-          <section className="panel system-panel">
+          <section className="rs-panel rs-stack">
             <h2>Add a download client</h2>
             <ClientForm
               root={resource.data.downloads_root ?? "/downloads"}
@@ -95,7 +97,7 @@ export function DownloadClients() {
           </section>
         </>
       )}
-      <section className="panel system-panel">
+      <section className="rs-panel rs-stack">
         <h2>Transmission setup</h2>
         <p>
           Transmission 4 with a username, password, torrent scripts disabled,
@@ -114,7 +116,7 @@ export function DownloadClients() {
           files still require episode review.
         </p>
       </section>
-    </>
+    </PageBody>
   );
 }
 const vpnStates: Record<string, string> = {
@@ -245,7 +247,7 @@ function VPNCard() {
     }
   }
   return (
-    <section className="panel system-panel">
+    <section className="rs-panel rs-stack">
       <h2>Mullvad VPN (kill switch)</h2>
       <RequestState
         loading={resource.loading}
@@ -264,7 +266,7 @@ function VPNCard() {
             Upload a Mullvad config to connect. The private key is stored
             encrypted.
           </p>
-          <p className="field-help">
+          <p className="rs-form-help">
             Upload a <code>.conf</code> file exported by Mullvad. The tunnel
             address may contain both IPv4 and IPv6 entries.
           </p>
@@ -293,7 +295,7 @@ function VPNCard() {
             {data.message ? ` · ${data.message}` : ""}
           </p>
           {notice && <p role="status">{notice}</p>}
-          <label className="checkbox-row">
+          <label className="rs-check">
             <input
               type="checkbox"
               checked={killSwitch}
@@ -303,7 +305,7 @@ function VPNCard() {
             Kill switch: stop the built-in torrent client whenever the VPN
             tunnel is down
           </label>
-          <p className="field-help">
+          <p className="rs-form-help">
             Default on. When off, the built-in client may use the normal
             connection if the tunnel drops — only disable this if you accept
             that exposure.
@@ -337,7 +339,7 @@ function VPNCard() {
             </label>
             <label>
               Allowed addresses{" "}
-              <span className="field-help">(optional, from the file)</span>
+              <span className="rs-form-help">(optional, from the file)</span>
               <input
                 value={allowedIPs}
                 onChange={(e) => setAllowedIPs(e.target.value)}
@@ -369,7 +371,7 @@ function VPNCard() {
             )}
           </fieldset>
           {error && (
-            <p className="error-box" role="alert">
+            <p className="rs-alert is-danger" role="alert">
               {error}
             </p>
           )}
@@ -415,7 +417,7 @@ function BuiltinCard({ reload }: { reload: () => void }) {
   const data = resource.data;
   const enabled = data?.enabled ?? false;
   return (
-    <section className="panel system-panel">
+    <section className="rs-panel rs-stack">
       <h2>Built-in qBittorrent</h2>
       <RequestState
         loading={resource.loading}
@@ -530,7 +532,7 @@ function BuiltinCard({ reload }: { reload: () => void }) {
             )}
           </fieldset>
           {error && (
-            <p className="error-box" role="alert">
+            <p className="rs-alert is-danger" role="alert">
               {error}
             </p>
           )}
@@ -568,7 +570,7 @@ function DefaultsForm({
     }
   }
   return (
-    <form className="panel system-panel" onSubmit={(e) => void save(e)}>
+    <form className="rs-panel rs-stack" onSubmit={(e) => void save(e)}>
       <h2>Defaults for new jobs</h2>
       <fieldset disabled={busy} className="backup-fields">
         {(["torrent", "usenet"] as const).map((protocol) => (
@@ -598,7 +600,7 @@ function DefaultsForm({
         <Button type="submit">Save defaults</Button>
       </fieldset>
       {error && (
-        <p className="error-box" role="alert">
+        <p className="rs-alert is-danger" role="alert">
           {error}
         </p>
       )}
@@ -787,7 +789,7 @@ function ClientForm({
             onChange={(e) => setLocal(e.target.value)}
           />
         </label>
-        <p className="field-help">
+        <p className="rs-form-help">
           Leave the local subfolder blank when both services share the download
           root. Otherwise this maps the client's completed folder to {root}/
           {local || "server-a"}. Separate clients may use different subfolders.
@@ -826,7 +828,7 @@ function ClientForm({
             >
               Remove client
             </Button>
-            <p className="field-help">
+            <p className="rs-form-help">
               Existing jobs continue tracking their saved client while new
               downloads are paused. Address/folder changes are blocked while
               active jobs depend on them. Stopped jobs retain the client for
@@ -836,7 +838,7 @@ function ClientForm({
         )}
       </fieldset>
       {error && (
-        <p className="error-box" role="alert">
+        <p className="rs-alert is-danger" role="alert">
           {error}
         </p>
       )}

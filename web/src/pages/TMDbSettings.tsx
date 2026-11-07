@@ -4,6 +4,7 @@ import { CheckCircle2, KeyRound, Plug, Unplug } from "lucide-react";
 import { api, messageFor, type ProviderStatus } from "../api";
 import { RequestState } from "../components";
 import { useResource } from "../useResource";
+import "./Admin.css";
 
 export function TMDbSettings() {
   const resource = useResource<ProviderStatus>("/providers/tmdb");
@@ -51,10 +52,10 @@ export function TMDbSettings() {
   return (
     <section
       id="tmdb"
-      className="panel settings-info tmdb-settings"
+      className="rs-panel settings-info tmdb-settings"
       aria-label="TMDb settings"
     >
-      <div className="section-title">
+      <div className="rs-panel-header">
         <h2>
           <Plug size={19} /> TMDb metadata
         </h2>
@@ -90,13 +91,13 @@ export function TMDbSettings() {
                 <KeyRound size={16} />
               </TextField.Slot>
             </TextField.Root>
-            <p className="field-help">
+            <p className="rs-form-help">
               Use the Read Access Token from your{" "}
               <a
                 href="https://www.themoviedb.org/settings/api"
                 target="_blank"
                 rel="noreferrer"
-                className="text-link"
+                className="rs-link-button"
               >
                 TMDb API settings
               </a>
@@ -112,7 +113,7 @@ export function TMDbSettings() {
             </Button>
           </form>
           {resource.data.configured && (
-            <div className="provider-actions">
+            <div className="rs-form-actions">
               <Button
                 type="button"
                 variant="soft"
@@ -135,12 +136,12 @@ export function TMDbSettings() {
         </>
       )}
       {error && (
-        <p className="form-error" role="alert">
+        <p className="rs-form-error" role="alert">
           {error}
         </p>
       )}
       {success && (
-        <p className="save-success" role="status">
+        <p className="rs-alert is-success" role="status">
           <CheckCircle2 size={17} />
           {success}
         </p>

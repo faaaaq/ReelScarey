@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@radix-ui/themes";
 import { api, messageFor, type MediaItem, type TVSeries } from "../api";
 import type { DiscoveredFile } from "./ExistingLibrary";
+import "./Admin.css";
 type Candidate = {
   media_id: number;
   tmdb_id: number;
@@ -165,7 +166,7 @@ export function BulkMatching({
               Find batch suggestions
             </Button>
             {suggestions.map((s) => (
-              <article className="system-panel" key={s.file.id}>
+              <article className="rs-stack" key={s.file.id}>
                 <h4>{s.file.path}</h4>
                 <p>{s.message}</p>
                 <label>
@@ -272,7 +273,7 @@ export function BulkMatching({
                 I reviewed every file, canonical title and episode in this
                 batch.
               </label>
-              <div className="button-row">
+              <div className="rs-form-actions">
                 <Button
                   variant="soft"
                   disabled={busy}
@@ -307,7 +308,7 @@ export function BulkMatching({
             </section>
           )}
           {error && (
-            <p role="alert" className="error-box">
+            <p role="alert" className="rs-alert is-danger">
               {error}
             </p>
           )}

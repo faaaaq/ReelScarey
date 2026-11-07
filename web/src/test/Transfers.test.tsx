@@ -504,10 +504,7 @@ describe("release downloads and imports", () => {
         });
       }
     });
-    mount("/settings");
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Download Clients" }),
-    );
+    mount("/settings/clients");
     const region = await screen.findByRole("region", {
       name: "qBittorrent settings",
     });

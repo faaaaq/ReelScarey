@@ -1,3 +1,4 @@
+import { PageBody } from "../ui";
 import { useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
@@ -6,6 +7,7 @@ import { PageHeading, RequestState } from "../components";
 import { Pagination } from "../movieComponents";
 import { useLiveResource } from "../useLiveResource";
 import { SubtitleEdits } from "./SubtitleEdits";
+import "./Admin.css";
 
 export type SubtitleTrack = {
   language: string;
@@ -95,7 +97,7 @@ export function Subtitles() {
     10000,
   );
   return (
-    <>
+    <PageBody>
       <PageHeading title="Subtitles" />
       <RequestState
         loading={prefs.loading || provider.loading}
@@ -125,7 +127,7 @@ export function Subtitles() {
           />
         </>
       )}
-    </>
+    </PageBody>
   );
 }
 function PreferenceForm({
@@ -199,17 +201,17 @@ function PreferenceForm({
   }
   return (
     <form
-      className="panel automation-panel subtitle-preferences"
+      className="rs-panel automation-panel subtitle-preferences"
       onSubmit={save}
     >
-      <div className="section-title">
+      <div className="rs-panel-header">
         <h2>Language & track preferences</h2>
         <Badge color={data.preferences.enabled ? "green" : "gray"}>
           {data.preferences.enabled ? "Automatic" : "Manual"}
         </Badge>
       </div>
       <fieldset disabled={busy} className="automation-fields">
-        <label className="check-label">
+        <label className="rs-check">
           <input
             type="checkbox"
             checked={form.enabled}
@@ -234,7 +236,7 @@ function PreferenceForm({
               </strong>
               <div className="quality-options">
                 {(["full", "signs", "forced"] as const).map((variant) => (
-                  <label key={variant} className="check-label">
+                  <label key={variant} className="rs-check">
                     <input
                       type="checkbox"
                       aria-label={`${data.languages.find((l) => l.code === code)?.name ?? code} ${variantName[variant]}`}
@@ -271,7 +273,7 @@ function PreferenceForm({
             </div>
           ))}
         </div>
-        <div className="button-row subtitle-add-language">
+        <div className="rs-form-actions subtitle-add-language">
           <label>
             Add a language
             <select
@@ -326,7 +328,7 @@ function PreferenceForm({
                 Keep original SRT, VTT, ASS or SSA
               </option>
             </select>
-            <span className="field-help">
+            <span className="rs-form-help">
               Original format preserves provider styles. Existing sidecars and
               staged imports keep their format.
             </span>
@@ -383,7 +385,7 @@ function PreferenceForm({
             />
           </label>
         </div>
-        <label className="check-label">
+        <label className="rs-check">
           <input
             type="checkbox"
             checked={form.only_monitored}
@@ -394,14 +396,14 @@ function PreferenceForm({
           />
           Automatically check monitored items only
         </label>
-        <p className="field-help">
+        <p className="rs-form-help">
           Existing embedded tracks and sidecars are checked first.
           Provider-labeled AI and machine translations are excluded. Signs/songs
           requires an explicit label; forced tracks use a provider flag or
           label. A provider file is assigned one type, so it is not downloaded
           twice as both signs and forced.
         </p>
-        <div className="button-row">
+        <div className="rs-form-actions">
           <Button type="submit" disabled={form.tracks.length === 0}>
             Save subtitle preferences
           </Button>
@@ -415,12 +417,12 @@ function PreferenceForm({
         </div>
       </fieldset>
       {error && (
-        <p role="alert" className="form-error">
+        <p role="alert" className="rs-form-error">
           {error}
         </p>
       )}
       {success && (
-        <p role="status" className="form-success">
+        <p role="status" className="rs-alert is-success">
           Subtitle preferences saved.
         </p>
       )}
@@ -491,14 +493,16 @@ function ProviderForm({
     }
   }
   return (
-    <section className="panel automation-panel subtitle-provider">
-      <div className="section-title">
+    <section className="rs-panel automation-panel subtitle-provider">
+      <div className="rs-panel-header">
         <h2>Subtitle provider</h2>
         <Badge color={provider.configured ? "green" : "gray"}>
           {provider.configured ? "Connected" : "Not connected"}
         </Badge>
       </div>
-      <p className="muted">Changing providers clears saved subtitle choices.</p>
+      <p className="rs-muted">
+        Changing providers clears saved subtitle choices.
+      </p>
       {provider.configured && (
         <div className="subtitle-provider-state">
           <strong>{readable(provider.state)}</strong>
@@ -591,7 +595,7 @@ function ProviderForm({
                   maxLength={120}
                 />
               </label>
-              <p className="field-help">
+              <p className="rs-form-help">
                 Use the application name and version associated with your API
                 key. Account download limits apply; ReelScarey waits when the
                 provider reports a quota or cooldown.
@@ -599,14 +603,14 @@ function ProviderForm({
             </>
           )}
           {selectedProvider === "subdl" && (
-            <p className="field-help">
+            <p className="rs-form-help">
               SubDL uses an account API key. Individual SRT/VTT/ASS/SSA files
               require review; shared multi-episode video files and ZIP-only
               results are not selected. Choose original format for styled files.
               Public downloads use the provider's IP allowance.
             </p>
           )}
-          <div className="button-row">
+          <div className="rs-form-actions">
             <Button type="submit">Save & test {providerLabel}</Button>
             {provider.configured && (
               <>
@@ -630,18 +634,18 @@ function ProviderForm({
           </div>
         </fieldset>
         {error && (
-          <p role="alert" className="form-error">
+          <p role="alert" className="rs-form-error">
             {error}
           </p>
         )}
         {success && (
-          <p role="status" className="form-success">
+          <p role="status" className="rs-alert is-success">
             {success}
           </p>
         )}
       </form>
       <a
-        className="text-link"
+        className="rs-link-button"
         href={
           selectedProvider === "subdl"
             ? "https://subdl.com/panel"
@@ -701,7 +705,7 @@ function FilePage({
         retry={files.reload}
       />
       {files.data?.items.length === 0 && (
-        <div className="panel search-intro">
+        <div className="rs-panel search-intro">
           <h2>Subtitles follow your imported media.</h2>
           <p>
             Once a movie or episode has been safely imported, it appears here
@@ -776,8 +780,8 @@ function FileCard({
     }
   }
   return (
-    <article className="panel automation-panel subtitle-file">
-      <div className="section-title">
+    <article className="rs-panel automation-panel subtitle-file">
+      <div className="rs-panel-header">
         <h2>
           {file.title}
           {file.episodes && ` · ${file.episodes}`}
@@ -816,7 +820,7 @@ function FileCard({
           ))}
         </div>
       )}
-      <div className="button-row">
+      <div className="rs-form-actions">
         <Button
           variant="soft"
           disabled={!!active || busy}
@@ -841,7 +845,7 @@ function FileCard({
         </Button>
       </div>
       {error && (
-        <p role="alert" className="form-error">
+        <p role="alert" className="rs-form-error">
           {error}
         </p>
       )}
@@ -877,7 +881,7 @@ function Matches({
         retry={result.reload}
       />
       {result.data?.candidates?.length === 0 && (
-        <p className="muted">
+        <p className="rs-muted">
           No saved matches. Results expire after 30 minutes.
         </p>
       )}
@@ -931,7 +935,7 @@ function Candidate({
   }
   return (
     <div className="subtitle-candidate">
-      <div className="section-title">
+      <div className="rs-panel-header">
         <strong>{c.release}</strong>
         <Badge color={c.hash_match ? "green" : c.automatic ? "blue" : "amber"}>
           {c.hash_match
@@ -957,7 +961,7 @@ function Candidate({
       )}
       {c.can_download && (
         <>
-          <label className="check-label">
+          <label className="rs-check">
             <input
               type="checkbox"
               checked={reviewed}
@@ -975,12 +979,12 @@ function Candidate({
         </>
       )}
       {error && (
-        <p role="alert" className="form-error">
+        <p role="alert" className="rs-form-error">
           {error}
         </p>
       )}
       {success && (
-        <p role="status" className="form-success">
+        <p role="status" className="rs-alert is-success">
           Subtitle download queued.
         </p>
       )}

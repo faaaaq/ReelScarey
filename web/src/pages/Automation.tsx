@@ -1,3 +1,4 @@
+import { PageBody } from "../ui";
 import { useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
@@ -6,6 +7,7 @@ import { PageHeading, RequestState } from "../components";
 import { Pagination } from "../movieComponents";
 import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
+import "./Admin.css";
 
 export type Profile = {
   id: number;
@@ -104,7 +106,7 @@ export function Automation() {
   const schedule = useLiveResource<Schedule>("/automation", 10000);
   const profiles = useLiveResource<{ items: Profile[] }>("/quality-profiles");
   return (
-    <>
+    <PageBody>
       <PageHeading title="Automation" />
       <RequestState
         loading={(!schedule.data && schedule.loading) || profiles.loading}
@@ -126,7 +128,7 @@ export function Automation() {
           <Assignments profiles={profiles.data.items} />
         </>
       )}
-    </>
+    </PageBody>
   );
 }
 function ScheduleForm({
@@ -196,8 +198,8 @@ function ScheduleForm({
     }
   }
   return (
-    <section className="panel automation-panel">
-      <div className="section-title">
+    <section className="rs-panel automation-panel">
+      <div className="rs-panel-header">
         <h2>Search schedule</h2>
         <Badge color={schedule.enabled ? "green" : "gray"}>
           {schedule.enabled ? "Enabled" : "Paused"}
@@ -212,11 +214,11 @@ function ScheduleForm({
           </p>
         </div>
       ) : (
-        <p className="muted">{schedule.message}</p>
+        <p className="rs-muted">{schedule.message}</p>
       )}
       <form onSubmit={save}>
         <fieldset disabled={busy} className="automation-fields">
-          <label className="check-label">
+          <label className="rs-check">
             <input
               type="checkbox"
               checked={form.enabled}
@@ -284,7 +286,7 @@ function ScheduleForm({
               </select>
             </label>
           </div>
-          <p className="field-help">
+          <p className="rs-form-help">
             Only monitored, released movies and loaded episodes are searched.
             Anime requires per-show consent. Saved provider mappings can include
             approved specials and range packs.
@@ -298,7 +300,7 @@ function ScheduleForm({
                 " Connect the matching download client before automatic downloads can run."}
             </p>
           )}
-          <div className="button-row">
+          <div className="rs-form-actions">
             <Button type="submit">Save automation</Button>
             <Button
               type="button"
@@ -322,17 +324,17 @@ function ScheduleForm({
           </div>
         </fieldset>
         {error && (
-          <p role="alert" className="form-error">
+          <p role="alert" className="rs-form-error">
             {error}
           </p>
         )}
         {success && (
-          <p role="status" className="form-success">
+          <p role="status" className="rs-alert is-success">
             {success}
           </p>
         )}
       </form>
-      <p className="field-help">
+      <p className="rs-form-help">
         {schedule.enabled
           ? `Next search: ${date(schedule.next_run)}`
           : "Scheduled searches are paused. Search now runs once using the saved preferences."}{" "}
@@ -346,8 +348,8 @@ function RunHistory() {
   const [selected, setSelected] = useState("");
   const id = selected || runs.data?.items[0]?.id || "";
   return (
-    <section className="panel automation-panel">
-      <div className="section-title">
+    <section className="rs-panel automation-panel">
+      <div className="rs-panel-header">
         <h2>Search history</h2>
         <Button variant="ghost" onClick={runs.reload}>
           Refresh history
@@ -355,7 +357,7 @@ function RunHistory() {
       </div>
       {runs.error && <p role="alert">{runs.error}</p>}
       {!runs.data?.items.length ? (
-        <p className="muted">No searches have run yet.</p>
+        <p className="rs-muted">No searches have run yet.</p>
       ) : (
         <>
           <label>
@@ -372,7 +374,7 @@ function RunHistory() {
           {runs.data.items
             .filter((r) => r.id === id)
             .map((r) => (
-              <p key={r.id} className="field-help">
+              <p key={r.id} className="rs-form-help">
                 {r.message || "Search in progress…"} Mode:{" "}
                 {r.mode === "download"
                   ? "Automatic downloads"
@@ -396,7 +398,7 @@ function RunResults({ id }: { id: string }) {
       {result.error && <p role="alert">{result.error}</p>}
       {result.data?.items.map((r) => (
         <article key={r.id} className="automation-result">
-          <div className="section-title">
+          <div className="rs-panel-header">
             <h3>{r.target}</h3>
             <Badge
               color={
@@ -412,13 +414,13 @@ function RunResults({ id }: { id: string }) {
           </div>
           <p>{r.message}</p>
           {r.download_id && (
-            <Link to="/activity" className="text-link">
+            <Link to="/activity" className="rs-link-button">
               Open download activity
             </Link>
           )}
           {r.outcome === "match" && (
             <Link
-              className="text-link"
+              className="rs-link-button"
               to={
                 r.kind === "series"
                   ? `/releases?series=${r.media_id}&season=${r.season}&episode=${r.episode}`
@@ -440,7 +442,7 @@ function RunResults({ id }: { id: string }) {
                     · Score {d.score}
                   </p>
                   {(d.source || d.codec) && (
-                    <p className="field-help">
+                    <p className="rs-form-help">
                       {d.source ?? "Unknown source"} ·{" "}
                       {d.codec ?? "Unknown codec"}
                       {d.age_days != null
@@ -496,8 +498,8 @@ function Profiles({
     ? blankProfile
     : (profiles.find((p) => p.id === selected) ?? profiles[0]);
   return (
-    <section className="panel automation-panel">
-      <div className="section-title">
+    <section className="rs-panel automation-panel">
+      <div className="rs-panel-header">
         <h2>Quality profiles</h2>
         <Button variant="soft" onClick={() => setCreating(true)}>
           New profile
@@ -590,7 +592,7 @@ function ProfileForm({
           <span className="form-label">Allowed resolutions</span>
           <div className="quality-options">
             {[480, 720, 1080, 2160].map((q) => (
-              <label className="check-label" key={q}>
+              <label className="rs-check" key={q}>
                 <input
                   type="checkbox"
                   checked={form.qualities.includes(q)}
@@ -778,13 +780,13 @@ function ProfileForm({
             />
           </label>
         </div>
-        <p className="field-help">
+        <p className="rs-form-help">
           Source, codec and preferred-term bonuses rank eligible releases within
           a resolution. They use release labels, not verified stream quality.
           Usenet age filters reject unknown publication dates when enabled;
           torrent ranking is unaffected by retention.
         </p>
-        <p className="field-help">
+        <p className="rs-form-help">
           Separate terms with commas. Every required term must match. Camera
           recordings, screeners, samples, ambiguous identities and unknown
           resolution, size or seed counts are excluded. Manual release
@@ -795,12 +797,12 @@ function ProfileForm({
         </Button>
       </fieldset>
       {error && (
-        <p role="alert" className="form-error">
+        <p role="alert" className="rs-form-error">
           {error}
         </p>
       )}
       {success && (
-        <p role="status" className="form-success">
+        <p role="status" className="rs-alert is-success">
           Profile saved.
         </p>
       )}
@@ -816,7 +818,7 @@ function Assignments({ profiles }: { profiles: Profile[] }) {
     limit: number;
   }>(`/automation/items?page=${page}`);
   return (
-    <section className="panel automation-panel">
+    <section className="rs-panel automation-panel">
       <h2>Library preferences</h2>
       <RequestState
         loading={items.loading}
@@ -881,11 +883,11 @@ function AssignmentForm({
     <form className="automation-assignment" onSubmit={save}>
       <div>
         <strong>{item.title}</strong>
-        <p className="field-help">
+        <p className="rs-form-help">
           {item.kind === "movie" ? (
             "Movie"
           ) : (
-            <Link to={`/series/${item.media_id}`} className="text-link">
+            <Link to={`/series/${item.media_id}`} className="rs-link-button">
               TV monitoring
             </Link>
           )}
@@ -907,7 +909,7 @@ function AssignmentForm({
         </select>
       </label>
       {item.kind === "movie" && (
-        <label className="check-label">
+        <label className="rs-check">
           <input
             disabled={busy}
             type="checkbox"
@@ -921,7 +923,7 @@ function AssignmentForm({
         Save {item.title}
       </Button>
       {error && (
-        <p role="alert" className="form-error">
+        <p role="alert" className="rs-form-error">
           {error}
         </p>
       )}

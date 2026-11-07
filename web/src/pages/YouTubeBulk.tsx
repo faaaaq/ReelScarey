@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
+import "./Admin.css";
 export type BulkEntry = { id: string; title: string; kind?: string };
 type Review = {
   id: string;
@@ -68,7 +69,7 @@ export function YouTubeBulk({
   }
   return (
     <section
-      className="panel system-panel"
+      className="rs-panel rs-stack"
       aria-label="Bulk YouTube acquisition"
     >
       <h3>Acquire selected videos</h3>
@@ -125,7 +126,7 @@ export function YouTubeBulk({
             />{" "}
             I reviewed every selected video and destination.
           </label>
-          <div className="button-row">
+          <div className="rs-form-actions">
             <Button
               variant="soft"
               disabled={busy}
@@ -143,7 +144,7 @@ export function YouTubeBulk({
         </section>
       )}
       {error && (
-        <p role="alert" className="error-box">
+        <p role="alert" className="rs-alert is-danger">
           {error}
         </p>
       )}

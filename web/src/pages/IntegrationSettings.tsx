@@ -4,6 +4,7 @@ import { Plug } from "lucide-react";
 import { api, messageFor, type IntegrationStatus } from "../api";
 import { RequestState } from "../components";
 import { useResource } from "../useResource";
+import "./Admin.css";
 
 export function IntegrationSettings({
   kind,
@@ -87,10 +88,10 @@ export function IntegrationSettings({
   return (
     <section
       id={kind}
-      className="panel settings-info integration-settings"
+      className="rs-panel settings-info integration-settings"
       aria-label={`${name} settings`}
     >
-      <div className="section-title">
+      <div className="rs-panel-header">
         <h2>
           <Plug size={19} />
           {name}
@@ -162,7 +163,7 @@ export function IntegrationSettings({
               autoComplete="new-password"
               disabled={pending}
             />
-            <p className="field-help">
+            <p className="rs-form-help">
               {resource.data.configured
                 ? "Leave blank to keep the saved credential. Re-enter it when changing the service URL."
                 : indexer
@@ -188,14 +189,14 @@ export function IntegrationSettings({
                   maxLength={2048}
                   disabled={pending}
                 />
-                <p className="field-help">
+                <p className="rs-form-help">
                   The folder as {name} sees it. Mount that same folder at
                   ReelScarey’s Downloads path shown above. A Web UI connection
                   alone does not give ReelScarey access to files on another
                   server.
                 </p>
                 {usenet && (
-                  <p className="field-help">
+                  <p className="rs-form-help">
                     In SABnzbd, create category <strong>reelscarey</strong> with
                     Folder/Path <strong>ReelScarey</strong>. Disable sorting for
                     this category and choose no script. Retain its completed
@@ -217,7 +218,7 @@ export function IntegrationSettings({
             </Button>
           </form>
           {resource.data.configured && (
-            <div className="provider-actions">
+            <div className="rs-form-actions">
               <Button
                 variant="soft"
                 disabled={pending}
@@ -238,12 +239,12 @@ export function IntegrationSettings({
         </>
       )}
       {error && (
-        <p role="alert" className="movie-error">
+        <p role="alert" className="rs-form-error">
           {error}
         </p>
       )}
       {success && (
-        <p role="status" className="save-success">
+        <p role="status" className="rs-alert is-success">
           {success}
         </p>
       )}

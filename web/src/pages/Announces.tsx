@@ -1,9 +1,11 @@
+import { PageBody } from "../ui";
 import { useState, type FormEvent } from "react";
 import { Badge, Button } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useLiveResource } from "../useLiveResource";
 import { useResource } from "../useResource";
+import "./Admin.css";
 
 type Definition = {
   id: string;
@@ -214,7 +216,7 @@ export function Announces() {
     }
   }
   return (
-    <>
+    <PageBody>
       <PageHeading title="Announce feeds">
         <Badge color="gray">Capture only</Badge>
       </PageHeading>
@@ -258,14 +260,14 @@ export function Announces() {
         }}
       />
       {error && (
-        <p className="error-box" role="alert">
+        <p className="rs-alert is-danger" role="alert">
           {error}
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
-      <section className="panel system-panel">
+      <section className="rs-panel rs-stack">
         <h2>{editing ? `Edit ${editing.name}` : "Add an announce source"}</h2>
-        <form className="settings-form" onSubmit={(e) => void save(e)}>
+        <form className="rs-stack" onSubmit={(e) => void save(e)}>
           <fieldset disabled={busy} className="backup-fields">
             <label>
               Tracker
@@ -302,7 +304,7 @@ export function Announces() {
             </label>
             <label>
               NickServ account{" "}
-              <span className="field-help">(when required)</span>
+              <span className="rs-form-help">(when required)</span>
               <input
                 value={form.account}
                 onChange={(e) => setForm({ ...form, account: e.target.value })}
@@ -336,13 +338,13 @@ export function Announces() {
                 }
               />
             </label>
-            <p className="field-help">
+            <p className="rs-form-help">
               Encrypted. Used for automatic downloads when that step is enabled.
               For IPTorrents, copy the passkey from your details page.
             </p>
             <label>
               Invite command{" "}
-              <span className="field-help">
+              <span className="rs-form-help">
                 (BeyondHD/AnimeBytes; optional)
               </span>
               <input
@@ -352,7 +354,7 @@ export function Announces() {
                 maxLength={512}
               />
             </label>
-            <label className="checkbox-row">
+            <label className="rs-check">
               <input
                 type="checkbox"
                 checked={form.enabled}
@@ -362,18 +364,18 @@ export function Announces() {
               />
               Connect this source now
             </label>
-            <p className="field-help">
+            <p className="rs-form-help">
               New sources start paused. A paused source keeps its credentials
               without opening an IRC connection.
             </p>
             {def && (
-              <p className="field-help">
+              <p className="rs-form-help">
                 {def.tls ? "TLS" : "Plain"} · {def.server}:{def.port} ·{" "}
                 {def.channel}
                 {def.require_account ? " · NickServ account required" : ""}
               </p>
             )}
-            <div className="form-footer">
+            <div className="rs-form-actions">
               <Button type="submit" disabled={busy}>
                 {busy ? "Saving…" : editing ? "Save source" : "Add source"}
               </Button>
@@ -391,7 +393,7 @@ export function Announces() {
           </fieldset>
         </form>
       </section>
-      <section className="panel system-panel">
+      <section className="rs-panel rs-stack">
         <h2>Sources</h2>
         {!sources.data?.items.length && <p>No announce sources configured.</p>}
         {sources.data?.items.map((source) => (
@@ -401,24 +403,24 @@ export function Announces() {
               <Badge color={source.enabled ? "green" : "gray"}>
                 {source.enabled ? "Enabled" : "Paused"}
               </Badge>
-              <p className="field-help">
+              <p className="rs-form-help">
                 {source.tracker} · {source.server}:{source.port} ·{" "}
                 {source.channel} · nick {source.nick}
                 {source.has_key ? " · key saved" : ""}
               </p>
               {source.last_error && (
-                <p className="error-box" role="alert">
+                <p className="rs-alert is-danger" role="alert">
                   {source.last_error}
                 </p>
               )}
-              <p className="field-help">
+              <p className="rs-form-help">
                 Last announce:{" "}
                 {source.last_event_at
                   ? new Date(source.last_event_at * 1000).toLocaleString()
                   : "none yet"}
               </p>
             </div>
-            <div className="form-footer">
+            <div className="rs-form-actions">
               <Button
                 variant="soft"
                 disabled={busy}
@@ -445,14 +447,14 @@ export function Announces() {
           </div>
         ))}
       </section>
-      <section className="panel system-panel">
-        <div className="form-footer">
+      <section className="rs-panel rs-stack">
+        <div className="rs-form-actions">
           <h2>Recent announces</h2>
           <Button variant="soft" onClick={events.reload}>
             Refresh
           </Button>
         </div>
-        <p className="field-help">
+        <p className="rs-form-help">
           {events.data?.total ?? 0} stored announce
           {events.data?.total === 1 ? "" : "s"}; the newest 50 are shown.
         </p>
@@ -467,7 +469,7 @@ export function Announces() {
                   <Badge color="green">{event.freeleech}</Badge>
                 </>
               )}
-              <p className="field-help">
+              <p className="rs-form-help">
                 {event.tracker}
                 {event.category ? ` · ${event.category}` : ""} ·{" "}
                 {bytes(event.size_bytes)} ·{" "}
@@ -476,7 +478,7 @@ export function Announces() {
             </div>
             {event.info_url && (
               <a
-                className="text-link"
+                className="rs-link-button"
                 href={event.info_url}
                 target="_blank"
                 rel="noreferrer"
@@ -487,6 +489,6 @@ export function Announces() {
           </div>
         ))}
       </section>
-    </>
+    </PageBody>
   );
 }

@@ -260,10 +260,7 @@ describe("authentication and movies", () => {
       }
       return undefined;
     });
-    mount("/settings");
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Connect" }),
-    );
+    mount("/settings/connect");
     const field = await screen.findByLabelText("API Read Access Token");
     await userEvent.type(field, "test-only-provider-token-value");
     await userEvent.click(
@@ -293,7 +290,7 @@ describe("authentication and movies", () => {
           )
         : undefined,
     );
-    mount("/settings");
+    mount("/settings/general");
     expect(
       await screen.findByRole("heading", { name: "Sign in" }),
     ).toBeVisible();

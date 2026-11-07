@@ -64,6 +64,14 @@ function setup(path: string, recovery = false, fail = false) {
         report: options?.method === "POST" ? report : null,
       });
     }
+    if (url.endsWith("/system"))
+      return Response.json({
+        version: "9.9.9-test",
+        database: "connected",
+        schema_version: 42,
+        uptime_seconds: 3700,
+        paths: { config: "/config", media: "/media", downloads: "/downloads" },
+      });
     throw new Error(`Unexpected request ${url}`);
   });
   vi.stubGlobal("fetch", fetch);
@@ -88,6 +96,7 @@ describe("installation and recovery", () => {
   it("runs storage probes only after a deliberate click", async () => {
     const fetch = setup("/system");
     await screen.findByText("No checks run this session");
+    expect(await screen.findByText("9.9.9-test")).toBeVisible();
     expect(fetch.mock.calls.some(([, o]) => o?.method === "POST")).toBe(false);
     await userEvent.click(screen.getByRole("button", { name: "Run checks" }));
     expect(await screen.findByText("Passed")).toBeVisible();

@@ -299,3 +299,16 @@ See [announce feeds](docs/ANNOUNCE.md).
 - [x] An acquired YouTube replacement awaiting review no longer blocks
   organization or replacement work for another episode; only queued,
   downloading or importing jobs fence the media.
+
+## Version 0.38.0 Sonarr/Radarr-style interface and qBittorrent-style Torrents
+
+- [x] New design foundation: tokens for equal light/dark themes, fixed header
+  with global search, nested sidebar, page toolbars and shared primitives.
+- [x] Library, Add New, Dashboard, details, Activity, Releases, Wanted,
+  Calendar, History and Anime tools rebuilt on the shared primitives.
+- [x] Settings split into routed pages with an index; old hash links redirect.
+- [x] System status shows version, database, uptime and paths with checks.
+- [x] Torrents is a qBittorrent-WebUI-style console over a restricted API:
+  bulk actions, queue, limits, share limits, file priorities (refused for
+  ReelScarey downloads), trackers/peers/pieces with passkey redaction.
+- [x] `api()` accepts 204 responses instead of reporting a false failure.

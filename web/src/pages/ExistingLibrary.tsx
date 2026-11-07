@@ -1,3 +1,4 @@
+import { PageBody } from "../ui";
 import { useState, type FormEvent } from "react";
 import { AlertDialog, Button, Dialog, TextField } from "@radix-ui/themes";
 import {
@@ -26,6 +27,7 @@ import { useLiveResource } from "../useLiveResource";
 import { useResource } from "../useResource";
 import { bytes } from "./Releases";
 import { BulkMatching } from "./BulkMatching";
+import "./Admin.css";
 
 export type LibraryScan = {
   automatic_matching?: {
@@ -113,7 +115,7 @@ type PhaseTone = "done" | "active" | "waiting" | "attention" | "skipped";
 
 function phaseIcon(tone: PhaseTone) {
   if (tone === "done") return <Check size={14} />;
-  if (tone === "active") return <Loader2 size={14} className="spin" />;
+  if (tone === "active") return <Loader2 size={14} className="rs-spin" />;
   if (tone === "attention") return <AlertTriangle size={14} />;
   if (tone === "waiting") return <Clock3 size={14} />;
   return <Circle size={12} />;
@@ -231,18 +233,18 @@ export function ExistingLibrary() {
     }
   }
   return (
-    <>
-      <PageHeading eyebrow="Library tools" title="Find unmatched files" />
+    <PageBody>
+      <PageHeading title="Library Import" />
       <RequestState
         loading={roots.loading}
         error={roots.error}
         retry={roots.reload}
       />
       {roots.data && (
-        <section className="panel scan-start">
-          <div className="ui-section-head">
+        <section className="rs-panel scan-start">
+          <div className="rs-panel-header">
             <div>
-              <p className="page-eyebrow">1 · Discover</p>
+              <p className="rs-form-help">1 · Discover</p>
               <h2>
                 <FolderSearch size={18} /> Discover files
               </h2>
@@ -252,7 +254,7 @@ export function ExistingLibrary() {
                 untouched.
               </p>
             </div>
-            <span className="ui-chip">Read-only discovery</span>
+            <span className="rs-label">Read-only discovery</span>
           </div>
 
           <div className="scan-folder-grid">
@@ -271,7 +273,7 @@ export function ExistingLibrary() {
           </div>
 
           <div className="scan-start-row">
-            <div className="ui-field">
+            <div className="adm-field">
               <label htmlFor="scan-media-type">Look for</label>
               <select
                 id="scan-media-type"
@@ -287,7 +289,7 @@ export function ExistingLibrary() {
                 </option>
               </select>
             </div>
-            <label className="scan-toggle">
+            <label className="rs-check">
               <input
                 type="checkbox"
                 aria-label="Automatically match and register clear results"
@@ -326,26 +328,27 @@ export function ExistingLibrary() {
             ["queued", "scanning"].includes(s.state),
           ) && (
             <p className="scan-notice">
-              <Loader2 size={14} className="spin" /> A scan is already running.
-              Follow its progress below, or stop it before starting another.
+              <Loader2 size={14} className="rs-spin" /> A scan is already
+              running. Follow its progress below, or stop it before starting
+              another.
             </p>
           )}
 
-          <p className="ui-note">
+          <p className="rs-form-help">
             Paths are on the ReelScarey server. Registration does not move
             files.
           </p>
         </section>
       )}
       {error && (
-        <p role="alert" className="error-box">
+        <p role="alert" className="rs-alert is-danger">
           {error}
         </p>
       )}
       {roots.data?.items.length ? (
         <>
           <div className="scan-history">
-            <div className="ui-field">
+            <div className="adm-field">
               <label htmlFor="scan-history-select">Scan history</label>
               <select
                 id="scan-history-select"
@@ -380,7 +383,7 @@ export function ExistingLibrary() {
       ) : (
         !roots.loading && <p>No discovery scans yet.</p>
       )}
-    </>
+    </PageBody>
   );
 }
 function ScanReview({
@@ -462,10 +465,10 @@ function ScanReview({
         retry={result.reload}
       />
       {scan && (
-        <section className="panel scan-overview" aria-live="polite">
+        <section className="rs-panel scan-overview" aria-live="polite">
           <div className="scan-header">
             <div>
-              <p className="page-eyebrow">2 · Review scan</p>
+              <p className="rs-form-help">2 · Review scan</p>
               <h2>{scanLabel(scan)} discovery</h2>
               <p className="scan-sub">
                 Started {new Date(scan.created_at * 1000).toLocaleString()} ·{" "}
@@ -474,7 +477,7 @@ function ScanReview({
             </div>
             <div className="scan-header-meta">
               <span
-                className={`ui-chip ${
+                className={`rs-label ${
                   scan.state === "failed"
                     ? "amber"
                     : scan.state === "completed"
@@ -506,7 +509,7 @@ function ScanReview({
           >
             <span className="scan-banner-icon">
               {active || matchingActive ? (
-                <Loader2 size={19} className="spin" />
+                <Loader2 size={19} className="rs-spin" />
               ) : matchingWaiting || scan.state === "failed" ? (
                 <AlertTriangle size={19} />
               ) : reviewCount > 0 ? (
@@ -660,7 +663,7 @@ function ScanReview({
             {scan.examined} entries examined · {scan.skipped} skipped
           </p>
 
-          <div className="scan-actions">
+          <div className="rs-form-actions">
             {!matchingActive &&
               !matchingWaiting &&
               scan.state === "completed" &&
@@ -700,7 +703,7 @@ function ScanReview({
                     media files and their catalog entries remain in your
                     library.
                   </AlertDialog.Description>
-                  <div className="import-actions">
+                  <div className="rs-form-actions">
                     <AlertDialog.Cancel>
                       <Button variant="soft">Keep scan</Button>
                     </AlertDialog.Cancel>
@@ -717,7 +720,7 @@ function ScanReview({
         </section>
       )}
       {error && (
-        <p role="alert" className="error-box">
+        <p role="alert" className="rs-alert is-danger">
           {error}
         </p>
       )}
@@ -732,8 +735,8 @@ function ScanReview({
               : "Loading files…"}
           </p>
         </div>
-        <label className="ui-field">
-          <span className="ui-field-label">Show</span>
+        <label className="adm-field">
+          <span className="rs-form-help">Show</span>
           <select
             aria-label="Discovery status filter"
             value={filter}
@@ -765,7 +768,7 @@ function ScanReview({
         />
       )}
       {result.data?.items.length ? (
-        <section className="panel scan-files" id="discovery-files">
+        <section className="rs-panel scan-files" id="discovery-files">
           <div className="scan-file-list">
             {result.data.items.map((item) => (
               <article key={item.id} className="scan-file-row">
@@ -775,7 +778,7 @@ function ScanReview({
                     <code>{item.full_path}</code>
                   </div>
                   <span
-                    className={`ui-chip ${
+                    className={`rs-label ${
                       item.state === "registered"
                         ? "green"
                         : item.state === "blocked"
@@ -818,7 +821,7 @@ function ScanReview({
                   )}
                   {item.state === "registered" && item.media_id && (
                     <Link
-                      className="text-link"
+                      className="rs-link-button"
                       to={`/${scan?.kind === "series" ? "series" : "movies"}/${item.media_id}`}
                     >
                       Open library details
@@ -831,7 +834,7 @@ function ScanReview({
         </section>
       ) : (
         !result.loading && (
-          <section className="empty-state" id="discovery-files">
+          <section className="rs-empty" id="discovery-files">
             <h2>No files in this view</h2>
             <p>
               Registered videos, samples, trailers, hidden entries and
@@ -980,7 +983,7 @@ function MatchReview({
           disabled={busy}
         />
       </label>
-      <div className="import-actions">
+      <div className="rs-form-actions">
         <Button
           type="button"
           variant="soft"
@@ -1019,7 +1022,7 @@ function MatchReview({
         retry={catalog.reload}
       />
       {!provider.data?.configured && (
-        <p className="field-help">
+        <p className="rs-form-help">
           Saved catalog titles work offline. Connect TMDb in Settings to add new
           titles.
         </p>
@@ -1058,7 +1061,7 @@ function MatchReview({
       {remote && (
         <div className="import-catalog-results">
           <h3>TMDb matches</h3>
-          <p className="field-help">
+          <p className="rs-form-help">
             Adding a new title starts with monitoring paused. Registration
             follows your existing subtitle preferences.
           </p>
@@ -1101,7 +1104,7 @@ function MatchReview({
               busy={busy}
             />
           )}
-          <label className="check-label">
+          <label className="rs-check">
             <input
               type="checkbox"
               checked={reviewed}
@@ -1111,7 +1114,7 @@ function MatchReview({
             I checked that this file belongs to this{" "}
             {kind === "movie" ? "movie" : "show and selected episodes"}.
           </label>
-          <p className="field-help">
+          <p className="rs-form-help">
             ReelScarey will read the video, verify its checksum and inspect it
             with FFprobe. Changed files, existing registrations and conflicting
             downloads are refused. Files are never moved, renamed or replaced.
@@ -1119,11 +1122,11 @@ function MatchReview({
         </section>
       )}
       {error && (
-        <p role="alert" className="error-box">
+        <p role="alert" className="rs-alert is-danger">
           {error}
         </p>
       )}
-      <div className="import-actions">
+      <div className="rs-form-actions">
         <Button
           type="submit"
           disabled={
@@ -1231,7 +1234,7 @@ function EpisodePicker({
           )}
           <div className="import-episodes">
             {episodes.data?.episodes.map((ep) => (
-              <label className="check-label" key={ep.id}>
+              <label className="rs-check" key={ep.id}>
                 <input
                   type="checkbox"
                   disabled={
@@ -1254,14 +1257,14 @@ function EpisodePicker({
               </label>
             ))}
           </div>
-          <p className="field-help">
+          <p className="rs-form-help">
             Select every episode in this file: up to 20 consecutive episodes
             from one season. Filename hints never select episodes for you.
           </p>
         </>
       )}
       {error && (
-        <p role="alert" className="error-box">
+        <p role="alert" className="rs-alert is-danger">
           {error}
         </p>
       )}

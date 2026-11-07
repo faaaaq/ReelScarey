@@ -1,9 +1,11 @@
+import { PageBody } from "../ui";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Badge, Button, Dialog, TextField } from "@radix-ui/themes";
 import { Archive, Download, RefreshCw, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, messageFor, type AuthStatus } from "../api";
 import { PageHeading, RequestState } from "../components";
+import "./Admin.css";
 
 type Snapshot = {
   id: string;
@@ -174,7 +176,7 @@ export function Backups() {
   }
   const blocked = busy || !!state?.schedule.running || restarting;
   return (
-    <>
+    <PageBody>
       <PageHeading title="Backups">
         <Button
           disabled={blocked || !state}
@@ -196,17 +198,17 @@ export function Backups() {
         retry={() => void load(true)}
       />
       {!!state && error && (
-        <p role="alert" className="error-box">
+        <p role="alert" className="rs-alert is-danger">
           {error}
         </p>
       )}
       {notice && (
-        <p role="status" className="success-box">
+        <p role="status" className="rs-alert is-success">
           {notice}
         </p>
       )}
       {restarting && (
-        <section role="status" className="panel system-panel">
+        <section role="status" className="rs-panel rs-stack">
           <h2>Restoring your backup</h2>
           <p>
             ReelScarey is closing active work, saving a safety backup and
@@ -224,15 +226,15 @@ export function Backups() {
       {state && (
         <>
           {state.restore_message && !restarting && (
-            <p className="panel system-panel">{state.restore_message}</p>
+            <p className="rs-panel rs-stack">{state.restore_message}</p>
           )}
           {state.recovery_pending && (
-            <p className="error-box">
+            <p className="rs-alert is-danger">
               Recovery review is pending. Scheduled backups are held.{" "}
               <Link to="/system">Review System checks</Link>
             </p>
           )}
-          <section className="panel system-panel backup-scope">
+          <section className="rs-panel rs-stack backup-scope">
             <h2>What is included</h2>
             <p>
               Library records, profiles, settings, encrypted provider
@@ -252,7 +254,7 @@ export function Backups() {
           {form && (
             <form
               onSubmit={(e) => void save(e)}
-              className="panel system-panel"
+              className="rs-panel rs-stack"
               aria-label="Backup schedule"
             >
               <h2>Scheduled backups</h2>
@@ -341,16 +343,16 @@ export function Backups() {
                 <p role="status">Creating and verifying a backup…</p>
               )}
               {state.schedule.last_error && (
-                <p role="alert" className="error-box">
+                <p role="alert" className="rs-alert is-danger">
                   {state.schedule.last_error}
                 </p>
               )}
             </form>
           )}
-          <section className="panel system-panel" aria-label="Saved backups">
+          <section className="rs-panel rs-stack" aria-label="Saved backups">
             <div className="backup-heading">
               <h2>Saved backups</h2>
-              <div className="backup-actions">
+              <div className="rs-form-actions">
                 <Button
                   variant="soft"
                   disabled={blocked}
@@ -402,7 +404,7 @@ export function Backups() {
                       {a.manifest.schema_version} · {size(a.size_bytes)}
                     </p>
                   </div>
-                  <div className="backup-actions">
+                  <div className="rs-form-actions">
                     <Button variant="soft" asChild>
                       <a href={`/api/v1${endpoint}/${a.id}/download`} download>
                         <Download size={15} />
@@ -508,11 +510,11 @@ export function Backups() {
                 />
               </label>
               {error && (
-                <p role="alert" className="error-box">
+                <p role="alert" className="rs-alert is-danger">
                   {error}
                 </p>
               )}
-              <div className="backup-actions">
+              <div className="rs-form-actions">
                 <Button
                   variant="soft"
                   disabled={busy}
@@ -558,11 +560,11 @@ export function Backups() {
             library stay unchanged.
           </Dialog.Description>
           {error && (
-            <p role="alert" className="error-box">
+            <p role="alert" className="rs-alert is-danger">
               {error}
             </p>
           )}
-          <div className="backup-actions">
+          <div className="rs-form-actions">
             <Button
               variant="soft"
               disabled={busy}
@@ -587,6 +589,6 @@ export function Backups() {
           </div>
         </Dialog.Content>
       </Dialog.Root>
-    </>
+    </PageBody>
   );
 }

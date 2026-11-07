@@ -3,6 +3,7 @@ import { Badge, Button, TextField } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
 import { RequestState } from "../components";
 import { useResource } from "../useResource";
+import "./Admin.css";
 
 type Entry = {
   video_id: string;
@@ -166,8 +167,8 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
   }
 
   return (
-    <section className="panel system-panel">
-      <div className="ui-section-head">
+    <section className="rs-panel rs-stack">
+      <div className="rs-panel-header">
         <h2>YouTube source</h2>
         {!editing && (
           <Button
@@ -188,11 +189,11 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
         retry={sources.reload}
       />
       {error && (
-        <p role="alert" className="error-box">
+        <p role="alert" className="rs-alert is-danger">
           {error}
         </p>
       )}
-      {notice && <p className="save-success">{notice}</p>}
+      {notice && <p className="rs-alert is-success">{notice}</p>}
 
       {editing && (
         <div className="yt-source-form">
@@ -278,7 +279,7 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
               }
             />
           </label>
-          <label className="check-label">
+          <label className="rs-check">
             <input
               type="checkbox"
               checked={draft.auto_import}
@@ -288,7 +289,7 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
             />{" "}
             Import verified exact matches without review
           </label>
-          <div className="import-actions">
+          <div className="rs-form-actions">
             <Button
               variant="soft"
               disabled={!!busy || !draft.source_url.trim()}
@@ -339,7 +340,7 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
       )}
 
       {(sources.data?.items.length ?? 0) === 0 && !editing && (
-        <p className="field-help">No YouTube source for this show.</p>
+        <p className="rs-form-help">No YouTube source for this show.</p>
       )}
       <ul className="yt-source-list">
         {sources.data?.items.map((source) => (
@@ -357,7 +358,7 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
                 {source.enabled ? "Enabled" : "Paused"}
               </Badge>
             </div>
-            <p className="field-help">
+            <p className="rs-form-help">
               {source.quality === "best" ? "Best" : `${source.quality}p`} ·
               every {source.interval_hours}h ·{" "}
               {source.auto_import
@@ -368,7 +369,7 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
                 : ""}
               {source.message ? ` · ${source.message}` : ""}
             </p>
-            <div className="import-actions">
+            <div className="rs-form-actions">
               <Button
                 size="1"
                 variant="soft"

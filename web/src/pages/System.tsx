@@ -1,10 +1,21 @@
 import { useState } from "react";
 import { Badge, Button } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
-import { CheckCircle2, ShieldCheck } from "lucide-react";
-import { api, messageFor } from "../api";
+import { Archive, CheckCircle2, HardDrive, ShieldCheck } from "lucide-react";
+import {
+  DescriptionItem,
+  DescriptionList,
+  FieldSet,
+  PageBody,
+  PageToolbar,
+  ToolbarButton,
+  ToolbarSection,
+  formatDuration,
+} from "../ui";
+import { api, messageFor, type System } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
+import "./Admin.css";
 
 type Guide = {
   recovery_pending: boolean;
@@ -38,7 +49,7 @@ type CheckState = { report: CheckReport | null; recovery_pending: boolean };
 export function Setup() {
   const guide = useResource<Guide>("/setup");
   return (
-    <>
+    <PageBody>
       <PageHeading title="Set up your library" />
       <RequestState
         loading={guide.loading}
@@ -48,7 +59,7 @@ export function Setup() {
       {guide.data && (
         <>
           {guide.data.recovery_pending && (
-            <div className="error-box">
+            <div className="rs-alert is-danger">
               <p>
                 Restored jobs are paused for review.{" "}
                 <Link to="/system">Review recovery</Link>
@@ -57,7 +68,7 @@ export function Setup() {
           )}
           <div className="setup-steps">
             {guide.data.steps.map((step, index) => (
-              <section className="panel setup-step" key={step.id}>
+              <section className="rs-panel setup-step" key={step.id}>
                 <span className="setup-number">
                   {step.state === "ready" ? (
                     <CheckCircle2 size={23} />
@@ -84,7 +95,7 @@ export function Setup() {
               </section>
             ))}
           </div>
-          <section className="panel system-panel">
+          <section className="rs-panel rs-stack">
             <h2>Check your installation</h2>
             <Button asChild>
               <Link to="/system">Open system checks</Link>
@@ -95,7 +106,7 @@ export function Setup() {
           </section>
         </>
       )}
-    </>
+    </PageBody>
   );
 }
 
@@ -133,148 +144,193 @@ export function SystemChecks() {
   }
   return (
     <>
-      <PageHeading title="System checks">
-        <Button
-          disabled={busy || resource.loading}
-          onClick={() => void action()}
-        >
-          <ShieldCheck size={17} />
-          {busy ? "Checking…" : "Run checks"}
-        </Button>
-      </PageHeading>
-      <RequestState
-        loading={resource.loading}
-        error={resource.error}
-        retry={resource.reload}
-      />
-      {error && (
-        <p role="alert" className="error-box">
-          {error}
-        </p>
-      )}
-      {resumed && (
-        <p role="status" className="success-box">
-          Recovery hold released. Search and subtitle schedules remain paused;
-          enable them when ready.
-        </p>
-      )}
-      {state?.recovery_pending && (
-        <section
-          className="panel system-panel recovery-panel"
-          aria-label="Recovery review"
-        >
-          <h2>Review your restored installation</h2>
-          <p>
-            Download, import and subtitle workers are held. Existing torrent
-            jobs can resume after this review; search and subtitle schedules
-            remain paused.
+      <PageToolbar>
+        <ToolbarSection>
+          <ToolbarButton
+            icon={ShieldCheck}
+            label="Run checks"
+            spinning={busy}
+            disabled={busy || resource.loading}
+            onClick={() => void action()}
+          />
+          <ToolbarButton icon={Archive} label="Backups" to="/backups" />
+          <ToolbarButton icon={HardDrive} label="Storage" to="/storage" />
+        </ToolbarSection>
+      </PageToolbar>
+      <PageBody>
+        <PageHeading title="Status" />
+        <SystemAbout />
+        <h2 className="adm-section-title">Health</h2>
+        <RequestState
+          loading={resource.loading}
+          error={resource.error}
+          retry={resource.reload}
+        />
+        {error && (
+          <p role="alert" className="rs-alert is-danger">
+            {error}
           </p>
-          <p>
-            Check{" "}
-            <Link to="/settings">provider connections and storage paths</Link>,{" "}
-            <Link to="/activity">download activity</Link>,{" "}
-            <Link to="/automation">automation</Link> and{" "}
-            <Link to="/subtitles">subtitle preferences</Link>. Confirm the
-            download client and folders belong to this installation before
-            resuming.
+        )}
+        {resumed && (
+          <p role="status" className="rs-alert is-success">
+            Recovery hold released. Search and subtitle schedules remain paused;
+            enable them when ready.
           </p>
-          <label className="recovery-confirm">
-            <input
-              type="checkbox"
-              checked={reviewed}
-              onChange={(e) => setReviewed(e.target.checked)}
-            />
-            I reviewed the restored settings, storage paths and download
-            activity.
-          </label>
-          <Button
-            disabled={!reviewed || busy}
-            onClick={() => void action(true)}
+        )}
+        {state?.recovery_pending && (
+          <section
+            className="rs-panel rs-stack recovery-panel"
+            aria-label="Recovery review"
           >
-            Resume workers
-          </Button>
-        </section>
-      )}
-      {state && !state.report && (
-        <section className="panel system-panel">
-          <h2>No checks run this session</h2>
-          <p>
-            Run checks to see current results. Checks create and remove tiny
-            private test files in the config and media folders. The download
-            folder is checked for read access.
-          </p>
-        </section>
-      )}
-      {state?.report && (
-        <>
-          <p className="muted">
-            Last checked{" "}
-            {new Date(state.report.checked_at * 1000).toLocaleString()}. Run
-            again after changing storage.
-          </p>
-          <div className="setup-steps">
-            {state.report.checks.map((check) => (
-              <section className="panel setup-step" key={check.id}>
-                <div>
-                  <h2>{check.title}</h2>
-                  <p>{check.message}</p>
-                  {check.free_bytes !== undefined && (
-                    <small>
-                      {(check.free_bytes / 1024 ** 3).toFixed(1)} GiB free
-                    </small>
-                  )}
-                </div>
-                <Badge color={check.state === "ready" ? "green" : "amber"}>
-                  {check.state === "ready" ? "Passed" : "Needs attention"}
-                </Badge>
-              </section>
-            ))}
-          </div>
-          <section className="panel system-panel">
-            <h2>Application resources</h2>
-            <dl className="resource-grid">
-              <div>
-                <dt>Go heap</dt>
-                <dd>{size(state.report.resources.heap_bytes)}</dd>
-              </div>
-              <div>
-                <dt>Go runtime memory</dt>
-                <dd>{size(state.report.resources.go_memory_bytes)}</dd>
-              </div>
-              <div>
-                <dt>Goroutines</dt>
-                <dd>{state.report.resources.goroutines}</dd>
-              </div>
-              <div>
-                <dt>Logical CPUs</dt>
-                <dd>{state.report.resources.logical_cpus}</dd>
-              </div>
-            </dl>
+            <h2>Review your restored installation</h2>
             <p>
-              Memory figures describe Go allocations, not total process or
-              container memory. NAS performance still needs validation on your
-              hardware.
+              Download, import and subtitle workers are held. Existing torrent
+              jobs can resume after this review; search and subtitle schedules
+              remain paused.
+            </p>
+            <p>
+              Check{" "}
+              <Link to="/settings">provider connections and storage paths</Link>
+              , <Link to="/activity">download activity</Link>,{" "}
+              <Link to="/automation">automation</Link> and{" "}
+              <Link to="/subtitles">subtitle preferences</Link>. Confirm the
+              download client and folders belong to this installation before
+              resuming.
+            </p>
+            <label className="recovery-confirm">
+              <input
+                type="checkbox"
+                checked={reviewed}
+                onChange={(e) => setReviewed(e.target.checked)}
+              />
+              I reviewed the restored settings, storage paths and download
+              activity.
+            </label>
+            <Button
+              disabled={!reviewed || busy}
+              onClick={() => void action(true)}
+            >
+              Resume workers
+            </Button>
+          </section>
+        )}
+        {state && !state.report && (
+          <section className="rs-panel rs-stack">
+            <h2>No checks run this session</h2>
+            <p>
+              Run checks to see current results. Checks create and remove tiny
+              private test files in the config and media folders. The download
+              folder is checked for read access.
             </p>
           </section>
-        </>
-      )}
-      <section className="panel system-panel">
-        <h2>Back up and recover</h2>
-        <p>
-          Create, schedule, download and restore verified configuration and
-          library database backups. Backups contain credentials and account
-          data; store them privately. Media and download files need a separate
-          backup.
-        </p>
-        <p>
-          Restore saves a safety backup, restarts the app, revokes sessions and
-          holds background work for review. Offline backup tools are also
-          available in the operations guide.
-        </p>
-        <Button asChild variant="soft">
-          <Link to="/backups">Manage backups</Link>
-        </Button>
-      </section>
+        )}
+        {state?.report && (
+          <>
+            <p className="rs-muted">
+              Last checked{" "}
+              {new Date(state.report.checked_at * 1000).toLocaleString()}. Run
+              again after changing storage.
+            </p>
+            <div className="setup-steps">
+              {state.report.checks.map((check) => (
+                <section className="rs-panel setup-step" key={check.id}>
+                  <div>
+                    <h2>{check.title}</h2>
+                    <p>{check.message}</p>
+                    {check.free_bytes !== undefined && (
+                      <small>
+                        {(check.free_bytes / 1024 ** 3).toFixed(1)} GiB free
+                      </small>
+                    )}
+                  </div>
+                  <Badge color={check.state === "ready" ? "green" : "amber"}>
+                    {check.state === "ready" ? "Passed" : "Needs attention"}
+                  </Badge>
+                </section>
+              ))}
+            </div>
+            <section className="rs-panel rs-stack">
+              <h2>Application resources</h2>
+              <dl className="resource-grid">
+                <div>
+                  <dt>Go heap</dt>
+                  <dd>{size(state.report.resources.heap_bytes)}</dd>
+                </div>
+                <div>
+                  <dt>Go runtime memory</dt>
+                  <dd>{size(state.report.resources.go_memory_bytes)}</dd>
+                </div>
+                <div>
+                  <dt>Goroutines</dt>
+                  <dd>{state.report.resources.goroutines}</dd>
+                </div>
+                <div>
+                  <dt>Logical CPUs</dt>
+                  <dd>{state.report.resources.logical_cpus}</dd>
+                </div>
+              </dl>
+              <p>
+                Memory figures describe Go allocations, not total process or
+                container memory. NAS performance still needs validation on your
+                hardware.
+              </p>
+            </section>
+          </>
+        )}
+        <section className="rs-panel rs-stack">
+          <h2>Back up and recover</h2>
+          <p>
+            Create, schedule, download and restore verified configuration and
+            library database backups. Backups contain credentials and account
+            data; store them privately. Media and download files need a separate
+            backup.
+          </p>
+          <p>
+            Restore saves a safety backup, restarts the app, revokes sessions
+            and holds background work for review. Offline backup tools are also
+            available in the operations guide.
+          </p>
+          <Button asChild variant="soft">
+            <Link to="/backups">Manage backups</Link>
+          </Button>
+        </section>
+      </PageBody>
     </>
+  );
+}
+
+function SystemAbout() {
+  const system = useResource<System>("/system");
+  return (
+    <FieldSet legend="About">
+      <RequestState
+        loading={system.loading}
+        error={system.error}
+        retry={system.reload}
+      />
+      {system.data && (
+        <DescriptionList>
+          <DescriptionItem title="Version">
+            {system.data.version}
+          </DescriptionItem>
+          <DescriptionItem title="Database">
+            {system.data.database} · schema {system.data.schema_version}
+          </DescriptionItem>
+          {system.data.uptime_seconds !== undefined && (
+            <DescriptionItem title="Uptime">
+              {formatDuration(system.data.uptime_seconds)}
+            </DescriptionItem>
+          )}
+          {Object.entries(system.data.paths ?? {}).map(([key, value]) => (
+            <DescriptionItem
+              key={key}
+              title={`${key[0].toUpperCase()}${key.slice(1)} folder`}
+            >
+              <code>{value}</code>
+            </DescriptionItem>
+          ))}
+        </DescriptionList>
+      )}
+    </FieldSet>
   );
 }

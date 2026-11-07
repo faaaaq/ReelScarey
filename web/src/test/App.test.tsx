@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
@@ -130,48 +130,44 @@ describe("foundation UI", () => {
     ).toBe(true);
   });
 
-  it("organizes settings into focused sections", async () => {
+  it("organizes settings into focused pages", async () => {
     setupFetch();
     mount("/settings");
-    const general = await screen.findByRole("button", { name: "General" });
-    expect(general).toHaveAttribute("aria-current", "page");
-    await userEvent.click(screen.getByRole("button", { name: "System" }));
+    const main = within(await screen.findByRole("main"));
     expect(
-      await screen.findByRole("heading", { name: "System" }),
+      await main.findByRole("heading", { name: "Settings" }),
     ).toBeVisible();
-    expect(screen.getByText("Server & storage")).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "Save preferences" }),
-    ).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Indexers" }));
-    expect(
-      screen.getByRole("link", { name: /Trackers and feeds/ }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: /IRC announce feeds/ }),
-    ).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("button", { name: "Media Management" }),
+    expect(main.getByRole("link", { name: "Indexers" })).toHaveAttribute(
+      "href",
+      "/indexers",
     );
+    expect(main.getByRole("link", { name: "Announce Feeds" })).toHaveAttribute(
+      "href",
+      "/announces",
+    );
+    await userEvent.click(main.getByRole("link", { name: "Media Management" }));
     expect(await screen.findByText("Collections & folders")).toBeVisible();
     expect(screen.getByLabelText("Collection name 3")).toHaveValue("Anime");
     expect(
       screen.getByRole("button", { name: "Add collection" }),
     ).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Save Changes" })).toBeNull();
   });
 
+  it("opens the matching settings page for old section links", async () => {
+    setupFetch();
+    mount("/settings#system");
+    expect(await screen.findByLabelText("Library name")).toBeVisible();
+    expect(await screen.findByText("Version")).toBeVisible();
+  });
   it("saves a changed preference with the current revision and reports success", async () => {
     const fetch = setupFetch();
-    mount("/settings");
+    mount("/settings/general");
     const name = await screen.findByLabelText("Library name");
-    expect(
-      screen.getByRole("button", { name: "Save preferences" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save Changes" })).toBeDisabled();
     await userEvent.clear(name);
     await userEvent.type(name, "Friday cinema");
-    await userEvent.click(
-      screen.getByRole("button", { name: "Save preferences" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
     expect(await screen.findByText("Preferences saved.")).toBeVisible();
     const saveCall = fetch.mock.calls.find(
       ([, options]) => options?.method === "PUT",
@@ -182,9 +178,7 @@ describe("foundation UI", () => {
       series_folder: "TV Shows",
       revision: 1,
     });
-    expect(
-      screen.getByRole("button", { name: "Save preferences" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save Changes" })).toBeDisabled();
   });
 
   it("preserves unsaved edits on a revision conflict and allows reload", async () => {
@@ -194,13 +188,11 @@ describe("foundation UI", () => {
         { status: 409 },
       ),
     );
-    mount("/settings");
+    mount("/settings/general");
     const name = await screen.findByLabelText("Library name");
     await userEvent.clear(name);
     await userEvent.type(name, "My edits");
-    await userEvent.click(
-      screen.getByRole("button", { name: "Save preferences" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Settings changed",
     );

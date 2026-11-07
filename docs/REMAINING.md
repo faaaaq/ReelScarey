@@ -189,7 +189,7 @@ Further subtitle providers are optional extensions, outside the current completi
 - [ ] Signed container release provenance and a public distribution process.
 - [ ] Owner license selection before public distribution.
 
-Keep the shared Emby-inspired light/dark design system and functional interface
+Keep the shared Sonarr/Radarr-style light/dark design system and functional interface
 copy during later milestones. See [interface and design system](UI.md).
 Private tracker testing should remain deferred until the owner chooses to resume
 it; other independent project work can continue.

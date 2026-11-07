@@ -66,7 +66,7 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   Bulk monitoring must operate on explicit bounded IDs, compare the entire review
   before writing, preserve profiles/TV child choices and fence existing editors/
   automatic queue decisions through the current revisions. Keep selection visibly
-  page-scoped. Use the shared Emby-inspired light/dark design tokens and layout;
+  page-scoped. Use the shared Sonarr/Radarr-style light/dark tokens and layout;
   do not reintroduce olive backgrounds or page-specific palettes. See
   docs/BULK_MONITORING.md.
   Effective profile labels/filters must distinguish inheritance from explicit

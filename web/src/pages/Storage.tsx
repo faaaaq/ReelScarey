@@ -1,8 +1,10 @@
+import { PageBody } from "../ui";
 import { Button, Badge } from "@radix-ui/themes";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
+import "./Admin.css";
 
 type Listing = {
   roots: { id: string; path: string }[];
@@ -61,9 +63,9 @@ export function Storage() {
       ...(nextPage > 1 ? { page: String(nextPage) } : {}),
     });
   return (
-    <>
+    <PageBody>
       <PageHeading title="Storage" />
-      <section className="panel system-panel">
+      <section className="rs-panel rs-stack">
         <h2>Folder browser</h2>
         <p>
           Read-only. To match files in a collection, open{" "}
@@ -117,8 +119,8 @@ export function Storage() {
             <p role="status">
               {listing.data.total} entries · {path || "/"}
             </p>
-            <div className="table-scroll">
-              <table className="storage-table">
+            <div className="rs-table-wrap">
+              <table className="rs-table">
                 <caption>
                   Folders and files in the selected mounted folder
                 </caption>
@@ -201,7 +203,7 @@ export function Storage() {
           </p>
         </details>
       </section>
-      <section className="panel system-panel">
+      <section className="rs-panel rs-stack">
         <h2>Move the main library to another disk</h2>
         <p>
           The offline migration tool reviews the complete tree, creates a
@@ -275,6 +277,6 @@ export function Storage() {
           have checked the new mount.
         </p>
       </section>
-    </>
+    </PageBody>
   );
 }

@@ -1,0 +1,832 @@
+/* Shared layout for the settings, system, import, organization, subtitle,
+   request and YouTube pages. Colors come only from the --rs tokens. */
+
+/* Settings index ------------------------------------------------------- */
+.adm-settings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px 28px;
+}
+.adm-settings-list a {
+  font-size: 17px;
+}
+.adm-settings-list p {
+  color: var(--rs-muted);
+  margin-top: 2px;
+}
+
+/* Form containers: stacked label + control cells in a responsive grid. */
+:is(
+  .backup-fields,
+  .automation-fields,
+  .automation-form-grid,
+  .indexer-form,
+  .yt-source-form,
+  .import-match,
+  .automation-assignment,
+  .settings-info form,
+  .yt-inline-form
+) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px 20px;
+  align-items: start;
+  min-width: 0;
+}
+:is(
+    .backup-fields,
+    .automation-fields,
+    .automation-form-grid,
+    .indexer-form,
+    .yt-source-form,
+    .import-match,
+    .automation-assignment,
+    .settings-info form,
+    .yt-inline-form,
+    .adm-field
+  )
+  > label:not(.rs-check):not(
+    :has(> input[type="checkbox"], > input[type="radio"])
+  ) {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-weight: 700;
+  color: var(--rs-text-strong);
+  min-width: 0;
+}
+:is(
+    .backup-fields,
+    .automation-fields,
+    .automation-form-grid,
+    .indexer-form,
+    .yt-source-form,
+    .import-match,
+    .automation-assignment,
+    .settings-info form,
+    .yt-inline-form,
+    .adm-field
+  )
+  > label:not(.rs-check)
+  > :is(input, select, textarea, .rt-TextFieldRoot, span, small) {
+  font-weight: 400;
+}
+:is(
+    .backup-fields,
+    .automation-fields,
+    .automation-form-grid,
+    .indexer-form,
+    .yt-source-form,
+    .import-match,
+    .automation-assignment,
+    .settings-info form,
+    .yt-inline-form
+  )
+  > :is(
+    .rs-check,
+    .rs-form-help,
+    .rs-form-actions,
+    .rs-form-error,
+    .rs-alert,
+    p,
+    fieldset,
+    details,
+    h3,
+    h4,
+    div:not(.adm-field):not(.rt-TextFieldRoot),
+    button,
+    .rt-Button,
+    ul,
+    ol,
+    table
+  ) {
+  grid-column: 1 / -1;
+}
+:is(.settings-info form) > :is(.rt-TextFieldRoot, input, select) {
+  grid-column: 1 / -1;
+  max-width: 640px;
+}
+.settings-info form > label {
+  grid-column: 1 / -1;
+}
+.settings-info form > .rt-Button,
+.settings-info form > button {
+  justify-self: start;
+}
+:is(
+    .backup-fields,
+    .automation-fields,
+    .automation-form-grid,
+    .indexer-form,
+    .yt-source-form,
+    .import-match,
+    .automation-assignment,
+    .settings-info form,
+    .yt-inline-form
+  )
+  > :is(.rt-Button, button) {
+  justify-self: start;
+}
+.adm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.adm-field > label {
+  font-weight: 700;
+  color: var(--rs-text-strong);
+}
+.form-label {
+  font-weight: 700;
+  color: var(--rs-text-strong);
+}
+.quality-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+fieldset:disabled {
+  opacity: 0.75;
+}
+
+/* Sections that stack their contents. */
+:is(
+  .automation-panel,
+  .integration-settings,
+  .tmdb-settings,
+  .organization-root,
+  .organization-selection,
+  .organization-settings,
+  .scan-start,
+  .scan-overview,
+  .scan-files,
+  .subtitle-preferences,
+  .subtitle-provider,
+  .subtitle-file,
+  .yt-downloader,
+  .yt-queue,
+  .yt-library,
+  .indexer-card,
+  .backup-scope,
+  .recovery-panel,
+  .setup-step,
+  .search-intro,
+  .import-confirmation,
+  .yt-review,
+  .review-box,
+  .yt-target,
+  .yt-show-match,
+  .yt-source-preview,
+  .automation-result,
+  .release-decision,
+  .subtitle-candidate,
+  .subtitle-job
+) {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+:is(.yt-review, .review-box, .import-confirmation, .yt-target, .yt-show-match) {
+  padding: 14px;
+  border: 1px solid var(--rs-border);
+  border-left: 3px solid var(--rs-warning);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-2);
+}
+
+/* Header rows: title left, actions or state right. */
+:is(
+  .backup-heading,
+  .scan-header,
+  .indexer-title,
+  .yt-source-head,
+  .scan-file-head,
+  .subtitle-provider-state,
+  .scan-file-toolbar,
+  .scan-start-row,
+  .yt-url-row,
+  .yt-job-main,
+  .scan-banner
+) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  min-width: 0;
+}
+:is(.yt-step-head, .backup-heading, .scan-header, .indexer-title) h2,
+:is(.yt-step-head, .backup-heading, .scan-header, .indexer-title) h3 {
+  font-size: 16px;
+  font-weight: 500;
+}
+.yt-url-row > :first-child,
+.scan-start-row > :first-child {
+  flex: 1 1 280px;
+}
+.scan-header-meta,
+.scan-banner-actions,
+.yt-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+.yt-options {
+  gap: 10px 22px;
+}
+
+/* Row lists: bordered rows with wrapping content. */
+:is(
+  .backup-list,
+  .automation-results,
+  .scan-file-list,
+  .subtitle-matches,
+  .subtitle-track-list,
+  .yt-jobs,
+  .yt-results,
+  .yt-source-list,
+  .yt-source-entries,
+  .organization-files,
+  .organization-plan-files,
+  .import-catalog-results,
+  .bulk-video-list,
+  .yt-batch-list,
+  .yt-batch-results,
+  .subtitle-language-list,
+  .scan-history,
+  .import-episodes
+) {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface);
+  max-height: 560px;
+  overflow-y: auto;
+  min-width: 0;
+}
+:is(
+    .backup-list,
+    .automation-results,
+    .scan-file-list,
+    .subtitle-matches,
+    .subtitle-track-list,
+    .yt-jobs,
+    .yt-results,
+    .yt-source-list,
+    .yt-source-entries,
+    .organization-files,
+    .organization-plan-files,
+    .import-catalog-results,
+    .bulk-video-list,
+    .yt-batch-list,
+    .yt-batch-results,
+    .subtitle-language-list,
+    .scan-history,
+    .import-episodes
+  )
+  > * {
+  padding: 10px 12px;
+  border-top: 1px solid var(--rs-border);
+  min-width: 0;
+}
+:is(
+    .backup-list,
+    .automation-results,
+    .scan-file-list,
+    .subtitle-matches,
+    .subtitle-track-list,
+    .yt-jobs,
+    .yt-results,
+    .yt-source-list,
+    .yt-source-entries,
+    .organization-files,
+    .organization-plan-files,
+    .import-catalog-results,
+    .bulk-video-list,
+    .yt-batch-list,
+    .yt-batch-results,
+    .subtitle-language-list,
+    .scan-history,
+    .import-episodes
+  )
+  > *:first-child {
+  border-top: 0;
+}
+:is(
+  .backup-row,
+  .announce-source,
+  .announce-event,
+  .scan-file-row,
+  .subtitle-language,
+  .yt-job,
+  .import-match-row,
+  .organization-file,
+  .yt-result
+) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  min-width: 0;
+}
+:is(.announce-source, .announce-event) {
+  padding: 10px 0;
+  border-top: 1px solid var(--rs-border);
+}
+.organization-file {
+  cursor: pointer;
+}
+.organization-file:hover,
+.yt-result:hover {
+  background: var(--rs-hover);
+}
+.yt-result {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--rs-text);
+}
+.yt-result-copy,
+.yt-job-title,
+.yt-batch-copy,
+.scan-banner-copy,
+.scan-phase-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+.yt-job {
+  flex-direction: column;
+  align-items: stretch;
+}
+:is(
+  .yt-job-meta,
+  .scan-file-meta,
+  .scan-sub,
+  .scan-footnote,
+  .scan-match-summary,
+  .yt-job-message,
+  .scan-file-message
+) {
+  color: var(--rs-muted);
+  font-size: 13px;
+}
+.scan-file-message {
+  color: var(--rs-warning);
+}
+.scan-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+.yt-thumb-placeholder {
+  display: grid;
+  place-items: center;
+  width: 120px;
+  height: 68px;
+  flex: none;
+  background: var(--rs-surface-3);
+  border-radius: var(--rs-radius);
+  color: var(--rs-faint);
+}
+.yt-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.yt-progress progress {
+  flex: 1;
+  accent-color: var(--rs-primary);
+  height: 8px;
+}
+.yt-empty {
+  color: var(--rs-muted);
+}
+
+/* Grids of tiles. */
+:is(
+  .backup-grid,
+  .indexer-grid,
+  .scan-folder-grid,
+  .setup-steps,
+  .subtitle-setup-grid
+) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  min-width: 0;
+}
+.scan-folder,
+.client-card {
+  padding: 12px 14px;
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.client-card > summary {
+  font-size: 16px;
+  color: var(--rs-text-strong);
+}
+.setup-step {
+  position: relative;
+  padding-left: 54px;
+}
+.setup-number {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--rs-surface-3);
+  color: var(--rs-text-strong);
+  font-weight: 700;
+  font-size: 13px;
+}
+.resource-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 20px;
+  margin: 0;
+}
+.resource-grid > div {
+  display: contents;
+}
+.resource-grid dt {
+  font-weight: 700;
+  color: var(--rs-text-strong);
+}
+.resource-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Notices. */
+:is(.automation-notice, .scan-notice, .scan-banner) {
+  padding: 12px 14px;
+  border: 1px solid var(--rs-warning);
+  border-left-width: 4px;
+  border-radius: var(--rs-radius);
+  background: var(--rs-warning-soft);
+  color: var(--rs-text-strong);
+}
+.automation-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.scan-banner-icon {
+  color: var(--rs-warning);
+  display: inline-flex;
+}
+.scan-live,
+.scan-auto-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--rs-muted);
+  font-size: 13px;
+}
+
+/* Compact counts (labels, not stat tiles). */
+.scan-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.scan-metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-2);
+  color: var(--rs-text);
+  font-size: 13px;
+}
+button.scan-metric:hover,
+a.scan-metric:hover {
+  border-color: var(--rs-brand);
+}
+.scan-metric strong {
+  color: var(--rs-text-strong);
+  font-size: 15px;
+}
+
+/* Scan progress stepper. */
+.scan-phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scan-phases > li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.scan-phase-icon {
+  display: inline-flex;
+  color: var(--rs-muted);
+}
+
+/* Segmented view switches. */
+:is(.search-kind, .yt-mode-tabs) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border-bottom: 1px solid var(--rs-border);
+}
+:is(.search-kind, .yt-mode-tabs) > :is(a, button) {
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--rs-text);
+  margin-bottom: -1px;
+}
+:is(.search-kind, .yt-mode-tabs) > :is(a, button):hover {
+  color: var(--rs-brand);
+}
+:is(.search-kind, .yt-mode-tabs)
+  > :is(
+    .active,
+    [aria-current="page"],
+    [aria-pressed="true"],
+    [aria-selected="true"]
+  ) {
+  border-bottom-color: var(--rs-brand);
+  color: var(--rs-brand);
+}
+
+/* Breadcrumbs. */
+.storage-breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.storage-breadcrumbs > * + *::before {
+  content: "/";
+  margin-right: 4px;
+  color: var(--rs-faint);
+}
+
+/* Paths and digests. */
+:is(.backup-path, .subtitle-path, .storage-digest) {
+  font-family: var(--rs-mono);
+  font-size: 12.5px;
+  color: var(--rs-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Organization path diffs. */
+.organization-path-change {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  font-family: var(--rs-mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.organization-job {
+  padding: 10px 12px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface);
+}
+.organization-library {
+  padding: 12px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-2);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px 16px;
+  align-items: end;
+}
+.organization-library > label:not(.rs-check) {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-weight: 700;
+  color: var(--rs-text-strong);
+}
+.organization-library > label > * {
+  font-weight: 400;
+}
+
+/* Confirmation checkboxes that gate destructive steps. */
+:is(.backup-confirm, .recovery-confirm) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--rs-danger);
+  border-radius: var(--rs-radius);
+  background: var(--rs-danger-soft);
+  color: var(--rs-text-strong);
+}
+
+/* Help disclosures. */
+.indexer-help {
+  color: var(--rs-muted);
+  font-size: 13px;
+}
+.indexer-help > summary {
+  font-size: 14px;
+}
+.indexer-help[open] > summary {
+  margin-bottom: 6px;
+}
+.search-disclaimer {
+  color: var(--rs-muted);
+  font-size: 13px;
+}
+
+/* Upload button made from a label. */
+.file-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-3);
+  color: var(--rs-text-strong);
+  cursor: pointer;
+}
+.file-button:hover {
+  background: var(--rs-border-strong);
+}
+.file-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* TMDb attribution. */
+.tmdb-credit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rs-border);
+  color: var(--rs-muted);
+  font-size: 12.5px;
+}
+
+/* Request account home. */
+.adm-requester-main {
+  padding-top: var(--rs-header-height);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.adm-requester-user {
+  margin-right: 10px;
+}
+.adm-request-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.adm-request-search .rt-TextFieldRoot {
+  flex: 1 1 260px;
+}
+
+.adm-section-title {
+  font-size: 21px;
+  font-weight: 300;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rs-border);
+}
+
+.yt-step-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.yt-step-head > span:first-child {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--rs-surface-3);
+  color: var(--rs-text-strong);
+  font-weight: 700;
+  font-size: 13px;
+}
+.yt-step-head h2 {
+  font-size: 16px;
+  font-weight: 500;
+}
+.yt-step-head p {
+  color: var(--rs-muted);
+}
+.yt-library > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--rs-text-strong);
+  list-style: none;
+}
+.yt-library > summary::-webkit-details-marker {
+  display: none;
+}
+.yt-library > summary::before {
+  content: "▸";
+  color: var(--rs-muted);
+}
+.yt-library[open] > summary::before {
+  content: "▾";
+}
+.yt-library > summary h2 {
+  font-size: 16px;
+  font-weight: 500;
+}
+.yt-library > summary span {
+  padding: 0 6px;
+  border-radius: 2px;
+  background: var(--rs-surface-3);
+  color: var(--rs-text);
+  font-size: 12px;
+}
+.movie-search-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.movie-search-form > :is(input, .rt-TextFieldRoot) {
+  flex: 1 1 260px;
+}
+
+:is(.subtitle-setup-grid, .backup-grid) {
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+}
+@media (max-width: 600px) {
+  :is(.subtitle-setup-grid, .backup-grid) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+:is(
+    .backup-fields,
+    .automation-fields,
+    .automation-form-grid,
+    .indexer-form,
+    .yt-source-form,
+    .import-match,
+    .automation-assignment,
+    .settings-info form,
+    .yt-inline-form,
+    .backup-grid,
+    .rs-stack,
+    .rs-panel
+  )
+  > label:has(> input[type="checkbox"], > input[type="radio"]) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  grid-column: 1 / -1;
+  cursor: pointer;
+}
+.backup-grid > label:not(:has(> input[type="checkbox"])) {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-weight: 700;
+  color: var(--rs-text-strong);
+}
+.backup-grid > label > input {
+  font-weight: 400;
+}

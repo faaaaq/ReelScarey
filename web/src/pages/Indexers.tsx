@@ -1,3 +1,4 @@
+import { PageBody } from "../ui";
 import { useState, type FormEvent } from "react";
 import {
   AlertDialog,
@@ -12,6 +13,7 @@ import { Plus, Radio, ShieldCheck } from "lucide-react";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
+import "./Admin.css";
 
 export type Indexer = {
   id: string;
@@ -187,7 +189,7 @@ export function Indexers() {
     }
   }
   return (
-    <>
+    <PageBody>
       <PageHeading title="Indexers">
         <Button onClick={() => setEditing(null)}>
           <Plus size={17} />
@@ -200,17 +202,17 @@ export function Indexers() {
         retry={list.reload}
       />
       {error && (
-        <p role="alert" className="error-box">
+        <p role="alert" className="rs-alert is-danger">
           {error}
         </p>
       )}
       {message && (
-        <p role="status" className="success-box">
+        <p role="status" className="rs-alert is-success">
           {message}
         </p>
       )}
       {list.data?.items.length === 0 && (
-        <section className="panel system-panel">
+        <section className="rs-panel rs-stack">
           <Radio size={27} />
           <h2>Add your first indexer</h2>
           <Button onClick={() => setEditing(null)}>Choose an indexer</Button>
@@ -218,7 +220,7 @@ export function Indexers() {
       )}
       <div className="indexer-grid">
         {list.data?.items.map((item) => (
-          <section className="panel system-panel indexer-card" key={item.id}>
+          <section className="rs-panel rs-stack indexer-card" key={item.id}>
             <div className="indexer-title">
               <h2>{item.name}</h2>
               <Badge
@@ -237,9 +239,9 @@ export function Indexers() {
               {kinds.find((k) => k.id === item.kind)?.name} · {item.url}
             </p>
             {item.last_error && (
-              <p className="movie-error">{item.last_error}</p>
+              <p className="rs-form-error">{item.last_error}</p>
             )}
-            <p className="field-help">
+            <p className="rs-form-help">
               {item.last_test_at
                 ? `Last verified ${new Date(item.last_test_at * 1000).toLocaleString()}`
                 : "Use Test connection to verify this source."}
@@ -248,9 +250,9 @@ export function Indexers() {
                 : ""}
             </p>
             {item.freeleech_only && <Badge>Freeleech only</Badge>}
-            <div className="indexer-actions">
+            <div className="rs-form-actions">
               {!item.legacy && (
-                <label className="monitor-choice">
+                <label className="rs-check">
                   <Switch
                     aria-label={`Enable ${item.name}`}
                     checked={item.enabled}
@@ -293,7 +295,7 @@ export function Indexers() {
                     The saved connection and its credentials will be removed.
                     Existing downloads and library files remain.
                   </AlertDialog.Description>
-                  <div className="indexer-actions">
+                  <div className="rs-form-actions">
                     <AlertDialog.Cancel>
                       <Button variant="soft">Keep indexer</Button>
                     </AlertDialog.Cancel>
@@ -345,7 +347,7 @@ export function Indexers() {
           )}
         </Dialog.Content>
       </Dialog.Root>
-    </>
+    </PageBody>
   );
 }
 function IndexerForm({
@@ -443,7 +445,7 @@ function IndexerForm({
           ))}
         </select>
       </label>
-      <p className="field-help">{kinds.find((k) => k.id === kind)?.help}</p>
+      <p className="rs-form-help">{kinds.find((k) => k.id === kind)?.help}</p>
       <IndexerHelp kind={kind} />
       <label>
         Name
@@ -483,7 +485,7 @@ function IndexerForm({
               disabled={busy}
             />
           </label>
-          <p className="field-help">
+          <p className="rs-form-help">
             {initial?.has_api_key
               ? "A key is saved. Leave blank to keep it."
               : "Leave blank only if this endpoint allows public access."}
@@ -513,7 +515,7 @@ function IndexerForm({
               disabled={busy}
             />
           </label>
-          <p className="field-help">
+          <p className="rs-form-help">
             {initial?.has_feed
               ? "A private URL is saved. Leave blank to keep it."
               : "Paste the complete feed URL, including its passkey. It must belong to the website above."}
@@ -535,7 +537,7 @@ function IndexerForm({
               maxLength={12000}
             />
           </label>
-          <p className="field-help">
+          <p className="rs-form-help">
             {initial?.has_cookie
               ? "A session is saved. Leave blank to keep it. Re-enter it after changing the URL or user agent. "
               : ""}
@@ -567,7 +569,7 @@ function IndexerForm({
               spellCheck={false}
             />
           </label>
-          <p className="field-help">
+          <p className="rs-form-help">
             Copy the full <code>user-agent</code> value from the same request.
             The <code>User-Agent:</code> label and line breaks are removed
             automatically.
@@ -575,27 +577,27 @@ function IndexerForm({
         </>
       )}
       {privateSite && (
-        <label className="monitor-choice">
+        <label className="rs-check">
           <Switch checked={free} onCheckedChange={setFree} />
           Freeleech releases only
         </label>
       )}
       {kind === "iptorrents" && (
-        <p className="field-help">
+        <p className="rs-form-help">
           For the tracker’s torrent table, choose Icons for categories and
           enable the files-count column in your IPTorrents settings.
         </p>
       )}
-      <label className="monitor-choice">
+      <label className="rs-check">
         <Switch checked={enabled} onCheckedChange={setEnabled} />
         Use this indexer in searches
       </label>
       {error && (
-        <p role="alert" className="error-box">
+        <p role="alert" className="rs-alert is-danger">
           {error}
         </p>
       )}
-      <div className="indexer-actions">
+      <div className="rs-form-actions">
         <Button type="submit" disabled={busy}>
           {busy ? "Testing connection…" : "Save & test connection"}
         </Button>

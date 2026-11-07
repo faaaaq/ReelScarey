@@ -3,6 +3,7 @@ import { Button } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
 import { useLiveResource } from "../useLiveResource";
 import type { SubtitleTrack } from "./Subtitles";
+import "./Admin.css";
 type Track = SubtitleTrack & { path: string; source: string };
 type Edit = SubtitleTrack & {
   id: string;
@@ -114,7 +115,7 @@ function Editor({
     });
   }
   return (
-    <section className="system-panel" aria-label="Subtitle editing">
+    <section className="rs-stack" aria-label="Subtitle editing">
       <h3>Subtitle replacement and timing</h3>
       <p>
         Supported UTF-8 SRT, VTT, ASS and SSA files up to 4 MiB. The previous
@@ -215,7 +216,7 @@ function Editor({
         </Button>
       </fieldset>
       {review && (
-        <section className="panel system-panel">
+        <section className="rs-panel rs-stack">
           <h3>Review subtitle change</h3>
           <p>
             {review.cues} timed cues · {review.size_bytes} bytes ·{" "}
@@ -239,7 +240,7 @@ function Editor({
             I reviewed this subtitle change and understand the current version
             will be retained for rollback.
           </label>
-          <div className="button-row">
+          <div className="rs-form-actions">
             <Button
               variant="soft"
               disabled={busy}
@@ -268,7 +269,7 @@ function Editor({
         </section>
       )}
       {(error || resource.error) && (
-        <p role="alert" className="error-box">
+        <p role="alert" className="rs-alert is-danger">
           {error || resource.error}
         </p>
       )}

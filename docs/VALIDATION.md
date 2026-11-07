@@ -2083,3 +2083,15 @@ No owner-server media or download client was used for these checks.
   blocking on queued, downloading or importing jobs. This allows reviewing a
   batch of acquired episode replacements one after another without cancelling
   the others. A unit test covers both states.
+
+## Version 0.38.0 interface overhaul
+
+Run locally on Windows (development tools only; Docker remains the target):
+- `npm run format:check`, `npm run check`, `npm test` (39 files, 220 tests)
+  and `npm run build` passed.
+- `go vet ./...`, `go test ./...` and `go build ./cmd/reelscarey` passed.
+  `gofmt -l` lists only the pre-existing `internal/requests/lists_test.go`.
+- Visual review against a disposable local backend with an empty database in
+  dark and light themes. The Torrents console was reviewed with browser-side
+  fixture responses only; no real qBittorrent was attached, so the live
+  qBittorrent and Docker acceptance suites were not run for this change.

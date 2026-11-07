@@ -1,3 +1,4 @@
+import { PageBody } from "../ui";
 import { Link } from "react-router-dom";
 import { useMemo, useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
@@ -12,6 +13,7 @@ import { PageHeading, RequestState } from "../components";
 import { useLiveResource } from "../useLiveResource";
 import { useResource } from "../useResource";
 import { YouTubeBulk } from "./YouTubeBulk";
+import "./Admin.css";
 
 type Entry = {
   kind: "video" | "playlist";
@@ -498,19 +500,19 @@ export function YouTube() {
   }
 
   return (
-    <>
+    <PageBody>
       <PageHeading title="YouTube">
         <Button asChild variant="soft">
           <Link to="/youtube/subscriptions">Subscriptions</Link>
         </Button>
       </PageHeading>
       {error && (
-        <p className="error-box" role="alert">
+        <p className="rs-alert is-danger" role="alert">
           {error}
         </p>
       )}
       {notice && (
-        <p className="save-success" role="status">
+        <p className="rs-alert is-success" role="status">
           {notice}
         </p>
       )}
@@ -541,7 +543,7 @@ export function YouTube() {
       {mode === "single" ? (
         <>
           <section
-            className="panel yt-downloader"
+            className="rs-panel yt-downloader"
             aria-label="Add YouTube download"
           >
             <div className="yt-step-head">
@@ -577,7 +579,7 @@ export function YouTube() {
                     <span>{inspection.channel}</span>
                   </div>
                   {inspection.truncated && (
-                    <span className="ui-chip">First 100</span>
+                    <span className="rs-label">First 100</span>
                   )}
                 </div>
                 <ul className="yt-results" aria-label="Source results">
@@ -632,7 +634,7 @@ export function YouTube() {
 
           {selected && (
             <section
-              className="panel yt-downloader"
+              className="rs-panel yt-downloader"
               aria-label="Choose destination"
             >
               <div className="yt-step-head">
@@ -727,7 +729,7 @@ export function YouTube() {
                     }}
                   />
                 </label>
-                <label className="check-label">
+                <label className="rs-check">
                   <input
                     type="checkbox"
                     checked={automaticSubtitles}
@@ -747,7 +749,7 @@ export function YouTube() {
                   <p>The reviewed file is still verified before import.</p>
                 </div>
               </div>
-              <div className="import-actions">
+              <div className="rs-form-actions">
                 <Button
                   variant="soft"
                   disabled={!!busy || !target}
@@ -776,7 +778,7 @@ export function YouTube() {
       ) : (
         <>
           <section
-            className="panel yt-downloader"
+            className="rs-panel yt-downloader"
             aria-label="Playlist to series"
           >
             <div className="yt-step-head">
@@ -819,7 +821,7 @@ export function YouTube() {
                   <div className="yt-show-match">
                     {batch.candidates.length > 0 ? (
                       <>
-                        <p className="field-help">
+                        <p className="rs-form-help">
                           Choose the saved show this playlist belongs to.
                         </p>
                         <label>
@@ -842,7 +844,7 @@ export function YouTube() {
                         </label>
                       </>
                     ) : (
-                      <p className="field-help">
+                      <p className="rs-form-help">
                         No saved show matched this playlist. Search your TV
                         library.
                       </p>
@@ -914,7 +916,7 @@ export function YouTube() {
                       </label>
                     </div>
                     {batch.seasons.length === 0 && (
-                      <p className="field-help">
+                      <p className="rs-form-help">
                         Load the show's seasons on its TV page first.
                       </p>
                     )}
@@ -933,7 +935,7 @@ export function YouTube() {
                         </p>
                       </div>
                     </div>
-                    <div className="yt-batch-actions">
+                    <div className="rs-form-actions">
                       <Button
                         size="1"
                         variant="soft"
@@ -968,7 +970,7 @@ export function YouTube() {
                       batch.entries.some(
                         (entry) => entry.status === "available",
                       ) && (
-                        <p className="field-help">
+                        <p className="rs-form-help">
                           Matched episodes already in the library are disabled.
                           Enable replacement in step 4 to select new versions.
                         </p>
@@ -1050,7 +1052,7 @@ export function YouTube() {
                           <option value="720">720p</option>
                         </select>
                       </label>
-                      <label className="check-label">
+                      <label className="rs-check">
                         <input
                           type="checkbox"
                           checked={replaceExisting}
@@ -1070,7 +1072,7 @@ export function YouTube() {
                         />{" "}
                         Replace episodes already in the library
                       </label>
-                      <label className="check-label">
+                      <label className="rs-check">
                         <input
                           type="checkbox"
                           checked={keepSource}
@@ -1081,12 +1083,12 @@ export function YouTube() {
                       </label>
                     </div>
                     {replaceExisting && availableChosen > 0 && (
-                      <p className="field-help">
+                      <p className="rs-form-help">
                         Replacement downloads keep the old file and require a
                         separate swap review in Organize library.
                       </p>
                     )}
-                    <div className="import-actions">
+                    <div className="rs-form-actions">
                       <Button
                         disabled={!!busy || chosenEntries.length === 0}
                         onClick={queueBatch}
@@ -1147,8 +1149,8 @@ export function YouTube() {
           />
         )}
 
-      <section className="panel yt-queue" aria-label="YouTube downloads">
-        <div className="ui-section-head">
+      <section className="rs-panel yt-queue" aria-label="YouTube downloads">
+        <div className="rs-panel-header">
           <h2>Downloads</h2>
           <Button variant="ghost" onClick={jobs.reload}>
             Refresh
@@ -1176,17 +1178,17 @@ export function YouTube() {
         {importReview && (
           <div className="review-box" aria-label="Import review">
             <h3>{importReview.target_label}</h3>
-            <p className="field-help">{importReview.destination}</p>
+            <p className="rs-form-help">{importReview.destination}</p>
             <p>
               {bytes(importReview.size_bytes)} · SHA-256{" "}
               {importReview.sha256.slice(0, 16)}…
             </p>
             {importReview.subtitles.map((sub) => (
-              <p key={sub.language} className="field-help">
+              <p key={sub.language} className="rs-form-help">
                 {sub.language}: {sub.destination} · SHA-256 {sub.sha256}
               </p>
             ))}
-            <div className="import-actions">
+            <div className="rs-form-actions">
               <Button disabled={!!busy} onClick={importJob}>
                 Import
               </Button>
@@ -1198,7 +1200,7 @@ export function YouTube() {
         )}
       </section>
 
-      <details className="panel yt-library">
+      <details className="rs-panel yt-library">
         <summary>
           <h2>YouTube library</h2>
           <span>{files.data?.items.length ?? 0}</span>
@@ -1223,7 +1225,7 @@ export function YouTube() {
           ))}
         </ul>
       </details>
-    </>
+    </PageBody>
   );
 }
 
@@ -1383,7 +1385,7 @@ function TargetPicker(props: {
                   ))}
                 </select>
               </label>
-              <div className="import-actions">
+              <div className="rs-form-actions">
                 <Button
                   size="1"
                   variant="soft"
@@ -1510,7 +1512,7 @@ function JobCard({
           </div>
         )}
         {job.message && <span className="yt-job-message">{job.message}</span>}
-        <div className="import-actions">
+        <div className="rs-form-actions">
           {replacement && (
             <Button asChild size="1" variant="soft">
               <Link

@@ -1,5 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
+import { Inbox, LogOut } from "lucide-react";
+import { Alert, FieldSet, Label, PageBody, Table } from "../ui";
+import "./Admin.css";
 import { api, messageFor } from "../api";
 import { useAuth } from "../auth";
 import { PageHeading, RequestState } from "../components";
@@ -90,102 +93,155 @@ export function RequesterHome() {
     }
   }
   return (
-    <main className="page-content">
-      <PageHeading
-        title="My requests"
-        description={`Signed in as ${session.username}`}
-      />
-      <Button
-        variant="soft"
-        onClick={() =>
-          void signOut().catch(() => setError("Could not sign out. Try again."))
-        }
-      >
-        Sign out
-      </Button>
-      <section className="panel settings-form">
-        <h2>Find a title</h2>
-        <form onSubmit={(e) => void search(e)} className="movie-search-form">
-          <label>
-            Type{" "}
-            <select
-              value={kind}
-              disabled={pending}
-              onChange={(e) => {
-                setKind(e.target.value as "movie" | "series");
-                setResults([]);
-              }}
-            >
-              <option value="movie">Movie</option>
-              <option value="series">TV show</option>
-            </select>
-          </label>
-          <TextField.Root
-            aria-label="Title"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            maxLength={200}
-          />
-          <Button type="submit" disabled={pending}>
-            Search
+    <div className="rs-app">
+      <header className="rs-header">
+        <div className="rs-header-logo">
+          <span className="rs-logo">
+            <span className="rs-logo-mark">
+              <Inbox size={18} aria-hidden="true" />
+            </span>
+            <span className="rs-logo-text">ReelScarey</span>
+          </span>
+        </div>
+        <div className="rs-header-actions">
+          <span className="adm-requester-user">{session.username}</span>
+          <Button
+            variant="soft"
+            color="gray"
+            onClick={() =>
+              void signOut().catch(() =>
+                setError("Could not sign out. Try again."),
+              )
+            }
+          >
+            <LogOut size={15} aria-hidden="true" /> Sign out
           </Button>
-        </form>
-        {error && <p role="alert">{error}</p>}
-        <ul>
-          {results.map((item) => (
-            <li key={item.tmdb_id}>
-              {item.title}
-              {item.year ? ` (${item.year})` : ""}
-              {item.in_library ? " · In library" : ""}{" "}
-              <Button
-                size="1"
+        </div>
+      </header>
+      <main id="main-content" className="adm-requester-main" tabIndex={-1}>
+        <PageBody>
+          <PageHeading
+            title="My requests"
+            description={`Signed in as ${session.username}`}
+          />
+          <FieldSet legend="Find a title">
+            <form
+              onSubmit={(e) => void search(e)}
+              className="adm-request-search"
+            >
+              <select
+                aria-label="Type"
+                value={kind}
                 disabled={pending}
-                onClick={() => void submit(item.tmdb_id)}
+                onChange={(e) => {
+                  setKind(e.target.value as "movie" | "series");
+                  setResults([]);
+                }}
               >
-                Request
+                <option value="movie">Movie</option>
+                <option value="series">TV show</option>
+              </select>
+              <TextField.Root
+                aria-label="Title"
+                placeholder="Search for a movie or show"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                maxLength={200}
+              />
+              <Button type="submit" disabled={pending}>
+                Search
               </Button>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section className="panel">
-        <h2>My submitted requests</h2>
-        <RequestState
-          loading={requests.loading}
-          error={requests.error}
-          retry={requests.reload}
-        />
-        {requests.data &&
-          (requests.data.items.length ? (
-            <ul>
-              {requests.data.items.map((item) => (
-                <li key={item.id}>
-                  #{item.id} · {item.title} ·{" "}
-                  {item.kind === "movie" ? "Movie" : "TV show"} · {item.state}
-                  {item.available ? " · Media available" : ""}
-                  {item.notification
-                    ? ` · Notification ${item.notification}`
-                    : ""}
-                  {item.notification === "uncertain" && (
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => void retryNotification(item.id)}
-                    >
-                      Retry notification (may duplicate)
-                    </button>
-                  )}
-                </li>
+            </form>
+            {error && <Alert kind="danger">{error}</Alert>}
+            {results.length > 0 && (
+              <Table label="Search results">
+                <tbody>
+                  {results.map((item) => (
+                    <tr key={item.tmdb_id}>
+                      <td>
+                        {item.title}
+                        {item.year ? ` (${item.year})` : ""}{" "}
+                        {item.in_library && (
+                          <Label kind="success">In library</Label>
+                        )}
+                      </td>
+                      <td className="is-actions">
+                        <Button
+                          size="1"
+                          disabled={pending}
+                          onClick={() => void submit(item.tmdb_id)}
+                        >
+                          Request
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+          </FieldSet>
+          <FieldSet legend="My submitted requests">
+            <RequestState
+              loading={requests.loading}
+              error={requests.error}
+              retry={requests.reload}
+            />
+            {requests.data &&
+              (requests.data.items.length ? (
+                <Table label="My submitted requests">
+                  <thead>
+                    <tr>
+                      <th scope="col">Title</th>
+                      <th scope="col">Type</th>
+                      <th scope="col">State</th>
+                      <th scope="col">Notification</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {requests.data.items.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          #{item.id} · {item.title}
+                        </td>
+                        <td>{item.kind === "movie" ? "Movie" : "TV show"}</td>
+                        <td>
+                          <Label kind={item.available ? "success" : "info"}>
+                            {item.state}
+                          </Label>
+                          {item.available ? " · Media available" : ""}
+                        </td>
+                        <td>
+                          {item.notification
+                            ? `Notification ${item.notification}`
+                            : "—"}
+                          {item.notification === "uncertain" && (
+                            <>
+                              {" "}
+                              <Button
+                                size="1"
+                                variant="soft"
+                                disabled={pending}
+                                onClick={() => void retryNotification(item.id)}
+                              >
+                                Retry notification (may duplicate)
+                              </Button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              ) : (
+                <p className="rs-muted">No requests yet.</p>
               ))}
-            </ul>
-          ) : (
-            <p>No requests yet.</p>
-          ))}
-      </section>
-      <RequestLists onImported={requests.reload} />
-      <DiscordSettings />
-      <ChangePassword />
-    </main>
+          </FieldSet>
+          <RequestLists onImported={requests.reload} />
+          <DiscordSettings />
+          <ChangePassword />
+        </PageBody>
+      </main>
+    </div>
   );
 }
 
@@ -214,7 +270,7 @@ function ChangePassword() {
     }
   }
   return (
-    <section className="panel settings-form">
+    <section className="rs-panel rs-stack">
       <h2>Change password</h2>
       <p>Changing your password signs out all of your request sessions.</p>
       <form onSubmit={(e) => void save(e)}>
@@ -342,7 +398,7 @@ function RequestLists({ onImported }: { onImported: () => void }) {
     }
   }
   return (
-    <section className="panel settings-form">
+    <section className="rs-panel rs-stack">
       <h2>Import lists</h2>
       <p>
         Public or token-authorized private TMDb/Trakt lists and IMDb lists
@@ -540,7 +596,7 @@ function DiscordSettings() {
     }
   }
   return (
-    <section className="panel settings-form">
+    <section className="rs-panel rs-stack">
       <h2>Discord notifications</h2>
       <p>
         Receive a webhook message when an approved request is available. For TV,
@@ -664,14 +720,14 @@ export function AdminRequests() {
     }
   }
   return (
-    <>
+    <PageBody>
       <PageHeading title="Requests" />
       {error && (
-        <p role="alert" className="form-error">
+        <p role="alert" className="rs-form-error">
           {error}
         </p>
       )}
-      <section className="panel settings-form">
+      <section className="rs-panel rs-stack">
         <h2>Request accounts</h2>
         <form onSubmit={(e) => void create(e)}>
           <label>
@@ -723,7 +779,7 @@ export function AdminRequests() {
         )}
       </section>
       <BotSettings />
-      <section className="panel">
+      <section className="rs-panel">
         <h2>Requested titles</h2>
         <RequestState
           loading={requests.loading}
@@ -785,7 +841,7 @@ export function AdminRequests() {
             <p>No requests yet.</p>
           ))}
       </section>
-    </>
+    </PageBody>
   );
 }
 
@@ -911,7 +967,7 @@ function BotSettings() {
     }
   }
   return (
-    <section className="panel settings-form">
+    <section className="rs-panel rs-stack">
       <h2>Discord companion bot</h2>
       <p>
         Requires a Discord application, bot token, and a public HTTPS address

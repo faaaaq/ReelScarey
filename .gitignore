@@ -22,3 +22,4 @@ setup-token
 /server.env
 # Local OpenCode permission config, not part of the application
 /opencode.jsonc
+web/tsconfig.tsbuildinfo

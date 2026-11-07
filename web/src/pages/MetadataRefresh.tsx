@@ -1,9 +1,11 @@
+import { PageBody } from "../ui";
 import { useState, type FormEvent } from "react";
 import { Button } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useLiveResource } from "../useLiveResource";
+import "./Admin.css";
 type Schedule = {
   enabled: boolean;
   interval_hours: number;
@@ -20,7 +22,7 @@ type Schedule = {
 export function MetadataRefresh() {
   const resource = useLiveResource<Schedule>("/system/metadata-refresh", 5000);
   return (
-    <>
+    <PageBody>
       <PageHeading title="Metadata refresh" />
       <RequestState
         loading={resource.loading}
@@ -34,7 +36,7 @@ export function MetadataRefresh() {
           reload={resource.reload}
         />
       )}
-    </>
+    </PageBody>
   );
 }
 function RefreshForm({
@@ -81,7 +83,7 @@ function RefreshForm({
   return (
     <>
       <form
-        className="panel system-panel"
+        className="rs-panel rs-stack"
         onSubmit={(e: FormEvent) => {
           e.preventDefault();
           void action();
@@ -146,13 +148,13 @@ function RefreshForm({
           </Button>
         </fieldset>
         {error && (
-          <p role="alert" className="error-box">
+          <p role="alert" className="rs-alert is-danger">
             {error}
           </p>
         )}
         {notice && <p role="status">{notice}</p>}
       </form>
-      <section className="panel system-panel">
+      <section className="rs-panel rs-stack">
         <h2>Current status</h2>
         <p>{initial.message}</p>
         <p>

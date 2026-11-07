@@ -707,3 +707,17 @@ Announce sources can store the tracker download credential now, encrypted and
 write-only: IPTorrents passkey, TorrentLeech/BeyondHD RSS key, FileList/
 AnimeBytes passkey or MyAnonamouse session cookie. It is not used until the
 automatic-grab step is enabled.
+
+## Version 0.38 interface overhaul
+
+The interface follows the Sonarr/Radarr design language: a fixed header with
+global search, a sidebar whose sections reveal child pages, page toolbars,
+fieldset-style settings and dense tables. Settings is split into routed pages
+(General, Media Management, Connect, Primary Connections) with an index; old
+`#section` links redirect. System shows status, health checks and resources.
+Torrents is a qBittorrent-WebUI-style console for the built-in client with
+filters, multi-select, context menu, queue and speed limits, share limits,
+per-file priorities (not for ReelScarey downloads) and a properties panel;
+tracker addresses are shortened to hide passkeys and the native WebUI and
+client preferences stay unexposed. See [UI.md](docs/UI.md) and
+[TORRENTS.md](docs/TORRENTS.md).
