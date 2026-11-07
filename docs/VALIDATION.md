@@ -2076,3 +2076,10 @@ No owner-server media or download client was used for these checks.
   indeterminate bar with downloaded bytes/speed; the verified completion stores
   the real total. This prevents a short fragment from appearing as 84% of a
   one-hour episode.
+
+## Version 0.37.3 Multi-episode replacement reviews
+
+- Idle checks now ignore other YouTube jobs in awaiting_review while still
+  blocking on queued, downloading or importing jobs. This allows reviewing a
+  batch of acquired episode replacements one after another without cancelling
+  the others. A unit test covers both states.

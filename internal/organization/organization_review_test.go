@@ -857,3 +857,24 @@ func TestBulkOrganizationQueuesIndependentTitleUpdates(t *testing.T) {
 		}
 	}
 }
+
+func TestIdleAllowsAnotherAcquiredYouTubeEpisode(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+	f.movie(t, 1, "Movies/Review/video.mkv", []byte("owned review video"))
+	if _, err := f.db.Exec(`INSERT INTO youtube_reviews(id,video_id,video_title,channel,target_kind,media_id,target_snapshot,expires_at) VALUES('r','abcdefghijk','Episode','','movie',1,'{}',9999999999)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`INSERT INTO youtube_jobs(id,review_id,video_id,video_title,channel,target_kind,media_id,target_snapshot,state,created_at,updated_at) VALUES('j','r','abcdefghijk','Episode','','movie',1,'{}','awaiting_review',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := idleExcept(ctx, f.db, 1, 1, "", ""); err != nil {
+		t.Fatal("an acquired episode awaiting review blocked organization", err)
+	}
+	if _, err := f.db.Exec(`UPDATE youtube_jobs SET state='downloading' WHERE id='j'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := idleExcept(ctx, f.db, 1, 1, "", ""); err == nil {
+		t.Fatal("an active YouTube download did not block organization")
+	}
+}

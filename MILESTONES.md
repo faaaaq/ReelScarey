@@ -293,3 +293,9 @@ See [announce feeds](docs/ANNOUNCE.md).
 - [x] Active YouTube jobs keep an indeterminate bar with downloaded bytes/speed;
   fragmented fragment totals never drive a false percentage, and the verified
   completion records the real file size.
+
+## Version 0.37.3 Multi-episode replacement reviews
+
+- [x] An acquired YouTube replacement awaiting review no longer blocks
+  organization or replacement work for another episode; only queued,
+  downloading or importing jobs fence the media.
