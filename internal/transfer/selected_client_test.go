@@ -10,6 +10,47 @@ import (
 // client. Queue-side validation re-derives the same choice inside the
 // reservation transaction, so a changed default fails the job instead of
 // silently rerouting it.
+func TestClientReadinessCountsBuiltInFallbackAndBundledUsenet(t *testing.T) {
+	ctx := context.Background()
+	f := setupWorkflow(t)
+	if e := f.s.Remove(ctx, "qbittorrent"); e != nil {
+		t.Fatal(e)
+	}
+	status, e := f.s.Status(ctx, "clients")
+	if e != nil || status.Configured {
+		t.Fatal("an installation with no client reported readiness", status, e)
+	}
+	if _, e = f.s.createBundled(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.db.Exec(`UPDATE download_client_preferences SET torrent='',usenet=''`); e != nil {
+		t.Fatal(e)
+	}
+	status, e = f.s.Status(ctx, "clients")
+	if e != nil || !status.Configured {
+		t.Fatal("the enabled built-in torrent fallback was not usable", status, e)
+	}
+	if status, e = f.s.Status(ctx, "torrent"); e != nil || !status.Configured {
+		t.Fatal("torrent readiness did not follow the built-in fallback", status, e)
+	}
+	if _, e = f.s.db.Exec(`UPDATE download_clients SET enabled=0 WHERE id=?`, builtinClientID); e != nil {
+		t.Fatal(e)
+	}
+	if status, e = f.s.Status(ctx, "clients"); e != nil || status.Configured {
+		t.Fatal("a disabled built-in torrent client counted as ready", status, e)
+	}
+	news := []byte(`{"news_host":"news.example.com","news_port":563,"news_connections":2}`)
+	if e = f.s.secrets.SetNamed(ctx, clientSecretName(builtinUsenetClientID), news); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.s.db.Exec(`INSERT INTO download_clients(id,name,kind,enabled,builtin,created_at,updated_at) VALUES(?,?,?,1,1,1,1)`, builtinUsenetClientID, builtinUsenetName, "sabnzbd"); e != nil {
+		t.Fatal(e)
+	}
+	if status, e = f.s.Status(ctx, "clients"); e != nil || !status.Configured {
+		t.Fatal("an enabled built-in Usenet client with a news server was not usable", status, e)
+	}
+}
+
 func TestSelectedClientPrefersDefaultsThenSettingsThenBuiltIn(t *testing.T) {
 	ctx := context.Background()
 	f := setupWorkflow(t)

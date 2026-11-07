@@ -145,8 +145,11 @@ Do not add global element selectors in page files.
   paginated view and says so.
 - Filters, sort and view live in the URL. Changing a filter resets only the
   legacy page parameter. Selection stays visible with checkboxes; "Select all
-  shown" is capped at 200 IDs and states the cap. Bulk review dialogs are
-  unchanged.
+  shown" selects every title currently rendered (up to the server's 5,000-item
+  all-view limit) and states the real count. If the server falls back to the
+  paginated view, the control covers that page only and the notice says so;
+  changing pages or filters clears the selection. Bulk review dialogs still
+  review every selected ID before writing.
 - Manual release search links a release title to its tracker page (`info_url`)
   in a new tab when the indexer supplies one, and leaves it as text otherwise.
   Age uses RFC3339, RFC1123Z or Go time layouts and shows an em dash when the
@@ -156,6 +159,34 @@ Do not add global element selectors in page files.
   queue has no completed filter and links to `/timeline`.
 - Automation keeps schedules, profiles and run history. Per-title quality
   profiles are assigned with Bulk profiles on the library pages.
+
+## Calendar, batches and Dashboard (0.39.0)
+
+- Calendar movie rows can carry a `release_kind` (`theatrical`, `digital` or
+  `physical`) with separate `theatrical_date`, `digital_date` and
+  `physical_date` values. Month chips and the agenda label the kind with a
+  small tag; the entry dialog lists every saved date and shows an em dash when
+  a value is missing. TV entries and their labels are unchanged.
+- The calendar-only **Releases** toolbar menu filters All, Theatrical, Digital
+  and Physical through the `release` query parameter. The choice is part of the
+  remembered calendar filters and Reset clears it.
+- Calendar and Wanted refresh in the background while the page is open
+  (25 seconds and 30 seconds). A successful refresh shows "Updated just now";
+  a transient failure keeps the last data and offers "Retry now". Refreshing
+  never closes an entry dialog or moves the scroll position.
+- Bulk searches confirm the saved Automation mode. While a run is active an
+  indeterminate progress bar reports the live checked/queued counters from
+  `/automation/runs`; search-only runs say that results are saved for review,
+  and a run that checked nothing explains the likely waiting state from its
+  saved message.
+- Library monitoring and profile reviews show an indeterminate bar with
+  "Reviewing…" and "Applying…" status while the single request is pending.
+  These busy indicators never steal focus or block the rest of the page.
+- The Dashboard is a compact working overview: a status strip (active
+  downloads, missing, next seven days, system health), an Activity panel with
+  live queue progress and recent History when idle, Wanted and Upcoming panels,
+  and quiet Library counts with recent title events. Every value comes from an
+  existing endpoint; empty states say what is actually missing.
 
 ## Usenet page
 

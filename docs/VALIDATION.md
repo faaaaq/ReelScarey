@@ -2216,3 +2216,15 @@ Run locally on Windows (development tools only; Docker remains the target):
 - Not run locally: a Docker image build and the gated live SABnzbd test
   (REELSCAREY_LIVE_BUNDLED_SAB=1). The publish workflow builds the release
   candidate; verify the image and the live daemon before relying on them.
+
+## Version 0.39.1 whole-library selection, future-only monitoring, release dates
+
+- gofmt clean; go vet and the full Go suite passed (schema 57). New tests cover
+  5000-ID monitoring, mixed-revision refusal, future-only monitoring, TMDb
+  release_dates parsing, per-kind calendar rows and filters, and a bulk search
+  that queues with only the built-in client configured.
+- Frontend format:check, check, the full suite (42 files, 253 tests) and the
+  build passed. New tests cover >200 selection, A-Z/date filters, live calendar
+  refresh, batch progress and the Dashboard.
+- Docker and live provider acceptance were not run locally; the publish
+  workflow verifies the release candidate on the tag.

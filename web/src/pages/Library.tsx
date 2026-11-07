@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, DropdownMenu, TextField } from "@radix-ui/themes";
 import {
   ArrowDownUp,
@@ -183,10 +183,17 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
   const [monitoringMessage, setMonitoringMessage] = useState("");
+  const wasCapped = useRef(false);
   useEffect(() => {
     setSelected([]);
     setMonitoringMessage("");
   }, [selectionScope, requestedPage]);
+  // Entering the paginated fallback cannot honour a library-wide selection, so
+  // drop it without touching the last successful bulk-action message.
+  useEffect(() => {
+    if (capped && !wasCapped.current) setSelected([]);
+    wasCapped.current = capped;
+  }, [capped]);
   function reload() {
     all.reload();
     if (capped) paged.reload();
@@ -267,9 +274,10 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const page = capped ? (data?.page ?? requestedPage) : 1;
   const groups = groupedTitles(items);
   const letters = sortLetters(groups.map(([letter]) => letter));
-  // Bulk reviews stay bounded so one click cannot queue an unbounded write.
-  const selectable = items.slice(0, 200);
-  const selectLimit = Math.min(items.length, 200);
+  // The server accepts up to 5,000 explicit IDs in one reviewed write, so
+  // "Select all shown" covers everything currently rendered. In the paginated
+  // fallback that is exactly the current page; changing pages clears it.
+  const selectable = items;
   const allSelected =
     selectable.length > 0 &&
     selectable.every((item) => selected.includes(item.id));
@@ -839,9 +847,9 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
               </label>
               <strong>{selected.length} selected</strong>
               <span className="rs-muted rs-small">
-                Select all shown covers up to {selectLimit}{" "}
-                {selectLimit === 1 ? singular : noun}; filters{" "}
-                {capped ? "and pages " : ""}clear the selection.
+                {capped
+                  ? `Select all shown covers the ${items.length} ${items.length === 1 ? singular : noun} on this page; changing pages or filters clears the selection.`
+                  : `Select all shown covers all ${items.length} ${items.length === 1 ? singular : noun} currently shown; changing filters clears the selection.`}
               </span>
               {selected.length > 0 && (
                 <Button

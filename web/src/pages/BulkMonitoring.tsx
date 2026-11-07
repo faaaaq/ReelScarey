@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
-import { Alert, LoadingIndicator, Modal, Table } from "../ui";
+import { Alert, BatchProgress, Modal, Table } from "../ui";
 import "./Library.css";
 
 type ReviewItem = {
@@ -187,7 +187,17 @@ export function BulkMonitoring({
         }
       >
         {busy === "preview" && (
-          <LoadingIndicator label="Loading current monitoring preferences…" />
+          <BatchProgress
+            label="Reviewing monitoring"
+            message={`Reviewing ${ids.length} ${ids.length === 1 ? "title" : "titles"}…`}
+          />
+        )}
+        {busy === "apply" && review && (
+          <BatchProgress
+            label="Applying monitoring"
+            message={`Applying monitoring to ${review.items.length} ${review.items.length === 1 ? "title" : "titles"}…`}
+            detail="Changes apply together only if every reviewed revision still matches."
+          />
         )}
         {error && <Alert kind="danger">{error}</Alert>}
         {review && (

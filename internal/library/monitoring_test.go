@@ -185,14 +185,14 @@ func TestBulkTVMonitoringKeepsChildSelectionsAndInvalidatesTVRevision(t *testing
 func TestMonitoringBoundsMissingTargetsAndCancellation(t *testing.T) {
 	db, s, ids, _ := monitoringFixture(t)
 	ctx := context.Background()
-	many := make([]int64, 101)
-	for i := range many {
-		many[i] = int64(i + 1)
+	tooMany := make([]int64, 5001)
+	for i := range tooMany {
+		tooMany[i] = int64(i + 1)
 	}
 	for _, tc := range []struct {
 		kind string
 		ids  []int64
-	}{{"movie", nil}, {"all", ids}, {"movie", []int64{ids[0], ids[0]}}, {"movie", []int64{0}}, {"movie", many}} {
+	}{{"movie", nil}, {"all", ids}, {"movie", []int64{ids[0], ids[0]}}, {"movie", []int64{0}}, {"movie", tooMany}} {
 		if _, e := s.ReviewMonitoring(ctx, tc.kind, tc.ids); !errors.Is(e, library.ErrMonitoringInput) {
 			t.Fatal(tc, e)
 		}
@@ -220,6 +220,39 @@ func TestMonitoringBoundsMissingTargetsAndCancellation(t *testing.T) {
 	db.QueryRow(`SELECT SUM(monitored) FROM media_items`).Scan(&n)
 	if n != 2 {
 		t.Fatal("invalid request changed preferences")
+	}
+}
+
+func TestMonitoringAcceptsLargeExplicitSelectionsAndStillRefusesMixedReviews(t *testing.T) {
+	db, s, ids, _ := monitoringFixture(t)
+	ctx := context.Background()
+	many := append([]int64{}, ids...)
+	for i := len(many) + 1; i <= 101; i++ {
+		v, _, e := s.AddMovie(ctx, metadata.Movie{TMDbID: int64(i), Title: "Large selection movie"}, false)
+		if e != nil {
+			t.Fatal(e)
+		}
+		many = append(many, v.ID)
+	}
+	review, e := s.ReviewMonitoring(ctx, "movie", many)
+	if e != nil || len(review) != 101 {
+		t.Fatal("101 explicit IDs were not accepted", len(review), e)
+	}
+	var before int
+	if e = db.QueryRow(`SELECT SUM(monitored) FROM media_items`).Scan(&before); e != nil {
+		t.Fatal(e)
+	}
+	mixed := expectations(review)
+	mixed[len(mixed)-1].AutomationRevision++
+	if _, e = s.ApplyMonitoring(ctx, "movie", mixed, false); !errors.Is(e, library.ErrMonitoringConflict) {
+		t.Fatal("mixed revision was accepted", e)
+	}
+	var after int
+	if e = db.QueryRow(`SELECT SUM(monitored) FROM media_items`).Scan(&after); e != nil || after != before {
+		t.Fatal("mixed revision partially changed titles", before, after, e)
+	}
+	if _, e = s.ApplyMonitoring(ctx, "movie", expectations(review), false); e != nil {
+		t.Fatal(e)
 	}
 }
 

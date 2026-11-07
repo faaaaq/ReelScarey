@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 )
@@ -341,9 +342,19 @@ func (s *Store) MonitorEpisodes(ctx context.Context, id, revision int64, season 
 	return tx.Commit()
 }
 
-// MonitorAllEpisodes turns monitoring on for the show, its regular seasons and
-// every loaded episode. Specials keep their explicit choices. The whole change
-// is one revision-fenced transaction, so a stale editor cannot be overwritten.
+// monitorDatePredicate accepts only a complete civil date, matching the
+// Calendar and scheduler rule. Dates are compared to SQLite's UTC today.
+const monitorDatePredicate = `length(%s)=10 AND substr(%s,1,4) BETWEEN '0001' AND '9999' AND date(%s,'+0 days')=%s AND %s>=date('now')`
+
+func monitorDateSQL(column string) string {
+	return fmt.Sprintf(monitorDatePredicate, column, column, column, column, column)
+}
+
+// MonitorAllEpisodes turns monitoring on for the show and for regular episodes
+// airing today or later (UTC). A regular season is monitored only when it has
+// such an episode or its own air date is today or later. Past, undated and
+// special episodes keep their explicit choices, and nothing is ever paused.
+// The whole change is one revision-fenced transaction.
 func (s *Store) MonitorAllEpisodes(ctx context.Context, id, revision int64) error {
 	if revision < 1 {
 		return ErrMonitoringInput
@@ -359,10 +370,12 @@ func (s *Store) MonitorAllEpisodes(ctx context.Context, id, revision int64) erro
 	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET monitored=1 WHERE id=? AND kind='series'`, id); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE seasons SET monitored=1 WHERE series_id=? AND number>0`, id); e != nil {
+	seasonDate := monitorDateSQL("s.air_date")
+	episodeDate := monitorDateSQL("e.air_date")
+	if _, e = tx.ExecContext(ctx, `UPDATE seasons AS s SET monitored=1 WHERE s.series_id=? AND s.number>0 AND s.monitored=0 AND ((`+seasonDate+`) OR EXISTS(SELECT 1 FROM episodes e WHERE e.season_id=s.id AND `+episodeDate+`))`, id); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE episodes SET monitored=1 WHERE season_id IN (SELECT id FROM seasons WHERE series_id=? AND number>0)`, id); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE episodes AS e SET monitored=1 WHERE e.monitored=0 AND e.season_id IN (SELECT s.id FROM seasons s WHERE s.series_id=? AND s.number>0) AND `+episodeDate, id); e != nil {
 		return e
 	}
 	return tx.Commit()
@@ -370,7 +383,8 @@ func (s *Store) MonitorAllEpisodes(ctx context.Context, id, revision int64) erro
 
 // MonitorAllShows applies MonitorAllEpisodes to every show in one scope. It is
 // an explicit bulk owner action, so it does not require per-show revisions; the
-// category is fixed to the three saved collections.
+// category is fixed to the three saved collections. As with the per-show action,
+// only today's or future regular episodes and their seasons are turned on.
 func (s *Store) MonitorAllShows(ctx context.Context, category string) (int, error) {
 	if category != "" && category != "standard" && category != "anime" {
 		return 0, ErrMonitoringInput
@@ -393,10 +407,12 @@ func (s *Store) MonitorAllShows(ctx context.Context, category string) (int, erro
 	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET monitored=1 WHERE id IN (`+scope+`)`, args...); e != nil {
 		return 0, e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE seasons SET monitored=1 WHERE number>0 AND series_id IN (`+scope+`)`, args...); e != nil {
+	seasonDate := monitorDateSQL("s.air_date")
+	episodeDate := monitorDateSQL("e.air_date")
+	if _, e = tx.ExecContext(ctx, `UPDATE seasons AS s SET monitored=1 WHERE s.number>0 AND s.monitored=0 AND s.series_id IN (`+scope+`) AND ((`+seasonDate+`) OR EXISTS(SELECT 1 FROM episodes e WHERE e.season_id=s.id AND `+episodeDate+`))`, args...); e != nil {
 		return 0, e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE episodes SET monitored=1 WHERE season_id IN (SELECT id FROM seasons WHERE number>0 AND series_id IN (`+scope+`))`, args...); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE episodes AS e SET monitored=1 WHERE e.monitored=0 AND e.season_id IN (SELECT s.id FROM seasons s WHERE s.number>0 AND s.series_id IN (`+scope+`)) AND `+episodeDate, args...); e != nil {
 		return 0, e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE series_details SET revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE media_id IN (`+scope+`)`, args...); e != nil {

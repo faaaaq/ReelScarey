@@ -33,6 +33,9 @@ func TestTMDbSearchDetailsAndValidate(t *testing.T) {
 			}
 			return response(200, `{"page":2,"total_pages":3,"total_results":41,"results":[{"id":11,"title":"A & B","overview":"A test fixture","poster_path":"/poster.jpg","release_date":"2020-01-02"}]}`), nil
 		case "/3/movie/11":
+			if r.URL.Query().Get("append_to_response") != "release_dates" {
+				t.Fatal("release dates were not requested")
+			}
 			return response(200, `{"id":11,"title":"A & B","poster_path":"/poster.jpg","release_date":"2020-01-02","runtime":101}`), nil
 		default:
 			t.Fatalf("unexpected endpoint: %s", r.URL.Path)
@@ -51,6 +54,27 @@ func TestTMDbSearchDetailsAndValidate(t *testing.T) {
 		t.Fatalf("bad details: %+v %v", movie, err)
 	}
 }
+func TestTMDbReleaseDatesParseTheatricalDigitalAndPhysical(t *testing.T) {
+	client := newClient("https://api.themoviedb.org/3", &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/3/movie/12" || r.URL.Query().Get("append_to_response") != "release_dates" {
+			t.Fatalf("unexpected release-date request: %s", r.URL.String())
+		}
+		return response(200, `{"id":12,"title":"Three Dates","release_date":"2026-05-01",
+			"release_dates":{"results":[
+				{"iso_3166_1":"GB","release_dates":[{"type":3,"release_date":"2026-05-20T00:00:00.000Z"},{"type":4,"release_date":"2026-06-01T00:00:00.000Z"},{"type":5,"release_date":"2026-07-01T00:00:00.000Z"}]},
+				{"iso_3166_1":"US","release_dates":[{"type":1,"release_date":"2026-04-20T00:00:00.000Z"},{"type":2,"release_date":"2026-05-15T00:00:00.000Z"},{"type":3,"release_date":"2026-05-10T00:00:00.000Z"},{"type":4,"release_date":"2026-06-02T00:00:00.000Z"},{"type":5,"release_date":"2026-07-03T00:00:00.000Z"}]},
+				{"iso_3166_1":"FR","release_dates":[{"type":4,"release_date":"not-a-date"}]}
+			]}}`), nil
+	})})
+	movie, e := client.Movie(context.Background(), token, 12)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if movie.ReleaseDate != "2026-05-01" || movie.TheatricalReleaseDate != "2026-05-10" || movie.DigitalReleaseDate != "2026-06-02" || movie.PhysicalReleaseDate != "2026-07-03" {
+		t.Fatalf("release-dates parsing: %+v", movie)
+	}
+}
+
 func TestTMDbFailureSafety(t *testing.T) {
 	for _, test := range []struct {
 		status     int

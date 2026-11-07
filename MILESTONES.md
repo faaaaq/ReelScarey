@@ -388,3 +388,13 @@ See [announce feeds](docs/ANNOUNCE.md).
   job torrent files protected; supervised 60-second enforcement.
 - [x] Subtitles page rebuilt (provider, languages/tracks, matching, activity).
 - [x] BuildKit cache, RUN_GO_TESTS switch and configurable self-hosted runners.
+
+## Version 0.39.1 whole-library selection, future-only monitoring, release dates
+
+- [x] Bulk monitoring bound raised to 5000 with 1 MiB bodies and 30s budgets.
+- [x] Monitor-all-future monitors only today/future episodes; specials untouched.
+- [x] Three movie release dates (TMDb release_dates), per-kind calendar rows and
+  release filter; canonical date retained for Wanted.
+- [x] Built-in client counts as ready for automation; bulk calendar searches
+  work and show indeterminate progress with live checked/queued counts.
+- [x] Calendar live refresh, select-all, and Dashboard rebuild.

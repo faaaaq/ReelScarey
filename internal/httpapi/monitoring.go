@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+// A 5000-title review plus its revision fields can exceed the ordinary 16 KiB
+// JSON limit while staying comfortably below this bound.
+const monitoringJSONLimit = 1 << 20
+
 func (s *Server) monitoringError(w http.ResponseWriter, e error) {
 	switch {
 	case errors.Is(e, library.ErrMonitoringInput):
@@ -26,10 +30,10 @@ func (s *Server) reviewMonitoring(w http.ResponseWriter, r *http.Request) {
 		Kind string  `json:"kind"`
 		IDs  []int64 `json:"ids"`
 	}
-	if !decodeJSON(w, r, &body) {
+	if !decodeJSONLimit(w, r, &body, monitoringJSONLimit) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	items, e := s.library.ReviewMonitoring(ctx, body.Kind, body.IDs)
 	if e != nil {
@@ -44,14 +48,14 @@ func (s *Server) applyMonitoring(w http.ResponseWriter, r *http.Request) {
 		Monitored *bool                           `json:"monitored"`
 		Items     []library.MonitoringExpectation `json:"items"`
 	}
-	if !decodeJSON(w, r, &body) {
+	if !decodeJSONLimit(w, r, &body, monitoringJSONLimit) {
 		return
 	}
 	if body.Monitored == nil {
 		s.monitoringError(w, library.ErrMonitoringInput)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	out, e := s.library.ApplyMonitoring(ctx, body.Kind, body.Items, *body.Monitored)
 	if e != nil {

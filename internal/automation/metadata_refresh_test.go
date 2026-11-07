@@ -45,7 +45,7 @@ func refreshFixture(t *testing.T) (*MetadataRefresher, *refreshProvider, *sql.DB
 	}
 	t.Cleanup(func() { db.Close() })
 	year := 2020
-	p := &refreshProvider{movie: metadata.Movie{TMDbID: 1, Title: "Fresh title", Year: &year, ReleaseDate: "2026-11-01"}}
+	p := &refreshProvider{movie: metadata.Movie{TMDbID: 1, Title: "Fresh title", Year: &year, ReleaseDate: "2026-11-01", TheatricalReleaseDate: "2026-10-15", DigitalReleaseDate: "2026-11-01", PhysicalReleaseDate: "2026-12-01"}}
 	item, _, e := library.New(db).AddMovie(ctx, metadata.Movie{TMDbID: 1, Title: "Old title", Year: &year, ReleaseDate: "2020-01-01"}, true)
 	if e != nil {
 		t.Fatal(e)
@@ -77,7 +77,8 @@ func TestScheduledMetadataRefreshIsPausedBoundedAndPreservesCatalogChoices(t *te
 		t.Fatal(worked, e)
 	}
 	got, e := library.New(db).Item(ctx, item.ID)
-	if e != nil || got.Title != "Fresh title" || !got.Monitored || got.Status != item.Status || got.TMDbID != item.TMDbID {
+	if e != nil || got.Title != "Fresh title" || !got.Monitored || got.Status != item.Status || got.TMDbID != item.TMDbID ||
+		got.TheatricalReleaseDate != "2026-10-15" || got.DigitalReleaseDate != "2026-11-01" || got.PhysicalReleaseDate != "2026-12-01" {
 		t.Fatal(got, e)
 	}
 	var stamp int64
@@ -85,7 +86,7 @@ func TestScheduledMetadataRefreshIsPausedBoundedAndPreservesCatalogChoices(t *te
 		t.Fatal(stamp, e)
 	}
 	calendar, e := library.New(db).Calendar(ctx, library.PlanningFilter{Kind: "movie", Month: "2026-11"}, time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC))
-	if e != nil || len(calendar.Items) != 1 || calendar.Items[0].MetadataUpdatedAt == 0 {
+	if e != nil || len(calendar.Items) != 1 || calendar.Items[0].MetadataUpdatedAt == 0 || calendar.Items[0].ReleaseKind != "digital" || calendar.Items[0].Date != "2026-11-01" {
 		t.Fatal(calendar, e)
 	}
 }

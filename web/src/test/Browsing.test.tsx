@@ -69,7 +69,7 @@ describe("catalog browsing", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByText(/all shown/)).toBeVisible();
   });
-  it("bounds Select all shown at 200 titles", async () => {
+  it("selects every shown title even past the old 200 cap", async () => {
     const items = Array.from({ length: 250 }, (_, index) => ({
       ...item,
       id: index + 1,
@@ -90,8 +90,11 @@ describe("catalog browsing", () => {
     await userEvent.click(
       screen.getByRole("checkbox", { name: "Select all shown" }),
     );
-    expect(screen.getByText("200 selected")).toBeVisible();
-    expect(screen.getByText(/covers up to 200 movies/)).toBeVisible();
+    expect(screen.getByText("250 selected")).toBeVisible();
+    expect(screen.getByText(/covers all 250 movies/)).toBeVisible();
+    expect(
+      screen.queryByText(/covers up to 200|Select all shown covers up to/),
+    ).not.toBeInTheDocument();
   });
   it("retains bookmarks and sends literal filters to the server while resetting pages", async () => {
     const fetch = mock();
@@ -399,37 +402,42 @@ describe("catalog browsing", () => {
       /^\/movies$/,
     );
   });
-  it("keeps overview errors separate and links live catalog counts to working views", async () => {
+  it("keeps panel errors separate and links live catalog counts to working views", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string) =>
-        url.endsWith("/dashboard")
-          ? Response.json({
-              library_name: "Test library",
-              counts: { movies: 12, series: 3 },
-            })
-          : url.endsWith("/system")
-            ? Response.json({
-                version: "test",
-                paths: { media: "/test/media" },
-              })
-            : url.endsWith("/wanted")
-              ? Response.json({
-                  items: [
-                    {
-                      ...item,
-                      media_id: 11,
-                      episode_id: null,
-                      date: "2026-10-01",
-                    },
-                  ],
-                  counts: { missing: 7, downloading: 2, attention: 1 },
-                })
-              : Response.json(
-                  { error: { message: "Calendar temporarily unavailable." } },
-                  { status: 503 },
-                ),
-      ),
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/dashboard"))
+          return Response.json({
+            library_name: "Test library",
+            counts: { movies: 12, series: 3 },
+          });
+        if (url.endsWith("/system"))
+          return Response.json({
+            version: "test",
+            database: "connected",
+            paths: { media: "/test/media" },
+          });
+        if (url.endsWith("/wanted"))
+          return Response.json({
+            items: [
+              {
+                ...item,
+                media_id: 11,
+                episode_id: null,
+                date: "2026-10-01",
+              },
+            ],
+            counts: { missing: 7, downloading: 2, attention: 1 },
+          });
+        if (url.endsWith("/downloads?page=1"))
+          return Response.json({ items: [], page: 1, total: 0, limit: 24 });
+        if (url.endsWith("/events"))
+          return Response.json({ items: [], next: null });
+        return Response.json(
+          { error: { message: "Calendar temporarily unavailable." } },
+          { status: 503 },
+        );
+      }),
     );
     render(
       <Theme>
@@ -453,5 +461,9 @@ describe("catalog browsing", () => {
       "href",
       "/movies/11",
     );
+    expect(
+      screen.getByRole("link", { name: /Connected · test/ }),
+    ).toHaveAttribute("href", "/system");
+    expect(screen.getByText("No active downloads.")).toBeVisible();
   });
 });

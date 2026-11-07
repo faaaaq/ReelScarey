@@ -13,12 +13,14 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Ticket,
   Tv,
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PageHeading, RequestState } from "../components";
 import {
   Alert,
+  BatchProgress,
   DescriptionItem,
   DescriptionList,
   EmptyState,
@@ -32,13 +34,14 @@ import {
   ToolbarSection,
   ToolbarSeparator,
   episodeCode,
+  formatRelative,
   restoreNotices,
   useHiddenNotices,
   type Kind,
 } from "../ui";
 import { ItemSearchResultAlert, useItemSearch } from "./details/ItemSearch";
 import { bulkSearchMessage, useBulkSearch } from "./details/bulkSearch";
-import { useResource } from "../useResource";
+import { useLiveResource } from "../useLiveResource";
 import { Pager } from "./activity/Pager";
 import { ToolbarMenu } from "./activity/ToolbarMenu";
 import "./Planning.css";
@@ -66,6 +69,11 @@ export type PlanningEntry = {
   protocol: string;
   poster_url: string;
   overview?: string;
+  /** Movie release edition; optional until the metadata fields are saved. */
+  release_kind?: "theatrical" | "digital" | "physical";
+  theatrical_date?: string;
+  digital_date?: string;
+  physical_date?: string;
 };
 export type PlanningData = {
   items: PlanningEntry[];
@@ -104,8 +112,30 @@ const wantedStatuses = [
   "upcoming",
   "undated",
 ];
+const releaseLabels: Record<string, string> = {
+  theatrical: "Theatrical",
+  digital: "Digital",
+  physical: "Physical",
+};
+function releaseLabel(entry: PlanningEntry) {
+  return entry.release_kind ? releaseLabels[entry.release_kind] : "";
+}
+function knownReleaseDates(entry: PlanningEntry) {
+  return [
+    { kind: "Theatrical", date: entry.theatrical_date },
+    { kind: "Digital", date: entry.digital_date },
+    { kind: "Physical", date: entry.physical_date },
+  ].filter((value) => !!value.date);
+}
 const viewKey = "reelscarey.calendar.view";
 const calendarFiltersKey = "reelscarey.calendar.filters";
+
+/** "Updated just now" until the next background refresh replaces it. */
+function updatedLabel(timestamp: number | undefined) {
+  if (!timestamp) return "";
+  if (Date.now() - timestamp < 60000) return "Updated just now";
+  return `Updated ${formatRelative(Math.floor(timestamp / 1000))}`;
+}
 
 function dateLabel(value: string, month = false) {
   const date = new Date(`${value}${month ? "-01" : ""}T12:00:00Z`);
@@ -199,6 +229,17 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
   );
   const [opened, setOpened] = useState<PlanningEntry>();
   const bulk = useBulkSearch();
+  const schedule = useLiveResource<{
+    mode?: "search" | "download";
+    state?: string;
+    message?: string;
+  }>(calendar ? "/automation" : null, calendar ? 30000 : 0);
+  const automationMode =
+    schedule.data?.mode === "download"
+      ? "download"
+      : schedule.data?.mode === "search"
+        ? "search"
+        : "";
   const [scope, setScope] = useState<"movie" | "series" | null>(null);
   // The Calendar remembers the last filters and month; Reset clears them.
   const [ready, setReady] = useState(!calendar);
@@ -245,7 +286,12 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
     }
   }
   const base = calendar ? "/calendar" : "/wanted";
-  const resource = useResource<PlanningData>(`${base}?${params.toString()}`);
+  // Calendar and Wanted refresh while they are open. This keeps queue states
+  // and newly finished downloads current without losing scroll or dialogs.
+  const resource = useLiveResource<PlanningData>(
+    `${base}?${params.toString()}`,
+    calendar ? 25000 : 30000,
+  );
   const data = resource.data;
   const status = params.get("status") || (calendar ? "all" : "missing");
   const statuses = calendar
@@ -338,6 +384,23 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
               <ToolbarSeparator />
             </>
           )}
+          {calendar && (
+            <ToolbarMenu
+              icon={Ticket}
+              label="Releases"
+              menuLabel="Releases"
+              value={params.get("release") ?? "all"}
+              options={[
+                { value: "all", label: "All releases" },
+                { value: "theatrical", label: "Theatrical" },
+                { value: "digital", label: "Digital" },
+                { value: "physical", label: "Physical" },
+              ]}
+              onChange={(value) =>
+                change("release", value === "all" ? "" : value)
+              }
+            />
+          )}
           <ToolbarMenu
             icon={Clapperboard}
             label="Type"
@@ -366,33 +429,41 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
       </PageToolbar>
       <PageBody>
         <PageHeading title={calendar ? "Calendar" : "Wanted"} />
-        {calendar && bulk.state.status !== "idle" && (
-          <Alert
-            kind={
-              bulk.state.status === "error"
-                ? "danger"
-                : bulk.state.status === "running"
-                  ? "info"
-                  : "success"
-            }
-            role="status"
-            dismissKey="calendar-bulk-search"
-          >
-            <p>{bulkSearchMessage(bulk.state)}</p>
-            <div className="rs-row">
-              <Link className="rs-link-button rs-small" to="/automation">
-                Open Automation for details
-              </Link>
-              <button
-                type="button"
-                className="rs-link-button rs-small"
-                onClick={bulk.reset}
-              >
-                Dismiss
-              </button>
-            </div>
-          </Alert>
+        {calendar && bulk.state.status === "running" && (
+          <div className="plan-bulk-progress">
+            <BatchProgress
+              label="Calendar bulk search"
+              message={bulkSearchMessage(bulk.state)}
+              detail={
+                bulk.state.active && bulk.state.message
+                  ? bulk.state.message
+                  : undefined
+              }
+            />
+          </div>
         )}
+        {calendar &&
+          (bulk.state.status === "done" || bulk.state.status === "error") && (
+            <Alert
+              kind={bulk.state.status === "error" ? "danger" : "success"}
+              role="status"
+              dismissKey="calendar-bulk-search"
+            >
+              <p>{bulkSearchMessage(bulk.state)}</p>
+              <div className="rs-row">
+                <Link className="rs-link-button rs-small" to="/automation">
+                  Open Automation for details
+                </Link>
+                <button
+                  type="button"
+                  className="rs-link-button rs-small"
+                  onClick={bulk.reset}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </Alert>
+          )}
         <div className="plan-filterbar">
           <div className="plan-status" role="group" aria-label="Status">
             <button
@@ -490,10 +561,22 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
           </div>
         )}
         <RequestState
-          loading={resource.loading}
-          error={resource.error}
+          loading={resource.loading && !data}
+          error={data ? "" : resource.error}
           retry={resource.reload}
         />
+        {data && resource.error && (
+          <Alert kind="warning" role="status" title="Could not refresh">
+            {resource.error} Showing the last data received.{" "}
+            <button
+              type="button"
+              className="rs-link-button rs-small"
+              onClick={resource.reload}
+            >
+              Retry now
+            </button>
+          </Alert>
+        )}
         {data && (
           <>
             {data.coverage.unloaded_seasons > 0 && (
@@ -618,10 +701,16 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
                 Based on your saved catalog as of {dateLabel(data.as_of_date)}{" "}
                 (UTC); availability reflects registered files and tracked jobs.
               </p>
+              {calendar && resource.updatedAt !== undefined && (
+                <p className="plan-updated" role="status">
+                  {updatedLabel(resource.updatedAt)}
+                </p>
+              )}
               {calendar && (
                 <p>
-                  Movie dates may be theatrical releases. They do not establish
-                  download availability or broadcast times.
+                  Movie dates may be theatrical releases. Theatrical, digital
+                  and physical dates are shown separately when saved. They do
+                  not establish download availability or broadcast times.
                 </p>
               )}
             </div>
@@ -669,9 +758,12 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
             {scope === "movie"
               ? "every missing monitored movie"
               : "every missing monitored TV episode"}{" "}
-            with your saved quality profiles. In download mode the best matching
-            release of each is queued; in search-only mode the results are saved
-            for review in Automation.
+            with your saved quality profiles.{" "}
+            {automationMode === "download"
+              ? "Your saved automation mode is Download: the best matching release of each is queued."
+              : automationMode === "search"
+                ? "Your saved automation mode is Search-only: matching results are saved for review in Automation and nothing is downloaded."
+                : "The saved automation mode could not be loaded; Automation shows whether new runs download or only save results for review."}
           </p>
           <p className="rs-muted">
             Large libraries can take several runs. Nothing is overwritten and
@@ -776,6 +868,12 @@ function PlanningTable({
                     <Label outline>
                       {entry.movie_version === "uhd" ? "4K" : "HD"}
                     </Label>
+                  </>
+                )}
+                {!tv && entry.release_kind && (
+                  <>
+                    {" "}
+                    <Label outline>{releaseLabel(entry)}</Label>
                   </>
                 )}
                 {entry.monitoring_reason && (
@@ -931,13 +1029,28 @@ function EventChip({
         {entry.title}
       </span>
       <span className="plan-event-sub">
-        {tv
-          ? `${code}${entry.episode_title ? ` · ${entry.episode_title}` : ""}`
-          : entry.movie_version
-            ? entry.movie_version === "uhd"
-              ? "Movie · 4K"
-              : "Movie · HD"
-            : "Movie"}
+        {tv ? (
+          `${code}${entry.episode_title ? ` · ${entry.episode_title}` : ""}`
+        ) : (
+          <>
+            {[
+              "Movie",
+              entry.movie_version
+                ? entry.movie_version === "uhd"
+                  ? "4K"
+                  : "HD"
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            {entry.release_kind && (
+              <>
+                {" "}
+                <span className="plan-release-tag">{releaseLabel(entry)}</span>
+              </>
+            )}
+          </>
+        )}
       </span>
     </button>
   );
@@ -994,11 +1107,31 @@ function EntryModal({
         <DescriptionItem title={tv ? "Episode" : "Type"}>
           {tv
             ? `${entryCode(entry)}${entry.episode_title ? ` · ${entry.episode_title}` : ""}`
-            : `Movie${entry.movie_version ? ` · ${entry.movie_version === "uhd" ? "4K" : "HD"}` : ""}`}
+            : [
+                "Movie",
+                releaseLabel(entry),
+                entry.movie_version
+                  ? entry.movie_version === "uhd"
+                    ? "4K"
+                    : "HD"
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
         </DescriptionItem>
         <DescriptionItem title="Date">
           {entry.date ? dateLabel(entry.date) : "Date unavailable"}
         </DescriptionItem>
+        {!tv &&
+          (knownReleaseDates(entry).length ? (
+            knownReleaseDates(entry).map((release) => (
+              <DescriptionItem key={release.kind} title={release.kind}>
+                {release.date ? dateLabel(release.date) : "—"}
+              </DescriptionItem>
+            ))
+          ) : (
+            <DescriptionItem title="Release dates">—</DescriptionItem>
+          ))}
         <DescriptionItem title="Status">
           <StatusLabels entry={entry} />
         </DescriptionItem>

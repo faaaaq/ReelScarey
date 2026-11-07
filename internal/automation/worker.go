@@ -477,7 +477,7 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 		decisions := quality.Rank(p, t.Target, candidates)
 		if c.Mode == "download" && current == 0 {
 			ready := map[string]bool{}
-			for _, name := range []string{"qbittorrent", "sabnzbd"} {
+			for _, name := range []string{"torrent", "usenet"} {
 				status, err := s.workflow.Status(ctx, name)
 				if err != nil {
 					return "", "", err
@@ -489,9 +489,9 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 					if r.ID != decisions[i].ID {
 						continue
 					}
-					name := "qbittorrent"
+					name := "torrent"
 					if r.Protocol == "usenet" {
-						name = "sabnzbd"
+						name = "usenet"
 					}
 					if !ready[name] {
 						decisions[i].Eligible = false

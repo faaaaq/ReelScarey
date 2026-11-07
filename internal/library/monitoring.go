@@ -6,7 +6,7 @@ import (
 	"errors"
 )
 
-var ErrMonitoringInput = errors.New("Choose 1–100 distinct saved titles of one media type and a monitoring preference.")
+var ErrMonitoringInput = errors.New("Choose 1–5000 distinct saved titles of one media type and a monitoring preference.")
 var ErrMonitoringConflict = errors.New("One or more selected titles changed. Review the selection again before applying. No titles were changed.")
 
 type MonitoringItem struct {
@@ -31,7 +31,7 @@ type MonitoringResult struct {
 }
 
 func validMonitoringIDs(kind string, ids []int64) bool {
-	if (kind != "movie" && kind != "series") || len(ids) < 1 || len(ids) > 100 {
+	if (kind != "movie" && kind != "series") || len(ids) < 1 || len(ids) > 5000 {
 		return false
 	}
 	seen := make(map[int64]bool, len(ids))

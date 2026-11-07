@@ -146,6 +146,66 @@ func TestCalendarIncludesSharedEpisodesOnceAndUsesUTCDateOnly(t *testing.T) {
 		t.Fatal(november, e)
 	}
 }
+func TestCalendarExpandsMovieReleaseKindsAndFiltersThem(t *testing.T) {
+	s, db := planningFixture(t)
+	ctx := context.Background()
+	if _, e := db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,monitored,release_date,theatrical_release_date,digital_release_date,physical_release_date) VALUES(30,'movie',30,'Three Date Movie',2026,1,'2026-10-05','2026-10-10','2026-11-15','2026-10-20'),(31,'movie',31,'Single Date Movie',2026,1,'2026-10-03','','','')`); e != nil {
+		t.Fatal(e)
+	}
+	october, e := s.Calendar(ctx, PlanningFilter{Month: "2026-10", OnlyMonitored: true}, planningNow)
+	if e != nil {
+		t.Fatal(e)
+	}
+	kinds := map[string]string{}
+	for _, v := range october.Items {
+		if v.MediaID == 30 {
+			kinds[v.ReleaseKind] = v.Date
+			if v.TheatricalDate != "2026-10-10" || v.DigitalDate != "2026-11-15" || v.PhysicalDate != "2026-10-20" {
+				t.Fatal("calendar rows lost the saved release dates", v)
+			}
+		}
+		if v.MediaID == 31 && (v.ReleaseKind != "" || v.Date != "2026-10-03" || v.TheatricalDate != "" || v.DigitalDate != "" || v.PhysicalDate != "") {
+			t.Fatal("a movie without detailed dates did not keep its canonical row", v)
+		}
+	}
+	if len(kinds) != 2 || kinds["theatrical"] != "2026-10-10" || kinds["physical"] != "2026-10-20" {
+		t.Fatal("calendar did not expand known release kinds", kinds)
+	}
+	if _, exists := kinds[""]; exists {
+		t.Fatal("a movie with detailed dates also kept a canonical row")
+	}
+	november, e := s.Calendar(ctx, PlanningFilter{Month: "2026-11", OnlyMonitored: true}, planningNow)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var digital, future bool
+	for _, v := range november.Items {
+		if v.MediaID == 30 && v.ReleaseKind == "digital" && v.Date == "2026-11-15" {
+			digital = true
+		}
+		if v.MediaID == 2 && v.ReleaseKind == "" {
+			future = true
+		}
+	}
+	if !digital || !future {
+		t.Fatal("november release kind missing", november.Items)
+	}
+	filtered, e := s.Calendar(ctx, PlanningFilter{Month: "2026-11", OnlyMonitored: true, Release: "digital"}, planningNow)
+	if e != nil || filtered.Total != 1 || len(filtered.Items) != 1 || filtered.Items[0].MediaID != 30 || filtered.Items[0].ReleaseKind != "digital" {
+		t.Fatal("release filter did not narrow the calendar", filtered, e)
+	}
+	none, e := s.Calendar(ctx, PlanningFilter{Month: "2026-11", OnlyMonitored: true, Release: "theatrical"}, planningNow)
+	if e != nil || none.Total != 0 {
+		t.Fatal("release filter ignored the kind", none, e)
+	}
+	if _, e = s.Wanted(ctx, PlanningFilter{Release: "theatrical"}, planningNow); !errors.Is(e, ErrPlanningInput) {
+		t.Fatal("wanted accepted a calendar-only release filter", e)
+	}
+	if _, e = s.Calendar(ctx, PlanningFilter{Month: "2026-10", Release: "premiere"}, planningNow); !errors.Is(e, ErrPlanningInput) {
+		t.Fatal("calendar accepted an unknown release kind", e)
+	}
+}
+
 func TestPlanningLiteralSearchValidationAndStablePagination(t *testing.T) {
 	s, db := planningFixture(t)
 	ctx := context.Background()
@@ -251,13 +311,22 @@ func TestPlanningCarriesSynopsisAndMonitorAllCoversShowsWithoutTouchingSpecials(
 		t.Fatal("planner entries lost their synopsis", page.Items)
 	}
 
-	// Per-show monitor-all turns the show, its regular seasons and episodes
-	// on and leaves specials alone.
+	// Per-show monitor-all turns the show on with only today's or future
+	// regular episodes and the seasons containing them. Past, undated and
+	// special episodes keep their explicit choices.
+	now := time.Now().UTC()
+	today := now.Format(time.DateOnly)
+	tomorrow := now.AddDate(0, 0, 1).Format(time.DateOnly)
+	past := now.AddDate(0, 0, -2).Format(time.DateOnly)
+	if _, e = db.Exec(`UPDATE episodes SET air_date=CASE id
+		WHEN 1002 THEN ? WHEN 1003 THEN ? WHEN 4001 THEN ? WHEN 11001 THEN ? ELSE ? END`, today, tomorrow, tomorrow, tomorrow, past); e != nil {
+		t.Fatal(e)
+	}
 	var revision int64
 	if e = db.QueryRow(`SELECT revision FROM series_details WHERE media_id=10`).Scan(&revision); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec(`UPDATE media_items SET monitored=0 WHERE id=10;UPDATE seasons SET monitored=0 WHERE id=102;UPDATE episodes SET monitored=0 WHERE id=1008`); e != nil {
+	if _, e = db.Exec(`UPDATE media_items SET monitored=0;UPDATE seasons SET monitored=0;UPDATE episodes SET monitored=0`); e != nil {
 		t.Fatal(e)
 	}
 	if e = s.MonitorAllEpisodes(ctx, 10, revision); e != nil {
@@ -268,9 +337,12 @@ func TestPlanningCarriesSynopsisAndMonitorAllCoversShowsWithoutTouchingSpecials(
 		want int
 	}{
 		{`SELECT monitored FROM media_items WHERE id=10`, 1},
-		{`SELECT COUNT(*) FROM seasons WHERE series_id=10 AND number>0 AND monitored=0`, 0},
-		{`SELECT COUNT(*) FROM episodes WHERE season_id IN (SELECT id FROM seasons WHERE series_id=10 AND number>0) AND monitored=0`, 0},
+		{`SELECT monitored FROM seasons WHERE id=101`, 1},
+		{`SELECT monitored FROM seasons WHERE id=102`, 0},
+		{`SELECT monitored FROM seasons WHERE id=103`, 0},
 		{`SELECT monitored FROM seasons WHERE id=104`, 0},
+		{`SELECT COUNT(*) FROM episodes WHERE id IN (1002,1003) AND monitored=1`, 2},
+		{`SELECT COUNT(*) FROM episodes WHERE id IN (1001,1004,1005,1006,1007,1008,2001,3001,4001) AND monitored=1`, 0},
 	} {
 		var got int
 		if e = db.QueryRow(q.sql).Scan(&got); e != nil || got != q.want {
@@ -281,7 +353,7 @@ func TestPlanningCarriesSynopsisAndMonitorAllCoversShowsWithoutTouchingSpecials(
 		t.Fatal("a stale revision was accepted", e)
 	}
 
-	// The library-wide action covers every show in scope in one call.
+	// The library-wide action applies the same today-or-later rule in scope.
 	if _, e = db.Exec(`UPDATE media_items SET monitored=0;UPDATE seasons SET monitored=0;UPDATE episodes SET monitored=0`); e != nil {
 		t.Fatal(e)
 	}
@@ -292,6 +364,20 @@ func TestPlanningCarriesSynopsisAndMonitorAllCoversShowsWithoutTouchingSpecials(
 	var on int
 	if e = db.QueryRow(`SELECT COUNT(*) FROM media_items WHERE kind='series' AND monitored=1`).Scan(&on); e != nil || on != 2 {
 		t.Fatal(on, e)
+	}
+	for _, q := range []struct {
+		sql  string
+		want int
+	}{
+		{`SELECT COUNT(*) FROM seasons WHERE id IN (101,111) AND monitored=1`, 2},
+		{`SELECT COUNT(*) FROM seasons WHERE id IN (102,103,104) AND monitored=1`, 0},
+		{`SELECT COUNT(*) FROM episodes WHERE id IN (1002,1003,11001) AND monitored=1`, 3},
+		{`SELECT COUNT(*) FROM episodes WHERE id IN (1001,1004,1005,1006,1007,1008,2001,3001,4001) AND monitored=1`, 0},
+	} {
+		var got int
+		if e = db.QueryRow(q.sql).Scan(&got); e != nil || got != q.want {
+			t.Fatal(q.sql, got, e)
+		}
 	}
 	if _, e = s.MonitorAllShows(ctx, "movies"); !errors.Is(e, ErrMonitoringInput) {
 		t.Fatal("an unknown scope was accepted", e)

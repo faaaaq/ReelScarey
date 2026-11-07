@@ -830,3 +830,17 @@ builds skip duplicate in-image Go tests, and runners are configurable for a
 second self-hosted machine. See [USENET.md](docs/USENET.md),
 [TORRENTS.md](docs/TORRENTS.md), [UI.md](docs/UI.md) and
 [RELEASING.md](docs/RELEASING.md).
+
+## Version 0.39.1 whole-library selection, future-only monitoring, release dates
+
+Library selection is no longer capped at 200; review and apply accept up to 5000
+explicit IDs, so a whole library can be monitored or unmonitored in one reviewed
+action. "Monitor all future episodes" now monitors only episodes airing today or
+later (specials and past episodes untouched). The Calendar shows movies once per
+theatrical, digital and physical release date with a release-kind filter, polls
+while open so downloaded items update, and reports live progress for its bulk
+searches. Automation now treats an enabled built-in client as ready, fixing the
+bulk "Search episodes" run that stopped at waiting_client. The Dashboard is
+rebuilt around status, active queue, wanted, upcoming and library panels. See
+[UI.md](docs/UI.md), [PLANNING.md](docs/PLANNING.md) and
+[BULK_MONITORING.md](docs/BULK_MONITORING.md).

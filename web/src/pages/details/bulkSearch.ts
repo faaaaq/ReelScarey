@@ -14,7 +14,15 @@ export type RunSummary = {
 
 export type BulkSearchState =
   | { status: "idle" }
-  | { status: "running"; started: number }
+  | {
+      status: "running";
+      started: number;
+      /** A scheduler run has been observed for this request. */
+      active?: boolean;
+      checked?: number;
+      queued?: number;
+      message?: string;
+    }
   | {
       status: "done";
       mode: string;
@@ -75,9 +83,22 @@ export function useBulkSearch() {
             run.id !== baseline.current &&
             run.started_at >= started.current - 2,
         );
-        const active = fresh.some(
+        const activeRuns = fresh.filter(
           (run) => run.state === "running" || run.state === "scheduled",
         );
+        const active = activeRuns.length > 0;
+        if (active) {
+          // The scheduler does not expose a total; report its live counters
+          // instead of inventing a percentage.
+          setState({
+            status: "running",
+            started: started.current,
+            active: true,
+            checked: fresh.reduce((total, run) => total + run.checked, 0),
+            queued: fresh.reduce((total, run) => total + run.queued, 0),
+            message: activeRuns[0]?.message ?? "",
+          });
+        }
         if (active && attempts.current < 40) {
           attempts.current += 1;
           return;
@@ -117,12 +138,19 @@ export function useBulkSearch() {
 
 export function bulkSearchMessage(state: BulkSearchState): string {
   if (state.status === "running")
-    return "Searching saved releases in the background…";
+    return state.active
+      ? `Searching… ${state.checked ?? 0} checked, ${state.queued ?? 0} queued.`
+      : "Starting search…";
   if (state.status === "error") return state.message;
   if (state.status !== "done") return "";
-  if (state.checked === 0)
-    return state.message || "Nothing matched the search filters.";
+  if (state.checked === 0) {
+    const message = state.message.trim();
+    return `No items were checked. ${message ? `${message} ` : ""}This usually means the run is waiting for an indexer or download client; open Automation for details.`;
+  }
   if (state.mode === "download")
     return `Searched ${state.checked} item${state.checked === 1 ? "" : "s"} and queued ${state.queued} download${state.queued === 1 ? "" : "s"}.`;
-  return `Searched ${state.checked} item${state.checked === 1 ? "" : "s"}; ${state.queued === 0 ? "no releases matched" : "results are saved for review in Automation"}.`;
+  const results = `${state.queued} result${state.queued === 1 ? "" : "s"}`;
+  return state.queued === 0
+    ? `Searched ${state.checked} item${state.checked === 1 ? "" : "s"}; no releases matched, so nothing was saved for review in Automation.`
+    : `Searched ${state.checked} item${state.checked === 1 ? "" : "s"}; ${results} are saved for review in Automation.`;
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -70,6 +71,32 @@ func TestBulkMonitoringSecurityReviewAndAtomicConflict(t *testing.T) {
 	}
 	if out = request(handler, "GET", path, "", &session, false); out.Code != 405 {
 		t.Fatal(out.Code)
+	}
+	var large strings.Builder
+	large.WriteString(`{"kind":"movie","ids":[`)
+	for i := 1; i <= 5000; i++ {
+		if i > 1 {
+			large.WriteByte(',')
+		}
+		large.WriteString(strconv.Itoa(i))
+	}
+	large.WriteString(`]}`)
+	if out = request(handler, "POST", path, large.String(), &session, true); out.Code != 404 {
+		t.Fatal("a 5000-ID review body did not reach validation", out.Code, out.Body)
+	}
+	large.Reset()
+	large.WriteString(`{"kind":"movie","monitored":false,"items":[`)
+	for i := 1; i <= 5000; i++ {
+		if i > 1 {
+			large.WriteByte(',')
+		}
+		large.WriteString(`{"id":`)
+		large.WriteString(strconv.Itoa(i))
+		large.WriteString(`,"monitored":true,"series_revision":0,"automation_revision":0}`)
+	}
+	large.WriteString(`]}`)
+	if out = request(handler, "PUT", "/api/v1/library/monitoring", large.String(), &session, true); out.Code != 409 {
+		t.Fatal("a 5000-item apply body did not reach validation", out.Code, out.Body)
 	}
 	db.QueryRow(`SELECT (SELECT COUNT(*) FROM downloads)+(SELECT COUNT(*) FROM automation_runs)+(SELECT COUNT(*) FROM library_scans)`).Scan(&count)
 	if count != 0 {

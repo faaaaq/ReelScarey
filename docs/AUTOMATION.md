@@ -27,6 +27,22 @@ parent retains child selections. Movie monitoring can be changed alongside its
 automation profile. Future and unknown dates wait for metadata. The scheduler
 does not refresh TMDb, discover unloaded episodes or scan existing media folders.
 
+The show-level **Monitor all future episodes** action (`monitor-all`) applies a
+different, explicit owner rule: it turns the show on and monitors only regular
+episodes whose `air_date` is a valid full YYYY-MM-DD date on or after today's
+UTC date. A regular season is monitored only when it contains such an episode or
+its own `air_date` is valid and today-or-later. Past, undated and invalid dates
+are left unchanged, specials keep their explicit choices, and the action never
+unmonitors anything. The library-wide bulk variant uses the same rule for every
+show in scope.
+
+A download-mode run needs a usable client before targets are checked.
+`client_connected` and the run's readiness include an enabled explicit
+per-protocol default, the legacy settings connection, the enabled built-in
+qBittorrent torrent fallback, and the enabled built-in SABnzbd client when a news
+server is saved. A disabled or unconfigured client still produces
+`waiting_client`; readiness never submits a job by itself.
+
 Movie matches require the canonical normalized title immediately followed by its
 year. TV matches require the canonical show title (optionally its year) and one
 exact SxxEyy token. Pack/range/ambiguous names are excluded from automatic

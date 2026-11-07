@@ -23,6 +23,10 @@ automation continues independently.
   Bulk selection is available in the paginated view. The heading shows the unfiltered collection
   count; the result bar shows the filtered total and displayed range. Empty
   filtered or later pages offer explicit recovery without silently changing filters.
+  Reviewed parent monitoring accepts up to 5000 explicit distinct catalog IDs in
+  one journaled selection, so a whole bounded library view can be paused or
+  resumed. The review still checks the complete selection before writing, and a
+  changed title refuses the whole batch.
 
 Filters, ordering, view and page live in the URL. Browser back/forward and shared
 bookmarks retain them. Filter/sort changes return to page one in paginated mode. Show all remains selected. Switching between

@@ -25,7 +25,7 @@ COPY --from=frontend /src/web/dist ./web/dist
 ARG RUN_GO_TESTS=1
 RUN --mount=type=cache,target=/root/.cache/go-build \
     if [ "$RUN_GO_TESTS" = "1" ]; then go test ./... && go vet ./...; fi
-ARG VERSION=0.39.0-dev
+ARG VERSION=0.39.1-dev
 RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/reelscarey ./cmd/reelscarey
 
 FROM debian:bookworm-slim AS youtube-tools

@@ -334,12 +334,22 @@ describe("reviewed bulk monitoring", () => {
     expect(
       within(dialog).getByRole("button", { name: "Cancel" }),
     ).toBeDisabled();
+    const bar = within(dialog).getByRole("progressbar", {
+      name: "Applying monitoring",
+    });
+    expect(bar).toHaveAttribute("aria-busy", "true");
+    expect(
+      within(dialog).getByText(/Applying monitoring to 1 title/),
+    ).toBeVisible();
     await userEvent.keyboard("{Escape}");
     expect(screen.getByRole("dialog")).toBeVisible();
     finish(
       Response.json({ total: 1, changed: 1, unchanged: 0, monitored: false }),
     );
     await screen.findByText("Paused 1 title. 0 unchanged.");
+    expect(
+      screen.queryByRole("progressbar", { name: "Applying monitoring" }),
+    ).not.toBeInTheDocument();
     expect(
       fetch.mock.calls.filter(([, o]) => o?.method === "PUT"),
     ).toHaveLength(1);

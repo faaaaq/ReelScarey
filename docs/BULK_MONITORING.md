@@ -37,9 +37,9 @@ background bulk job or exactly-once submission claim.
 ## API
 
 Both endpoints require the administrator session, CSRF and same-origin validation.
-The existing 16 KiB JSON limit and strict unknown-field decoding apply.
+Monitoring bodies use a dedicated 1 MiB limit so a whole library can be reviewed; strict unknown-field decoding still applies.
 
-- POST `/api/v1/library/monitoring/preview`: `{kind, ids}` reads 1–100 distinct
+- POST `/api/v1/library/monitoring/preview`: `{kind, ids}` reads 1–5000 distinct
   positive catalog IDs for kind movie or series. Returns `{kind, items}` with
   id/title/year/monitored/series_revision/automation_revision. It does not write.
 - PUT `/api/v1/library/monitoring`: `{kind, monitored, items}` where items contain

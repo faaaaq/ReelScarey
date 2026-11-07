@@ -8,10 +8,10 @@ import {
 } from "../api";
 import {
   Alert,
+  BatchProgress,
   DescriptionItem,
   DescriptionList,
   FormGroup,
-  LoadingIndicator,
   Modal,
   Table,
 } from "../ui";
@@ -229,7 +229,17 @@ export function BulkProfiles({
           </select>
         </FormGroup>
         {busy === "preview" && (
-          <LoadingIndicator label="Loading current assignments and profile rules…" />
+          <BatchProgress
+            label="Reviewing quality profiles"
+            message={`Reviewing ${ids.length} ${ids.length === 1 ? "title" : "titles"} and the target profile rules…`}
+          />
+        )}
+        {busy === "apply" && review && (
+          <BatchProgress
+            label="Applying quality profiles"
+            message={`Applying quality profiles to ${review.items.length} ${review.items.length === 1 ? "title" : "titles"}…`}
+            detail="The complete reviewed assignment and schedule revision must still match."
+          />
         )}
         {error && <Alert kind="danger">{error}</Alert>}
         {review && (

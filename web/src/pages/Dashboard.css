@@ -1,9 +1,44 @@
 /* Dashboard (dash- namespace). */
 
-.dash-summary {
+.dash-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border: 1px solid var(--rs-border-strong);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface);
+  overflow: hidden;
+}
+.dash-status-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 14px;
+  border-right: 1px solid var(--rs-border);
+  color: var(--rs-text);
+}
+.dash-status-item:last-child {
+  border-right: 0;
+  margin-left: auto;
+}
+.dash-status-item:hover {
+  background: var(--rs-surface-2);
+  color: var(--rs-text-strong);
+}
+.dash-status-item svg {
+  flex: none;
   color: var(--rs-muted);
-  font-size: 15px;
-  margin-top: -8px;
+  align-self: center;
+}
+.dash-status-value {
+  color: var(--rs-text-strong);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.dash-status-label {
+  color: var(--rs-muted);
+  font-size: 12.5px;
 }
 .dash-columns {
   display: grid;
@@ -21,11 +56,37 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+.dash-library-counts {
+  color: var(--rs-muted);
+}
 .dash-episode {
   color: var(--rs-muted);
 }
-.dash-system-links {
-  margin-top: 12px;
+.dash-subheading {
+  color: var(--rs-text-strong);
+  font-size: 13px;
+  font-weight: 700;
+}
+.dash-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  list-style: none;
+}
+.dash-queue-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dash-queue-meta {
+  display: block;
+  margin-top: 2px;
+}
+.dash-events {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 @media (max-width: 1000px) {
   .dash-columns {

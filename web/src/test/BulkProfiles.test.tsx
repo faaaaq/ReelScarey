@@ -346,6 +346,13 @@ describe("reviewed quality profile assignment", () => {
     expect(
       within(dialog).getByRole("button", { name: "Cancel" }),
     ).toBeDisabled();
+    const bar = within(dialog).getByRole("progressbar", {
+      name: "Applying quality profiles",
+    });
+    expect(bar).toHaveAttribute("aria-busy", "true");
+    expect(
+      within(dialog).getByText(/Applying quality profiles to 1 title/),
+    ).toBeVisible();
     await userEvent.keyboard("{Escape}");
     expect(screen.getByRole("dialog")).toBeVisible();
     finish(
@@ -358,6 +365,9 @@ describe("reviewed quality profile assignment", () => {
       }),
     );
     await screen.findByText("1 title assigned to (Ultra HD). 0 unchanged.");
+    expect(
+      screen.queryByRole("progressbar", { name: "Applying quality profiles" }),
+    ).not.toBeInTheDocument();
     expect(
       fetch.mock.calls.filter(([, o]) => o?.method === "PUT"),
     ).toHaveLength(1);

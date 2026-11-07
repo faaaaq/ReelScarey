@@ -111,24 +111,73 @@ func (s *Service) clientConfig(ctx context.Context) (ClientConfig, error) {
 	e = json.Unmarshal(b, &c)
 	return c, e
 }
+func clientNotConfigured(e error) bool {
+	var problem *Error
+	return errors.As(e, &problem) && (problem.Code == "client_not_configured" || problem.Code == "builtin_unavailable")
+}
+
+// clientReady reports whether release downloads for the protocol can resolve a
+// usable client: an enabled explicit default, the legacy settings connection,
+// or (for torrents) the enabled built-in fallback. It mirrors the queue-time
+// selection without contacting the client.
+func (s *Service) clientReady(ctx context.Context, protocol string) (bool, error) {
+	selection, e := selectClientTx(ctx, s.db, protocol)
+	if e != nil {
+		if clientNotConfigured(e) {
+			return false, nil
+		}
+		return false, e
+	}
+	if _, e = s.openSelection(ctx, selection); e != nil {
+		if clientNotConfigured(e) {
+			return false, nil
+		}
+		return false, e
+	}
+	return true, nil
+}
+
+func (s *Service) bundledUsenetReady(ctx context.Context) (bool, error) {
+	present, enabled, _, e := s.bundledUsenetRow(ctx)
+	if e != nil || !present || !enabled {
+		return false, e
+	}
+	c, e := s.managedClientConfig(ctx, builtinUsenetClientID)
+	if e != nil {
+		if clientNotConfigured(e) {
+			return false, nil
+		}
+		return false, e
+	}
+	return newsConfigured(c), nil
+}
+
 func (s *Service) Status(ctx context.Context, name string) (IntegrationStatus, error) {
 	if name == "sabnzbd" {
 		return s.sabStatus(ctx)
 	}
-	if name == "clients" {
-		d, e := s.ClientDefaults(ctx)
+	if name == "clients" || name == "torrent" || name == "usenet" {
+		protocol := name
+		if name == "clients" {
+			protocol = "torrent"
+		}
+		ready, e := s.clientReady(ctx, protocol)
 		if e != nil {
 			return IntegrationStatus{}, e
 		}
-		if d.Torrent != "" || d.Usenet != "" {
-			return IntegrationStatus{Configured: true}, nil
+		if !ready && name == "clients" {
+			ready, e = s.clientReady(ctx, "usenet")
+			if e != nil {
+				return IntegrationStatus{}, e
+			}
 		}
-		a, e := s.Status(ctx, "qbittorrent")
-		if e != nil {
-			return a, e
+		if !ready && name == "clients" {
+			ready, e = s.bundledUsenetReady(ctx)
+			if e != nil {
+				return IntegrationStatus{}, e
+			}
 		}
-		b, e := s.sabStatus(ctx)
-		return IntegrationStatus{Configured: a.Configured || b.Configured}, e
+		return IntegrationStatus{Configured: ready}, nil
 	}
 	if name == "indexers" {
 		var enabled int

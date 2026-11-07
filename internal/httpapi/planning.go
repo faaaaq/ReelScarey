@@ -15,6 +15,7 @@ func (s *Server) planning(w http.ResponseWriter, r *http.Request) {
 	allowed := map[string]bool{"kind": true, "status": true, "query": true, "monitored": true, "page": true}
 	if calendar {
 		allowed["month"] = true
+		allowed["release"] = true
 	}
 	values, parseErr := url.ParseQuery(r.URL.RawQuery)
 	if parseErr != nil {
@@ -23,6 +24,12 @@ func (s *Server) planning(w http.ResponseWriter, r *http.Request) {
 	}
 	for k, v := range values {
 		if !allowed[k] || len(v) != 1 {
+			fail(w, 400, "invalid_planning", library.ErrPlanningInput.Error())
+			return
+		}
+	}
+	if calendar {
+		if release, present := values["release"]; present && release[0] != "all" && release[0] != "theatrical" && release[0] != "digital" && release[0] != "physical" {
 			fail(w, 400, "invalid_planning", library.ErrPlanningInput.Error())
 			return
 		}
@@ -37,7 +44,7 @@ func (s *Server) planning(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid_planning", library.ErrPlanningInput.Error())
 		return
 	}
-	f := library.PlanningFilter{Kind: values.Get("kind"), Status: values.Get("status"), Query: values.Get("query"), Month: values.Get("month"), OnlyMonitored: monitored != "all", Page: page}
+	f := library.PlanningFilter{Kind: values.Get("kind"), Status: values.Get("status"), Query: values.Get("query"), Month: values.Get("month"), Release: values.Get("release"), OnlyMonitored: monitored != "all", Page: page}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	var out library.PlanningPage

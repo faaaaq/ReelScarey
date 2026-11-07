@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -700,6 +701,89 @@ func TestItemSearchScopesTheRunAndContinuesAcrossBatches(t *testing.T) {
 }
 
 // A bulk request narrows the run to one media kind and queues only that kind.
+func enableBuiltInTorrent(t *testing.T, f fixture) {
+	t.Helper()
+	ctx := context.Background()
+	if e := f.w.Remove(ctx, "qbittorrent"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.db.Exec(`UPDATE download_client_preferences SET torrent='',usenet=''`); e != nil {
+		t.Fatal(e)
+	}
+	plain, e := json.Marshal(transfer.ClientConfig{URL: "http://127.0.0.1:1", DownloadPath: "/downloads"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	name := "download-client:" + transfer.BundledTorrentClientID
+	sealed, e := f.secrets.Seal("config:"+name, plain)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.db.Exec(`INSERT INTO download_clients(id,name,kind,enabled,builtin,created_at,updated_at) VALUES(?,?,?,1,1,1,1)`, transfer.BundledTorrentClientID, "Built-in qBittorrent", "qbittorrent"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.db.Exec(`INSERT INTO integration_configs(name,ciphertext) VALUES(?,?)`, name, sealed); e != nil {
+		t.Fatal(e)
+	}
+}
+
+// The built-in torrent fallback is a usable client even when no explicit
+// default and no legacy settings connection remain. Client readiness must not
+// stop a bulk Calendar search at waiting_client before checking any target.
+func TestBulkCalendarSearchQueuesWithOnlyTheBuiltInClient(t *testing.T) {
+	ctx := context.Background()
+	t.Run("series", func(t *testing.T) {
+		f := setup(t)
+		enableBuiltInTorrent(t, f)
+		if _, e := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,category,monitored) VALUES(5,'series',5,'Show',2020,'standard',1);INSERT INTO series_details(media_id) VALUES(5);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,5,10,1,'Season','','2020-01-01',1,1,'loaded');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,11,1,'One','','2020-01-01',1)`); e != nil {
+			t.Fatal(e)
+		}
+		f.i.titleFor = func(query string) string { return strings.ReplaceAll(query, " ", ".") + ".1080p.English.WEB" }
+		configure(t, f.s, true, "download", 10)
+		if e := f.s.RequestBulk(ctx, "series"); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := f.s.ProcessNext(ctx); e != nil {
+			t.Fatal(e)
+		}
+		runs, e := f.s.Runs(ctx)
+		if e != nil || len(runs) == 0 {
+			t.Fatal(runs, e)
+		}
+		results, e := f.s.Results(ctx, runs[0].ID)
+		if e != nil || runs[0].Checked == 0 || runs[0].Queued != 1 || runs[0].State != "completed" || len(results) != 1 || results[0].Outcome != "queued" {
+			t.Fatal("the built-in client stalled the episode search", runs, results, e)
+		}
+		var protocol string
+		if e = f.db.QueryRow(`SELECT protocol FROM downloads`).Scan(&protocol); e != nil || protocol != "torrent" {
+			t.Fatal("no torrent job was queued", protocol, e)
+		}
+	})
+	t.Run("movie", func(t *testing.T) {
+		f := setup(t)
+		enableBuiltInTorrent(t, f)
+		configure(t, f.s, true, "download", 10)
+		if e := f.s.RequestBulk(ctx, "movie"); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := f.s.ProcessNext(ctx); e != nil {
+			t.Fatal(e)
+		}
+		runs, e := f.s.Runs(ctx)
+		if e != nil || len(runs) == 0 {
+			t.Fatal(runs, e)
+		}
+		results, e := f.s.Results(ctx, runs[0].ID)
+		if e != nil || runs[0].Checked == 0 || runs[0].Queued != 1 || runs[0].State != "completed" || len(results) != 1 || results[0].MediaID != 1 || results[0].Outcome != "queued" {
+			t.Fatal("the built-in client stalled the movie search", runs, results, e)
+		}
+		var count int
+		if e = f.db.QueryRow(`SELECT COUNT(*) FROM downloads WHERE kind='movie'`).Scan(&count); e != nil || count != 1 {
+			t.Fatal("no movie job was queued", count, e)
+		}
+	})
+}
+
 func TestBulkSearchScopesToMoviesOrEpisodes(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()

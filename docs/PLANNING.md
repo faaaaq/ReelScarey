@@ -49,7 +49,19 @@ years 0001–9999, and default to the server's current UTC month. Pagination rem
 explicit so a busy month is not silently truncated. Dates are civil dates displayed
 without shifting the date to the browser's time zone.
 
-Movie dates may describe theatrical releases, not streaming/disc availability.
+A movie has one canonical `release_date` plus optional theatrical, digital and
+physical dates saved from TMDb release metadata. Calendar lists one row per known
+kind in the requested month (`release_kind` `theatrical`, `digital` or `physical`)
+and uses that kind's date. When no detailed kind has a valid date, it keeps one
+row with an empty `release_kind` from the canonical date, matching earlier
+behavior. Rows also carry the saved `theatrical_date`, `digital_date` and
+`physical_date` so an entry can show every known date; missing values are empty.
+Wanted remains one row per movie using the canonical date. A calendar-only
+Releases filter (`release=all|theatrical|digital|physical`, default all) narrows
+the agenda; it is rejected on Wanted. Detailed dates come from TMDb only when
+movie metadata is refreshed through the normal screen, so existing titles can
+remain canonical-only until refreshed.
+
 Episode dates do not include broadcast times or establish download availability.
 Only cached metadata is used; refresh movie/show/season metadata through its normal
 screen when needed. Unloaded-season coverage and untracked missing items with no
@@ -67,21 +79,24 @@ with automation. There is no scheduling or monitoring mutation in these pages.
 
 GET `/api/v1/wanted` and `/api/v1/calendar` require the administrator session.
 Supported parameters: kind (all/movie/series), status, monitored (monitored/all),
-query (up to 200 UTF-8 bytes, no controls), page (1–100000), plus month for Calendar.
-Unknown or repeated parameters and invalid filters return 400. SQL parameters
-escape LIKE wildcards, so `%`, `_` and backslash searches are literal; SQLite's
-built-in case-insensitive matching applies to ASCII letters.
+query (up to 200 UTF-8 bytes, no controls), page (1–100000), plus month for
+Calendar and its calendar-only release filter (all/theatrical/digital/physical,
+default all). Supplying release to Wanted is rejected. Unknown or repeated
+parameters and invalid filters return 400. SQL parameters escape LIKE wildcards,
+so `%`, `_` and backslash searches are literal; SQLite's built-in
+case-insensitive matching applies to ASCII letters.
 
 Responses include items, filtered status counts, coverage, total/page/limit,
 as_of_date, month and effective filters. Items contain catalog IDs, normalized date,
-monitoring explanation, registration status and non-secret tracked job ID/state/
-protocol. Credentials, client addresses, metainfo, NZBs and filesystem paths are
-not exposed. Reads use a transaction for a coherent response and a five-second
-request budget. Sorting is date (undated last), title ignoring ASCII case, parent
-ID and episode ID. New requests reflect catalog changes; bookmarks are filters,
-not frozen snapshots.
+release kind and the three saved movie dates, monitoring explanation, registration
+status and non-secret tracked job ID/state/protocol. Credentials, client addresses,
+metainfo, NZBs and filesystem paths are not exposed. Reads use a transaction for a
+coherent response and a five-second request budget. Sorting is date (undated last),
+release kind, title ignoring ASCII case, parent ID and episode ID. New requests
+reflect catalog changes; bookmarks are filters, not frozen snapshots.
 
-No new migration or application dependency is needed; schema remains 10. This
-milestone does not add changed/deleted-file checks, automatic metadata refresh,
-future episode prediction, timezone-specific broadcasts, upgrade replacement,
-bulk actions, media requests or private-account acceptance.
+Migration 057 adds the three movie date columns with empty defaults; existing
+rows and the canonical release_date are preserved. This milestone does not add
+changed/deleted-file checks, automatic metadata refresh, future episode
+prediction, timezone-specific broadcasts, upgrade replacement, bulk actions,
+media requests or private-account acceptance.

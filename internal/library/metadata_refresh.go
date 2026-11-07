@@ -81,7 +81,7 @@ func (s *Store) ApplyMetadataRefresh(ctx context.Context, expected Item, revisio
 		}
 	}
 	m := fresh.Movie
-	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET title=?,year=?,overview=?,poster_path=?,release_date=?,runtime_minutes=? WHERE id=?`, m.Title, m.Year, m.Overview, m.PosterPath, m.ReleaseDate, m.RuntimeMinutes, expected.ID); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET title=?,year=?,overview=?,poster_path=?,release_date=?,theatrical_release_date=?,digital_release_date=?,physical_release_date=?,runtime_minutes=? WHERE id=?`, m.Title, m.Year, m.Overview, m.PosterPath, m.ReleaseDate, m.TheatricalReleaseDate, m.DigitalReleaseDate, m.PhysicalReleaseDate, m.RuntimeMinutes, expected.ID); e != nil {
 		return e
 	}
 	payload, e := json.Marshal(fresh.Information)

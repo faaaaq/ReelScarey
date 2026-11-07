@@ -1114,6 +1114,25 @@ details > summary {
 .rs-progress.is-disabled .rs-progress-fill {
   background: var(--rs-disabled);
 }
+.rs-progress.is-indeterminate .rs-progress-fill {
+  width: 35%;
+  animation: rs-indeterminate 1.2s ease-in-out infinite;
+}
+@keyframes rs-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(385%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rs-progress.is-indeterminate .rs-progress-fill {
+    width: 100%;
+    opacity: 0.55;
+    animation: none;
+  }
+}
 .rs-progress-text {
   position: absolute;
   inset: 0;
@@ -1123,6 +1142,19 @@ details > summary {
   color: var(--rs-text-strong);
   text-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
   white-space: nowrap;
+}
+.rs-batch-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+}
+.rs-batch-status {
+  color: var(--rs-text-strong);
+  font-size: 13px;
+}
+.rs-batch-detail {
+  font-size: 12.5px;
 }
 
 /* Tables ------------------------------------------------------------------ */

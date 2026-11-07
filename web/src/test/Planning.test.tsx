@@ -1,4 +1,5 @@
 import {
+  act,
   render,
   screen,
   waitFor,
@@ -8,7 +9,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import App from "../App";
 import type { PlanningData, PlanningEntry } from "../pages/Planning";
 
@@ -30,6 +31,10 @@ const movie: PlanningEntry = {
   download_state: "",
   protocol: "",
   poster_url: "",
+  release_kind: "theatrical",
+  theatrical_date: "2026-10-24",
+  digital_date: "2026-11-10",
+  physical_date: "2026-12-01",
 };
 const episode: PlanningEntry = {
   ...movie,
@@ -112,6 +117,8 @@ function setup(
       });
     const custom = extra?.(url, options);
     if (custom) return custom;
+    if (url.endsWith("/automation"))
+      return Response.json({ mode: "download", state: "idle", message: "" });
     if (url.includes("/wanted?")) return Response.json(data());
     if (url.includes("/calendar?")) {
       const month =
@@ -129,6 +136,8 @@ function setup(
   vi.stubGlobal("fetch", fetch);
   return fetch;
 }
+afterEach(() => vi.restoreAllMocks());
+
 describe("wanted and release planning", () => {
   it("links missing targets to explicit searches and tracked targets to Activity", async () => {
     const fetch = setup();
@@ -312,6 +321,152 @@ describe("wanted and release planning", () => {
     expect(localStorage.getItem("reelscarey.calendar.view")).toBe("agenda");
     localStorage.removeItem("reelscarey.calendar.view");
   });
+  it("labels movie release kinds and shows every saved date in the entry dialog", async () => {
+    const fetch = setup();
+    mount("/calendar?month=2026-10");
+    await screen.findByRole("heading", { name: "October 2026" });
+    const day = screen.getByRole("cell", { name: "Oct 24, 2026" });
+    expect(within(day).getByText("Theatrical")).toBeVisible();
+    await userEvent.click(
+      within(day).getByRole("button", { name: /Saved Movie/ }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Saved Movie (2026)",
+    });
+    expect(within(dialog).getAllByText("Theatrical").length).toBeGreaterThan(0);
+    expect(within(dialog).getByText("Nov 10, 2026")).toBeVisible();
+    expect(within(dialog).getByText("Dec 1, 2026")).toBeVisible();
+    await userEvent.click(
+      within(dialog).getAllByRole("button", { name: "Close" })[0],
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Agenda" }));
+    const agenda = await screen.findByRole("table", {
+      name: "Calendar agenda",
+    });
+    expect(within(agenda).getAllByText("Theatrical").length).toBeGreaterThan(0);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Releases: All releases" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitemradio", { name: "Digital" }),
+    );
+    await screen.findByRole("button", { name: "Releases: Digital" });
+    await waitFor(() => {
+      const url = fetch.mock.calls
+        .map((c) => c[0])
+        .filter((u) => u.includes("/calendar?"))
+        .at(-1)!;
+      expect(new URL(url, "http://fixture").searchParams.get("release")).toBe(
+        "digital",
+      );
+    });
+    expect(localStorage.getItem("reelscarey.calendar.filters")).toContain(
+      "release=digital",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Releases: Digital" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitemradio", { name: "All releases" }),
+    );
+    await waitFor(() => {
+      const url = fetch.mock.calls
+        .map((c) => c[0])
+        .filter((u) => u.includes("/calendar?"))
+        .at(-1)!;
+      expect(new URL(url, "http://fixture").searchParams.has("release")).toBe(
+        false,
+      );
+    });
+  });
+
+  it("shows a dash when a movie has no saved release dates", async () => {
+    setup((url) =>
+      url.includes("/calendar?")
+        ? Response.json({
+            ...data(true),
+            items: [
+              {
+                ...movie,
+                release_kind: undefined,
+                theatrical_date: undefined,
+                digital_date: undefined,
+                physical_date: undefined,
+              },
+            ],
+            total: 1,
+          })
+        : undefined,
+    );
+    mount("/calendar?month=2026-10");
+    const day = await screen.findByRole("cell", { name: "Oct 24, 2026" });
+    await userEvent.click(
+      within(day).getByRole("button", { name: /Saved Movie/ }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Saved Movie (2026)",
+    });
+    const label = within(dialog).getByText("Release dates");
+    expect(label.closest("dl")).toHaveTextContent("—");
+  });
+
+  it("refreshes the open calendar and keeps the last data on a transient error", async () => {
+    localStorage.removeItem("reelscarey.calendar.view");
+    const intervals: { ms: number; run: () => void }[] = [];
+    vi.spyOn(window, "setInterval").mockImplementation(((
+      handler: TimerHandler,
+      timeout?: number,
+    ) => {
+      intervals.push({
+        ms: Number(timeout),
+        run: () => {
+          if (typeof handler === "function") handler();
+        },
+      });
+      return intervals.length;
+    }) as typeof window.setInterval);
+    let fail = false;
+    let extra = false;
+    setup((url) => {
+      if (!url.includes("/calendar?")) return undefined;
+      if (fail)
+        return Response.json(
+          { error: { message: "Temporary outage" } },
+          { status: 503 },
+        );
+      const items = [
+        movie,
+        { ...episode, available: true, status: "available" },
+        ...(extra
+          ? [
+              {
+                ...movie,
+                media_id: 9,
+                title: "Newly downloaded",
+                date: "2026-10-26",
+                status: "available",
+              },
+            ]
+          : []),
+      ];
+      return Response.json({ ...data(true), items, total: items.length });
+    });
+    mount("/calendar?month=2026-10");
+    await screen.findByRole("heading", { name: "October 2026" });
+    expect(screen.getByText("Updated just now")).toBeVisible();
+    expect(screen.queryByText("Newly downloaded")).not.toBeInTheDocument();
+    const poll = intervals.find((interval) => interval.ms === 25000)!;
+    expect(poll).toBeDefined();
+    extra = true;
+    await act(async () => poll.run());
+    expect(await screen.findByText("Newly downloaded")).toBeVisible();
+    fail = true;
+    await act(async () => poll.run());
+    expect(await screen.findByText(/Could not refresh/)).toBeVisible();
+    expect(screen.getByText("Newly downloaded")).toBeVisible();
+  });
+
   it("keeps count shortcuts scoped to the current title filters", async () => {
     const fetch = setup();
     mount("/wanted?query=Saved&kind=series&monitored=all&page=2");
@@ -373,26 +528,99 @@ describe("wanted and release planning", () => {
   });
 });
 
-it("confirms bulk calendar searches and reports what the run did", async () => {
+function stubIntervals() {
+  const intervals: { ms: number; run: () => void }[] = [];
+  vi.spyOn(window, "setInterval").mockImplementation(((
+    handler: TimerHandler,
+    timeout?: number,
+  ) => {
+    intervals.push({
+      ms: Number(timeout),
+      run: () => {
+        if (typeof handler === "function") handler();
+      },
+    });
+    return intervals.length;
+  }) as typeof window.setInterval);
+  return intervals;
+}
+
+it("states the saved download mode and reports what the run did", async () => {
+  const intervals = stubIntervals();
   const posts: unknown[] = [];
+  let phase: "idle" | "completed" = "idle";
   setup((url, options) => {
     if (url.endsWith("/automation/search-bulk") && options?.method === "POST") {
       posts.push(JSON.parse(String(options.body)));
+      phase = "completed";
       return Response.json({ requested: true }, { status: 202 });
     }
     if (url.endsWith("/automation/runs"))
-      return Response.json([
-        {
-          id: "run-1",
-          started_at: Math.floor(Date.now() / 1000),
-          finished_at: Math.floor(Date.now() / 1000) + 1,
-          state: "completed",
-          message: "Search complete.",
-          mode: "download",
-          checked: 4,
-          queued: 2,
-        },
-      ]);
+      return Response.json(
+        phase === "idle"
+          ? []
+          : [
+              {
+                id: "run-1",
+                started_at: Math.floor(Date.now() / 1000),
+                finished_at: Math.floor(Date.now() / 1000) + 1,
+                state: "completed",
+                message: "Search complete.",
+                mode: "download",
+                checked: 4,
+                queued: 2,
+              },
+            ],
+      );
+    return undefined;
+  });
+  mount("/calendar?month=2026-10");
+  await screen.findByRole("heading", { name: "October 2026" });
+  await userEvent.click(screen.getByRole("button", { name: "Search movies" }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search every missing monitored movie?",
+  });
+  expect(
+    await within(dialog).findByText(/saved automation mode is Download/),
+  ).toBeVisible();
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: "Start search" }),
+  );
+  const poll = intervals.find((interval) => interval.ms === 2500)!;
+  await act(async () => poll.run());
+  expect(
+    await screen.findByText(/Searched 4 items and queued 2 downloads/),
+  ).toBeVisible();
+  expect(posts).toEqual([{ scope: "movie" }]);
+});
+
+it("shows live indeterminate progress while a bulk search runs", async () => {
+  const intervals = stubIntervals();
+  let phase: "idle" | "running" | "completed" = "idle";
+  setup((url, options) => {
+    if (url.endsWith("/automation/search-bulk") && options?.method === "POST") {
+      phase = "running";
+      return Response.json({ requested: true }, { status: 202 });
+    }
+    if (url.endsWith("/automation/runs"))
+      return Response.json(
+        phase === "idle"
+          ? []
+          : [
+              {
+                id: "run-1",
+                started_at: Math.floor(Date.now() / 1000),
+                finished_at:
+                  phase === "completed" ? Math.floor(Date.now() / 1000) + 1 : 0,
+                state: phase === "completed" ? "completed" : "running",
+                message:
+                  phase === "completed" ? "Search complete." : "Searching.",
+                mode: "download",
+                checked: 2,
+                queued: 1,
+              },
+            ],
+      );
     return undefined;
   });
   mount("/calendar?month=2026-10");
@@ -404,13 +632,79 @@ it("confirms bulk calendar searches and reports what the run did", async () => {
   await userEvent.click(
     within(dialog).getByRole("button", { name: "Start search" }),
   );
+  const bar = await screen.findByRole("progressbar", {
+    name: "Calendar bulk search",
+  });
+  expect(bar).toHaveAttribute("aria-busy", "true");
+  const poll = intervals.find((interval) => interval.ms === 2500)!;
+  await act(async () => poll.run());
   expect(
-    await screen.findByText(/Searched 4 items and queued 2 downloads/),
+    await screen.findByText(/Searching… 2 checked, 1 queued/),
   ).toBeVisible();
-  expect(posts).toEqual([{ scope: "movie" }]);
+  phase = "completed";
+  await act(async () => poll.run());
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("progressbar", { name: "Calendar bulk search" }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(
+    screen.getByText(/Searched 2 items and queued 1 download/),
+  ).toBeVisible();
+});
+
+it("states search-only mode and explains a run that checked nothing", async () => {
+  const intervals = stubIntervals();
+  let phase: "idle" | "completed" = "idle";
+  setup((url, options) => {
+    if (url.endsWith("/automation") && !options?.method)
+      return Response.json({ mode: "search", state: "idle", message: "" });
+    if (url.endsWith("/automation/search-bulk") && options?.method === "POST") {
+      phase = "completed";
+      return Response.json({ requested: true }, { status: 202 });
+    }
+    if (url.endsWith("/automation/runs"))
+      return Response.json(
+        phase === "idle"
+          ? []
+          : [
+              {
+                id: "run-2",
+                started_at: Math.floor(Date.now() / 1000),
+                finished_at: Math.floor(Date.now() / 1000) + 1,
+                state: "completed",
+                message: "Waiting for an enabled indexer.",
+                mode: "search",
+                checked: 0,
+                queued: 0,
+              },
+            ],
+      );
+    return undefined;
+  });
+  mount("/calendar?month=2026-10");
+  await screen.findByRole("heading", { name: "October 2026" });
+  await userEvent.click(screen.getByRole("button", { name: "Search movies" }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search every missing monitored movie?",
+  });
+  expect(
+    await within(dialog).findByText(/saved automation mode is Search-only/),
+  ).toBeVisible();
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: "Start search" }),
+  );
+  const poll = intervals.find((interval) => interval.ms === 2500)!;
+  await act(async () => poll.run());
+  const message = await screen.findByText(/No items were checked/);
+  expect(message).toHaveTextContent(/Waiting for an enabled indexer/);
+  expect(message).toHaveTextContent(
+    /waiting for an indexer or download client/,
+  );
 });
 
 it("remembers the last calendar filters until Reset", async () => {
+  localStorage.removeItem("reelscarey.calendar.filters");
   setup();
   const { unmount } = render(
     <Theme>

@@ -14,13 +14,14 @@ import (
 var ErrPlanningInput = errors.New("Choose valid planning filters, a page from 1–100000 and a calendar month in YYYY-MM format.")
 
 type PlanningFilter struct {
-	Kind, Status, Query, Month string
-	OnlyMonitored              bool
-	Page                       int
+	Kind, Status, Query, Month, Release string
+	OnlyMonitored                       bool
+	Page                                int
 }
 type PlanningEntry struct {
 	Kind              string `json:"kind"`
 	MovieVersion      string `json:"movie_version,omitempty"`
+	ReleaseKind       string `json:"release_kind"`
 	MediaID           int64  `json:"media_id"`
 	EpisodeID         *int64 `json:"episode_id"`
 	Title             string `json:"title"`
@@ -30,6 +31,9 @@ type PlanningEntry struct {
 	Season            *int   `json:"season"`
 	Episode           *int   `json:"episode"`
 	Date              string `json:"date"`
+	TheatricalDate    string `json:"theatrical_date"`
+	DigitalDate       string `json:"digital_date"`
+	PhysicalDate      string `json:"physical_date"`
 	Monitored         bool   `json:"monitored"`
 	MonitoringReason  string `json:"monitoring_reason"`
 	Available         bool   `json:"available"`
@@ -71,14 +75,31 @@ type PlanningPage struct {
 
 // These are catalog facts, not a disk scan or download eligibility assertion.
 // EXISTS avoids multiplying shared episode files or multi-target downloads.
-const planningCTE = `WITH clock AS (SELECT ? AS today), raw AS (
- SELECT m.kind,m.id AS media_id,NULL AS episode_id,m.title,m.year,'' AS episode_title,NULL AS season,NULL AS episode,m.release_date AS raw_date,m.poster_path,m.overview,
- m.monitored AS monitored,CASE WHEN m.monitored=0 THEN 'Movie monitoring is paused.' ELSE '' END AS monitoring_reason,
+const planningCTE = `WITH clock AS (SELECT ? AS today), modes AS (SELECT ? AS calendar), movie_base AS (
+ SELECT m.id,m.title,m.year,m.release_date,m.theatrical_release_date,m.digital_release_date,m.physical_release_date,m.poster_path,m.overview,m.monitored,
  EXISTS(SELECT 1 FROM media_files f WHERE f.movie_id=m.id AND (mv.version='' OR (mv.version='hd' AND f.video_resolution BETWEEN 1 AND 1080) OR (mv.version='uhd' AND f.video_resolution=2160))) AS available,
  COALESCE((SELECT d.id FROM downloads d WHERE d.movie_id=m.id AND d.kind='movie' AND d.state NOT IN ('completed','cancelled') AND (mv.version='' OR d.movie_version IN ('',mv.version)) ORDER BY d.created_at DESC,d.id DESC LIMIT 1),'') AS download_id,mv.version AS movie_version
- FROM media_items m CROSS JOIN (SELECT '' AS version UNION ALL SELECT 'hd' UNION ALL SELECT 'uhd') mv LEFT JOIN movie_version_settings vs ON vs.media_id=m.id WHERE m.kind='movie' AND ((COALESCE(vs.enabled,0)=0 AND mv.version='') OR (vs.enabled=1 AND mv.version<>''))
+ FROM media_items m CROSS JOIN (SELECT '' AS version UNION ALL SELECT 'hd' UNION ALL SELECT 'uhd') mv LEFT JOIN movie_version_settings vs ON vs.media_id=m.id
+ WHERE m.kind='movie' AND ((COALESCE(vs.enabled,0)=0 AND mv.version='') OR (vs.enabled=1 AND mv.version<>''))
+), raw AS (
+ SELECT 'movie' AS kind,b.id AS media_id,NULL AS episode_id,b.title,b.year,'' AS episode_title,NULL AS season,NULL AS episode,b.release_date AS raw_date,'' AS release_kind,b.theatrical_release_date AS raw_theatrical,b.digital_release_date AS raw_digital,b.physical_release_date AS raw_physical,b.poster_path,b.overview,
+ b.monitored AS monitored,CASE WHEN b.monitored=0 THEN 'Movie monitoring is paused.' ELSE '' END AS monitoring_reason,b.available,b.download_id,b.movie_version
+ FROM movie_base b CROSS JOIN modes mo
+ WHERE mo.calendar=0 OR NOT EXISTS(SELECT 1 FROM (SELECT b.theatrical_release_date AS d UNION ALL SELECT b.digital_release_date UNION ALL SELECT b.physical_release_date) dr WHERE length(dr.d)=10 AND substr(dr.d,1,4) BETWEEN '0001' AND '9999' AND date(dr.d,'+0 days')=dr.d)
  UNION ALL
- SELECT m.kind,m.id,e.id,m.title,m.year,e.title,s.number,e.number,e.air_date,m.poster_path,CASE WHEN e.overview<>'' THEN e.overview ELSE m.overview END,
+ SELECT 'movie',b.id,NULL,b.title,b.year,'',NULL,NULL,b.theatrical_release_date,'theatrical',b.theatrical_release_date,b.digital_release_date,b.physical_release_date,b.poster_path,b.overview,b.monitored,CASE WHEN b.monitored=0 THEN 'Movie monitoring is paused.' ELSE '' END,b.available,b.download_id,b.movie_version
+ FROM movie_base b CROSS JOIN modes mo
+ WHERE mo.calendar=1 AND length(b.theatrical_release_date)=10 AND substr(b.theatrical_release_date,1,4) BETWEEN '0001' AND '9999' AND date(b.theatrical_release_date,'+0 days')=b.theatrical_release_date
+ UNION ALL
+ SELECT 'movie',b.id,NULL,b.title,b.year,'',NULL,NULL,b.digital_release_date,'digital',b.theatrical_release_date,b.digital_release_date,b.physical_release_date,b.poster_path,b.overview,b.monitored,CASE WHEN b.monitored=0 THEN 'Movie monitoring is paused.' ELSE '' END,b.available,b.download_id,b.movie_version
+ FROM movie_base b CROSS JOIN modes mo
+ WHERE mo.calendar=1 AND length(b.digital_release_date)=10 AND substr(b.digital_release_date,1,4) BETWEEN '0001' AND '9999' AND date(b.digital_release_date,'+0 days')=b.digital_release_date
+ UNION ALL
+ SELECT 'movie',b.id,NULL,b.title,b.year,'',NULL,NULL,b.physical_release_date,'physical',b.theatrical_release_date,b.digital_release_date,b.physical_release_date,b.poster_path,b.overview,b.monitored,CASE WHEN b.monitored=0 THEN 'Movie monitoring is paused.' ELSE '' END,b.available,b.download_id,b.movie_version
+ FROM movie_base b CROSS JOIN modes mo
+ WHERE mo.calendar=1 AND length(b.physical_release_date)=10 AND substr(b.physical_release_date,1,4) BETWEEN '0001' AND '9999' AND date(b.physical_release_date,'+0 days')=b.physical_release_date
+ UNION ALL
+ SELECT m.kind,m.id,e.id,m.title,m.year,e.title,s.number,e.number,e.air_date,'' AS release_kind,'' AS raw_theatrical,'' AS raw_digital,'' AS raw_physical,m.poster_path,CASE WHEN e.overview<>'' THEN e.overview ELSE m.overview END,
  (m.monitored=1 AND s.monitored=1 AND e.monitored=1),
  CASE WHEN m.monitored=0 THEN 'Show monitoring is paused.' WHEN s.monitored=0 THEN 'Season monitoring is paused.' WHEN e.monitored=0 THEN 'Episode is not monitored.' ELSE '' END,
  EXISTS(SELECT 1 FROM episode_files ef WHERE ef.episode_id=e.id),
@@ -86,6 +107,9 @@ const planningCTE = `WITH clock AS (SELECT ? AS today), raw AS (
  FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id WHERE s.loaded_at<>'' AND m.kind='series'
 ), normalized AS (
  SELECT r.*,CASE WHEN length(raw_date)=10 AND substr(raw_date,1,4) BETWEEN '0001' AND '9999' AND date(raw_date,'+0 days')=raw_date THEN raw_date ELSE '' END AS date,
+ CASE WHEN length(raw_theatrical)=10 AND substr(raw_theatrical,1,4) BETWEEN '0001' AND '9999' AND date(raw_theatrical,'+0 days')=raw_theatrical THEN raw_theatrical ELSE '' END AS theatrical_date,
+ CASE WHEN length(raw_digital)=10 AND substr(raw_digital,1,4) BETWEEN '0001' AND '9999' AND date(raw_digital,'+0 days')=raw_digital THEN raw_digital ELSE '' END AS digital_date,
+ CASE WHEN length(raw_physical)=10 AND substr(raw_physical,1,4) BETWEEN '0001' AND '9999' AND date(raw_physical,'+0 days')=raw_physical THEN raw_physical ELSE '' END AS physical_date,
  COALESCE(d.state,'') AS download_state,COALESCE(d.protocol,'') AS protocol
  FROM raw r LEFT JOIN downloads d ON d.id=r.download_id
 ), entries AS (
@@ -121,11 +145,15 @@ func (s *Store) planning(ctx context.Context, f PlanningFilter, now time.Time, c
 			f.Status = "all"
 		}
 	}
+	if f.Release == "" {
+		f.Release = "all"
+	}
 	if f.Page == 0 {
 		f.Page = 1
 	}
 	validStatus := f.Status == "all" || f.Status == "missing" || f.Status == "upcoming" || f.Status == "undated" || f.Status == "downloading" || f.Status == "attention" || (calendar && f.Status == "available")
-	if !validStatus || (f.Kind != "all" && f.Kind != "movie" && f.Kind != "series") || f.Page < 1 || f.Page > 100000 || len(f.Query) > 200 || !utf8.ValidString(f.Query) || strings.ContainsFunc(f.Query, unicode.IsControl) || (!calendar && f.Month != "") {
+	validRelease := f.Release == "all" || (calendar && (f.Release == "theatrical" || f.Release == "digital" || f.Release == "physical"))
+	if !validStatus || !validRelease || (f.Kind != "all" && f.Kind != "movie" && f.Kind != "series") || f.Page < 1 || f.Page > 100000 || len(f.Query) > 200 || !utf8.ValidString(f.Query) || strings.ContainsFunc(f.Query, unicode.IsControl) || (!calendar && f.Month != "") {
 		return PlanningPage{}, ErrPlanningInput
 	}
 	monthEnd := ""
@@ -141,11 +169,15 @@ func (s *Store) planning(ctx context.Context, f PlanningFilter, now time.Time, c
 	}
 	out := PlanningPage{Items: []PlanningEntry{}, Page: f.Page, Limit: 50, AsOfDate: now.UTC().Format(time.DateOnly), Month: f.Month, Kind: f.Kind, Status: f.Status, Query: f.Query, OnlyMonitored: f.OnlyMonitored}
 	match := planningText(f.Query)
-	args := []any{out.AsOfDate, f.Kind, f.Kind, f.OnlyMonitored, match, match}
+	calendarValue := 0
+	if calendar {
+		calendarValue = 1
+	}
+	args := []any{out.AsOfDate, calendarValue, f.Kind, f.Kind, f.OnlyMonitored, match, match}
 	scope := ` WHERE available=0`
 	if calendar {
-		scope = ` WHERE date>=? AND date<=?`
-		args = append(args, f.Month+"-01", monthEnd)
+		scope = ` WHERE date>=? AND date<=? AND (?='all' OR release_kind=?)`
+		args = append(args, f.Month+"-01", monthEnd, f.Release, f.Release)
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -183,7 +215,7 @@ func (s *Store) planning(ctx context.Context, f PlanningFilter, now time.Time, c
 	if e != nil {
 		return out, e
 	}
-	if e = tx.QueryRowContext(ctx, planningCTE+`SELECT COUNT(*) FROM filtered WHERE status='undated'`, args[:6]...).Scan(&out.Coverage.Undated); e != nil {
+	if e = tx.QueryRowContext(ctx, planningCTE+`SELECT COUNT(*) FROM filtered WHERE status='undated'`, args[:7]...).Scan(&out.Coverage.Undated); e != nil {
 		return out, e
 	}
 	if f.Kind != "movie" {
@@ -198,14 +230,14 @@ func (s *Store) planning(ctx context.Context, f PlanningFilter, now time.Time, c
 		return out, e
 	}
 	selectedArgs = append(selectedArgs, out.Limit, (out.Page-1)*out.Limit)
-	rows, e = tx.QueryContext(ctx, planningCTE+`SELECT kind,media_id,episode_id,title,year,episode_title,season,episode,date,monitored,monitoring_reason,available,status,download_id,download_state,protocol,poster_path,movie_version,overview FROM filtered`+selected+` ORDER BY date='',date,`+TitleSort+` COLLATE NOCASE,media_id,COALESCE(episode_id,0),movie_version LIMIT ? OFFSET ?`, selectedArgs...)
+	rows, e = tx.QueryContext(ctx, planningCTE+`SELECT kind,media_id,episode_id,title,year,episode_title,season,episode,date,release_kind,theatrical_date,digital_date,physical_date,monitored,monitoring_reason,available,status,download_id,download_state,protocol,poster_path,movie_version,overview FROM filtered`+selected+` ORDER BY date='',date,release_kind,`+TitleSort+` COLLATE NOCASE,media_id,COALESCE(episode_id,0),movie_version LIMIT ? OFFSET ?`, selectedArgs...)
 	if e != nil {
 		return out, e
 	}
 	for rows.Next() {
 		var v PlanningEntry
 		var poster string
-		if e = rows.Scan(&v.Kind, &v.MediaID, &v.EpisodeID, &v.Title, &v.Year, &v.EpisodeTitle, &v.Season, &v.Episode, &v.Date, &v.Monitored, &v.MonitoringReason, &v.Available, &v.Status, &v.DownloadID, &v.DownloadState, &v.Protocol, &poster, &v.MovieVersion, &v.Overview); e != nil {
+		if e = rows.Scan(&v.Kind, &v.MediaID, &v.EpisodeID, &v.Title, &v.Year, &v.EpisodeTitle, &v.Season, &v.Episode, &v.Date, &v.ReleaseKind, &v.TheatricalDate, &v.DigitalDate, &v.PhysicalDate, &v.Monitored, &v.MonitoringReason, &v.Available, &v.Status, &v.DownloadID, &v.DownloadState, &v.Protocol, &poster, &v.MovieVersion, &v.Overview); e != nil {
 			rows.Close()
 			return out, e
 		}

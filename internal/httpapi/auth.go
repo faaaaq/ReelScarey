@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/faaaaq/ReelScarey/internal/auth"
 	"io"
 	"mime"
@@ -109,20 +110,34 @@ func (s *Server) cookie(w http.ResponseWriter, r *http.Request, token string, ex
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, out any) bool {
+	return decodeJSONLimit(w, r, out, 16<<10)
+}
+
+func decodeJSONLimit(w http.ResponseWriter, r *http.Request, out any, limit int64) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
 		fail(w, 415, "unsupported_media_type", "Use application/json.")
 		return false
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(out); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			fail(w, 413, "body_too_large", fmt.Sprintf("The request body must be at most %d KiB.", limit/1024))
+			return false
+		}
 		invalidJSON(w, err)
 		return false
 	}
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			fail(w, 413, "body_too_large", fmt.Sprintf("The request body must be at most %d KiB.", limit/1024))
+			return false
+		}
 		invalidJSON(w, err)
 		return false
 	}

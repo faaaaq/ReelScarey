@@ -24,12 +24,16 @@ import (
 // reconcile-by-hash rules apply. Only its lifecycle and configuration are
 // owned by the application, so generic client editing is refused for it.
 const (
-	builtinClientID     = "9e1b071d4f0e4a2f8c3d5b6a7e8f9a0b"
-	builtinClientName   = "Built-in qBittorrent"
-	builtinWebPort      = 8085
-	defaultBuiltinPeer  = 6881
-	builtinReadyTimeout = 40 * time.Second
-	builtinStopTimeout  = 15 * time.Second
+	// BundledTorrentClientID identifies the app-supervised qBittorrent client.
+	// It is exported so diagnostics and integration tests can address the same
+	// connection without guessing its persisted identifier.
+	BundledTorrentClientID = "9e1b071d4f0e4a2f8c3d5b6a7e8f9a0b"
+	builtinClientID        = BundledTorrentClientID
+	builtinClientName      = "Built-in qBittorrent"
+	builtinWebPort         = 8085
+	defaultBuiltinPeer     = 6881
+	builtinReadyTimeout    = 40 * time.Second
+	builtinStopTimeout     = 15 * time.Second
 	// tunnelDownMessage is the kill-switch explanation surfaced by both the
 	// supervisor and the enable path while the VPN tunnel is down.
 	tunnelDownMessage = "The VPN kill switch is on and the tunnel is down. The built-in client stays stopped until the tunnel returns."

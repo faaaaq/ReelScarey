@@ -181,7 +181,7 @@ func (s *Service) processMapped(ctx context.Context, c claim, seed searchTarget,
 	}
 	if c.Mode == "download" {
 		ready := map[string]bool{}
-		for _, name := range []string{"qbittorrent", "sabnzbd"} {
+		for _, name := range []string{"torrent", "usenet"} {
 			status, err := s.workflow.Status(ctx, name)
 			if err != nil {
 				return err
@@ -189,9 +189,9 @@ func (s *Service) processMapped(ctx context.Context, c claim, seed searchTarget,
 			ready[name] = status.Configured
 		}
 		for i := range decisions {
-			name := "qbittorrent"
+			name := "torrent"
 			if releases[decisions[i].ID].Protocol == "usenet" {
-				name = "sabnzbd"
+				name = "usenet"
 			}
 			if !ready[name] {
 				decisions[i].Eligible = false

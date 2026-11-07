@@ -12,21 +12,24 @@ import (
 )
 
 type Item struct {
-	ID               int64           `json:"id"`
-	Kind             string          `json:"kind"`
-	TMDbID           int64           `json:"tmdb_id"`
-	Title            string          `json:"title"`
-	Year             *int            `json:"year"`
-	Monitored        bool            `json:"monitored"`
-	Status           string          `json:"status"`
-	Overview         string          `json:"overview"`
-	PosterPath       string          `json:"poster_path"`
-	PosterURL        string          `json:"poster_url"`
-	ReleaseDate      string          `json:"release_date"`
-	RuntimeMinutes   *int            `json:"runtime_minutes"`
-	QualityProfile   *CatalogProfile `json:"quality_profile,omitempty"`
-	Category         string          `json:"category"`
-	CategoryRevision int             `json:"category_revision"`
+	ID                    int64           `json:"id"`
+	Kind                  string          `json:"kind"`
+	TMDbID                int64           `json:"tmdb_id"`
+	Title                 string          `json:"title"`
+	Year                  *int            `json:"year"`
+	Monitored             bool            `json:"monitored"`
+	Status                string          `json:"status"`
+	Overview              string          `json:"overview"`
+	PosterPath            string          `json:"poster_path"`
+	PosterURL             string          `json:"poster_url"`
+	ReleaseDate           string          `json:"release_date"`
+	TheatricalReleaseDate string          `json:"theatrical_release_date"`
+	DigitalReleaseDate    string          `json:"digital_release_date"`
+	PhysicalReleaseDate   string          `json:"physical_release_date"`
+	RuntimeMinutes        *int            `json:"runtime_minutes"`
+	QualityProfile        *CatalogProfile `json:"quality_profile,omitempty"`
+	Category              string          `json:"category"`
+	CategoryRevision      int             `json:"category_revision"`
 }
 
 type Counts struct {
@@ -64,13 +67,13 @@ const MaxAllItems = 5000
 // matching the existing COLLATE NOCASE behavior.
 const TitleSort = "(CASE WHEN lower(title) LIKE 'the %' THEN substr(title,5) ELSE title END)"
 
-const columns = "id, kind, tmdb_id, title, year, monitored, status, overview, poster_path, release_date, runtime_minutes, category, category_revision"
+const columns = "id, kind, tmdb_id, title, year, monitored, status, overview, poster_path, release_date, theatrical_release_date, digital_release_date, physical_release_date, runtime_minutes, category, category_revision"
 
 type scanner interface{ Scan(...any) error }
 
 func scan(row scanner, extra ...any) (Item, error) {
 	var item Item
-	args := []any{&item.ID, &item.Kind, &item.TMDbID, &item.Title, &item.Year, &item.Monitored, &item.Status, &item.Overview, &item.PosterPath, &item.ReleaseDate, &item.RuntimeMinutes, &item.Category, &item.CategoryRevision}
+	args := []any{&item.ID, &item.Kind, &item.TMDbID, &item.Title, &item.Year, &item.Monitored, &item.Status, &item.Overview, &item.PosterPath, &item.ReleaseDate, &item.TheatricalReleaseDate, &item.DigitalReleaseDate, &item.PhysicalReleaseDate, &item.RuntimeMinutes, &item.Category, &item.CategoryRevision}
 	err := row.Scan(append(args, extra...)...)
 	item.PosterURL = metadata.PosterURL(item.PosterPath)
 	return item, err
@@ -236,7 +239,7 @@ func (s *Store) AddMovieAuthorized(ctx context.Context, movie metadata.Movie, mo
 			return Item{}, false, err
 		}
 	}
-	result, err := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date,runtime_minutes,category) VALUES('movie',?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, movie.TMDbID, movie.Title, movie.Year, monitored, movie.Overview, movie.PosterPath, movie.ReleaseDate, movie.RuntimeMinutes, section)
+	result, err := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date,theatrical_release_date,digital_release_date,physical_release_date,runtime_minutes,category) VALUES('movie',?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, movie.TMDbID, movie.Title, movie.Year, monitored, movie.Overview, movie.PosterPath, movie.ReleaseDate, movie.TheatricalReleaseDate, movie.DigitalReleaseDate, movie.PhysicalReleaseDate, movie.RuntimeMinutes, section)
 	if err != nil {
 		return Item{}, false, err
 	}

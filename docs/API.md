@@ -155,10 +155,13 @@ optional library_key. See [exact payloads, worker invariants and limits](ANIME_O
 Authenticated GET `/api/v1/wanted` and `/api/v1/calendar` accept kind
 (all/movie/series), status (all/missing/upcoming/undated/downloading/attention;
 Calendar also permits available), monitored (monitored/all), query and page.
-Calendar additionally accepts month YYYY-MM; default is the current UTC month.
+Calendar additionally accepts month YYYY-MM (default is the current UTC month)
+and a calendar-only `release` filter: `all`, `theatrical`, `digital` or
+`physical` (default `all`). Supplying `release` to `/api/v1/wanted` is rejected.
+Unknown/repeated keys and invalid values return 400.
 Wanted defaults to status missing; Calendar to all; monitoring defaults to
-effectively monitored. Unknown/repeated keys and invalid values return 400.
-Query is literal, up to 200 UTF-8 bytes without controls; page is 1–100000.
+effectively monitored. Query is literal, up to 200 UTF-8 bytes without controls;
+page is 1–100000.
 
 Responses contain items, status counts, coverage.unloaded_seasons/undated,
 total/page/limit (50), as_of_date and effective month/kind/status/query/
@@ -167,10 +170,16 @@ the view's scope (Wanted excludes registrations; Calendar includes dated items
 in its month). Undated coverage counts untracked, unavailable undated items that
 can be reviewed with Wanted's undated filter. Entries contain kind/media_id,
 nullable episode_id/year/season/episode, title/episode_title, normalized date,
-poster_url, monitored/monitoring_reason, available, status and non-secret
-download_id/download_state/protocol. No source/client secrets or paths appear.
-Reads do not initiate searches, scans or jobs. See [planning](PLANNING.md) for
-status precedence, cached-date coverage and calendar semantics.
+`release_kind` (empty, theatrical, digital or physical), the saved
+`theatrical_date`/`digital_date`/`physical_date` (empty when unknown; TV entries
+always empty), poster_url, monitored/monitoring_reason, available, status and
+non-secret download_id/download_state/protocol. Calendar lists one movie row per
+known release kind in the month and falls back to one `release_kind:""` row from
+the canonical release_date when no detailed kind exists. Wanted remains one row
+per movie using the canonical release_date. No source/client secrets or paths
+appear. Reads do not initiate searches, scans or jobs. See
+[planning](PLANNING.md) for status precedence, cached-date coverage and calendar
+semantics.
 
 ## Usenet integration
 
@@ -340,8 +349,8 @@ video verification", and embedded-title rewrites and subtitle matching refuse
 them. Files ffprobe reads but finds no video stream in are never registered.
 | GET | `/api/v1/library?kind=movie&page=1&query=&status=all&monitored=all&sort=title&profile=all` | Filtered movies, saved metadata, filtered/collection totals and coherent effective-profile context |
 | GET | `/api/v1/library?kind=series&page=1` | Same filters and pagination for TV parent catalog status/monitoring |
-| POST | `/api/v1/library/monitoring/preview` | Read current monitoring/revisions for explicit kind/ids; authenticated + CSRF; no writes |
-| PUT | `/api/v1/library/monitoring` | Apply desired parent monitoring to exact expected items atomically; stale selection returns 409 |
+| POST | `/api/v1/library/monitoring/preview` | Read current monitoring/revisions for explicit kind/ids; authenticated + CSRF; 1–5000 distinct IDs, up to 1 MiB; no writes |
+| PUT | `/api/v1/library/monitoring` | Apply desired parent monitoring to exact expected items atomically; stale selection returns 409; 1–5000 items, up to 1 MiB |
 | POST | `/api/v1/library/profiles/preview` | Review explicit kind/ids and chosen profile/default, with current assignments and full target rules |
 | PUT | `/api/v1/library/profiles` | Atomic assignment from expected item/profile/schedule revisions; stale review returns 409 |
 | GET | `/api/v1/auth/session` | Public setup/auth status; authenticated response includes username, csrf_token, expires_at |
@@ -398,8 +407,8 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | POST | `/api/v1/automation/search-item` | `{ "media_id": 7, "episode_id"?: 10 }`; scope the next run to one title or episode; 202 |
 | POST | `/api/v1/automation/search-bulk` | `{ "scope": "movie" \| "series" }`; scope the next run to every missing monitored movie or TV episode; 202 |
 | GET | `/api/v1/automation/item-results?media_id=7&episode_id=10` | Latest recorded outcome, message, download ID and run for that target |
-| PUT | `/api/v1/library/series/{id}/monitor-all` | `{ "revision" }`; monitor the show, regular seasons and episodes; specials unchanged |
-| POST | `/api/v1/library/monitor-all-episodes` | `{ "category"?: "standard" \| "anime" }`; reviewed bulk monitor of every show in scope; `{ "shows": n }` |
+| PUT | `/api/v1/library/series/{id}/monitor-all` | `{ "revision" }`; monitor the show and regular episodes airing today or later (UTC), plus seasons with such an episode or a future season air_date; specials and past/undated episodes unchanged |
+| POST | `/api/v1/library/monitor-all-episodes` | `{ "category"?: "standard" \| "anime" }`; same future-date rule for every show in scope; `{ "shows": n }` |
 | POST | `/api/v1/library/series/{id}/episodes/{episodeID}/remove-file` | `{ "revision", "reviewed": true, "delete_file"?: true }`; remove one episode from the library and, when asked, delete its media copy (seeding sources and shared files are protected) |
 | GET | `/api/v1/automation/runs` | `{items}`; latest 30 search runs with state, message, timestamps, mode, checked and queued counts |
 | GET | `/api/v1/automation/runs/{id}` | `{items}`; up to 25 target results, outcomes, download IDs and ranked decisions |
@@ -509,8 +518,11 @@ Timeline; repeated reconciliation never duplicates it. See MOVIE_WORKFLOW.md for
 leases, retry and import semantics.
 
 Movie DTOs include tmdb_id, title, overview, year (nullable), release_date,
-poster_path, poster_url, and runtime_minutes (nullable). Saved library items
-add id, kind, status and monitored. Poster URLs are restricted to TMDb's official
+theatrical_release_date, digital_release_date, physical_release_date,
+poster_path, poster_url, and runtime_minutes (nullable). The three detailed
+dates are populated by the TMDb movie refresh from `release_dates`; release_date
+remains the canonical primary date for compatibility. Saved library items add
+id, kind, status and monitored. Poster URLs are restricted to TMDb's official
 image host; no upstream credential is sent to the browser.
 
 Settings additionally returns episode_naming: standard or with-title. PUT accepts
@@ -604,7 +616,10 @@ Automation PUT accepts only `enabled`, `mode` (search/download),
 `interval_minutes` (15–10080), `batch_size` (1–25), `default_profile_id` and
 `revision`. New schedules are paused/search-only. GET additionally returns
 next_run (Unix seconds), requested, state, message, indexer_connected and
-client_connected. No enabled indexer is waiting_indexer; saving a schedule never
+client_connected. client_connected counts a usable enabled per-protocol default,
+the legacy settings connection, the enabled built-in qBittorrent fallback, or the
+enabled built-in SABnzbd client with a saved news server; it is not merely a
+saved settings row. No enabled indexer is waiting_indexer; saving a schedule never
 connects an integration. Search now uses saved mode and never changes enabled.
 Saving preferences invalidates in-progress policy guards; existing queued
 downloads continue. State/message describe the last/current run, while enabled

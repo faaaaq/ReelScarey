@@ -363,13 +363,16 @@ export function ProgressBar({
   size = "medium",
   text,
   label,
+  indeterminate,
 }: {
-  /** Fraction from 0 to 1. */
+  /** Fraction from 0 to 1. Ignored when `indeterminate` is set. */
   value: number;
   kind?: "primary" | "success" | "warning" | "danger" | "purple" | "disabled";
   size?: "small" | "medium" | "large";
   text?: string;
   label: string;
+  /** Busy work whose total is unknown; never pretend to know a percentage. */
+  indeterminate?: boolean;
 }) {
   const percent = Math.max(0, Math.min(100, (value || 0) * 100));
   return (
@@ -378,17 +381,54 @@ export function ProgressBar({
         "rs-progress",
         kind !== "primary" && `is-${kind}`,
         size !== "medium" && `is-${size}`,
+        indeterminate && "is-indeterminate",
       )}
       role="progressbar"
       aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round(percent * 10) / 10}
+      aria-busy={indeterminate || undefined}
+      aria-valuemin={indeterminate ? undefined : 0}
+      aria-valuemax={indeterminate ? undefined : 100}
+      aria-valuenow={indeterminate ? undefined : Math.round(percent * 10) / 10}
     >
-      <div className="rs-progress-fill" style={{ width: `${percent}%` }} />
+      <div
+        className="rs-progress-fill"
+        style={indeterminate ? undefined : { width: `${percent}%` }}
+      />
       {text && size !== "small" && (
         <span className="rs-progress-text">{text}</span>
       )}
+    </div>
+  );
+}
+
+/**
+ * Indeterminate batch work with a live status line. The bar is deliberately
+ * indeterminate: review and apply requests do not expose a reliable total.
+ */
+export function BatchProgress({
+  label,
+  message,
+  detail,
+  kind = "primary",
+}: {
+  label: string;
+  message: ReactNode;
+  detail?: ReactNode;
+  kind?: "primary" | "success" | "warning" | "danger" | "purple";
+}) {
+  return (
+    <div className="rs-batch-progress">
+      <ProgressBar
+        value={0}
+        kind={kind}
+        label={label}
+        indeterminate
+        size="small"
+      />
+      <p className="rs-batch-status" role="status" aria-live="polite">
+        {message}
+      </p>
+      {detail && <p className="rs-batch-detail rs-muted">{detail}</p>}
     </div>
   );
 }
