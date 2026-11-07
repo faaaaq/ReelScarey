@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { Badge, Button } from "@radix-ui/themes";
+import { useId, useState } from "react";
+import { Button } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
 import { api, messageFor } from "../api";
 import { RequestState } from "../components";
+import { Alert, Check, FieldSet, FormActions, FormGroup, Label } from "../ui";
 import { useResource } from "../useResource";
 
 export type MovieVersionSettings = {
@@ -23,12 +24,16 @@ export function MovieVersions({ id }: { id: number }) {
   );
   const profiles = useResource<{ items: Profile[] }>("/quality-profiles");
   return (
-    <section className="panel automation-panel">
-      <h2>Movie versions</h2>
-      <p>
-        Keep all existing copies, including different resolutions and editions.
-        Each file has its own subtitles and replacement history.
-      </p>
+    <FieldSet
+      legend="Versions"
+      actions={
+        <Button asChild size="1" variant="soft">
+          <Link to={`/releases?movie=${id}&movie_version=additional`}>
+            Download another version
+          </Link>
+        </Button>
+      }
+    >
       <RequestState
         loading={settings.loading || profiles.loading}
         error={settings.error || profiles.error}
@@ -46,15 +51,7 @@ export function MovieVersions({ id }: { id: number }) {
           reload={settings.reload}
         />
       )}
-      <p>
-        <Link
-          className="text-link"
-          to={`/releases?movie=${id}&movie_version=additional`}
-        >
-          Download another version
-        </Link>
-      </p>
-    </section>
+    </FieldSet>
   );
 }
 
@@ -74,6 +71,12 @@ function VersionForm({
   const [uhd, setUHD] = useState(saved.uhd_profile_id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const hdID = useId();
+  const uhdID = useId();
+  const dirty =
+    enabled !== saved.enabled ||
+    hd !== saved.hd_profile_id ||
+    uhd !== saved.uhd_profile_id;
   async function save() {
     if (busy) return;
     setBusy(true);
@@ -95,97 +98,88 @@ function VersionForm({
       setBusy(false);
     }
   }
+  const versions = [
+    {
+      key: "hd",
+      title: "HD",
+      control: hdID,
+      selected: hd,
+      change: setHD,
+      files: saved.hd_files,
+      download: saved.hd_download,
+    },
+    {
+      key: "uhd",
+      title: "4K",
+      control: uhdID,
+      selected: uhd,
+      change: setUHD,
+      files: saved.uhd_files,
+      download: saved.uhd_download,
+    },
+  ] as const;
   return (
     <>
-      <label className="check-label">
-        <input
-          type="checkbox"
+      <FormGroup
+        label="HD and 4K"
+        help="Monitored movies may get one HD copy (up to 1080p) and one 4K copy (2160p) on the automation schedule. Turning this off keeps every file and queued download."
+      >
+        <Check
+          label="Keep HD and 4K copies"
           checked={enabled}
           disabled={busy}
-          onChange={(e) => setEnabled(e.target.checked)}
+          onChange={setEnabled}
         />
-        Keep HD and 4K copies
-      </label>
-      <p className="field-help">
-        When enabled, monitored movies can download one HD copy and one 4K copy
-        using your automation schedule. HD accepts up to 1080p; 4K requires
-        2160p. Turning this off keeps every file and any downloads already
-        queued.
-      </p>
-      {enabled && (
-        <div className="automation-form-grid">
-          {(
-            [
-              {
-                key: "hd",
-                title: "HD",
-                selected: hd,
-                change: setHD,
-                files: saved.hd_files,
-                download: saved.hd_download,
-              },
-              {
-                key: "uhd",
-                title: "4K",
-                selected: uhd,
-                change: setUHD,
-                files: saved.uhd_files,
-                download: saved.uhd_download,
-              },
-            ] as const
-          ).map((v) => (
-            <div key={v.key}>
-              <label>
-                {v.title} quality profile{" "}
-                <select
-                  value={v.selected}
-                  disabled={busy}
-                  onChange={(e) => v.change(Number(e.target.value))}
+      </FormGroup>
+      {enabled &&
+        versions.map((v) => (
+          <FormGroup
+            key={v.key}
+            label={`${v.title} quality profile`}
+            htmlFor={v.control}
+            help={
+              <span className="rs-row">
+                <Label
+                  kind={v.files ? "success" : v.download ? "info" : "disabled"}
                 >
-                  {profiles
-                    .filter((p) =>
-                      v.key === "hd" ? p.cutoff <= 1080 : p.cutoff === 2160,
-                    )
-                    .map((p) => (
-                      <option value={p.id} key={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <p>
-                <Badge color={v.files ? "green" : "gray"}>
                   {v.files
                     ? `${v.files} on disk`
                     : v.download
                       ? v.download.replaceAll("_", " ")
                       : "Missing"}
-                </Badge>
-              </p>
-              {saved.enabled && (
-                <Link
-                  className="text-link"
-                  to={`/releases?movie=${id}&movie_version=${v.key}`}
-                >
-                  Find {v.title} releases
-                </Link>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-      {error && <p role="alert">{error}</p>}
-      <Button
-        disabled={
-          busy ||
-          (enabled === saved.enabled &&
-            hd === saved.hd_profile_id &&
-            uhd === saved.uhd_profile_id)
-        }
-        onClick={() => void save()}
-      >
-        {busy ? "Saving…" : "Save movie versions"}
-      </Button>
+                </Label>
+                {saved.enabled && (
+                  <Link to={`/releases?movie=${id}&movie_version=${v.key}`}>
+                    Find {v.title} releases
+                  </Link>
+                )}
+              </span>
+            }
+          >
+            <select
+              id={v.control}
+              value={v.selected}
+              disabled={busy}
+              onChange={(e) => v.change(Number(e.target.value))}
+            >
+              {profiles
+                .filter((p) =>
+                  v.key === "hd" ? p.cutoff <= 1080 : p.cutoff === 2160,
+                )
+                .map((p) => (
+                  <option value={p.id} key={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+            </select>
+          </FormGroup>
+        ))}
+      {error && <Alert kind="danger">{error}</Alert>}
+      <FormActions>
+        <Button disabled={busy || !dirty} onClick={() => void save()}>
+          {busy ? "Saving…" : "Save movie versions"}
+        </Button>
+      </FormActions>
     </>
   );
 }

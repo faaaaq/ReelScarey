@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { Badge, Button, Switch } from "@radix-ui/themes";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@radix-ui/themes";
+import { ChevronDown, FolderTree, RefreshCw, Settings2 } from "lucide-react";
+import { useParams } from "react-router-dom";
 import {
   api,
   messageFor,
@@ -8,13 +9,53 @@ import {
   type TVSeason,
   type TVSeasonDetails,
 } from "../api";
-import { PageHeading, RequestState } from "../components";
-import { Poster } from "../movieComponents";
+import { RequestState } from "../components";
+import { Pagination } from "../movieComponents";
+import {
+  Alert,
+  Label,
+  PageBody,
+  PageToolbar,
+  Table,
+  ToolbarButton,
+  ToolbarSection,
+  ToolbarSeparator,
+  episodeCode,
+  formatBytes,
+  type Kind,
+} from "../ui";
 import { useResource } from "../useResource";
-import { ItemInformation } from "./ItemDetails";
+import { AnimeSettings } from "./AnimeSettings";
+import { AnimeSearch } from "./AnimeSearch";
+import { AnimeOrder } from "./AnimeOrder";
+import { ItemOrganization } from "./Organization";
+import { AutomaticFranchise } from "./AutomaticFranchise";
+import { RelatedTitles } from "./RelatedTitles";
 import { SeriesReleaseRules } from "./SeriesReleaseRules";
 import { SeriesYouTubeSource } from "./SeriesYouTubeSource";
 import { ShowSubtitlePreferences } from "./ShowSubtitlePreferences";
+import {
+  CreditsSection,
+  DetailFact,
+  DetailHeader,
+  DetailTabs,
+  FilesSection,
+  HistorySection,
+  IconLink,
+  MetadataError,
+  MonitorToggle,
+  ProviderLinks,
+  profileLabel,
+} from "./details/DetailParts";
+import { useItemDetails } from "./details/useItemDetails";
+
+type Update = (
+  path: string,
+  method: "PUT" | "POST",
+  monitored?: boolean,
+  episodeIDs?: number[],
+  seasonIDs?: number[],
+) => Promise<void>;
 
 export function Series() {
   const { id } = useParams();
@@ -23,10 +64,11 @@ export function Series() {
   const resource = useResource<TVSeries>(
     valid ? `/library/series/${id}` : null,
   );
+  if (resource.data) return <SeriesView key={id} initial={resource.data} />;
   return (
-    <>
+    <PageBody>
       {!valid ? (
-        <p role="alert">Choose a show from your library.</p>
+        <Alert kind="danger">Choose a show from your library.</Alert>
       ) : (
         <RequestState
           loading={resource.loading}
@@ -34,25 +76,41 @@ export function Series() {
           retry={resource.reload}
         />
       )}
-      {resource.data && <SeriesView key={id} initial={resource.data} />}
-    </>
+    </PageBody>
   );
 }
+
+function seasonOrder(a: TVSeason, b: TVSeason) {
+  if (a.number === 0) return 1;
+  if (b.number === 0) return -1;
+  return a.number - b.number;
+}
+
 function SeriesView({ initial }: { initial: TVSeries }) {
   const [show, setShow] = useState(initial);
-  const [selected, setSelected] = useState<number>();
+  const [expanded, setExpanded] = useState<number[]>([]);
   const [selectedSeasons, setSelectedSeasons] = useState<number[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const details = useItemDetails(show.id);
+  const firstRevision = useRef(show.revision);
   const base = `/library/series/${show.id}`;
-  async function update(
-    path: string,
-    method: "PUT" | "POST",
-    monitored?: boolean,
-    episodeIDs?: number[],
-    seasonIDs?: number[],
-  ) {
+  const { reload: reloadDetails } = details;
+  useEffect(() => {
+    if (show.revision !== firstRevision.current) {
+      firstRevision.current = show.revision;
+      reloadDetails();
+    }
+  }, [show.revision, reloadDetails]);
+
+  const update: Update = async (
+    path,
+    method,
+    monitored,
+    episodeIDs,
+    seasonIDs,
+  ) => {
     if (pending) return;
     setPending(true);
     setError("");
@@ -74,7 +132,7 @@ function SeriesView({ initial }: { initial: TVSeries }) {
     } finally {
       setPending(false);
     }
-  }
+  };
   async function reload() {
     if (pending) return;
     setPending(true);
@@ -88,262 +146,428 @@ function SeriesView({ initial }: { initial: TVSeries }) {
       setPending(false);
     }
   }
+  function batchMonitor(monitored: boolean) {
+    const count = selectedSeasons.length;
+    if (
+      window.confirm(
+        monitored
+          ? `Monitor ${count} selected seasons?`
+          : `Stop monitoring ${count} selected seasons?`,
+      )
+    )
+      void update(
+        "/seasons/monitor",
+        "PUT",
+        monitored,
+        undefined,
+        selectedSeasons,
+      );
+  }
+  const seasons = [...show.seasons].sort(seasonOrder);
+  const loaded = show.seasons.filter((season) => season.loaded_at);
+  const available = loaded.reduce(
+    (sum, season) => sum + (season.available_episodes ?? 0),
+    0,
+  );
+  const known = loaded.reduce(
+    (sum, season) => sum + (season.known_episodes ?? 0),
+    0,
+  );
+  const anime = show.category === "anime";
+  const data = details.data;
   return (
     <>
-      <PageHeading
-        title={show.title}
-        description={[show.year, show.series_status]
-          .filter(Boolean)
-          .join(" · ")}
-      >
-        <Button
-          variant="soft"
-          disabled={pending}
-          onClick={() => void update("/refresh", "POST")}
-        >
-          {pending ? "Saving…" : "Refresh show details"}
-        </Button>
-      </PageHeading>
-      <Link
-        className="text-link"
-        to={show.category === "anime" ? "/anime" : "/series"}
-      >
-        {show.category === "anime" ? "Back to Anime" : "Back to TV shows"}
-      </Link>
-      <section className="panel series-summary">
-        <Poster movie={show} />
-        <div>
-          <p>{show.overview || "No synopsis is available yet."}</p>
-          <label className="monitor-choice">
-            <Switch
-              checked={show.monitored}
-              disabled={pending}
-              onCheckedChange={(v) => void update("/monitor", "PUT", v)}
-            />{" "}
-            Monitor this show
-          </label>
-          <p className="field-help">
-            Pausing a show or season keeps your episode choices. Regular seasons
-            start selected; specials start unselected.
-          </p>
-          <p className="field-help">
-            Find releases for an episode or selected missing episodes in a
-            season. Completed TV files wait for your mapping review in Activity.
-            Scheduled searches follow your automation settings.
-          </p>
-          <a
-            className="text-link"
-            href={`https://www.themoviedb.org/tv/${show.tmdb_id}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            View on TMDb
-          </a>
-        </div>
-      </section>
-      {error && (
-        <div role="alert" className="movie-error">
-          <p>{error}</p>
-          <Button
-            variant="soft"
-            onClick={() => void reload()}
+      <PageToolbar>
+        <ToolbarSection>
+          <ToolbarButton
+            icon={RefreshCw}
+            label="Refresh"
+            title="Refresh show and season details from TMDb"
+            spinning={pending}
             disabled={pending}
-          >
-            Reload saved show
-          </Button>
-        </div>
-      )}
-      <h2 className="series-heading">Seasons</h2>
-      {!!show.seasons.length && (
-        <div className="system-panel">
-          <p className="field-help">
-            Select up to 100 seasons to change their monitoring together.
-            Episode choices stay saved.
-          </p>
-          <Button
-            variant="soft"
-            disabled={pending || !show.monitored}
-            onClick={() =>
-              setSelectedSeasons(
-                show.seasons.slice(0, 100).map((season) => season.id),
-              )
-            }
-          >
-            {show.seasons.length > 100
-              ? "Select first 100 seasons"
-              : "Select all seasons"}
-          </Button>{" "}
-          <Button
-            variant="soft"
-            disabled={pending || !selectedSeasons.length}
-            onClick={() => setSelectedSeasons([])}
-          >
-            Clear season selection
-          </Button>{" "}
-          <Button
-            variant="soft"
-            disabled={pending || !show.monitored || !selectedSeasons.length}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Monitor ${selectedSeasons.length} selected seasons?`,
-                )
-              )
-                void update(
-                  "/seasons/monitor",
-                  "PUT",
-                  true,
-                  undefined,
-                  selectedSeasons,
-                );
-            }}
-          >
-            Monitor selected seasons ({selectedSeasons.length})
-          </Button>{" "}
-          <Button
-            variant="soft"
-            disabled={pending || !show.monitored || !selectedSeasons.length}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Stop monitoring ${selectedSeasons.length} selected seasons?`,
-                )
-              )
-                void update(
-                  "/seasons/monitor",
-                  "PUT",
-                  false,
-                  undefined,
-                  selectedSeasons,
-                );
-            }}
-          >
-            Unmonitor selected seasons ({selectedSeasons.length})
-          </Button>
-        </div>
-      )}
-      {!show.monitored && (
-        <p className="field-help">
-          Monitoring is paused for this show. Your season and episode selections
-          are saved.
-        </p>
-      )}
-      {show.seasons.length === 0 ? (
-        <p>No seasons are listed yet. Refresh the show details later.</p>
-      ) : (
-        <div className="season-list">
-          {show.seasons.map((season) => (
-            <section className="panel season-card" key={season.id}>
-              <div className="season-header">
-                <div>
-                  <label>
-                    <input
-                      type="checkbox"
-                      aria-label={`Select season ${season.title}`}
-                      checked={selectedSeasons.includes(season.id)}
-                      disabled={
-                        pending ||
-                        !show.monitored ||
-                        (!selectedSeasons.includes(season.id) &&
-                          selectedSeasons.length >= 100)
-                      }
-                      onChange={(event) => {
-                        const checked = event.target.checked;
-                        setSelectedSeasons((current) =>
-                          checked
-                            ? [...current, season.id]
-                            : current.filter((id) => id !== season.id),
-                        );
-                      }}
-                    />{" "}
-                    Select for batch
-                  </label>
-                  <h3>{season.title}</h3>
-                  <p>
-                    {season.loaded_at ? (
-                      <>
-                        <Badge
-                          color={
-                            season.available_episodes ===
-                              season.known_episodes && season.known_episodes > 0
-                              ? "green"
-                              : "gray"
+            onClick={() => void update("/refresh", "POST")}
+          />
+          <ToolbarSeparator />
+          <ToolbarButton
+            icon={FolderTree}
+            label="Organize"
+            to={`/organization?media_id=${show.id}`}
+          />
+          <ToolbarButton icon={Settings2} label="Automation" to="/automation" />
+        </ToolbarSection>
+      </PageToolbar>
+      <DetailHeader
+        item={show}
+        title={show.title}
+        monitor={
+          <MonitorToggle
+            large
+            label="Monitor this show"
+            checked={show.monitored}
+            disabled={pending}
+            onChange={(value) => void update("/monitor", "PUT", value)}
+          />
+        }
+        facts={[
+          show.year,
+          show.runtime_minutes ? `${show.runtime_minutes} min` : null,
+          details.info?.genres.length ? details.info.genres.join(", ") : null,
+        ]}
+        labels={
+          <>
+            {show.series_status && (
+              <Label
+                kind={show.series_status === "Ended" ? "disabled" : "info"}
+                large
+              >
+                {show.series_status}
+              </Label>
+            )}
+            <Label kind={show.monitored ? "primary" : "disabled"}>
+              {show.monitored ? "Monitored" : "Unmonitored"}
+            </Label>
+            {anime && <Label kind="purple">Anime</Label>}
+            {profileLabel(show)}
+            {details.info?.rating ? (
+              <Label outline>TMDb {details.info.rating.toFixed(1)}</Label>
+            ) : null}
+          </>
+        }
+        details={
+          <>
+            <DetailFact title="Episodes">
+              {loaded.length
+                ? `${available} of ${known} on disk`
+                : "Not loaded"}
+              {loaded.length > 0 && loaded.length < show.seasons.length && (
+                <span className="rs-muted">
+                  {" "}
+                  ({show.seasons.length - loaded.length} seasons not loaded)
+                </span>
+              )}
+            </DetailFact>
+            {data && (
+              <>
+                <DetailFact title="Path">
+                  <code>{data.library_root}</code>
+                </DetailFact>
+                <DetailFact title="Size">
+                  {data.total_size_bytes
+                    ? formatBytes(data.total_size_bytes)
+                    : "No files"}
+                </DetailFact>
+              </>
+            )}
+          </>
+        }
+        links={
+          <ProviderLinks
+            details={details}
+            kind="series"
+            tmdbID={show.tmdb_id}
+          />
+        }
+      />
+      <PageBody>
+        {error && (
+          <Alert kind="danger">
+            <p>{error}</p>
+            <div>
+              <Button
+                size="1"
+                variant="soft"
+                onClick={() => void reload()}
+                disabled={pending}
+              >
+                Reload saved show
+              </Button>
+            </div>
+          </Alert>
+        )}
+        <MetadataError details={details} />
+        <DetailTabs
+          label="Show sections"
+          tabs={[
+            {
+              value: "episodes",
+              label: "Episodes",
+              content: (
+                <>
+                  {!show.monitored && (
+                    <Alert kind="info">
+                      Monitoring is paused for this show. Season and episode
+                      choices are kept.
+                    </Alert>
+                  )}
+                  {seasons.length === 0 ? (
+                    <p className="rs-muted">
+                      No seasons are listed yet. Refresh the show later.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="det-season-tools">
+                        <Button
+                          size="1"
+                          variant="soft"
+                          color="gray"
+                          disabled={pending || !show.monitored}
+                          onClick={() =>
+                            setSelectedSeasons(
+                              seasons.slice(0, 100).map((season) => season.id),
+                            )
                           }
                         >
-                          {season.available_episodes ?? 0} /{" "}
-                          {season.known_episodes ?? 0} on disk
-                        </Badge>
-                        {" · "}
-                        {season.selected_episodes ?? 0} monitored choices
-                      </>
-                    ) : (
-                      `${season.episode_count} episodes · episode details not loaded`
-                    )}
-                  </p>
-                </div>
-                <label className="monitor-choice">
-                  <Switch
-                    aria-label={`Monitor ${season.title}`}
-                    checked={season.monitored}
-                    disabled={pending || !show.monitored}
-                    onCheckedChange={(v) =>
-                      void update(`/seasons/${season.number}/monitor`, "PUT", v)
-                    }
-                  />{" "}
-                  Monitor
-                </label>
-                <Button
-                  variant="soft"
-                  aria-expanded={selected === season.number}
-                  aria-controls={`season-${season.id}`}
-                  onClick={() =>
-                    setSelected(
-                      selected === season.number ? undefined : season.number,
-                    )
-                  }
-                >
-                  {selected === season.number
-                    ? "Hide episodes"
-                    : "View episodes"}
-                </Button>
-                {season.loaded_at &&
-                  show.monitored &&
-                  season.monitored &&
-                  season.selected_episodes > 0 && (
-                    <Button asChild variant="soft">
-                      <Link
-                        to={`/releases?series=${show.id}&season=${season.number}`}
-                      >
-                        Find season releases
-                      </Link>
-                    </Button>
+                          {seasons.length > 100
+                            ? "Select first 100 seasons"
+                            : "Select all seasons"}
+                        </Button>
+                        <Button
+                          size="1"
+                          variant="soft"
+                          color="gray"
+                          disabled={pending || !selectedSeasons.length}
+                          onClick={() => setSelectedSeasons([])}
+                        >
+                          Clear season selection
+                        </Button>
+                        <Button
+                          size="1"
+                          variant="soft"
+                          disabled={
+                            pending ||
+                            !show.monitored ||
+                            !selectedSeasons.length
+                          }
+                          onClick={() => batchMonitor(true)}
+                        >
+                          Monitor selected seasons ({selectedSeasons.length})
+                        </Button>
+                        <Button
+                          size="1"
+                          variant="soft"
+                          disabled={
+                            pending ||
+                            !show.monitored ||
+                            !selectedSeasons.length
+                          }
+                          onClick={() => batchMonitor(false)}
+                        >
+                          Unmonitor selected seasons ({selectedSeasons.length})
+                        </Button>
+                        <span className="rs-muted rs-small">
+                          Up to 100 seasons. Episode choices are kept.
+                        </span>
+                      </div>
+                      <div className="det-seasons">
+                        {seasons.map((season) => (
+                          <SeasonBlock
+                            key={season.id}
+                            show={show}
+                            season={season}
+                            pending={pending}
+                            update={update}
+                            attempt={attempt}
+                            expanded={expanded.includes(season.number)}
+                            onToggle={() =>
+                              setExpanded((current) =>
+                                current.includes(season.number)
+                                  ? current.filter((n) => n !== season.number)
+                                  : [...current, season.number],
+                              )
+                            }
+                            selected={selectedSeasons.includes(season.id)}
+                            selectDisabled={
+                              pending ||
+                              !show.monitored ||
+                              (!selectedSeasons.includes(season.id) &&
+                                selectedSeasons.length >= 100)
+                            }
+                            onSelect={(checked) =>
+                              setSelectedSeasons((current) =>
+                                checked
+                                  ? [...current, season.id]
+                                  : current.filter((id) => id !== season.id),
+                              )
+                            }
+                          />
+                        ))}
+                      </div>
+                      <p className="rs-form-help">
+                        Regular seasons start monitored; specials do not.
+                        Completed TV downloads wait for mapping review in
+                        Activity.
+                      </p>
+                    </>
                   )}
-              </div>
-              {selected === season.number && (
-                <div id={`season-${season.id}`}>
-                  <SeasonEpisodes
-                    key={`${season.number}-${attempt}`}
-                    show={show}
-                    season={season}
-                    pending={pending}
-                    update={update}
+                </>
+              ),
+            },
+            {
+              value: "files",
+              label: "Files & History",
+              content: data ? (
+                <>
+                  <FilesSection details={details} savedTitle={show.title} />
+                  <HistorySection details={details} />
+                  <Pagination
+                    page={details.page}
+                    pages={Math.ceil(
+                      Math.max(data.file_count, data.history_count) / 50,
+                    )}
+                    onPage={details.setPage}
                   />
-                </div>
-              )}
-            </section>
-          ))}
-        </div>
-      )}
-      <SeriesReleaseRules id={show.id} />
-      <SeriesYouTubeSource id={show.id} />
-      <ShowSubtitlePreferences id={show.id} />
-      <ItemInformation
-        key={`details-${show.id}-${show.revision}`}
-        id={show.id}
-      />
+                </>
+              ) : (
+                <RequestState
+                  loading={details.loading}
+                  error={details.loadError}
+                  retry={details.reload}
+                />
+              ),
+            },
+            {
+              value: "related",
+              label: "Cast & Related",
+              content: (
+                <>
+                  <CreditsSection details={details} refreshAction />
+                  <AutomaticFranchise id={show.id} />
+                  <RelatedTitles id={show.id} />
+                </>
+              ),
+            },
+            {
+              value: "settings",
+              label: "Settings",
+              content: (
+                <>
+                  <SeriesReleaseRules id={show.id} />
+                  <ShowSubtitlePreferences id={show.id} />
+                  <SeriesYouTubeSource id={show.id} />
+                  <AnimeSettings
+                    id={show.id}
+                    onSaved={() => {
+                      void reload();
+                      details.reload();
+                    }}
+                  />
+                  {anime && <AnimeSearch id={show.id} />}
+                  {anime && <AnimeOrder id={show.id} />}
+                  <ItemOrganization id={show.id} />
+                </>
+              ),
+            },
+          ]}
+        />
+      </PageBody>
     </>
   );
 }
+
+function seasonKind(show: TVSeries, season: TVSeason): Kind {
+  if (!season.loaded_at || !season.known_episodes) return "default";
+  if ((season.available_episodes ?? 0) >= season.known_episodes)
+    return "success";
+  if (!show.monitored || !season.monitored) return "disabled";
+  return "danger";
+}
+
+function SeasonBlock({
+  show,
+  season,
+  pending,
+  update,
+  attempt,
+  expanded,
+  onToggle,
+  selected,
+  selectDisabled,
+  onSelect,
+}: {
+  show: TVSeries;
+  season: TVSeason;
+  pending: boolean;
+  update: Update;
+  attempt: number;
+  expanded: boolean;
+  onToggle: () => void;
+  selected: boolean;
+  selectDisabled: boolean;
+  onSelect: (checked: boolean) => void;
+}) {
+  const panelID = `season-${season.id}`;
+  return (
+    <section className="det-season" aria-label={season.title}>
+      <div className="det-season-header">
+        <input
+          type="checkbox"
+          aria-label={`Select season ${season.title}`}
+          checked={selected}
+          disabled={selectDisabled}
+          onChange={(event) => onSelect(event.target.checked)}
+        />
+        <MonitorToggle
+          label={`Monitor ${season.title}`}
+          checked={season.monitored}
+          disabled={pending || !show.monitored}
+          onChange={(value) =>
+            void update(`/seasons/${season.number}/monitor`, "PUT", value)
+          }
+        />
+        <h3 className="det-season-title">
+          <button
+            type="button"
+            className="det-season-toggle"
+            aria-expanded={expanded}
+            aria-controls={panelID}
+            onClick={onToggle}
+          >
+            {season.title}
+            <ChevronDown size={18} aria-hidden="true" />
+          </button>
+        </h3>
+        {season.loaded_at ? (
+          <>
+            <Label kind={seasonKind(show, season)}>
+              {season.available_episodes ?? 0} / {season.known_episodes ?? 0} on
+              disk
+            </Label>
+            <span className="rs-muted rs-small">
+              {season.selected_episodes ?? 0} monitored
+            </span>
+          </>
+        ) : (
+          <span className="rs-muted rs-small">
+            {season.episode_count} episodes · not loaded
+          </span>
+        )}
+        <div className="det-season-actions">
+          {season.loaded_at &&
+            show.monitored &&
+            season.monitored &&
+            season.selected_episodes > 0 && (
+              <IconLink
+                to={`/releases?series=${show.id}&season=${season.number}`}
+                label={`Search ${season.title}`}
+              />
+            )}
+        </div>
+      </div>
+      {expanded && (
+        <div id={panelID} className="det-season-body">
+          <SeasonEpisodes
+            key={`${season.number}-${attempt}`}
+            show={show}
+            season={season}
+            pending={pending}
+            update={update}
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SeasonEpisodes({
   show,
   season,
@@ -353,242 +577,237 @@ function SeasonEpisodes({
   show: TVSeries;
   season: TVSeason;
   pending: boolean;
-  update: (
-    path: string,
-    method: "PUT" | "POST",
-    monitored?: boolean,
-    episodeIDs?: number[],
-  ) => Promise<void>;
+  update: Update;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
   const resource = useResource<TVSeasonDetails>(
     `/library/series/${show.id}/seasons/${season.number}`,
   );
-  return (
-    <div className="season-episodes">
+  const locked = pending || !show.monitored || !season.monitored;
+  function batch(monitored: boolean) {
+    const count = selectedEpisodes.length;
+    if (
+      window.confirm(
+        monitored
+          ? `Monitor ${count} selected episodes?`
+          : `Stop monitoring ${count} selected episodes?`,
+      )
+    )
+      void update(
+        `/seasons/${season.number}/episodes/monitor`,
+        "PUT",
+        monitored,
+        selectedEpisodes,
+      );
+  }
+  if (!resource.data)
+    return (
       <RequestState
         loading={resource.loading}
         error={resource.error}
         retry={resource.reload}
       />
-      {resource.data && (
+    );
+  const episodes = resource.data.episodes;
+  return (
+    <>
+      <div className="det-season-tools">
+        <Button
+          size="1"
+          variant={season.loaded_at ? "soft" : "solid"}
+          disabled={pending}
+          onClick={() =>
+            void update(`/seasons/${season.number}/refresh`, "POST")
+          }
+        >
+          {season.loaded_at ? "Refresh episodes" : "Load episodes from TMDb"}
+        </Button>
+        {episodes.length > 0 && (
+          <>
+            <Button
+              size="1"
+              variant="soft"
+              color="gray"
+              disabled={locked}
+              onClick={() =>
+                setSelectedEpisodes(
+                  episodes.slice(0, 100).map((episode) => episode.id),
+                )
+              }
+            >
+              {episodes.length > 100
+                ? "Select first 100 episodes"
+                : "Select all episodes"}
+            </Button>
+            <Button
+              size="1"
+              variant="soft"
+              color="gray"
+              disabled={pending || !selectedEpisodes.length}
+              onClick={() => setSelectedEpisodes([])}
+            >
+              Clear selection
+            </Button>
+            <Button
+              size="1"
+              variant="soft"
+              disabled={locked || !selectedEpisodes.length}
+              onClick={() => batch(true)}
+            >
+              Monitor selected ({selectedEpisodes.length})
+            </Button>
+            <Button
+              size="1"
+              variant="soft"
+              disabled={locked || !selectedEpisodes.length}
+              onClick={() => batch(false)}
+            >
+              Unmonitor selected ({selectedEpisodes.length})
+            </Button>
+          </>
+        )}
+      </div>
+      {season.overview && <p className="rs-muted">{season.overview}</p>}
+      {!season.loaded_at && (
+        <p className="rs-form-help">
+          Episodes are not loaded yet. Once loaded they stay available when TMDb
+          is offline.
+        </p>
+      )}
+      {season.loaded_at && episodes.length === 0 && (
+        <p className="rs-muted">No episodes are listed yet.</p>
+      )}
+      {season.loaded_at && (!show.monitored || !season.monitored) && (
+        <p className="rs-form-help">
+          Monitoring is paused. Turn on the show and season to change episode
+          choices.
+        </p>
+      )}
+      {episodes.length > 0 && (
         <>
-          <p>{season.overview || "No season synopsis is available yet."}</p>
-          <Button
-            variant="soft"
-            disabled={pending}
-            onClick={() =>
-              void update(`/seasons/${season.number}/refresh`, "POST")
-            }
-          >
-            {season.loaded_at ? "Refresh episodes" : "Load episodes from TMDb"}
-          </Button>
-          {season.loaded_at && resource.data.episodes.length === 0 && (
-            <p>No episodes are listed yet. Refresh later for updates.</p>
-          )}
-          {!season.loaded_at && (
-            <p className="field-help">
-              Load this season once to save its episode list. Saved episodes
-              stay available when TMDb is offline.
-            </p>
-          )}
-          {season.loaded_at && (!show.monitored || !season.monitored) && (
-            <p className="field-help">
-              Monitoring is paused. Turn on the show and season to change
-              episode choices.
-            </p>
-          )}
-          {resource.data.episodes.length > 0 && (
-            <div>
-              <p className="field-help">
-                Select up to 100 episodes to change their monitoring together.
-                Existing files stay in place.
-              </p>
-              <Button
-                variant="soft"
-                disabled={pending || !show.monitored || !season.monitored}
-                onClick={() =>
-                  setSelectedEpisodes(
-                    resource
-                      .data!.episodes.slice(0, 100)
-                      .map((episode) => episode.id),
-                  )
-                }
-              >
-                {resource.data.episodes.length > 100
-                  ? "Select first 100 episodes"
-                  : "Select all episodes"}
-              </Button>{" "}
-              <Button
-                variant="soft"
-                disabled={pending || !selectedEpisodes.length}
-                onClick={() => setSelectedEpisodes([])}
-              >
-                Clear selection
-              </Button>{" "}
-              <Button
-                variant="soft"
-                disabled={
-                  pending ||
-                  !show.monitored ||
-                  !season.monitored ||
-                  !selectedEpisodes.length
-                }
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `Monitor ${selectedEpisodes.length} selected episodes?`,
-                    )
-                  )
-                    void update(
-                      `/seasons/${season.number}/episodes/monitor`,
-                      "PUT",
-                      true,
-                      selectedEpisodes,
-                    );
-                }}
-              >
-                Monitor selected ({selectedEpisodes.length})
-              </Button>{" "}
-              <Button
-                variant="soft"
-                disabled={
-                  pending ||
-                  !show.monitored ||
-                  !season.monitored ||
-                  !selectedEpisodes.length
-                }
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `Stop monitoring ${selectedEpisodes.length} selected episodes?`,
-                    )
-                  )
-                    void update(
-                      `/seasons/${season.number}/episodes/monitor`,
-                      "PUT",
-                      false,
-                      selectedEpisodes,
-                    );
-                }}
-              >
-                Unmonitor selected ({selectedEpisodes.length})
-              </Button>
-              <div className="episode-table-scroll">
-                <table
-                  className="episode-table"
-                  aria-label={season.title + " episodes"}
-                >
-                  <thead>
-                    <tr>
-                      <th scope="col">Episode</th>
-                      <th scope="col">Air date</th>
-                      <th scope="col">Status & file</th>
-                      <th scope="col">Monitoring</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {resource.data.episodes.map((e) => (
-                      <tr key={e.id}>
-                        <td>
-                          <label>
-                            <input
-                              type="checkbox"
-                              aria-label={`Select episode ${e.number}: ${e.title}`}
-                              checked={selectedEpisodes.includes(e.id)}
-                              disabled={
-                                pending ||
-                                !show.monitored ||
-                                !season.monitored ||
-                                (!selectedEpisodes.includes(e.id) &&
-                                  selectedEpisodes.length >= 100)
-                              }
-                              onChange={(event) => {
-                                const checked = event.target.checked;
-                                setSelectedEpisodes((current) =>
-                                  checked
-                                    ? [...current, e.id]
-                                    : current.filter((id) => id !== e.id),
-                                );
-                              }}
-                            />{" "}
-                            Select for batch
-                          </label>
-                          <h4>{`S${String(season.number).padStart(2, "0")}E${String(e.number).padStart(2, "0")} · ${e.title}`}</h4>
-                          {e.overview && (
-                            <details>
-                              <summary>Synopsis</summary>
-                              <p>{e.overview}</p>
-                            </details>
-                          )}
-                        </td>
-                        <td>{e.air_date || "Unknown"}</td>
-                        <td>
-                          <Badge
-                            color={
-                              e.available
-                                ? "green"
-                                : e.air_date && e.air_date > today
-                                  ? "gray"
-                                  : "amber"
-                            }
-                          >
-                            {e.available
-                              ? "On disk"
-                              : e.air_date && e.air_date > today
-                                ? "Upcoming"
-                                : "Missing"}
-                          </Badge>
-                          {e.file_path && (
-                            <details className="episode-file">
-                              <summary>{e.file_path.split("/").at(-1)}</summary>
-                              <code>{e.file_path}</code>
-                            </details>
-                          )}
-                          {!e.available && (
-                            <p>
-                              <Link
-                                className="text-link"
-                                to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}`}
-                              >
-                                Find episode releases
-                              </Link>
-                            </p>
-                          )}
-                        </td>
-                        <td>
-                          <label className="monitor-choice">
-                            <Switch
-                              aria-label={`Monitor episode ${e.number}: ${e.title}`}
-                              checked={e.monitored}
-                              disabled={
-                                pending || !show.monitored || !season.monitored
-                              }
-                              onCheckedChange={(v) =>
-                                void update(
-                                  `/seasons/${season.number}/episodes/${e.number}/monitor`,
-                                  "PUT",
-                                  v,
-                                )
-                              }
-                            />{" "}
-                            Monitor
-                          </label>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="field-help">
-                Availability reflects registered files. Paths are relative to
-                the media root.
-              </p>
-            </div>
-          )}
+          <Table label={season.title + " episodes"}>
+            <thead>
+              <tr>
+                <th scope="col" className="is-shrink">
+                  <span className="sr-only">Select</span>
+                </th>
+                <th scope="col" className="is-shrink">
+                  <span className="sr-only">Monitored</span>
+                </th>
+                <th scope="col" className="is-shrink">
+                  #
+                </th>
+                <th scope="col">Title</th>
+                <th scope="col">Air date</th>
+                <th scope="col">Status</th>
+                <th scope="col">File</th>
+                <th scope="col" className="is-actions">
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {episodes.map((e) => {
+                const upcoming = !!e.air_date && e.air_date > today;
+                return (
+                  <tr key={e.id}>
+                    <td className="is-shrink">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select episode ${e.number}: ${e.title}`}
+                        checked={selectedEpisodes.includes(e.id)}
+                        disabled={
+                          locked ||
+                          (!selectedEpisodes.includes(e.id) &&
+                            selectedEpisodes.length >= 100)
+                        }
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setSelectedEpisodes((current) =>
+                            checked
+                              ? [...current, e.id]
+                              : current.filter((id) => id !== e.id),
+                          );
+                        }}
+                      />
+                    </td>
+                    <td className="is-shrink">
+                      <MonitorToggle
+                        label={`Monitor episode ${e.number}: ${e.title}`}
+                        checked={e.monitored}
+                        disabled={locked}
+                        onChange={(value) =>
+                          void update(
+                            `/seasons/${season.number}/episodes/${e.number}/monitor`,
+                            "PUT",
+                            value,
+                          )
+                        }
+                      />
+                    </td>
+                    <td
+                      className="is-shrink"
+                      title={episodeCode(season.number, e.number)}
+                    >
+                      {e.number}
+                    </td>
+                    <td className="det-episode-title">
+                      <span>{e.title}</span>
+                      {e.overview && (
+                        <details>
+                          <summary>Synopsis</summary>
+                          <p>{e.overview}</p>
+                        </details>
+                      )}
+                    </td>
+                    <td>{e.air_date || "Unknown"}</td>
+                    <td>
+                      {e.available ? (
+                        <Label kind="success">On disk</Label>
+                      ) : upcoming ? (
+                        <Label kind="default">Upcoming</Label>
+                      ) : (
+                        <Label
+                          kind={
+                            e.effective_monitored === false
+                              ? "disabled"
+                              : "danger"
+                          }
+                        >
+                          Missing
+                        </Label>
+                      )}
+                    </td>
+                    <td>
+                      {e.file_path ? (
+                        <details className="det-episode-file">
+                          <summary>{e.file_path.split("/").at(-1)}</summary>
+                          <code>{e.file_path}</code>
+                        </details>
+                      ) : (
+                        <span className="rs-muted">—</span>
+                      )}
+                    </td>
+                    <td className="is-actions">
+                      {!e.available && (
+                        <IconLink
+                          to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}`}
+                          label={`Search for ${episodeCode(season.number, e.number)} ${e.title}`}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+          <p className="rs-form-help">
+            Status reflects registered files. Paths are relative to the media
+            root.
+          </p>
         </>
       )}
-    </div>
+    </>
   );
 }

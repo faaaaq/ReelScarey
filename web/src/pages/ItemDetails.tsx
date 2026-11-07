@@ -1,681 +1,238 @@
-import { useEffect, useRef, useState } from "react";
-import { Badge, Button } from "@radix-ui/themes";
-import { ExternalLink, Play, RefreshCw } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
-import { api, messageFor, type MediaItem } from "../api";
-import { PageHeading, RequestState } from "../components";
-import { Poster, Pagination } from "../movieComponents";
-import { useResource } from "../useResource";
-import { bytes } from "./Releases";
+import {
+  Bookmark,
+  FolderTree,
+  RefreshCw,
+  Search,
+  Settings2,
+} from "lucide-react";
+import { useParams } from "react-router-dom";
+import { RequestState } from "../components";
+import { Pagination } from "../movieComponents";
+import {
+  Alert,
+  Label,
+  PageBody,
+  PageToolbar,
+  ToolbarButton,
+  ToolbarSection,
+  ToolbarSeparator,
+  formatBytes,
+} from "../ui";
 import { AnimeSettings } from "./AnimeSettings";
-import { AnimeSearch } from "./AnimeSearch";
 import { AnimeOrder } from "./AnimeOrder";
 import { ItemOrganization } from "./Organization";
 import { MovieCollection } from "./MovieCollection";
 import { RelatedTitles } from "./RelatedTitles";
 import { AutomaticFranchise } from "./AutomaticFranchise";
 import { MovieVersions } from "./MovieVersions";
+import {
+  CreditsSection,
+  DetailFact,
+  DetailHeader,
+  DetailTabs,
+  FilesSection,
+  HistorySection,
+  MetadataError,
+  ProviderLinks,
+  profileLabel,
+} from "./details/DetailParts";
+import { useItemDetails } from "./details/useItemDetails";
 
-export type Information = {
-  tagline: string;
-  genres: string[];
-  rating: number;
-  votes: number;
-  imdb_url: string;
-  tmdb_url: string;
-  trailer_url: string;
-  cast: { id: number; name: string; role: string; image_url: string }[];
-  crew: { id: number; name: string; role: string; image_url: string }[];
-};
-export type LocalDetails = {
-  item: MediaItem;
-  information: Information | null;
-  metadata_updated_at: number;
-  media_root: string;
-  library_root: string;
-  total_size_bytes: number;
-  file_count: number;
-  history_count: number;
-  page: number;
-  files: {
-    version_label?: string;
-    origin?: string;
-    id: number;
-    path: string;
-    directory: string;
-    size_bytes: number;
-    imported_at: number;
-    download_id: string;
-    release: string;
-    episodes: string;
-    probe: {
-      codec: string;
-      width: number;
-      height: number;
-      duration_seconds: number;
-      audio_streams?:
-        { codec: string; language: string; title: string }[] | null;
-      embedded_title?: string | null;
-    };
-  }[];
-  history: {
-    protocol?: "torrent" | "usenet";
-    id: string;
-    title: string;
-    indexer: string;
-    state: string;
-    progress: number;
-    size_bytes: number;
-    created_at: number;
-    updated_at: number;
-    error: string;
-  }[];
-};
+export type { Information, LocalDetails } from "./details/useItemDetails";
+
 export function ItemDetails() {
   const { id } = useParams();
   return id && /^[1-9][0-9]*$/.test(id) && Number.isSafeInteger(Number(id)) ? (
-    <ItemInformation key={id} id={Number(id)} hero />
+    <MovieView key={id} id={Number(id)} />
   ) : (
-    <p role="alert">Choose an item from your library.</p>
+    <PageBody>
+      <Alert kind="danger">Choose an item from your library.</Alert>
+    </PageBody>
   );
 }
-function External({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <a
-      className="text-link"
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      referrerPolicy="no-referrer"
-    >
-      {children}
-      <ExternalLink size={14} />
-    </a>
-  );
-}
-export function ItemInformation({
-  id,
-  hero = false,
-}: {
-  id: number;
-  hero?: boolean;
-}) {
-  const [page, setPage] = useState(1);
-  const resource = useResource<LocalDetails>(
-    `/library/items/${id}?page=${page}`,
-  );
-  const [fresh, setFresh] = useState<{
-    information: Information;
-    metadata_updated_at: number;
-  }>();
-  const [busy, setBusy] = useState(false);
-  const [inspecting, setInspecting] = useState<number>();
-  const [inspectionError, setInspectionError] = useState<{
-    id: number;
-    message: string;
-  }>();
-  const [error, setError] = useState("");
-  const attempted = useRef(false);
-  async function inspectFile(fileID: number) {
-    if (inspecting) return;
-    setInspecting(fileID);
-    setInspectionError(undefined);
-    try {
-      await api(`/library/files/${fileID}/inspect`, {
-        method: "POST",
-        body: "{}",
-      });
-      resource.reload();
-    } catch (e) {
-      setInspectionError({ id: fileID, message: messageFor(e) });
-    } finally {
-      setInspecting(undefined);
-    }
-  }
-  async function refresh() {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      setFresh(
-        await api(`/library/items/${id}/metadata`, {
-          method: "POST",
-          body: "{}",
-        }),
-      );
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  useEffect(() => {
-    if (!resource.data || attempted.current) return;
-    attempted.current = true;
-    if (
-      !resource.data.information ||
-      Date.now() / 1000 - resource.data.metadata_updated_at > 86400
-    )
-      void refresh();
-  }, [resource.data]);
-  const data = resource.data;
-  const info = fresh?.information ?? data?.information;
-  const updated = fresh?.metadata_updated_at ?? data?.metadata_updated_at;
-  const groups = [
-    { name: "Creators", roles: ["Creator", "Original Series Creator"] },
-    { name: "Directors", roles: ["Director"] },
-    {
-      name: "Writers",
-      roles: ["Writer", "Screenplay", "Story", "Novel", "Teleplay"],
-    },
-  ];
+
+function MovieView({ id }: { id: number }) {
+  const details = useItemDetails(id);
+  const data = details.data;
+  const item = data?.item;
   return (
     <>
-      <RequestState
-        loading={resource.loading}
-        error={resource.error}
-        retry={resource.reload}
-      />
-      {data && (
-        <>
-          {hero && (
-            <>
-              <Link
-                className="detail-back"
-                to={
-                  data.item.category === "anime"
-                    ? "/anime"
-                    : data.item.kind === "series"
-                      ? "/series"
-                      : "/movies"
-                }
-              >
-                ← Back to{" "}
-                {data.item.category === "anime"
-                  ? "Anime"
-                  : data.item.kind === "series"
-                    ? "TV shows"
-                    : "movies"}
-              </Link>
-              <PageHeading
-                eyebrow={
-                  data.item.category === "anime"
-                    ? "Anime"
-                    : data.item.kind === "series"
-                      ? "TV show"
-                      : "Movie"
-                }
-                title={data.item.title}
-                description={[
-                  data.item.year,
-                  data.item.runtime_minutes
-                    ? `${data.item.runtime_minutes} min`
-                    : "",
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              >
-                <Button
-                  size="2"
-                  variant="soft"
-                  disabled={busy}
-                  onClick={() => void refresh()}
-                >
-                  <RefreshCw size={15} />
-                  {busy ? "Updating details…" : "Refresh metadata"}
-                </Button>
-              </PageHeading>
-
-              <section className="detail-hero">
-                {data.item.poster_url && (
-                  <div
-                    className="detail-backdrop"
-                    aria-hidden="true"
-                    style={{
-                      backgroundImage: `url(${data.item.poster_url})`,
-                    }}
-                  />
-                )}
-                <Poster movie={data.item} />
-                <div className="detail-copy">
-                  <div className="detail-badges">
-                    <span
-                      className={`ui-chip ${
-                        data.file_count > 0
-                          ? "green"
-                          : data.item.status === "downloading"
-                            ? "blue"
-                            : "amber"
-                      }`}
-                    >
-                      {data.file_count > 0
-                        ? "On disk"
-                        : data.item.status === "downloading"
-                          ? "Downloading"
-                          : "Missing"}
-                    </span>
-                    <span className="ui-chip">
-                      {data.item.monitored ? "Monitored" : "Not monitored"}
-                    </span>
-                    {info?.rating ? (
-                      <span className="ui-chip blue">
-                        {info.rating.toFixed(1)} / 10 · TMDb
-                      </span>
-                    ) : null}
-                  </div>
-                  {info?.tagline && (
-                    <p className="detail-tagline">{info.tagline}</p>
-                  )}
-                  <p className="detail-overview">
-                    {data.item.overview || "No synopsis is available yet."}
-                  </p>
-                  {info?.genres.length ? (
-                    <p className="detail-genres">{info.genres.join(" · ")}</p>
-                  ) : null}
-                  <div className="detail-actions">
-                    {info?.imdb_url && (
-                      <External href={info.imdb_url}>IMDb</External>
-                    )}
-                    <External
-                      href={
-                        info?.tmdb_url ??
-                        `https://www.themoviedb.org/${data.item.kind === "series" ? "tv" : "movie"}/${data.item.tmdb_id}`
-                      }
-                    >
-                      TMDb
-                    </External>
-                    {info?.trailer_url && (
-                      <External href={info.trailer_url}>
-                        <Play size={15} />
-                        Watch trailer
-                      </External>
-                    )}
-                    {data.item.kind === "movie" && (
-                      <Button asChild size="2" variant="soft">
-                        <Link to={`/releases?movie=${id}`}>Find releases</Link>
-                      </Button>
-                    )}
-                    <Button asChild size="2" variant="soft">
-                      <Link to="/automation">Quality & automation</Link>
-                    </Button>
-                    <Link
-                      className="text-link"
-                      to={`/organization?media_id=${data.item.id}`}
-                    >
-                      Organize or remove
-                    </Link>
-                  </div>
-                </div>
-              </section>
-
-              <div className="detail-stats">
-                <div>
-                  <span>Registered files</span>
-                  <strong>{data.file_count}</strong>
-                </div>
-                <div>
-                  <span>Total file size</span>
-                  <strong>
-                    {data.total_size_bytes
-                      ? bytes(data.total_size_bytes)
-                      : "No files imported"}
-                  </strong>
-                </div>
-                <div>
-                  <span>Download history</span>
-                  <strong>
-                    {data.history_count}{" "}
-                    {data.history_count === 1 ? "release" : "releases"}
-                  </strong>
-                </div>
-              </div>
-            </>
-          )}
-          <section className="panel">
-            <div className="ui-section-head">
-              <div>
-                <h2>Storage locations</h2>
-                <p>Paths come from verified records, not a disk scan.</p>
-              </div>
-            </div>
-            <dl className="ui-path-list">
-              <div>
-                <dt>Media root</dt>
-                <dd>
-                  <code>{data.media_root}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>Current destination</dt>
-                <dd>
-                  <code>{data.library_root}</code>
-                </dd>
-              </div>
-            </dl>
-            <p className="ui-note">
-              Sizes and locations come from import records, not a live disk
-              scan.
-            </p>
-          </section>
-          <section className="panel">
-            <div className="ui-section-head">
-              <div>
-                <h2>Files & locations</h2>
-                <p>Verified files, stream facts and provenance.</p>
-              </div>
-            </div>
-            {data.files.length ? (
-              <div>
-                {data.files.map((file) => (
-                  <article className="file-row" key={file.id}>
-                    {data.item.kind === "movie" && (
-                      <span className="ui-chip green">
-                        {file.version_label || "Movie version"} · On disk
-                      </span>
-                    )}
-                    <h3>
-                      {file.path.split("/").at(-1)} · {bytes(file.size_bytes)}
-                    </h3>
-                    <p>
-                      <code className="episode-path">{file.path}</code>
-                    </p>
-                    <p className="field-help">
-                      Directory: <code>{file.directory}</code>
-                    </p>
-                    <p>
-                      {[
-                        file.probe.codec
-                          ? file.probe.codec.toUpperCase()
-                          : "Codec unknown",
-                        file.probe.height
-                          ? `${file.probe.width} × ${file.probe.height}`
-                          : "",
-                        file.probe.duration_seconds
-                          ? `${Math.round(file.probe.duration_seconds / 60)} min`
-                          : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                    <p>
-                      {file.probe.embedded_title == null
-                        ? "Embedded title has not been inspected yet."
-                        : file.probe.embedded_title === ""
-                          ? "No embedded title was reported."
-                          : `Embedded title: ${file.probe.embedded_title}`}
-                    </p>
-                    {data.item.kind === "movie" &&
-                      file.probe.embedded_title &&
-                      file.probe.embedded_title.trim().toLocaleLowerCase() !==
-                        data.item.title.trim().toLocaleLowerCase() && (
-                        <p className="field-help">
-                          The embedded title differs from the saved movie title:{" "}
-                          {data.item.title}.
-                        </p>
-                      )}
-                    <p className="field-help">
-                      Embedded title changes can be reviewed in{" "}
-                      <Link
-                        className="text-link"
-                        to={`/organization?media_id=${id}`}
-                      >
-                        Organize library
-                      </Link>
-                      .
-                    </p>
-                    <p>
-                      {file.probe.audio_streams == null
-                        ? "Audio tags have not been inspected yet."
-                        : file.probe.audio_streams.length === 0
-                          ? "No audio streams were reported."
-                          : `Embedded audio tags: ${file.probe.audio_streams.map((stream) => [stream.language && stream.language !== "und" ? stream.language : "language unknown", stream.codec, stream.title].filter(Boolean).join(" · ")).join(", ")}`}
-                    </p>
-                    <p className="field-help">
-                      Embedded tags come from the file and may be missing or
-                      inaccurate. Rechecking reads the entire file.
-                    </p>
-                    <Button
-                      variant="soft"
-                      disabled={!!inspecting}
-                      onClick={() => void inspectFile(file.id)}
-                    >
-                      {inspecting === file.id
-                        ? "Inspecting…"
-                        : "Inspect embedded tags"}
-                    </Button>
-                    {inspectionError?.id === file.id && (
-                      <p role="alert" className="form-error">
-                        {inspectionError.message}
-                      </p>
-                    )}
-                    <p>
-                      {file.origin === "existing"
-                        ? "Existing file"
-                        : file.origin === "youtube"
-                          ? "YouTube video"
-                          : "Release"}
-                      : {file.release}
-                    </p>
-                    {file.origin === "existing" && (
-                      <Badge color="gray">
-                        Registered in its existing location
-                      </Badge>
-                    )}
-                    <p className="field-help">
-                      {file.origin === "existing" ? "Registered" : "Imported"}{" "}
-                      {new Date(file.imported_at * 1000).toLocaleString()}
-                    </p>
-                    {file.download_id && (
-                      <Link
-                        className="text-link"
-                        to={`/activity?job=${encodeURIComponent(file.download_id)}`}
-                      >
-                        View download
-                      </Link>
-                    )}
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p>
-                {data.file_count
-                  ? "No files on this page."
-                  : "No file is registered for this title."}
-              </p>
-            )}
-          </section>
-          {!hero && (
-            <div className="item-links">
-              <Button
-                variant="soft"
-                disabled={busy}
-                onClick={() => void refresh()}
-              >
-                <RefreshCw size={16} />
-                {busy ? "Updating credits…" : "Refresh cast & links"}
-              </Button>
-              {info?.imdb_url && <External href={info.imdb_url}>IMDb</External>}
-              {info?.trailer_url && (
-                <External href={info.trailer_url}>
-                  <Play size={16} />
-                  Watch trailer
-                </External>
-              )}
-              {info?.genres.length ? (
-                <span className="field-help">{info.genres.join(" · ")}</span>
-              ) : null}
-              {info?.rating ? (
-                <Badge>TMDb {info.rating.toFixed(1)} / 10</Badge>
-              ) : null}
-            </div>
-          )}
-          {data.item.kind === "movie" && <MovieVersions id={id} />}
-          {error && (
-            <p role="alert" className="error-box">
-              {error} Your saved library and local file information remain
-              available.{" "}
-              <Button
-                variant="soft"
-                disabled={busy}
-                onClick={() => void refresh()}
-              >
-                Retry metadata
-              </Button>
-            </p>
-          )}
-          {busy && !info && (
-            <p role="status">Loading cast, credits and trailers…</p>
-          )}
-          {info && (
-            <>
-              <div className="credits-grid">
-                {groups.map((group) => {
-                  const names = [
-                    ...new Set(
-                      info.crew
-                        .filter((p) => group.roles.includes(p.role))
-                        .map((p) => p.name),
-                    ),
-                  ];
-                  return (
-                    <section className="panel" key={group.name}>
-                      <h2>{group.name}</h2>
-                      <p>
-                        {names.length
-                          ? names.join(", ")
-                          : "Not listed by TMDb."}
-                      </p>
-                    </section>
-                  );
-                })}
-              </div>
-              <section className="panel">
-                <div className="ui-section-head">
-                  <div>
-                    <h2>Main cast</h2>
-                    <p>Cast and roles from TMDb.</p>
-                  </div>
-                </div>
-                {info.cast.length ? (
-                  <div className="cast-grid">
-                    {info.cast.map((person) => (
-                      <a
-                        key={person.id}
-                        href={`https://www.themoviedb.org/person/${person.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        referrerPolicy="no-referrer"
-                        className="cast-card"
-                      >
-                        {person.image_url ? (
-                          <img
-                            src={person.image_url}
-                            alt={person.name}
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <span className="cast-fallback" aria-hidden="true">
-                            {person.name.charAt(0)}
-                          </span>
-                        )}
-                        <strong>{person.name}</strong>
-                        <span>{person.role || "Cast"}</span>
-                      </a>
-                    ))}
-                  </div>
-                ) : (
-                  <p>No cast is listed yet.</p>
-                )}
-                <p className="field-help">
-                  Metadata from TMDb
-                  {updated
-                    ? ` · Saved ${new Date(updated * 1000).toLocaleString()}`
-                    : ""}
-                  .{" "}
-                  {info.trailer_url
-                    ? "The trailer opens on YouTube."
-                    : "No supported trailer is listed yet."}
-                </p>
-              </section>
-            </>
-          )}
-          <section className="panel">
-            <div className="ui-section-head">
-              <div>
-                <h2>Release & download history</h2>
-                <p>Tracked jobs and their retained sources.</p>
-              </div>
-            </div>
-            {data.history.length ? (
-              <div>
-                {data.history.map((job) => (
-                  <article className="file-row" key={job.id}>
-                    <div className="indexer-title">
-                      <h3>{job.title}</h3>
-                      <Badge
-                        color={
-                          job.state === "completed"
-                            ? "green"
-                            : job.state === "failed" || job.state === "blocked"
-                              ? "amber"
-                              : "gray"
-                        }
-                      >
-                        {job.state}
-                      </Badge>
-                    </div>
-                    <p>
-                      {job.indexer ||
-                        "Indexer not recorded for this older download"}{" "}
-                      · {job.protocol === "usenet" ? "Usenet" : "Torrent"} ·{" "}
-                      {bytes(job.size_bytes)} · {Math.round(job.progress * 100)}
-                      %
-                    </p>
-                    <p className="field-help">
-                      Added {new Date(job.created_at * 1000).toLocaleString()} ·
-                      Updated {new Date(job.updated_at * 1000).toLocaleString()}
-                    </p>
-                    {job.error && <p className="movie-error">{job.error}</p>}
-                    <Link
-                      className="text-link"
-                      to={`/activity?job=${encodeURIComponent(job.id)}`}
-                    >
-                      Open download details
-                    </Link>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p>
-                {data.history_count
-                  ? "No downloads on this page."
-                  : "No release has been downloaded for this item yet."}
-              </p>
-            )}
-          </section>
-          <AnimeSettings id={id} onSaved={resource.reload} />
-          {data.item.category === "anime" && data.item.kind === "series" && (
-            <AnimeSearch id={id} />
-          )}
-          {data.item.category === "anime" && <AnimeOrder id={id} />}
-          {data.item.kind === "movie" && <MovieCollection id={id} />}
-          <AutomaticFranchise id={id} />
-          <RelatedTitles id={id} />
-          <ItemOrganization id={id} />
-          <Pagination
-            page={page}
-            pages={Math.ceil(
-              Math.max(data.file_count, data.history_count) / 50,
-            )}
-            onPage={setPage}
+      <PageToolbar>
+        <ToolbarSection>
+          <ToolbarButton
+            icon={RefreshCw}
+            label="Refresh"
+            title="Refresh metadata from TMDb"
+            spinning={details.busy}
+            disabled={details.busy || !data}
+            onClick={() => void details.refresh()}
           />
+          {item?.kind === "movie" && (
+            <ToolbarButton
+              icon={Search}
+              label="Manual Search"
+              to={`/releases?movie=${id}`}
+            />
+          )}
+          <ToolbarSeparator />
+          <ToolbarButton
+            icon={FolderTree}
+            label="Organize"
+            to={`/organization?media_id=${id}`}
+          />
+          <ToolbarButton icon={Settings2} label="Automation" to="/automation" />
+        </ToolbarSection>
+      </PageToolbar>
+      {!data ? (
+        <PageBody>
+          <RequestState
+            loading={details.loading}
+            error={details.loadError}
+            retry={details.reload}
+          />
+        </PageBody>
+      ) : (
+        <>
+          <DetailHeader
+            item={data.item}
+            title={data.item.title}
+            monitor={
+              <span
+                className={`det-monitor-static${data.item.monitored ? " is-on" : ""}`}
+                title={data.item.monitored ? "Monitored" : "Unmonitored"}
+              >
+                <Bookmark
+                  size={24}
+                  fill={data.item.monitored ? "currentColor" : "none"}
+                  aria-hidden="true"
+                />
+              </span>
+            }
+            facts={[
+              data.item.year,
+              data.item.runtime_minutes
+                ? `${data.item.runtime_minutes} min`
+                : null,
+              details.info?.genres.length
+                ? details.info.genres.join(", ")
+                : null,
+            ]}
+            labels={
+              <>
+                {data.file_count > 0 ? (
+                  <Label kind="success" large>
+                    On disk
+                  </Label>
+                ) : data.item.status === "downloading" ? (
+                  <Label kind="info" large>
+                    Downloading
+                  </Label>
+                ) : (
+                  <Label
+                    kind={data.item.monitored ? "danger" : "disabled"}
+                    large
+                  >
+                    Missing
+                  </Label>
+                )}
+                <Label kind={data.item.monitored ? "primary" : "disabled"}>
+                  {data.item.monitored ? "Monitored" : "Unmonitored"}
+                </Label>
+                {data.item.category === "anime" && (
+                  <Label kind="purple">Anime</Label>
+                )}
+                {profileLabel(data.item)}
+                {details.info?.rating ? (
+                  <Label outline>TMDb {details.info.rating.toFixed(1)}</Label>
+                ) : null}
+              </>
+            }
+            details={
+              <>
+                <DetailFact title="Path">
+                  <code>{data.library_root}</code>
+                </DetailFact>
+                <DetailFact title="Size">
+                  {data.total_size_bytes
+                    ? formatBytes(data.total_size_bytes)
+                    : "No files"}
+                </DetailFact>
+                <DetailFact title="Files">{data.file_count}</DetailFact>
+                <DetailFact title="Downloads">{data.history_count}</DetailFact>
+              </>
+            }
+            links={
+              <ProviderLinks
+                details={details}
+                kind={data.item.kind}
+                tmdbID={data.item.tmdb_id}
+              />
+            }
+          />
+          <PageBody>
+            {details.info?.tagline && (
+              <p className="rs-muted">{details.info.tagline}</p>
+            )}
+            <MetadataError details={details} />
+            {details.loadError && (
+              <RequestState
+                loading={false}
+                error={details.loadError}
+                retry={details.reload}
+              />
+            )}
+            <DetailTabs
+              label="Movie sections"
+              tabs={[
+                {
+                  value: "details",
+                  label: "Details",
+                  content: (
+                    <>
+                      <FilesSection
+                        details={details}
+                        savedTitle={data.item.title}
+                      />
+                      {data.item.kind === "movie" && <MovieVersions id={id} />}
+                      <HistorySection details={details} />
+                      <Pagination
+                        page={details.page}
+                        pages={Math.ceil(
+                          Math.max(data.file_count, data.history_count) / 50,
+                        )}
+                        onPage={details.setPage}
+                      />
+                      <CreditsSection details={details} />
+                    </>
+                  ),
+                },
+                {
+                  value: "related",
+                  label: "Related",
+                  content: (
+                    <>
+                      {data.item.kind === "movie" && (
+                        <MovieCollection id={id} />
+                      )}
+                      <AutomaticFranchise id={id} />
+                      <RelatedTitles id={id} />
+                    </>
+                  ),
+                },
+                {
+                  value: "settings",
+                  label: "Settings",
+                  content: (
+                    <>
+                      <AnimeSettings id={id} onSaved={details.reload} />
+                      {data.item.category === "anime" && <AnimeOrder id={id} />}
+                      <ItemOrganization id={id} />
+                    </>
+                  ),
+                },
+              ]}
+            />
+          </PageBody>
         </>
       )}
     </>

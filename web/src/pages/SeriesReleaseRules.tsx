@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
+import { Alert, FieldSet, FormActions, FormGroup } from "../ui";
 
 type Rules = { codec: string; group: string; revision: number };
 export function SeriesReleaseRules({ id }: { id: number }) {
@@ -8,6 +9,8 @@ export function SeriesReleaseRules({ id }: { id: number }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const codecID = useId();
+  const groupID = useId();
   async function load() {
     setBusy(true);
     setError("");
@@ -40,22 +43,27 @@ export function SeriesReleaseRules({ id }: { id: number }) {
     }
   }
   return (
-    <section className="panel system-panel">
-      <h2>Automatic release rules</h2>
-      <p>
-        Require a codec or release group for this show in scheduled searches, in
-        addition to its quality profile. Labels must explicitly identify the
-        codec and group. Manual release searches remain unrestricted.
-      </p>
-      {!rules ? (
-        <Button variant="soft" disabled={busy} onClick={() => void load()}>
-          Edit release rules
-        </Button>
-      ) : (
-        <form onSubmit={save}>
-          <label>
-            Required codec{" "}
+    <FieldSet
+      legend="Release rules"
+      description="Scheduled searches for this show also require this codec or group, on top of the quality profile. Manual searches are unrestricted."
+      actions={
+        !rules && (
+          <Button
+            size="1"
+            variant="soft"
+            disabled={busy}
+            onClick={() => void load()}
+          >
+            Edit release rules
+          </Button>
+        )
+      }
+    >
+      {rules && (
+        <form className="rs-stack" onSubmit={save}>
+          <FormGroup label="Required codec" htmlFor={codecID}>
             <select
+              id={codecID}
               value={rules.codec}
               onChange={(e) => {
                 setSaved(false);
@@ -66,10 +74,14 @@ export function SeriesReleaseRules({ id }: { id: number }) {
               <option value="h264">H.264 / x264 / AVC</option>
               <option value="h265">H.265 / x265 / HEVC</option>
             </select>
-          </label>
-          <label>
-            Required release group
+          </FormGroup>
+          <FormGroup
+            label="Required release group"
+            htmlFor={groupID}
+            help="Must appear as a bracketed prefix or hyphenated suffix. Existing downloads are unchanged."
+          >
             <TextField.Root
+              id={groupID}
               value={rules.group}
               onChange={(e) => {
                 setSaved(false);
@@ -78,30 +90,27 @@ export function SeriesReleaseRules({ id }: { id: number }) {
               placeholder="e.g. MeGusta"
               maxLength={80}
             />
-          </label>
-          <p className="field-help">
-            Group must be a bracketed prefix or a hyphenated suffix in the
-            release name. Existing downloads are unchanged.
-          </p>
-          <div className="import-actions">
+          </FormGroup>
+          <FormActions>
             <Button disabled={busy}>Save rules</Button>
             <Button
               type="button"
               variant="soft"
+              color="gray"
               disabled={busy}
               onClick={() => void load()}
             >
               Reload
             </Button>
-          </div>
-          {saved && <p role="status">Release rules saved.</p>}
+          </FormActions>
+          {saved && (
+            <Alert kind="success" role="status">
+              Release rules saved.
+            </Alert>
+          )}
         </form>
       )}
-      {error && (
-        <p role="alert" className="error-box">
-          {error}
-        </p>
-      )}
-    </section>
+      {error && <Alert kind="danger">{error}</Alert>}
+    </FieldSet>
   );
 }

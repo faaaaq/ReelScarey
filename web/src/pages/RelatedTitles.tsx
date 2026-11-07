@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
 import { api, messageFor, type MediaItem } from "../api";
+import { Alert, FieldSet, Label } from "../ui";
 
 export function RelatedTitles({ id }: { id: number }) {
   const [items, setItems] = useState<MediaItem[]>();
@@ -61,31 +62,40 @@ export function RelatedTitles({ id }: { id: number }) {
     }
   }
   return (
-    <section className="panel system-panel">
-      <h2>Related library titles</h2>
-      <p>
-        Link saved movies and shows that belong together. Links are mutual and
-        require an explicit selection.
-      </p>
-      {!items ? (
-        <Button variant="soft" onClick={() => void load()} disabled={busy}>
-          Manage related titles
-        </Button>
-      ) : (
+    <FieldSet
+      legend="Linked titles"
+      description="Mutual links between saved movies and shows that belong together."
+      actions={
+        !items && (
+          <Button
+            size="1"
+            variant="soft"
+            onClick={() => void load()}
+            disabled={busy}
+          >
+            Manage related titles
+          </Button>
+        )
+      }
+    >
+      {items && (
         <>
           {items.length ? (
-            <ul>
+            <ul className="det-link-list" aria-label="Linked titles">
               {items.map((item) => (
                 <li key={item.id}>
                   <Link
                     to={`/${item.kind === "series" ? "series" : "movies"}/${item.id}`}
                   >
                     {item.title}
-                  </Link>{" "}
-                  · {item.kind === "series" ? "TV show" : "Movie"}{" "}
+                  </Link>
+                  <Label outline>
+                    {item.kind === "series" ? "TV show" : "Movie"}
+                  </Label>
                   <Button
                     size="1"
                     variant="ghost"
+                    color="red"
                     disabled={busy}
                     onClick={() => void change(item.id, "DELETE")}
                   >
@@ -95,11 +105,11 @@ export function RelatedTitles({ id }: { id: number }) {
               ))}
             </ul>
           ) : (
-            <p>No manually linked titles.</p>
+            <p className="rs-muted">No linked titles.</p>
           )}
-          <form onSubmit={search}>
+          <form className="det-inline-form" onSubmit={search}>
             <label>
-              Title type{" "}
+              Title type
               <select value={kind} onChange={(e) => setKind(e.target.value)}>
                 <option value="movie">Movies</option>
                 <option value="series">TV shows</option>
@@ -114,28 +124,35 @@ export function RelatedTitles({ id }: { id: number }) {
                 maxLength={200}
               />
             </label>
-            <Button disabled={busy}>Search library</Button>
+            <Button variant="soft" disabled={busy}>
+              Search library
+            </Button>
           </form>
-          {results.map((item) => (
-            <p key={item.id}>
-              {item.title} {item.year && `(${item.year})`}{" "}
-              <Button
-                size="1"
-                variant="soft"
-                disabled={busy || items.some((v) => v.id === item.id)}
-                onClick={() => void change(item.id, "POST")}
-              >
-                {items.some((v) => v.id === item.id) ? "Linked" : "Link title"}
-              </Button>
-            </p>
-          ))}
+          {results.length > 0 && (
+            <ul className="det-link-list" aria-label="Search results">
+              {results.map((item) => {
+                const linked = items.some((v) => v.id === item.id);
+                return (
+                  <li key={item.id}>
+                    <span>
+                      {item.title} {item.year && `(${item.year})`}
+                    </span>
+                    <Button
+                      size="1"
+                      variant="soft"
+                      disabled={busy || linked}
+                      onClick={() => void change(item.id, "POST")}
+                    >
+                      {linked ? "Linked" : "Link title"}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </>
       )}
-      {error && (
-        <p role="alert" className="error-box">
-          {error}
-        </p>
-      )}
-    </section>
+      {error && <Alert kind="danger">{error}</Alert>}
+    </FieldSet>
   );
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
 import { AddMovieButton } from "../movieComponents";
+import { Alert, FieldSet, Label, LoadingIndicator, Table } from "../ui";
 import { useResource } from "../useResource";
 
 type Member = {
@@ -21,78 +22,99 @@ export function AutomaticFranchise({ id }: { id: number }) {
   const [added, setAdded] = useState<Set<string>>(new Set());
   const items = Array.isArray(found.data?.items) ? found.data.items : [];
   return (
-    <section className="panel system-panel">
-      <h2>Franchise connections</h2>
-      <p>Suggestions from Wikidata. They do not change your library.</p>
-      {found.loading && <p>Checking Wikidata…</p>}
+    <FieldSet
+      legend="Franchise"
+      description="Suggestions from Wikidata. Nothing changes until you add a title."
+    >
+      {found.loading && <LoadingIndicator label="Checking Wikidata…" />}
       {found.error && (
-        <div role="alert">
+        <Alert kind="danger">
           <p>{found.error}</p>
-          <Button variant="soft" onClick={found.reload}>
-            Retry discovery
-          </Button>
-        </div>
+          <div>
+            <Button size="1" variant="soft" onClick={found.reload}>
+              Retry discovery
+            </Button>
+          </div>
+        </Alert>
       )}
       {found.data &&
         (items.length ? (
-          <div className="file-details-list">
-            {items.slice(0, more ? items.length : 12).map((item) => {
-              const key = `${item.kind}:${item.tmdb_id}`;
-              return (
-                <article
-                  className="discovery-file"
-                  key={`${item.franchise_id}:${key}`}
-                >
-                  <h3>
-                    {item.library_id ? (
-                      <Link
-                        to={`/${item.kind === "movie" ? "movies" : "series"}/${item.library_id}`}
+          <Table label="Franchise titles">
+            <thead>
+              <tr>
+                <th scope="col">Title</th>
+                <th scope="col">Type</th>
+                <th scope="col">Franchise</th>
+                <th scope="col" className="is-actions">
+                  Library
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.slice(0, more ? items.length : 12).map((item) => {
+                const key = `${item.kind}:${item.tmdb_id}`;
+                return (
+                  <tr key={`${item.franchise_id}:${key}`}>
+                    <td>
+                      {item.library_id ? (
+                        <Link
+                          to={`/${item.kind === "movie" ? "movies" : "series"}/${item.library_id}`}
+                        >
+                          {item.title}
+                        </Link>
+                      ) : (
+                        item.title
+                      )}
+                    </td>
+                    <td>{item.kind === "movie" ? "Movie" : "TV show"}</td>
+                    <td>
+                      <a
+                        href={`https://www.wikidata.org/wiki/${item.franchise_id}`}
+                        target="_blank"
+                        rel="noreferrer"
                       >
-                        {item.title}
-                      </Link>
-                    ) : (
-                      item.title
-                    )}
-                  </h3>
-                  <p>
-                    {item.kind === "movie" ? "Movie" : "TV show"} ·{" "}
-                    <a
-                      href={`https://www.wikidata.org/wiki/${item.franchise_id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {item.franchise}
-                    </a>
-                    {item.library_id ? ` · In library (${item.status})` : ""}
-                  </p>
-                  {!item.library_id && (
-                    <AddMovieButton
-                      id={item.tmdb_id}
-                      kind={item.kind}
-                      added={added.has(key)}
-                      onAdded={() =>
-                        setAdded((current) => new Set(current).add(key))
-                      }
-                    />
-                  )}
-                </article>
-              );
-            })}
-          </div>
+                        {item.franchise}
+                      </a>
+                    </td>
+                    <td className="is-actions">
+                      {item.library_id ? (
+                        <Label kind="success">
+                          In library{item.status ? ` · ${item.status}` : ""}
+                        </Label>
+                      ) : (
+                        <AddMovieButton
+                          id={item.tmdb_id}
+                          kind={item.kind}
+                          added={added.has(key)}
+                          onAdded={() =>
+                            setAdded((current) => new Set(current).add(key))
+                          }
+                        />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
         ) : (
-          <p>
-            No shared franchise was found. Wikidata may not yet contain these
-            links or may have an ambiguous title identity.
+          <p className="rs-muted">
+            No shared franchise found. Wikidata may lack these links or the
+            title identity may be ambiguous.
           </p>
         ))}
       {items.length > 12 && !more && (
-        <Button variant="soft" onClick={() => setMore(true)}>
-          Show {items.length - 12} more
-        </Button>
+        <div>
+          <Button size="1" variant="soft" onClick={() => setMore(true)}>
+            Show {items.length - 12} more
+          </Button>
+        </div>
       )}
       {found.data?.truncated && (
-        <p>Results are limited to the first 200 provider records.</p>
+        <p className="rs-form-help">
+          Limited to the first 200 provider records.
+        </p>
       )}
-    </section>
+    </FieldSet>
   );
 }

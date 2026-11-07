@@ -176,9 +176,7 @@ describe("TV catalog and monitoring", () => {
     });
     mount("/series/7");
     await screen.findByRole("heading", { name: "Test TV series" });
-    await userEvent.click(
-      screen.getByRole("button", { name: "View episodes" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Season 1" }));
     await userEvent.click(
       await screen.findByRole("checkbox", { name: "Select episode 2: Second" }),
     );
@@ -243,6 +241,51 @@ describe("TV catalog and monitoring", () => {
       fetch.mock.calls.some(([url]) => url.includes("/metadata/movies")),
     ).toBe(false);
   });
+  it("lists specials last and mounts show settings only when their tab opens", async () => {
+    const specials = {
+      ...show.seasons[0],
+      id: 20,
+      number: 0,
+      title: "Specials",
+      monitored: false,
+    };
+    const fetch = setup((url) => {
+      if (url.endsWith("/library/series/7"))
+        return Response.json({ ...show, seasons: [specials, show.seasons[0]] });
+    });
+    mount("/series/7");
+    await screen.findByRole("heading", { name: "Test TV series" });
+    const seasons = screen
+      .getAllByRole("button", { name: /^(Season 1|Specials)$/ })
+      .map((button) => button.textContent);
+    expect(seasons).toEqual(["Season 1", "Specials"]);
+    expect(
+      screen.getByRole("switch", { name: "Monitor Specials" }),
+    ).not.toBeChecked();
+    expect(
+      fetch.mock.calls.some(([url]) =>
+        String(url).includes("/youtube-sources"),
+      ),
+    ).toBe(false);
+    await userEvent.click(screen.getByRole("tab", { name: /^Settings/ }));
+    expect(
+      await screen.findByRole("button", { name: "Edit release rules" }),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(([url]) =>
+          String(url).includes("/youtube-sources"),
+        ),
+      ).toBe(true),
+    );
+    await userEvent.click(screen.getByRole("tab", { name: /^Episodes/ }));
+    expect(
+      screen.getByRole("checkbox", { name: "Select season Season 1" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Edit release rules", hidden: true }),
+    ).not.toBeVisible();
+  });
   it("shows registered, missing and upcoming episodes and expands the file path", async () => {
     const season = {
       ...show.seasons[0],
@@ -287,9 +330,7 @@ describe("TV catalog and monitoring", () => {
     });
     mount("/series/7");
     expect(await screen.findByText("1 / 3 on disk")).toBeVisible();
-    await userEvent.click(
-      screen.getByRole("button", { name: "View episodes" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Season 1" }));
     const table = within(
       await screen.findByRole("table", { name: "Season 1 episodes" }),
     );
@@ -366,9 +407,7 @@ describe("TV catalog and monitoring", () => {
     });
     mount("/series/7");
     await screen.findByRole("heading", { name: "Test TV series" });
-    await userEvent.click(
-      screen.getByRole("button", { name: "View episodes" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Season 1" }));
     await screen.findByRole("button", { name: "Load episodes from TMDb" });
     expect(
       fetch.mock.calls.some(
@@ -407,7 +446,9 @@ describe("TV catalog and monitoring", () => {
       "TMDb is temporarily unavailable.",
     );
     expect(
-      screen.getByRole("heading", { name: "S01E01 · Pilot" }),
+      within(
+        screen.getByRole("table", { name: "Season 1 episodes" }),
+      ).getByText("Pilot"),
     ).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "Download" }),

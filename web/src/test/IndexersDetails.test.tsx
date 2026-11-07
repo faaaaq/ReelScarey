@@ -182,17 +182,13 @@ describe("indexers and library details", () => {
         });
     });
     mount("/movies/1");
-    await screen.findByText("Audio tags have not been inspected yet.");
+    await screen.findByText("Not inspected");
     await userEvent.click(
       screen.getByRole("button", { name: "Inspect embedded tags" }),
     );
-    await screen.findByText("Embedded audio tags: jpn · aac");
-    expect(
-      screen.getByText("Embedded title: Wrong fixture title"),
-    ).toBeVisible();
-    expect(
-      screen.getByText(/embedded title differs from the saved movie title/i),
-    ).toBeVisible();
+    await screen.findByText("Audio: jpn · aac");
+    expect(screen.getByText("Title: Wrong fixture title")).toBeVisible();
+    expect(screen.getByText(/differs from the saved title/i)).toBeVisible();
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/library/files/2/inspect",
       expect.objectContaining({ method: "POST", body: "{}" }),
@@ -281,7 +277,7 @@ describe("indexers and library details", () => {
       "href",
       local.information.imdb_url,
     );
-    expect(screen.getByRole("link", { name: /Watch trailer/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Trailer/ })).toHaveAttribute(
       "rel",
       "noopener noreferrer",
     );
@@ -290,7 +286,16 @@ describe("indexers and library details", () => {
       "href",
       `/activity?job=${"b".repeat(32)}`,
     );
-    expect(screen.getByText(/Private tracker ·/)).toBeVisible();
+    const history = within(
+      screen.getByRole("table", { name: "Download history" }),
+    );
+    expect(
+      history.getByRole("cell", { name: "Private tracker" }),
+    ).toBeVisible();
+    expect(history.getByRole("link", { name: "Details" })).toHaveAttribute(
+      "href",
+      `/activity?job=${"b".repeat(32)}`,
+    );
   });
   it("keeps cached credits and imported files when metadata refresh fails", async () => {
     const fetch = setup((url, options) =>

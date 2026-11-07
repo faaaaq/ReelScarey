@@ -113,7 +113,7 @@ describe("remaining feature controls", () => {
     expect(fetch).not.toHaveBeenCalled();
     await userEvent.click(
       screen.getByRole("button", {
-        name: "Subtitle preferences for this show",
+        name: "Edit subtitle preferences",
       }),
     );
     await screen.findByText("Using global subtitle preferences");
