@@ -738,3 +738,11 @@ dialog. The Calendar and Wanted coverage note now explains that unloaded seasons
 have no episode list yet and links to the Metadata refresh schedule. Dialog
 headers keep the close button at the right edge.
 
+
+## Version 0.38.3 dismissible coverage notes and stable episode toggles
+
+Calendar and Wanted coverage notes can be dismissed for the session or hidden
+permanently, with a Show again link. Toggling an episode's monitoring refreshes
+the season in place instead of remounting it, so the page keeps its scroll
+position. A missing as_of_date no longer crashes the calendar.
+

@@ -177,9 +177,10 @@ describe("TV catalog and monitoring", () => {
     mount("/series/7");
     await screen.findByRole("heading", { name: "Test TV series" });
     await userEvent.click(screen.getByRole("button", { name: "Season 1" }));
-    await userEvent.click(
-      await screen.findByRole("checkbox", { name: "Select episode 2: Second" }),
-    );
+    const episode = await screen.findByRole("checkbox", {
+      name: "Select episode 2: Second",
+    });
+    await userEvent.click(episode);
     await userEvent.click(
       screen.getByRole("button", { name: "Unmonitor selected (1)" }),
     );
@@ -196,6 +197,19 @@ describe("TV catalog and monitoring", () => {
         }),
       ),
     );
+    // The season refreshes in place: the same rows stay mounted, so the page
+    // keeps its scroll position, and the finished selection is cleared.
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.filter(
+          ([url, o]) =>
+            String(url).endsWith("/seasons/1") &&
+            (!o?.method || o.method === "GET"),
+        ).length,
+      ).toBeGreaterThan(1),
+    );
+    expect(episode.isConnected).toBe(true);
+    await waitFor(() => expect(episode).not.toBeChecked());
   });
   it("searches TV separately and saves a show with the chosen monitoring preference", async () => {
     const fetch = setup((url, options) => {

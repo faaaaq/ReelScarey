@@ -25,4 +25,6 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   setCSRFToken("");
+  window.localStorage.clear();
+  window.sessionStorage.clear();
 });

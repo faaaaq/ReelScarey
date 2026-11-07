@@ -6,9 +6,11 @@ import {
   CheckCircle2,
   Info,
   Plus,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { hideNotice, useHiddenNotices } from "./notices";
 
 function cx(...values: (string | false | null | undefined)[]) {
   return values.filter(Boolean).join(" ");
@@ -303,20 +305,25 @@ const alertIcons = {
 
 /**
  * Inline message. Danger alerts announce as `alert`; others as `status`
- * unless a role is given explicitly.
+ * unless a role is given explicitly. Pass `dismissKey` to let the owner
+ * dismiss the notice for this session or hide it permanently.
  */
 export function Alert({
   kind = "info",
   title,
   children,
   role,
+  dismissKey,
 }: {
   kind?: "info" | "success" | "warning" | "danger";
   title?: ReactNode;
   children?: ReactNode;
   role?: "alert" | "status" | "note";
+  dismissKey?: string;
 }) {
   const Icon = alertIcons[kind];
+  const hidden = useHiddenNotices(dismissKey ? [dismissKey] : []);
+  if (dismissKey && hidden.length) return null;
   return (
     <div
       className={cx("rs-alert", kind !== "info" && `is-${kind}`)}
@@ -327,10 +334,29 @@ export function Alert({
         {title && <span className="rs-alert-title">{title}</span>}
         {children}
       </div>
+      {dismissKey && (
+        <div className="rs-alert-dismiss">
+          <button
+            type="button"
+            className="rs-link-button rs-small"
+            onClick={() => hideNotice(dismissKey, true)}
+          >
+            Don't show again
+          </button>
+          <button
+            type="button"
+            className="rs-alert-close"
+            aria-label="Dismiss"
+            title="Dismiss for now"
+            onClick={() => hideNotice(dismissKey, false)}
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
-
 export function ProgressBar({
   value,
   kind = "primary",

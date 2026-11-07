@@ -1451,3 +1451,25 @@ details > summary {
 .rs-modal-header > :last-child {
   margin-left: auto;
 }
+
+.rs-alert-dismiss {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex: none;
+}
+.rs-alert-close {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--rs-radius);
+  background: transparent;
+  color: var(--rs-muted);
+}
+.rs-alert-close:hover {
+  color: var(--rs-text-strong);
+  background: var(--rs-hover);
+}

@@ -31,6 +31,8 @@ import {
   ToolbarSection,
   ToolbarSeparator,
   episodeCode,
+  restoreNotices,
+  useHiddenNotices,
   type Kind,
 } from "../ui";
 import { useResource } from "../useResource";
@@ -223,8 +225,20 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
   undated.delete("month");
   undated.delete("page");
   undated.set("status", "undated");
-  const today = data?.as_of_date.slice(0, 7) ?? "";
+  const today = data?.as_of_date?.slice(0, 7) ?? "";
   const monthView = calendar && view === "month";
+  const noticeKeys = [
+    ...(data && data.coverage.unloaded_seasons > 0
+      ? ["coverage-unloaded-seasons"]
+      : []),
+    ...(calendar && data && data.coverage.undated > 0
+      ? ["calendar-undated"]
+      : []),
+    ...(monthView && data && data.total > data.items.length
+      ? ["calendar-page-limit"]
+      : []),
+  ];
+  const hiddenNotes = useHiddenNotices(noticeKeys);
   return (
     <>
       <PageToolbar>
@@ -399,6 +413,7 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
             {data.coverage.unloaded_seasons > 0 && (
               <Alert
                 kind="info"
+                dismissKey="coverage-unloaded-seasons"
                 title={`${data.coverage.unloaded_seasons} ${
                   data.coverage.unloaded_seasons === 1
                     ? "season's episodes are"
@@ -416,7 +431,7 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
               </Alert>
             )}
             {calendar && data.coverage.undated > 0 && (
-              <Alert kind="info">
+              <Alert kind="info" dismissKey="calendar-undated">
                 <p>
                   {data.coverage.undated} missing{" "}
                   {data.coverage.undated === 1 ? "item has" : "items have"} no
@@ -427,6 +442,19 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
                   </Link>
                 </p>
               </Alert>
+            )}
+            {hiddenNotes.length > 0 && (
+              <p className="rs-muted rs-small">
+                {hiddenNotes.length} coverage{" "}
+                {hiddenNotes.length === 1 ? "note is" : "notes are"} hidden.{" "}
+                <button
+                  type="button"
+                  className="rs-link-button"
+                  onClick={() => restoreNotices(hiddenNotes)}
+                >
+                  Show again
+                </button>
+              </p>
             )}
             {data.items.length === 0 && data.total > 0 ? (
               <EmptyState
@@ -448,7 +476,7 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
             ) : monthView ? (
               <>
                 {data.total > data.items.length && (
-                  <Alert kind="info">
+                  <Alert kind="info" dismissKey="calendar-page-limit">
                     This month has {data.total} items; the grid shows{" "}
                     {(data.page - 1) * data.limit + 1}–
                     {Math.min(data.page * data.limit, data.total)}. Use the

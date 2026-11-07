@@ -196,6 +196,35 @@ describe("wanted and release planning", () => {
       expect(params.has("page")).toBe(false);
     });
   });
+  it("hides a coverage note for good only when asked, and can show it again", async () => {
+    setup();
+    mount("/calendar?month=2026-10&kind=series&monitored=all");
+    await screen.findByRole("heading", { name: "October 2026" });
+    const note = screen
+      .getByText(/2 seasons' episodes are not loaded/)
+      .closest(".rs-alert") as HTMLElement;
+    await userEvent.click(
+      within(note).getByRole("button", { name: "Don't show again" }),
+    );
+    expect(
+      screen.queryByText(/2 seasons' episodes are not loaded/),
+    ).not.toBeInTheDocument();
+    expect(
+      window.localStorage.getItem(
+        "reelscarey-notice:coverage-unloaded-seasons",
+      ),
+    ).toBe("hidden");
+    expect(screen.getByText(/1 coverage note is hidden/)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Show again" }));
+    expect(
+      screen.getByText(/2 seasons' episodes are not loaded/),
+    ).toBeVisible();
+    expect(
+      window.localStorage.getItem(
+        "reelscarey-notice:coverage-unloaded-seasons",
+      ),
+    ).toBeNull();
+  });
   it("shows calendar coverage and links undated items without carrying its month", async () => {
     setup();
     mount(

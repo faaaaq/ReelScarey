@@ -25,6 +25,7 @@ import {
   type Kind,
 } from "../ui";
 import { useResource } from "../useResource";
+import { useLiveResource } from "../useLiveResource";
 import { AnimeSettings } from "./AnimeSettings";
 import { AnimeSearch } from "./AnimeSearch";
 import { AnimeOrder } from "./AnimeOrder";
@@ -556,7 +557,8 @@ function SeasonBlock({
       {expanded && (
         <div id={panelID} className="det-season-body">
           <SeasonEpisodes
-            key={`${season.number}-${attempt}`}
+            key={season.number}
+            attempt={attempt}
             show={show}
             season={season}
             pending={pending}
@@ -573,17 +575,29 @@ function SeasonEpisodes({
   season,
   pending,
   update,
+  attempt,
 }: {
   show: TVSeries;
   season: TVSeason;
   pending: boolean;
   update: Update;
+  attempt: number;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
-  const resource = useResource<TVSeasonDetails>(
+  // Keep the loaded episodes on screen while a change refreshes them, so the
+  // page does not collapse and lose its scroll position.
+  const resource = useLiveResource<TVSeasonDetails>(
     `/library/series/${show.id}/seasons/${season.number}`,
   );
+  const { reload: reloadEpisodes } = resource;
+  const seenAttempt = useRef(attempt);
+  useEffect(() => {
+    if (seenAttempt.current === attempt) return;
+    seenAttempt.current = attempt;
+    setSelectedEpisodes([]);
+    reloadEpisodes();
+  }, [attempt, reloadEpisodes]);
   const locked = pending || !show.monitored || !season.monitored;
   function batch(monitored: boolean) {
     const count = selectedEpisodes.length;

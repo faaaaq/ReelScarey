@@ -2109,3 +2109,11 @@ Run locally on Windows (development tools only; Docker remains the target):
 - go vet ./..., go test ./... and go build ./cmd/reelscarey passed.
 - Visual review against a disposable local backend; live acceptance not run.
 
+
+## Version 0.38.3 dismissible coverage notes and stable episode toggles
+
+- npm format:check, check, test (39 files, 221 tests) and build passed.
+- go vet ./..., targeted go test and go build ./cmd/reelscarey passed.
+- Visual check with fixtures: dismissal state, restore link and unchanged
+  scroll position after an episode monitor toggle.
+

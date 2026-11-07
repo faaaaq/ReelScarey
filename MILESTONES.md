@@ -326,3 +326,10 @@ See [announce feeds](docs/ANNOUNCE.md).
 - [x] Clear unloaded-season note with a Metadata refresh link.
 - [x] Shared dialog header alignment fix.
 
+
+## Version 0.38.3 dismissible coverage notes and stable episode toggles
+
+- [x] Coverage notes with Don't show again / dismiss and Show again.
+- [x] Season episodes refresh in place; scroll position kept.
+- [x] Optional as_of_date tolerated.
+
