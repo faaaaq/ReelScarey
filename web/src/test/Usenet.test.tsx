@@ -58,7 +58,7 @@ describe("Usenet setup and release routing", () => {
     );
     mount("/indexers");
     await screen.findByRole("heading", { name: "Indexers" });
-    await userEvent.click(screen.getByRole("button", { name: "Add indexer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add Indexer" }));
     await userEvent.selectOptions(
       screen.getByRole("combobox", { name: "Indexer type" }),
       "newznab",

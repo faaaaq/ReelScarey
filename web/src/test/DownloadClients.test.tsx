@@ -58,6 +58,7 @@ it("creates a tested paused client and sends its explicit folder mapping", async
   renderPage();
   await screen.findByText("No named clients saved.");
   const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Add download client" }));
   await user.type(screen.getByLabelText("Client name"), "Owned NZBGet");
   await user.selectOptions(screen.getByLabelText("Client type"), "nzbget");
   await user.type(
@@ -126,8 +127,8 @@ it("retains blank secrets, restricts protocol defaults and protects bound client
       name: /Owned SAB/,
     }),
   ).toBeInTheDocument();
-  const card = screen.getByText("Owned SAB").closest("details")!;
-  card.open = true;
+  await userEvent.click(screen.getByRole("button", { name: "Edit Owned SAB" }));
+  const card = await screen.findByRole("dialog");
   expect(
     within(card).getByRole("button", { name: "Remove client" }),
   ).toBeDisabled();

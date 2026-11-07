@@ -208,7 +208,7 @@ describe("indexers and library details", () => {
     });
     mount("/indexers");
     await screen.findByText("Add your first indexer");
-    await userEvent.click(screen.getByRole("button", { name: "Add indexer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add Indexer" }));
     await userEvent.selectOptions(
       screen.getByRole("combobox", { name: "Indexer type" }),
       "nyaa",

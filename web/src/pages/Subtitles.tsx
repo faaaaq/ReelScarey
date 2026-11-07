@@ -1,7 +1,8 @@
-import { PageBody } from "../ui";
 import { useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
+import { RefreshCw } from "lucide-react";
+import { PageBody, PageToolbar, ToolbarButton, ToolbarSection } from "../ui";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { Pagination } from "../movieComponents";
@@ -97,37 +98,50 @@ export function Subtitles() {
     10000,
   );
   return (
-    <PageBody>
-      <PageHeading title="Subtitles" />
-      <RequestState
-        loading={prefs.loading || provider.loading}
-        error={prefs.error || provider.error}
-        retry={() => {
-          prefs.reload();
-          provider.reload();
-        }}
-      />
-      {prefs.data && provider.data && (
-        <>
-          <div className="subtitle-setup-grid">
-            <PreferenceForm
-              data={prefs.data}
-              provider={provider.data}
-              saved={prefs.reload}
-            />
+    <>
+      <PageToolbar>
+        <ToolbarSection>
+          <ToolbarButton
+            icon={RefreshCw}
+            label="Refresh"
+            spinning={prefs.loading || provider.loading}
+            onClick={() => {
+              prefs.reload();
+              provider.reload();
+            }}
+          />
+        </ToolbarSection>
+      </PageToolbar>
+      <PageBody>
+        <PageHeading title="Subtitles" />
+        <RequestState
+          loading={prefs.loading || provider.loading}
+          error={prefs.error || provider.error}
+          retry={() => {
+            prefs.reload();
+            provider.reload();
+          }}
+        />
+        {prefs.data && provider.data && (
+          <>
             <ProviderForm
               key={provider.data.provider}
               provider={provider.data}
               reload={provider.reload}
             />
-          </div>
-          <MediaFiles
-            languages={prefs.data.languages}
-            wanted={prefs.data.preferences.tracks}
-          />
-        </>
-      )}
-    </PageBody>
+            <PreferenceForm
+              data={prefs.data}
+              provider={provider.data}
+              saved={prefs.reload}
+            />
+            <MediaFiles
+              languages={prefs.data.languages}
+              wanted={prefs.data.preferences.tracks}
+            />
+          </>
+        )}
+      </PageBody>
+    </>
   );
 }
 function PreferenceForm({
@@ -200,11 +214,8 @@ function PreferenceForm({
     }
   }
   return (
-    <form
-      className="rs-panel automation-panel subtitle-preferences"
-      onSubmit={save}
-    >
-      <div className="rs-panel-header">
+    <form className="rs-fieldset subtitle-preferences" onSubmit={save}>
+      <div className="rs-legend">
         <h2>Language & track preferences</h2>
         <Badge color={data.preferences.enabled ? "green" : "gray"}>
           {data.preferences.enabled ? "Automatic" : "Manual"}
@@ -493,8 +504,8 @@ function ProviderForm({
     }
   }
   return (
-    <section className="rs-panel automation-panel subtitle-provider">
-      <div className="rs-panel-header">
+    <section className="rs-fieldset subtitle-provider">
+      <div className="rs-legend">
         <h2>Subtitle provider</h2>
         <Badge color={provider.configured ? "green" : "gray"}>
           {provider.configured ? "Connected" : "Not connected"}

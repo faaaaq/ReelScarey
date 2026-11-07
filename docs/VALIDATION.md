@@ -2095,3 +2095,10 @@ Run locally on Windows (development tools only; Docker remains the target):
   dark and light themes. The Torrents console was reviewed with browser-side
   fixture responses only; no real qBittorrent was attached, so the live
   qBittorrent and Docker acceptance suites were not run for this change.
+
+## Version 0.38.1 settings and admin pages
+
+- npm format:check, check, test (39 files, 220 tests) and build passed.
+- go vet ./..., go test ./... and go build ./cmd/reelscarey passed.
+- Visual review against a disposable local backend with an empty database.
+  Live qBittorrent and Docker acceptance were not run locally.

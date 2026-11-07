@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
-import { Badge, Button, TextField } from "@radix-ui/themes";
-import { CheckCircle2, KeyRound, Plug, Unplug } from "lucide-react";
+import { Button, TextField } from "@radix-ui/themes";
+import { Alert, FormGroup, Label } from "../ui";
+import { KeyRound, Unplug } from "lucide-react";
 import { api, messageFor, type ProviderStatus } from "../api";
 import { RequestState } from "../components";
 import { useResource } from "../useResource";
@@ -50,18 +51,12 @@ export function TMDbSettings() {
     void action("save");
   }
   return (
-    <section
-      id="tmdb"
-      className="rs-panel settings-info tmdb-settings"
-      aria-label="TMDb settings"
-    >
-      <div className="rs-panel-header">
-        <h2>
-          <Plug size={19} /> TMDb metadata
-        </h2>
-        <Badge color={resource.data?.configured ? "green" : "gray"}>
+    <section id="tmdb" className="rs-fieldset" aria-label="TMDb settings">
+      <div className="rs-legend">
+        <h2>TMDb metadata</h2>
+        <Label kind={resource.data?.configured ? "success" : "disabled"}>
           {resource.data?.configured ? "Configured" : "Not connected"}
-        </Badge>
+        </Label>
       </div>
       <RequestState
         loading={resource.loading}
@@ -69,10 +64,27 @@ export function TMDbSettings() {
         retry={resource.reload}
       />
       {resource.data && !resource.error && (
-        <>
-          <p>Metadata source for movie and TV searches.</p>
-          <form onSubmit={submit}>
-            <label htmlFor="tmdb-token">API Read Access Token</label>
+        <form onSubmit={submit} className="rs-stack">
+          <p className="rs-fieldset-description">
+            Metadata source for movie and TV searches.
+          </p>
+          <FormGroup
+            label="API Read Access Token"
+            htmlFor="tmdb-token"
+            help={
+              <>
+                The Read Access Token from your{" "}
+                <a
+                  href="https://www.themoviedb.org/settings/api"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  TMDb API settings
+                </a>
+                . Stored encrypted; never shown again after saving.
+              </>
+            }
+          >
             <TextField.Root
               id="tmdb-token"
               type="password"
@@ -81,7 +93,6 @@ export function TMDbSettings() {
                 setToken(e.target.value);
                 setSuccess("");
               }}
-              size="3"
               maxLength={4096}
               required
               autoComplete="off"
@@ -91,19 +102,8 @@ export function TMDbSettings() {
                 <KeyRound size={16} />
               </TextField.Slot>
             </TextField.Root>
-            <p className="rs-form-help">
-              Use the Read Access Token from your{" "}
-              <a
-                href="https://www.themoviedb.org/settings/api"
-                target="_blank"
-                rel="noreferrer"
-                className="rs-link-button"
-              >
-                TMDb API settings
-              </a>
-              . Your token is encrypted locally and never returned to the
-              browser after saving.
-            </p>
+          </FormGroup>
+          <div className="rs-form-actions adm-form-indent">
             <Button type="submit" disabled={pending || !token.trim()}>
               {pending
                 ? "Please wait…"
@@ -111,41 +111,32 @@ export function TMDbSettings() {
                   ? "Replace & test token"
                   : "Save & test connection"}
             </Button>
-          </form>
-          {resource.data.configured && (
-            <div className="rs-form-actions">
-              <Button
-                type="button"
-                variant="soft"
-                disabled={pending}
-                onClick={() => void action("test")}
-              >
-                Test saved connection
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                color="gray"
-                disabled={pending}
-                onClick={() => void action("remove")}
-              >
-                <Unplug size={15} /> Disconnect
-              </Button>
-            </div>
-          )}
-        </>
+            {resource.data.configured && (
+              <>
+                <Button
+                  type="button"
+                  variant="soft"
+                  disabled={pending}
+                  onClick={() => void action("test")}
+                >
+                  Test saved connection
+                </Button>
+                <Button
+                  type="button"
+                  variant="soft"
+                  color="red"
+                  disabled={pending}
+                  onClick={() => void action("remove")}
+                >
+                  <Unplug size={15} /> Disconnect
+                </Button>
+              </>
+            )}
+          </div>
+        </form>
       )}
-      {error && (
-        <p className="rs-form-error" role="alert">
-          {error}
-        </p>
-      )}
-      {success && (
-        <p className="rs-alert is-success" role="status">
-          <CheckCircle2 size={17} />
-          {success}
-        </p>
-      )}
+      {error && <Alert kind="danger">{error}</Alert>}
+      {success && <Alert kind="success">{success}</Alert>}
       <div className="tmdb-credit">
         <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer">
           <img

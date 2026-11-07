@@ -1,7 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
-import { Inbox, LogOut } from "lucide-react";
-import { Alert, FieldSet, Label, PageBody, Table } from "../ui";
+import { Inbox, LogOut, RefreshCw } from "lucide-react";
+import {
+  Alert,
+  FieldSet,
+  Label,
+  PageBody,
+  PageToolbar,
+  Table,
+  ToolbarButton,
+  ToolbarSection,
+} from "../ui";
 import "./Admin.css";
 import { api, messageFor } from "../api";
 import { useAuth } from "../auth";
@@ -270,10 +279,12 @@ function ChangePassword() {
     }
   }
   return (
-    <section className="rs-panel rs-stack">
-      <h2>Change password</h2>
+    <section className="rs-fieldset">
+      <div className="rs-legend">
+        <h2>Change password</h2>
+      </div>
       <p>Changing your password signs out all of your request sessions.</p>
-      <form onSubmit={(e) => void save(e)}>
+      <form className="backup-fields" onSubmit={(e) => void save(e)}>
         <label>
           Current password{" "}
           <TextField.Root
@@ -398,14 +409,16 @@ function RequestLists({ onImported }: { onImported: () => void }) {
     }
   }
   return (
-    <section className="rs-panel rs-stack">
-      <h2>Import lists</h2>
+    <section className="rs-fieldset">
+      <div className="rs-legend">
+        <h2>Import lists</h2>
+      </div>
       <p>
         Public or token-authorized private TMDb/Trakt lists and IMDb lists
         imported into MDBList are checked automatically each day. Imported
         titles need administrator review.
       </p>
-      <form onSubmit={(e) => void add(e)}>
+      <form className="backup-fields" onSubmit={(e) => void add(e)}>
         <label>
           Provider{" "}
           <select
@@ -596,8 +609,10 @@ function DiscordSettings() {
     }
   }
   return (
-    <section className="rs-panel rs-stack">
-      <h2>Discord notifications</h2>
+    <section className="rs-fieldset">
+      <div className="rs-legend">
+        <h2>Discord notifications</h2>
+      </div>
       <p>
         Receive a webhook message when an approved request is available. For TV,
         all monitored regular seasons must be loaded and their monitored
@@ -615,7 +630,7 @@ function DiscordSettings() {
             : "No webhook configured"}
         </p>
       )}
-      <form onSubmit={(e) => void save(e)}>
+      <form className="backup-fields" onSubmit={(e) => void save(e)}>
         <label>
           Discord webhook URL{" "}
           <TextField.Root
@@ -720,28 +735,140 @@ export function AdminRequests() {
     }
   }
   return (
-    <PageBody>
-      <PageHeading title="Requests" />
-      {error && (
-        <p role="alert" className="rs-form-error">
-          {error}
-        </p>
-      )}
-      <section className="rs-panel rs-stack">
-        <h2>Request accounts</h2>
-        <form onSubmit={(e) => void create(e)}>
-          <label>
-            Username{" "}
+    <>
+      <PageToolbar>
+        <ToolbarSection>
+          <ToolbarButton
+            icon={RefreshCw}
+            label="Refresh"
+            spinning={requests.loading || accounts.loading}
+            onClick={() => {
+              requests.reload();
+              accounts.reload();
+            }}
+          />
+        </ToolbarSection>
+      </PageToolbar>
+      <PageBody>
+        <PageHeading title="Requests" />
+        {error && <Alert kind="danger">{error}</Alert>}
+        <FieldSet legend="Requested titles">
+          <RequestState
+            loading={requests.loading}
+            error={requests.error}
+            retry={requests.reload}
+          />
+          {requests.data &&
+            (requests.data.items.length ? (
+              <Table label="Requested titles">
+                <thead>
+                  <tr>
+                    <th scope="col">Title</th>
+                    <th scope="col">Requested by</th>
+                    <th scope="col">Status</th>
+                    <th scope="col" className="is-actions">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {requests.data.items.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        {item.title}{" "}
+                        <span className="rs-muted rs-small">
+                          {item.kind === "movie" ? "Movie" : "TV show"}
+                        </span>
+                      </td>
+                      <td>{item.username}</td>
+                      <td>
+                        <span className="rs-row">
+                          <Label
+                            kind={
+                              item.available
+                                ? "success"
+                                : item.state === "pending"
+                                  ? "warning"
+                                  : item.state === "declined"
+                                    ? "disabled"
+                                    : "info"
+                            }
+                          >
+                            {item.state}
+                          </Label>
+                          {item.available && (
+                            <Label kind="success" outline>
+                              Media available
+                            </Label>
+                          )}
+                          {item.bot_notice === "uncertain" && (
+                            <Label kind="warning" outline>
+                              Discord notice uncertain
+                            </Label>
+                          )}
+                        </span>
+                      </td>
+                      <td className="is-actions">
+                        <span
+                          className="rs-row"
+                          style={{ justifyContent: "flex-end" }}
+                        >
+                          {item.bot_notice === "uncertain" && (
+                            <Button
+                              size="1"
+                              variant="soft"
+                              disabled={pending}
+                              onClick={() => void retryNotice(item.id)}
+                            >
+                              Retry notice (may duplicate)
+                            </Button>
+                          )}
+                          {(item.state === "pending" ||
+                            item.state === "approving") && (
+                            <Button
+                              size="1"
+                              disabled={pending}
+                              onClick={() => void act(item.id, "approve")}
+                            >
+                              {item.state === "approving"
+                                ? "Retry approval"
+                                : "Approve"}
+                            </Button>
+                          )}
+                          {item.state === "pending" && (
+                            <Button
+                              size="1"
+                              variant="soft"
+                              color="red"
+                              disabled={pending}
+                              onClick={() => void act(item.id, "decline")}
+                            >
+                              Decline
+                            </Button>
+                          )}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            ) : (
+              <p className="rs-muted">No requests yet.</p>
+            ))}
+        </FieldSet>
+        <FieldSet legend="Request accounts">
+          <form className="adm-request-search" onSubmit={(e) => void create(e)}>
             <TextField.Root
+              aria-label="Username"
+              placeholder="Username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete="off"
               required
             />
-          </label>
-          <label>
-            Initial password{" "}
             <TextField.Root
+              aria-label="Initial password"
+              placeholder="Initial password (12+ characters)"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -749,99 +876,61 @@ export function AdminRequests() {
               minLength={12}
               required
             />
-          </label>
-          <Button type="submit" disabled={pending}>
-            Create account
-          </Button>
-        </form>
-        <RequestState
-          loading={accounts.loading}
-          error={accounts.error}
-          retry={accounts.reload}
-        />
-        {accounts.data && (
-          <ul>
-            {accounts.data.items.map((a) => (
-              <li key={a.id}>
-                {a.username} · {a.disabled ? "Disabled" : "Enabled"}{" "}
-                <Button
-                  size="1"
-                  variant="soft"
-                  disabled={pending}
-                  onClick={() => void toggle(a)}
-                >
-                  {a.disabled ? "Enable" : "Disable"}
-                </Button>
-                <DiscordLink account={a} saved={accounts.reload} />
-              </li>
+            <Button type="submit" disabled={pending}>
+              Create account
+            </Button>
+          </form>
+          <RequestState
+            loading={accounts.loading}
+            error={accounts.error}
+            retry={accounts.reload}
+          />
+          {accounts.data &&
+            (accounts.data.items.length ? (
+              <Table label="Request accounts">
+                <thead>
+                  <tr>
+                    <th scope="col">Username</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Discord</th>
+                    <th scope="col" className="is-actions">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {accounts.data.items.map((a) => (
+                    <tr key={a.id}>
+                      <td>{a.username}</td>
+                      <td>
+                        <Label kind={a.disabled ? "disabled" : "success"}>
+                          {a.disabled ? "Disabled" : "Enabled"}
+                        </Label>
+                      </td>
+                      <td>
+                        <DiscordLink account={a} saved={accounts.reload} />
+                      </td>
+                      <td className="is-actions">
+                        <Button
+                          size="1"
+                          variant="soft"
+                          disabled={pending}
+                          onClick={() => void toggle(a)}
+                        >
+                          {a.disabled ? "Enable" : "Disable"}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            ) : (
+              <p className="rs-muted">No request accounts yet.</p>
             ))}
-          </ul>
-        )}
-      </section>
-      <BotSettings />
-      <section className="rs-panel">
-        <h2>Requested titles</h2>
-        <RequestState
-          loading={requests.loading}
-          error={requests.error}
-          retry={requests.reload}
-        />
-        {requests.data &&
-          (requests.data.items.length ? (
-            <ul>
-              {requests.data.items.map((item) => (
-                <li key={item.id}>
-                  {item.title} · {item.username} · {item.state}
-                  {item.available ? " · Media available" : ""}
-                  {item.bot_notice === "uncertain" && (
-                    <>
-                      {" "}
-                      · Discord notice uncertain{" "}
-                      <Button
-                        size="1"
-                        variant="soft"
-                        disabled={pending}
-                        onClick={() => void retryNotice(item.id)}
-                      >
-                        Retry notice (may duplicate)
-                      </Button>
-                    </>
-                  )}
-                  {(item.state === "pending" || item.state === "approving") && (
-                    <>
-                      {" "}
-                      <Button
-                        size="1"
-                        disabled={pending}
-                        onClick={() => void act(item.id, "approve")}
-                      >
-                        {item.state === "approving"
-                          ? "Retry approval"
-                          : "Approve"}
-                      </Button>
-                      {item.state === "pending" && (
-                        <>
-                          {" "}
-                          <Button
-                            size="1"
-                            variant="soft"
-                            disabled={pending}
-                            onClick={() => void act(item.id, "decline")}
-                          >
-                            Decline
-                          </Button>
-                        </>
-                      )}
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>No requests yet.</p>
-          ))}
-      </section>
-    </PageBody>
+        </FieldSet>
+        <BotSettings />
+      </PageBody>
+    </>
   );
 }
 
@@ -873,7 +962,7 @@ function DiscordLink({
     }
   }
   return (
-    <form onSubmit={(e) => void save(e)}>
+    <form className="backup-fields" onSubmit={(e) => void save(e)}>
       <label>
         Discord user ID for {account.username}{" "}
         <TextField.Root
@@ -967,8 +1056,10 @@ function BotSettings() {
     }
   }
   return (
-    <section className="rs-panel rs-stack">
-      <h2>Discord companion bot</h2>
+    <section className="rs-fieldset">
+      <div className="rs-legend">
+        <h2>Discord companion bot</h2>
+      </div>
       <p>
         Requires a Discord application, bot token, and a public HTTPS address
         for ReelScarey. Link each request account to its Discord user ID above.
@@ -989,7 +1080,7 @@ function BotSettings() {
           requires the token again.
         </p>
       )}
-      <form onSubmit={(e) => void save(e)}>
+      <form className="backup-fields" onSubmit={(e) => void save(e)}>
         <label>
           Application ID{" "}
           <TextField.Root

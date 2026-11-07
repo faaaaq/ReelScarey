@@ -1,4 +1,3 @@
-import { PageBody } from "../ui";
 import { useState, type FormEvent } from "react";
 import {
   AlertDialog,
@@ -9,7 +8,16 @@ import {
   TextField,
 } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
-import { Plus, Radio, ShieldCheck } from "lucide-react";
+import { Plus, Radio, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  AddCard,
+  Alert,
+  EmptyState,
+  PageBody,
+  PageToolbar,
+  ToolbarButton,
+  ToolbarSection,
+} from "../ui";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
@@ -189,165 +197,180 @@ export function Indexers() {
     }
   }
   return (
-    <PageBody>
-      <PageHeading title="Indexers">
-        <Button onClick={() => setEditing(null)}>
-          <Plus size={17} />
-          Add indexer
-        </Button>
-      </PageHeading>
-      <RequestState
-        loading={list.loading}
-        error={list.error}
-        retry={list.reload}
-      />
-      {error && (
-        <p role="alert" className="rs-alert is-danger">
-          {error}
-        </p>
-      )}
-      {message && (
-        <p role="status" className="rs-alert is-success">
-          {message}
-        </p>
-      )}
-      {list.data?.items.length === 0 && (
-        <section className="rs-panel rs-stack">
-          <Radio size={27} />
-          <h2>Add your first indexer</h2>
-          <Button onClick={() => setEditing(null)}>Choose an indexer</Button>
-        </section>
-      )}
-      <div className="indexer-grid">
-        {list.data?.items.map((item) => (
-          <section className="rs-panel rs-stack indexer-card" key={item.id}>
-            <div className="indexer-title">
-              <h2>{item.name}</h2>
-              <Badge
-                color={
-                  !item.enabled ? "gray" : item.last_error ? "amber" : "green"
-                }
-              >
-                {!item.enabled
-                  ? "Disabled"
-                  : item.last_error
-                    ? "Needs attention"
-                    : "Enabled"}
-              </Badge>
-            </div>
-            <p>
-              {kinds.find((k) => k.id === item.kind)?.name} · {item.url}
-            </p>
-            {item.last_error && (
-              <p className="rs-form-error">{item.last_error}</p>
-            )}
-            <p className="rs-form-help">
-              {item.last_test_at
-                ? `Last verified ${new Date(item.last_test_at * 1000).toLocaleString()}`
-                : "Use Test connection to verify this source."}
-              {item.last_search_at
-                ? ` · Last search: ${item.last_result_count} results`
-                : ""}
-            </p>
-            {item.freeleech_only && <Badge>Freeleech only</Badge>}
-            <div className="rs-form-actions">
-              {!item.legacy && (
-                <label className="rs-check">
-                  <Switch
-                    aria-label={`Enable ${item.name}`}
-                    checked={item.enabled}
-                    disabled={!!pending}
-                    onCheckedChange={() => void action(item, "enabled")}
-                  />
-                  Use in searches
-                </label>
-              )}
-              <Button
-                variant="soft"
-                disabled={!!pending}
-                onClick={() => void action(item, "test")}
-              >
-                <ShieldCheck size={16} />
-                {pending === item.id ? "Working…" : "Test connection"}
+    <>
+      <PageToolbar>
+        <ToolbarSection>
+          <ToolbarButton
+            icon={Plus}
+            label="Add Indexer"
+            onClick={() => setEditing(null)}
+          />
+          <ToolbarButton
+            icon={RefreshCw}
+            label="Refresh"
+            spinning={list.loading}
+            onClick={list.reload}
+          />
+        </ToolbarSection>
+      </PageToolbar>
+      <PageBody>
+        <PageHeading title="Indexers" />
+        <RequestState
+          loading={list.loading}
+          error={list.error}
+          retry={list.reload}
+        />
+        {error && <Alert kind="danger">{error}</Alert>}
+        {message && <Alert kind="success">{message}</Alert>}
+        {list.data?.items.length === 0 && (
+          <EmptyState
+            icon={Radio}
+            title="Add your first indexer"
+            actions={
+              <Button onClick={() => setEditing(null)}>
+                Choose an indexer
               </Button>
-              {item.legacy ? (
-                <Button asChild variant="soft">
-                  <Link to="/settings#torznab">Edit existing connection</Link>
-                </Button>
-              ) : (
+            }
+          >
+            Torrent trackers, private RSS feeds, Torznab and Newznab sources.
+          </EmptyState>
+        )}
+        <div className="indexer-grid">
+          {list.data?.items.map((item) => (
+            <section className="rs-panel rs-stack indexer-card" key={item.id}>
+              <div className="indexer-title">
+                <h2>{item.name}</h2>
+                <Badge
+                  color={
+                    !item.enabled ? "gray" : item.last_error ? "amber" : "green"
+                  }
+                >
+                  {!item.enabled
+                    ? "Disabled"
+                    : item.last_error
+                      ? "Needs attention"
+                      : "Enabled"}
+                </Badge>
+              </div>
+              <p>
+                {kinds.find((k) => k.id === item.kind)?.name} · {item.url}
+              </p>
+              {item.last_error && (
+                <p className="rs-form-error">{item.last_error}</p>
+              )}
+              <p className="rs-form-help">
+                {item.last_test_at
+                  ? `Last verified ${new Date(item.last_test_at * 1000).toLocaleString()}`
+                  : "Use Test connection to verify this source."}
+                {item.last_search_at
+                  ? ` · Last search: ${item.last_result_count} results`
+                  : ""}
+              </p>
+              {item.freeleech_only && <Badge>Freeleech only</Badge>}
+              <div className="rs-form-actions">
+                {!item.legacy && (
+                  <label className="rs-check">
+                    <Switch
+                      aria-label={`Enable ${item.name}`}
+                      checked={item.enabled}
+                      disabled={!!pending}
+                      onCheckedChange={() => void action(item, "enabled")}
+                    />
+                    Use in searches
+                  </label>
+                )}
                 <Button
                   variant="soft"
                   disabled={!!pending}
-                  onClick={() => setEditing(item)}
+                  onClick={() => void action(item, "test")}
                 >
-                  Edit
+                  <ShieldCheck size={16} />
+                  {pending === item.id ? "Working…" : "Test connection"}
                 </Button>
-              )}
-              <AlertDialog.Root>
-                <AlertDialog.Trigger>
-                  <Button variant="ghost" color="red" disabled={!!pending}>
-                    Remove
+                {item.legacy ? (
+                  <Button asChild variant="soft">
+                    <Link to="/settings/clients#torznab">
+                      Edit existing connection
+                    </Link>
                   </Button>
-                </AlertDialog.Trigger>
-                <AlertDialog.Content>
-                  <AlertDialog.Title>Remove {item.name}?</AlertDialog.Title>
-                  <AlertDialog.Description>
-                    The saved connection and its credentials will be removed.
-                    Existing downloads and library files remain.
-                  </AlertDialog.Description>
-                  <div className="rs-form-actions">
-                    <AlertDialog.Cancel>
-                      <Button variant="soft">Keep indexer</Button>
-                    </AlertDialog.Cancel>
-                    <AlertDialog.Action>
-                      <Button
-                        color="red"
-                        onClick={() => void action(item, "remove")}
-                      >
-                        Remove indexer
-                      </Button>
-                    </AlertDialog.Action>
-                  </div>
-                </AlertDialog.Content>
-              </AlertDialog.Root>
-            </div>
-          </section>
-        ))}
-      </div>
-      <p className="search-disclaimer">
-        Disabling an indexer stops new searches and release selections from it.
-        Existing downloads continue and torrent sources remain available for
-        seeding. Browser challenges must be completed on the tracker; ReelScarey
-        does not solve them automatically.
-      </p>
-      <Dialog.Root
-        open={editing !== undefined}
-        onOpenChange={(open) => {
-          if (!open) setEditing(undefined);
-        }}
-      >
-        <Dialog.Content maxWidth="640px">
-          <Dialog.Title>
-            {editing ? `Edit ${editing.name}` : "Add an indexer"}
-          </Dialog.Title>
-          <Dialog.Description>
-            Credentials are encrypted locally and never shown again after
-            saving.
-          </Dialog.Description>
-          {editing !== undefined && (
-            <IndexerForm
-              key={editing?.id ?? "new"}
-              initial={editing}
-              done={() => {
-                setEditing(undefined);
-                setMessage("Indexer verified and saved.");
-                list.reload();
-              }}
-            />
+                ) : (
+                  <Button
+                    variant="soft"
+                    disabled={!!pending}
+                    onClick={() => setEditing(item)}
+                  >
+                    Edit
+                  </Button>
+                )}
+                <AlertDialog.Root>
+                  <AlertDialog.Trigger>
+                    <Button variant="ghost" color="red" disabled={!!pending}>
+                      Remove
+                    </Button>
+                  </AlertDialog.Trigger>
+                  <AlertDialog.Content>
+                    <AlertDialog.Title>Remove {item.name}?</AlertDialog.Title>
+                    <AlertDialog.Description>
+                      The saved connection and its credentials will be removed.
+                      Existing downloads and library files remain.
+                    </AlertDialog.Description>
+                    <div className="rs-form-actions">
+                      <AlertDialog.Cancel>
+                        <Button variant="soft">Keep indexer</Button>
+                      </AlertDialog.Cancel>
+                      <AlertDialog.Action>
+                        <Button
+                          color="red"
+                          onClick={() => void action(item, "remove")}
+                        >
+                          Remove indexer
+                        </Button>
+                      </AlertDialog.Action>
+                    </div>
+                  </AlertDialog.Content>
+                </AlertDialog.Root>
+              </div>
+            </section>
+          ))}
+          {!!list.data?.items.length && (
+            <AddCard label="Add indexer" onClick={() => setEditing(null)} />
           )}
-        </Dialog.Content>
-      </Dialog.Root>
-    </PageBody>
+        </div>
+        <p className="search-disclaimer">
+          Disabling an indexer stops new searches and release selections from
+          it. Existing downloads continue and torrent sources remain available
+          for seeding. Browser challenges must be completed on the tracker;
+          ReelScarey does not solve them automatically.
+        </p>
+        <Dialog.Root
+          open={editing !== undefined}
+          onOpenChange={(open) => {
+            if (!open) setEditing(undefined);
+          }}
+        >
+          <Dialog.Content maxWidth="640px">
+            <Dialog.Title>
+              {editing ? `Edit ${editing.name}` : "Add an indexer"}
+            </Dialog.Title>
+            <Dialog.Description>
+              Credentials are encrypted locally and never shown again after
+              saving.
+            </Dialog.Description>
+            {editing !== undefined && (
+              <IndexerForm
+                key={editing?.id ?? "new"}
+                initial={editing}
+                done={() => {
+                  setEditing(undefined);
+                  setMessage("Indexer verified and saved.");
+                  list.reload();
+                }}
+              />
+            )}
+          </Dialog.Content>
+        </Dialog.Root>
+      </PageBody>
+    </>
   );
 }
 function IndexerForm({

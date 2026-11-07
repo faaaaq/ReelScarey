@@ -1,7 +1,7 @@
-import { PageBody } from "../ui";
+import { ArrowLeft, RefreshCw } from "lucide-react";
+import { PageBody, PageToolbar, ToolbarButton, ToolbarSection } from "../ui";
 import { useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
-import { Link } from "react-router-dom";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useLiveResource } from "../useLiveResource";
@@ -71,74 +71,84 @@ export function YouTubeSubscriptions() {
     }
   }
   return (
-    <PageBody>
-      <PageHeading title="YouTube subscriptions" />
-      <p>
-        <Link to="/youtube">Back to YouTube acquisition and import review</Link>
-      </p>
-      <RequestState
-        loading={subs.loading}
-        error={subs.error}
-        retry={subs.reload}
-      />
-      <form className="rs-panel rs-stack" onSubmit={(e) => void add(e)}>
-        <h2>Add a subscription</h2>
-        <fieldset disabled={busy} className="backup-fields">
-          <label>
-            Name
-            <TextField.Root
-              required
-              maxLength={200}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </label>
-          <label>
-            Public channel or playlist URL
-            <TextField.Root
-              required
-              type="url"
-              value={url}
-              onChange={(e) => setURL(e.target.value)}
-            />
-          </label>
-          <label>
-            Custom collection
-            <select
-              required
-              value={collection}
-              onChange={(e) => setCollection(e.target.value)}
-            >
-              <option value="">Choose a collection</option>
-              {collections.data?.items.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button type="submit">Add paused subscription</Button>
-        </fieldset>
-        <p>
-          Create a custom collection on the YouTube page first. The first source
-          check records existing videos as a baseline; it never automatically
-          downloads that backlog. Checks inspect at most the latest 100 entries.
-          Older uploads may fall outside this window.
-        </p>
-        {error && (
-          <p role="alert" className="rs-alert is-danger">
-            {error}
-          </p>
-        )}
-      </form>
-      {subs.data?.items.map((v) => (
-        <Subscription
-          key={`${v.id}-${v.revision}`}
-          initial={v}
-          reload={subs.reload}
+    <>
+      <PageToolbar>
+        <ToolbarSection>
+          <ToolbarButton icon={ArrowLeft} label="YouTube" to="/youtube" />
+          <ToolbarButton
+            icon={RefreshCw}
+            label="Refresh"
+            spinning={subs.loading}
+            onClick={subs.reload}
+          />
+        </ToolbarSection>
+      </PageToolbar>
+      <PageBody>
+        <PageHeading title="YouTube subscriptions" />
+        <RequestState
+          loading={subs.loading}
+          error={subs.error}
+          retry={subs.reload}
         />
-      ))}
-    </PageBody>
+        <form className="rs-panel rs-stack" onSubmit={(e) => void add(e)}>
+          <h2>Add a subscription</h2>
+          <fieldset disabled={busy} className="backup-fields">
+            <label>
+              Name
+              <TextField.Root
+                required
+                maxLength={200}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </label>
+            <label>
+              Public channel or playlist URL
+              <TextField.Root
+                required
+                type="url"
+                value={url}
+                onChange={(e) => setURL(e.target.value)}
+              />
+            </label>
+            <label>
+              Custom collection
+              <select
+                required
+                value={collection}
+                onChange={(e) => setCollection(e.target.value)}
+              >
+                <option value="">Choose a collection</option>
+                {collections.data?.items.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button type="submit">Add paused subscription</Button>
+          </fieldset>
+          <p>
+            Create a custom collection on the YouTube page first. The first
+            source check records existing videos as a baseline; it never
+            automatically downloads that backlog. Checks inspect at most the
+            latest 100 entries. Older uploads may fall outside this window.
+          </p>
+          {error && (
+            <p role="alert" className="rs-alert is-danger">
+              {error}
+            </p>
+          )}
+        </form>
+        {subs.data?.items.map((v) => (
+          <Subscription
+            key={`${v.id}-${v.revision}`}
+            initial={v}
+            reload={subs.reload}
+          />
+        ))}
+      </PageBody>
+    </>
   );
 }
 function Subscription({

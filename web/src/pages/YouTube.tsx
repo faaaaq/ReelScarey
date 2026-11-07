@@ -1,4 +1,5 @@
-import { PageBody } from "../ui";
+import { Rss } from "lucide-react";
+import { PageBody, PageToolbar, ToolbarButton, ToolbarSection } from "../ui";
 import { Link } from "react-router-dom";
 import { useMemo, useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
@@ -500,732 +501,751 @@ export function YouTube() {
   }
 
   return (
-    <PageBody>
-      <PageHeading title="YouTube">
-        <Button asChild variant="soft">
-          <Link to="/youtube/subscriptions">Subscriptions</Link>
-        </Button>
-      </PageHeading>
-      {error && (
-        <p className="rs-alert is-danger" role="alert">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className="rs-alert is-success" role="status">
-          {notice}
-        </p>
-      )}
+    <>
+      <PageToolbar>
+        <ToolbarSection>
+          <ToolbarButton
+            icon={Rss}
+            label="Subscriptions"
+            to="/youtube/subscriptions"
+          />
+        </ToolbarSection>
+      </PageToolbar>
+      <PageBody>
+        <PageHeading title="YouTube" />
+        {error && (
+          <p className="rs-alert is-danger" role="alert">
+            {error}
+          </p>
+        )}
+        {notice && (
+          <p className="rs-alert is-success" role="status">
+            {notice}
+          </p>
+        )}
 
-      <div
-        className="yt-mode-tabs"
-        role="tablist"
-        aria-label="YouTube workflow"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "single"}
-          onClick={() => setMode("single")}
+        <div
+          className="yt-mode-tabs"
+          role="tablist"
+          aria-label="YouTube workflow"
         >
-          Single video
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "playlist"}
-          onClick={() => setMode("playlist")}
-        >
-          Playlist to series
-        </button>
-      </div>
-
-      {mode === "single" ? (
-        <>
-          <section
-            className="rs-panel yt-downloader"
-            aria-label="Add YouTube download"
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "single"}
+            onClick={() => setMode("single")}
           >
-            <div className="yt-step-head">
-              <span>1</span>
-              <div>
-                <h2>Load a video or playlist</h2>
-                <p>Paste a public YouTube URL.</p>
-              </div>
-            </div>
-            <form
-              className="yt-url-row"
-              onSubmit={(e) => {
-                e.preventDefault();
-                inspect(url);
-              }}
-            >
-              <TextField.Root
-                value={url}
-                onChange={(e) => setURL(e.target.value)}
-                placeholder="https://www.youtube.com/watch?v=…"
-                aria-label="YouTube URL"
-              />
-              <Button type="submit" disabled={!!busy || !url.trim()}>
-                {busy === "inspect" ? "Loading…" : "Load"}
-              </Button>
-            </form>
+            Single video
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "playlist"}
+            onClick={() => setMode("playlist")}
+          >
+            Playlist to series
+          </button>
+        </div>
 
-            {inspection && (
-              <>
-                <div className="yt-source-head">
-                  <div>
-                    <h2>{inspection.title || "YouTube source"}</h2>
-                    <span>{inspection.channel}</span>
-                  </div>
-                  {inspection.truncated && (
-                    <span className="rs-label">First 100</span>
-                  )}
-                </div>
-                <ul className="yt-results" aria-label="Source results">
-                  {inspection.entries.map((entry) => (
-                    <li
-                      key={`${entry.kind}-${entry.id}`}
-                      className={selected?.id === entry.id ? "selected" : ""}
-                    >
-                      <button
-                        type="button"
-                        className="yt-result"
-                        disabled={!!busy}
-                        onClick={() => {
-                          if (entry.kind === "playlist") {
-                            inspect(entry.url);
-                            return;
-                          }
-                          setSelected(entry);
-                          clearReview();
-                        }}
-                      >
-                        {entry.thumbnail ? (
-                          <img src={entry.thumbnail} alt="" loading="lazy" />
-                        ) : (
-                          <span
-                            className="yt-thumb-placeholder"
-                            aria-hidden="true"
-                          >
-                            ▶
-                          </span>
-                        )}
-                        <span className="yt-result-copy">
-                          <strong>{entry.title || entry.id}</strong>
-                          <small>
-                            {entry.channel || "YouTube"}
-                            {entry.duration_seconds
-                              ? ` · ${duration(entry.duration_seconds)}`
-                              : ""}
-                          </small>
-                        </span>
-                        {entry.kind === "playlist" && (
-                          <Badge color="gray">Playlist</Badge>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                {inspection.entries.length === 0 && <p>No videos found.</p>}
-              </>
-            )}
-          </section>
-
-          {selected && (
+        {mode === "single" ? (
+          <>
             <section
               className="rs-panel yt-downloader"
-              aria-label="Choose destination"
+              aria-label="Add YouTube download"
             >
               <div className="yt-step-head">
-                <span>2</span>
+                <span>1</span>
                 <div>
-                  <h2>Choose where it belongs</h2>
-                  <p>
-                    {selected.title} · {selected.channel}
-                  </p>
+                  <h2>Load a video or playlist</h2>
+                  <p>Paste a public YouTube URL.</p>
                 </div>
               </div>
-              <TargetPicker
-                kind={kind}
-                setKind={(value) => {
-                  setKind(value);
-                  setMedia("");
-                  setSeason("");
-                  setEpisode("");
-                  setSearched("");
-                  clearReview();
+              <form
+                className="yt-url-row"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  inspect(url);
                 }}
-                busy={!!busy}
-                collections={collections}
-                collection={collection}
-                setCollection={(value) => {
-                  setCollection(value);
-                  clearReview();
-                }}
-                createCollection={createCollection}
-                collectionTitle={collectionTitle}
-                setCollectionTitle={setCollectionTitle}
-                query={query}
-                setQuery={setQuery}
-                searched={searched}
-                setSearched={setSearched}
-                page={page}
-                setPage={setPage}
-                library={library}
-                media={media}
-                setMedia={(value) => {
-                  setMedia(value);
-                  setSeason("");
-                  setEpisode("");
-                  clearReview();
-                }}
-                show={show}
-                season={season}
-                setSeason={(value) => {
-                  setSeason(value);
-                  setEpisode("");
-                  clearReview();
-                }}
-                episodes={episodes}
-                episode={episode}
-                setEpisode={(value) => {
-                  setEpisode(value);
-                  clearReview();
-                }}
-              />
-              <div className="yt-step-head">
-                <span>3</span>
-                <div>
-                  <h2>Quality and subtitles</h2>
-                  <p>Pick the downloaded version before reviewing.</p>
-                </div>
-              </div>
-              <div className="yt-options">
-                <label>
-                  Quality
-                  <select
-                    value={quality}
-                    disabled={!!busy}
-                    onChange={(e) => {
-                      setQuality(e.target.value as Quality);
-                      clearReview();
-                    }}
-                  >
-                    <option value="best">Best available</option>
-                    <option value="1080">1080p</option>
-                    <option value="720">720p</option>
-                  </select>
-                </label>
-                <label>
-                  Subtitle languages
-                  <TextField.Root
-                    value={subtitleLanguages}
-                    disabled={!!busy}
-                    placeholder="en, ja"
-                    onChange={(e) => {
-                      setSubtitleLanguages(e.target.value);
-                      clearReview();
-                    }}
-                  />
-                </label>
-                <label className="rs-check">
-                  <input
-                    type="checkbox"
-                    checked={automaticSubtitles}
-                    disabled={!!busy || !subtitleLanguages.trim()}
-                    onChange={(e) => {
-                      setAutomaticSubtitles(e.target.checked);
-                      clearReview();
-                    }}
-                  />{" "}
-                  Use automatic captions
-                </label>
-              </div>
-              <div className="yt-step-head">
-                <span>4</span>
-                <div>
-                  <h2>Review and download</h2>
-                  <p>The reviewed file is still verified before import.</p>
-                </div>
-              </div>
-              <div className="rs-form-actions">
-                <Button
-                  variant="soft"
-                  disabled={!!busy || !target}
-                  onClick={preview}
-                >
-                  {busy === "review" ? "Checking…" : "Check destination"}
+              >
+                <TextField.Root
+                  value={url}
+                  onChange={(e) => setURL(e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=…"
+                  aria-label="YouTube URL"
+                />
+                <Button type="submit" disabled={!!busy || !url.trim()}>
+                  {busy === "inspect" ? "Loading…" : "Load"}
                 </Button>
-              </div>
-              {review && (
-                <div className="yt-review" aria-label="Review YouTube download">
-                  <strong>{review.target_label}</strong>
-                  <span>
-                    {qualityLabel(quality)} ·{" "}
-                    {review.subtitles?.languages.length
-                      ? `${review.subtitles.languages.join(", ")} (${review.subtitles.automatic ? "auto" : "creator"})`
-                      : "No subtitles"}
-                  </span>
-                  <Button disabled={!!busy} onClick={queue}>
-                    Download
-                  </Button>
-                </div>
+              </form>
+
+              {inspection && (
+                <>
+                  <div className="yt-source-head">
+                    <div>
+                      <h2>{inspection.title || "YouTube source"}</h2>
+                      <span>{inspection.channel}</span>
+                    </div>
+                    {inspection.truncated && (
+                      <span className="rs-label">First 100</span>
+                    )}
+                  </div>
+                  <ul className="yt-results" aria-label="Source results">
+                    {inspection.entries.map((entry) => (
+                      <li
+                        key={`${entry.kind}-${entry.id}`}
+                        className={selected?.id === entry.id ? "selected" : ""}
+                      >
+                        <button
+                          type="button"
+                          className="yt-result"
+                          disabled={!!busy}
+                          onClick={() => {
+                            if (entry.kind === "playlist") {
+                              inspect(entry.url);
+                              return;
+                            }
+                            setSelected(entry);
+                            clearReview();
+                          }}
+                        >
+                          {entry.thumbnail ? (
+                            <img src={entry.thumbnail} alt="" loading="lazy" />
+                          ) : (
+                            <span
+                              className="yt-thumb-placeholder"
+                              aria-hidden="true"
+                            >
+                              ▶
+                            </span>
+                          )}
+                          <span className="yt-result-copy">
+                            <strong>{entry.title || entry.id}</strong>
+                            <small>
+                              {entry.channel || "YouTube"}
+                              {entry.duration_seconds
+                                ? ` · ${duration(entry.duration_seconds)}`
+                                : ""}
+                            </small>
+                          </span>
+                          {entry.kind === "playlist" && (
+                            <Badge color="gray">Playlist</Badge>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {inspection.entries.length === 0 && <p>No videos found.</p>}
+                </>
               )}
             </section>
-          )}
-        </>
-      ) : (
-        <>
-          <section
-            className="rs-panel yt-downloader"
-            aria-label="Playlist to series"
-          >
-            <div className="yt-step-head">
-              <span>1</span>
-              <div>
-                <h2>Load a playlist</h2>
-                <p>Paste a playlist that belongs to a TV show.</p>
-              </div>
-            </div>
-            <form
-              className="yt-url-row"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void loadPlaylist(batchURL, 0, 0);
-              }}
-            >
-              <TextField.Root
-                value={batchURL}
-                onChange={(e) => setBatchURL(e.target.value)}
-                placeholder="https://www.youtube.com/playlist?list=…"
-                aria-label="Playlist URL"
-              />
-              <Button type="submit" disabled={!!busy || !batchURL.trim()}>
-                {busy === "batch-preview" ? "Loading…" : "Load playlist"}
-              </Button>
-            </form>
 
-            {batch && (
-              <>
+            {selected && (
+              <section
+                className="rs-panel yt-downloader"
+                aria-label="Choose destination"
+              >
                 <div className="yt-step-head">
                   <span>2</span>
                   <div>
-                    <h2>Confirm the show and season</h2>
+                    <h2>Choose where it belongs</h2>
                     <p>
-                      {batch.title} · {batch.channel}
+                      {selected.title} · {selected.channel}
                     </p>
                   </div>
                 </div>
-                {batch.needs_show ? (
-                  <div className="yt-show-match">
-                    {batch.candidates.length > 0 ? (
-                      <>
+                <TargetPicker
+                  kind={kind}
+                  setKind={(value) => {
+                    setKind(value);
+                    setMedia("");
+                    setSeason("");
+                    setEpisode("");
+                    setSearched("");
+                    clearReview();
+                  }}
+                  busy={!!busy}
+                  collections={collections}
+                  collection={collection}
+                  setCollection={(value) => {
+                    setCollection(value);
+                    clearReview();
+                  }}
+                  createCollection={createCollection}
+                  collectionTitle={collectionTitle}
+                  setCollectionTitle={setCollectionTitle}
+                  query={query}
+                  setQuery={setQuery}
+                  searched={searched}
+                  setSearched={setSearched}
+                  page={page}
+                  setPage={setPage}
+                  library={library}
+                  media={media}
+                  setMedia={(value) => {
+                    setMedia(value);
+                    setSeason("");
+                    setEpisode("");
+                    clearReview();
+                  }}
+                  show={show}
+                  season={season}
+                  setSeason={(value) => {
+                    setSeason(value);
+                    setEpisode("");
+                    clearReview();
+                  }}
+                  episodes={episodes}
+                  episode={episode}
+                  setEpisode={(value) => {
+                    setEpisode(value);
+                    clearReview();
+                  }}
+                />
+                <div className="yt-step-head">
+                  <span>3</span>
+                  <div>
+                    <h2>Quality and subtitles</h2>
+                    <p>Pick the downloaded version before reviewing.</p>
+                  </div>
+                </div>
+                <div className="yt-options">
+                  <label>
+                    Quality
+                    <select
+                      value={quality}
+                      disabled={!!busy}
+                      onChange={(e) => {
+                        setQuality(e.target.value as Quality);
+                        clearReview();
+                      }}
+                    >
+                      <option value="best">Best available</option>
+                      <option value="1080">1080p</option>
+                      <option value="720">720p</option>
+                    </select>
+                  </label>
+                  <label>
+                    Subtitle languages
+                    <TextField.Root
+                      value={subtitleLanguages}
+                      disabled={!!busy}
+                      placeholder="en, ja"
+                      onChange={(e) => {
+                        setSubtitleLanguages(e.target.value);
+                        clearReview();
+                      }}
+                    />
+                  </label>
+                  <label className="rs-check">
+                    <input
+                      type="checkbox"
+                      checked={automaticSubtitles}
+                      disabled={!!busy || !subtitleLanguages.trim()}
+                      onChange={(e) => {
+                        setAutomaticSubtitles(e.target.checked);
+                        clearReview();
+                      }}
+                    />{" "}
+                    Use automatic captions
+                  </label>
+                </div>
+                <div className="yt-step-head">
+                  <span>4</span>
+                  <div>
+                    <h2>Review and download</h2>
+                    <p>The reviewed file is still verified before import.</p>
+                  </div>
+                </div>
+                <div className="rs-form-actions">
+                  <Button
+                    variant="soft"
+                    disabled={!!busy || !target}
+                    onClick={preview}
+                  >
+                    {busy === "review" ? "Checking…" : "Check destination"}
+                  </Button>
+                </div>
+                {review && (
+                  <div
+                    className="yt-review"
+                    aria-label="Review YouTube download"
+                  >
+                    <strong>{review.target_label}</strong>
+                    <span>
+                      {qualityLabel(quality)} ·{" "}
+                      {review.subtitles?.languages.length
+                        ? `${review.subtitles.languages.join(", ")} (${review.subtitles.automatic ? "auto" : "creator"})`
+                        : "No subtitles"}
+                    </span>
+                    <Button disabled={!!busy} onClick={queue}>
+                      Download
+                    </Button>
+                  </div>
+                )}
+              </section>
+            )}
+          </>
+        ) : (
+          <>
+            <section
+              className="rs-panel yt-downloader"
+              aria-label="Playlist to series"
+            >
+              <div className="yt-step-head">
+                <span>1</span>
+                <div>
+                  <h2>Load a playlist</h2>
+                  <p>Paste a playlist that belongs to a TV show.</p>
+                </div>
+              </div>
+              <form
+                className="yt-url-row"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void loadPlaylist(batchURL, 0, 0);
+                }}
+              >
+                <TextField.Root
+                  value={batchURL}
+                  onChange={(e) => setBatchURL(e.target.value)}
+                  placeholder="https://www.youtube.com/playlist?list=…"
+                  aria-label="Playlist URL"
+                />
+                <Button type="submit" disabled={!!busy || !batchURL.trim()}>
+                  {busy === "batch-preview" ? "Loading…" : "Load playlist"}
+                </Button>
+              </form>
+
+              {batch && (
+                <>
+                  <div className="yt-step-head">
+                    <span>2</span>
+                    <div>
+                      <h2>Confirm the show and season</h2>
+                      <p>
+                        {batch.title} · {batch.channel}
+                      </p>
+                    </div>
+                  </div>
+                  {batch.needs_show ? (
+                    <div className="yt-show-match">
+                      {batch.candidates.length > 0 ? (
+                        <>
+                          <p className="rs-form-help">
+                            Choose the saved show this playlist belongs to.
+                          </p>
+                          <label>
+                            Show
+                            <select
+                              value={batchShow || ""}
+                              onChange={(e) =>
+                                chooseShow(Number(e.target.value))
+                              }
+                            >
+                              <option value="">Choose a show</option>
+                              {batch.candidates.map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.title}
+                                  {candidate.year
+                                    ? ` (${candidate.year})`
+                                    : ""}{" "}
+                                  · {Math.round(candidate.score * 100)}% title
+                                  match
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </>
+                      ) : (
                         <p className="rs-form-help">
-                          Choose the saved show this playlist belongs to.
+                          No saved show matched this playlist. Search your TV
+                          library.
                         </p>
+                      )}
+                      <form
+                        className="yt-inline-form"
+                        onSubmit={(e) => e.preventDefault()}
+                      >
+                        <TextField.Root
+                          value={showQuery}
+                          onChange={(e) => setShowQuery(e.target.value)}
+                          placeholder="Search your TV shows"
+                          aria-label="Search TV shows"
+                        />
+                      </form>
+                      {showSearch.data?.items.length ? (
                         <label>
-                          Show
+                          Saved show
                           <select
-                            value={batchShow || ""}
+                            value=""
                             onChange={(e) => chooseShow(Number(e.target.value))}
                           >
                             <option value="">Choose a show</option>
-                            {batch.candidates.map((candidate) => (
-                              <option key={candidate.id} value={candidate.id}>
-                                {candidate.title}
-                                {candidate.year
-                                  ? ` (${candidate.year})`
-                                  : ""} · {Math.round(candidate.score * 100)}%
-                                title match
+                            {showSearch.data.items.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.title}
+                                {item.year ? ` (${item.year})` : ""}
                               </option>
                             ))}
                           </select>
                         </label>
-                      </>
-                    ) : (
-                      <p className="rs-form-help">
-                        No saved show matched this playlist. Search your TV
-                        library.
-                      </p>
-                    )}
-                    <form
-                      className="yt-inline-form"
-                      onSubmit={(e) => e.preventDefault()}
-                    >
-                      <TextField.Root
-                        value={showQuery}
-                        onChange={(e) => setShowQuery(e.target.value)}
-                        placeholder="Search your TV shows"
-                        aria-label="Search TV shows"
-                      />
-                    </form>
-                    {showSearch.data?.items.length ? (
-                      <label>
-                        Saved show
-                        <select
-                          value=""
-                          onChange={(e) => chooseShow(Number(e.target.value))}
-                        >
-                          <option value="">Choose a show</option>
-                          {showSearch.data.items.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.title}
-                              {item.year ? ` (${item.year})` : ""}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="yt-show-match">
-                    <p>
-                      <strong>{batch.show?.title}</strong>
-                      {batch.show?.year ? ` (${batch.show.year})` : ""} ·{" "}
-                      {Math.round((batch.show?.score ?? 1) * 100)}% title match
-                    </p>
-                    <div className="yt-options">
-                      <label>
-                        Season
-                        <select
-                          value={batchSeason}
-                          onChange={(e) => {
-                            setBatchSeason(Number(e.target.value));
-                            void loadPlaylist(
-                              batchURL,
-                              batchShow,
-                              Number(e.target.value),
-                            );
-                          }}
-                        >
-                          <option value={0}>Choose a season</option>
-                          {batch.seasons.map((seasonItem) => (
-                            <option
-                              key={seasonItem.number}
-                              value={seasonItem.number}
-                              disabled={!seasonItem.loaded}
-                            >
-                              Season {seasonItem.number}
-                              {seasonItem.loaded
-                                ? ` · ${seasonItem.episode_count} episodes`
-                                : " · not loaded"}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                      ) : null}
                     </div>
-                    {batch.seasons.length === 0 && (
-                      <p className="rs-form-help">
-                        Load the show's seasons on its TV page first.
+                  ) : (
+                    <div className="yt-show-match">
+                      <p>
+                        <strong>{batch.show?.title}</strong>
+                        {batch.show?.year ? ` (${batch.show.year})` : ""} ·{" "}
+                        {Math.round((batch.show?.score ?? 1) * 100)}% title
+                        match
                       </p>
-                    )}
-                  </div>
-                )}
-
-                {!batch.needs_show && batchSeason > 0 && (
-                  <>
-                    <div className="yt-step-head">
-                      <span>3</span>
-                      <div>
-                        <h2>Select episodes</h2>
-                        <p>
-                          Longest video per episode is preselected. Unmatched
-                          videos stay unselected.
-                        </p>
+                      <div className="yt-options">
+                        <label>
+                          Season
+                          <select
+                            value={batchSeason}
+                            onChange={(e) => {
+                              setBatchSeason(Number(e.target.value));
+                              void loadPlaylist(
+                                batchURL,
+                                batchShow,
+                                Number(e.target.value),
+                              );
+                            }}
+                          >
+                            <option value={0}>Choose a season</option>
+                            {batch.seasons.map((seasonItem) => (
+                              <option
+                                key={seasonItem.number}
+                                value={seasonItem.number}
+                                disabled={!seasonItem.loaded}
+                              >
+                                Season {seasonItem.number}
+                                {seasonItem.loaded
+                                  ? ` · ${seasonItem.episode_count} episodes`
+                                  : " · not loaded"}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       </div>
-                    </div>
-                    <div className="rs-form-actions">
-                      <Button
-                        size="1"
-                        variant="soft"
-                        onClick={() =>
-                          setSelection(
-                            new Set(
-                              batch.entries
-                                .filter(
-                                  (entry) =>
-                                    !entry.duplicate &&
-                                    (entry.status === "missing" ||
-                                      (replaceExisting &&
-                                        entry.status === "available")),
-                                )
-                                .map((entry) => entry.video_id),
-                            ),
-                          )
-                        }
-                      >
-                        Select eligible
-                      </Button>
-                      <Button
-                        size="1"
-                        variant="ghost"
-                        onClick={() => setSelection(new Set())}
-                      >
-                        Clear
-                      </Button>
-                      <span>{selection.size} selected</span>
-                    </div>
-                    {!replaceExisting &&
-                      batch.entries.some(
-                        (entry) => entry.status === "available",
-                      ) && (
+                      {batch.seasons.length === 0 && (
                         <p className="rs-form-help">
-                          Matched episodes already in the library are disabled.
-                          Enable replacement in step 4 to select new versions.
+                          Load the show's seasons on its TV page first.
                         </p>
                       )}
-                    <ul
-                      className="yt-batch-list"
-                      aria-label="Playlist episodes"
-                    >
-                      {batch.entries.map((entry) => {
-                        const disabled =
-                          entry.status === "active" ||
-                          entry.status === "unmatched" ||
-                          (entry.status === "available" && !replaceExisting);
-                        return (
-                          <li key={entry.video_id}>
-                            <input
-                              type="checkbox"
-                              checked={selection.has(entry.video_id)}
-                              disabled={disabled}
-                              aria-label={`Select ${entry.title}`}
-                              onChange={() => toggleEntry(entry.video_id)}
-                            />
-                            <img
-                              src={entry.thumbnail || thumb(entry.video_id)}
-                              alt=""
-                              loading="lazy"
-                            />
-                            <div className="yt-batch-copy">
-                              <strong>{entry.title}</strong>
-                              <span>
-                                {duration(entry.duration_seconds)} ·{" "}
-                                {episodeLabel(entry)}
-                              </span>
-                              {entry.note && <small>{entry.note}</small>}
-                            </div>
-                            <Badge
-                              color={
-                                entry.status === "missing"
-                                  ? "green"
-                                  : entry.status === "available"
-                                    ? "gray"
-                                    : entry.status === "active"
-                                      ? "amber"
-                                      : "red"
-                              }
-                            >
-                              {entry.status === "missing"
-                                ? "Missing"
-                                : entry.status === "available"
-                                  ? "In library"
-                                  : entry.status === "active"
-                                    ? "Downloading"
-                                    : "Unmatched"}
-                            </Badge>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    <div className="yt-step-head">
-                      <span>4</span>
-                      <div>
-                        <h2>Download and import</h2>
-                        <p>
-                          Files use the show's organization and quality naming.
-                        </p>
-                      </div>
                     </div>
-                    <div className="yt-options">
-                      <label>
-                        Quality
-                        <select
-                          value={batchQuality}
-                          onChange={(e) =>
-                            setBatchQuality(e.target.value as Quality)
+                  )}
+
+                  {!batch.needs_show && batchSeason > 0 && (
+                    <>
+                      <div className="yt-step-head">
+                        <span>3</span>
+                        <div>
+                          <h2>Select episodes</h2>
+                          <p>
+                            Longest video per episode is preselected. Unmatched
+                            videos stay unselected.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="rs-form-actions">
+                        <Button
+                          size="1"
+                          variant="soft"
+                          onClick={() =>
+                            setSelection(
+                              new Set(
+                                batch.entries
+                                  .filter(
+                                    (entry) =>
+                                      !entry.duplicate &&
+                                      (entry.status === "missing" ||
+                                        (replaceExisting &&
+                                          entry.status === "available")),
+                                  )
+                                  .map((entry) => entry.video_id),
+                              ),
+                            )
                           }
                         >
-                          <option value="best">Best available</option>
-                          <option value="1080">1080p</option>
-                          <option value="720">720p</option>
-                        </select>
-                      </label>
-                      <label className="rs-check">
-                        <input
-                          type="checkbox"
-                          checked={replaceExisting}
-                          onChange={(e) => {
-                            setReplaceExisting(e.target.checked);
-                            if (!e.target.checked) {
-                              setSelection((current) => {
-                                const next = new Set(current);
-                                for (const entry of batch.entries) {
-                                  if (entry.status === "available")
-                                    next.delete(entry.video_id);
-                                }
-                                return next;
-                              });
-                            }
-                          }}
-                        />{" "}
-                        Replace episodes already in the library
-                      </label>
-                      <label className="rs-check">
-                        <input
-                          type="checkbox"
-                          checked={keepSource}
-                          onChange={(e) => setKeepSource(e.target.checked)}
-                        />{" "}
-                        Save a paused source for future episodes (enable it on
-                        the show page)
-                      </label>
-                    </div>
-                    {replaceExisting && availableChosen > 0 && (
-                      <p className="rs-form-help">
-                        Replacement downloads keep the old file and require a
-                        separate swap review in Organize library.
-                      </p>
-                    )}
-                    <div className="rs-form-actions">
-                      <Button
-                        disabled={!!busy || chosenEntries.length === 0}
-                        onClick={queueBatch}
+                          Select eligible
+                        </Button>
+                        <Button
+                          size="1"
+                          variant="ghost"
+                          onClick={() => setSelection(new Set())}
+                        >
+                          Clear
+                        </Button>
+                        <span>{selection.size} selected</span>
+                      </div>
+                      {!replaceExisting &&
+                        batch.entries.some(
+                          (entry) => entry.status === "available",
+                        ) && (
+                          <p className="rs-form-help">
+                            Matched episodes already in the library are
+                            disabled. Enable replacement in step 4 to select new
+                            versions.
+                          </p>
+                        )}
+                      <ul
+                        className="yt-batch-list"
+                        aria-label="Playlist episodes"
                       >
-                        {busy === "batch-queue"
-                          ? "Queueing…"
-                          : `Download ${chosenEntries.length} selected`}
-                      </Button>
-                    </div>
-                    {batchResults.length > 0 && (
-                      <ul className="yt-batch-results">
-                        {batchResults.map((result) => {
-                          const entry = batch.entries.find(
-                            (item) => item.video_id === result.video_id,
-                          );
+                        {batch.entries.map((entry) => {
+                          const disabled =
+                            entry.status === "active" ||
+                            entry.status === "unmatched" ||
+                            (entry.status === "available" && !replaceExisting);
                           return (
-                            <li key={result.video_id}>
-                              <span>{entry?.title ?? result.video_id}</span>
+                            <li key={entry.video_id}>
+                              <input
+                                type="checkbox"
+                                checked={selection.has(entry.video_id)}
+                                disabled={disabled}
+                                aria-label={`Select ${entry.title}`}
+                                onChange={() => toggleEntry(entry.video_id)}
+                              />
+                              <img
+                                src={entry.thumbnail || thumb(entry.video_id)}
+                                alt=""
+                                loading="lazy"
+                              />
+                              <div className="yt-batch-copy">
+                                <strong>{entry.title}</strong>
+                                <span>
+                                  {duration(entry.duration_seconds)} ·{" "}
+                                  {episodeLabel(entry)}
+                                </span>
+                                {entry.note && <small>{entry.note}</small>}
+                              </div>
                               <Badge
                                 color={
-                                  result.state === "queued" ? "green" : "gray"
+                                  entry.status === "missing"
+                                    ? "green"
+                                    : entry.status === "available"
+                                      ? "gray"
+                                      : entry.status === "active"
+                                        ? "amber"
+                                        : "red"
                                 }
                               >
-                                {result.state === "queued"
-                                  ? "Queued"
-                                  : result.message}
+                                {entry.status === "missing"
+                                  ? "Missing"
+                                  : entry.status === "available"
+                                    ? "In library"
+                                    : entry.status === "active"
+                                      ? "Downloading"
+                                      : "Unmatched"}
                               </Badge>
                             </li>
                           );
                         })}
                       </ul>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-          </section>
-        </>
-      )}
-
-      {mode === "single" &&
-        inspection &&
-        kind === "custom" &&
-        inspection.source.kind !== "video" && (
-          <YouTubeBulk
-            key={`${inspection.source.url}-${collection}-${subtitleLanguages}-${automaticSubtitles}`}
-            url={inspection.source.url}
-            entries={inspection.entries}
-            collectionID={Number(collection)}
-            subtitles={{
-              languages: subtitleLanguages
-                .split(",")
-                .map((v) => v.trim())
-                .filter(Boolean),
-              automatic: automaticSubtitles,
-            }}
-            reload={jobs.reload}
-          />
+                      <div className="yt-step-head">
+                        <span>4</span>
+                        <div>
+                          <h2>Download and import</h2>
+                          <p>
+                            Files use the show's organization and quality
+                            naming.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="yt-options">
+                        <label>
+                          Quality
+                          <select
+                            value={batchQuality}
+                            onChange={(e) =>
+                              setBatchQuality(e.target.value as Quality)
+                            }
+                          >
+                            <option value="best">Best available</option>
+                            <option value="1080">1080p</option>
+                            <option value="720">720p</option>
+                          </select>
+                        </label>
+                        <label className="rs-check">
+                          <input
+                            type="checkbox"
+                            checked={replaceExisting}
+                            onChange={(e) => {
+                              setReplaceExisting(e.target.checked);
+                              if (!e.target.checked) {
+                                setSelection((current) => {
+                                  const next = new Set(current);
+                                  for (const entry of batch.entries) {
+                                    if (entry.status === "available")
+                                      next.delete(entry.video_id);
+                                  }
+                                  return next;
+                                });
+                              }
+                            }}
+                          />{" "}
+                          Replace episodes already in the library
+                        </label>
+                        <label className="rs-check">
+                          <input
+                            type="checkbox"
+                            checked={keepSource}
+                            onChange={(e) => setKeepSource(e.target.checked)}
+                          />{" "}
+                          Save a paused source for future episodes (enable it on
+                          the show page)
+                        </label>
+                      </div>
+                      {replaceExisting && availableChosen > 0 && (
+                        <p className="rs-form-help">
+                          Replacement downloads keep the old file and require a
+                          separate swap review in Organize library.
+                        </p>
+                      )}
+                      <div className="rs-form-actions">
+                        <Button
+                          disabled={!!busy || chosenEntries.length === 0}
+                          onClick={queueBatch}
+                        >
+                          {busy === "batch-queue"
+                            ? "Queueing…"
+                            : `Download ${chosenEntries.length} selected`}
+                        </Button>
+                      </div>
+                      {batchResults.length > 0 && (
+                        <ul className="yt-batch-results">
+                          {batchResults.map((result) => {
+                            const entry = batch.entries.find(
+                              (item) => item.video_id === result.video_id,
+                            );
+                            return (
+                              <li key={result.video_id}>
+                                <span>{entry?.title ?? result.video_id}</span>
+                                <Badge
+                                  color={
+                                    result.state === "queued" ? "green" : "gray"
+                                  }
+                                >
+                                  {result.state === "queued"
+                                    ? "Queued"
+                                    : result.message}
+                                </Badge>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </section>
+          </>
         )}
 
-      <section className="rs-panel yt-queue" aria-label="YouTube downloads">
-        <div className="rs-panel-header">
-          <h2>Downloads</h2>
-          <Button variant="ghost" onClick={jobs.reload}>
-            Refresh
-          </Button>
-        </div>
-        <RequestState
-          loading={jobs.loading}
-          error={jobs.error}
-          retry={jobs.reload}
-        />
-        {jobs.data?.items.length === 0 && (
-          <p className="yt-empty">No downloads yet.</p>
-        )}
-        <ul className="yt-jobs">
-          {jobs.data?.items.map((job) => (
-            <JobCard
-              key={job.id}
-              job={job}
-              busy={!!busy}
-              reviewImport={reviewImport}
-              cancelJob={cancelJob}
+        {mode === "single" &&
+          inspection &&
+          kind === "custom" &&
+          inspection.source.kind !== "video" && (
+            <YouTubeBulk
+              key={`${inspection.source.url}-${collection}-${subtitleLanguages}-${automaticSubtitles}`}
+              url={inspection.source.url}
+              entries={inspection.entries}
+              collectionID={Number(collection)}
+              subtitles={{
+                languages: subtitleLanguages
+                  .split(",")
+                  .map((v) => v.trim())
+                  .filter(Boolean),
+                automatic: automaticSubtitles,
+              }}
+              reload={jobs.reload}
             />
-          ))}
-        </ul>
-        {importReview && (
-          <div className="review-box" aria-label="Import review">
-            <h3>{importReview.target_label}</h3>
-            <p className="rs-form-help">{importReview.destination}</p>
-            <p>
-              {bytes(importReview.size_bytes)} · SHA-256{" "}
-              {importReview.sha256.slice(0, 16)}…
-            </p>
-            {importReview.subtitles.map((sub) => (
-              <p key={sub.language} className="rs-form-help">
-                {sub.language}: {sub.destination} · SHA-256 {sub.sha256}
-              </p>
-            ))}
-            <div className="rs-form-actions">
-              <Button disabled={!!busy} onClick={importJob}>
-                Import
-              </Button>
-              <Button variant="soft" onClick={() => setImportReview(undefined)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-      </section>
+          )}
 
-      <details className="rs-panel yt-library">
-        <summary>
-          <h2>YouTube library</h2>
-          <span>{files.data?.items.length ?? 0}</span>
-        </summary>
-        <RequestState
-          loading={files.loading}
-          error={files.error}
-          retry={files.reload}
-        />
-        {files.data?.items.length === 0 && (
-          <p className="yt-empty">No imported videos.</p>
-        )}
-        <ul>
-          {files.data?.items.map((file) => (
-            <li key={file.job_id}>
-              <strong>{file.title}</strong>
-              <span>
-                {file.collection} · {file.relative_path} ·{" "}
-                {bytes(file.size_bytes)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </details>
-    </PageBody>
+        <section className="rs-panel yt-queue" aria-label="YouTube downloads">
+          <div className="rs-panel-header">
+            <h2>Downloads</h2>
+            <Button variant="ghost" onClick={jobs.reload}>
+              Refresh
+            </Button>
+          </div>
+          <RequestState
+            loading={jobs.loading}
+            error={jobs.error}
+            retry={jobs.reload}
+          />
+          {jobs.data?.items.length === 0 && (
+            <p className="yt-empty">No downloads yet.</p>
+          )}
+          <ul className="yt-jobs">
+            {jobs.data?.items.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                busy={!!busy}
+                reviewImport={reviewImport}
+                cancelJob={cancelJob}
+              />
+            ))}
+          </ul>
+          {importReview && (
+            <div className="review-box" aria-label="Import review">
+              <h3>{importReview.target_label}</h3>
+              <p className="rs-form-help">{importReview.destination}</p>
+              <p>
+                {bytes(importReview.size_bytes)} · SHA-256{" "}
+                {importReview.sha256.slice(0, 16)}…
+              </p>
+              {importReview.subtitles.map((sub) => (
+                <p key={sub.language} className="rs-form-help">
+                  {sub.language}: {sub.destination} · SHA-256 {sub.sha256}
+                </p>
+              ))}
+              <div className="rs-form-actions">
+                <Button disabled={!!busy} onClick={importJob}>
+                  Import
+                </Button>
+                <Button
+                  variant="soft"
+                  onClick={() => setImportReview(undefined)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <details className="rs-panel yt-library">
+          <summary>
+            <h2>YouTube library</h2>
+            <span>{files.data?.items.length ?? 0}</span>
+          </summary>
+          <RequestState
+            loading={files.loading}
+            error={files.error}
+            retry={files.reload}
+          />
+          {files.data?.items.length === 0 && (
+            <p className="yt-empty">No imported videos.</p>
+          )}
+          <ul>
+            {files.data?.items.map((file) => (
+              <li key={file.job_id}>
+                <strong>{file.title}</strong>
+                <span>
+                  {file.collection} · {file.relative_path} ·{" "}
+                  {bytes(file.size_bytes)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      </PageBody>
+    </>
   );
 }
 

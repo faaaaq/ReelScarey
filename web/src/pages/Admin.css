@@ -830,3 +830,51 @@ a.scan-metric:hover {
 .backup-grid > label > input {
   font-weight: 400;
 }
+
+.adm-notes {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--rs-text);
+}
+
+.adm-form-indent {
+  padding-left: 264px;
+}
+@media (max-width: 900px) {
+  .adm-form-indent {
+    padding-left: 0;
+  }
+}
+
+:is(.subtitle-preferences, .subtitle-provider)
+  :is(
+    select,
+    input:not([type="checkbox"]):not([type="radio"]),
+    .rt-TextFieldRoot
+  ) {
+  max-width: 480px;
+}
+:is(.subtitle-preferences, .subtitle-provider) > :is(label, .adm-field) {
+  max-width: 640px;
+}
+
+.rs-table td form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.rs-table td form > label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--rs-muted);
+  font-size: 12.5px;
+}
+
+.file-button {
+  align-self: flex-start;
+}

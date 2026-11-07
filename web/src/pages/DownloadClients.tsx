@@ -1,6 +1,18 @@
-import { PageBody } from "../ui";
 import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button } from "@radix-ui/themes";
+import { Plus, RefreshCw } from "lucide-react";
+import {
+  AddCard,
+  Card,
+  CardGrid,
+  FieldSet,
+  Label,
+  Modal,
+  PageBody,
+  PageToolbar,
+  ToolbarButton,
+  ToolbarSection,
+} from "../ui";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
@@ -50,73 +62,135 @@ const names = {
 };
 export function DownloadClients() {
   const resource = useResource<State>("/download-clients");
+  const [editing, setEditing] = useState<Client | "new" | null>(null);
+  const root = resource.data?.downloads_root ?? "/downloads";
+  const named = resource.data?.items.filter((c) => !c.builtin) ?? [];
+  const defaults = resource.data?.defaults;
   return (
-    <PageBody>
-      <PageHeading title="Download clients" />
-      <RequestState
-        loading={resource.loading}
-        error={resource.error}
-        retry={resource.reload}
-      />
-      {resource.data && (
-        <>
-          <DefaultsForm
-            key={resource.data.defaults.revision}
-            initial={resource.data.defaults}
-            clients={resource.data.items}
-            reload={resource.reload}
+    <>
+      <PageToolbar>
+        <ToolbarSection>
+          <ToolbarButton
+            icon={Plus}
+            label="Add Client"
+            disabled={!resource.data}
+            onClick={() => setEditing("new")}
           />
-          <BuiltinCard reload={resource.reload} />
-          <VPNCard />
-          <section className="rs-panel rs-stack">
-            <h2>Named connections</h2>
-            {!resource.data.items.some((c) => !c.builtin) && (
-              <p>No named clients saved.</p>
-            )}
-            {resource.data.items
-              .filter((c) => !c.builtin)
-              .map((client) => (
-                <ClientForm
-                  key={`${client.id}-${client.revision}`}
-                  client={client}
-                  isDefault={
-                    resource.data!.defaults.torrent === client.id ||
-                    resource.data!.defaults.usenet === client.id
-                  }
-                  root={resource.data!.downloads_root ?? "/downloads"}
-                  reload={resource.reload}
+          <ToolbarButton
+            icon={RefreshCw}
+            label="Refresh"
+            spinning={resource.loading}
+            onClick={resource.reload}
+          />
+        </ToolbarSection>
+      </PageToolbar>
+      <PageBody>
+        <PageHeading title="Download Clients" />
+        <RequestState
+          loading={resource.loading}
+          error={resource.error}
+          retry={resource.reload}
+        />
+        {resource.data && defaults && (
+          <>
+            <FieldSet legend="Clients">
+              {named.length === 0 && (
+                <p className="rs-muted">No named clients saved.</p>
+              )}
+              <CardGrid>
+                {named.map((client) => {
+                  const isDefault =
+                    defaults.torrent === client.id ||
+                    defaults.usenet === client.id;
+                  return (
+                    <Card
+                      key={`${client.id}-${client.revision}`}
+                      title={client.name}
+                      ariaLabel={`Edit ${client.name}`}
+                      onClick={() => setEditing(client)}
+                      labels={
+                        <>
+                          <Label kind="info">{names[client.kind]}</Label>
+                          <Label kind={client.enabled ? "success" : "disabled"}>
+                            {client.enabled ? "Enabled" : "Paused"}
+                          </Label>
+                          {isDefault && <Label kind="primary">Default</Label>}
+                          {client.active_jobs > 0 && (
+                            <Label outline>
+                              {client.active_jobs} active job
+                              {client.active_jobs === 1 ? "" : "s"}
+                            </Label>
+                          )}
+                        </>
+                      }
+                    >
+                      {client.url}
+                    </Card>
+                  );
+                })}
+                <AddCard
+                  label="Add download client"
+                  onClick={() => setEditing("new")}
                 />
-              ))}
-          </section>
-          <section className="rs-panel rs-stack">
-            <h2>Add a download client</h2>
+              </CardGrid>
+            </FieldSet>
+            <FieldSet legend="Defaults for new jobs">
+              <DefaultsForm
+                key={defaults.revision}
+                initial={defaults}
+                clients={resource.data.items}
+                reload={resource.reload}
+              />
+            </FieldSet>
+          </>
+        )}
+        <BuiltinCard reload={resource.reload} />
+        <VPNCard />
+        <FieldSet legend="Client setup notes">
+          <ul className="adm-notes">
+            <li>
+              <strong>Transmission 4:</strong> username and password, torrent
+              scripts disabled, full RPC URL. Jobs use an ownership label and a
+              dedicated folder.
+            </li>
+            <li>
+              <strong>SABnzbd:</strong> a <code>reelscarey</code> category with
+              folder <code>ReelScarey</code>, no sorting and no script.
+            </li>
+            <li>
+              <strong>NZBGet:</strong> a <code>reelscarey</code> category
+              pointing at the completed folder plus <code>/ReelScarey</code>.
+            </li>
+            <li>
+              Mount completed client folders under the app's download mount. TV
+              files still require episode review.
+            </li>
+          </ul>
+        </FieldSet>
+        {editing && (
+          <Modal
+            open
+            onOpenChange={(open) => !open && setEditing(null)}
+            size="large"
+            title={
+              editing === "new" ? "Add download client" : `Edit ${editing.name}`
+            }
+          >
             <ClientForm
-              root={resource.data.downloads_root ?? "/downloads"}
+              client={editing === "new" ? undefined : editing}
+              isDefault={
+                editing !== "new" &&
+                (defaults?.torrent === editing.id ||
+                  defaults?.usenet === editing.id)
+              }
+              root={root}
               reload={resource.reload}
+              onDone={() => setEditing(null)}
             />
-          </section>
-        </>
-      )}
-      <section className="rs-panel rs-stack">
-        <h2>Transmission setup</h2>
-        <p>
-          Transmission 4 with a username, password, torrent scripts disabled,
-          and its full RPC URL. Jobs use an ownership label and a dedicated
-          folder.
-        </p>
-        <h2>Usenet folder setup</h2>
-        <p>
-          SABnzbd needs a <code>reelscarey</code> category with folder{" "}
-          <code>ReelScarey</code>, no sorting and no script. NZBGet needs a{" "}
-          <code>reelscarey</code> category pointing at the completed folder plus{" "}
-          <code>/ReelScarey</code>.
-        </p>
-        <p>
-          Mount completed client folders under the app's download mount. TV
-          files still require episode review.
-        </p>
-      </section>
-    </PageBody>
+          </Modal>
+        )}
+      </PageBody>
+    </>
   );
 }
 const vpnStates: Record<string, string> = {
@@ -247,8 +321,10 @@ function VPNCard() {
     }
   }
   return (
-    <section className="rs-panel rs-stack">
-      <h2>Mullvad VPN (kill switch)</h2>
+    <section className="rs-fieldset">
+      <div className="rs-legend">
+        <h2>Mullvad VPN (kill switch)</h2>
+      </div>
       <RequestState
         loading={resource.loading}
         error={resource.error}
@@ -417,8 +493,10 @@ function BuiltinCard({ reload }: { reload: () => void }) {
   const data = resource.data;
   const enabled = data?.enabled ?? false;
   return (
-    <section className="rs-panel rs-stack">
-      <h2>Built-in qBittorrent</h2>
+    <section className="rs-fieldset">
+      <div className="rs-legend">
+        <h2>Built-in qBittorrent</h2>
+      </div>
       <RequestState
         loading={resource.loading}
         error={resource.error}
@@ -570,8 +648,7 @@ function DefaultsForm({
     }
   }
   return (
-    <form className="rs-panel rs-stack" onSubmit={(e) => void save(e)}>
-      <h2>Defaults for new jobs</h2>
+    <form className="rs-stack" onSubmit={(e) => void save(e)}>
       <fieldset disabled={busy} className="backup-fields">
         {(["torrent", "usenet"] as const).map((protocol) => (
           <label key={protocol}>
@@ -612,11 +689,13 @@ function ClientForm({
   isDefault = false,
   root,
   reload,
+  onDone,
 }: {
   client?: Client;
   isDefault?: boolean;
   root: string;
   reload: () => void;
+  onDone?: () => void;
 }) {
   const [name, setName] = useState(client?.name ?? ""),
     [kind, setKind] = useState<Client["kind"]>(client?.kind ?? "qbittorrent"),
@@ -660,6 +739,7 @@ function ClientForm({
       setPassword("");
       setKey("");
       reload();
+      onDone?.();
     } catch (e) {
       setError(messageFor(e));
     } finally {
@@ -686,8 +766,10 @@ function ClientForm({
           remove ? { revision: client.revision, reviewed: true } : {},
         ),
       });
-      if (remove) reload();
-      else setNotice("Connection verified.");
+      if (remove) {
+        reload();
+        onDone?.();
+      } else setNotice("Connection verified.");
     } catch (e) {
       setError(messageFor(e));
     } finally {
@@ -845,18 +927,5 @@ function ClientForm({
       {notice && <p role="status">{notice}</p>}
     </form>
   );
-  return client ? (
-    <details className="client-card">
-      <summary>
-        <strong>{client.name}</strong> · {names[client.kind]}{" "}
-        <Badge color={client.enabled ? "green" : "gray"}>
-          {client.enabled ? "Enabled" : "Paused"}
-        </Badge>
-        {isDefault && <Badge>Default</Badge>} · {client.active_jobs} active jobs
-      </summary>
-      {fields}
-    </details>
-  ) : (
-    fields
-  );
+  return fields;
 }

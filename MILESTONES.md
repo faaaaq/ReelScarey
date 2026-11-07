@@ -312,3 +312,10 @@ See [announce feeds](docs/ANNOUNCE.md).
   bulk actions, queue, limits, share limits, file priorities (refused for
   ReelScarey downloads), trackers/peers/pieces with passkey redaction.
 - [x] `api()` accepts 204 responses instead of reporting a false failure.
+
+## Version 0.38.1 settings and admin pages
+
+- [x] Download Clients card grid with dialog editor; defaults, built-in
+  client and VPN as sections.
+- [x] Connection forms, Indexers, Subtitles, Backups, Requests and YouTube
+  moved to toolbars, fieldsets and tables.

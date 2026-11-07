@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Badge, Button, TextField } from "@radix-ui/themes";
-import { Plug } from "lucide-react";
+import { Button, TextField } from "@radix-ui/themes";
+import { Alert, FormGroup, Label } from "../ui";
 import { api, messageFor, type IntegrationStatus } from "../api";
 import { RequestState } from "../components";
 import { useResource } from "../useResource";
@@ -86,19 +86,12 @@ export function IntegrationSettings({
     void action("save");
   }
   return (
-    <section
-      id={kind}
-      className="rs-panel settings-info integration-settings"
-      aria-label={`${name} settings`}
-    >
-      <div className="rs-panel-header">
-        <h2>
-          <Plug size={19} />
-          {name}
-        </h2>
-        <Badge color={resource.data?.configured ? "green" : "gray"}>
+    <section id={kind} className="rs-fieldset" aria-label={`${name} settings`}>
+      <div className="rs-legend">
+        <h2>{name}</h2>
+        <Label kind={resource.data?.configured ? "success" : "disabled"}>
           {resource.data?.configured ? "Configured" : "Not connected"}
-        </Badge>
+        </Label>
       </div>
       <RequestState
         loading={resource.loading}
@@ -106,18 +99,18 @@ export function IntegrationSettings({
         retry={resource.reload}
       />
       {resource.data && !resource.error && (
-        <>
-          <p>
+        <form onSubmit={submit} className="rs-stack">
+          <p className="rs-fieldset-description">
             {indexer
               ? "Torznab endpoint from Prowlarr, Jackett or another indexer."
               : usenet
                 ? "Sends NZB releases to SABnzbd."
                 : "Sends torrent releases to qBittorrent."}
           </p>
-          <form onSubmit={submit}>
-            <label htmlFor={`${kind}-url`}>
-              {indexer ? "Torznab API endpoint" : "Web UI URL"}
-            </label>
+          <FormGroup
+            label={indexer ? "Torznab API endpoint" : "Web UI URL"}
+            htmlFor={`${kind}-url`}
+          >
             <TextField.Root
               id={`${kind}-url`}
               name={`${kind}-endpoint`}
@@ -134,24 +127,37 @@ export function IntegrationSettings({
               maxLength={2048}
               disabled={pending}
             />
-            {!indexer && !usenet && (
+          </FormGroup>
+          {!indexer && !usenet && (
+            <FormGroup label="Web UI username" htmlFor="qbt-username">
+              <TextField.Root
+                id="qbt-username"
+                name="qbittorrent-service-username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                maxLength={200}
+                autoComplete="off"
+                disabled={pending}
+              />
+            </FormGroup>
+          )}
+          <FormGroup
+            label={indexer || usenet ? "API key" : "Web UI password"}
+            htmlFor={`${kind}-secret`}
+            help={
               <>
-                <label htmlFor="qbt-username">Web UI username</label>
-                <TextField.Root
-                  id="qbt-username"
-                  name="qbittorrent-service-username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  maxLength={200}
-                  autoComplete="off"
-                  disabled={pending}
-                />
+                {resource.data.configured
+                  ? "Leave blank to keep the saved credential. Re-enter it when changing the URL."
+                  : indexer
+                    ? "Public endpoints may leave the API key blank."
+                    : usenet
+                      ? "Use the full SABnzbd API key from Config → General, not the NZB-only key."
+                      : "Your qBittorrent Web UI credentials."}{" "}
+                Stored encrypted; never shown again.
               </>
-            )}
-            <label htmlFor={`${kind}-secret`}>
-              {indexer || usenet ? "API key" : "Web UI password"}
-            </label>
+            }
+          >
             <TextField.Root
               id={`${kind}-secret`}
               name={`${kind}-service-secret`}
@@ -163,48 +169,44 @@ export function IntegrationSettings({
               autoComplete="new-password"
               disabled={pending}
             />
-            <p className="rs-form-help">
-              {resource.data.configured
-                ? "Leave blank to keep the saved credential. Re-enter it when changing the service URL."
-                : indexer
-                  ? "Public endpoints may leave the API key blank."
-                  : usenet
-                    ? "Use the full SABnzbd API key from Config → General, not the NZB-only key."
-                    : "Use your qBittorrent Web UI credentials."}{" "}
-              Credentials are encrypted locally and never returned after saving.
-            </p>
-            {!indexer && (
-              <>
-                <label htmlFor={`${kind}-download-path`}>
-                  {usenet
-                    ? "SABnzbd completed downloads folder"
-                    : "qBittorrent downloads folder"}
-                </label>
-                <TextField.Root
-                  id={`${kind}-download-path`}
-                  value={downloadPath}
-                  onChange={(e) => setDownloadPath(e.target.value)}
-                  placeholder="/downloads"
-                  required
-                  maxLength={2048}
-                  disabled={pending}
-                />
-                <p className="rs-form-help">
-                  The folder as {name} sees it. Mount that same folder at
-                  ReelScarey’s Downloads path shown above. A Web UI connection
-                  alone does not give ReelScarey access to files on another
-                  server.
-                </p>
-                {usenet && (
-                  <p className="rs-form-help">
-                    In SABnzbd, create category <strong>reelscarey</strong> with
-                    Folder/Path <strong>ReelScarey</strong>. Disable sorting for
-                    this category and choose no script. Retain its completed
-                    history. ReelScarey preserves completed source files.
-                  </p>
-                )}
-              </>
-            )}
+          </FormGroup>
+          {!indexer && (
+            <FormGroup
+              label={
+                usenet
+                  ? "SABnzbd completed downloads folder"
+                  : "qBittorrent downloads folder"
+              }
+              htmlFor={`${kind}-download-path`}
+              help={
+                <>
+                  The folder as {name} sees it. Mount the same folder at
+                  ReelScarey’s Downloads path.
+                  {usenet && (
+                    <>
+                      {" "}
+                      In SABnzbd, create category <strong>
+                        reelscarey
+                      </strong>{" "}
+                      with folder <strong>ReelScarey</strong>, no sorting and no
+                      script, and keep its completed history.
+                    </>
+                  )}
+                </>
+              }
+            >
+              <TextField.Root
+                id={`${kind}-download-path`}
+                value={downloadPath}
+                onChange={(e) => setDownloadPath(e.target.value)}
+                placeholder="/downloads"
+                required
+                maxLength={2048}
+                disabled={pending}
+              />
+            </FormGroup>
+          )}
+          <div className="rs-form-actions adm-form-indent">
             <Button
               type="submit"
               disabled={
@@ -216,38 +218,32 @@ export function IntegrationSettings({
             >
               {pending ? "Please wait…" : "Save & test connection"}
             </Button>
-          </form>
-          {resource.data.configured && (
-            <div className="rs-form-actions">
-              <Button
-                variant="soft"
-                disabled={pending}
-                onClick={() => void action("test")}
-              >
-                Test saved connection
-              </Button>
-              <Button
-                variant="ghost"
-                color="gray"
-                disabled={pending}
-                onClick={() => void action("remove")}
-              >
-                Disconnect
-              </Button>
-            </div>
-          )}
-        </>
+            {resource.data.configured && (
+              <>
+                <Button
+                  type="button"
+                  variant="soft"
+                  disabled={pending}
+                  onClick={() => void action("test")}
+                >
+                  Test saved connection
+                </Button>
+                <Button
+                  type="button"
+                  variant="soft"
+                  color="red"
+                  disabled={pending}
+                  onClick={() => void action("remove")}
+                >
+                  Disconnect
+                </Button>
+              </>
+            )}
+          </div>
+        </form>
       )}
-      {error && (
-        <p role="alert" className="rs-form-error">
-          {error}
-        </p>
-      )}
-      {success && (
-        <p role="status" className="rs-alert is-success">
-          {success}
-        </p>
-      )}
+      {error && <Alert kind="danger">{error}</Alert>}
+      {success && <Alert kind="success">{success}</Alert>}
     </section>
   );
 }

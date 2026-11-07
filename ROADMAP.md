@@ -721,3 +721,12 @@ per-file priorities (not for ReelScarey downloads) and a properties panel;
 tracker addresses are shortened to hide passkeys and the native WebUI and
 client preferences stay unexposed. See [UI.md](docs/UI.md) and
 [TORRENTS.md](docs/TORRENTS.md).
+
+## Version 0.38.1 settings and admin pages
+
+Download Clients lists named clients as cards with an add tile and edits them
+in a dialog; defaults, the built-in client and the VPN follow as sections.
+Connection forms (TMDb, Torznab, qBittorrent, SABnzbd) use label-left rows.
+Indexers, Subtitles, Backups, Requests and YouTube gained page toolbars;
+Subtitles stacks provider then preferences, and Requests shows requested
+titles and accounts as tables with approve/decline actions.
