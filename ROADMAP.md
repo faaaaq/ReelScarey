@@ -787,3 +787,13 @@ Monitor all future episodes action. Unambiguous single-episode TV downloads
 still import without review; ambiguous ones keep the review. See
 [UI.md](docs/UI.md), [AUTOMATION.md](docs/AUTOMATION.md) and
 [TV_DOWNLOADS.md](docs/TV_DOWNLOADS.md).
+
+## Version 0.38.7 scoped replacement searches and real episode deletion
+
+A replacement search started from an episode is locked to that registered file:
+the purpose control shows the file instead of a list, and the list offered
+elsewhere only contains files of the season and episode being reviewed. Removing
+an episode now deletes the media copy from disk as well as the library record,
+staged so a failed commit restores the file; files shared by several episodes,
+tracked replacements and download-folder seeding sources are refused. See
+[TV_DOWNLOADS.md](docs/TV_DOWNLOADS.md) and [API.md](docs/API.md).

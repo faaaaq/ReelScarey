@@ -102,14 +102,28 @@ function ReleaseBrowser() {
   const versions = useResource<MovieVersionSettings>(
     valid && !tv ? `/library/movies/${movieID}/versions` : null,
   );
-  const [purpose, setPurpose] = useState(
-    tv
-      ? ""
-      : ["hd", "uhd", "additional"].includes(params.get("movie_version") ?? "")
-        ? params.get("movie_version")!
-        : "",
-  );
+  const [purpose, setPurpose] = useState(() => {
+    const fromURL = params.get("purpose") ?? "";
+    if (tv) return /^[1-9][0-9]*$/.test(fromURL) ? fromURL : "";
+    const version = params.get("movie_version") ?? "";
+    if (["hd", "uhd", "additional"].includes(version)) return version;
+    if (["hd", "uhd", "additional"].includes(fromURL)) return fromURL;
+    return /^[1-9][0-9]*$/.test(fromURL) ? fromURL : "";
+  });
   const replacementID = /^[1-9][0-9]*$/.test(purpose) ? purpose : "";
+  // Only files of the season (and episode) being reviewed may be replaced from
+  // here, so the purpose list can never point at another title's file.
+  const purposeFiles = (replacementFiles.data?.items ?? []).filter((f) => {
+    const path = f.path.replaceAll("\\", "/");
+    if (!tv) return true;
+    if (season === 0) return /\/Specials\//i.test(path);
+    const marker = `Season ${String(season).padStart(2, "0")}`;
+    if (!path.includes(marker) && !path.includes(`Season ${season}/`))
+      return false;
+    if (!episode) return true;
+    const code = `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
+    return path.includes(code);
+  });
   const movieVersion =
     !tv && ["hd", "uhd", "additional"].includes(purpose) ? purpose : "";
   const [input, setInput] = useState("");
@@ -304,36 +318,47 @@ function ReleaseBrowser() {
         )}
         {movie.data && indexer.data?.configured && (
           <form className="rel-search" onSubmit={search}>
-            {showPurpose && (
+            {showPurpose && replacementID ? (
               <div className="rel-purpose">
-                <label htmlFor={purposeID}>Download purpose</label>
-                <select
-                  id={purposeID}
-                  value={purpose}
-                  disabled={searching || !!pending}
-                  onChange={(e) => setPurpose(e.target.value)}
-                >
-                  <option value="">
-                    Normal import (existing files are protected)
-                  </option>
-                  {!tv && (
-                    <option value="additional">
-                      Keep existing files and add another version
-                    </option>
-                  )}
-                  {!tv && versions.data?.enabled && (
-                    <>
-                      <option value="hd">HD version (up to 1080p)</option>
-                      <option value="uhd">4K version (2160p)</option>
-                    </>
-                  )}
-                  {replacementFiles.data?.items.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      Acquire replacement for {f.path}
-                    </option>
-                  ))}
-                </select>
+                <span className="rel-purpose-label">Replacing</span>
+                <p className="rel-purpose-file">
+                  {replacementFiles.data?.items.find(
+                    (f) => String(f.id) === replacementID,
+                  )?.path ?? `Registered file #${replacementID}`}
+                </p>
               </div>
+            ) : (
+              showPurpose && (
+                <div className="rel-purpose">
+                  <label htmlFor={purposeID}>Download purpose</label>
+                  <select
+                    id={purposeID}
+                    value={purpose}
+                    disabled={searching || !!pending}
+                    onChange={(e) => setPurpose(e.target.value)}
+                  >
+                    <option value="">
+                      Normal import (existing files are protected)
+                    </option>
+                    {!tv && (
+                      <option value="additional">
+                        Keep existing files and add another version
+                      </option>
+                    )}
+                    {!tv && versions.data?.enabled && (
+                      <>
+                        <option value="hd">HD version (up to 1080p)</option>
+                        <option value="uhd">4K version (2160p)</option>
+                      </>
+                    )}
+                    {purposeFiles.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        Acquire replacement for {f.path}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )
             )}
             <div className="rel-query">
               <TextField.Root
@@ -352,7 +377,7 @@ function ReleaseBrowser() {
             {showPurpose && (
               <p className="rs-muted rs-small">
                 {replacementID
-                  ? "Replacement downloads are verified and kept for a separate review before anything changes."
+                  ? "Only this file is replaced. The existing file is verified and kept until the new one passes review."
                   : movieVersion
                     ? "This version gets its own filename; existing copies are never overwritten."
                     : "Existing library files are never replaced."}

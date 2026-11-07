@@ -363,3 +363,10 @@ See [announce feeds](docs/ANNOUNCE.md).
 - [x] Series Search All Monitored, newest-first seasons, episode replace and
   reviewed unlink (file kept).
 - [x] Library-wide Monitor all future episodes for TV and Anime.
+
+## Version 0.38.7 scoped replacement searches and real episode deletion
+
+- [x] Replacement purpose is read from the URL, locked to the initiating file,
+  and the free-choice list is limited to the reviewed season/episode.
+- [x] Episode removal deletes the media file and registration through a staged
+  rename with rollback; shared files and seeding sources are refused.

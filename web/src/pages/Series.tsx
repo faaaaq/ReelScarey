@@ -149,10 +149,10 @@ function SeriesView({ initial }: { initial: TVSeries }) {
       setPending(false);
     }
   };
-  async function removeFile(episodeID: number, code: string) {
+  async function removeFile(episodeID: number, code: string, filePath: string) {
     if (
       !window.confirm(
-        `Remove ${code} from the library? The file stays on disk and the episode becomes missing again.`,
+        `Delete ${code} from disk and remove it from the library?\n\n${filePath}\n\nThis permanently deletes the media file and cannot be undone. The download folder and seeding sources are never touched.`,
       )
     )
       return;
@@ -163,7 +163,11 @@ function SeriesView({ initial }: { initial: TVSeries }) {
         `/library/series/${show.id}/episodes/${episodeID}/remove-file`,
         {
           method: "POST",
-          body: JSON.stringify({ revision: show.revision, reviewed: true }),
+          body: JSON.stringify({
+            revision: show.revision,
+            reviewed: true,
+            delete_file: true,
+          }),
         },
       );
       setShow(out);
@@ -603,7 +607,7 @@ function SeasonBlock({
   onSelect: (checked: boolean) => void;
   searchPending: boolean;
   onEpisodeSearch: (episodeID: number) => void;
-  onRemoveFile?: (episodeID: number, code: string) => void;
+  onRemoveFile?: (episodeID: number, code: string, filePath: string) => void;
 }) {
   const panelID = `season-${season.id}`;
   return (
@@ -699,7 +703,7 @@ function SeasonEpisodes({
   attempt: number;
   searchPending: boolean;
   onEpisodeSearch: (episodeID: number) => void;
-  onRemoveFile?: (episodeID: number, code: string) => void;
+  onRemoveFile?: (episodeID: number, code: string, filePath: string) => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
@@ -953,14 +957,15 @@ function SeasonEpisodes({
                             <button
                               type="button"
                               className="det-icon-link"
-                              aria-label={`Remove ${episodeCode(season.number, e.number)} ${e.title} from the library`}
-                              title="Remove this episode from the library. The file stays on disk."
+                              aria-label={`Delete ${episodeCode(season.number, e.number)} ${e.title} from disk and the library`}
+                              title="Delete this episode's file from disk and remove it from the library."
                               disabled={pending || onRemoveFile === undefined}
                               onClick={() =>
                                 onRemoveFile &&
                                 onRemoveFile(
                                   e.id,
                                   episodeCode(season.number, e.number),
+                                  e.file_path ?? "",
                                 )
                               }
                             >

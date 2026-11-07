@@ -405,39 +405,6 @@ func (s *Store) MonitorAllShows(ctx context.Context, category string) (int, erro
 	return count, tx.Commit()
 }
 
-// UnlinkEpisodeFile removes the library association for one episode without
-// deleting any file. The episode becomes missing and searchable again, and a
-// shared file keeps serving its other episodes. Physical deletion stays a
-// separate reviewed catalog action so an owner's original is never removed by
-// a per-episode control.
-func (s *Store) UnlinkEpisodeFile(ctx context.Context, seriesID, revision int64, episodeID int64) error {
-	if revision < 1 || episodeID < 1 {
-		return ErrMonitoringInput
-	}
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return e
-	}
-	defer tx.Rollback()
-	var count int
-	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE e.id=? AND s.series_id=?`, episodeID, seriesID).Scan(&count); e != nil {
-		return e
-	}
-	if count != 1 {
-		return sql.ErrNoRows
-	}
-	if e = bumpSeries(ctx, tx, seriesID, revision); e != nil {
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM episode_files WHERE episode_id=?`, episodeID); e != nil {
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'title',?,(SELECT title FROM media_items WHERE id=?),'episode removed from library; file kept on disk')`, seriesID, seriesID); e != nil {
-		return e
-	}
-	return tx.Commit()
-}
-
 // MonitorSeasons changes explicit season choices without altering episode choices.
 func (s *Store) MonitorSeasons(ctx context.Context, id, revision int64, seasonIDs []int64, monitored bool) error {
 	if len(seasonIDs) < 1 || len(seasonIDs) > 100 || revision < 1 {

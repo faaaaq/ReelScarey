@@ -391,7 +391,7 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | GET | `/api/v1/automation/item-results?media_id=7&episode_id=10` | Latest recorded outcome, message, download ID and run for that target |
 | PUT | `/api/v1/library/series/{id}/monitor-all` | `{ "revision" }`; monitor the show, regular seasons and episodes; specials unchanged |
 | POST | `/api/v1/library/monitor-all-episodes` | `{ "category"?: "standard" \| "anime" }`; reviewed bulk monitor of every show in scope; `{ "shows": n }` |
-| POST | `/api/v1/library/series/{id}/episodes/{episodeID}/remove-file` | `{ "revision", "reviewed": true }`; unlink one episode from its file, keeping the file on disk |
+| POST | `/api/v1/library/series/{id}/episodes/{episodeID}/remove-file` | `{ "revision", "reviewed": true, "delete_file"?: true }`; remove one episode from the library and, when asked, delete its media copy (seeding sources and shared files are protected) |
 | GET | `/api/v1/automation/runs` | `{items}`; latest 30 search runs with state, message, timestamps, mode, checked and queued counts |
 | GET | `/api/v1/automation/runs/{id}` | `{items}`; up to 25 target results, outcomes, download IDs and ranked decisions |
 | GET | `/api/v1/automation/items?page=1` | Profile assignments/monitoring, items/page/total/limit 24 |

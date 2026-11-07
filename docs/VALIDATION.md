@@ -2159,3 +2159,13 @@ Run locally on Windows (development tools only; Docker remains the target):
   remembered filters and Reset, and the popup's search actions.
 - Live qBittorrent and Docker acceptance were not run locally; the publish
   workflow verifies the release candidate on the tag.
+
+## Version 0.38.7 scoped replacement searches and real episode deletion
+
+- gofmt clean; go vet and the full Go suite passed. New tests cover deletion,
+  the shared-file refusal, unlink-without-delete and honest timeline events.
+- Frontend format:check, check, the full suite (39 files, 227 tests) and the
+  build passed. New tests cover the locked Replacing view and the season-scoped
+  purpose list.
+- Live and Docker acceptance were not run locally; the publish workflow verifies
+  the release candidate on the tag.

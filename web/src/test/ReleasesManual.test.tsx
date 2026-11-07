@@ -104,3 +104,63 @@ it("offers season-pack attachment with explicit episode numbers for series", asy
     ).toBe(true),
   );
 });
+
+it("locks a replacement search to the file it was started from", async () => {
+  const requests = stubFetch((url) => {
+    if (url.includes("/organization/files"))
+      return Response.json({
+        items: [
+          { id: 41, path: "tvshows/Show/Season 38/Show - S38E02 - Two.mkv" },
+          { id: 42, path: "tvshows/Show/Season 34/Show - S34E13 - Old.mkv" },
+        ],
+      });
+    if (url.includes("/library/series/9/seasons/38"))
+      return Response.json({ season: {}, episodes: [], revision: 1 });
+    if (url.includes("/library/series/9"))
+      return Response.json({
+        id: 9,
+        kind: "series",
+        tmdb_id: 456,
+        title: "Show",
+        year: 1989,
+      });
+    return Response.json({ configured: true, items: [] });
+  });
+  vi.stubGlobal("fetch", requests);
+  renderReleases("/releases?series=9&season=38&episode=2&purpose=41");
+  expect(await screen.findByText("Replacing")).toBeVisible();
+  expect(screen.queryByLabelText("Download purpose")).not.toBeInTheDocument();
+  expect(
+    screen.getByText("tvshows/Show/Season 38/Show - S38E02 - Two.mkv"),
+  ).toBeVisible();
+});
+
+it("offers only the current season's files when choosing a replacement", async () => {
+  const requests = stubFetch((url) => {
+    if (url.includes("/organization/files"))
+      return Response.json({
+        items: [
+          { id: 41, path: "tvshows/Show/Season 38/Show - S38E02 - Two.mkv" },
+          { id: 42, path: "tvshows/Show/Season 34/Show - S34E13 - Old.mkv" },
+        ],
+      });
+    if (url.includes("/library/series/9/seasons/38"))
+      return Response.json({ season: {}, episodes: [], revision: 1 });
+    if (url.includes("/library/series/9"))
+      return Response.json({
+        id: 9,
+        kind: "series",
+        tmdb_id: 456,
+        title: "Show",
+        year: 1989,
+      });
+    return Response.json({ configured: true, items: [] });
+  });
+  vi.stubGlobal("fetch", requests);
+  renderReleases("/releases?series=9&season=38&episode=2");
+  const select = await screen.findByLabelText("Download purpose");
+  await waitFor(() =>
+    expect(select).toHaveTextContent("Season 38/Show - S38E02 - Two.mkv"),
+  );
+  expect(select).not.toHaveTextContent("S34E13");
+});

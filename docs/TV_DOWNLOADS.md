@@ -90,3 +90,13 @@ client test downloads a generated season pack through its own authenticated
 qBittorrent profile and localhost Torznab/web-seed fixtures, then reopens state
 during download and after mapping confirmation. It never uses the owner's services.
 See VALIDATION.md for executed results.
+
+## Replacing and deleting an episode (0.38.7)
+
+Replace from an episode row starts the reviewed replacement search for exactly
+that registered file; the Releases page shows it as a locked Replacing target
+and never offers another title's file. The delete action removes the media copy
+from disk and the library record in one reviewed step. The file is first staged
+beside itself so a failed commit restores it. A file shared by more than one
+episode, a file that a tracked replacement depends on, and anything inside the
+download folder (a seeding source) are refused with an explanation.

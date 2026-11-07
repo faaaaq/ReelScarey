@@ -76,3 +76,14 @@
     min-width: 180px;
   }
 }
+
+.rel-purpose-label {
+  font-weight: 700;
+  color: var(--rs-text-strong);
+}
+.rel-purpose-file {
+  font-family: var(--rs-mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+  color: var(--rs-text);
+}

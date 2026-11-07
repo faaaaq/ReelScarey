@@ -205,9 +205,9 @@ func (s *Server) refreshTV(w http.ResponseWriter, r *http.Request) {
 	s.sendSeries(w, r, id)
 }
 
-// unlinkEpisodeFile removes one episode's library association after review.
-// The file itself stays on disk; watching, seeding sources and other episodes
-// that share the file are untouched.
+// unlinkEpisodeFile removes one episode's library registration after review.
+// With delete_file it also deletes the media copy (never the seeding source);
+// files shared with other episodes are refused.
 func (s *Server) unlinkEpisodeFile(w http.ResponseWriter, r *http.Request) {
 	id, ok := tvID(w, r)
 	if !ok {
@@ -219,17 +219,23 @@ func (s *Server) unlinkEpisodeFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Revision int64 `json:"revision"`
-		Reviewed bool  `json:"reviewed"`
+		Revision   int64 `json:"revision"`
+		Reviewed   bool  `json:"reviewed"`
+		DeleteFile *bool `json:"delete_file"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
 	if !body.Reviewed || body.Revision < 1 {
-		fail(w, 400, "review_required", "Review removing this episode from the library first.")
+		fail(w, 400, "review_required", "Review removing this episode first.")
 		return
 	}
-	if e = s.library.UnlinkEpisodeFile(r.Context(), id, body.Revision, episode); e != nil {
+	if s.transfer == nil {
+		fail(w, 503, "transfer_unavailable", "Library files are unavailable.")
+		return
+	}
+	deleteFile := body.DeleteFile != nil && *body.DeleteFile
+	if e = s.transfer.RemoveEpisodeFile(r.Context(), id, body.Revision, episode, deleteFile); e != nil {
 		s.tvError(w, e)
 		return
 	}
