@@ -154,10 +154,10 @@ Do not add global element selectors in page files.
   episodes" action. It monitors only regular episodes releasing today or later;
   past and undated regular episodes are turned off, and specials keep their
   current choices.
-- Adding a title defaults monitoring to on only when it has a release today or
-  later; already-released or undated titles start unmonitored. Search-result
-  adds use the same default, and a newly monitored show applies it to its
-  seasons and episodes.
+- Adding a title with an explicit monitoring choice uses that choice; API adds
+  that omit it fall back to on only when a release is today or later, so
+  already-released or undated titles start unmonitored. Newly monitored shows
+  apply the API default to their seasons and episodes.
 - Anime search settings include an **English dub only** toggle. The Anime
   library page also has reviewed Enable/Disable for all anime actions, an
   editable dub rule and a test box for a sample release title.
