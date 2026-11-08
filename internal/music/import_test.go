@@ -2,6 +2,7 @@ package music
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -109,8 +110,63 @@ func TestImportFolderRequiresACompleteTrackSet(t *testing.T) {
 	}
 }
 
+func TestImportResumesPublishedFileAndKeepsDownloadIdentity(t *testing.T) {
+	ctx := context.Background()
+	s, mediaDir, downloads := importFixture(t)
+	generateFLAC(t, filepath.Join(downloads, "Album", "01.flac"), "Song", 1)
+	generateFLAC(t, filepath.Join(downloads, "Album", "02.flac"), "Other", 2)
+	job, err := s.StartDownloadImport(ctx, "fixture-download", 2, "Album", "Music", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	album, err := s.loadImportAlbum(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	media, err := os.OpenRoot(mediaDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer media.Close()
+	file := job.Files[0]
+	p, err := s.prepareMusicImport(ctx, media, album, *trackByID(album.Tracks, *file.TrackID), "Music", file.SourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.store.db.Exec(`UPDATE music_import_files SET publication=? WHERE id=?`, string(raw), file.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := media.Link(p.Stage, p.Destination); err != nil {
+		t.Fatal(err)
+	}
+	// Stop just after publishing, before committing the catalog row. A new
+	// service must recognize the link and finish without needing that source.
+	if err := os.Remove(filepath.Join(downloads, filepath.FromSlash(file.SourcePath))); err != nil {
+		t.Fatal(err)
+	}
+	reopened := NewService(s.store.db, mediaDir)
+	reopened.SetDownloadsDir(downloads)
+	if again, err := reopened.StartDownloadImport(ctx, "fixture-download", 2, "Album", "Music", nil); err != nil || again.ID != job.ID {
+		t.Fatal("import handoff was not idempotent", again, err)
+	}
+	if out := waitForImport(t, ctx, reopened, job.ID); out.State != "completed" || out.ImportedCount != 2 {
+		t.Fatal("interrupted import did not recover", out)
+	}
+	var count int
+	if err := s.store.db.QueryRow(`SELECT COUNT(*) FROM music_files`).Scan(&count); err != nil || count != 2 {
+		t.Fatal("duplicate or missing catalog rows", count, err)
+	}
+}
+
 func waitForImport(t *testing.T, ctx context.Context, service *Service, id int64) ImportJob {
 	t.Helper()
+	if _, err := service.ProcessImport(ctx); err != nil {
+		t.Fatal(err)
+	}
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		job, err := service.ImportJob(ctx, id)

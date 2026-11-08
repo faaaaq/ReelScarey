@@ -60,13 +60,13 @@ saved summary, for example `Seeding limit: ratio 2.0 · pause`.
 - A supervised pass runs at most once a minute, and only while the built-in
   client is enabled and reachable. It evaluates every torrent whose reported
   `progress` is 1 and `amount_left` is 0; active downloads are never touched.
-- Torrents bound to a ReelScarey download job that has not finished are skipped
+- Torrents bound to an unfinished movie, TV or music download job are skipped
   entirely. Torrents submitted by ReelScarey are skipped unless **Include
   ReelScarey downloads** is on, and their files are **never deleted**: for those
   torrents `Remove torrent and delete files` degrades to removing the torrent
   entry only, so the reviewed import and the seeding source survive. The dialog
   states this explicitly.
-- Already paused torrents are left alone, even if they exceed the limit.
+- Already paused or stopped torrents are left alone, even if they exceed the limit.
 - Every applied action writes one History entry (`kind=download`, object is the
   torrent hash, state `seeding limit reached: <action>`). A hash/action pair is
   recorded once; the durable entry also survives a restart, so a resumed torrent
@@ -92,17 +92,19 @@ revision. When it is on, a torrent in the built-in client that finished
 downloading and came from a public source is paused automatically instead of
 seeding indefinitely.
 
-- Public sources are the public **Nyaa** indexer and torrents added on this
-  page (magnet links and uploaded metainfo). ReelScarey records the source
-  classification when a download is queued; private-tracker indexers and other
-  credential-backed kinds are never paused by this option.
+- Public sources are the public **Nyaa** indexer and uploads whose metainfo
+  confirms they are not private. Private uploads, direct magnet links without
+  verified metainfo, and earlier manual uploads with unknown provenance are
+  left alone. The classification for a managed job is bound to its saved
+  client, job ID and info hash.
 - Torrents added to the client outside ReelScarey have no recorded source and
   are left alone.
 - The same supervised pass that enforces the seeding limit checks at most once
   a minute while the client is enabled. It only pauses completed torrents and
   skips torrents that are already paused.
-- Pausing never deletes anything. Resuming a paused torrent is always possible;
-  if it finishes again it is paused again and a new History entry is written
+- Pausing never deletes anything. A resumed, already-complete torrent keeps
+  seeding. If it downloads again and reaches a new completion, it is paused
+  again and a new History entry is written
   (`kind=download`, object is the torrent hash, state
   `public source finished: paused`).
 - Private-tracker downloads keep seeding so ratio and hit-and-run rules are

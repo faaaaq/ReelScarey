@@ -159,6 +159,21 @@ func TestSharePolicySkipsAnUnfinishedDownloadJob(t *testing.T) {
 	}
 }
 
+func TestSharePolicyProtectsMusicAwaitingImport(t *testing.T) {
+	ctx := context.Background()
+	f := setupWorkflow(t)
+	job := musicTestQueue(t, f)
+	enableFixtureBuiltin(t, f)
+	saveSharePolicy(t, f, SharePolicyUpdate{Enabled: true, Action: shareActionRemoveAndDelete, MaxRatio: 1, IncludeReelscarey: true, Revision: 1})
+	f.client.list = []Torrent{{Hash: job.InfoHash, Name: job.Title, State: "uploading", Progress: 1, Ratio: 5, Tags: "reelscarey-" + job.ID}}
+	if _, err := f.db.Exec(`UPDATE music_downloads SET state='importing' WHERE id=?`, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if run, err := f.s.RunSharePolicy(ctx); err != nil || run.Acted != 0 || f.client.action != "" {
+		t.Fatal("music source was removed before import", run, err, f.client.action)
+	}
+}
+
 func TestSharePolicyRemoveAndDeleteDegradesForJobTorrents(t *testing.T) {
 	ctx := context.Background()
 	f := setupWorkflow(t)

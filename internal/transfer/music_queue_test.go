@@ -206,3 +206,25 @@ func TestMusicQueueRecordsUncertainSubmissionAsBlocked(t *testing.T) {
 		t.Fatal("an uncertain music submission was resubmitted", f.client.adds)
 	}
 }
+
+func TestMusicSubmissionIsReservedBeforeClientAndSurvivesCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f := setupWorkflow(t)
+	album := musicTestAlbum(t, f)
+	musicTestCandidate(t, f, album, "release-1", time.Now().Unix()+600)
+	var reservedID string
+	f.client.beforeAdd = func() {
+		if err := f.db.QueryRow(`SELECT id FROM music_downloads WHERE album_id=? AND state='submitting'`, album).Scan(&reservedID); err != nil {
+			t.Fatal("the client was called before the reservation committed", err)
+		}
+		cancel()
+	}
+	job, err := f.s.QueueMusic(ctx, album, "release-1", "Music")
+	if err != nil || job.ID == "" || job.ID != reservedID {
+		t.Fatal("cancelled HTTP request lost its download", job, err)
+	}
+	if _, err := f.s.QueueMusic(context.Background(), album, "release-1", "Music"); problemCode(err) != "duplicate_music_download" || f.client.adds != 1 {
+		t.Fatal("retry submitted a duplicate", err, f.client.adds)
+	}
+}

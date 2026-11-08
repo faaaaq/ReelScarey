@@ -2,23 +2,22 @@ package music
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 )
 
 const (
 	MaxScanFiles = 20000
 	MaxScanDepth = 24
-	maxHashBytes = 512 << 20
 )
 
 var audioExtensions = map[string]bool{
@@ -148,6 +147,7 @@ func (s *Service) cleanScanRoot(root string) (string, error) {
 }
 
 func (s *Service) runScan(ctx context.Context, id int64, root string) {
+	defer organization.ReadMedia()()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	state, message := "review", ""
@@ -174,8 +174,14 @@ func (s *Service) runScan(ctx context.Context, id int64, root string) {
 
 func (s *Service) walkScan(ctx context.Context, id int64, root string) error {
 	absRoot := filepath.Join(s.mediaDir, filepath.FromSlash(root))
+	media, err := os.OpenRoot(s.mediaDir)
+	if err != nil {
+		return err
+	}
+	defer media.Close()
 	count := 0
-	err := filepath.WalkDir(absRoot, func(name string, entry os.DirEntry, walkErr error) error {
+	batch := make([]audioObservation, 0, 128)
+	err = filepath.WalkDir(absRoot, func(name string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return nil
 		}
@@ -219,34 +225,27 @@ func (s *Service) walkScan(ctx context.Context, id int64, root string) error {
 			return nil
 		}
 		relative = filepath.ToSlash(relative)
-		tags, probeErr := s.prober.ProbeAudio(ctx, name)
-		hash := ""
-		if probeErr == nil {
-			hash, _ = hashFile(ctx, name)
+		observation, err := s.observeAudio(ctx, media, relative)
+		if err != nil {
+			return err
 		}
-		tagJSON := "{}"
-		if probeErr == nil {
-			if data, e := json.Marshal(tags); e == nil {
-				tagJSON = string(data)
-			}
+		observation.relative = relative
+		if observation.size == 0 {
+			observation.size, observation.modified = info.Size(), info.ModTime().Unix()
 		}
-		message := ""
-		if probeErr != nil {
-			message = probeErr.Error()
-		}
-		_, e = s.store.db.ExecContext(ctx, `INSERT INTO music_scan_files(scan_id,relative_path,size_bytes,modified_at,sha256,format,duration_ms,bitrate,sample_rate,channels,tag_artist,tag_album_artist,tag_album,tag_title,tag_track,tag_disc,tag_year,tag_musicbrainz_artist,tag_musicbrainz_album,tag_musicbrainz_release_group,tag_musicbrainz_track,tag_musicbrainz_recording,tag_json,state,error,created_at,updated_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'unresolved',?,unixepoch(),unixepoch())
-			ON CONFLICT(scan_id,relative_path) DO NOTHING`,
-			id, relative, info.Size(), info.ModTime().Unix(), hash, tags.Format, tags.DurationMS, tags.Bitrate, tags.SampleRate, tags.Channels,
-			tags.Artist, tags.AlbumArtist, tags.Album, tags.Title, tags.Track, tags.Disc, tags.Year,
-			tags.MusicBrainzArtistID, tags.MusicBrainzAlbumID, tags.MusicBrainzReleaseGroupID, tags.MusicBrainzTrackID, tags.MusicBrainzRecordingID,
-			tagJSON, message)
-		if e != nil {
-			return e
-		}
+		batch = append(batch, observation)
 		count++
+		if len(batch) == cap(batch) {
+			if err := s.saveAudioObservations(ctx, id, batch); err != nil {
+				return err
+			}
+			batch = batch[:0]
+		}
 		return nil
 	})
+	if err == nil || errors.Is(err, errScanLimit) {
+		err = errors.Join(err, s.saveAudioObservations(ctx, id, batch))
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return errors.New("The scan took too long. Narrow the folder and try again.")
 	}
@@ -254,7 +253,7 @@ func (s *Service) walkScan(ctx context.Context, id int64, root string) error {
 }
 
 func (s *Service) matchScan(ctx context.Context, id int64) error {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT `+scanFileColumns+` FROM music_scan_files WHERE scan_id=? AND state='unresolved' ORDER BY id`, id)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT `+scanFileColumns+` FROM music_scan_files WHERE scan_id=? AND state='unresolved' AND error='' ORDER BY id`, id)
 	if err != nil {
 		return err
 	}
@@ -357,6 +356,9 @@ func (s *Service) matchFile(ctx context.Context, file ScanFile) (int64, int64, i
 }
 
 func (s *Service) RegisterScan(ctx context.Context, scanID int64, fileIDs []int64) (int, error) {
+	defer organization.ReadMedia()()
+	s.fileMu.Lock()
+	defer s.fileMu.Unlock()
 	if scanID < 1 || len(fileIDs) == 0 || len(fileIDs) > 500 {
 		return 0, ErrInvalidInput
 	}
@@ -512,20 +514,88 @@ func (s *Service) scanCancelled(ctx context.Context, id int64) (bool, error) {
 	return state == "cancelled", nil
 }
 
-func hashFile(ctx context.Context, name string) (string, error) {
-	file, err := os.Open(name)
+type audioObservation struct {
+	relative, sha, stamp, tagJSON, message string
+	size, modified                         int64
+	tags                                   AudioTags
+}
+
+func (s *Service) observeAudio(ctx context.Context, media *os.Root, name string) (audioObservation, error) {
+	out := audioObservation{tagJSON: "{}"}
+	file, err := filecheck.Open(media, name)
 	if err != nil {
-		return "", err
+		out.message = "The audio file could not be opened safely."
+		return out, nil
 	}
 	defer file.Close()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, io.LimitReader(file, maxHashBytes)); err != nil {
-		return "", err
+	before, err := filecheck.Capture(ctx, file)
+	if err != nil {
+		out.message = "The audio file changed while scanning."
+		return out, nil
 	}
-	if err := ctx.Err(); err != nil {
-		return "", err
+	out.size, out.modified = before.Size, before.Mtime/int64(time.Second)
+	data, err := json.Marshal(before)
+	if err != nil {
+		return out, err
 	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	var previous, previousSHA, previousTags string
+	err = s.store.db.QueryRowContext(ctx, `SELECT verification_json,sha256,tag_json FROM music_scan_files
+		WHERE relative_path=? AND verification_json<>'' AND sha256<>'' ORDER BY id DESC LIMIT 1`, name).
+		Scan(&previous, &previousSHA, &previousTags)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return out, err
+	}
+	out.stamp = string(data)
+	if previous == out.stamp && len(previousSHA) == 64 && json.Unmarshal([]byte(previousTags), &out.tags) == nil {
+		out.sha, out.tagJSON = previousSHA, previousTags
+		return out, nil
+	}
+	out.tags, err = s.prober.ProbeAudio(ctx, filepath.Join(s.mediaDir, filepath.FromSlash(name)))
+	if err != nil {
+		out.tags = AudioTags{}
+		out.message = err.Error()
+		return out, nil
+	}
+	out.sha, err = filecheck.Digest(ctx, file)
+	if err != nil {
+		return out, err
+	}
+	after, err := filecheck.Capture(ctx, file)
+	visible, statErr := media.Lstat(name)
+	opened, openErr := file.Stat()
+	if err != nil || statErr != nil || openErr != nil || !os.SameFile(visible, opened) || after != before {
+		return audioObservation{tagJSON: "{}", message: "The audio file changed while scanning."}, nil
+	}
+	tags, err := json.Marshal(out.tags)
+	out.tagJSON = string(tags)
+	return out, err
+}
+
+func (s *Service) saveAudioObservations(ctx context.Context, id int64, batch []audioObservation) error {
+	if len(batch) == 0 {
+		return nil
+	}
+	tx, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO music_scan_files(scan_id,relative_path,size_bytes,modified_at,sha256,format,duration_ms,bitrate,sample_rate,channels,tag_artist,tag_album_artist,tag_album,tag_title,tag_track,tag_disc,tag_year,tag_musicbrainz_artist,tag_musicbrainz_album,tag_musicbrainz_release_group,tag_musicbrainz_track,tag_musicbrainz_recording,tag_json,state,error,verification_json,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'unresolved',?,?,unixepoch(),unixepoch())
+		ON CONFLICT(scan_id,relative_path) DO NOTHING`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, f := range batch {
+		t := f.tags
+		if _, err := stmt.ExecContext(ctx, id, f.relative, f.size, f.modified, f.sha, t.Format, t.DurationMS, t.Bitrate, t.SampleRate, t.Channels,
+			t.Artist, t.AlbumArtist, t.Album, t.Title, t.Track, t.Disc, t.Year, t.MusicBrainzArtistID, t.MusicBrainzAlbumID,
+			t.MusicBrainzReleaseGroupID, t.MusicBrainzTrackID, t.MusicBrainzRecordingID, f.tagJSON, f.message, f.stamp); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func nullableID(value int64) any {

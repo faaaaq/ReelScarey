@@ -247,7 +247,7 @@ function mount(payload: unknown, options: { failMagnet?: string } = {}) {
       return Response.json(pause);
     }
     if (method === "GET" && url.startsWith("/api/v1/torrents/")) {
-      const hash = url.slice("/api/v1/torrents/".length);
+      const hash = url.slice("/api/v1/torrents/".length).split("?")[0];
       const t = [jobTorrent, manualTorrent, otherTorrent].find(
         (i) => i.hash === hash,
       );
@@ -560,9 +560,11 @@ describe("Torrents", () => {
     fireEvent.click(row("Fixture.Release.1080p"));
 
     expect(await screen.findByText("fixture-maker")).toBeVisible();
-    expect(calls.some((c) => c.url === `/api/v1/torrents/${jobHash}`)).toBe(
-      true,
-    );
+    expect(
+      calls.some(
+        (c) => c.url === `/api/v1/torrents/${jobHash}?section=general`,
+      ),
+    ).toBe(true);
     expect(screen.getByRole("tab", { name: /^General/ })).toHaveAttribute(
       "aria-selected",
       "true",

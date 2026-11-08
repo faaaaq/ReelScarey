@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var (
@@ -30,6 +31,7 @@ const (
 	maxShareRatio      = 9998
 	maxSeedingMinutes  = 525600
 	manualTorrentTag   = "reelscarey-manual"
+	manualPublicTag    = "reelscarey:public"
 	torrentOriginJob   = "job"
 	torrentOriginOwner = "manual"
 	torrentOriginOther = "external"
@@ -277,11 +279,8 @@ func (s *Service) Torrents(ctx context.Context) (TorrentOverview, error) {
 		return TorrentOverview{}, err
 	}
 	info.DLRateLimit, info.UPRateLimit = max(info.DLRateLimit, 0), max(info.UPRateLimit, 0)
-	server, err := manager.ServerPreferences(ctx, c)
+	server, err := s.torrentServerPreferences(ctx, manager, c)
 	if err != nil {
-		return TorrentOverview{}, err
-	}
-	if server.AltSpeedEnabled, err = manager.SpeedLimitsMode(ctx, c); err != nil {
 		return TorrentOverview{}, err
 	}
 	items, err := manager.List(ctx, c)
@@ -301,8 +300,36 @@ func (s *Service) Torrents(ctx context.Context) (TorrentOverview, error) {
 	return TorrentOverview{Available: true, State: state, Transfer: info, Server: &server, Items: items}, nil
 }
 
+func (s *Service) torrentServerPreferences(ctx context.Context, manager torrentManager, c ClientConfig) (TorrentServer, error) {
+	s.torrentPrefsMu.Lock()
+	defer s.torrentPrefsMu.Unlock()
+	if time.Now().Before(s.torrentPrefsUntil) {
+		return s.torrentPrefs, nil
+	}
+	prefs, err := manager.ServerPreferences(ctx, c)
+	if err != nil {
+		return TorrentServer{}, err
+	}
+	if prefs.AltSpeedEnabled, err = manager.SpeedLimitsMode(ctx, c); err != nil {
+		return TorrentServer{}, err
+	}
+	s.torrentPrefs, s.torrentPrefsUntil = prefs, time.Now().Add(15*time.Second)
+	return prefs, nil
+}
+
 func (s *Service) Torrent(ctx context.Context, hash string) (TorrentDetail, error) {
+	return s.TorrentSection(ctx, hash, "")
+}
+
+// TorrentSection loads only the requested panel. An empty section preserves
+// the full response for existing clients.
+func (s *Service) TorrentSection(ctx context.Context, hash, section string) (TorrentDetail, error) {
 	out := TorrentDetail{Files: []TorrentFile{}, Trackers: []TorrentTracker{}, Peers: []TorrentPeer{}, WebSeeds: []TorrentWebSeed{}, Pieces: []int{}}
+	switch section {
+	case "", "general", "content", "trackers", "peers", "http":
+	default:
+		return out, problem("invalid_selection", "Choose a valid torrent detail section.")
+	}
 	if !torrentHashRE.MatchString(hash) {
 		return out, problem("invalid_selection", "Choose a valid torrent.")
 	}
@@ -317,47 +344,57 @@ func (s *Service) Torrent(ctx context.Context, hash string) (TorrentDetail, erro
 	if found == nil {
 		return out, problem("not_found", "This torrent is no longer in the built-in client.")
 	}
-	classifyTorrent(found)
+	out.Torrent = *found
+	classifyTorrent(&out.Torrent)
 	h := found.Hash
-	files, err := manager.Files(ctx, c, h)
-	if err != nil {
-		return out, err
+	if section == "" || section == "content" {
+		files, err := manager.Files(ctx, c, h)
+		if err != nil {
+			return out, err
+		}
+		if files != nil {
+			out.Files = files
+		}
 	}
-	props, err := manager.Properties(ctx, c, h)
-	if err != nil {
-		return out, err
+	if section == "" || section == "general" {
+		props, err := manager.Properties(ctx, c, h)
+		if err != nil {
+			return out, err
+		}
+		states, err := manager.PieceStates(ctx, c, h)
+		if err != nil {
+			return out, err
+		}
+		out.Properties, out.Pieces = props, downsamplePieces(states, maxPieceBuckets)
 	}
-	trackers, err := manager.Trackers(ctx, c, h)
-	if err != nil {
-		return out, err
+	if section == "" || section == "trackers" {
+		trackers, err := manager.Trackers(ctx, c, h)
+		if err != nil {
+			return out, err
+		}
+		for _, t := range trackers {
+			t.URL = RedactTrackerURL(t.URL)
+			out.Trackers = append(out.Trackers, t)
+		}
 	}
-	peers, err := manager.Peers(ctx, c, h)
-	if err != nil {
-		return out, err
+	if section == "" || section == "peers" {
+		peers, err := manager.Peers(ctx, c, h)
+		if err != nil {
+			return out, err
+		}
+		if peers != nil {
+			out.Peers = peers
+		}
 	}
-	seeds, err := manager.WebSeeds(ctx, c, h)
-	if err != nil {
-		return out, err
+	if section == "" || section == "http" {
+		seeds, err := manager.WebSeeds(ctx, c, h)
+		if err != nil {
+			return out, err
+		}
+		for _, seed := range seeds {
+			out.WebSeeds = append(out.WebSeeds, TorrentWebSeed{URL: RedactTrackerURL(seed.URL)})
+		}
 	}
-	states, err := manager.PieceStates(ctx, c, h)
-	if err != nil {
-		return out, err
-	}
-	out.Torrent, out.Properties = *found, props
-	if files != nil {
-		out.Files = files
-	}
-	for _, t := range trackers {
-		t.URL = RedactTrackerURL(t.URL)
-		out.Trackers = append(out.Trackers, t)
-	}
-	if peers != nil {
-		out.Peers = peers
-	}
-	for _, w := range seeds {
-		out.WebSeeds = append(out.WebSeeds, TorrentWebSeed{URL: RedactTrackerURL(w.URL)})
-	}
-	out.Pieces = downsamplePieces(states, maxPieceBuckets)
 	return out, nil
 }
 
@@ -568,6 +605,11 @@ func (s *Service) SetTorrentSpeedLimits(ctx context.Context, in TorrentSpeedLimi
 	if err != nil {
 		return err
 	}
+	// Serialize the toggle and invalidate the cached read even if a later
+	// limit update fails after changing the active mode.
+	s.torrentPrefsMu.Lock()
+	defer s.torrentPrefsMu.Unlock()
+	s.torrentPrefsUntil = time.Time{}
 	if in.AltEnabled != nil {
 		current, err := manager.SpeedLimitsMode(ctx, c)
 		if err != nil {
@@ -614,5 +656,11 @@ func (s *Service) AddManualTorrent(ctx context.Context, magnet string, metainfo 
 	if e := os.MkdirAll(folder, 0o700); e != nil {
 		return unavailable("The built-in download folder is not writable.")
 	}
-	return manager.Add(ctx, c, manualTorrentTag, folder, Payload{Magnet: magnet, Torrent: metainfo})
+	tag := manualTorrentTag
+	if magnet == "" {
+		if info, err := TorrentInfo(metainfo); err == nil && !info.Private {
+			tag += "," + manualPublicTag
+		}
+	}
+	return manager.Add(ctx, c, tag, folder, Payload{Magnet: magnet, Torrent: metainfo})
 }

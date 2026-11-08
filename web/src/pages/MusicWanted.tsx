@@ -467,16 +467,21 @@ export function MusicWanted() {
                     <td>{Math.round(job.progress * 100)}%</td>
                     <td>{job.error || "—"}</td>
                     <td className="is-actions">
-                      {["queued", "downloading", "importing"].includes(
-                        job.state,
-                      ) && (
+                      {[
+                        "queued",
+                        "submitting",
+                        "downloading",
+                        "importing",
+                        "blocked",
+                        "failed",
+                      ].includes(job.state) && (
                         <Button
                           size="1"
                           variant="soft"
                           disabled={pending}
                           onClick={() => void jobAction(job.id, "cancel")}
                         >
-                          Cancel
+                          Stop tracking
                         </Button>
                       )}
                       {job.state === "blocked" && (

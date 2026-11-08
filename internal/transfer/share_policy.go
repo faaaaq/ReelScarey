@@ -93,6 +93,8 @@ func validateSharePolicy(in SharePolicyUpdate) error {
 
 // SaveSharePolicy replaces the single saved policy under a revision check.
 func (s *Service) SaveSharePolicy(ctx context.Context, in SharePolicyUpdate) (SharePolicy, error) {
+	s.shareMu.Lock()
+	defer s.shareMu.Unlock()
 	if err := validateSharePolicy(in); err != nil {
 		return SharePolicy{}, err
 	}
@@ -181,7 +183,8 @@ WHERE NOT EXISTS (SELECT 1 FROM activity_events WHERE kind='download' AND object
 // finished. Those jobs still need their client data, so the policy leaves them
 // alone entirely.
 func (s *Service) activeDownloadHashes(ctx context.Context) (map[string]bool, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT lower(info_hash) FROM downloads WHERE state NOT IN ('completed','cancelled')`)
+	rows, err := s.db.QueryContext(ctx, `SELECT lower(info_hash) FROM downloads WHERE protocol='torrent' AND state NOT IN ('completed','cancelled')
+		UNION SELECT lower(info_hash) FROM music_downloads WHERE protocol='torrent' AND state NOT IN ('completed','cancelled')`)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +289,7 @@ func (s *Service) evaluateSharePolicy(ctx context.Context, logger *slog.Logger) 
 		}
 		// A paused torrent is already stopped; never delete data behind an
 		// owner's explicit pause.
-		if strings.HasPrefix(item.State, "paused") {
+		if strings.HasPrefix(item.State, "paused") || strings.HasPrefix(item.State, "stopped") {
 			continue
 		}
 		if !shareLimitReached(item, policy) {
@@ -306,10 +309,11 @@ func (s *Service) evaluateSharePolicy(ctx context.Context, logger *slog.Logger) 
 		switch action {
 		case shareActionPause:
 			applyErr = manager.Pause(ctx, c, []string{hash})
-		case shareActionRemove:
-			applyErr = manager.Delete(ctx, c, []string{hash}, false)
-		case shareActionRemoveAndDelete:
-			applyErr = manager.Delete(ctx, c, []string{hash}, true)
+		case shareActionRemove, shareActionRemoveAndDelete:
+			applyErr = s.removeSeededTorrent(ctx, manager, c, item, policy, action == shareActionRemoveAndDelete)
+			if errors.Is(applyErr, errShareChanged) {
+				continue
+			}
 		default:
 			applyErr = problem("invalid_selection", "The saved seeding policy action is not supported.")
 		}
@@ -337,4 +341,35 @@ func (s *Service) evaluateSharePolicy(ctx context.Context, logger *slog.Logger) 
 		return out, failures
 	}
 	return out, nil
+}
+
+var errShareChanged = errors.New("torrent changed before seeding policy removal")
+
+func (s *Service) removeSeededTorrent(ctx context.Context, manager torrentManager, c ClientConfig, item Torrent, policy SharePolicy, deleteFiles bool) error {
+	// Both movie/TV and music reservations use configMu. Recheck with that
+	// gate held so a newly queued job cannot lose its client entry.
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	hash := strings.ToLower(item.Hash)
+	var active bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM downloads WHERE info_hash=? COLLATE NOCASE AND protocol='torrent' AND state NOT IN ('completed','cancelled')
+		UNION ALL SELECT 1 FROM music_downloads WHERE info_hash=? COLLATE NOCASE AND protocol='torrent' AND state NOT IN ('completed','cancelled')
+	)`, hash, hash).Scan(&active)
+	if err != nil {
+		return err
+	}
+	if active {
+		return errShareChanged
+	}
+	current, err := manager.Find(ctx, c, hash)
+	if err != nil {
+		return err
+	}
+	if current == nil || current.Tags != item.Tags || current.AddedOn != item.AddedOn ||
+		current.Progress < 1 || current.AmountLeft != 0 || !shareLimitReached(*current, policy) ||
+		strings.HasPrefix(current.State, "paused") || strings.HasPrefix(current.State, "stopped") {
+		return errShareChanged
+	}
+	return manager.Delete(ctx, c, []string{hash}, deleteFiles)
 }

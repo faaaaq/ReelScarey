@@ -52,12 +52,18 @@ export function useLiveResource<T>(path: string | null, interval = 0) {
       }
     }
     void read();
+    function refreshVisible() {
+      if (document.visibilityState !== "hidden") void read();
+    }
     const timer = interval
-      ? window.setInterval(() => void read(), interval)
+      ? window.setInterval(refreshVisible, interval)
       : undefined;
+    if (interval) document.addEventListener("visibilitychange", refreshVisible);
     return () => {
       controller.abort();
       if (timer) window.clearInterval(timer);
+      if (interval)
+        document.removeEventListener("visibilitychange", refreshVisible);
     };
   }, [path, interval, attempt]);
   return { data, error, loading, updatedAt, reload };

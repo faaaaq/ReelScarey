@@ -47,7 +47,11 @@ export function PropertiesPanel({ torrent }: { torrent: Torrent | null }) {
       </Tabs.List>
       <div className="tor-props-body">
         {torrent ? (
-          <DetailTabs key={torrent.hash} torrent={torrent} />
+          <DetailTabs
+            key={`${torrent.hash}:${tab}`}
+            torrent={torrent}
+            tab={tab}
+          />
         ) : (
           <p className="tor-props-hint">
             Select one torrent to see its properties.
@@ -58,8 +62,19 @@ export function PropertiesPanel({ torrent }: { torrent: Torrent | null }) {
   );
 }
 
-function DetailTabs({ torrent }: { torrent: Torrent }) {
-  const detail = useLiveResource<Detail>(`/torrents/${torrent.hash}`, 2000);
+const refreshInterval: Record<Tab, number> = {
+  general: 2000,
+  peers: 2000,
+  trackers: 10000,
+  content: 10000,
+  http: 30000,
+};
+
+function DetailTabs({ torrent, tab }: { torrent: Torrent; tab: Tab }) {
+  const detail = useLiveResource<Detail>(
+    `/torrents/${torrent.hash}?section=${tab}`,
+    refreshInterval[tab],
+  );
   const data =
     detail.data &&
     detail.data.torrent.hash.toLowerCase() === torrent.hash.toLowerCase()

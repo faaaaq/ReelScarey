@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"sync"
 )
 
 // Service combines the fixed MusicBrainz provider with the local catalog,
@@ -18,6 +19,8 @@ type Service struct {
 	downloadsDir   string
 	prober         AudioProber
 	scheduleRunner ScheduleRunner
+	fileMu         sync.Mutex
+	scheduleMu     sync.Mutex
 }
 
 func (s *Service) SetDownloadsDir(dir string) { s.downloadsDir = dir }
@@ -39,7 +42,8 @@ func (s *Service) SetProber(prober AudioProber) {
 // RecoverScans marks scans interrupted by a restart so they never appear to be
 // running forever.
 func (s *Service) RecoverScans(ctx context.Context) error {
-	_, err := s.store.db.ExecContext(ctx, `UPDATE music_scans SET state='failed', error='The scan was interrupted by a restart.', updated_at=unixepoch() WHERE state='scanning'`)
+	_, err := s.store.db.ExecContext(ctx, `UPDATE music_scans SET state='failed', error='The scan was interrupted by a restart.', updated_at=unixepoch() WHERE state='scanning';
+		UPDATE music_edit_jobs SET state='failed',error='The edit was interrupted. Inspect the source, output and retained files before retrying.',updated_at=unixepoch() WHERE state='running'`)
 	return err
 }
 

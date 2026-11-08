@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,6 +13,52 @@ import (
 )
 
 type fakeProber map[string]AudioTags
+
+type countingProber struct {
+	calls atomic.Int32
+}
+
+func (p *countingProber) ProbeAudio(context.Context, string) (AudioTags, error) {
+	p.calls.Add(1)
+	return AudioTags{Artist: "Artist", Album: "Album", Title: "Song", Track: intPtr(1), Disc: intPtr(1), Format: "flac"}, nil
+}
+
+func TestScanReusesOnlyUnchangedAudioObservations(t *testing.T) {
+	ctx := context.Background()
+	s, _, media := editFixture(t)
+	prober := &countingProber{}
+	s.SetProber(prober)
+	folder := filepath.Join(media, "Music")
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	filename := filepath.Join(folder, "Song.flac")
+	if err := os.WriteFile(filename, []byte("fixture 1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	scan := func() {
+		t.Helper()
+		result, err := s.StartScan(ctx, "Music")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result = waitForScan(t, ctx, s, result.ID); result.State != "review" || result.MatchedCount != 1 {
+			t.Fatal(result)
+		}
+	}
+	scan()
+	scan()
+	if prober.calls.Load() != 1 {
+		t.Fatalf("unchanged audio was probed again: %d calls", prober.calls.Load())
+	}
+	if err := os.WriteFile(filename, []byte("fixture 2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	scan()
+	if prober.calls.Load() != 2 {
+		t.Fatalf("changed audio reused its previous observation: %d calls", prober.calls.Load())
+	}
+}
 
 func (p fakeProber) ProbeAudio(_ context.Context, path string) (AudioTags, error) {
 	tags, ok := p[filepath.Base(path)]

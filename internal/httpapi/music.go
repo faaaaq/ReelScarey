@@ -21,7 +21,7 @@ func (s *Server) musicError(w http.ResponseWriter, err error) {
 			status = http.StatusNotFound
 		case "music_rate_limited":
 			status = http.StatusTooManyRequests
-		case "music_nothing_to_do", "music_destination_exists", "music_backup_exists",
+		case "music_nothing_to_do", "music_destination_exists", "music_backup_exists", "music_rollback_changed", "music_rollback_unverified",
 			"music_replace_in_progress", "music_rollback_state", "music_source_missing":
 			status = http.StatusConflict
 		case "music_no_track", "music_no_tracks", "music_import_source", "music_import_empty",

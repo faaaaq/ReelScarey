@@ -18,8 +18,8 @@ import (
 // completed album folder to the music module. internal/music owns matching,
 // tagging, publication and its own journal; transfer only tracks the download.
 type MusicImporter interface {
-	StartImport(context.Context, int64, string, string) (music.ImportJob, error)
-	StartImportMapped(context.Context, int64, string, string, map[int]int64) (music.ImportJob, error)
+	StartDownloadImport(context.Context, string, int64, string, string, map[int]int64) (music.ImportJob, error)
+	DownloadImport(context.Context, string) (music.ImportJob, error)
 	ListFolder(context.Context, string) ([]music.FolderFile, error)
 	ImportJob(context.Context, int64) (music.ImportJob, error)
 }
@@ -208,6 +208,17 @@ func (s *Service) processMusic(ctx context.Context, j MusicJob) error {
 		}
 		return nil
 	}
+	// An import can survive the transfer worker losing its lease after the
+	// importer committed but before the download recorded the import ID.
+	if importer := s.musicImporter(); importer != nil {
+		job, err := importer.DownloadImport(ctx, j.ID)
+		if err == nil {
+			return s.attachMusicImport(ctx, j, job)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
 	c, e := s.boundMusicClient(ctx, j)
 	if e != nil {
 		return e
@@ -236,7 +247,7 @@ func (s *Service) boundMusicClient(ctx context.Context, j MusicJob) (ClientConfi
 	if e != nil {
 		return c, e
 	}
-	if (j.ClientKind != "" && c.kind != j.ClientKind) || (j.ClientRoot != "" && c.DownloadPath != j.ClientRoot) || c.LocalFolder != j.ClientLocal {
+	if (j.clientURL != "" && c.URL != j.clientURL) || (j.ClientKind != "" && c.kind != j.ClientKind) || (j.ClientRoot != "" && c.DownloadPath != j.ClientRoot) || c.LocalFolder != j.ClientLocal {
 		return c, problem("client_changed", "Restore this music download's original download client before resuming tracking.")
 	}
 	return c, nil
@@ -298,7 +309,7 @@ func (s *Service) processMusicUsenet(ctx context.Context, j MusicJob, c ClientCo
 	if c.kind == "nzbget" {
 		adapter = s.nzbget
 	}
-	remote, e := adapter.Find(ctx, c, "", tag)
+	remote, e := adapter.Find(ctx, c, j.remoteID, tag)
 	if e != nil {
 		return e
 	}
@@ -329,10 +340,14 @@ func (s *Service) startMusicImport(ctx context.Context, j MusicJob, folder strin
 	if importer == nil {
 		return problem("music_importer_unavailable", "Music importing is not available. Enable the music library first.")
 	}
-	job, e := importer.StartImport(ctx, j.AlbumID, folder, j.Root)
+	job, e := importer.StartDownloadImport(ctx, j.ID, j.AlbumID, folder, j.Root, nil)
 	if e != nil {
 		return e
 	}
+	return s.attachMusicImport(ctx, j, job)
+}
+
+func (s *Service) attachMusicImport(ctx context.Context, j MusicJob, job music.ImportJob) error {
 	if job.ID < 1 {
 		return problem("music_import_missing", "The music importer did not create an import job. Nothing was imported.")
 	}

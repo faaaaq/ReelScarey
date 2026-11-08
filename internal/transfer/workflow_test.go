@@ -61,16 +61,25 @@ type fixtureClient struct {
 	peers        []TorrentPeer
 	webseeds     []TorrentWebSeed
 	pieces       []int
+	beforeAdd    func()
 }
 
 func (*fixtureClient) Test(context.Context, ClientConfig) (string, error) { return "2.11.3", nil }
-func (f *fixtureClient) Find(context.Context, ClientConfig, string) (*Torrent, error) {
+func (f *fixtureClient) Find(_ context.Context, _ ClientConfig, hash string) (*Torrent, error) {
 	if f.offline {
 		return nil, unavailable("test client offline")
+	}
+	for _, item := range f.list {
+		if strings.EqualFold(item.Hash, hash) {
+			return &item, nil
+		}
 	}
 	return f.torrent, nil
 }
 func (f *fixtureClient) Add(_ context.Context, _ ClientConfig, tag, save string, p Payload) error {
+	if f.beforeAdd != nil {
+		f.beforeAdd()
+	}
 	f.adds++
 	f.lastTag, f.lastSave, f.lastPayload = tag, save, p
 	f.torrent = &Torrent{Hash: testHash, Tags: tag, SavePath: save, State: "downloading", AmountLeft: 10}

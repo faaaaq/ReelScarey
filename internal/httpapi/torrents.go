@@ -38,7 +38,7 @@ func (s *Server) torrentDetail(w http.ResponseWriter, r *http.Request) {
 	if !s.transferReady(w) {
 		return
 	}
-	out, err := s.transfer.Torrent(r.Context(), r.PathValue("hash"))
+	out, err := s.transfer.TorrentSection(r.Context(), r.PathValue("hash"), r.URL.Query().Get("section"))
 	if err != nil {
 		s.transferError(w, err)
 		return

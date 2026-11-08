@@ -73,13 +73,17 @@ func TestPublicPauseStopsOnlyFinishedPublicSources(t *testing.T) {
 		('privjob',?,'rel-priv','Private Job',?,x'00','http://client.invalid','/downloads','completed',1,1,'IPTorrents','torrent',0)`, f.movie.ID, strings.ToUpper(testHash), f.movie.ID, otherHash); e != nil {
 		t.Fatal(e)
 	}
+	if _, err := f.db.Exec(`UPDATE downloads SET client_key=? WHERE id IN ('pubjob','privjob')`, builtinClientID); err != nil {
+		t.Fatal(err)
+	}
 	f.client.list = []Torrent{
 		{Hash: testHash, Name: "Public.Job", State: "uploading", Progress: 1, AmountLeft: 0, Tags: "reelscarey-pubjob"},
 		{Hash: otherHash, Name: "Private.Job", State: "uploading", Progress: 1, AmountLeft: 0, Tags: "reelscarey-privjob"},
-		{Hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Name: "Manual.Add", State: "stalledUP", Progress: 1, AmountLeft: 0, Tags: "reelscarey-manual"},
+		{Hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Name: "Manual.Add", State: "stalledUP", Progress: 1, AmountLeft: 0, Tags: manualTorrentTag + "," + manualPublicTag},
 		{Hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Name: "External", State: "uploading", Progress: 1, AmountLeft: 0, Tags: "linux"},
 		{Hash: "cccccccccccccccccccccccccccccccccccccccc", Name: "Incomplete", State: "downloading", Progress: 0.5, AmountLeft: 100, Tags: "reelscarey-manual"},
 		{Hash: "dddddddddddddddddddddddddddddddddddddddd", Name: "Already.Paused", State: "stoppedUP", Progress: 1, AmountLeft: 0, Tags: "reelscarey-manual"},
+		{Hash: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", Name: "Unknown manual source", State: "uploading", Progress: 1, AmountLeft: 0, Tags: manualTorrentTag},
 	}
 	paused, err := f.s.RunPublicPause(ctx)
 	if err != nil || paused != 2 {
@@ -108,6 +112,11 @@ func TestPublicPauseStopsOnlyFinishedPublicSources(t *testing.T) {
 	paused, err = f.s.RunPublicPause(ctx)
 	if err != nil || paused != 0 || f.client.action != "" {
 		t.Fatal(paused, err, f.client.action)
+	}
+	f.client.list[0].CompletionOn = 12345
+	paused, err = f.s.RunPublicPause(ctx)
+	if err != nil || paused != 1 || publicPauseEventCount(t, f, testHash) != 2 {
+		t.Fatal("a new completion must rearm auto-pause", paused, err)
 	}
 }
 
@@ -217,5 +226,23 @@ func TestQueueRecordsPublicSource(t *testing.T) {
 	}
 	if e = f.db.QueryRow(`SELECT indexer_public FROM downloads WHERE id=?`, manual.ID).Scan(&public); e != nil || public != 1 {
 		t.Fatal("the manual upload was not recorded as public", public, e)
+	}
+	privateTorrent := []byte(strings.TrimSuffix(string(torrent), "ee") + "7:privatei1eee")
+	info, err := TorrentInfo(privateTorrent)
+	if err != nil || !info.Private {
+		t.Fatal("invalid private metainfo fixture", info, err)
+	}
+	enableFixtureBuiltin(t, f)
+	if err := f.s.AddManualTorrent(ctx, "", privateTorrent); err != nil {
+		t.Fatal(err)
+	}
+	if containsPart(f.client.lastTag, manualPublicTag) {
+		t.Fatal("a private upload was tagged public")
+	}
+	if err := f.s.AddManualTorrent(ctx, "magnet:?xt=urn:btih:"+testHash, nil); err != nil {
+		t.Fatal(err)
+	}
+	if containsPart(f.client.lastTag, manualPublicTag) {
+		t.Fatal("a direct magnet with unverified provenance was tagged public")
 	}
 }

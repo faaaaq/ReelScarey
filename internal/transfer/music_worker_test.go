@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 
@@ -28,12 +29,16 @@ func (f *fakeMusicImporter) StartImport(_ context.Context, albumID int64, folder
 	return music.ImportJob{ID: 1, AlbumID: albumID, Root: root, SourcePath: folder, State: state}, nil
 }
 
-func (f *fakeMusicImporter) StartImportMapped(ctx context.Context, albumID int64, folder, root string, _ map[int]int64) (music.ImportJob, error) {
+func (f *fakeMusicImporter) StartDownloadImport(ctx context.Context, _ string, albumID int64, folder, root string, _ map[int]int64) (music.ImportJob, error) {
 	return f.StartImport(ctx, albumID, folder, root)
 }
 
 func (f *fakeMusicImporter) ListFolder(context.Context, string) ([]music.FolderFile, error) {
 	return []music.FolderFile{}, nil
+}
+
+func (f *fakeMusicImporter) DownloadImport(context.Context, string) (music.ImportJob, error) {
+	return music.ImportJob{}, sql.ErrNoRows
 }
 
 func (f *fakeMusicImporter) ImportJob(_ context.Context, id int64) (music.ImportJob, error) {

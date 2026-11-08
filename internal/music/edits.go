@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/faaaaq/ReelScarey/internal/organization"
 )
 
 var ErrPlanChanged = errors.New("The catalog changed after this review. Preview the files again.")
@@ -289,6 +291,9 @@ func (s *Service) ApplyEdits(ctx context.Context, fileIDs []int64, planHash stri
 }
 
 func (s *Service) runEditJob(ctx context.Context, jobID int64) {
+	defer organization.ReadMedia()()
+	s.fileMu.Lock()
+	defer s.fileMu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	type item struct {
@@ -338,8 +343,18 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 	if !contained(s.mediaDir, source) || !contained(s.mediaDir, dest) {
 		return ErrInvalidInput
 	}
-	if _, err := os.Stat(source); err != nil {
+	media, err := os.OpenRoot(s.mediaDir)
+	if err != nil {
+		return err
+	}
+	defer media.Close()
+	originalSHA, _, err := musicDigest(ctx, media, sourceRel)
+	if err != nil {
 		return &Error{Code: "music_source_missing", Message: "The source file is no longer present. Nothing was changed."}
+	}
+	var originalRoot string
+	if err := s.store.db.QueryRowContext(ctx, `SELECT root FROM music_files WHERE id=? AND relative_path=?`, musicFileID, sourceRel).Scan(&originalRoot); err != nil {
+		return err
 	}
 	if dest != source {
 		if _, err := os.Stat(dest); err == nil {
@@ -351,6 +366,11 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 	}
 	ext := filepath.Ext(source)
 	stage := filepath.Join(filepath.Dir(dest), fmt.Sprintf(".reelscarey-stage-%d-%d%s", jobID, editID, ext))
+	stageRel, err := filepath.Rel(s.mediaDir, stage)
+	if err != nil {
+		return err
+	}
+	stageRel = filepath.ToSlash(stageRel)
 	retag := action == "retag" || action == "move_retag"
 	backup := ""
 	var verified AudioTags
@@ -362,7 +382,15 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		if err := copyFileExclusive(ctx, source, backup); err != nil {
 			return err
 		}
+		stageFile, err := media.OpenFile(stageRel, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err != nil {
+			return err
+		}
+		if err := stageFile.Close(); err != nil {
+			return err
+		}
 		if err := writeTags(ctx, source, stage, tags, ext); err != nil {
+			os.Remove(stage)
 			os.Remove(backup)
 			return err
 		}
@@ -381,25 +409,41 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 	} else if err := linkOrCopy(ctx, source, stage); err != nil {
 		return err
 	}
+	editedSHA, editedSize, err := musicDigest(ctx, media, stageRel)
+	if err != nil {
+		return err
+	}
+	if retag {
+		if err := expectMusicDigest(ctx, media, sourceRel+".reelscarey-backup", originalSHA); err != nil {
+			return err
+		}
+	}
+	if err := expectMusicDigest(ctx, media, sourceRel, originalSHA); err != nil {
+		return err
+	}
+	if _, err := s.store.db.ExecContext(ctx, `UPDATE music_edit_files SET stage_path=?,backup_path=?,original_sha=?,edited_sha=?,original_root=? WHERE id=?`,
+		stage, backup, originalSHA, editedSHA, originalRoot, editID); err != nil {
+		return err
+	}
+	replaced := ""
 	if dest == source {
-		replaced := source + ".reelscarey-replaced"
-		if _, err := os.Stat(replaced); err == nil {
-			os.Remove(stage)
-			os.Remove(backup)
-			return &Error{Code: "music_replace_in_progress", Message: "A previous replacement is still present. Review it before retrying."}
+		replaced = sourceRel + ".reelscarey-replaced"
+		if err := media.Link(sourceRel, replaced); err != nil {
+			return &Error{Code: "music_replace_in_progress", Message: "The original could not be retained without overwriting. Review the retained files before retrying."}
 		}
-		if err := os.Rename(source, replaced); err != nil {
-			os.Remove(stage)
-			os.Remove(backup)
+		if !sameMusicFile(media, sourceRel, replaced) {
+			return ErrPlanChanged
+		}
+		if err := media.Remove(sourceRel); err != nil {
 			return err
 		}
-		if err := os.Rename(stage, dest); err != nil {
-			_ = os.Rename(replaced, source)
-			os.Remove(stage)
-			os.Remove(backup)
+		if err := media.Link(stageRel, destRel); err != nil {
+			// Restore only into a vacant name and keep the retained original
+			// even if another process occupied the path.
+			_ = media.Link(replaced, sourceRel)
 			return err
 		}
-		os.Remove(replaced)
+		os.Remove(stage)
 	} else {
 		if err := os.Link(stage, dest); err != nil {
 			if err := copyFileExclusive(ctx, stage, dest); err != nil {
@@ -425,20 +469,25 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 	}
 	if retag {
 		tagJSON, _ := json.Marshal(verified)
-		sha, _ := hashFile(ctx, dest)
-		if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=?,sha256=?,tag_json=? WHERE id=?`, destRel, root, sha, string(tagJSON), musicFileID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=?,sha256=?,size_bytes=?,tag_json=? WHERE id=?`, destRel, root, editedSHA, editedSize, string(tagJSON), musicFileID); err != nil {
 			return err
 		}
-	} else if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=? WHERE id=?`, destRel, root, musicFileID); err != nil {
+	} else if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=?,sha256=?,size_bytes=? WHERE id=?`, destRel, root, editedSHA, editedSize, musicFileID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE music_edit_files SET stage_path=?,backup_path=? WHERE id=?`, stage, backup, editID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE music_edit_files SET state='completed' WHERE id=?`, editID); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	if replaced != "" && expectMusicDigest(ctx, media, replaced, originalSHA) == nil {
+		_ = media.Remove(replaced)
+	}
 	if dest != source {
+		if err := expectMusicDigest(ctx, media, sourceRel, originalSHA); err != nil {
+			return err
+		}
 		if err := os.Remove(source); err != nil {
 			_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_edit_files SET error=? WHERE id=?`, "The original file could not be removed: "+err.Error(), editID)
 		}
@@ -592,79 +641,4 @@ func (s *Service) ListEditJobs(ctx context.Context, page int) (EditJobList, erro
 		out.Items = append(out.Items, job)
 	}
 	return out, rows.Err()
-}
-
-func (s *Service) RollbackEdits(ctx context.Context, jobID int64, reviewed bool) (EditJob, error) {
-	if !reviewed {
-		return EditJob{}, ErrInvalidInput
-	}
-	job, err := s.EditJob(ctx, jobID)
-	if err != nil {
-		return EditJob{}, err
-	}
-	if job.State != "completed" && job.State != "failed" {
-		return EditJob{}, &Error{Code: "music_rollback_state", Message: "Only a completed or failed edit can be rolled back."}
-	}
-	type item struct {
-		id, musicFileID int64
-		source, dest    string
-		backup, tags    string
-	}
-	items := []item{}
-	rows, err := s.store.db.QueryContext(ctx, `SELECT id,music_file_id,source_path,destination_path,backup_path,previous_tag_json FROM music_edit_files WHERE job_id=? AND state='completed' ORDER BY id DESC`, jobID)
-	if err != nil {
-		return EditJob{}, err
-	}
-	for rows.Next() {
-		var it item
-		if rows.Scan(&it.id, &it.musicFileID, &it.source, &it.dest, &it.backup, &it.tags) == nil {
-			items = append(items, it)
-		}
-	}
-	rows.Close()
-	for _, it := range items {
-		source := filepath.Join(s.mediaDir, filepath.FromSlash(it.source))
-		dest := filepath.Join(s.mediaDir, filepath.FromSlash(it.dest))
-		backup := it.backup
-		if backup != "" && !filepath.IsAbs(backup) {
-			backup = filepath.Join(s.mediaDir, filepath.FromSlash(backup))
-		}
-		if backup != "" {
-			if _, err := os.Stat(backup); err == nil {
-				if dest != source {
-					os.Remove(dest)
-				}
-				os.Remove(source)
-				if err := os.Rename(backup, source); err != nil {
-					return EditJob{}, err
-				}
-			}
-		} else if dest != source {
-			if _, err := os.Stat(source); err != nil {
-				if err := linkOrCopy(ctx, dest, source); err != nil {
-					return EditJob{}, err
-				}
-				os.Remove(dest)
-			} else {
-				os.Remove(dest)
-			}
-		}
-		tx, err := s.store.db.BeginTx(ctx, nil)
-		if err != nil {
-			return EditJob{}, err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,sha256='',tag_json=? WHERE id=?`, it.source, it.tags, it.musicFileID); err != nil {
-			tx.Rollback()
-			return EditJob{}, err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE music_edit_files SET state='rolled_back',updated_at=unixepoch() WHERE id=?`, it.id); err != nil {
-			tx.Rollback()
-			return EditJob{}, err
-		}
-		if err := tx.Commit(); err != nil {
-			return EditJob{}, err
-		}
-	}
-	s.finishEditJob(ctx, jobID, "rolled_back", "")
-	return s.EditJob(ctx, jobID)
 }
