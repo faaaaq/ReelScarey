@@ -49,12 +49,13 @@ calendar limit is 5 MiB. Review is bounded to 10,000 titles/events and an apply
 request to 5,000 titles. The temporary file is deleted after the preview; the
 backup is not stored.
 
-## Why future movies now appear
+## Future movies and automatic search
 
-A Radarr movie with a future release date is saved with that date. ReelScarey
-keeps it unsearched until the release date arrives, then the normal calendar and
-automatic search rules apply. Adding the title does not create a download,
-change monitoring for other titles or alter an existing file.
+A Radarr movie with a future release date is saved with that date, but it is
+immediately eligible for the normal automatic search and release feed, so a
+release that lands before its scheduled date is still found. Adding the title
+does not create a download, change monitoring for other titles or alter an
+existing file.
 
 A calendar export only contains events in its date range; it cannot include a
 movie with no date at all. Use the Radarr backup ZIP when the complete saved

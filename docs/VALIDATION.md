@@ -2457,3 +2457,21 @@ Run locally on Windows (development tools only; Docker remains the target):
   exclusion and library state. The full Go suite, vet and build passed.
 - Frontend format:check, check, the full suite (51 files, 275 tests) and the
   build passed, including the cast modal quick-add flow.
+
+## Version 0.44.1 movies searched before their saved release date
+
+- Scheduled, manual, bulk and feed matching share the same eligible-target query.
+  Movies no longer require a valid saved date on or before today: every monitored
+  missing movie with no active job is searched, so a release that lands earlier
+  than its scheduled date is still found. TV episodes still require a valid aired
+  date on or before today.
+- The SQL argument lists were updated with the removed movie date predicate across
+  scheduled search, focused search, pack searches, Anime mapped searches and the
+  release feed. Invalid episode dates still authorize no provider work.
+- Go tests cover invalid episode dates remaining blocked, monitored missing movies
+  with empty, invalid, undated or future saved dates still being searched, and
+  cursor rotation including a future-dated movie. The full Go suite, vet and build
+  passed.
+- Frontend format:check, check, the full suite (51 files, 275 tests) and the build
+  passed. The Automation copy now states that movies do not wait for their saved
+  release date.

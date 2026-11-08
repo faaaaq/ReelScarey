@@ -672,7 +672,7 @@ func (s *Service) rssGuard(c rssClaim, t searchTarget, p quality.Profile) transf
 			return ErrLease
 		}
 		date := s.now().UTC().Format("2006-01-02")
-		current, e := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, date, 1, t.Key))
+		current, e := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, 1, t.Key))
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrLease
 		}

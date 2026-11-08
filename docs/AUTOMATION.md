@@ -22,12 +22,14 @@ exposed. Item assignments choose a profile or follow the schedule default.
 Assignment and Wanted/Calendar alphabetical ordering ignore a leading
 case-insensitive `The ` while displaying the saved title unchanged.
 
-Searches only include effectively monitored targets with known calendar release/
-air dates on or before today's UTC date. TV shows, seasons and episodes must all
-be monitored; load season metadata explicitly in the TV library first. Pausing a
-parent retains child selections. Movie monitoring can be changed alongside its
-automation profile. Future and unknown dates wait for metadata. The scheduler
-does not refresh TMDb, discover unloaded episodes or scan existing media folders.
+Searches include every effectively monitored target with no registered file and
+no active job. A movie is searched whatever its saved release date, so a release
+that lands earlier than its scheduled date is not missed. TV episodes still need
+a known air date on or before today's UTC date, and the show, season and episode
+must all be monitored; load season metadata explicitly in the TV library first.
+Pausing a parent retains child selections. Movie monitoring can be changed
+alongside its automation profile. The scheduler does not refresh TMDb, discover
+unloaded episodes or scan existing media folders.
 
 The show-level **Monitor all future episodes** action (`monitor-all`) applies a
 different, explicit owner rule: it turns the show on, monitors only regular
@@ -105,8 +107,8 @@ schedule above still starts paused and search-only.
 Every cycle asks each enabled source for its newest releases without a title
 query: `t=search` with no `q` for Torznab and Newznab, and the provider's RSS
 endpoint or first listing page for the direct RSS, NYAA, IPTorrents and XSpeeds
-adapters. Each unseen feed entry is matched against monitored, released, missing
-movies and loaded episodes using the same exact title/year, single `SxxEyy`,
+adapters. Each unseen feed entry is matched against monitored, missing movies and
+loaded episodes using the same exact title/year, single `SxxEyy`,
 quality, language, size and seed rules as automatic searches. A matching entry
 is grabbed immediately through the normal encrypted selection, reservation,
 client submission and journaled import path. It is grabbed even while the

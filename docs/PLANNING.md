@@ -32,13 +32,16 @@ Completed/cancelled jobs do not keep a target in progress. Stopped tracking with
 no file registration makes the target missing/upcoming/undated again. Available
 episode associations count once per episode even when a video covers several.
 Availability is a catalog fact, not a fresh filesystem-health check. Missing is
-not a promise that a release exists or satisfies an automation profile.
+not a promise that a release exists or satisfies an automation profile. Status
+labels are informational: automatic movie searches include every monitored
+missing movie, including one still labeled Upcoming.
 
 Find releases opens the existing movie or individual-episode search for explicit
 review. View activity opens the actual tracked job. View movie/show opens saved
 details. These links do not automatically search providers or submit downloads.
-Manual release searches can be used for paused/undated/upcoming targets; automatic
-searches still require valid dates, monitoring, policies and a connected source.
+Manual release searches can be used for paused/undated/upcoming targets;
+automatic searches still require monitoring, policies and a connected source,
+and TV episodes still need a valid aired date.
 
 ## Calendar
 

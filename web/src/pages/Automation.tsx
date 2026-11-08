@@ -324,9 +324,10 @@ function ScheduleForm({
             </label>
           </div>
           <p className="rs-form-help">
-            Only monitored, released movies and loaded episodes are searched.
-            Anime requires per-show consent. Saved provider mappings can include
-            approved specials and range packs.
+            Every monitored, missing movie and loaded episode is searched.
+            Movies do not wait for their saved release date, so an early release
+            is still found. Anime requires per-show consent. Saved provider
+            mappings can include approved specials and range packs.
           </p>
           {form.mode === "download" && (
             <p className="automation-notice">

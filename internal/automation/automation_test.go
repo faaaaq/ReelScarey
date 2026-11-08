@@ -289,12 +289,14 @@ func TestSearchOnlyThenAutomaticQueuePersistsAndDeduplicates(t *testing.T) {
 	}
 }
 
-func TestInvalidSavedDatesDoNotAuthorizeScheduledSearches(t *testing.T) {
+func TestInvalidEpisodeDatesDoNotAuthorizeScheduledSearches(t *testing.T) {
 	for _, date := range []string{"", "2026-02-30", "2025-02-29", "0000-01-01", "2020-01-01T00:00:00Z", "unknown"} {
 		t.Run(date, func(t *testing.T) {
 			f := setup(t)
 			ctx := context.Background()
-			if _, e := f.db.Exec(`UPDATE media_items SET release_date=? WHERE id=1`, date); e != nil {
+			// Movies no longer depend on the saved date, so pause the fixture
+			// movie and prove the invalid episode date alone blocks the pass.
+			if _, e := f.db.Exec(`UPDATE media_items SET monitored=0 WHERE id=1`); e != nil {
 				t.Fatal(e)
 			}
 			if _, e := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,monitored) VALUES(2,'series',2,'Saved Show',1);INSERT INTO series_details(media_id) VALUES(2);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,2,3,1,'First','','',1,1,'loaded');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,4,1,'Episode','','',1)`); e != nil {
@@ -311,7 +313,29 @@ func TestInvalidSavedDatesDoNotAuthorizeScheduledSearches(t *testing.T) {
 				t.Fatal(e)
 			}
 			if f.i.calls != 0 {
-				t.Fatal("invalid catalog date triggered provider work", date)
+				t.Fatal("invalid episode date triggered provider work", date)
+			}
+		})
+	}
+}
+
+func TestMonitoredMissingMovieIsSearchedRegardlessOfReleaseDate(t *testing.T) {
+	for _, date := range []string{"", "2099-12-31", "2026-02-30", "unknown"} {
+		t.Run(date, func(t *testing.T) {
+			f := setup(t)
+			ctx := context.Background()
+			if _, e := f.db.Exec(`UPDATE media_items SET release_date=? WHERE id=1`, date); e != nil {
+				t.Fatal(e)
+			}
+			configure(t, f.s, false, "search", 10)
+			if e := f.s.Request(ctx); e != nil {
+				t.Fatal(e)
+			}
+			if _, e := f.s.ProcessNext(ctx); e != nil {
+				t.Fatal(e)
+			}
+			if f.i.calls != 1 {
+				t.Fatalf("monitored missing movie was not searched for saved date %q: %d calls", date, f.i.calls)
 			}
 		})
 	}
@@ -462,31 +486,33 @@ func TestProfileAndMonitoringChangesFenceAutomaticQueue(t *testing.T) {
 		})
 	}
 }
-func TestBoundedCursorMonitoringDatesAndTVSelections(t *testing.T) {
+func TestBoundedCursorSearchesMissingMoviesAndReleasedTVEpisodes(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
 	_, e := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,monitored,release_date) VALUES(2,'movie',2,'Future',2099,1,'2099-01-01'),(3,'movie',3,'Paused',2020,0,'2020-01-01'),(4,'movie',4,'Second',2020,1,'2020-01-01'),(5,'series',5,'Show',2020,1,'2020-01-01');INSERT INTO series_details(media_id) VALUES(5);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,5,10,1,'Season','','2020-01-01',4,1,'2020-01-01');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,monitored,air_date) VALUES(1,1,11,1,'One','',1,'2020-01-01'),(2,1,12,2,'Paused','',0,'2020-01-01'),(3,1,13,3,'Future','',1,'2099-01-01'),(4,1,14,4,'Unknown','',1,'')`)
 	if e != nil {
 		t.Fatal(e)
 	}
+	// Every monitored missing movie is eligible, including one whose saved
+	// release date is in the future; unreleased or undated episodes are not.
 	targets, e := f.s.targets(ctx, "", 25, "", "", "")
-	if e != nil || len(targets) != 3 || targets[0].EpisodeID == nil {
+	if e != nil || len(targets) != 4 || targets[0].EpisodeID == nil {
 		t.Fatal(targets, e)
 	}
 	cursor := targets[0].Key
 	rotated, e := f.s.targets(ctx, cursor, 2, "", "", "")
-	if e != nil || len(rotated) != 2 || rotated[0].MediaID != 1 || rotated[1].MediaID != 4 {
+	if e != nil || len(rotated) != 2 || rotated[0].MediaID != 1 || rotated[1].MediaID != 2 {
 		t.Fatal(rotated, e)
 	}
 	wrapped, e := f.s.targets(ctx, rotated[1].Key, 2, "", "", "")
-	if e != nil || len(wrapped) != 2 || wrapped[0].EpisodeID == nil || wrapped[1].MediaID != 1 {
+	if e != nil || len(wrapped) != 2 || wrapped[0].MediaID != 4 || wrapped[1].EpisodeID == nil {
 		t.Fatal(wrapped, e)
 	}
 	if _, e = f.db.Exec(`UPDATE seasons SET monitored=0 WHERE id=1`); e != nil {
 		t.Fatal(e)
 	}
 	targets, e = f.s.targets(ctx, "", 25, "", "", "")
-	if e != nil || len(targets) != 2 {
+	if e != nil || len(targets) != 3 {
 		t.Fatal(targets, e)
 	}
 }

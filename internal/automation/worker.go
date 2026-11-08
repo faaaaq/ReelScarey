@@ -31,7 +31,9 @@ type searchTarget struct {
 	NumberingRevision  int64
 }
 
-// Only released, effectively monitored items with no active reservation qualify.
+// Monitored titles with no active reservation qualify. Movies are searched
+// regardless of their saved release date so a release that lands earlier than
+// scheduled is not skipped; TV episodes still require a valid aired date.
 // TV metadata is loaded explicitly by the owner; the scheduler does not invent it.
 const targetSQL = `SELECT key,media_id,episode_id,title,year,season,episode,probe,profile_id,assignment_revision,category,anime_mode,alternate_titles,absolute_number,anime_revision,anime_search_title,category_revision,numbering_revision,rule_codec,rule_group,rule_revision,movie_version,version_revision FROM (
  SELECT printf('m:%020d',m.id)||CASE WHEN mv.version='' THEN '' ELSE ':'||mv.version END AS key,m.id AS media_id,NULL AS episode_id,m.title,m.year,0 AS season,0 AS episode,COALESCE(f.probe_json,'') AS probe,
@@ -41,7 +43,7 @@ const targetSQL = `SELECT key,media_id,episode_id,title,year,season,episode,prob
  LEFT JOIN movie_version_settings vs ON vs.media_id=m.id LEFT JOIN item_automation a ON a.media_id=m.id
  LEFT JOIN media_files f ON f.id=(SELECT vf.id FROM media_files vf WHERE vf.movie_id=m.id AND (mv.version='' OR vf.video_resolution=0 OR (mv.version='hd' AND vf.video_resolution BETWEEN 1 AND 1080) OR (mv.version='uhd' AND vf.video_resolution=2160)) ORDER BY vf.video_resolution DESC,vf.id LIMIT 1)
  WHERE m.kind='movie' AND ((COALESCE(vs.enabled,0)=0 AND mv.version='') OR (vs.enabled=1 AND mv.version<>''))
- AND m.monitored=1 AND length(m.release_date)=10 AND substr(m.release_date,1,4) BETWEEN '0001' AND '9999' AND date(m.release_date,'+0 days')=m.release_date AND m.release_date<=?
+ AND m.monitored=1
  AND NOT EXISTS(SELECT 1 FROM downloads d WHERE d.movie_id=m.id AND d.kind='movie' AND d.state NOT IN ('completed','cancelled') AND (mv.version='' OR d.movie_version IN ('','additional','replacement',mv.version)))
  UNION ALL
  SELECT printf('e:%020d',e.id),m.id,e.id,m.title,m.year,s.number,e.number,COALESCE(f.probe_json,''),COALESCE(a.profile_id,ss.default_profile_id),COALESCE(a.revision,0),m.category,COALESCE(ans.mode,'disabled'),COALESCE(ans.alternate_titles,'[]'),an.absolute_number,COALESCE(ans.revision,0),COALESCE(ans.search_title,''),m.category_revision,d.revision,COALESCE(rr.codec,''),COALESCE(rr.release_group,''),COALESCE(rr.revision,0),'',0
@@ -102,14 +104,14 @@ func (s *Service) targets(ctx context.Context, cursor string, limit int, focusMe
 	focused := focusMedia != "" || focusEpisode != "" || focusKind != ""
 	for pass := 0; pass < 2 && len(out) < limit; pass++ {
 		suffix := ` WHERE key>?` + filter + ` ORDER BY key LIMIT ?`
-		args2 := append([]any{date, date, boolInt(focused), cursor}, args...)
+		args2 := append([]any{date, boolInt(focused), cursor}, args...)
 		args2 = append(args2, limit-len(out))
 		if pass == 1 {
 			if cursor == "" || focused {
 				break
 			}
 			suffix = ` WHERE key<=?` + filter + ` ORDER BY key LIMIT ?`
-			args2 = append([]any{date, date, boolInt(focused), cursor}, args...)
+			args2 = append([]any{date, boolInt(focused), cursor}, args...)
 			args2 = append(args2, limit-len(out))
 		}
 		rows, e := s.db.QueryContext(ctx, targetSQL+suffix, args2...)
@@ -142,7 +144,7 @@ func (s *Service) focusRemaining(ctx context.Context, cursor, focusMedia, focusE
 	}
 	date := s.now().UTC().Format("2006-01-02")
 	filter := ` AND key>?`
-	args := []any{date, date, 1, cursor}
+	args := []any{date, 1, cursor}
 	if focusMedia != "" {
 		media, e := strconv.ParseInt(focusMedia, 10, 64)
 		if e != nil {
@@ -231,7 +233,7 @@ func (s *Service) guard(c claim, t searchTarget, p quality.Profile) transfer.Que
 			return ErrLease
 		}
 		date := s.now().UTC().Format("2006-01-02")
-		current, e := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, date, 1, t.Key))
+		current, e := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, 1, t.Key))
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrLease
 		}
@@ -598,7 +600,7 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 // back to individual episodes.
 func (s *Service) packSeasons(ctx context.Context, mediaID int64) ([]int, error) {
 	date := s.now().UTC().Format("2006-01-02")
-	rows, e := s.db.QueryContext(ctx, `SELECT season FROM (`+targetSQL+`) WHERE media_id=? AND category='standard' AND season>0 AND episode_id IS NOT NULL GROUP BY season HAVING COUNT(*)>1 ORDER BY season`, date, date, 1, mediaID)
+	rows, e := s.db.QueryContext(ctx, `SELECT season FROM (`+targetSQL+`) WHERE media_id=? AND category='standard' AND season>0 AND episode_id IS NOT NULL GROUP BY season HAVING COUNT(*)>1 ORDER BY season`, date, 1, mediaID)
 	if e != nil {
 		return nil, e
 	}
@@ -616,7 +618,7 @@ func (s *Service) packSeasons(ctx context.Context, mediaID int64) ([]int, error)
 
 func (s *Service) seasonTargets(ctx context.Context, mediaID int64, season int) ([]searchTarget, error) {
 	date := s.now().UTC().Format("2006-01-02")
-	rows, e := s.db.QueryContext(ctx, `SELECT * FROM (`+targetSQL+`) WHERE media_id=? AND season=? AND category='standard' AND episode_id IS NOT NULL ORDER BY episode`, date, date, 1, mediaID, season)
+	rows, e := s.db.QueryContext(ctx, `SELECT * FROM (`+targetSQL+`) WHERE media_id=? AND season=? AND category='standard' AND episode_id IS NOT NULL ORDER BY episode`, date, 1, mediaID, season)
 	if e != nil {
 		return nil, e
 	}
@@ -769,7 +771,7 @@ func (s *Service) guardPack(c claim, group []searchTarget, p quality.Profile) tr
 		date := s.now().UTC().Format("2006-01-02")
 		for _, vt := range v.Targets {
 			key := fmt.Sprintf("e:%020d", vt.EpisodeID)
-			current, e := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, date, 1, key))
+			current, e := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, 1, key))
 			if errors.Is(e, sql.ErrNoRows) {
 				return ErrLease
 			}
