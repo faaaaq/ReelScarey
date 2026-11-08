@@ -2,7 +2,6 @@ package transfer
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"log/slog"
 	"strings"
@@ -13,7 +12,7 @@ import (
 // client, like the seeding limit. When enabled, a torrent that finished
 // downloading and came from a public source is paused shortly after completion
 // instead of seeding indefinitely. Public sources are the public Nyaa indexer
-// and manually uploaded torrents; private tracker and indexer downloads keep
+// and verified non-private uploads; private tracker and indexer downloads keep
 // seeding, and torrents added to the client outside ReelScarey are left alone.
 const publicPauseEventState = "public source finished: paused"
 
@@ -47,6 +46,8 @@ func (s *Service) PublicPause(ctx context.Context) (PublicPause, error) {
 
 // SavePublicPause replaces the single saved option under a revision check.
 func (s *Service) SavePublicPause(ctx context.Context, in PublicPauseUpdate) (PublicPause, error) {
+	s.shareMu.Lock()
+	defer s.shareMu.Unlock()
 	if in.Revision < 1 {
 		return PublicPause{}, problem("revision_conflict", "Reload the auto-pause option before saving.")
 	}
@@ -64,26 +65,30 @@ func (s *Service) SavePublicPause(ctx context.Context, in PublicPauseUpdate) (Pu
 // publicJobSource reports whether a finished torrent bound to a ReelScarey job
 // came from a public source. The queue recorded the classification when the
 // job was created; a hash without such a record is never auto-paused.
-func (s *Service) publicJobSource(ctx context.Context, hash string) (bool, error) {
-	var public int
-	err := s.db.QueryRowContext(ctx, `SELECT indexer_public FROM downloads WHERE lower(info_hash)=?`, hash).Scan(&public)
-	if err == nil {
-		return public == 1, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return false, err
-	}
-	err = s.db.QueryRowContext(ctx, `SELECT indexer_public FROM music_downloads WHERE lower(info_hash)=?`, hash).Scan(&public)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	return public == 1, err
+func (s *Service) publicJobSource(ctx context.Context, jobID, hash string) (bool, error) {
+	var public bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM downloads WHERE id=? AND info_hash=? COLLATE NOCASE AND client_key=? AND protocol='torrent' AND indexer_public=1
+		UNION ALL SELECT 1 FROM music_downloads WHERE id=? AND info_hash=? COLLATE NOCASE AND client_key=? AND protocol='torrent' AND indexer_public=1
+	)`, jobID, hash, builtinClientID, jobID, hash, builtinClientID).Scan(&public)
+	return public, err
 }
 
-func (s *Service) recordPublicPauseEvent(ctx context.Context, hash, title string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'download',?,?,?)`,
-		hash, cleanClientText(title, shareEventTitleMax), publicPauseEventState)
-	return err
+func (s *Service) recordPublicPauseEvent(ctx context.Context, item Torrent, hash string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO torrent_public_pause_completion(hash,added_at,completed_at) VALUES(?,?,?)
+		ON CONFLICT(hash) DO UPDATE SET added_at=excluded.added_at,completed_at=excluded.completed_at`, hash, item.AddedOn, item.CompletionOn); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'download',?,?,?)`,
+		hash, cleanClientText(item.Name, shareEventTitleMax), publicPauseEventState); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // RunPublicPause evaluates the saved option once and pauses every finished
@@ -110,13 +115,8 @@ func (s *Service) tickPublicPause(ctx context.Context, logger *slog.Logger) {
 }
 
 func (s *Service) evaluatePublicPause(ctx context.Context, logger *slog.Logger) (int, error) {
-	// shareMu serializes the seeding-limit and public-pause passes so their
-	// dedupe cache stays consistent.
 	s.shareMu.Lock()
 	defer s.shareMu.Unlock()
-	if s.shareHandledSet == nil {
-		s.shareHandledSet = map[string]bool{}
-	}
 	policy, err := s.PublicPause(ctx)
 	if err != nil || !policy.Enabled {
 		return 0, err
@@ -141,14 +141,19 @@ func (s *Service) evaluatePublicPause(ctx context.Context, logger *slog.Logger) 
 	paused := 0
 	var failures error
 	for _, item := range items {
-		if item.Progress < 1 || item.AmountLeft != 0 {
-			continue
-		}
-		classifyTorrent(&item)
 		hash := strings.ToLower(item.Hash)
 		if !shareHashOK(hash) {
 			continue
 		}
+		if item.Progress < 1 || item.AmountLeft != 0 {
+			// Some clients retain their old completion timestamp after a
+			// recheck. Observing an incomplete state arms the next completion.
+			if _, err := s.db.ExecContext(ctx, `DELETE FROM torrent_public_pause_completion WHERE hash=?`, hash); err != nil {
+				failures = errors.Join(failures, err)
+			}
+			continue
+		}
+		classifyTorrent(&item)
 		// qBittorrent names the finished-paused state pausedUP or stoppedUP
 		// depending on the version. Either way the torrent is already stopped.
 		if strings.HasPrefix(item.State, "paused") || strings.HasPrefix(item.State, "stopped") {
@@ -157,9 +162,9 @@ func (s *Service) evaluatePublicPause(ctx context.Context, logger *slog.Logger) 
 		public := false
 		switch item.Origin {
 		case torrentOriginOwner:
-			public = true
+			public = containsPart(item.Tags, manualPublicTag)
 		case torrentOriginJob:
-			public, err = s.publicJobSource(ctx, hash)
+			public, err = s.publicJobSource(ctx, item.JobID, hash)
 			if err != nil {
 				failures = errors.Join(failures, err)
 				continue
@@ -172,9 +177,9 @@ func (s *Service) evaluatePublicPause(ctx context.Context, logger *slog.Logger) 
 		if !public {
 			continue
 		}
-		// A torrent the owner resumed and that finished again produces a new
-		// event; an already-handled hash is never paused twice in one pass.
-		handled, err := s.shareHandled(ctx, hash, publicPauseEventState)
+		var handled bool
+		err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM torrent_public_pause_completion WHERE hash=? AND added_at=? AND completed_at=?)`,
+			hash, item.AddedOn, item.CompletionOn).Scan(&handled)
 		if err != nil {
 			failures = errors.Join(failures, err)
 			continue
@@ -187,16 +192,11 @@ func (s *Service) evaluatePublicPause(ctx context.Context, logger *slog.Logger) 
 			continue
 		}
 		paused++
-		if err = s.recordPublicPauseEvent(ctx, hash, item.Name); err != nil {
+		if err = s.recordPublicPauseEvent(ctx, item, hash); err != nil {
 			failures = errors.Join(failures, err)
 			continue
 		}
-		if len(s.shareHandledSet) >= shareHandledLimit {
-			// The durable activity row remains the source of truth; the cache
-			// only avoids repeated reads during one process lifetime.
-			s.shareHandledSet = map[string]bool{}
-		}
-		s.shareHandledSet[hash+"|"+publicPauseEventState] = true
+
 	}
 	return paused, failures
 }

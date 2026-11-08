@@ -69,11 +69,7 @@ func (s *Service) automaticTitle(ctx context.Context, scan LibraryScan, owner st
 }
 func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, owner string, h automaticHint) (automaticTitle, error) {
 	out := automaticTitle{}
-	year := h.Year
-	if h.ProviderID > 0 {
-		year = 0
-	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id,tmdb_id,title,year FROM media_items WHERE kind=? AND (?=0 OR tmdb_id=?) AND (?=0 OR year=?)`, scan.Kind, h.ProviderID, h.ProviderID, year, h.Year)
+	rows, err := s.savedAutomaticTitles(ctx, scan.Kind, h)
 	if err != nil {
 		return out, err
 	}
@@ -488,4 +484,64 @@ func (s *Service) resolveAutomaticNext(ctx context.Context, scanID, owner string
 		}
 	}
 	return err
+}
+
+// The provider ID uses the existing unique (kind, tmdb_id) index. The
+// name path maintains a normalized key lazily so upgrades don't do a full
+// library rewrite at startup. A title edit invalidates only its own key.
+func (s *Service) savedAutomaticTitles(ctx context.Context, kind string, h automaticHint) (*sql.Rows, error) {
+	const fields = `SELECT id,tmdb_id,title,year FROM media_items WHERE kind=?`
+	if h.ProviderID > 0 {
+		return s.db.QueryContext(ctx, fields+` AND tmdb_id=?`, kind, h.ProviderID)
+	}
+	for {
+		n, err := s.indexAutomaticTitles(ctx, kind)
+		if err != nil {
+			return nil, err
+		}
+		if n < 256 {
+			break
+		}
+	}
+	title := quality.Normalize(h.Title)
+	if h.Year != 0 {
+		return s.db.QueryContext(ctx, fields+` AND match_title=? AND year=? LIMIT 2`, kind, title, h.Year)
+	}
+	return s.db.QueryContext(ctx, fields+` AND match_title=? LIMIT 2`, kind, title)
+}
+
+func (s *Service) indexAutomaticTitles(ctx context.Context, kind string) (int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id,title FROM media_items WHERE kind=? AND match_title IS NULL ORDER BY id LIMIT 256`, kind)
+	if err != nil {
+		return 0, err
+	}
+	type titleRow struct {
+		id    int64
+		title string
+	}
+	var batch []titleRow
+	for rows.Next() {
+		var row titleRow
+		if err := rows.Scan(&row.id, &row.title); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		batch = append(batch, row)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil || len(batch) == 0 {
+		return 0, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	for _, row := range batch {
+		if _, err := tx.ExecContext(ctx, `UPDATE media_items SET match_title=? WHERE id=? AND title=? AND match_title IS NULL`,
+			quality.Normalize(row.title), row.id, row.title); err != nil {
+			return 0, err
+		}
+	}
+	return len(batch), tx.Commit()
 }

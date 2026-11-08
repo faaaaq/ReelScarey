@@ -1,5 +1,27 @@
 # Music catalog, import and organization
 
+
+## Recovery and scan performance
+
+Music submissions reserve a job before calling the download client. If a
+response is lost or ReelScarey restarts, Retry tracks the same torrent hash
+and job tag or the saved Usenet identity. Stop tracking releases the
+reservation without changing the client's queue.
+
+Imports save the staged file checksum before publishing, then commit each
+registration with its import progress. On restart the worker can finish
+registering its own staged output. A path conflict keeps the downloaded source
+and staged copy intact for review.
+
+Rollback verifies the edited file, the retained original and the catalog
+entry. It refuses an occupied original path and can continue an interrupted
+rollback from its saved phase. Edits created before 0.39.9 do not have the
+required checksums and must be restored manually from verified originals.
+
+The music schedule skips albums with unresolved download jobs, rotates its
+batch through the wanted catalog, and rechecks the schedule, monitoring and
+quality preferences when reserving each download. A rescan reuses tags and
+hashes only when the saved file observation still matches.
 Status: **implemented end to end.** The Music tab catalogs MusicBrainz artists,
 albums and tracks, scans and registers existing files, applies reviewed
 organization and tag rewrites with rollback, searches audio releases, queues

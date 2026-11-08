@@ -47,8 +47,10 @@ type MusicJob struct {
 	CreatedAt       int64   `json:"created_at"`
 	UpdatedAt       int64   `json:"updated_at"`
 
-	nextRun int64
-	owner   string
+	nextRun   int64
+	owner     string
+	remoteID  string
+	clientURL string
 }
 
 type MusicJobPage struct {
@@ -58,7 +60,7 @@ type MusicJobPage struct {
 	Limit int        `json:"limit"`
 }
 
-const musicJobColumns = `id,album_id,release_id,title,info_hash,protocol,client_key,client_kind,client_label,client_download_root,client_local_folder,save_path,root,indexer_name,state,progress,total_bytes,downloaded_bytes,error,import_job_id,attempts,next_run,created_at,updated_at`
+const musicJobColumns = `id,album_id,release_id,title,info_hash,protocol,client_key,client_kind,client_label,client_download_root,client_local_folder,save_path,root,indexer_name,state,progress,total_bytes,downloaded_bytes,error,import_job_id,attempts,next_run,created_at,updated_at,remote_id,client_url`
 
 func scanMusicJob(row scanner) (MusicJob, error) {
 	var j MusicJob
@@ -66,7 +68,7 @@ func scanMusicJob(row scanner) (MusicJob, error) {
 	e := row.Scan(&j.ID, &j.AlbumID, &j.ReleaseID, &j.Title, &j.InfoHash, &j.Protocol,
 		&j.ClientKey, &j.ClientKind, &j.ClientLabel, &j.ClientRoot, &j.ClientLocal,
 		&j.SavePath, &j.Root, &j.IndexerName, &j.State, &j.Progress, &j.TotalBytes,
-		&j.DownloadedBytes, &j.Error, &importID, &j.Attempts, &j.nextRun, &j.CreatedAt, &j.UpdatedAt)
+		&j.DownloadedBytes, &j.Error, &importID, &j.Attempts, &j.nextRun, &j.CreatedAt, &j.UpdatedAt, &j.remoteID, &j.clientURL)
 	if importID.Valid {
 		id := importID.Int64
 		j.ImportJobID = &id
@@ -113,13 +115,12 @@ func (s *Service) MusicJobs(ctx context.Context, page int) (MusicJobPage, error)
 	return out, rows.Err()
 }
 
-// QueueMusic resolves a sealed music release candidate, submits its payload
-// through the same download client selection as movie/TV jobs and records the
-// tracked download. The payload is submitted here, not by the worker, because
-// music_downloads deliberately stores no payload or client job identity: an
-// uncertain submission is recorded as blocked for review and is never
-// resubmitted automatically.
+// QueueMusic persists a submission reservation before contacting the client.
 func (s *Service) QueueMusic(ctx context.Context, albumID int64, releaseID, root string) (MusicJob, error) {
+	return s.QueueMusicGuarded(ctx, albumID, releaseID, root, nil)
+}
+
+func (s *Service) QueueMusicGuarded(ctx context.Context, albumID int64, releaseID, root string, guard func(context.Context, *sql.Tx) error) (MusicJob, error) {
 	if albumID < 1 {
 		return MusicJob{}, problem("invalid_music_album", "Choose a valid album.")
 	}
@@ -208,6 +209,43 @@ func (s *Service) QueueMusic(ctx context.Context, albumID int64, releaseID, root
 	id := ID()
 	save := path.Join(client.DownloadPath, "ReelScarey", id)
 	tag := "reelscarey-" + id
+	now := time.Now().Unix()
+	indexerPublic := indexer.Kind == "nyaa"
+	if len(payload.Torrent) != 0 {
+		info, err := TorrentInfo(payload.Torrent)
+		indexerPublic = indexerPublic && err == nil && !info.Private
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return MusicJob{}, e
+	}
+	defer tx.Rollback()
+	if guard != nil {
+		if e = guard(ctx, tx); e != nil {
+			return MusicJob{}, e
+		}
+	}
+	var occupied bool
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM music_downloads
+		WHERE state NOT IN ('completed','cancelled') AND (album_id=? OR (info_hash=? COLLATE NOCASE AND protocol=? AND client_key=?)))`,
+		albumID, hash, protocol, client.profileKey).Scan(&occupied); e != nil {
+		return MusicJob{}, e
+	}
+	if occupied {
+		return MusicJob{}, problem("duplicate_music_download", "A music download already tracks this album or release. Resolve or stop tracking it before submitting again.")
+	}
+	if _, e = tx.ExecContext(ctx, `INSERT INTO music_downloads(id,album_id,release_id,title,info_hash,protocol,client_key,client_kind,client_label,client_download_root,client_local_folder,save_path,root,indexer_name,state,next_run,created_at,updated_at,indexer_public,client_url)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'submitting',?,?,?,?,?)`,
+		id, albumID, releaseID, v.Title, hash, protocol, client.profileKey, client.kind, client.label,
+		client.DownloadPath, client.LocalFolder, save, root, v.IndexerName, now+60, now, now, indexerPublic, client.URL); e != nil {
+		return MusicJob{}, e
+	}
+	if e = tx.Commit(); e != nil {
+		return MusicJob{}, e
+	}
+	submit, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	var remoteID string
 	if protocol == "usenet" {
 		var usenet interface {
 			Add(context.Context, ClientConfig, string, []byte) (string, error)
@@ -215,29 +253,24 @@ func (s *Service) QueueMusic(ctx context.Context, albumID int64, releaseID, root
 		if client.kind == "nzbget" {
 			usenet = s.nzbget
 		}
-		if _, e = usenet.Add(ctx, client, tag, payload.NZB); e != nil {
-			return s.musicSubmissionFailure(ctx, albumID, releaseID, v.Title, hash, protocol, client, save, root, v.IndexerName, id, e)
-		}
+		remoteID, e = usenet.Add(submit, client, tag, payload.NZB)
 	} else {
-		if e = s.torrentClient(client).Add(ctx, client, tag, save, payload); e != nil {
-			return s.musicSubmissionFailure(ctx, albumID, releaseID, v.Title, hash, protocol, client, save, root, v.IndexerName, id, e)
-		}
+		e = s.torrentClient(client).Add(submit, client, tag, save, payload)
 	}
-
-	now := time.Now().Unix()
-	// Only the inherently public Nyaa indexer marks a queued download as
-	// public-source; every other kind requires private credentials.
-	indexerPublic := 0
-	if indexer.Kind == "nyaa" {
-		indexerPublic = 1
+	// Persist the result even if the request that initiated submission ended.
+	// If this write fails, the existing reservation is still reconciled.
+	finish, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer stop()
+	state, message := "downloading", ""
+	if e != nil {
+		state = "blocked"
+		message = "The download client did not confirm the music submission. Retry tracking to reconcile it, or check the client before stopping tracking."
 	}
-	if _, e = s.db.ExecContext(ctx, `INSERT INTO music_downloads(id,album_id,release_id,title,info_hash,protocol,client_key,client_kind,client_label,client_download_root,client_local_folder,save_path,root,indexer_name,state,progress,total_bytes,downloaded_bytes,error,attempts,next_run,created_at,updated_at,indexer_public)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'downloading',0,0,0,'',0,?,?,?,?)`,
-		id, albumID, releaseID, v.Title, hash, protocol, client.profileKey, client.kind, client.label,
-		client.DownloadPath, client.LocalFolder, save, root, v.IndexerName, now, now, now, indexerPublic); e != nil {
+	if _, e = s.db.ExecContext(finish, `UPDATE music_downloads SET state=?,error=?,remote_id=?,next_run=unixepoch(),updated_at=unixepoch()
+		WHERE id=? AND state='submitting'`, state, message, remoteID, id); e != nil {
 		return MusicJob{}, e
 	}
-	return s.MusicJob(ctx, id)
+	return s.MusicJob(finish, id)
 }
 
 func validateMusicPayload(protocol string, payload Payload, hash string) error {
@@ -264,32 +297,9 @@ func validateMusicPayload(protocol string, payload Payload, hash string) error {
 	return nil
 }
 
-// musicSubmissionFailure records an uncertain client submission so it is
-// visible for review and is never silently retried. Definitive rejections are
-// returned as errors without a row: nothing was accepted to reconcile.
-func (s *Service) musicSubmissionFailure(ctx context.Context, albumID int64, releaseID, title, hash, protocol string, client ClientConfig, save, root, indexerName, id string, submitErr error) (MusicJob, error) {
-	var p *Error
-	uncertain := errors.As(submitErr, &p) && (p.Temporary || p.Code == "submission_unknown" || p.Code == "usenet_submission_unknown")
-	if !uncertain {
-		return MusicJob{}, submitErr
-	}
-	message := "The download client did not confirm the music submission. Check the client before retrying; the same job is never resubmitted automatically."
-	if p.Message != "" {
-		message = p.Message
-	}
-	now := time.Now().Unix()
-	if _, e := s.db.ExecContext(ctx, `INSERT INTO music_downloads(id,album_id,release_id,title,info_hash,protocol,client_key,client_kind,client_label,client_download_root,client_local_folder,save_path,root,indexer_name,state,progress,total_bytes,downloaded_bytes,error,attempts,next_run,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'blocked',0,0,0,?,0,?,?,?)`,
-		id, albumID, releaseID, title, hash, protocol, client.profileKey, client.kind, client.label,
-		client.DownloadPath, client.LocalFolder, save, root, indexerName, message, now, now, now); e != nil {
-		return MusicJob{}, e
-	}
-	return s.MusicJob(ctx, id)
-}
-
 func (s *Service) activeMusicForAlbum(ctx context.Context, albumID int64) (bool, error) {
 	var count int
-	e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_downloads WHERE album_id=? AND state IN (`+musicActiveStates+`)`, albumID).Scan(&count)
+	e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_downloads WHERE album_id=? AND state NOT IN ('completed','cancelled')`, albumID).Scan(&count)
 	return count > 0, e
 }
 
@@ -301,7 +311,7 @@ func (s *Service) CancelMusic(ctx context.Context, id string) error {
 	if _, e := s.MusicJob(ctx, id); e != nil {
 		return e
 	}
-	result, e := s.db.ExecContext(ctx, `UPDATE music_downloads SET state='cancelled',error='',lease_owner='',lease_until=0,updated_at=unixepoch() WHERE id=? AND state IN (`+musicActiveStates+`) AND lease_until<unixepoch()`, id)
+	result, e := s.db.ExecContext(ctx, `UPDATE music_downloads SET state='cancelled',error='',lease_owner='',lease_until=0,updated_at=unixepoch() WHERE id=? AND state NOT IN ('completed','cancelled') AND lease_until<unixepoch()`, id)
 	if e != nil {
 		return e
 	}

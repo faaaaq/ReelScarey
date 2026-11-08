@@ -59,7 +59,7 @@ func (s *Service) MapMusicDownload(ctx context.Context, id string, mapping map[i
 	if importer == nil {
 		return MusicJob{}, problem("music_importer_unavailable", "Music importing is not available.")
 	}
-	importJob, err := importer.StartImportMapped(ctx, job.AlbumID, folder, job.Root, mapping)
+	importJob, err := importer.StartDownloadImport(ctx, job.ID, job.AlbumID, folder, job.Root, mapping)
 	if err != nil {
 		return MusicJob{}, err
 	}
@@ -85,7 +85,7 @@ func (s *Service) musicCompletedFolderFor(ctx context.Context, job MusicJob) (st
 		if c.kind == "nzbget" {
 			adapter = s.nzbget
 		}
-		remote, err := adapter.Find(ctx, c, "", tag)
+		remote, err := adapter.Find(ctx, c, job.remoteID, tag)
 		if err != nil {
 			return "", err
 		}

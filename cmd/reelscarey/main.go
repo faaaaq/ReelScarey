@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -135,34 +136,43 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	transferService := transfer.New(db, secretStore, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
 	transferService.SetAutomaticMetadata(metadataService)
 	transferService.SetMusicImporter(musicService)
-	musicService.SetScheduleRunner(func(ctx context.Context, schedule music.MusicSchedule, prefs music.MusicPreferences, albums []music.WantedAlbum) error {
+	musicService.SetScheduleRunner(func(ctx context.Context, schedule music.MusicSchedule, _ music.MusicPreferences, albums []music.WantedAlbum) error {
+		var failures error
 		for _, album := range albums {
+			current, err := musicService.GetSchedule(ctx)
+			if err != nil {
+				return errors.Join(failures, err)
+			}
+			if current.Revision != schedule.Revision {
+				break
+			}
 			releases, err := transferService.SearchMusicAlbum(ctx, album.ID, "")
 			if err != nil {
-				return err
+				failures = errors.Join(failures, fmt.Errorf("album %d: %w", album.ID, err))
+				continue
 			}
 			albumPrefs, err := musicService.AlbumPreferences(ctx, album.ID)
 			if err != nil {
-				return err
-			}
-			var chosen *transfer.MusicRelease
-			for i := range releases {
-				candidate := releases[i]
-				if music.CandidateAllowed(albumPrefs.Preferences, candidate.Format, candidate.Bitrate, candidate.Lossless) {
-					chosen = &candidate
-					break
-				}
-			}
-			if chosen == nil {
+				failures = errors.Join(failures, fmt.Errorf("album %d: %w", album.ID, err))
 				continue
 			}
-			if schedule.Mode == "download" {
-				if _, err := transferService.QueueMusic(ctx, album.ID, chosen.ID, "Music"); err != nil {
-					return err
+			if schedule.Mode != "download" {
+				continue
+			}
+			for _, candidate := range releases {
+				if !music.CandidateAllowed(albumPrefs.Preferences, candidate.Format, candidate.Bitrate, candidate.Lossless) {
+					continue
 				}
+				_, err := transferService.QueueMusicGuarded(ctx, album.ID, candidate.ID, "Music", func(ctx context.Context, tx *sql.Tx) error {
+					return music.CheckScheduledDownload(ctx, tx, album.ID, schedule, albumPrefs)
+				})
+				if err != nil && !errors.Is(err, music.ErrRevisionConflict) {
+					failures = errors.Join(failures, fmt.Errorf("album %d: %w", album.ID, err))
+				}
+				break
 			}
 		}
-		return nil
+		return failures
 	})
 	automationService := automation.New(db, transferService)
 	metadataRefresh := automation.NewMetadataRefresher(db, metadataService)
@@ -227,6 +237,15 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		return false, fmt.Errorf("listen: %w", err)
 	}
 	workerCtx, workerCancel := context.WithCancel(ctx)
+
+	musicImportsDone := make(chan struct{})
+	go func() {
+		defer close(musicImportsDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			musicService.RunImports(workerCtx, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-musicImportsDone }()
 	musicScheduleDone := make(chan struct{})
 	go func() {
 		defer close(musicScheduleDone)

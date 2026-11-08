@@ -1,5 +1,8 @@
 # REST API — media catalog, downloads, imports, automation and operations
 
+
+Torrent detail accepts `?section=general|content|trackers|peers|http` to load
+only the requested data. Omitting the section returns the full detail response.
 ## Emby and title helpers
 
 Administrator GET/PUT `/api/v1/library/series/{id}/release-rules` reads or saves

@@ -23,13 +23,14 @@ type WantedAlbumPage struct {
 	Limit int           `json:"limit"`
 }
 
-const wantedAlbumQuery = `SELECT a.id, a.artist_id, ar.name, a.title, a.year, a.status,
+const wantedAlbumSelection = `SELECT a.id, a.artist_id, ar.name, a.title, a.year, a.status,
 	(SELECT COUNT(*) FROM music_tracks t WHERE t.album_id=a.id)
 	FROM music_albums a
 	JOIN music_artists ar ON ar.id=a.artist_id
 	WHERE a.monitored=1 AND ar.monitored=1
-	AND NOT EXISTS(SELECT 1 FROM music_files f WHERE f.album_id=a.id)
-	ORDER BY ar.name COLLATE NOCASE, a.title COLLATE NOCASE, a.id`
+	AND NOT EXISTS(SELECT 1 FROM music_files f WHERE f.album_id=a.id)`
+
+const wantedAlbumQuery = wantedAlbumSelection + ` ORDER BY ar.name COLLATE NOCASE, a.title COLLATE NOCASE, a.id`
 
 // WantedAlbums projects monitored albums that have no registered files. The
 // projection never scans disk or contacts a provider.

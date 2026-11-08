@@ -113,6 +113,20 @@ func TestApplyAndRollbackMove(t *testing.T) {
 	if err := db.QueryRow(`SELECT relative_path FROM music_files WHERE id=1`).Scan(&relative); err != nil || relative != plan.Files[0].DestinationPath {
 		t.Fatal("catalog path", relative, err)
 	}
+	if err := os.WriteFile(source, []byte("unrelated replacement"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RollbackEdits(ctx, job.ID, true); err == nil {
+		t.Fatal("rollback accepted an occupied source")
+	}
+	for name, want := range map[string]string{source: "unrelated replacement", destination: "fixture"} {
+		if got, err := os.ReadFile(name); err != nil || string(got) != want {
+			t.Fatalf("rollback touched %s: %q, %v", name, got, err)
+		}
+	}
+	if err := os.Remove(source); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := service.RollbackEdits(ctx, job.ID, true); err != nil {
 		t.Fatal(err)
 	}
@@ -168,6 +182,19 @@ func TestApplyRetagWithFFmpeg(t *testing.T) {
 	}
 	if _, err := os.Stat(source + ".reelscarey-backup"); err != nil {
 		t.Fatal("backup missing", err)
+	}
+	backup := source + ".reelscarey-backup"
+	if err := os.Rename(backup, backup+".fixture"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RollbackEdits(ctx, job.ID, true); err == nil {
+		t.Fatal("rollback accepted a missing retained original")
+	}
+	if _, err := os.Stat(destination); err != nil {
+		t.Fatal("missing backup must leave the edited file intact", err)
+	}
+	if err := os.Rename(backup+".fixture", backup); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := service.RollbackEdits(ctx, job.ID, true); err != nil {
 		t.Fatal(err)

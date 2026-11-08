@@ -39,6 +39,10 @@ type Service struct {
 	// actions within one process lifetime (activity_events is authoritative).
 	shareMu         sync.Mutex
 	shareHandledSet map[string]bool
+
+	torrentPrefsMu    sync.Mutex
+	torrentPrefs      TorrentServer
+	torrentPrefsUntil time.Time
 }
 
 func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Client, indexer Indexer) *Service {
@@ -484,7 +488,9 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 		v.Protocol = protocol
 		payload = Payload{Torrent: v.Torrent}
 		hash = v.Hash
-		indexerPublic = 1
+		if info, err := TorrentInfo(v.Torrent); err == nil && !info.Private {
+			indexerPublic = 1
+		}
 	} else {
 		indexer, e := s.candidateIndexer(ctx, v)
 		if e != nil {
@@ -517,6 +523,11 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 		payload, hash, e = adapter.Fetch(ctx, indexer, v)
 		if e != nil {
 			return Job{}, false, e
+		}
+	}
+	if indexerPublic != 0 && len(payload.Torrent) > 0 {
+		if info, err := TorrentInfo(payload.Torrent); err != nil || info.Private {
+			indexerPublic = 0
 		}
 	}
 	if client, e = s.downloadConfig(ctx, protocol); e != nil {
