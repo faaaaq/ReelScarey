@@ -179,7 +179,7 @@ describe("automation", () => {
       "download",
     );
     expect(
-      screen.getByText(/TV imports still need episode-to-file review/),
+      screen.getByText(/single-episode TV download imports automatically/),
     ).toBeVisible();
     await userEvent.click(
       screen.getByRole("button", { name: "Save automation" }),

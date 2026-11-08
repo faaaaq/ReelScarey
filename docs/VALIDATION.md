@@ -2374,3 +2374,12 @@ Run locally on Windows (development tools only; Docker remains the target):
 - Go tests cover the matched count in search-only and download modes. Frontend
   format:check, check, the full suite (49 files, 273 tests) and the build passed,
   including direct message-variant tests and a hidden-notice regression.
+
+## Version 0.41.2 accurate TV import copy
+
+- The Automation download-mode notice now states that a single-episode TV
+  download imports automatically when one video exactly matches the reserved
+  episode; packs, multi-file releases and ambiguous names wait for
+  episode-to-file review. The indexer guide says the same instead of claiming
+  every TV import needs review.
+- Type-check and the Automation UI test pass.

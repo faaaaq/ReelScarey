@@ -331,8 +331,10 @@ function ScheduleForm({
           {form.mode === "download" && (
             <p className="automation-notice">
               This mode queues matching missing items through qBittorrent or
-              SABnzbd. TV imports still need episode-to-file review. Upgrade
-              suggestions preserve existing files.
+              SABnzbd. A single-episode TV download imports automatically when
+              one video exactly matches the reserved episode; packs, multi-file
+              releases and ambiguous names wait for episode-to-file review.
+              Upgrade suggestions preserve existing files.
               {!schedule.client_connected &&
                 " Connect the matching download client before automatic downloads can run."}
             </p>
