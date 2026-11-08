@@ -29,6 +29,8 @@ imports the completed folder, and runs wanted-album searches on a schedule.
 - Queue a searched release through the configured client; a leased worker
   reconciles torrent/Usenet progress, imports the completed folder, and marks
   the download completed or blocked.
+- A blocked download exposes its completed files and accepts an explicit
+  file-to-track mapping, then resumes the normal verified import.
 - Audio preferences (`allow_lossless`, minimum bitrate, preferred formats)
   filter automatic choices.
 - Wanted albums (monitored with no files) and an interval schedule in search or
@@ -96,9 +98,9 @@ imports the completed folder, and runs wanted-album searches on a schedule.
 
 ## Limits
 
-- The worker imports a completed folder only when every catalog track has one
-  matching disc/track file. A release with missing or ambiguous tags becomes
-  `blocked` for manual review; there is no per-file mapping editor yet.
+- The worker imports a completed folder automatically only when every track has
+  one matching disc/track file. Missing or ambiguous tags leave the job
+  `blocked`; its files can be mapped explicitly from the Wanted page.
 - No resolution/format upgrade suggestions and no per-album profile overrides.
 - Search mode stores candidates for review; it does not queue.
 - No playlists, lyrics, ratings, scrobbling or MusicBrainz editing.
@@ -139,6 +141,8 @@ imports the completed folder, and runs wanted-album searches on a schedule.
 | GET | `/api/v1/library/music/downloads/{id}` | One job |
 | POST | `/api/v1/library/music/downloads/{id}/cancel` | `{}` |
 | POST | `/api/v1/library/music/downloads/{id}/retry` | `{}` |
+| GET | `/api/v1/library/music/downloads/{id}/files` | Completed files with tags for mapping |
+| POST | `/api/v1/library/music/downloads/{id}/mapping` | `{mappings:[{file_index,track_id}]}`; resume the import |
 | GET/PUT | `/api/v1/library/music/preferences` | Audio preferences |
 | GET | `/api/v1/library/music/wanted?page=` | Monitored albums with no files |
 | GET/PUT | `/api/v1/library/music/schedule` | Wanted-album schedule |
@@ -167,10 +171,10 @@ movie/TV rows, foreign keys and consumers are untouched.
 
 ## Next phase
 
-Remaining polish: a per-file mapping editor for ambiguous downloads. Upgrade
-suggestions and per-album preference overrides are implemented. The core
-Lidarr-style path — catalog, want, search, download, reconcile, import,
-organize and tag — is implemented.
+The core Lidarr-style path — catalog, want, search, download, reconcile, map
+blocked files, import, organize and tag — is implemented, including upgrade
+suggestions and per-album preference overrides. Optional future work: automatic
+upgrade replacement and richer multi-profile assignment.
 
 ## Validation
 

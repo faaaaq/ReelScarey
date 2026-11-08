@@ -365,6 +365,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/downloads/{id}", method(http.MethodGet, s.musicDownload))
 	mux.HandleFunc("/api/v1/library/music/downloads/{id}/cancel", method(http.MethodPost, s.musicDownloadCancel))
 	mux.HandleFunc("/api/v1/library/music/downloads/{id}/retry", method(http.MethodPost, s.musicDownloadRetry))
+	mux.HandleFunc("/api/v1/library/music/downloads/{id}/files", method(http.MethodGet, s.musicDownloadFiles))
+	mux.HandleFunc("/api/v1/library/music/downloads/{id}/mapping", method(http.MethodPost, s.musicDownloadMapping))
 	mux.HandleFunc("/api/v1/library/series/{id}/refresh", method(http.MethodPost, s.refreshTV))
 	mux.HandleFunc("/api/v1/library/series/{id}/monitor", method(http.MethodPut, s.monitorTV))
 	mux.HandleFunc("/api/v1/library/series/{id}/monitor-all", method(http.MethodPut, s.monitorAllEpisodes))

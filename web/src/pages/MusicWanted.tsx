@@ -7,6 +7,7 @@ import {
   EmptyState,
   FieldSet,
   Label,
+  Modal,
   PageBody,
   PageToolbar,
   Table,
@@ -17,6 +18,9 @@ import { PageHeading, RequestState } from "../components";
 import {
   api,
   messageFor,
+  type MusicAlbumDetails,
+  type MusicDownloadFileList,
+  type MusicJob,
   type MusicJobPage,
   type MusicPreferences,
   type MusicSchedule,
@@ -52,6 +56,15 @@ export function MusicWanted() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [mappingJob, setMappingJob] = useState<MusicJob | null>(null);
+  const [mappingFiles, setMappingFiles] =
+    useState<MusicDownloadFileList | null>(null);
+  const [mappingAlbum, setMappingAlbum] = useState<MusicAlbumDetails | null>(
+    null,
+  );
+  const [mapping, setMapping] = useState<Record<number, number>>({});
+  const [mappingPending, setMappingPending] = useState(false);
+  const [mappingError, setMappingError] = useState("");
 
   useEffect(() => {
     if (!prefs.data) return;
@@ -154,6 +167,65 @@ export function MusicWanted() {
       setError(messageFor(e));
     } finally {
       setPending(false);
+    }
+  }
+
+  async function openMapping(job: MusicJob) {
+    setMappingJob(job);
+    setMappingFiles(null);
+    setMappingAlbum(null);
+    setMapping({});
+    setMappingError("");
+    try {
+      const [files, album] = await Promise.all([
+        api<MusicDownloadFileList>(`/library/music/downloads/${job.id}/files`),
+        api<MusicAlbumDetails>(`/library/music/albums/${job.album_id}`),
+      ]);
+      setMappingFiles(files);
+      setMappingAlbum(album);
+      const defaults: Record<number, number> = {};
+      for (const file of files.items) {
+        const match = album.tracks.find(
+          (track) =>
+            (file.disc !== null &&
+              file.track !== null &&
+              track.disc === file.disc &&
+              track.number === file.track) ||
+            (file.title !== "" &&
+              track.title.toLowerCase() === file.title.toLowerCase()),
+        );
+        if (match?.id) defaults[file.index] = match.id;
+      }
+      setMapping(defaults);
+    } catch (e) {
+      setMappingError(messageFor(e));
+    }
+  }
+
+  async function saveMapping() {
+    if (!mappingJob || !mappingFiles || mappingPending) return;
+    if (mappingFiles.items.some((file) => !mapping[file.index])) {
+      setMappingError("Map every downloaded file to a catalog track.");
+      return;
+    }
+    setMappingPending(true);
+    setMappingError("");
+    try {
+      await api(`/library/music/downloads/${mappingJob.id}/mapping`, {
+        method: "POST",
+        body: JSON.stringify({
+          mappings: mappingFiles.items.map((file) => ({
+            file_index: file.index,
+            track_id: mapping[file.index],
+          })),
+        }),
+      });
+      setMappingJob(null);
+      jobs.reload();
+    } catch (e) {
+      setMappingError(messageFor(e));
+    } finally {
+      setMappingPending(false);
     }
   }
 
@@ -407,6 +479,16 @@ export function MusicWanted() {
                           Cancel
                         </Button>
                       )}
+                      {job.state === "blocked" && (
+                        <Button
+                          size="1"
+                          variant="soft"
+                          disabled={pending}
+                          onClick={() => void openMapping(job)}
+                        >
+                          Map files
+                        </Button>
+                      )}
                       {["blocked", "failed"].includes(job.state) && (
                         <Button
                           size="1"
@@ -425,6 +507,81 @@ export function MusicWanted() {
           </FieldSet>
         )}
       </PageBody>
+      <Modal
+        open={mappingJob !== null}
+        onOpenChange={(open) => {
+          if (!open) setMappingJob(null);
+        }}
+        title="Map downloaded files"
+        description="Assign each completed file to one catalog track."
+        size="large"
+        footer={
+          <Button
+            variant="soft"
+            color="gray"
+            onClick={() => setMappingJob(null)}
+          >
+            Close
+          </Button>
+        }
+      >
+        {mappingError && <Alert kind="danger">{mappingError}</Alert>}
+        {mappingFiles && mappingAlbum ? (
+          <Table label="Downloaded files">
+            <thead>
+              <tr>
+                <th scope="col">File</th>
+                <th scope="col">Tags</th>
+                <th scope="col">Track</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mappingFiles.items.map((file) => (
+                <tr key={file.index}>
+                  <td>
+                    <span className="mus-path">{file.name}</span>
+                  </td>
+                  <td>
+                    {[file.artist, file.album, file.title]
+                      .filter(Boolean)
+                      .join(" · ") || "—"}
+                  </td>
+                  <td>
+                    <select
+                      aria-label={`Track for ${file.name}`}
+                      value={mapping[file.index] ?? ""}
+                      onChange={(e) =>
+                        setMapping({
+                          ...mapping,
+                          [file.index]: Number(e.target.value),
+                        })
+                      }
+                    >
+                      <option value="">Choose…</option>
+                      {mappingAlbum.tracks.map((track) => (
+                        <option key={track.id} value={track.id}>
+                          {track.disc > 1 ? `${track.disc}.` : ""}
+                          {track.number} {track.title}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        ) : (
+          !mappingError && <p className="rs-muted">Loading completed files…</p>
+        )}
+        <div className="mus-scan-actions">
+          <Button
+            disabled={mappingPending || !mappingFiles}
+            onClick={() => void saveMapping()}
+          >
+            Import mapped files
+          </Button>
+        </div>
+      </Modal>
     </>
   );
 }

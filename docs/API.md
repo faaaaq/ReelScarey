@@ -92,7 +92,10 @@ without overwrite.
 POST `/api/v1/library/music/albums/{id}/download` accepts `{release_id,root}`
 and queues the candidate through the selected download client. GET
 `/downloads?page=` lists music jobs; GET `/downloads/{id}` returns one; POST
-`/downloads/{id}/cancel` and `/retry` manage it. GET/PUT `/preferences` manages
+`/downloads/{id}/cancel` and `/retry` manage it. GET
+`/downloads/{id}/files` probes the completed folder and POST
+`/downloads/{id}/mapping` accepts `{mappings:[{file_index,track_id}]}` to
+resume a blocked import with explicit track assignments. GET/PUT `/preferences` manages
 lossless, minimum-bitrate and preferred-format rules. GET `/wanted?page=` lists
 monitored albums with no registered files. GET/PUT `/schedule` manages the
 wanted-album schedule and POST `/schedule/run` performs one bounded run.

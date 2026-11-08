@@ -589,6 +589,68 @@ func (s *Server) musicDownload(w http.ResponseWriter, r *http.Request) {
 	send(w, 200, job)
 }
 
+func (s *Server) musicDownloadFiles(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	id, ok := musicDownloadID(w, r)
+	if !ok {
+		return
+	}
+	files, err := s.transfer.MusicDownloadFiles(r.Context(), id)
+	if err != nil {
+		s.transferError(w, err)
+		return
+	}
+	send(w, 200, map[string]any{"items": files})
+}
+
+func (s *Server) musicDownloadMapping(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	id, ok := musicDownloadID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Mappings []struct {
+			FileIndex int   `json:"file_index"`
+			TrackID   int64 `json:"track_id"`
+		} `json:"mappings"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	mapping := map[int]int64{}
+	for _, entry := range body.Mappings {
+		if entry.FileIndex < 0 || entry.TrackID < 1 {
+			fail(w, 400, "invalid_music_mapping", "Map every file to a valid catalog track.")
+			return
+		}
+		if _, exists := mapping[entry.FileIndex]; exists {
+			fail(w, 400, "invalid_music_mapping", "A file was mapped more than once.")
+			return
+		}
+		mapping[entry.FileIndex] = entry.TrackID
+	}
+	if len(mapping) == 0 {
+		fail(w, 400, "invalid_music_mapping", "Map every file to a valid catalog track.")
+		return
+	}
+	job, err := s.transfer.MapMusicDownload(r.Context(), id, mapping)
+	if err != nil {
+		var provider *music.Error
+		if errors.As(err, &provider) {
+			s.musicError(w, err)
+			return
+		}
+		s.transferError(w, err)
+		return
+	}
+	send(w, 200, job)
+}
+
 func (s *Server) musicDownloadCancel(w http.ResponseWriter, r *http.Request) {
 	if !s.transferReady(w) {
 		return

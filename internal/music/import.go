@@ -61,6 +61,19 @@ type importPlan struct {
 }
 
 func (s *Service) StartImport(ctx context.Context, albumID int64, sourcePath, root string) (ImportJob, error) {
+	return s.startImport(ctx, albumID, sourcePath, root, nil)
+}
+
+// StartImportMapped imports an album folder using an explicit file-index to
+// track-ID map. It is used when tags are missing or ambiguous.
+func (s *Service) StartImportMapped(ctx context.Context, albumID int64, sourcePath, root string, mapping map[int]int64) (ImportJob, error) {
+	if len(mapping) == 0 {
+		return ImportJob{}, ErrInvalidInput
+	}
+	return s.startImport(ctx, albumID, sourcePath, root, mapping)
+}
+
+func (s *Service) startImport(ctx context.Context, albumID int64, sourcePath, root string, mapping map[int]int64) (ImportJob, error) {
 	if albumID < 1 {
 		return ImportJob{}, ErrInvalidInput
 	}
@@ -80,7 +93,7 @@ func (s *Service) StartImport(ctx context.Context, albumID int64, sourcePath, ro
 		return ImportJob{}, &Error{Code: "music_no_tracks", Message: "Open the album once so its tracks are loaded before importing."}
 	}
 	sourceAbs := filepath.Join(s.downloadsDir, filepath.FromSlash(source))
-	plans, err := s.planImport(ctx, album, sourceAbs)
+	plans, err := s.planImport(ctx, album, sourceAbs, mapping)
 	if err != nil {
 		return ImportJob{}, err
 	}
@@ -184,13 +197,41 @@ func (s *Service) loadImportAlbum(ctx context.Context, albumID int64) (importAlb
 	return album, nil
 }
 
-func (s *Service) planImport(ctx context.Context, album importAlbum, source string) ([]importPlan, error) {
+func (s *Service) planImport(ctx context.Context, album importAlbum, source string, mapping map[int]int64) ([]importPlan, error) {
 	files, err := audioFiles(source)
 	if err != nil {
 		return nil, err
 	}
 	if len(files) == 0 {
 		return nil, &Error{Code: "music_import_empty", Message: "No audio files were found in this folder."}
+	}
+	if mapping != nil {
+		if len(mapping) != len(files) {
+			return nil, &Error{Code: "music_import_mapping", Message: "Map every downloaded file to exactly one catalog track."}
+		}
+		used := map[int64]bool{}
+		plans := []importPlan{}
+		for i, file := range files {
+			trackID, ok := mapping[i]
+			if !ok {
+				return nil, &Error{Code: "music_import_mapping", Message: "Map every downloaded file to exactly one catalog track."}
+			}
+			track := trackByID(album.Tracks, trackID)
+			if track == nil {
+				return nil, &Error{Code: "music_import_mapping", Message: "A selected track is not part of this album."}
+			}
+			if used[track.ID] {
+				return nil, &Error{Code: "music_import_mapping", Message: "Two files map to the same catalog track."}
+			}
+			used[track.ID] = true
+			plans = append(plans, importPlan{Source: file, Track: *track})
+		}
+		for _, track := range album.Tracks {
+			if !used[track.ID] {
+				return nil, &Error{Code: "music_import_mapping", Message: "Every catalog track must be mapped to one file."}
+			}
+		}
+		return plans, nil
 	}
 	byKey := map[string]Track{}
 	byTitle := map[string]Track{}
@@ -228,6 +269,40 @@ func (s *Service) planImport(ctx context.Context, album importAlbum, source stri
 		}
 	}
 	return plans, nil
+}
+
+type FolderFile struct {
+	Index  int    `json:"index"`
+	Name   string `json:"name"`
+	Artist string `json:"artist"`
+	Album  string `json:"album"`
+	Title  string `json:"title"`
+	Track  *int   `json:"track"`
+	Disc   *int   `json:"disc"`
+}
+
+// ListFolder probes the audio files in a completed download folder so the UI can
+// offer an explicit file-to-track mapping.
+func (s *Service) ListFolder(ctx context.Context, source string) ([]FolderFile, error) {
+	clean, err := s.cleanImportSource(source)
+	if err != nil {
+		return nil, err
+	}
+	abs := filepath.Join(s.downloadsDir, filepath.FromSlash(clean))
+	files, err := audioFiles(abs)
+	if err != nil {
+		return nil, err
+	}
+	out := []FolderFile{}
+	for i, file := range files {
+		tags, err := s.prober.ProbeAudio(ctx, file)
+		if err != nil {
+			return nil, err
+		}
+		name, _ := filepath.Rel(abs, file)
+		out = append(out, FolderFile{Index: i, Name: filepath.ToSlash(name), Artist: tags.Artist, Album: tags.Album, Title: tags.Title, Track: tags.Track, Disc: tags.Disc})
+	}
+	return out, nil
 }
 
 func audioFiles(root string) ([]string, error) {

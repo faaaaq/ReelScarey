@@ -390,6 +390,20 @@ export type MusicUpgradeList = {
   items: MusicUpgradeSuggestion[];
 };
 
+export type MusicDownloadFile = {
+  index: number;
+  name: string;
+  artist: string;
+  album: string;
+  title: string;
+  track: number | null;
+  disc: number | null;
+};
+
+export type MusicDownloadFileList = {
+  items: MusicDownloadFile[];
+};
+
 export type AnimeLibrarySettings = {
   id: number;
   kind: "movie" | "series";

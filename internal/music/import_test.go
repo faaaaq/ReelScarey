@@ -80,6 +80,26 @@ func TestImportFolderCopiesTagsAndRegisters(t *testing.T) {
 	}
 }
 
+func TestImportMappedFolderUsesExplicitTracks(t *testing.T) {
+	service, media, downloads := importFixture(t)
+	source := filepath.Join(downloads, "Album")
+	generateFLAC(t, filepath.Join(source, "01.flac"), "Wrong One", 9)
+	generateFLAC(t, filepath.Join(source, "02.flac"), "Wrong Two", 9)
+	job, err := service.StartImportMapped(context.Background(), 2, "Album", "Music", map[int]int64{0: 3, 1: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	job = waitForImport(t, context.Background(), service, job.ID)
+	if job.State != "completed" || job.ImportedCount != 2 {
+		t.Fatal("mapped import", job)
+	}
+	for _, name := range []string{"01 Song.flac", "02 Other.flac"} {
+		if _, err := os.Stat(filepath.Join(media, "Music", "Artist", "Album", name)); err != nil {
+			t.Fatal("mapped file missing", name, err)
+		}
+	}
+}
+
 func TestImportFolderRequiresACompleteTrackSet(t *testing.T) {
 	service, _, downloads := importFixture(t)
 	source := filepath.Join(downloads, "Album")

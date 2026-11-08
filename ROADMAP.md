@@ -23,8 +23,8 @@ Historical native and package results below remain as records of past work.
   organization and verified tag writing with rollback, audio release search and
   reviewed completed-folder import, automatic client queueing, a leased download
   worker, audio preferences, wanted albums, upgrade suggestions, per-album
-  overrides and a search schedule. A manual per-file mapping editor remains
-  open. See [music catalog](docs/MUSIC.md).
+  overrides, blocked-download file mapping and a search schedule. The core
+  Lidarr-style music path is implemented. See [music catalog](docs/MUSIC.md).
 
 - [x] Update embedded movie and TV titles while organizing and renaming media,
   with verified copies and recovery that preserve streams and seeding sources.

@@ -19,6 +19,8 @@ import (
 // tagging, publication and its own journal; transfer only tracks the download.
 type MusicImporter interface {
 	StartImport(context.Context, int64, string, string) (music.ImportJob, error)
+	StartImportMapped(context.Context, int64, string, string, map[int]int64) (music.ImportJob, error)
+	ListFolder(context.Context, string) ([]music.FolderFile, error)
 	ImportJob(context.Context, int64) (music.ImportJob, error)
 }
 
