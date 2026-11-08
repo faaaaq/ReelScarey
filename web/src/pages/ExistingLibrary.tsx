@@ -245,11 +245,33 @@ export function ExistingLibrary() {
       item.key ===
       (target === "movie" ? "movies" : target === "series" ? "tv" : "anime"),
   );
+  const moviesCollection = roots.data?.collections?.find(
+    (item) => item.key === "movies",
+  );
+  const tvCollection = roots.data?.collections?.find(
+    (item) => item.key === "tv",
+  );
+  const animeCollection = roots.data?.collections?.find(
+    (item) => item.key === "anime",
+  );
+  const rootSummary = (
+    entry: { roots?: { path: string }[] } | undefined,
+    fallback: string,
+  ) => {
+    const paths = entry?.roots?.map((item) => item.path) ?? [];
+    return paths.length ? paths.join(" · ") : fallback;
+  };
+  const rootUnavailable = (
+    entry: { roots?: { available: boolean }[] } | undefined,
+  ) => !!entry?.roots?.length && !entry.roots.some((item) => item.available);
   const targetRoots = collection?.roots ?? [];
   const selectedRoot = targetRoots.find((item) => item.path === root);
   const selectedUnavailable = !!selectedRoot && !selectedRoot.available;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    setRoot("");
+  }, [target]);
   async function start() {
     if (busy || (target === "anime" && !animeRoot) || selectedUnavailable)
       return;
@@ -302,17 +324,33 @@ export function ExistingLibrary() {
           </div>
 
           <div className="scan-folder-grid">
-            <div className="scan-folder">
+            <div
+              className="scan-folder"
+              data-unavailable={rootUnavailable(moviesCollection)}
+            >
               <span>Movies</span>
-              <code>{roots.data.movie_root}</code>
+              <code>
+                {rootSummary(moviesCollection, roots.data.movie_root)}
+              </code>
             </div>
-            <div className="scan-folder">
+            <div
+              className="scan-folder"
+              data-unavailable={rootUnavailable(tvCollection)}
+            >
               <span>TV Shows</span>
-              <code>{roots.data.series_root}</code>
+              <code>{rootSummary(tvCollection, roots.data.series_root)}</code>
             </div>
-            <div className="scan-folder" data-unavailable={!animeRoot}>
+            <div
+              className="scan-folder"
+              data-unavailable={rootUnavailable(animeCollection) || !animeRoot}
+            >
               <span>Anime</span>
-              <code>{animeRoot ?? "Folder unavailable"}</code>
+              <code>
+                {rootSummary(
+                  animeCollection,
+                  animeRoot ?? "Folder unavailable",
+                )}
+              </code>
             </div>
             <Link className="scan-folder scan-folder-link" to="/music/import">
               <span>Music</span>

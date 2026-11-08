@@ -244,12 +244,12 @@ export function MusicImport() {
           description="Read tags from a music folder, match them to catalog albums and register files in place. Files are never moved."
         />
         <Alert kind="info" title="Scan, then fill catalog gaps">
-          Scan the folder first. Select unresolved files and use{" "}
-          <strong>Discover missing catalog</strong> to search MusicBrainz for
-          exact artist and album matches. Strong evidence only: a release-group
-          ID, or one exact normalized artist name and album title. Files with
-          ambiguous or missing evidence stay unresolved and are never guessed.
-          Roots are relative to the media root and names are case-sensitive.
+          Scan the configured roots first. Select unresolved files and use{" "}
+          <strong>Discover missing catalog</strong> to search MusicBrainz using
+          tagged MusicBrainz IDs first. Without those IDs it requires one exact
+          normalized artist name and album title. Files with ambiguous or
+          missing evidence stay unresolved and are never guessed. Roots are
+          relative to the media root and names are case-sensitive.
         </Alert>
         {musicRoots.length > 0 && (
           <Alert kind="info" title="Configured music roots">
