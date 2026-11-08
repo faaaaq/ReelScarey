@@ -87,6 +87,17 @@ export type SharePolicy = {
 
 export type SharePolicyRun = { checked: number; acted: number };
 
+/**
+ * Auto-pause option for finished torrents from public sources in the built-in
+ * client. Public sources are the public Nyaa indexer and manually uploaded
+ * torrents; private-tracker downloads keep seeding.
+ */
+export type PublicPause = {
+  enabled: boolean;
+  revision: number;
+  updated_at: number;
+};
+
 export const shareActionLabels: Record<ShareAction, string> = {
   pause: "Pause",
   remove: "Remove torrent",

@@ -1153,6 +1153,18 @@ supervised pass that runs at most once a minute never reports that as an error.
 See [Torrents](TORRENTS.md#automatic-seeding-limit) for the safety rules,
 including the job-torrent skip and the no-delete guarantee.
 
+`GET /api/v1/torrents/public-pause` returns the auto-pause option for finished
+public-source torrents:
+
+```json
+{ "enabled": false, "revision": 1, "updated_at": 1700000000 }
+```
+
+`PUT` with the same shape (CSRF and same-origin required) replaces the option
+and returns the saved row; `revision` must match or the call returns
+`409 revision_conflict`. See [Torrents](TORRENTS.md#auto-pause-public-trackers)
+for what counts as a public source and how the supervised pass behaves.
+
 ## Usenet page API (bundled SABnzbd)
 
 All `/api/v1/usenet` routes are administrator-only; request accounts receive

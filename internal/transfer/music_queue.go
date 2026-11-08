@@ -225,10 +225,16 @@ func (s *Service) QueueMusic(ctx context.Context, albumID int64, releaseID, root
 	}
 
 	now := time.Now().Unix()
-	if _, e = s.db.ExecContext(ctx, `INSERT INTO music_downloads(id,album_id,release_id,title,info_hash,protocol,client_key,client_kind,client_label,client_download_root,client_local_folder,save_path,root,indexer_name,state,progress,total_bytes,downloaded_bytes,error,attempts,next_run,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'downloading',0,0,0,'',0,?,?,?)`,
+	// Only the inherently public Nyaa indexer marks a queued download as
+	// public-source; every other kind requires private credentials.
+	indexerPublic := 0
+	if indexer.Kind == "nyaa" {
+		indexerPublic = 1
+	}
+	if _, e = s.db.ExecContext(ctx, `INSERT INTO music_downloads(id,album_id,release_id,title,info_hash,protocol,client_key,client_kind,client_label,client_download_root,client_local_folder,save_path,root,indexer_name,state,progress,total_bytes,downloaded_bytes,error,attempts,next_run,created_at,updated_at,indexer_public)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'downloading',0,0,0,'',0,?,?,?,?)`,
 		id, albumID, releaseID, v.Title, hash, protocol, client.profileKey, client.kind, client.label,
-		client.DownloadPath, client.LocalFolder, save, root, v.IndexerName, now, now, now); e != nil {
+		client.DownloadPath, client.LocalFolder, save, root, v.IndexerName, now, now, now, indexerPublic); e != nil {
 		return MusicJob{}, e
 	}
 	return s.MusicJob(ctx, id)

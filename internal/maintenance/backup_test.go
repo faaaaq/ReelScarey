@@ -76,7 +76,7 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	if e != nil {
 		t.Fatal(e)
 	}
-	if m.Schema != 65 || len(m.Files) != 2 {
+	if m.Schema != 66 || len(m.Files) != 2 {
 		t.Fatal(m)
 	}
 	if _, e = Verify(ctx, backup); e != nil {

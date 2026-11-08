@@ -473,6 +473,7 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 	var client ClientConfig
 	var payload Payload
 	var hash string
+	var indexerPublic int
 	if v.Manual {
 		// A manually uploaded torrent carries its own metainfo: no indexer is
 		// involved, so generation fencing and network fetch do not apply.
@@ -483,6 +484,7 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 		v.Protocol = protocol
 		payload = Payload{Torrent: v.Torrent}
 		hash = v.Hash
+		indexerPublic = 1
 	} else {
 		indexer, e := s.candidateIndexer(ctx, v)
 		if e != nil {
@@ -494,6 +496,11 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 		protocol = "torrent"
 		if indexer.Kind == "newznab" {
 			protocol = "usenet"
+		}
+		// Only the inherently public Nyaa indexer marks a queued download as
+		// public-source; every other kind requires private credentials.
+		if indexer.Kind == "nyaa" {
+			indexerPublic = 1
 		}
 		if v.Protocol != "" && v.Protocol != protocol {
 			return Job{}, false, problem("invalid_release", "The release protocol does not match its indexer. Search again.")
@@ -544,7 +551,7 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 		if version != "" && version != "replacement" {
 			return Job{}, false, problem("invalid_version", "Movie versions cannot target TV episodes.")
 		}
-		return s.queueTV(ctx, v, releaseID, sealed, hash, client, guard, replacementID)
+		return s.queueTV(ctx, v, releaseID, sealed, hash, client, guard, replacementID, indexerPublic)
 	}
 	if _, e = s.MovieByID(ctx, v.MovieID); e != nil {
 		return Job{}, false, e
@@ -579,7 +586,7 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 	if e != nil {
 		return Job{}, false, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,indexer_name,protocol,organization_snapshot,movie_version) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, v.IndexerName, protocol, string(namingJSON), version); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,indexer_name,protocol,organization_snapshot,movie_version,indexer_public) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, v.IndexerName, protocol, string(namingJSON), version, indexerPublic); e != nil {
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE downloads SET client_key=?,client_kind=?,client_label=?,client_download_root=?,client_local_folder=? WHERE id=?`, client.profileKey, client.kind, client.label, client.DownloadPath, client.LocalFolder, id); e != nil {

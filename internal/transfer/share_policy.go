@@ -204,10 +204,11 @@ func (s *Service) RunSharePolicy(ctx context.Context) (SharePolicyRun, error) {
 	return s.evaluateSharePolicy(ctx, nil)
 }
 
-// SuperviseSeeding enforces the saved policy at most once a minute while the
-// built-in client is enabled. A failed pass is logged and retried; nothing in
-// the loop can stop the application.
-func (s *Service) SuperviseSeeding(ctx context.Context, logger *slog.Logger) {
+// SuperviseTorrentPolicies enforces the saved seeding limit and the
+// public-source auto-pause at most once a minute while the built-in client is
+// enabled. A failed pass is logged and retried; nothing in the loop can stop
+// the application.
+func (s *Service) SuperviseTorrentPolicies(ctx context.Context, logger *slog.Logger) {
 	ticker := time.NewTicker(shareSeedingTick)
 	defer ticker.Stop()
 	for {
@@ -217,6 +218,7 @@ func (s *Service) SuperviseSeeding(ctx context.Context, logger *slog.Logger) {
 		case <-ticker.C:
 		}
 		s.tickSharePolicy(ctx, logger)
+		s.tickPublicPause(ctx, logger)
 	}
 }
 

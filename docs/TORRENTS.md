@@ -85,6 +85,29 @@ not exposed as a general client console. The built-in client is included and
 enabled by default; turning it off in Download clients makes this page explain
 how to turn it back on.
 
+## Auto-pause public trackers
+
+**Pause public when done** in the toolbar is a separate toggle with its own
+revision. When it is on, a torrent in the built-in client that finished
+downloading and came from a public source is paused automatically instead of
+seeding indefinitely.
+
+- Public sources are the public **Nyaa** indexer and torrents added on this
+  page (magnet links and uploaded metainfo). ReelScarey records the source
+  classification when a download is queued; private-tracker indexers and other
+  credential-backed kinds are never paused by this option.
+- Torrents added to the client outside ReelScarey have no recorded source and
+  are left alone.
+- The same supervised pass that enforces the seeding limit checks at most once
+  a minute while the client is enabled. It only pauses completed torrents and
+  skips torrents that are already paused.
+- Pausing never deletes anything. Resuming a paused torrent is always possible;
+  if it finishes again it is paused again and a new History entry is written
+  (`kind=download`, object is the torrent hash, state
+  `public source finished: paused`).
+- Private-tracker downloads keep seeding so ratio and hit-and-run rules are
+  respected; use the seeding limit above to bound those.
+
 ## Intentionally excluded
 
 - **No native Web UI proxy.** qBittorrent's own Web UI and preferences can run

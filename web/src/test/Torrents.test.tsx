@@ -105,6 +105,12 @@ const policyFixture = {
   updated_at: 1700000000,
 };
 
+const publicPauseFixture = {
+  enabled: false,
+  revision: 1,
+  updated_at: 1700000000,
+};
+
 function overview(overrides: Record<string, unknown> = {}) {
   return {
     available: true,
@@ -210,6 +216,7 @@ type Call = { url: string; method: string; body: unknown };
 function mount(payload: unknown, options: { failMagnet?: string } = {}) {
   const calls: Call[] = [];
   let policy = { ...policyFixture };
+  let pause = { ...publicPauseFixture };
   const fetch = vi.fn(async (url: string, init: RequestInit = {}) => {
     const method = init.method ?? "GET";
     let body: unknown = init.body;
@@ -229,6 +236,16 @@ function mount(payload: unknown, options: { failMagnet?: string } = {}) {
     }
     if (method === "POST" && url === "/api/v1/torrents/share-policy/run")
       return Response.json({ checked: 3, acted: 2 });
+    if (method === "GET" && url === "/api/v1/torrents/public-pause")
+      return Response.json(pause);
+    if (method === "PUT" && url === "/api/v1/torrents/public-pause") {
+      pause = {
+        ...(body as typeof publicPauseFixture),
+        revision: pause.revision + 1,
+        updated_at: 1700000100,
+      };
+      return Response.json(pause);
+    }
     if (method === "GET" && url.startsWith("/api/v1/torrents/")) {
       const hash = url.slice("/api/v1/torrents/".length);
       const t = [jobTorrent, manualTorrent, otherTorrent].find(
@@ -797,6 +814,47 @@ describe("Torrents", () => {
       expect(screen.getByLabelText("Transfer rates")).toHaveTextContent(
         "Seeding limit: ratio 1.5 · 2 h · remove torrent and delete files",
       ),
+    );
+  });
+
+  it("toggles the auto-pause option for public sources", async () => {
+    const user = userEvent.setup();
+    const { calls } = mount(overview());
+    await screen.findByText("Fixture.Release.1080p");
+    const toggle = screen.getByRole("button", {
+      name: "Pause public when done",
+    });
+    await waitFor(() =>
+      expect(toggle).toHaveAttribute("aria-pressed", "false"),
+    );
+
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(puts(calls, "/api/v1/torrents/public-pause")).toHaveLength(1),
+    );
+    expect(puts(calls, "/api/v1/torrents/public-pause")[0].body).toEqual({
+      enabled: true,
+      revision: 1,
+      updated_at: 0,
+    });
+    await waitFor(() => expect(toggle).toHaveAttribute("aria-pressed", "true"));
+    expect(
+      await screen.findByText(
+        /Finished public-tracker torrents will be paused automatically/,
+      ),
+    ).toBeVisible();
+
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(puts(calls, "/api/v1/torrents/public-pause")).toHaveLength(2),
+    );
+    expect(puts(calls, "/api/v1/torrents/public-pause")[1].body).toEqual({
+      enabled: false,
+      revision: 2,
+      updated_at: 0,
+    });
+    await waitFor(() =>
+      expect(toggle).toHaveAttribute("aria-pressed", "false"),
     );
   });
 });

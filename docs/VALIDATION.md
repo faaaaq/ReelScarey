@@ -2269,3 +2269,24 @@ Run locally on Windows (development tools only; Docker remains the target):
   Clover episode. The seven others had no release satisfying the profile and
   exact identity rules. The schedule is enabled at 360 minutes; the two missing
   Anime shows were switched to season matching so scheduled cycles include them.
+
+## Version 0.39.8 auto-pause for public torrents
+
+- The Torrents page has a **Pause public when done** toggle. When enabled, a
+  supervised pass pauses finished torrents from public sources (the Nyaa
+  indexer and manual uploads) in the built-in client; private-tracker and
+  unknown-origin torrents keep seeding. Pausing never deletes anything, and
+  each pause writes a History entry.
+- Queued downloads record their source classification in a new
+  `downloads.indexer_public` / `music_downloads.indexer_public` column
+  (migration 066). Existing rows keep 0, the fail-safe "never auto-pause"
+  value.
+- `GET/PUT /api/v1/torrents/public-pause` reads and replaces the option behind
+  a revision fence. The supervised seeding loop now runs both policies.
+- Go tests cover the option round trip, which torrents are paused or skipped,
+  queue-time classification for Nyaa/private/manual sources, and the HTTP
+  routes; migration-schema and backup assertions moved to 66. gofmt, vet, the
+  full Go suite and the build passed.
+- Frontend format:check, check, the full suite (47 files, 265 tests) and the
+  build passed. The new toggle has a Toolbar test covering both directions
+  with revision fencing.

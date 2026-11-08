@@ -26,6 +26,7 @@ import {
   PanelBottom,
   PanelLeft,
   Pause,
+  PauseCircle,
   Play,
   RefreshCw,
   ShieldAlert,
@@ -81,6 +82,7 @@ import {
   writeStored,
   type Filters,
   type Overview,
+  type PublicPause,
   type SharePolicy,
   type SharePolicyRun,
   type Torrent,
@@ -153,6 +155,10 @@ export function Torrents() {
   const overview = useLiveResource<Overview>("/torrents", 2000);
   const sharePolicy = useLiveResource<SharePolicy>(
     "/torrents/share-policy",
+    30000,
+  );
+  const publicPause = useLiveResource<PublicPause>(
+    "/torrents/public-pause",
     30000,
   );
   const navigate = useNavigate();
@@ -325,6 +331,26 @@ export function Torrents() {
     });
     sharePolicy.reload();
     return result;
+  }
+
+  async function savePublicPause(enabled: boolean) {
+    if (!publicPause.data) return;
+    const next = await api<PublicPause>("/torrents/public-pause", {
+      method: "PUT",
+      body: JSON.stringify({
+        enabled,
+        revision: publicPause.data.revision,
+        updated_at: 0,
+      }),
+    });
+    publicPause.reload();
+    setMessage({
+      kind: "success",
+      text: enabled
+        ? "Finished public-tracker torrents will be paused automatically."
+        : "Finished public-tracker torrents will keep seeding.",
+    });
+    return next;
   }
 
   async function addLinks(links: string[]): Promise<AddFailure[]> {
@@ -788,6 +814,24 @@ export function Torrents() {
             title="Automatically limit seeding for this client"
             className="tor-tool"
             onClick={() => setSharePolicyOpen(true)}
+          />
+          <ToolbarButton
+            icon={PauseCircle}
+            label="Pause public when done"
+            className="tor-tool"
+            active={publicPause.data?.enabled ?? false}
+            aria-pressed={publicPause.data?.enabled ?? false}
+            title={
+              publicPause.data?.enabled
+                ? "Finished torrents from public sources (Nyaa and manual uploads) are paused automatically. Click to turn this off."
+                : "Click to pause finished torrents from public sources (Nyaa and manual uploads) automatically."
+            }
+            disabled={!publicPause.data}
+            onClick={() =>
+              void savePublicPause(!publicPause.data?.enabled).catch((e) =>
+                setMessage({ kind: "danger", text: messageFor(e) }),
+              )
+            }
           />
         </ToolbarSection>
         <ToolbarSection align="right">

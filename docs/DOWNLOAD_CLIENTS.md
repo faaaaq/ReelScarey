@@ -47,6 +47,10 @@ the peer port.
   include plus "remove and delete" only removes the torrent entry. The pass
   records one History entry per torrent hash and action and retries errors on
   the next tick. See [Torrents](TORRENTS.md#automatic-seeding-limit).
+- **Auto-pause public trackers.** An optional toggle pauses finished torrents
+  from public sources (the Nyaa indexer and manual uploads) in the built-in
+  client instead of seeding them; private-tracker downloads keep seeding. See
+  [Torrents](TORRENTS.md#auto-pause-public-trackers).
 - Generic client editing and deletion refuse the built-in connection; use its
   own controls. It can still be tested from the client list.
 

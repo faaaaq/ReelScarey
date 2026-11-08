@@ -339,7 +339,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	go func() {
 		defer close(seedingDone)
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
-			transferService.SuperviseSeeding(workerCtx, logger)
+			transferService.SuperviseTorrentPolicies(workerCtx, logger)
 		}
 	}()
 	defer func() { workerCancel(); <-seedingDone }()

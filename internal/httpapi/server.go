@@ -273,6 +273,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/torrents/speed-limits", method(http.MethodPost, s.torrentSpeedLimits))
 	mux.HandleFunc("/api/v1/torrents/share-policy", s.torrentSharePolicy)
 	mux.HandleFunc("/api/v1/torrents/share-policy/run", method(http.MethodPost, s.torrentSharePolicyRun))
+	mux.HandleFunc("/api/v1/torrents/public-pause", s.torrentPublicPause)
 	mux.HandleFunc("/api/v1/torrents/{hash}", method(http.MethodGet, s.torrentDetail))
 	mux.HandleFunc("/api/v1/torrents/{hash}/files", method(http.MethodPost, s.torrentFilePriority))
 	mux.HandleFunc("/api/v1/torrents/{hash}/{action}", method(http.MethodPost, s.torrentAction))
