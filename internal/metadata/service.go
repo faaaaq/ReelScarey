@@ -6,14 +6,42 @@ import (
 )
 
 type Service struct {
-	secrets  *securestore.Store
-	provider MovieProvider
+	secrets      *securestore.Store
+	provider     MovieProvider
+	defaultToken string
 }
 
 func New(secrets *securestore.Store, provider MovieProvider) *Service {
 	return &Service{secrets: secrets, provider: provider}
 }
-func (s *Service) Status(ctx context.Context) (bool, string, error) { return s.secrets.Status(ctx) }
+
+// SetDefaultToken installs the optional shared TMDb Read Access Token from the
+// deployment environment. A token saved in Settings always wins, so users can
+// replace the shared default without changing the deployment.
+func (s *Service) SetDefaultToken(token string) { s.defaultToken = token }
+
+// DefaultTokenAvailable reports whether the deployment supplies a shared token.
+func (s *Service) DefaultTokenAvailable() bool { return s.defaultToken != "" }
+
+// UsingDefault reports whether the shared token is currently in use.
+func (s *Service) UsingDefault(ctx context.Context) (bool, error) {
+	token, err := s.secrets.Get(ctx)
+	if err != nil {
+		return false, err
+	}
+	return token == "" && s.defaultToken != "", nil
+}
+
+func (s *Service) Status(ctx context.Context) (bool, string, error) {
+	configured, updated, err := s.secrets.Status(ctx)
+	if err != nil {
+		return false, "", err
+	}
+	if !configured && s.defaultToken != "" {
+		configured = true
+	}
+	return configured, updated, nil
+}
 func (s *Service) Configure(ctx context.Context, token string) error {
 	if !ValidToken(token) {
 		return &Error{Code: "tmdb_invalid_token", Message: "Enter a valid TMDb API Read Access Token."}
@@ -35,6 +63,9 @@ func (s *Service) token(ctx context.Context) (string, error) {
 	token, err := s.secrets.Get(ctx)
 	if err != nil {
 		return "", err
+	}
+	if token == "" {
+		token = s.defaultToken
 	}
 	if token == "" {
 		return "", ErrNotConfigured

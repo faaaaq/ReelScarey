@@ -161,6 +161,11 @@ services:
       REELSCAREY_CONFIG_DIR: /config/state
       REELSCAREY_MEDIA_DIR: /media
       REELSCAREY_DOWNLOADS_DIR: /downloads
+
+      # Optional shared TMDb Read Access Token. New installs work immediately
+      # with this default; each owner can replace it in Settings. Leave empty
+      # to require a token in Settings. Never commit a real token.
+      REELSCAREY_TMDB_TOKEN: ""
     ports:
       - "8787:8787"
     volumes:
@@ -181,6 +186,15 @@ Open the URL from `REELSCAREY_PUBLIC_URL`, paste the one-time setup code and
 create the administrator. The code is also stored at
 `/config/state/setup-token` and is removed after setup. **No default password
 exists.**
+
+### Shared TMDb token
+
+Set `REELSCAREY_TMDB_TOKEN` to a TMDb API Read Access Token to make metadata
+work immediately after setup. It is never shown in the interface or logs. The
+Settings page labels it **Shared default**; saving another token there replaces
+it for that installation, and **Use shared default** removes the saved token and
+falls back to the deployment value. Leave the variable empty to require each
+installation to save its own token.
 
 ### First-run checklist
 

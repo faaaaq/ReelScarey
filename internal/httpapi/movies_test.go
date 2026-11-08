@@ -32,6 +32,46 @@ func (p *testProvider) Movie(context.Context, string, int64) (metadata.Movie, er
 	}
 	return metadata.Movie{TMDbID: 11, Title: "Canonical provider title", Overview: "Canonical overview", PosterPath: "/poster.jpg"}, nil
 }
+func TestTMDbSharedDefaultStatusAndReplacement(t *testing.T) {
+	provider := &testProvider{}
+	handler, _, accounts, code := rawFixtureWithDefaultToken(t, provider, "test-shared-default-token")
+	session, err := accounts.Setup(context.Background(), "testadmin", "test-only-password", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func() map[string]any {
+		out := request(handler, "GET", "/api/v1/providers/tmdb", "", &session, false)
+		if out.Code != 200 {
+			t.Fatal(out.Code, out.Body.String())
+		}
+		var body map[string]any
+		if err := json.Unmarshal(out.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+	body := read()
+	if body["configured"] != true || body["using_default"] != true || body["default_available"] != true {
+		t.Fatal("shared default not reported", body)
+	}
+	out := request(handler, "PUT", "/api/v1/providers/tmdb", `{"token":"test-user-provider-token-value"}`, &session, true)
+	if out.Code != 200 {
+		t.Fatal(out.Code, out.Body.String())
+	}
+	body = read()
+	if body["configured"] != true || body["using_default"] != false || body["default_available"] != true {
+		t.Fatal("saved token did not replace the default", body)
+	}
+	out = request(handler, "DELETE", "/api/v1/providers/tmdb", "", &session, true)
+	if out.Code != 200 {
+		t.Fatal(out.Code, out.Body.String())
+	}
+	body = read()
+	if body["using_default"] != true {
+		t.Fatal("removing the saved token did not fall back to the default", body)
+	}
+}
+
 func request(handler http.Handler, method, path, body string, session *auth.Session, csrf bool) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
 	if body != "" {

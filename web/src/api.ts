@@ -493,7 +493,12 @@ export type AuthStatus = {
   authenticated: boolean;
   session?: Session;
 };
-export type ProviderStatus = { configured: boolean; updated_at: string };
+export type ProviderStatus = {
+  configured: boolean;
+  updated_at: string;
+  using_default?: boolean;
+  default_available?: boolean;
+};
 export type IntegrationStatus = {
   configured: boolean;
   url: string;

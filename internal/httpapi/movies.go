@@ -48,7 +48,17 @@ func (s *Server) tmdbSettings(w http.ResponseWriter, r *http.Request) {
 			s.internal(w, "tmdb_status", err)
 			return
 		}
-		send(w, 200, map[string]any{"configured": configured, "updated_at": updated})
+		usingDefault, err := s.metadata.UsingDefault(r.Context())
+		if err != nil {
+			s.internal(w, "tmdb_status", err)
+			return
+		}
+		send(w, 200, map[string]any{
+			"configured":        configured,
+			"updated_at":        updated,
+			"using_default":     usingDefault,
+			"default_available": s.metadata.DefaultTokenAvailable(),
+		})
 	case http.MethodPut:
 		var body struct {
 			Token string `json:"token"`

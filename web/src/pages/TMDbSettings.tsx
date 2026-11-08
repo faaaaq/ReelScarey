@@ -37,7 +37,9 @@ export function TMDbSettings() {
         setToken("");
         resource.reload();
         setSuccess(
-          "TMDb disconnected. Your saved movies and shows are still in the library.",
+          resource.data?.default_available
+            ? "Saved token removed. Using the shared default TMDb token."
+            : "TMDb disconnected. Your saved movies and shows are still in the library.",
         );
       }
     } catch (error) {
@@ -54,8 +56,20 @@ export function TMDbSettings() {
     <section id="tmdb" className="rs-fieldset" aria-label="TMDb settings">
       <div className="rs-legend">
         <h2>TMDb metadata</h2>
-        <Label kind={resource.data?.configured ? "success" : "disabled"}>
-          {resource.data?.configured ? "Configured" : "Not connected"}
+        <Label
+          kind={
+            resource.data?.configured
+              ? resource.data?.using_default
+                ? "info"
+                : "success"
+              : "disabled"
+          }
+        >
+          {resource.data?.configured
+            ? resource.data.using_default
+              ? "Shared default"
+              : "Configured"
+            : "Not connected"}
         </Label>
       </div>
       <RequestState
@@ -72,17 +86,24 @@ export function TMDbSettings() {
             label="API Read Access Token"
             htmlFor="tmdb-token"
             help={
-              <>
-                The Read Access Token from your{" "}
-                <a
-                  href="https://www.themoviedb.org/settings/api"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  TMDb API settings
-                </a>
-                . Stored encrypted; never shown again after saving.
-              </>
+              resource.data?.using_default ? (
+                <>
+                  This instance uses a shared TMDb Read Access Token. Enter your
+                  own token to replace it; saved movies and shows are unchanged.
+                </>
+              ) : (
+                <>
+                  The Read Access Token from your{" "}
+                  <a
+                    href="https://www.themoviedb.org/settings/api"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    TMDb API settings
+                  </a>
+                  . Stored encrypted; never shown again after saving.
+                </>
+              )
             }
           >
             <TextField.Root
@@ -107,11 +128,13 @@ export function TMDbSettings() {
             <Button type="submit" disabled={pending || !token.trim()}>
               {pending
                 ? "Please wait…"
-                : resource.data.configured
-                  ? "Replace & test token"
-                  : "Save & test connection"}
+                : resource.data.using_default
+                  ? "Save my own token"
+                  : resource.data.configured
+                    ? "Replace & test token"
+                    : "Save & test connection"}
             </Button>
-            {resource.data.configured && (
+            {resource.data.configured && !resource.data.using_default && (
               <>
                 <Button
                   type="button"
@@ -124,11 +147,14 @@ export function TMDbSettings() {
                 <Button
                   type="button"
                   variant="soft"
-                  color="red"
+                  color={resource.data.default_available ? undefined : "red"}
                   disabled={pending}
                   onClick={() => void action("remove")}
                 >
-                  <Unplug size={15} /> Disconnect
+                  <Unplug size={15} />{" "}
+                  {resource.data.default_available
+                    ? "Use shared default"
+                    : "Disconnect"}
                 </Button>
               </>
             )}

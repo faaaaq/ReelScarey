@@ -20,6 +20,7 @@ type Config struct {
 	BackupsDir   string
 	LogLevel     string
 	PublicURL    string
+	TMDbToken    string
 	BrowseRoots  map[string]string
 }
 
@@ -44,6 +45,10 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		BackupsDir:   value("REELSCAREY_BACKUPS_DIR", filepath.Join(value("REELSCAREY_CONFIG_DIR", "./data/config"), "..", "backups")),
 		LogLevel:     value("REELSCAREY_LOG_LEVEL", "info"),
 		PublicURL:    value("REELSCAREY_PUBLIC_URL", ""),
+		TMDbToken:    value("REELSCAREY_TMDB_TOKEN", ""),
+	}
+	if c.TMDbToken != "" && (len(c.TMDbToken) < 20 || len(c.TMDbToken) > 4096 || strings.IndexFunc(c.TMDbToken, func(r rune) bool { return r < 33 || r > 126 }) >= 0) {
+		return Config{}, fmt.Errorf("REELSCAREY_TMDB_TOKEN must be a valid TMDb Read Access Token")
 	}
 	if raw := strings.TrimSpace(getenv("REELSCAREY_BROWSE_ROOTS")); raw != "" {
 		if len(raw) > 8192 || json.Unmarshal([]byte(raw), &c.BrowseRoots) != nil || c.BrowseRoots == nil || len(c.BrowseRoots) > 8 {

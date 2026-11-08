@@ -411,7 +411,7 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | POST | `/api/v1/auth/setup` | Public, rate-limited first admin creation; username, password, setup_token; returns 201 + cookie |
 | POST | `/api/v1/auth/login` | Public, rate-limited username/password login; returns 200 + cookie |
 | POST | `/api/v1/auth/logout` | Revoke current session and clear cookie; requires CSRF |
-| GET | `/api/v1/providers/tmdb` | configured + updated_at; never the token |
+| GET | `/api/v1/providers/tmdb` | configured + updated_at + using_default/default_available; never the token |
 | PUT | `/api/v1/providers/tmdb` | `{ "token": "..." }`; validate remotely, encrypt and save; failure preserves previous token |
 | DELETE | `/api/v1/providers/tmdb` | Remove saved credential; retain all library metadata |
 | POST | `/api/v1/providers/tmdb/test` | Test the saved credential against real TMDb |

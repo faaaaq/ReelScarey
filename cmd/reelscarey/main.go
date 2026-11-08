@@ -128,6 +128,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	}
 	cancel()
 	metadataService := metadata.New(secretStore, metadata.NewTMDb())
+	metadataService.SetDefaultToken(cfg.TMDbToken)
 	musicService := music.NewService(db, cfg.MediaDir)
 	musicService.SetDownloadsDir(cfg.DownloadsDir)
 	if err := musicService.RecoverScans(ctx); err != nil {

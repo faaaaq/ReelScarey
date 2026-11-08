@@ -294,6 +294,42 @@ describe("authentication and movies", () => {
       token: "test-only-provider-token-value",
     });
   });
+  it("uses the shared default TMDb token until the owner saves their own", async () => {
+    let usingDefault = true;
+    setup((url, options) => {
+      if (url.endsWith("/providers/tmdb")) {
+        if (options?.method === "PUT") {
+          usingDefault = false;
+          return Response.json({ configured: true, tested: true });
+        }
+        if (options?.method === "DELETE") {
+          usingDefault = true;
+          return Response.json({ configured: true });
+        }
+        return Response.json({
+          configured: true,
+          using_default: usingDefault,
+          default_available: true,
+          updated_at: "",
+        });
+      }
+      return undefined;
+    });
+    mount("/settings/connect");
+    expect(await screen.findByText("Shared default")).toBeVisible();
+    await userEvent.type(
+      screen.getByLabelText("API Read Access Token"),
+      "test-user-provider-token-value",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save my own token" }),
+    );
+    expect(await screen.findByText("Configured")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Use shared default" }),
+    );
+    expect(await screen.findByText("Shared default")).toBeVisible();
+  });
   it("returns to sign-in when a session expires", async () => {
     setup((url) =>
       url.endsWith("/settings")

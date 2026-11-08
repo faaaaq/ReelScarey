@@ -37,6 +37,29 @@ func TestDefaultsAndValidation(t *testing.T) {
 		t.Fatal("invalid log level accepted")
 	}
 }
+func TestTMDbTokenFromEnvironment(t *testing.T) {
+	token := "test-provider-token-for-config-tests"
+	cfg, err := FromEnv(func(key string) string {
+		if key == "REELSCAREY_TMDB_TOKEN" {
+			return token
+		}
+		return ""
+	})
+	if err != nil || cfg.TMDbToken != token {
+		t.Fatal(cfg, err)
+	}
+	for _, raw := range []string{"short", "has space in the token", string([]byte{1, 2, 3})} {
+		if _, err := FromEnv(func(key string) string {
+			if key == "REELSCAREY_TMDB_TOKEN" {
+				return raw
+			}
+			return ""
+		}); err == nil {
+			t.Fatal("invalid TMDb token accepted")
+		}
+	}
+}
+
 func TestBrowseRootsRequireBoundedNamedAbsoluteFolders(t *testing.T) {
 	for _, raw := range []string{`null`, `[]`, `{"media":"/archive"}`, `{"private":"relative"}`, `{"Bad Name":"/archive"}`} {
 		if _, e := FromEnv(func(key string) string {

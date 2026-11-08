@@ -22,6 +22,10 @@ import (
 )
 
 func rawFixture(t *testing.T, provider metadata.MovieProvider) (http.Handler, *sql.DB, *auth.Service, string) {
+	return rawFixtureWithDefaultToken(t, provider, "")
+}
+
+func rawFixtureWithDefaultToken(t *testing.T, provider metadata.MovieProvider, defaultToken string) (http.Handler, *sql.DB, *auth.Service, string) {
 	t.Helper()
 	dir := t.TempDir()
 	db, err := database.Open(context.Background(), dir)
@@ -45,7 +49,9 @@ func rawFixture(t *testing.T, provider metadata.MovieProvider) (http.Handler, *s
 	if provider == nil {
 		provider = metadata.NewTMDb()
 	}
-	return New(db, config.Config{ConfigDir: dir, MediaDir: "/media", DownloadsDir: "/downloads", PublicURL: "http://example.com"}, slog.New(slog.NewTextHandler(io.Discard, nil)), assets, "test", Dependencies{Auth: authService, Metadata: metadata.New(store, provider), Secrets: store}), db, authService, base64.RawURLEncoding.EncodeToString(code)
+	meta := metadata.New(store, provider)
+	meta.SetDefaultToken(defaultToken)
+	return New(db, config.Config{ConfigDir: dir, MediaDir: "/media", DownloadsDir: "/downloads", PublicURL: "http://example.com"}, slog.New(slog.NewTextHandler(io.Discard, nil)), assets, "test", Dependencies{Auth: authService, Metadata: meta, Secrets: store}), db, authService, base64.RawURLEncoding.EncodeToString(code)
 }
 
 func fixture(t *testing.T) (http.Handler, *sql.DB) {

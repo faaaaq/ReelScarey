@@ -2338,3 +2338,23 @@ Run locally on Windows (development tools only; Docker remains the target):
 - A new Theme test asserts the root class and that the portalled menu neither
   carries the page-only class nor computes `min-height: 100vh`. Type-check and
   the affected Movie, TV and Torrents tests pass.
+
+## Version 0.41.0 release feed check and shared TMDb default
+
+- The release feed check is enabled every 15 minutes and matches feed entries
+  only to monitored missing titles; registered files are never replaced. Feed
+  identity is deduplicated per indexer, download URLs stay inside the adapter
+  boundary, and the Automation page exposes the feed status and recent matches.
+  The full Go suite and the frontend suite passed with the feed work before this
+  release.
+- `REELSCAREY_TMDB_TOKEN` can supply a deployment-wide shared TMDb Read Access
+  Token. It is used only while no token is saved in Settings, so an owner can
+  replace it; removing the saved token falls back to the shared value. The
+  interface labels it **Shared default** and never displays or returns the
+  token. `GET /api/v1/providers/tmdb` adds `using_default` and
+  `default_available` without changing the existing fields.
+- Go tests cover the environment token validation, default/saved/fallback token
+  selection and the HTTP status contract. gofmt, vet, the full Go suite and the
+  build passed.
+- Frontend format:check, check, the full suite (48 files, 270 tests) and the
+  build passed, including the shared-default replace/fallback flow.
