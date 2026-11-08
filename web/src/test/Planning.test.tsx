@@ -556,22 +556,23 @@ it("states the saved download mode and reports what the run did", async () => {
       return Response.json({ requested: true }, { status: 202 });
     }
     if (url.endsWith("/automation/runs"))
-      return Response.json(
-        phase === "idle"
-          ? []
-          : [
-              {
-                id: "run-1",
-                started_at: Math.floor(Date.now() / 1000),
-                finished_at: Math.floor(Date.now() / 1000) + 1,
-                state: "completed",
-                message: "Search complete.",
-                mode: "download",
-                checked: 4,
-                queued: 2,
-              },
-            ],
-      );
+      return Response.json({
+        items:
+          phase === "idle"
+            ? []
+            : [
+                {
+                  id: "run-1",
+                  started_at: Math.floor(Date.now() / 1000),
+                  finished_at: Math.floor(Date.now() / 1000) + 1,
+                  state: "completed",
+                  message: "Search complete.",
+                  mode: "download",
+                  checked: 4,
+                  queued: 2,
+                },
+              ],
+      });
     return undefined;
   });
   mount("/calendar?month=2026-10");
@@ -603,24 +604,27 @@ it("shows live indeterminate progress while a bulk search runs", async () => {
       return Response.json({ requested: true }, { status: 202 });
     }
     if (url.endsWith("/automation/runs"))
-      return Response.json(
-        phase === "idle"
-          ? []
-          : [
-              {
-                id: "run-1",
-                started_at: Math.floor(Date.now() / 1000),
-                finished_at:
-                  phase === "completed" ? Math.floor(Date.now() / 1000) + 1 : 0,
-                state: phase === "completed" ? "completed" : "running",
-                message:
-                  phase === "completed" ? "Search complete." : "Searching.",
-                mode: "download",
-                checked: 2,
-                queued: 1,
-              },
-            ],
-      );
+      return Response.json({
+        items:
+          phase === "idle"
+            ? []
+            : [
+                {
+                  id: "run-1",
+                  started_at: Math.floor(Date.now() / 1000),
+                  finished_at:
+                    phase === "completed"
+                      ? Math.floor(Date.now() / 1000) + 1
+                      : 0,
+                  state: phase === "completed" ? "completed" : "running",
+                  message:
+                    phase === "completed" ? "Search complete." : "Searching.",
+                  mode: "download",
+                  checked: 2,
+                  queued: 1,
+                },
+              ],
+      });
     return undefined;
   });
   mount("/calendar?month=2026-10");
@@ -657,18 +661,20 @@ it("waits visibly when an earlier search still owns the scheduler", async () => 
   const intervals = stubIntervals();
   setup((url) => {
     if (url.endsWith("/automation/runs"))
-      return Response.json([
-        {
-          id: "run-0",
-          started_at: Math.floor(Date.now() / 1000) - 60,
-          finished_at: 0,
-          state: "running",
-          message: "Searching.",
-          mode: "search",
-          checked: 3,
-          queued: 0,
-        },
-      ]);
+      return Response.json({
+        items: [
+          {
+            id: "run-0",
+            started_at: Math.floor(Date.now() / 1000) - 60,
+            finished_at: 0,
+            state: "running",
+            message: "Searching.",
+            mode: "search",
+            checked: 3,
+            queued: 0,
+          },
+        ],
+      });
     if (url.endsWith("/automation/search-bulk"))
       return Response.json({ requested: true }, { status: 202 });
     return undefined;
@@ -700,22 +706,23 @@ it("states search-only mode and explains a run that checked nothing", async () =
       return Response.json({ requested: true }, { status: 202 });
     }
     if (url.endsWith("/automation/runs"))
-      return Response.json(
-        phase === "idle"
-          ? []
-          : [
-              {
-                id: "run-2",
-                started_at: Math.floor(Date.now() / 1000),
-                finished_at: Math.floor(Date.now() / 1000) + 1,
-                state: "completed",
-                message: "Waiting for an enabled indexer.",
-                mode: "search",
-                checked: 0,
-                queued: 0,
-              },
-            ],
-      );
+      return Response.json({
+        items:
+          phase === "idle"
+            ? []
+            : [
+                {
+                  id: "run-2",
+                  started_at: Math.floor(Date.now() / 1000),
+                  finished_at: Math.floor(Date.now() / 1000) + 1,
+                  state: "completed",
+                  message: "Waiting for an enabled indexer.",
+                  mode: "search",
+                  checked: 0,
+                  queued: 0,
+                },
+              ],
+      });
     return undefined;
   });
   mount("/calendar?month=2026-10");
@@ -737,6 +744,36 @@ it("states search-only mode and explains a run that checked nothing", async () =
   expect(message).toHaveTextContent(
     /waiting for an indexer or download client/,
   );
+});
+
+it("stops reporting progress when the run list cannot be read", async () => {
+  const intervals = stubIntervals();
+  setup((url, options) => {
+    if (url.endsWith("/automation/search-bulk") && options?.method === "POST")
+      return Response.json({ requested: true }, { status: 202 });
+    if (url.endsWith("/automation/runs"))
+      return new Response("unavailable", { status: 503 });
+    return undefined;
+  });
+  mount("/calendar?month=2026-10");
+  await screen.findByRole("heading", { name: "October 2026" });
+  await userEvent.click(screen.getByRole("button", { name: "Search movies" }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search every missing monitored movie?",
+  });
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: "Start search" }),
+  );
+  const poll = intervals.find((interval) => interval.ms === 2500)!;
+  for (let attempt = 0; attempt < 45; attempt += 1) {
+    await act(async () => poll.run());
+  }
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("progressbar", { name: "Calendar bulk search" }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(screen.getByText(/Open Automation for details/)).toBeVisible();
 });
 
 it("remembers the last calendar filters until Reset", async () => {

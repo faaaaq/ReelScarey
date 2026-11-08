@@ -55,10 +55,10 @@ export function useBulkSearch() {
       attempts.current = 0;
       try {
         // Remember which run was newest so only the new one is summarised.
-        const runs = await api<RunSummary[]>("/automation/runs").catch(
-          () => [] as RunSummary[],
-        );
-        baseline.current = runs[0]?.id ?? null;
+        const runs = await api<{ items: RunSummary[] }>(
+          "/automation/runs",
+        ).catch(() => ({ items: [] as RunSummary[] }));
+        baseline.current = runs.items[0]?.id ?? null;
         await request();
       } catch (error) {
         setState({
@@ -78,8 +78,9 @@ export function useBulkSearch() {
     let cancelled = false;
     const poll = async () => {
       try {
-        const runs = await api<RunSummary[]>("/automation/runs");
+        const response = await api<{ items: RunSummary[] }>("/automation/runs");
         if (cancelled) return;
+        const runs = response.items ?? [];
         const fresh = runs.filter(
           (run) =>
             run.id !== baseline.current &&
@@ -136,8 +137,17 @@ export function useBulkSearch() {
           });
         }
         attempts.current += 1;
-      } catch {
+      } catch (error) {
         attempts.current += 1;
+        if (attempts.current >= 40) {
+          setState({
+            status: "error",
+            message:
+              error instanceof Error
+                ? error.message
+                : "The search status could not be read. Check Automation for progress.",
+          });
+        }
       }
     };
     const timer = window.setInterval(() => void poll(), 2500);

@@ -2241,3 +2241,15 @@ Run locally on Windows (development tools only; Docker remains the target):
   same four episodes airing that day every few seconds. The focused pass now
   stops after each target is visited once instead of counting still-missing
   items forever.
+
+## Version 0.39.6 Calendar bulk-search response envelope
+
+- The Calendar and Series bulk-search progress hook now reads the documented
+  `{items}` envelope from `GET /automation/runs`. It previously treated the
+  response as a bare array, so every poll threw and the interface stayed on
+  "Starting search…" while the backend actually ran the search.
+- The polling error path now stops after its bounded attempts with a visible
+  pointer to Automation instead of retrying silently forever.
+- Frontend format:check, check, the full suite (47 files, 264 tests) and the
+  build passed. Tests now use the real `{items}` envelope and add a regression
+  for an unreadable run list. Go is unchanged from 0.39.5.
