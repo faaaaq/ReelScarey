@@ -2263,3 +2263,9 @@ Run locally on Windows (development tools only; Docker remains the target):
 - Go tests cover the disabled-Anime bulk queue and the scheduled exclusion. The
   full Go suite, vet and build passed.
 - The frontend is unchanged from 0.39.6 (47 files, 264 tests).
+- Live 0.39.7 ran an enabled download-mode schedule: one run checked all eight
+  released missing episodes across five monitored shows, including the two
+  Anime shows whose per-show search was off, and queued the matching Black
+  Clover episode. The seven others had no release satisfying the profile and
+  exact identity rules. The schedule is enabled at 360 minutes; the two missing
+  Anime shows were switched to season matching so scheduled cycles include them.
