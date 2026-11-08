@@ -62,6 +62,7 @@ spelling against your server before starting Docker.
 | `/data` (named volume) | Retained versions and library recovery files |
 | `/data/anime` | Your Anime bind mount |
 | `/data/tvshows` | Your TV bind mount |
+| `/data/music` | Optional music bind mount for Music Library Import |
 | `/downloads` | Your completed downloads, read-only |
 
 In **Organize library**, set the Anime folder to `anime` and TV folder to
@@ -70,6 +71,11 @@ are paths relative to `/data`. The Movies collection remains available but has
 no host movie mount in this example; add one before using it. The Anime scan
 finds series directly under /data/anime. Include anime films in the Movies scan. Imports and
 existing-file registration still require the normal review workflow.
+
+For existing music, mount a host folder below `/data` (for example a music bind
+at `/data/Music` or `/data/music`) and enter that exact relative folder in
+**Music → Library Import**. Add the matching artists and open each album once so
+tracks are loaded before registering files.
 
 Keep the `library-state:/data` mount: it preserves retained versions and recovery
 files outside the individual library mounts when the container is replaced.

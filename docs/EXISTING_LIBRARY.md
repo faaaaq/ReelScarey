@@ -27,6 +27,11 @@ entries, symbolic links, samples/trailers, non-regular/empty files, unsupported
 extensions and already registered paths. Supported videos are MKV, MP4, M4V,
 AVI, MOV, WEBM, TS and M2TS. Disc folders and archive extraction are not supported.
 
+**Music** is listed in the same Discover panel and opens the dedicated
+tag-based **Music Import** scanner. Music files are matched to MusicBrainz
+artists, albums and tracks rather than TMDb video metadata; see
+[Music](MUSIC.md).
+
 Discovery is durable and processes one directory at a time. Restarted work
 resumes using a lease and unique discovered-path records. Stop discovery leaves
 its previous results available for review; already queued registrations continue.

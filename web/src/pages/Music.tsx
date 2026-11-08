@@ -104,6 +104,12 @@ export function Music() {
       <PageToolbar label="Music actions">
         <ToolbarSection>
           <ToolbarButton
+            icon={FolderInput}
+            label="Library Import"
+            title="Scan an existing music folder and register files"
+            to="/music/import"
+          />
+          <ToolbarButton
             icon={Plus}
             label="Add artist"
             onClick={() => setOpen(true)}
@@ -121,9 +127,12 @@ export function Music() {
           title="Music"
           description="MusicBrainz artist and album catalog."
         />
-        <Alert kind="info" title="Catalog">
-          Artist and album metadata is here. Scan and register files from
-          Library Import, then organize and tag them from Organize.
+        <Alert kind="info" title="Add existing music">
+          Use <Link to="/music/import">Music Library Import</Link> to scan a
+          folder below the media root. Add the artist and open each album once
+          so its tracks are loaded before registering files. Then use{" "}
+          <Link to="/music/organize">Organize</Link> to rename and tag
+          registered files.
         </Alert>
         <RequestState
           loading={artists.loading}
@@ -136,10 +145,18 @@ export function Music() {
               icon={Disc3}
               title="No artists yet"
               actions={
-                <Button onClick={() => setOpen(true)}>Add artist</Button>
+                <>
+                  <Button asChild>
+                    <Link to="/music/import">Import existing music</Link>
+                  </Button>
+                  <Button variant="soft" onClick={() => setOpen(true)}>
+                    Add artist
+                  </Button>
+                </>
               }
             >
-              Search MusicBrainz and add an artist to the catalog.
+              Scan an existing music folder, or search MusicBrainz and add an
+              artist to the catalog.
             </EmptyState>
           ) : (
             <Table label="Music artists">

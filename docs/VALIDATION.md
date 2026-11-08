@@ -1,5 +1,17 @@
 # Validation record — 2026-10-29
 
+## Music import discovery (2026-11-08)
+
+- The Music toolbar and empty state now link directly to **Music Library
+  Import**. The main **Library Import** Discover panel lists Music with the
+  existing video folders, and the Settings library index includes Music Import.
+- Music scanning remains the reviewed MusicBrainz tag workflow; the new controls
+  route to it rather than pretending audio is TMDb video discovery.
+- Installation docs now show an optional `/data/music` bind mount and explain
+  that the scan folder is relative to the media root and case-sensitive.
+- Web `format:check`, `check`, `test` (51 files, 278 tests) and `build` passed.
+  No Go behavior changed for this UI discovery fix.
+
 ## Automatic and library metadata refresh (2026-11-08)
 
 Implementation checks on 2026-11-08 (Windows development host):

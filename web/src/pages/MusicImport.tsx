@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
-import { FolderSearch, RefreshCw } from "lucide-react";
+import { ArrowLeft, FolderSearch, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   Alert,
   EmptyState,
@@ -127,6 +128,7 @@ export function MusicImport() {
     <>
       <PageToolbar label="Music import actions">
         <ToolbarSection>
+          <ToolbarButton icon={ArrowLeft} label="Music" to="/music" />
           <ToolbarButton
             icon={FolderSearch}
             label="Scan folder"
@@ -149,9 +151,11 @@ export function MusicImport() {
           description="Read tags from a music folder, match them to catalog albums and register files in place. Files are never moved."
         />
         <Alert kind="info" title="Prepare the catalog first">
-          Add the artist and open each album once so its tracks are loaded
-          before scanning. Files with no matching catalog album stay unresolved;
-          tag them with MusicBrainz IDs or add the artist first.
+          <Link to="/music">Add the artist</Link> and open each album once so
+          its tracks are loaded before scanning. Files with no matching catalog
+          album stay unresolved; tag them with MusicBrainz IDs or add the artist
+          first. The folder is relative to the media root and names are
+          case-sensitive.
         </Alert>
         <RequestState
           loading={scans.loading}
@@ -402,6 +406,10 @@ export function MusicImport() {
             Start scan
           </Button>
         </form>
+        <p className="rs-form-help">
+          Relative to the media root, for example <code>Music</code> or{" "}
+          <code>music</code>. Folder names are case-sensitive.
+        </p>
         {error && <Alert kind="danger">{error}</Alert>}
       </Modal>
     </>

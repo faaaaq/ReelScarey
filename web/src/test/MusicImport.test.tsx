@@ -162,6 +162,11 @@ describe("music import", () => {
     );
 
     expect(await screen.findByText("No scans yet")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Music" })).toHaveAttribute(
+      "href",
+      "/music",
+    );
+    expect(screen.getByText(/case-sensitive/)).toBeVisible();
     await userEvent.click(
       screen.getAllByRole("button", { name: "Scan folder" })[0],
     );

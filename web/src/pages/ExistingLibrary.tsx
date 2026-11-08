@@ -270,7 +270,18 @@ export function ExistingLibrary() {
               <span>Anime</span>
               <code>{animeRoot ?? "Folder unavailable"}</code>
             </div>
+            <Link className="scan-folder scan-folder-link" to="/music/import">
+              <span>Music</span>
+              <code>MusicBrainz tag scan</code>
+              <strong>Open Music Import →</strong>
+            </Link>
           </div>
+          <p className="rs-form-help">
+            Music uses a tag-based scanner because albums and tracks are matched
+            through MusicBrainz.{" "}
+            <Link to="/music/import">Open Music Library Import</Link> to scan a
+            music folder and register matched files in place.
+          </p>
 
           <div className="scan-start-row">
             <div className="adm-field">

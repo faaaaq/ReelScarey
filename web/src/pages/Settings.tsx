@@ -53,6 +53,11 @@ const groups: { name: string; items: Area[] }[] = [
         description: "Find existing files and register them in place.",
       },
       {
+        title: "Music Import",
+        to: "/music/import",
+        description: "Scan existing music folders and register matched files.",
+      },
+      {
         title: "Sonarr / Radarr Import",
         to: "/settings/backup-import",
         description:

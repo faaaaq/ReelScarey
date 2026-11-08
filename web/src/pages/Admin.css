@@ -441,6 +441,18 @@ fieldset:disabled {
   gap: 8px;
   min-width: 0;
 }
+.scan-folder-link {
+  color: inherit;
+  text-decoration: none;
+}
+.scan-folder-link:hover,
+.scan-folder-link:focus-visible {
+  border-color: var(--rs-link);
+}
+.scan-folder-link > strong {
+  color: var(--rs-link);
+  font-weight: 600;
+}
 .client-card > summary {
   font-size: 16px;
   color: var(--rs-text-strong);

@@ -88,6 +88,9 @@ imports the completed folder, and runs wanted-album searches on a schedule.
 
 ## Scan and registration
 
+Open **Music → Library Import** (also linked from the Music toolbar and empty
+state). The music folder must be mounted below `REELSCAREY_MEDIA_DIR`; enter its
+relative name exactly, including case, in the scan dialog.
 - The scan root must be a relative folder below `REELSCAREY_MEDIA_DIR`. Absolute
   paths and `..` are rejected.
 - Add the artist and open an album once so its tracks are loaded before

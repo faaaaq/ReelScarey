@@ -23,6 +23,8 @@ services:
       - "library-state:/data"
       - "/mnt/masstorage/Anime:/data/anime"
       - "/mnt/masstorage/TV:/data/tvshows"
+      # Optional existing music library for Music -> Library Import.
+      # - "/mnt/masstorage/Music:/data/Music"
     networks:
       - npm
     restart: unless-stopped

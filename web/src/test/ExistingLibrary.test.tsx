@@ -127,6 +127,12 @@ describe("existing library discovery and review", () => {
     mount();
     await screen.findByText("No discovery scans yet.");
     expect(
+      screen.getByRole("link", { name: /Open Music Import/ }),
+    ).toHaveAttribute("href", "/music/import");
+    expect(
+      screen.getByRole("link", { name: "Open Music Library Import" }),
+    ).toHaveAttribute("href", "/music/import");
+    expect(
       fetch.mock.calls.some(([, options]) => options?.method === "POST"),
     ).toBe(false);
     await userEvent.click(

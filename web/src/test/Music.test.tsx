@@ -65,6 +65,12 @@ describe("music", () => {
 
     expect(await screen.findByRole("heading", { name: "Music" })).toBeVisible();
     expect(screen.getByText("No artists yet")).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Library Import" }),
+    ).toHaveAttribute("href", "/music/import");
+    expect(
+      screen.getByRole("link", { name: "Import existing music" }),
+    ).toHaveAttribute("href", "/music/import");
     await userEvent.click(
       screen.getAllByRole("button", { name: "Add artist" })[0],
     );
