@@ -9,9 +9,9 @@ import (
 )
 
 // Service combines the fixed MusicBrainz provider with the local catalog,
-// scanning and reviewed file edits. Media writes happen only in ApplyEdits,
-// which stages, verifies, publishes without overwrite and retains a backup
-// before a tag rewrite.
+// scanning, reviewed catalog discovery and reviewed file edits. Media writes
+// happen only in ApplyEdits, which stages, verifies, publishes without
+// overwrite and retains a backup before a tag rewrite.
 type Service struct {
 	client         *Client
 	store          *Store

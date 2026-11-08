@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { ArrowLeft, FolderSearch, RefreshCw } from "lucide-react";
-import { Link } from "react-router-dom";
 import {
   Alert,
   EmptyState,
@@ -18,12 +17,48 @@ import { PageHeading, RequestState } from "../components";
 import {
   api,
   messageFor,
+  type MusicDiscoverResult,
   type MusicScan,
   type MusicScanList,
   type MusicScanPage,
 } from "../api";
 import { useLiveResource } from "../useLiveResource";
 import "./Music.css";
+
+function countLabel(count: number, singular: string) {
+  return `${count} ${singular}${count === 1 ? "" : "s"}`;
+}
+
+function discoverySummary(result: MusicDiscoverResult) {
+  const parts = [
+    result.matched > 0
+      ? `Matched ${result.matched} of ${result.selected} selected files.`
+      : `No selected files matched (${result.selected} checked).`,
+    result.artists_added || result.albums_added
+      ? `Added ${countLabel(result.artists_added, "artist")} and ${countLabel(result.albums_added, "album")} to the catalog.`
+      : "No catalog entries were added.",
+  ];
+  if (result.unresolved > 0) {
+    parts.push(
+      `${countLabel(result.unresolved, "selected file")} ${
+        result.unresolved === 1 ? "is" : "are"
+      } still unresolved.`,
+    );
+  }
+  if (result.deferred > 0) {
+    parts.push(
+      `${countLabel(result.deferred, "selected file")} ${
+        result.deferred === 1 ? "was" : "were"
+      } deferred; run discovery again to continue.`,
+    );
+  }
+  parts.push(
+    result.remaining > 0
+      ? `${countLabel(result.remaining, "unresolved file")} remain in this scan.`
+      : "No unresolved files remain in this scan.",
+  );
+  return parts.join(" ");
+}
 
 export function MusicImport() {
   const scans = useLiveResource<MusicScanList>("/library/music/scans", 5000);
@@ -37,7 +72,19 @@ export function MusicImport() {
   const [root, setRoot] = useState("Music");
   const [selected, setSelected] = useState<number[]>([]);
   const [pending, setPending] = useState(false);
+  const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [discoverResult, setDiscoverResult] =
+    useState<MusicDiscoverResult | null>(null);
   const [error, setError] = useState("");
+
+  const items = active.data?.items ?? [];
+  const selectedFiles = items.filter((file) => selected.includes(file.id));
+  const selectedMatched = selectedFiles.filter(
+    (file) => file.state === "matched",
+  );
+  const selectedUnresolved = selectedFiles.filter(
+    (file) => file.state === "unresolved",
+  );
 
   useEffect(() => {
     if (scanID === null && scans.data?.items.length) {
@@ -47,6 +94,8 @@ export function MusicImport() {
 
   useEffect(() => {
     setSelected([]);
+    setDiscoverOpen(false);
+    setDiscoverResult(null);
   }, [scanID, page]);
 
   async function startScan(e: FormEvent) {
@@ -71,14 +120,45 @@ export function MusicImport() {
   }
 
   async function register() {
-    if (!active.data || selected.length === 0 || pending) return;
+    if (!active.data || selectedMatched.length === 0 || pending) return;
     setPending(true);
     setError("");
     try {
       await api(`/library/music/scans/${active.data.scan.id}/register`, {
         method: "POST",
-        body: JSON.stringify({ file_ids: selected, reviewed: true }),
+        body: JSON.stringify({
+          file_ids: selectedMatched.map((file) => file.id),
+          reviewed: true,
+        }),
       });
+      setSelected([]);
+      active.reload();
+      scans.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function discover() {
+    if (!active.data || selectedUnresolved.length === 0 || pending) return;
+    setPending(true);
+    setError("");
+    try {
+      const result = await api<MusicDiscoverResult>(
+        `/library/music/scans/${active.data.scan.id}/discover`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            file_ids: selectedUnresolved.map((file) => file.id),
+            reviewed: true,
+          }),
+          signal: AbortSignal.timeout(60000),
+        },
+      );
+      setDiscoverOpen(false);
+      setDiscoverResult(result);
       setSelected([]);
       active.reload();
       scans.reload();
@@ -150,12 +230,13 @@ export function MusicImport() {
           title="Music import"
           description="Read tags from a music folder, match them to catalog albums and register files in place. Files are never moved."
         />
-        <Alert kind="info" title="Prepare the catalog first">
-          <Link to="/music">Add the artist</Link> and open each album once so
-          its tracks are loaded before scanning. Files with no matching catalog
-          album stay unresolved; tag them with MusicBrainz IDs or add the artist
-          first. The folder is relative to the media root and names are
-          case-sensitive.
+        <Alert kind="info" title="Scan, then fill catalog gaps">
+          Scan the folder first. Select unresolved files and use{" "}
+          <strong>Discover missing catalog</strong> to search MusicBrainz for
+          exact artist and album matches. Strong evidence only: a release-group
+          ID, or one exact normalized artist name and album title. Files with
+          ambiguous or missing evidence stay unresolved and are never guessed.
+          The folder is relative to the media root and names are case-sensitive.
         </Alert>
         <RequestState
           loading={scans.loading}
@@ -256,6 +337,26 @@ export function MusicImport() {
             {active.data.scan.error && (
               <Alert kind="danger">{active.data.scan.error}</Alert>
             )}
+            {discoverResult && (
+              <Alert
+                kind={
+                  discoverResult.warnings.length
+                    ? "warning"
+                    : discoverResult.matched
+                      ? "success"
+                      : "info"
+                }
+                title="Catalog discovery finished"
+              >
+                {discoverySummary(discoverResult)}
+                {discoverResult.warnings.map((warning) => (
+                  <span key={warning} className="rs-muted">
+                    {" "}
+                    {warning}
+                  </span>
+                ))}
+              </Alert>
+            )}
             {active.data.scan.state === "scanning" && (
               <Alert kind="info">Scanning the folder…</Alert>
             )}
@@ -279,7 +380,8 @@ export function MusicImport() {
                   {(active.data.items ?? []).map((file) => (
                     <tr key={file.id}>
                       <td>
-                        {file.state === "matched" && (
+                        {(file.state === "matched" ||
+                          file.state === "unresolved") && (
                           <input
                             type="checkbox"
                             aria-label={`Select ${file.relative_path}`}
@@ -349,10 +451,17 @@ export function MusicImport() {
             )}
             <div className="mus-scan-actions">
               <Button
-                disabled={pending || selected.length === 0}
+                disabled={pending || selectedMatched.length === 0}
                 onClick={() => void register()}
               >
-                Register selected ({selected.length})
+                Register selected ({selectedMatched.length})
+              </Button>
+              <Button
+                variant="soft"
+                disabled={pending || selectedUnresolved.length === 0}
+                onClick={() => setDiscoverOpen(true)}
+              >
+                Discover missing catalog ({selectedUnresolved.length})
               </Button>
               {(active.data.total ?? 0) > (active.data.limit || 100) && (
                 <>
@@ -409,6 +518,48 @@ export function MusicImport() {
         <p className="rs-form-help">
           Relative to the media root, for example <code>Music</code> or{" "}
           <code>music</code>. Folder names are case-sensitive.
+        </p>
+        {error && <Alert kind="danger">{error}</Alert>}
+      </Modal>
+      <Modal
+        open={discoverOpen}
+        onOpenChange={setDiscoverOpen}
+        title="Discover missing artists and albums"
+        description="Review the exact-evidence MusicBrainz search before it adds catalog entries."
+        footer={
+          <>
+            <Button
+              variant="soft"
+              color="gray"
+              disabled={pending}
+              onClick={() => setDiscoverOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={pending || selectedUnresolved.length === 0}
+              onClick={() => void discover()}
+            >
+              Discover catalog ({selectedUnresolved.length})
+            </Button>
+          </>
+        }
+      >
+        <p>
+          ReelScarey will search MusicBrainz for{" "}
+          {countLabel(selectedUnresolved.length, "selected unresolved file")}.
+          It only adds an artist or album when the file carries a release-group
+          ID, or when there is one exact normalized artist name and album title.
+          Ambiguous or missing evidence stays unresolved.
+        </p>
+        <Alert kind="warning">
+          This action does not move, tag or register files. It changes only the
+          catalog and the scan's match state.
+        </Alert>
+        <p className="rs-form-help">
+          A request is bounded to a small number of albums. If files are
+          deferred, select the remaining unresolved files and run discovery
+          again.
         </p>
         {error && <Alert kind="danger">{error}</Alert>}
       </Modal>

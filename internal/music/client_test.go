@@ -74,6 +74,39 @@ func TestClientNormalizesMusicBrainz(t *testing.T) {
 	}
 }
 
+func TestClientSearchesAndLooksUpReleaseGroups(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/ws/2/release-group" && r.URL.Query().Get("query") != "":
+			query := r.URL.Query().Get("query")
+			if !strings.Contains(query, "arid:"+testMBID) || !strings.Contains(query, `releasegroup:"OK Computer"`) {
+				t.Errorf("release-group query %q", query)
+			}
+			io.WriteString(w, `{"count":1,"offset":0,"release-groups":[{"id":"`+testRGID+`","title":"OK Computer","primary-type":"Album","secondary-types":[],"first-release-date":"1997-05-21"}]}`)
+		case r.URL.Path == "/ws/2/release-group/"+testRGID:
+			if r.URL.Query().Get("inc") != "artist-credits" {
+				t.Errorf("release-group lookup include %q", r.URL.Query().Get("inc"))
+			}
+			io.WriteString(w, `{"id":"`+testRGID+`","title":"OK Computer","primary-type":"Album","secondary-types":[],"first-release-date":"1997-05-21","artist-credit":[{"name":"Radiohead","artist":{"id":"`+testMBID+`","name":"Radiohead"}}]}`)
+		default:
+			t.Errorf("unexpected request %s", r.URL.String())
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client := newClient(server.URL+"/ws/2", server.Client(), 0)
+	ctx := context.Background()
+
+	albums, complete, err := client.SearchReleaseGroups(ctx, testMBID, "OK Computer")
+	if err != nil || !complete || len(albums) != 1 || albums[0].Title != "OK Computer" || albums[0].Year == nil || *albums[0].Year != 1997 {
+		t.Fatal("release-group search", albums, complete, err)
+	}
+	album, artistID, err := client.ReleaseGroup(ctx, testRGID)
+	if err != nil || album.Title != "OK Computer" || artistID != testMBID {
+		t.Fatal("release-group lookup", album, artistID, err)
+	}
+}
+
 func TestClientRejectsRateLimitAndOversizedBodies(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/ws/2/artist/"+testMBID {

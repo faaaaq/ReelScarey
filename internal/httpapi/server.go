@@ -108,6 +108,7 @@ type MusicService interface {
 	Scan(context.Context, int64) (music.Scan, error)
 	ScanPage(context.Context, int64, int) (music.ScanPage, error)
 	RegisterScan(context.Context, int64, []int64) (int, error)
+	DiscoverScan(context.Context, int64, []int64, bool) (music.DiscoverResult, error)
 	CancelScan(context.Context, int64) error
 	SkipScanFile(context.Context, int64, int64) error
 	ListFiles(context.Context, int) (music.MusicFilePage, error)
@@ -352,6 +353,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/scans", s.musicScans)
 	mux.HandleFunc("/api/v1/library/music/scans/{id}", method(http.MethodGet, s.musicScan))
 	mux.HandleFunc("/api/v1/library/music/scans/{id}/register", method(http.MethodPost, s.musicScanRegister))
+	mux.HandleFunc("/api/v1/library/music/scans/{id}/discover", method(http.MethodPost, s.musicScanDiscover))
 	mux.HandleFunc("/api/v1/library/music/scans/{id}/cancel", method(http.MethodPost, s.musicScanCancel))
 	mux.HandleFunc("/api/v1/library/music/scans/{id}/skip", method(http.MethodPost, s.musicScanSkip))
 	mux.HandleFunc("/api/v1/library/music/files", method(http.MethodGet, s.musicFiles))

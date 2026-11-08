@@ -30,12 +30,13 @@ Historical native and package results below remain as records of past work.
   seasons while preserving canonical IDs, monitoring and files.
 
 - [x] Add a Music catalog with MusicBrainz artist, album and track metadata, a
-  Music tab, existing-file scanning and reviewed registration, reviewed
-  organization and verified tag writing with rollback, audio release search and
-  reviewed completed-folder import, automatic client queueing, a leased download
-  worker, audio preferences, wanted albums, upgrade suggestions, per-album
-  overrides, blocked-download file mapping and a search schedule. The core
-  Lidarr-style music path is implemented. See [music catalog](docs/MUSIC.md).
+  Music tab, existing-file scanning, reviewed catalog discovery for unresolved
+  files, reviewed registration and organization, verified tag writing with
+  rollback, audio release search and reviewed completed-folder import,
+  automatic client queueing, a leased download worker, audio preferences,
+  wanted albums, upgrade suggestions, per-album overrides, blocked-download
+  file mapping and a search schedule. The core Lidarr-style music path is
+  implemented. See [music catalog](docs/MUSIC.md).
 
 - [x] Update embedded movie and TV titles while organizing and renaming media,
   with verified copies and recovery that preserve streams and seeding sources.

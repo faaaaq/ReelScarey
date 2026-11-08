@@ -144,6 +144,22 @@ type mbReleaseGroupBrowse struct {
 	ReleaseGroups []mbReleaseGroup `json:"release-groups"`
 }
 
+type mbReleaseGroupSearch struct {
+	Count         int              `json:"count"`
+	Offset        int              `json:"offset"`
+	ReleaseGroups []mbReleaseGroup `json:"release-groups"`
+}
+
+type mbReleaseGroupLookup struct {
+	mbReleaseGroup
+	ArtistCredit []struct {
+		Artist struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"artist"`
+	} `json:"artist-credit"`
+}
+
 type mbTrack struct {
 	ID        string `json:"id"`
 	Position  int    `json:"position"`
@@ -249,6 +265,65 @@ func (c *Client) ArtistAlbums(ctx context.Context, mbid string) ([]Album, error)
 		}
 	}
 	return items, nil
+}
+
+// SearchReleaseGroups searches by exact artist ID and a quoted album title.
+// The bool reports whether the single bounded page covered every provider
+// result, so discovery can distinguish "no exact album" from "too many
+// results to be certain".
+func (c *Client) SearchReleaseGroups(ctx context.Context, artistID, title string) ([]Album, bool, error) {
+	const limit = 100
+	var body mbReleaseGroupSearch
+	if err := c.request(ctx, "/release-group", url.Values{
+		"query":  {"arid:" + artistID + " AND releasegroup:" + quoteSearchValue(title)},
+		"limit":  {strconv.Itoa(limit)},
+		"offset": {"0"},
+	}, &body, 4<<20); err != nil {
+		return nil, false, err
+	}
+	if body.Count < 0 || body.Offset < 0 || len(body.ReleaseGroups) > limit {
+		return nil, false, invalidResponse("album search")
+	}
+	items := make([]Album, 0, len(body.ReleaseGroups))
+	for _, raw := range body.ReleaseGroups {
+		album, err := normalizeAlbum(raw)
+		if err != nil {
+			return nil, false, err
+		}
+		items = append(items, album)
+	}
+	return items, body.Count <= len(body.ReleaseGroups), nil
+}
+
+// ReleaseGroup looks up one release group and its primary credited artist ID.
+// Discovery uses the provider identity already present in the file tag; the
+// returned album is only saved after this exact lookup succeeds.
+func (c *Client) ReleaseGroup(ctx context.Context, mbid string) (Album, string, error) {
+	var body mbReleaseGroupLookup
+	if err := c.request(ctx, "/release-group/"+url.PathEscape(mbid), url.Values{
+		"inc": {"artist-credits"},
+	}, &body, 2<<20); err != nil {
+		return Album{}, "", err
+	}
+	if !strings.EqualFold(body.ID, mbid) {
+		return Album{}, "", invalidResponse("release group details")
+	}
+	album, err := normalizeAlbum(body.mbReleaseGroup)
+	if err != nil {
+		return Album{}, "", err
+	}
+	for _, credit := range body.ArtistCredit {
+		if ValidMBID(credit.Artist.ID) {
+			return album, credit.Artist.ID, nil
+		}
+	}
+	return Album{}, "", invalidResponse("release group artist")
+}
+
+func quoteSearchValue(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `"`, `\"`)
+	return `"` + value + `"`
 }
 
 func (c *Client) ReleaseGroupReleases(ctx context.Context, mbid string) ([]mbRelease, error) {

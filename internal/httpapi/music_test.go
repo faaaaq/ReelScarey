@@ -59,6 +59,9 @@ func (f *fakeMusic) ScanPage(context.Context, int64, int) (music.ScanPage, error
 func (f *fakeMusic) RegisterScan(context.Context, int64, []int64) (int, error) {
 	return 1, f.err
 }
+func (f *fakeMusic) DiscoverScan(context.Context, int64, []int64, bool) (music.DiscoverResult, error) {
+	return music.DiscoverResult{Selected: 1, Matched: 1, ArtistsAdded: 1, AlbumsAdded: 1, Remaining: 0, Warnings: []string{}}, f.err
+}
 func (f *fakeMusic) CancelScan(context.Context, int64) error { return f.err }
 func (f *fakeMusic) SkipScanFile(context.Context, int64, int64) error {
 	return f.err
@@ -164,6 +167,9 @@ func TestMusicRoutesRequireAuthenticationAndCSRF(t *testing.T) {
 	if out := request(handler, "POST", "/api/v1/library/music/artists", `{"musicbrainz_id":"`+musicTestMBID+`"}`, session, false); out.Code != 403 {
 		t.Fatal("music add without CSRF", out.Code)
 	}
+	if out := request(handler, "POST", "/api/v1/library/music/scans/1/discover", `{"file_ids":[1],"reviewed":true}`, nil, false); out.Code != 401 {
+		t.Fatal("unauthenticated music discovery", out.Code)
+	}
 }
 
 func TestMusicSearchAndAdd(t *testing.T) {
@@ -249,6 +255,30 @@ func TestMusicScanRoutes(t *testing.T) {
 	out = request(handler, "POST", "/api/v1/library/music/scans/1/register", `{"file_ids":[1],"reviewed":true}`, session, true)
 	if out.Code != 200 || !strings.Contains(out.Body.String(), `"registered":1`) {
 		t.Fatal("register", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/discover", `{"file_ids":[1],"reviewed":true}`, session, true)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"matched":1`) || !strings.Contains(out.Body.String(), `"artists_added":1`) {
+		t.Fatal("discover", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/discover", `{"all":true,"reviewed":true}`, session, true)
+	if out.Code != 200 {
+		t.Fatal("discover all", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/discover", `{"file_ids":[1],"reviewed":true}`, session, false)
+	if out.Code != 403 {
+		t.Fatal("discover without CSRF", out.Code)
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/discover", `{"file_ids":[1]}`, session, true)
+	if out.Code != 400 {
+		t.Fatal("discover without review", out.Code)
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/discover", `{"file_ids":[],"reviewed":true}`, session, true)
+	if out.Code != 400 {
+		t.Fatal("discover empty selection", out.Code)
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/discover", `{"file_ids":[1],"all":true,"reviewed":true}`, session, true)
+	if out.Code != 400 {
+		t.Fatal("discover conflicting selection", out.Code)
 	}
 	out = request(handler, "POST", "/api/v1/library/music/scans/1/skip", `{"file_id":1}`, session, true)
 	if out.Code != 200 {

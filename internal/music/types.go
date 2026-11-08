@@ -1,5 +1,6 @@
 // Package music owns MusicBrainz normalization, the local music catalog,
-// existing-file scanning, reviewed organization and tag writing.
+// existing-file scanning, reviewed catalog discovery, reviewed organization and
+// tag writing.
 package music
 
 import (

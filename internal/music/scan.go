@@ -305,13 +305,22 @@ func (s *Service) matchFile(ctx context.Context, file ScanFile) (int64, int64, i
 	if albumID < 1 {
 		return 0, 0, 0, &Error{Code: "music_unmatched", Message: "No catalog album matches this file's tags. Add the artist first or tag the file with MusicBrainz IDs."}
 	}
+	trackID, err := s.matchTrack(ctx, file, albumID)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return artistID, albumID, trackID, nil
+}
+
+// matchTrack finds the catalog track inside an album that was already resolved.
+func (s *Service) matchTrack(ctx context.Context, file ScanFile, albumID int64) (int64, error) {
 	var tracks int
 	if err := s.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_tracks WHERE album_id=?`, albumID).Scan(&tracks); err != nil {
-		return 0, 0, 0, err
+		return 0, err
 	}
 	if tracks == 0 {
 		if _, err := s.Album(ctx, albumID); err != nil {
-			return 0, 0, 0, err
+			return 0, err
 		}
 	}
 	queries := []struct {
@@ -350,9 +359,9 @@ func (s *Service) matchFile(ctx context.Context, file ScanFile) (int64, int64, i
 		trackID = 0
 	}
 	if trackID < 1 {
-		return 0, 0, 0, &Error{Code: "music_unmatched_track", Message: "The album matched but no track matches this file's number or title."}
+		return 0, &Error{Code: "music_unmatched_track", Message: "The album matched but no track matches this file's number or title."}
 	}
-	return artistID, albumID, trackID, nil
+	return trackID, nil
 }
 
 func (s *Service) RegisterScan(ctx context.Context, scanID int64, fileIDs []int64) (int, error) {

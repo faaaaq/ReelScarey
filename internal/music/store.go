@@ -106,6 +106,42 @@ func (s *Store) Album(ctx context.Context, id int64) (Album, error) {
 	return scanAlbum(row)
 }
 
+// AlbumByMusicBrainzID finds an existing release group without attaching it to
+// a second artist. Discovery checks this before adding anything so a shared
+// release group is never duplicated in the catalog.
+func (s *Store) AlbumByMusicBrainzID(ctx context.Context, mbid string) (Album, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT `+albumColumns+`,(SELECT COUNT(*) FROM music_tracks t WHERE t.album_id=a.id) FROM music_albums a JOIN music_artists ar ON ar.id=a.artist_id WHERE a.musicbrainz_id=? ORDER BY a.id LIMIT 1`, mbid)
+	return scanAlbum(row)
+}
+
+// SaveAlbum inserts one discovered release group idempotently and reports
+// whether it created a new row.
+func (s *Store) SaveAlbum(ctx context.Context, artistID int64, album Album) (int64, bool, error) {
+	if existing, err := s.AlbumByMusicBrainzID(ctx, album.MusicBrainzID); err == nil {
+		return existing.ID, false, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return 0, false, err
+	}
+	now := time.Now().Unix()
+	result, err := s.db.ExecContext(ctx, `INSERT INTO music_albums(artist_id,musicbrainz_id,title,primary_type,secondary_types,year,release_date,cover_url,monitored,status,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(artist_id,musicbrainz_id) DO NOTHING`,
+		artistID, album.MusicBrainzID, album.Title, album.PrimaryType, strings.Join(album.SecondaryTypes, ", "),
+		album.Year, album.ReleaseDate, album.CoverURL, boolInt(album.Monitored), album.Status, now, now)
+	if err != nil {
+		return 0, false, err
+	}
+	if affected, err := result.RowsAffected(); err == nil && affected == 1 {
+		id, err := result.LastInsertId()
+		return id, true, err
+	}
+	existing, err := s.AlbumByMusicBrainzID(ctx, album.MusicBrainzID)
+	if err != nil {
+		return 0, false, err
+	}
+	return existing.ID, false, nil
+}
+
 func (s *Store) Tracks(ctx context.Context, albumID int64) ([]Track, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, album_id, musicbrainz_id, recording_id, disc, number, title, duration_ms FROM music_tracks WHERE album_id=? ORDER BY disc, number, id`, albumID)
 	if err != nil {

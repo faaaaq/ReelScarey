@@ -77,10 +77,15 @@ tracks; the first read loads tracks from MusicBrainz.
 
 GET/POST `/api/v1/library/music/scans` lists scans or starts one with `{root}`.
 GET `/scans/{id}?page=` returns its state and files. POST
-`/scans/{id}/register` accepts `{file_ids,reviewed:true}`; POST `/cancel` and
-`/skip` handle review exceptions. GET `/api/v1/library/music/files?page=` lists
-registered files. POST `/api/v1/library/music/edits/preview` accepts
-`{file_ids}` and returns a plan with `plan_hash`; POST `/edits/apply` accepts
+`/scans/{id}/register` accepts `{file_ids,reviewed:true}`; POST `/discover`
+accepts `{file_ids,reviewed:true}` or `{all:true,reviewed:true}` and performs a
+bounded, reviewed MusicBrainz catalog discovery for unresolved files. Its
+response reports `selected`, `matched`, `artists_added`, `albums_added`,
+`unresolved`, `remaining`, `deferred` and `warnings`. POST
+`/cancel` and `/skip` handle review exceptions.
+GET `/api/v1/library/music/files?page=` lists registered files. POST
+`/api/v1/library/music/edits/preview` accepts `{file_ids}` and returns a plan
+with `plan_hash`; POST `/edits/apply` accepts
 `{file_ids,plan_hash,reviewed:true}`; GET `/edits/{id}` returns the job; POST
 `/edits/{id}/rollback` accepts `{reviewed:true}`.
 

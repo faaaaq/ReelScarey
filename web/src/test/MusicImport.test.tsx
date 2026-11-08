@@ -130,6 +130,143 @@ describe("music import", () => {
     );
   });
 
+  it("discovers catalog entries for selected unresolved files", async () => {
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return Response.json({ items: [scan], page: 1, total: 1, limit: 20 });
+      }
+      if (path === "/api/v1/library/music/scans/1" && !options?.method) {
+        return Response.json({
+          scan,
+          items: [matched, unresolved],
+          page: 1,
+          total: 2,
+          limit: 100,
+        });
+      }
+      if (
+        path === "/api/v1/library/music/scans/1/discover" &&
+        options?.method === "POST"
+      ) {
+        return Response.json({
+          selected: 1,
+          matched: 1,
+          artists_added: 1,
+          albums_added: 1,
+          unresolved: 0,
+          remaining: 0,
+          deferred: 0,
+          warnings: [],
+        });
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MemoryRouter initialEntries={["/music/import"]}>
+          <MusicImport />
+        </MemoryRouter>
+      </Theme>,
+    );
+
+    expect(
+      await screen.findByRole("table", { name: "Scanned music files" }),
+    ).toBeVisible();
+    await userEvent.click(
+      screen.getByLabelText("Select Music/Unknown/02 - Other.mp3"),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Discover missing catalog/ }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Discover catalog \(1\)/ }),
+    );
+
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(
+          ([url, options]) =>
+            new URL(url, "http://local").pathname ===
+              "/api/v1/library/music/scans/1/discover" &&
+            options?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+    const call = fetch.mock.calls.find(
+      ([url, options]) =>
+        new URL(url, "http://local").pathname ===
+          "/api/v1/library/music/scans/1/discover" &&
+        options?.method === "POST",
+    );
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+      file_ids: [12],
+      reviewed: true,
+    });
+    expect(
+      await screen.findByText(/Added 1 artist and 1 album to the catalog/),
+    ).toBeVisible();
+  });
+
+  it("does not claim catalog changes when discovery adds nothing", async () => {
+    mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return Response.json({ items: [scan], page: 1, total: 1, limit: 20 });
+      }
+      if (path === "/api/v1/library/music/scans/1" && !options?.method) {
+        return Response.json({
+          scan,
+          items: [matched, unresolved],
+          page: 1,
+          total: 2,
+          limit: 100,
+        });
+      }
+      if (
+        path === "/api/v1/library/music/scans/1/discover" &&
+        options?.method === "POST"
+      ) {
+        return Response.json({
+          selected: 1,
+          matched: 0,
+          artists_added: 0,
+          albums_added: 0,
+          unresolved: 1,
+          remaining: 1,
+          deferred: 0,
+          warnings: [],
+        });
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MemoryRouter initialEntries={["/music/import"]}>
+          <MusicImport />
+        </MemoryRouter>
+      </Theme>,
+    );
+
+    expect(
+      await screen.findByRole("table", { name: "Scanned music files" }),
+    ).toBeVisible();
+    await userEvent.click(
+      screen.getByLabelText("Select Music/Unknown/02 - Other.mp3"),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Discover missing catalog/ }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Discover catalog \(1\)/ }),
+    );
+
+    expect(
+      await screen.findByText(/No catalog entries were added/),
+    ).toBeVisible();
+    expect(screen.queryByText(/Added .* to the catalog/)).toBeNull();
+  });
+
   it("starts a scan from the empty state", async () => {
     const fetch = mockFetch((path, options) => {
       if (path === "/api/v1/library/music/scans" && !options?.method) {

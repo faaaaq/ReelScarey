@@ -39,6 +39,11 @@ imports the completed folder, and runs wanted-album searches on a schedule.
   - matching against the local catalog by MusicBrainz release-group ID or by
     album title plus artist name;
   - review of matched and unresolved files.
+- Discover missing catalog entries for selected unresolved files through an
+  explicit reviewed action. It uses a release-group ID, or one exact normalized
+  artist name and album title, creates only the matching artist/album, loads the
+  album tracks and re-matches those files. Ambiguous or missing evidence stays
+  unresolved.
 - Register matched files in place. Registration verifies the file size and
   modification time and records `music_files`; it never moves a file.
 - Search configured indexers with the audio category, parse release names and
@@ -93,17 +98,29 @@ state). The music folder must be mounted below `REELSCAREY_MEDIA_DIR`; enter its
 relative name exactly, including case, in the scan dialog.
 - The scan root must be a relative folder below `REELSCAREY_MEDIA_DIR`. Absolute
   paths and `..` are rejected.
-- Add the artist and open an album once so its tracks are loaded before
-  scanning. If an album is matched but has no tracks, the scan loads them from
-  MusicBrainz before matching.
 - Matching order:
   - album: MusicBrainz release-group ID, then exact (case-insensitive) album
     title plus artist/album-artist name;
   - track: MusicBrainz track ID, recording ID, disc/number, then exact title.
-- Unmatched files stay `unresolved` with their tags and an explanation. Add the
-  artist or tag the files with MusicBrainz IDs, then rescan.
-- A scan is a reviewed job: start it, poll its state, register selected matched
-  files with `reviewed: true`. Restart marks an interrupted scan failed.
+- Unmatched files stay `unresolved` with their tags and an explanation. Select
+  those files and choose **Discover missing catalog** to review a bounded
+  MusicBrainz search. Discovery only acts on strong evidence:
+  - a release-group MusicBrainz ID in the file tag; or
+  - exactly one artist whose normalized name equals the tagged album artist (or
+    artist), and exactly one release group whose normalized title equals the
+    tagged album. The year is used only to disambiguate multiple exact title
+    matches.
+- Discovery adds only the missing artist and release group, loads the album's
+  tracks, and re-matches the selected files. It never moves, tags or registers a
+  file, and a file it cannot prove stays unresolved with a clear message.
+- A request processes at most 10 album groups and 500 files, and stops starting
+  new provider work before the server write deadline. The response reports
+  matched files, added artists/albums, unresolved files, deferred files and
+  unresolved files remaining in the scan. Select the remaining files and run it
+  again to continue.
+- A scan is a reviewed job: start it, poll its state, discover catalog entries
+  or register selected matched files with `reviewed: true`. Restart marks an
+  interrupted scan failed.
 
 ## Organization and tagging
 
@@ -129,6 +146,9 @@ relative name exactly, including case, in the scan dialog.
 - No resolution/format upgrade suggestions and no per-album profile overrides.
 - Search mode stores candidates for review; it does not queue.
 - No playlists, lyrics, ratings, scrobbling or MusicBrainz editing.
+- Catalog discovery requires exact normalized artist and album-title evidence,
+  or a release-group ID. It is not a fuzzy matcher, does not use title
+  similarity as identity and does not add a complete artist discography.
 - No embedded cover-art writing and no CUE/multi-track single-file albums.
 - Edits only touch registered files below the media root. Symlinks are skipped.
 - A cross-device move falls back to a verified copy; it is not an atomic rename.
@@ -149,6 +169,7 @@ relative name exactly, including case, in the scan dialog.
 | GET/POST | `/api/v1/library/music/scans` | List scans or start `{root}`; 202 |
 | GET | `/api/v1/library/music/scans/{id}?page=` | Scan state and 100 files per page |
 | POST | `/api/v1/library/music/scans/{id}/register` | `{file_ids,reviewed:true}` |
+| POST | `/api/v1/library/music/scans/{id}/discover` | `{file_ids,reviewed:true}` or `{all:true,reviewed:true}`; bounded catalog discovery |
 | POST | `/api/v1/library/music/scans/{id}/cancel` | `{}` |
 | POST | `/api/v1/library/music/scans/{id}/skip` | `{file_id}` |
 | GET | `/api/v1/library/music/files?page=` | Registered files |
@@ -175,6 +196,8 @@ relative name exactly, including case, in the scan dialog.
 | GET/PUT/DELETE | `/api/v1/library/music/albums/{id}/preferences` | Per-album override or reset to global |
 | GET | `/api/v1/library/music/upgrades` | Albums below their effective preference |
 
+The discovery response reports `selected`, `matched`, `artists_added`,
+`albums_added`, `unresolved`, `remaining`, `deferred` and `warnings`.
 All routes are administrator-only. Mutations require CSRF and same-origin
 validation. Request accounts cannot read or write the music catalog.
 
@@ -204,22 +227,31 @@ upgrade replacement and richer multi-profile assignment.
 ## Validation
 
 - `internal/music/client_test.go` — normalization, pagination, rate limits,
-  oversized bodies, redirect refusal.
+  oversized bodies, redirect refusal, exact release-group search and lookup.
 - `internal/music/tags_test.go` — format tags, OGG stream tags, invalid bodies.
 - `internal/music/store_test.go` — idempotent artist saves, track replacement,
   invalid paging.
 - `internal/music/scan_test.go` — bounded scan, matching, in-place registration,
   availability and escaping roots.
+- `internal/music/discovery_test.go` — release-group ID creation, exact
+  artist/album creation, ambiguous and missing evidence retention, duplicate
+  artist reuse, provider failure retention, scan count refresh and re-match.
 - `internal/music/edits_test.go` — move/retag/no-op plans, move apply/rollback,
   FFmpeg tag write, retained backup and rollback.
-- `internal/httpapi/music_test.go` — authentication, CSRF, catalog, scan and
-  edit routes, error mapping, SPA routes.
+- `internal/httpapi/music_test.go` — authentication, CSRF, catalog, scan,
+  discovery and edit routes, error mapping, SPA routes.
 - `internal/database/music_upgrade_test.go` — additive catalog migration.
 - `web/src/test/Music.test.tsx`, `MusicImport.test.tsx`,
-  `MusicOrganize.test.tsx` — catalog, import and organize pages.
+  `MusicOrganize.test.tsx` — catalog, import, discovery and organize pages.
 - `scripts/music-container-smoke.sh` — disposable Docker acceptance: add an
   artist, load an album, generate a tagged FLAC, scan, register, preview/apply
   organization and tags, verify the MusicBrainz tag and retained backup, roll
   back, then generate a complete tagged album folder, import it, and verify the
   imported files and untouched sources. This passed against the isolated
   `reelscarey:music-acq` image on the acceptance server.
+
+Catalog discovery was validated locally with targeted Go tests
+(`go test ./internal/music ./internal/httpapi`), the frontend format/type checks
+and the `MusicImport` Vitest suite. It was not run against the live acceptance
+server or a real MusicBrainz library; provider behavior is covered by local
+fake MusicBrainz responses.

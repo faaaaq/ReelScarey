@@ -193,6 +193,17 @@ export type MusicScanPage = {
   limit: number;
 };
 
+export type MusicDiscoverResult = {
+  selected: number;
+  matched: number;
+  artists_added: number;
+  albums_added: number;
+  unresolved: number;
+  remaining: number;
+  deferred: number;
+  warnings: string[];
+};
+
 export type MusicFile = {
   id: number;
   artist_id: number;
