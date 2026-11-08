@@ -424,6 +424,7 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | POST | `/api/v1/providers/tmdb/test` | Test the saved credential against real TMDb |
 | GET | `/api/v1/metadata/movies?query=title&page=1` | Real TMDb movie search; per-result in_library flag |
 | GET | `/api/v1/metadata/movies/{tmdb_id}` | Canonical movie details from TMDb |
+| GET | `/api/v1/metadata/people/{id}/credits` | Latest 24 cast roles for a TMDb person; `exclude_kind`/`exclude_tmdb_id` omit the title being viewed; each item adds `in_library` |
 | POST | `/api/v1/library/movies` | Add canonical metadata by TMDb ID; omitted `monitored` defaults to future-only; 201 created or 200 existing |
 | GET | `/api/v1/library/movies/{id}` | Saved movie by catalog ID, without a TMDb request |
 | GET | `/api/v1/metadata/series?query=title&page=1` | TMDb TV search with per-result in_library |

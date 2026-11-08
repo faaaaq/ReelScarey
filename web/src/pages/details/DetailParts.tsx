@@ -1,13 +1,14 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button, Tabs } from "@radix-ui/themes";
 import { Bookmark, ExternalLink, Search } from "lucide-react";
 import { Link } from "react-router-dom";
-import type { MediaItem } from "../../api";
-import { Poster } from "../../movieComponents";
+import { api, messageFor, type MediaItem, type PersonCredit } from "../../api";
+import { AddMovieButton, Poster } from "../../movieComponents";
 import {
   Alert,
   FieldSet,
   Label,
+  Modal,
   Table,
   formatBytes,
   formatTimestamp,
@@ -546,6 +547,13 @@ export function CreditsSection({
   refreshAction?: boolean;
 }) {
   const info = details.info;
+  const current = details.data?.item;
+  const [person, setPerson] = useState<{
+    id: number;
+    name: string;
+    role: string;
+    image_url: string;
+  }>();
   const groups = info
     ? crewGroups
         .map((group) => ({
@@ -561,83 +569,242 @@ export function CreditsSection({
         .filter((group) => group.names.length)
     : [];
   return (
-    <FieldSet
-      legend="Cast & crew"
-      actions={
-        refreshAction && (
-          <Button
-            size="1"
-            variant="soft"
-            disabled={details.busy}
-            onClick={() => void details.refresh()}
-          >
-            {details.busy ? "Refreshing…" : "Refresh credits"}
-          </Button>
-        )
+    <>
+      <FieldSet
+        legend="Cast & crew"
+        actions={
+          refreshAction && (
+            <Button
+              size="1"
+              variant="soft"
+              disabled={details.busy}
+              onClick={() => void details.refresh()}
+            >
+              {details.busy ? "Refreshing…" : "Refresh credits"}
+            </Button>
+          )
+        }
+      >
+        {details.busy && !info && (
+          <p role="status" className="rs-muted">
+            Loading cast and credits…
+          </p>
+        )}
+        {!details.busy && !info && (
+          <p className="rs-muted">No credits are saved yet.</p>
+        )}
+        {info && (
+          <>
+            {groups.length > 0 && (
+              <dl className="det-crew">
+                {groups.map((group) => (
+                  <div key={group.name}>
+                    <dt>{group.name}</dt>
+                    <dd>{group.names.join(", ")}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {info.cast.length ? (
+              <ul className="det-cast" aria-label="Cast">
+                {info.cast.map((person) => (
+                  <li key={person.id} className="det-cast-item">
+                    <a
+                      href={`https://www.themoviedb.org/person/${person.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      referrerPolicy="no-referrer"
+                      className="det-cast-card"
+                    >
+                      {person.image_url ? (
+                        <img
+                          src={person.image_url}
+                          alt=""
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <span className="det-cast-fallback" aria-hidden="true">
+                          {person.name.charAt(0)}
+                        </span>
+                      )}
+                      <span className="det-cast-name">{person.name}</span>
+                      <span className="det-cast-role">
+                        {person.role || "Cast"}
+                      </span>
+                    </a>
+                    <button
+                      type="button"
+                      className="rs-link-button rs-small det-cast-more"
+                      aria-label={`Other roles for ${person.name}`}
+                      onClick={() => setPerson(person)}
+                    >
+                      Other roles
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="rs-muted">TMDb lists no cast yet.</p>
+            )}
+            <p className="rs-form-help">
+              From TMDb
+              {details.updated
+                ? ` · saved ${formatTimestamp(details.updated)}`
+                : ""}
+            </p>
+          </>
+        )}
+      </FieldSet>
+      {person && (
+        <PersonRolesModal
+          person={person}
+          current={current}
+          onClose={() => setPerson(undefined)}
+        />
+      )}
+    </>
+  );
+}
+
+function PersonRolesModal({
+  person,
+  current,
+  onClose,
+}: {
+  person: { id: number; name: string; role: string; image_url: string };
+  current?: MediaItem;
+  onClose: () => void;
+}) {
+  const [items, setItems] = useState<PersonCredit[]>();
+  const [error, setError] = useState("");
+  const [added, setAdded] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    setItems(undefined);
+    setError("");
+    const query = new URLSearchParams();
+    if (current) {
+      query.set("exclude_kind", current.kind);
+      query.set("exclude_tmdb_id", String(current.tmdb_id));
+    }
+    api<{ items: PersonCredit[] }>(
+      `/metadata/people/${person.id}/credits?${query.toString()}`,
+    )
+      .then((value) => {
+        if (!cancelled) setItems(value.items);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(messageFor(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [person.id, current?.kind, current?.tmdb_id]);
+  const key = (credit: PersonCredit) => `${credit.kind}:${credit.tmdb_id}`;
+  return (
+    <Modal
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title={person.name}
+      description={`Recent roles${person.role ? ` · ${person.role}` : ""}`}
+      size="large"
+      footer={
+        <Button variant="soft" color="gray" onClick={onClose}>
+          Close
+        </Button>
       }
     >
-      {details.busy && !info && (
-        <p role="status" className="rs-muted">
-          Loading cast and credits…
-        </p>
-      )}
-      {!details.busy && !info && (
-        <p className="rs-muted">No credits are saved yet.</p>
-      )}
-      {info && (
-        <>
-          {groups.length > 0 && (
-            <dl className="det-crew">
-              {groups.map((group) => (
-                <div key={group.name}>
-                  <dt>{group.name}</dt>
-                  <dd>{group.names.join(", ")}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-          {info.cast.length ? (
-            <ul className="det-cast" aria-label="Cast">
-              {info.cast.map((person) => (
-                <li key={person.id}>
-                  <a
-                    href={`https://www.themoviedb.org/person/${person.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    referrerPolicy="no-referrer"
-                    className="det-cast-card"
-                  >
-                    {person.image_url ? (
-                      <img
-                        src={person.image_url}
-                        alt=""
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <span className="det-cast-fallback" aria-hidden="true">
-                        {person.name.charAt(0)}
-                      </span>
-                    )}
-                    <span className="det-cast-name">{person.name}</span>
-                    <span className="det-cast-role">
-                      {person.role || "Cast"}
-                    </span>
-                  </a>
-                </li>
-              ))}
-            </ul>
+      <div className="det-person">
+        <div className="det-person-header">
+          {person.image_url ? (
+            <img
+              src={person.image_url}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="det-person-image"
+            />
           ) : (
-            <p className="rs-muted">TMDb lists no cast yet.</p>
+            <span className="det-person-fallback" aria-hidden="true">
+              {person.name.charAt(0)}
+            </span>
           )}
-          <p className="rs-form-help">
-            From TMDb
-            {details.updated
-              ? ` · saved ${formatTimestamp(details.updated)}`
-              : ""}
+          <div>
+            <p className="det-person-name">{person.name}</p>
+            <a
+              href={`https://www.themoviedb.org/person/${person.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              referrerPolicy="no-referrer"
+            >
+              Open on TMDb <ExternalLink size={12} aria-hidden="true" />
+            </a>
+          </div>
+        </div>
+        {error && <Alert kind="danger">{error}</Alert>}
+        {!items && !error && (
+          <p role="status" className="rs-muted">
+            Loading recent roles…
           </p>
-        </>
-      )}
-    </FieldSet>
+        )}
+        {items && items.length === 0 && (
+          <p className="rs-muted">No recent movie or TV roles.</p>
+        )}
+        {items && items.length > 0 && (
+          <ul className="det-person-roles" aria-label={`${person.name} roles`}>
+            {items.map((credit) => {
+              const creditKey = key(credit);
+              const inLibrary = credit.in_library || added.has(creditKey);
+              return (
+                <li key={creditKey} className="det-person-role">
+                  {credit.poster_url ? (
+                    <img
+                      src={credit.poster_url}
+                      alt=""
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      className="det-person-poster"
+                    />
+                  ) : (
+                    <span
+                      className="det-person-poster is-fallback"
+                      aria-hidden="true"
+                    >
+                      {credit.title.charAt(0)}
+                    </span>
+                  )}
+                  <div className="det-person-meta">
+                    <span className="det-person-title">{credit.title}</span>
+                    <span className="det-person-sub">
+                      {credit.kind === "movie" ? "Movie" : "TV"}
+                      {credit.year ? ` · ${credit.year}` : ""}
+                      {credit.date ? ` · ${credit.date}` : ""}
+                      {credit.character ? ` · ${credit.character}` : ""}
+                      {credit.category === "anime" ? " · Anime" : ""}
+                    </span>
+                  </div>
+                  <div className="det-person-actions">
+                    <AddMovieButton
+                      kind={credit.kind}
+                      category={
+                        credit.category === "anime" ? "anime" : undefined
+                      }
+                      id={credit.tmdb_id}
+                      added={inLibrary}
+                      onAdded={() =>
+                        setAdded((current) => new Set(current).add(creditKey))
+                      }
+                      variant="soft"
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </Modal>
   );
 }

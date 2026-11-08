@@ -52,6 +52,19 @@ export type MediaItem = {
   category_revision?: number;
 };
 
+/** One recent cast role returned for a TMDb person. */
+export type PersonCredit = {
+  kind: "movie" | "series";
+  tmdb_id: number;
+  title: string;
+  year?: number;
+  date?: string;
+  character: string;
+  poster_url: string;
+  category: "standard" | "anime";
+  in_library: boolean;
+};
+
 export type MusicArtist = {
   id?: number;
   musicbrainz_id: string;

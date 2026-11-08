@@ -29,7 +29,9 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   validate encrypted Discord webhooks and Trakt client IDs with the existing key.
   List fetches use fixed provider hosts and fence changes made during a fetch.
   Ambiguous Discord delivery is never silently retried. See docs/REQUESTS.md.
-- internal/metadata owns TMDb normalization and its MovieProvider/SeriesProvider boundaries.
+- internal/metadata owns TMDb normalization and its MovieProvider/SeriesProvider
+  boundaries. Person credits are read-only on demand, bounded to the latest 24
+  cast roles; opening them never adds titles or changes library state.
 - internal/transfer owns Torznab/qBittorrent adapters, encrypted integration
   settings, release selections, leased download jobs, TV episode
   reservations/reviewed file mappings and per-file journaled imports. TV shares

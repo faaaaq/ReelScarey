@@ -274,3 +274,15 @@ of the saved indexer payload.
 The sidebar and Settings index do not list a separate Organize Files area.
 Settings → Media Management links to the existing route as "Reorganize
 registered files"; the route itself is unchanged.
+
+## Cast roles (0.44.0)
+
+The cast list on a movie or show keeps the existing TMDb person link and adds an
+**Other roles** action. The dialog loads the person's latest **24** cast roles
+(movies and TV) and excludes the title currently open. Each role has the normal
+add controls: **Add unmonitored/Add monitored** for movies and the TV monitoring
+dropdown for shows. Movies go to Movies, TV shows to TV Shows, and Japanese
+animation (TMDb animation genre plus Japanese language/country) goes to Anime.
+Titles already saved are marked **In library**. The list is read-only until an
+add button is used; opening it does not change monitoring or queue downloads.
+

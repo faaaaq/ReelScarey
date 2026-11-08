@@ -188,6 +188,15 @@
   padding: 0;
   list-style: none;
 }
+.det-cast-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.det-cast-more {
+  align-self: flex-start;
+}
 .det-cast-card {
   display: flex;
   flex-direction: column;
@@ -218,6 +227,81 @@
 .det-cast-role {
   color: var(--rs-muted);
   font-size: 12.5px;
+}
+.det-person {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.det-person-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.det-person-image,
+.det-person-fallback {
+  width: 72px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-3);
+  flex: none;
+}
+.det-person-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--rs-faint);
+  font-size: 24px;
+}
+.det-person-name {
+  margin: 0;
+  color: var(--rs-text-strong);
+  font-weight: 400;
+}
+.det-person-roles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.det-person-role {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--rs-border);
+  padding-top: 10px;
+}
+.det-person-poster {
+  width: 46px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-3);
+  flex: none;
+}
+.det-person-poster.is-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--rs-faint);
+}
+.det-person-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.det-person-title {
+  color: var(--rs-text-strong);
+}
+.det-person-sub {
+  color: var(--rs-muted);
+  font-size: 12.5px;
+}
+.det-person-actions {
+  margin-left: auto;
 }
 
 /* Seasons (Sonarr series details) */

@@ -2439,3 +2439,21 @@ Run locally on Windows (development tools only; Docker remains the target):
   the HTTP calendar preview/apply path. The full Go suite, vet and build passed;
   frontend format:check, check, the full suite (50 files, 274 tests) and the
   build passed.
+
+## Version 0.44.0 cast roles and quick-add
+
+- Cast cards keep the current TMDb person link and add an **Other roles** action.
+  The dialog reads the person's latest 24 combined cast credits, excludes the
+  title currently open, filters adult and duplicate entries, and sorts by date
+  then popularity.
+- Movie roles reuse **Add unmonitored/Add monitored**; TV roles reuse the normal
+  monitoring dropdown. Movies go to Movies, TV to TV Shows, and Japanese
+  animation (TMDb animation genre plus Japanese language/country) to Anime.
+  Already-saved titles are marked **In library**.
+- `GET /api/v1/metadata/people/{id}/credits` returns the bounded list and
+  `in_library`; opening the dialog is read-only and never adds titles or queues
+  downloads by itself.
+- Go tests cover filtering, sorting, the 24-role limit, Anime classification,
+  exclusion and library state. The full Go suite, vet and build passed.
+- Frontend format:check, check, the full suite (51 files, 275 tests) and the
+  build passed, including the cast modal quick-add flow.

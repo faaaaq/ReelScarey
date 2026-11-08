@@ -337,6 +337,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/providers/tmdb/test", method(http.MethodPost, s.tmdbTest))
 	mux.HandleFunc("/api/v1/metadata/movies", method(http.MethodGet, s.searchMovies))
 	mux.HandleFunc("/api/v1/metadata/movies/{id}", method(http.MethodGet, s.movieDetails))
+	mux.HandleFunc("/api/v1/metadata/people/{id}/credits", method(http.MethodGet, s.personCredits))
 	mux.HandleFunc("/api/v1/library/movies", method(http.MethodPost, s.addMovie))
 	mux.HandleFunc("/api/v1/library/movies/{id}", method(http.MethodGet, s.catalogMovie))
 	mux.HandleFunc("/api/v1/metadata/series", method(http.MethodGet, s.searchSeries))
