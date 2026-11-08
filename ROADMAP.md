@@ -870,3 +870,23 @@ bulk "Search episodes" run that stopped at waiting_client. The Dashboard is
 rebuilt around status, active queue, wanted, upcoming and library panels. See
 [UI.md](docs/UI.md), [PLANNING.md](docs/PLANNING.md) and
 [BULK_MONITORING.md](docs/BULK_MONITORING.md).
+
+## Version 0.40 release feed sync (Sonarr/Radarr-style)
+
+Owner decision: release detection now works like Sonarr/Radarr. Every install
+starts with a release feed check **enabled every 15 minutes** (5–1440 minutes in
+Settings). Each cycle asks every enabled Torznab/Newznab/direct RSS/NYAA/
+IPTorrents/XSpeeds source for its newest releases without a title query, matches
+unseen entries against monitored, released, missing movies and loaded episodes
+using the existing exact title/year, single `SxxEyy`, quality, language, size and
+seed rules, and grabs a match immediately through the normal reservations,
+client submission and journaled import. Feed entries are processed once per
+indexer. Registered files are never replaced and upgrades remain suggestions;
+packs, ambiguous labels and non-standard Anime numbering stay with the scheduled
+or manual flows. Feed checking grabs even while the missing-title search schedule
+is paused or in search-only mode, while manual release searches still return
+results for review. Adding a monitored movie or show requests one focused
+search-on-add using the saved automatic-search mode. Indexer failures are per
+source; temporary client failures retry on the next check. Automation shows the saved interval, last pass, and the
+newest grab/rejection rows. See [AUTOMATION.md](docs/AUTOMATION.md).
+

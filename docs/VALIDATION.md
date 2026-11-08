@@ -1,5 +1,20 @@
 # Validation record — 2026-10-29
 
+## Release feed sync (0.40 development)
+
+Implementation checks on 2026-11-08 (Windows development host):
+
+- `go test ./...` passed, including new feed-matching, dedupe, registered-file
+  refusal, profile-rejection, TV reservation, adapter-request, migration and HTTP
+  contract tests.
+- `go vet ./...` and `go build ./cmd/reelscarey` passed.
+- Web `format:check`, `check`, `test` and `build` passed. One full web run
+  reported one test file failed while all 268 reported tests passed and no
+  failure text was emitted; the immediate rerun passed 48 files and 269 tests.
+  That first run is recorded as an unresolved harness/flake signal, not a pass.
+- No live indexer, download client or upgrade-path migration was exercised here.
+  The migration and default-enabled behavior are covered by local fixtures only.
+
 ## Version 0.23 — storage and release-label follow-through
 
 - The guided main-root migration and folder browser are implemented without a

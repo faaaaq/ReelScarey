@@ -20,6 +20,10 @@ func (n *Newznab) Search(ctx context.Context, c IndexerConfig, query string) ([]
 	c.Kind = "newznab"
 	return n.Torznab.Search(ctx, c, query)
 }
+func (n *Newznab) Recent(ctx context.Context, c IndexerConfig) ([]Candidate, error) {
+	c.Kind = "newznab"
+	return n.Torznab.Recent(ctx, c)
+}
 func (n *Newznab) Fetch(ctx context.Context, c IndexerConfig, v Candidate) (Payload, string, error) {
 	u, e := url.Parse(v.URL)
 	if e != nil || v.Magnet != "" {

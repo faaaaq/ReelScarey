@@ -1,8 +1,10 @@
 # Scheduled searches and quality profiles
 
 Open Automation in the sidebar. New installations and upgrades start with the
-schedule paused, search-only mode, a six-hour interval, ten targets per run and
-the HD balanced profile. Saving preferences does not connect any integration.
+missing-title search schedule paused, search-only mode, a six-hour interval, ten
+targets per run and the HD balanced profile. The separate release feed check
+starts **enabled every 15 minutes** (see Release feed sync below). Saving
+preferences does not connect any integration.
 Torznab setup may be deferred; enabled schedules record a waiting state and make
 no search/download requests until an indexer exists. Search now is available
 after connection and requests one run using the saved mode, even while paused.
@@ -80,6 +82,49 @@ search also covers a monitored Anime show whose per-show automatic Anime search
 is off, using standard season/episode identity for that request; the saved Anime
 policy is unchanged. The latest recorded outcome per title is readable at
 `GET /automation/item-results`.
+
+Adding a monitored movie or show requests the same focused search once
+(search-on-add). It follows the saved automatic-search mode; a newly added show
+still needs its season episodes loaded (or a feed entry for an episode) before
+the search can see them.
+
+## Release feed sync (Sonarr/Radarr-style)
+
+Freely adapted from the way Sonarr and Radarr watch indexer feeds: a separate
+release-check schedule watches every enabled indexer's newest releases instead
+of waiting for an hourly search of the whole library.
+
+Owner decision in 0.40: every installation starts with the release check
+**enabled every 15 minutes**. This deliberately overrides the older "new
+schedules start paused" rule for this check only. The missing-title search
+schedule above still starts paused and search-only.
+
+Every cycle asks each enabled source for its newest releases without a title
+query: `t=search` with no `q` for Torznab and Newznab, and the provider's RSS
+endpoint or first listing page for the direct RSS, NYAA, IPTorrents and XSpeeds
+adapters. Each unseen feed entry is matched against monitored, released, missing
+movies and loaded episodes using the same exact title/year, single `SxxEyy`,
+quality, language, size and seed rules as automatic searches. A matching entry
+is grabbed immediately through the normal encrypted selection, reservation,
+client submission and journaled import path. It is grabbed even while the
+missing-title schedule is paused or in search-only mode; manual release searches
+still return results for review.
+
+Feed checking **never replaces registered files**. Movie versions and episodes
+that already have a file are skipped, and upgrades remain suggestions. Packs,
+ranges, ambiguous labels, anime absolute/mapped number forms without an exact
+standard `SxxEyy` token, and titles without an exact year stay with the scheduled
+or manual flows. Each `(indexer, feed identity)` pair is processed once; seen
+keys are retained for 180 days and the newest 2,000 result rows are kept.
+
+Indexer errors are per source: one failing feed does not stop the others and the
+next cycle retries it. A temporary client or storage failure leaves the entry
+unseen for the next check; a profile rejection is recorded once. The interval
+supports 5–1440 minutes, each pass has an eight-minute budget, one leased worker
+and a 20,000-target matching index, and settings changes release the lease. Results and run history contain
+safe release metadata, never download URLs or credentials. Most HTML tracker
+pages expose only their newest listing page, so a release that never appears
+there is still found by the scheduled missing-title search.
 
 ## Modes and file safety
 

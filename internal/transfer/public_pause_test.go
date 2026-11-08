@@ -149,6 +149,9 @@ func (*sourceAdapter) Test(context.Context, IndexerConfig) error { return nil }
 func (*sourceAdapter) Search(_ context.Context, _ IndexerConfig, _ string) ([]Candidate, error) {
 	return []Candidate{{Release: Release{Title: "Test Movie 2026 1080p"}, Magnet: "magnet:?xt=urn:btih:" + testHash}}, nil
 }
+func (a *sourceAdapter) Recent(ctx context.Context, c IndexerConfig) ([]Candidate, error) {
+	return a.Search(ctx, c, "")
+}
 func (a *sourceAdapter) Fetch(_ context.Context, _ IndexerConfig, v Candidate) (Payload, string, error) {
 	return Payload{Magnet: v.Magnet}, a.hash, nil
 }

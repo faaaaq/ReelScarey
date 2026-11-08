@@ -109,6 +109,13 @@ func (d *Direct) Test(ctx context.Context, c IndexerConfig) error {
 	_, e := d.Search(ctx, c, "")
 	return e
 }
+
+// Recent uses the tracker's newest listing (the RSS endpoint or the first
+// browse page). It never invents a title query.
+func (d *Direct) Recent(ctx context.Context, c IndexerConfig) ([]Candidate, error) {
+	return d.Search(ctx, c, "")
+}
+
 func (d *Direct) Search(ctx context.Context, c IndexerConfig, query string) ([]Candidate, error) {
 	key := sha256.Sum256([]byte(c.Generation + "\x00" + c.URL + "\x00" + c.Cookie + "\x00" + c.FeedURL + "\x00" + c.UserAgent + "\x00" + c.Category + "\x00" + strconv.FormatBool(c.FreeleechOnly) + "\x00" + query))
 	d.mu.Lock()
@@ -289,7 +296,7 @@ func parseDirectRSS(body []byte, base *url.URL) ([]Candidate, error) {
 			continue
 		}
 		seen[raw+magnet] = true
-		v := Candidate{Release: Release{Title: item.Title, Size: max(0, item.Enclosure.Length), Seeders: nonnegative(strings.TrimSpace(item.Seeders))}, URL: raw, Magnet: magnet, Hash: strings.ToLower(strings.TrimSpace(item.Hash))}
+		v := Candidate{Release: Release{Title: item.Title, Size: max(0, item.Enclosure.Length), Seeders: nonnegative(strings.TrimSpace(item.Seeders))}, URL: raw, Magnet: magnet, Hash: strings.ToLower(strings.TrimSpace(item.Hash)), Guid: item.GUID}
 		if v.Size == 0 {
 			v.Size = humanSize(item.Size)
 		}
@@ -493,7 +500,7 @@ func parseTrackerHTML(body []byte, base *url.URL, kind string, freeOnly bool) ([
 			continue
 		}
 		seen[link] = true
-		v := Candidate{Release: Release{Title: title, Freeleech: free}, URL: link}
+		v := Candidate{Release: Release{Title: title, Freeleech: free}, URL: link, Guid: details}
 		if details != "" {
 			if page, magnet, ok := releaseLink(base, details); ok && magnet == "" && page != link {
 				v.InfoURL = page

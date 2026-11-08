@@ -29,6 +29,7 @@ type indexer struct {
 	onFetch  func()
 	title    string
 	titleFor func(query string) string
+	recent   []transfer.Candidate
 }
 
 func TestNewznabAutomationUsesSABAndDoesNotApplyTorrentSeedRules(t *testing.T) {
@@ -114,6 +115,24 @@ func (i *indexer) Search(_ context.Context, _ transfer.IndexerConfig, query stri
 		title = i.titleFor(query)
 	}
 	return []transfer.Candidate{{Release: transfer.Release{Title: title, Size: 2 << 30, Seeders: &n}}}, nil
+}
+func (i *indexer) Recent(ctx context.Context, c transfer.IndexerConfig) ([]transfer.Candidate, error) {
+	if i.recent != nil {
+		i.calls++
+		if i.err != nil {
+			return nil, i.err
+		}
+		out := make([]transfer.Candidate, len(i.recent))
+		copy(out, i.recent)
+		for n := range out {
+			out[n].Generation = c.Generation
+			if out[n].Guid == "" {
+				out[n].Guid = out[n].Title
+			}
+		}
+		return out, nil
+	}
+	return i.Search(ctx, c, "")
 }
 func (i *indexer) Fetch(_ context.Context, _ transfer.IndexerConfig, c transfer.Candidate) (transfer.Payload, string, error) {
 	if i.onFetch != nil {

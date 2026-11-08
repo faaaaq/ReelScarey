@@ -50,6 +50,46 @@ type Run = {
   checked: number;
   queued: number;
 };
+export type RSSRun = {
+  id: string;
+  started_at: number;
+  finished_at: number;
+  state: string;
+  message: string;
+  indexers: number;
+  checked: number;
+  queued: number;
+};
+export type RSSResult = {
+  id: number;
+  indexer: string;
+  media_id: number | null;
+  episode_id: number | null;
+  target: string;
+  release_title: string;
+  outcome: string;
+  message: string;
+  download_id: string;
+  created_at: number;
+};
+export type RSSSettings = {
+  enabled: boolean;
+  interval_minutes: number;
+  revision: number;
+  next_run: number;
+  requested: boolean;
+  last_checked: number;
+  checked: number;
+  queued: number;
+  state: string;
+  message: string;
+  indexer_connected: boolean;
+  client_connected: boolean;
+};
+export type RSSStatus = RSSSettings & {
+  last_run: RSSRun | null;
+  results: RSSResult[];
+};
 type Result = {
   kind: string;
   season: number;
@@ -113,6 +153,7 @@ export function Automation() {
             profiles={profiles.data.items}
             reload={schedule.reload}
           />
+          <ReleaseDetection />
           <RunHistory />
           <Profiles profiles={profiles.data.items} reload={profiles.reload} />
           <p className="rs-muted rs-small">
@@ -338,6 +379,216 @@ function ScheduleForm({
     </section>
   );
 }
+function ReleaseDetection() {
+  const status = useLiveResource<RSSStatus>("/automation/rss", 10000);
+  return (
+    <section className="rs-panel automation-panel">
+      <div className="rs-panel-header">
+        <h2>Release detection</h2>
+        <Badge color={status.data?.enabled ? "green" : "gray"}>
+          {status.data?.enabled ? "Enabled" : "Paused"}
+        </Badge>
+      </div>
+      {status.error && <p role="alert">{status.error}</p>}
+      {!status.data && status.loading && (
+        <p className="rs-muted">Loading release detection…</p>
+      )}
+      {status.data && (
+        <>
+          {!status.data.indexer_connected ? (
+            <div className="automation-notice">
+              <strong>Release checks are waiting for an indexer.</strong>
+              <p>
+                Add and enable a direct tracker, RSS feed, Torznab or Newznab
+                connection in Indexers.
+              </p>
+            </div>
+          ) : (
+            <p className="rs-muted">{status.data.message}</p>
+          )}
+          <RSSForm
+            key={status.data.revision}
+            status={status.data}
+            reload={status.reload}
+          />
+          <p className="rs-form-help">
+            {status.data.enabled
+              ? `Next check: ${date(status.data.next_run)}`
+              : "Release checks are paused. Check now runs one pass using the saved interval."}
+            {status.data.last_checked
+              ? ` Last check: ${date(status.data.last_checked)}.`
+              : ""}
+          </p>
+          {status.data.last_run && (
+            <p className="rs-form-help">
+              Last pass: {readable(status.data.last_run.state)} ·{" "}
+              {status.data.last_run.indexers} indexers ·{" "}
+              {status.data.last_run.checked} releases checked ·{" "}
+              {status.data.last_run.queued} grabbed
+            </p>
+          )}
+          <h3>Recent feed results</h3>
+          {!status.data.results.length ? (
+            <p className="rs-muted">
+              No feed entries have matched a monitored missing title yet.
+            </p>
+          ) : (
+            <div className="automation-results">
+              {status.data.results.map((r) => (
+                <article key={r.id} className="automation-result">
+                  <div className="rs-panel-header">
+                    <h4>{r.target || r.release_title}</h4>
+                    <Badge
+                      color={
+                        r.outcome === "queued"
+                          ? "green"
+                          : r.outcome === "attention" ||
+                              r.outcome === "needs_attention"
+                            ? "amber"
+                            : "gray"
+                      }
+                    >
+                      {readable(r.outcome)}
+                    </Badge>
+                  </div>
+                  <p className="rs-small">
+                    {r.release_title} · {r.indexer} · {date(r.created_at)}
+                  </p>
+                  <p>{r.message}</p>
+                  {r.download_id && (
+                    <Link to="/activity" className="rs-link-button">
+                      Open download activity
+                    </Link>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function RSSForm({
+  status,
+  reload,
+}: {
+  status: RSSStatus;
+  reload: () => void;
+}) {
+  const [form, setForm] = useState(status);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      const out = await api<RSSSettings>("/automation/rss", {
+        method: "PUT",
+        body: JSON.stringify({
+          enabled: form.enabled,
+          interval_minutes: form.interval_minutes,
+          revision: form.revision,
+        }),
+      });
+      setForm({ ...form, ...out });
+      setSuccess("Release detection preferences saved.");
+      reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function run() {
+    setBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      await api("/automation/rss/run", { method: "POST", body: "{}" });
+      setSuccess("Release check requested.");
+      reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form onSubmit={save}>
+      <fieldset disabled={busy} className="automation-fields">
+        <label className="rs-check">
+          <input
+            type="checkbox"
+            checked={form.enabled}
+            onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+          />
+          Check indexer feeds automatically
+        </label>
+        <div className="automation-form-grid">
+          <label>
+            Check every (minutes)
+            <input
+              type="number"
+              min={5}
+              max={1440}
+              required
+              value={form.interval_minutes}
+              onChange={(e) =>
+                setForm({ ...form, interval_minutes: Number(e.target.value) })
+              }
+            />
+          </label>
+        </div>
+        <p className="rs-form-help">
+          Every passing feed entry is matched against monitored, missing movies
+          and episodes using the existing exact title, episode and quality
+          rules. A match is grabbed automatically, even while the scheduled
+          search above is paused or in search-only mode. Registered files are
+          never replaced; upgrades remain suggestions. Manual release searches
+          still show results for review.
+        </p>
+        {!form.client_connected && (
+          <p className="automation-notice">
+            Connect a download client before automatic grabs can start. Feed
+            checks will record waiting matches until then.
+          </p>
+        )}
+        <div className="rs-form-actions">
+          <Button type="submit">Save release detection</Button>
+          <Button
+            type="button"
+            variant="soft"
+            disabled={
+              !form.enabled ||
+              status.requested ||
+              status.state === "running" ||
+              !form.indexer_connected
+            }
+            onClick={() => void run()}
+          >
+            Check now
+          </Button>
+        </div>
+      </fieldset>
+      {error && (
+        <p role="alert" className="rs-form-error">
+          {error}
+        </p>
+      )}
+      {success && (
+        <p role="status" className="rs-alert is-success">
+          {success}
+        </p>
+      )}
+    </form>
+  );
+}
+
 function RunHistory() {
   const runs = useLiveResource<{ items: Run[] }>("/automation/runs", 5000);
   const [selected, setSelected] = useState("");

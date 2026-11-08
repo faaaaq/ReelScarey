@@ -67,6 +67,50 @@ func (s *Server) automationSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Allow", "GET, PUT")
 	fail(w, 405, "method_not_allowed", "Use GET or PUT.")
 }
+func (s *Server) rssSettings(w http.ResponseWriter, r *http.Request) {
+	if !s.automationReady(w) {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		v, e := s.automation.RSSStatus(r.Context())
+		if e != nil {
+			s.automationError(w, e)
+			return
+		}
+		send(w, 200, v)
+	case http.MethodPut:
+		var in automation.RSSUpdate
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		v, e := s.automation.SaveRSS(r.Context(), in)
+		if e != nil {
+			s.automationError(w, e)
+			return
+		}
+		send(w, 200, v)
+	default:
+		w.Header().Set("Allow", "GET, PUT")
+		fail(w, 405, "method_not_allowed", "Use GET or PUT.")
+	}
+}
+
+func (s *Server) rssRequest(w http.ResponseWriter, r *http.Request) {
+	if !s.automationReady(w) {
+		return
+	}
+	var in struct{}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	if e := s.automation.RequestRSS(r.Context()); e != nil {
+		s.automationError(w, e)
+		return
+	}
+	send(w, 202, map[string]bool{"requested": true})
+}
+
 func (s *Server) automationRequest(w http.ResponseWriter, r *http.Request) {
 	if !s.automationReady(w) {
 		return

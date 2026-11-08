@@ -457,6 +457,8 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | GET | `/api/v1/library/series/{id}/seasons/{number}/releases?episode=1&query=title` | Search TV category 5000 for one missing episode; omit episode for selected missing episodes in a monitored season |
 | POST | `/api/v1/downloads/{id}/mapping` | Confirm a TV job's completed file/episode mapping and explicit skips |
 | GET/PUT | `/api/v1/automation` | Saved interval schedule, revision, next run, safe integration presence and state |
+| GET/PUT | `/api/v1/automation/rss` | Feed-check preferences and status: enabled, interval, revision, next check, last run, checked/grabbed counts and the newest 25 grab/rejection rows |
+| POST | `/api/v1/automation/rss/run` | `{}`; request one feed check, 202 or 409 paused/already requested/running |
 | POST | `/api/v1/automation/run` | `{}`; request one durable run using saved mode, 202 or 409 already requested/running |
 | POST | `/api/v1/automation/search-item` | `{ "media_id": 7, "episode_id"?: 10 }`; scope the next run to one title or episode; 202 |
 | POST | `/api/v1/automation/search-bulk` | `{ "scope": "movie" \| "series" }`; scope the next run to every missing monitored movie or TV episode; 202 |
@@ -678,7 +680,11 @@ See SUBTITLES.md for detection, matching, automatic work and filesystem limits.
 
 Automation PUT accepts only `enabled`, `mode` (search/download),
 `interval_minutes` (15–10080), `batch_size` (1–25), `default_profile_id` and
-`revision`. New schedules are paused/search-only. GET additionally returns
+`revision`. New search schedules are paused/search-only. The separate release
+feed check starts enabled every 15 minutes by owner decision; its PUT accepts
+`enabled`, `interval_minutes` (5–1440) and `revision`. Feed matches against
+monitored missing titles are grabbed automatically regardless of the search
+mode, while manual release searches stay reviewable. GET additionally returns
 next_run (Unix seconds), requested, state, message, indexer_connected and
 client_connected. client_connected counts a usable enabled per-protocol default,
 the legacy settings connection, the enabled built-in qBittorrent fallback, or the

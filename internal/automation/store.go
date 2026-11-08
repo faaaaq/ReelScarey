@@ -23,6 +23,10 @@ type Workflow interface {
 	SearchAnimeAutomatic(context.Context, int64, int, int, bool) ([]transfer.Release, error)
 	QueueAutomatic(context.Context, string, transfer.QueueGuard) (transfer.Job, bool, error)
 	QueueAutomaticVersion(context.Context, string, string, transfer.QueueGuard) (transfer.Job, bool, error)
+	// Feed checking (Sonarr/Radarr-style) uses the provider's newest releases
+	// and queues the exact feed entry through the same reservations and importer.
+	Recent(context.Context) ([]transfer.RecentFeed, error)
+	QueueCandidate(context.Context, string, int64, *int64, string, transfer.QueueGuard) (transfer.Job, bool, error)
 }
 type Service struct {
 	db       *sql.DB

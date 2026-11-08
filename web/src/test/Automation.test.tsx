@@ -32,6 +32,22 @@ const initial: Schedule = {
   indexer_connected: false,
   client_connected: false,
 };
+const rss = {
+  enabled: true,
+  interval_minutes: 15,
+  revision: 1,
+  next_run: 0,
+  requested: false,
+  last_checked: 0,
+  checked: 0,
+  queued: 0,
+  state: "scheduled",
+  message: "Waiting for the next release check.",
+  indexer_connected: false,
+  client_connected: false,
+  last_run: null,
+  results: [],
+};
 function mount() {
   render(
     <Theme>
@@ -67,6 +83,16 @@ function setup(
         };
       }
       return Response.json(current);
+    }
+    if (url.endsWith("/automation/rss")) {
+      if (options?.method === "PUT") {
+        return Response.json({
+          ...rss,
+          ...JSON.parse(String(options.body)),
+          revision: 2,
+        });
+      }
+      return Response.json(rss);
     }
     if (url.endsWith("/quality-profiles"))
       return Response.json({ items: [profile] });
@@ -258,6 +284,21 @@ describe("automation", () => {
     await userEvent.click(screen.getByRole("button", { name: "Search now" }));
     expect(await screen.findByText(/Search requested/)).toBeVisible();
     expect(fetch.mock.calls.some(([, o]) => o?.method === "PUT")).toBe(false);
+  });
+  it("shows release detection enabled every 15 minutes by default", async () => {
+    setup();
+    mount();
+    await screen.findByText("Searches are waiting for an indexer.");
+    expect(screen.getByText("Release detection")).toBeVisible();
+    expect(
+      await screen.findByLabelText("Check indexer feeds automatically"),
+    ).toBeChecked();
+    expect(await screen.findByLabelText("Check every (minutes)")).toHaveValue(
+      15,
+    );
+    expect(
+      await screen.findByRole("button", { name: "Check now" }),
+    ).toBeDisabled();
   });
   it("keeps per-title profiles out of Automation and points to Bulk profiles", async () => {
     setup();

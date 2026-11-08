@@ -55,7 +55,7 @@ func TestAutomationAPIRequiresAuthCSRFAndRevisions(t *testing.T) {
 		h.ServeHTTP(w, r)
 		return w
 	}
-	for _, path := range []string{"/automation", "/automation/runs", "/automation/items", "/automation/item-results", "/quality-profiles", "/library/movies/1/versions"} {
+	for _, path := range []string{"/automation", "/automation/rss", "/automation/runs", "/automation/items", "/automation/item-results", "/quality-profiles", "/library/movies/1/versions"} {
 		if w := request("GET", path, "", false, false); w.Code != 401 {
 			t.Fatal(path, w.Code, w.Body.String())
 		}
@@ -119,6 +119,25 @@ func TestAutomationAPIRequiresAuthCSRFAndRevisions(t *testing.T) {
 	}
 	if w := request("PUT", "/automation", schedule, true, true); w.Code != 409 {
 		t.Fatal("stale settings accepted", w.Code, w.Body.String())
+	}
+	if w := request("GET", "/automation/rss", "", true, false); w.Code != 200 || !strings.Contains(w.Body.String(), `"enabled":true`) || !strings.Contains(w.Body.String(), `"interval_minutes":15`) {
+		t.Fatal("release detection must be enabled every 15 minutes by default", w.Code, w.Body.String())
+	}
+	rss := `{"enabled":true,"interval_minutes":15,"revision":1}`
+	if w := request("PUT", "/automation/rss", rss, true, false); w.Code != 403 {
+		t.Fatal("release detection needs CSRF", w.Code)
+	}
+	if w := request("PUT", "/automation/rss", rss, true, true); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := request("PUT", "/automation/rss", rss, true, true); w.Code != 409 {
+		t.Fatal("stale release detection settings accepted", w.Code)
+	}
+	if w := request("POST", "/automation/rss/run", `{}`, true, true); w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := request("POST", "/automation/rss/run", `{}`, true, true); w.Code != 409 {
+		t.Fatal("duplicate release check accepted", w.Code)
 	}
 	if w := request("POST", "/automation/run", `{"path":"/untrusted"}`, true, true); w.Code != 400 {
 		t.Fatal("unknown field accepted", w.Code)

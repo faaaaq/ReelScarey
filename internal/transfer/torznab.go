@@ -115,27 +115,37 @@ func (t *Torznab) Test(ctx context.Context, c IndexerConfig) error {
 	_, err := t.capabilities(ctx, c)
 	return err
 }
-func (t *Torznab) capabilities(ctx context.Context, c IndexerConfig) (int, error) {
+func (t *Torznab) readCaps(ctx context.Context, c IndexerConfig) (caps, error) {
 	u, err := indexerURL(c, "caps")
 	if err != nil {
-		return 0, err
+		return caps{}, err
 	}
 	body, err := t.get(ctx, c, u, 1<<20)
 	if err != nil {
-		return 0, err
+		return caps{}, err
 	}
 	var out caps
 	if xml.Unmarshal(body, &out) != nil || out.XMLName.Local != "caps" {
-		return 0, problem("indexer_response", "The URL did not return indexer capabilities. Enter the complete API endpoint.")
+		return caps{}, problem("indexer_response", "The URL did not return indexer capabilities. Enter the complete API endpoint.")
 	}
-	if out.Search.Available != "yes" || !containsPart(out.Search.Params, "q") {
-		return 0, problem("indexer_capabilities", "This endpoint must support text searches (search with q).")
-	}
+	return out, nil
+}
+func feedLimit(out caps) int {
 	limit := 50
 	if out.Limits.Max > 0 && out.Limits.Max < limit {
 		limit = out.Limits.Max
 	}
-	return limit, nil
+	return limit
+}
+func (t *Torznab) capabilities(ctx context.Context, c IndexerConfig) (int, error) {
+	out, err := t.readCaps(ctx, c)
+	if err != nil {
+		return 0, err
+	}
+	if out.Search.Available != "yes" || !containsPart(out.Search.Params, "q") {
+		return 0, problem("indexer_capabilities", "This endpoint must support text searches (search with q).")
+	}
+	return feedLimit(out), nil
 }
 func containsPart(list, part string) bool {
 	for _, s := range strings.Split(list, ",") {
@@ -168,6 +178,36 @@ func (t *Torznab) Search(ctx context.Context, c IndexerConfig, query string) ([]
 	if err != nil {
 		return nil, err
 	}
+	return t.parseFeed(c, body)
+}
+
+// Recent asks the provider for its newest releases without a title query. A
+// configured category narrows the feed; otherwise the provider's full recent
+// list is used and the caller matches only saved, monitored titles.
+func (t *Torznab) Recent(ctx context.Context, c IndexerConfig) ([]Candidate, error) {
+	out, err := t.readCaps(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	u, err := indexerURL(c, "search")
+	if err != nil {
+		return nil, err
+	}
+	q := u.Query()
+	q.Set("extended", "1")
+	q.Set("limit", strconv.Itoa(feedLimit(out)))
+	if c.Category != "" {
+		q.Set("cat", c.Category)
+	}
+	u.RawQuery = q.Encode()
+	body, err := t.get(ctx, c, u, 2<<20)
+	if err != nil {
+		return nil, err
+	}
+	return t.parseFeed(c, body)
+}
+
+func (t *Torznab) parseFeed(c IndexerConfig, body []byte) ([]Candidate, error) {
 	var rss feed
 	if xml.Unmarshal(body, &rss) != nil || rss.XMLName.Local != "rss" || len(rss.Items) > 200 {
 		return nil, problem("indexer_response", "The indexer returned an invalid torrent search feed.")
@@ -178,7 +218,7 @@ func (t *Torznab) Search(ctx context.Context, c IndexerConfig, query string) ([]
 		if !textOK(item.Title, 500) {
 			continue
 		}
-		v := Candidate{Release: Release{Title: item.Title, Size: item.Enclosure.Length}, URL: item.Enclosure.URL, Generation: c.Generation}
+		v := Candidate{Release: Release{Title: item.Title, Size: item.Enclosure.Length}, URL: item.Enclosure.URL, Generation: c.Generation, Guid: item.GUID}
 		if v.URL == "" {
 			v.URL = item.Link
 		}

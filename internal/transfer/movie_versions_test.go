@@ -24,6 +24,9 @@ func (v *versionsIndexer) Search(_ context.Context, c IndexerConfig, _ string) (
 	}
 	return out, nil
 }
+func (v *versionsIndexer) Recent(ctx context.Context, c IndexerConfig) ([]Candidate, error) {
+	return v.Search(ctx, c, "")
+}
 func (*versionsIndexer) Fetch(_ context.Context, _ IndexerConfig, v Candidate) (Payload, string, error) {
 	hash := fmt.Sprintf("%x", sha1.Sum([]byte(v.Title)))
 	return Payload{Magnet: "magnet:?xt=urn:btih:" + hash}, hash, nil

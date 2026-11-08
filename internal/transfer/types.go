@@ -131,6 +131,9 @@ type Candidate struct {
 	Kind                          string                      `json:"kind,omitempty"`
 	Targets                       []TVTarget                  `json:"targets,omitempty"`
 	URL, Magnet, Hash, Generation string
+	// Guid is the feed's provider identity. It is never returned by the API and
+	// is only used to deduplicate recent-release entries between checks.
+	Guid string `json:"-"`
 	// Manual torrents are owner-supplied metainfo bound to one title: no
 	// indexer is involved, so generation fencing and network fetch do not
 	// apply, and the bytes are queued exactly as uploaded.
@@ -235,5 +238,8 @@ type Client interface {
 type Indexer interface {
 	Test(context.Context, IndexerConfig) error
 	Search(context.Context, IndexerConfig, string) ([]Candidate, error)
+	// Recent returns the provider's newest releases without a title query. It
+	// backs Sonarr/Radarr-style feed checking.
+	Recent(context.Context, IndexerConfig) ([]Candidate, error)
 	Fetch(context.Context, IndexerConfig, Candidate) (Payload, string, error)
 }

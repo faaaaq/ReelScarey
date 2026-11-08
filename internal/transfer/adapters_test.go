@@ -62,6 +62,45 @@ func TestTorznabContractAndCredentialContainment(t *testing.T) {
 		t.Fatal("cross-origin credential fetch permitted")
 	}
 }
+func TestTorznabRecentRequestsTheNewestFeedWithoutATitleQuery(t *testing.T) {
+	var category string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("t") {
+		case "caps":
+			fmt.Fprint(w, `<caps><limits max="25"/><searching><search available="yes" supportedParams="q"/></searching></caps>`)
+		case "search":
+			if r.URL.Query().Has("q") {
+				t.Error("recent feed sent a title query")
+			}
+			category = r.URL.Query().Get("cat")
+			if r.URL.Query().Get("limit") != "25" || r.URL.Query().Get("extended") != "1" {
+				t.Error("incorrect recent feed contract")
+			}
+			fmt.Fprintf(w, `<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><item><title>New.Movie.2026.1080p</title><guid>recent-one</guid><enclosure url="http://%s/download" length="99"/><torznab:attr name="seeders" value="7"/></item></channel></rss>`, r.Host)
+		}
+	}))
+	defer server.Close()
+	out, e := NewTorznab().Recent(context.Background(), IndexerConfig{URL: server.URL + "/api", APIKey: "test-key"})
+	if e != nil || len(out) != 1 {
+		t.Fatal(out, e)
+	}
+	if out[0].Guid != "recent-one" || out[0].Title != "New.Movie.2026.1080p" || out[0].Seeders == nil || *out[0].Seeders != 7 {
+		t.Fatal(out[0])
+	}
+	if category != "" {
+		t.Fatal("recent feed invented a category", category)
+	}
+}
+
+func TestRecentKeyUsesProviderIdentityNotTheDownloadURL(t *testing.T) {
+	config := IndexerConfig{ID: "indexer"}
+	a := Candidate{Release: Release{Title: "A.Movie.2026.1080p"}, URL: "https://indexer.invalid/a?passkey=one", Guid: "same"}
+	b := Candidate{Release: Release{Title: "A.Movie.2026.1080p"}, URL: "https://indexer.invalid/b?passkey=two", Guid: "same"}
+	if recentKey(config, a) != recentKey(config, b) {
+		t.Fatal("a rotating download URL changed the feed identity")
+	}
+}
+
 func TestTorznabErrorsAndRedirects(t *testing.T) {
 	for _, body := range []string{`<error code="100" description="private-key"/>`, `<html>private-key</html>`, `<caps><searching><search available="no"/></searching></caps>`} {
 		t.Run(body[:10], func(t *testing.T) {

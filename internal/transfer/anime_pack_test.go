@@ -26,6 +26,9 @@ func (i *orderTestIndexer) Search(_ context.Context, c IndexerConfig, query stri
 	i.query = query
 	return []Candidate{{Release: Release{Title: "Owned Anime Complete Pack", Size: 1000}, Magnet: testMagnet, Generation: c.Generation}}, nil
 }
+func (i *orderTestIndexer) Recent(ctx context.Context, c IndexerConfig) ([]Candidate, error) {
+	return i.Search(ctx, c, "")
+}
 func (i *orderTestIndexer) Fetch(context.Context, IndexerConfig, Candidate) (Payload, string, error) {
 	if i.fetch != nil {
 		i.fetch()

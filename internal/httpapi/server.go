@@ -292,6 +292,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/youtube/jobs/{id}/import", method(http.MethodPost, s.youtubeImport))
 	mux.HandleFunc("/api/v1/youtube/jobs/{id}/cancel", method(http.MethodPost, s.youtubeCancel))
 	mux.HandleFunc("/api/v1/youtube/files", method(http.MethodGet, s.youtubeFiles))
+	mux.HandleFunc("/api/v1/automation/rss", s.rssSettings)
+	mux.HandleFunc("/api/v1/automation/rss/run", method(http.MethodPost, s.rssRequest))
 	mux.HandleFunc("/api/v1/automation/run", method(http.MethodPost, s.automationRequest))
 	mux.HandleFunc("/api/v1/automation/search-item", method(http.MethodPost, s.automationSearchItem))
 	mux.HandleFunc("/api/v1/automation/search-bulk", method(http.MethodPost, s.automationSearchBulk))

@@ -369,6 +369,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			automationService.Run(workerCtx, logger)
 		}
 	}()
+	rssDone := make(chan struct{})
+	go func() {
+		defer close(rssDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			automationService.RunRSS(workerCtx, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-rssDone }()
 	subtitleDone := make(chan struct{})
 	go func() {
 		defer close(subtitleDone)

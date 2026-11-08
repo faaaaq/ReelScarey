@@ -28,6 +28,9 @@ func (f *fixtureIndexer) Search(_ context.Context, c IndexerConfig, q string) ([
 	f.category = c.Category
 	return []Candidate{{Release: Release{Title: "Test.Movie.2026.1080p", Size: 12345, Published: "2026-10-22T10:00:00Z", InfoURL: "https://indexer.invalid/details/fixture"}, Magnet: testMagnet, Generation: c.Generation}}, nil
 }
+func (f *fixtureIndexer) Recent(ctx context.Context, c IndexerConfig) ([]Candidate, error) {
+	return f.Search(ctx, c, "")
+}
 func (f *fixtureIndexer) Fetch(_ context.Context, _ IndexerConfig, v Candidate) (Payload, string, error) {
 	if f.hash != "" {
 		return Payload{Magnet: "magnet:?xt=urn:btih:" + f.hash}, f.hash, nil

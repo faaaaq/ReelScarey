@@ -138,6 +138,13 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 			item.Monitored = monitored
 		}
 	}
+	if created && item.Monitored && s.automation != nil {
+		// The show-level focus searches every loaded, missing monitored episode
+		// using the saved automatic-search mode.
+		if e := s.automation.RequestItem(r.Context(), item.ID, nil); e != nil {
+			s.logger.Warn("automatic search after show add was not requested", "series", item.ID, "error", e)
+		}
+	}
 	status := 200
 	if created {
 		status = 201

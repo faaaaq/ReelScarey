@@ -314,29 +314,12 @@ func (s *Service) candidateIndexer(ctx context.Context, v Candidate) (IndexerCon
 	return r.config, e
 }
 func (s *Service) searchIndexers(ctx context.Context, query, category string) ([]Candidate, error) {
-	statuses, e := s.Indexers(ctx)
+	configs, e := s.enabledIndexerConfigs(ctx)
 	if e != nil {
 		return nil, e
 	}
-	configs := []IndexerConfig{}
-	for _, r := range statuses {
-		if !r.Enabled {
-			continue
-		}
-		var c IndexerConfig
-		if r.Legacy {
-			c, e = s.indexerConfig(ctx)
-			c.Name = r.Name
-		} else {
-			var rec indexerRecord
-			rec, e = s.managedIndexer(ctx, r.ID)
-			c = rec.config
-		}
-		if e != nil {
-			return nil, e
-		}
-		c.Category = category
-		configs = append(configs, c)
+	for i := range configs {
+		configs[i].Category = category
 	}
 	if len(configs) == 0 {
 		return nil, problem("indexer_not_configured", "Add and enable an indexer in Indexers first.")

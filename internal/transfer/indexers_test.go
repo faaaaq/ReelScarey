@@ -30,6 +30,9 @@ func (f *managedFixture) Search(_ context.Context, c IndexerConfig, _ string) ([
 	}
 	return out, nil
 }
+func (f *managedFixture) Recent(ctx context.Context, c IndexerConfig) ([]Candidate, error) {
+	return f.Search(ctx, c, "")
+}
 func (f *managedFixture) Fetch(_ context.Context, c IndexerConfig, v Candidate) (Payload, string, error) {
 	f.fetched = c.ID
 	return Payload{Magnet: v.Magnet}, testHash, nil

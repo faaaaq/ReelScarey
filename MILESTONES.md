@@ -398,3 +398,22 @@ See [announce feeds](docs/ANNOUNCE.md).
 - [x] Built-in client counts as ready for automation; bulk calendar searches
   work and show indeterminate progress with live checked/queued counts.
 - [x] Calendar live refresh, select-all, and Dashboard rebuild.
+
+## Version 0.40 release feed sync (Sonarr/Radarr-style)
+
+- [x] Separate release-check schedule enabled by owner decision every 15 minutes
+  (5–1440 configurable), with its own lease, eight-minute budget and run history.
+- [x] Per-indexer newest-release fetches for Torznab, Newznab, RSS, NYAA,
+  IPTorrents and XSpeeds; sanitized in-memory offer tokens keep download URLs and
+  credentials out of automation and the API.
+- [x] Exact match against monitored missing movies and loaded episodes, immediate
+  grab through the existing reservations/client/importer even when the
+  missing-title search schedule is paused or search-only.
+- [x] One processing per `(indexer, feed identity)`, bounded seen/result history,
+  per-source failures, and temporary-failure retry on the next check.
+- [x] Registered files and upgrades are never replaced automatically; packs,
+  ambiguous labels and non-standard Anime numbering stay with scheduled/manual
+  flows.
+- [x] Automation UI shows the saved interval, status, last pass and newest grabs.
+- [ ] Owner-service acceptance against real Torznab/Newznab/direct sources and a
+  real download client.

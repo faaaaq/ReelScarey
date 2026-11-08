@@ -19,6 +19,9 @@ func (*dualMovieIndexer) Search(context.Context, transfer.IndexerConfig, string)
 	n := 5
 	return []transfer.Candidate{{Release: transfer.Release{Title: "A.Test.Movie.2020.1080p.English.WEB", Size: 2 << 30, Seeders: &n}}, {Release: transfer.Release{Title: "A.Test.Movie.2020.2160p.English.WEB", Size: 8 << 30, Seeders: &n}}}, nil
 }
+func (i *dualMovieIndexer) Recent(ctx context.Context, c transfer.IndexerConfig) ([]transfer.Candidate, error) {
+	return i.Search(ctx, c, "")
+}
 func (i *dualMovieIndexer) Fetch(_ context.Context, _ transfer.IndexerConfig, v transfer.Candidate) (transfer.Payload, string, error) {
 	if i.onFetch != nil {
 		i.onFetch()

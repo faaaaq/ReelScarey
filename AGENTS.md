@@ -137,9 +137,13 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   The Torrents page manages only the supervised built-in client: manual inputs
   are magnet links or bounded uploaded metainfo (never server-fetched URLs), and
   destructive removal always requires an explicit reviewed choice.
-- internal/automation owns interval scheduling, leased searches and bounded audit
-  history. It delegates downloads/imports to transfer; automatic queueing must be
-  fenced inside the reservation transaction against changed policy and monitoring.
+- internal/automation owns interval scheduling, leased searches, the
+  Sonarr/Radarr-style release feed check and bounded audit history. It delegates
+  downloads/imports to transfer; automatic queueing must be fenced inside the
+  reservation transaction against changed policy and monitoring. Feed entries are
+  matched only to monitored missing titles; registered files are never replaced.
+  Feed identity is deduplicated per indexer and download URLs never cross the
+  adapter boundary.
 - internal/instance owns OS config locks; internal/maintenance owns verified
   offline backups and new-folder restores; internal/operations owns explicit
   local checks, setup guidance and authenticated recovery review.
@@ -167,7 +171,9 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   real-client tests start a separate authenticated client.
 - Durable jobs will use database leases and idempotent handlers. Do not promise
   exactly-once delivery or use an in-memory queue as the source of truth.
-- New schedules must start paused and in search-only mode. Missing Torznab is a
+- New schedules start paused and in search-only mode, with one owner-decided
+  exception: the 0.40 release feed check starts enabled every 15 minutes and
+  grabs monitored missing titles (never registered files or upgrades). Missing Torznab is a
   waiting state, not an error that prevents library/profile management. Existing
   files may produce upgrade suggestions but cannot be replaced by this milestone.
 
