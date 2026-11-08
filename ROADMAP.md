@@ -840,12 +840,22 @@ second self-hosted machine. See [USENET.md](docs/USENET.md),
 [TORRENTS.md](docs/TORRENTS.md), [UI.md](docs/UI.md) and
 [RELEASING.md](docs/RELEASING.md).
 
+## Version 0.39.2 future-only monitoring defaults
+
+Newly added movies and shows default to future-only monitoring: a title with a
+release today or later is monitored, while an already-released or undated title
+is unmonitored. A newly monitored show applies the same rule to its seasons and
+episodes, and the existing-library automatic match uses the same default.
+"Monitor all future episodes" also turns off previously monitored past and
+undated regular episodes; specials keep their choices. See
+[existing library](docs/EXISTING_LIBRARY.md) and [UI](docs/UI.md).
+
 ## Version 0.39.1 whole-library selection, future-only monitoring, release dates
 
 Library selection is no longer capped at 200; review and apply accept up to 5000
 explicit IDs, so a whole library can be monitored or unmonitored in one reviewed
-action. "Monitor all future episodes" now monitors only episodes airing today or
-later (specials and past episodes untouched). The Calendar shows movies once per
+action. "Monitor all future episodes" now monitors only regular episodes airing
+today or later and turns off past/undated regular episodes (specials untouched). The Calendar shows movies once per
 theatrical, digital and physical release date with a release-kind filter, polls
 while open so downloaded items update, and reports live progress for its bulk
 searches. Automation now treats an enabled built-in client as ready, fixing the

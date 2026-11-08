@@ -87,7 +87,7 @@ export function BulkMatching({
         kind === "movie" ? "/library/movies" : "/library/series",
         {
           method: "POST",
-          body: JSON.stringify({ tmdb_id: c.tmdb_id, monitored: false }),
+          body: JSON.stringify({ tmdb_id: c.tmdb_id }),
         },
       );
       if (kind === "series") {
@@ -109,7 +109,7 @@ export function BulkMatching({
       }
       await suggest();
       setNotice(
-        "Title added with monitoring paused. Review the refreshed matches before registration.",
+        "Title added with future-only monitoring. Review the refreshed matches before registration.",
       );
     });
   }

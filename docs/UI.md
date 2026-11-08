@@ -132,7 +132,13 @@ Do not add global element selectors in page files.
   missing episode) and per-episode automatic search, manual search, Replace and
   Remove from library (the file stays on disk). Seasons list newest first.
 - The TV Shows and Anime libraries end with a confirmed "Monitor all future
-  episodes" action.
+  episodes" action. It monitors only regular episodes releasing today or later;
+  past and undated regular episodes are turned off, and specials keep their
+  current choices.
+- Adding a title defaults monitoring to on only when it has a release today or
+  later; already-released or undated titles start unmonitored. Search-result
+  adds use the same default, and a newly monitored show applies it to its
+  seasons and episodes.
 - The Calendar remembers its month, filters and view; Reset clears them.
 
 ## Library and search (0.38.7)

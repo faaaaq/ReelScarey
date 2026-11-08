@@ -217,7 +217,7 @@ describe("Anime library and explicit numbering", () => {
         ([url, init]) =>
           url.endsWith("/library/movies") && init?.method === "POST",
       )?.[1]?.body,
-    ).toBe(JSON.stringify({ tmdb_id: 42, monitored: true }));
+    ).toBe(JSON.stringify({ tmdb_id: 42 }));
     await userEvent.click(screen.getByRole("button", { name: /Next/ }));
     expect(screen.getByLabelText("Current address")).toHaveTextContent(
       "kind=anime&format=movie&query=Feature&page=2",

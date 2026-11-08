@@ -312,8 +312,8 @@ func TestPlanningCarriesSynopsisAndMonitorAllCoversShowsWithoutTouchingSpecials(
 	}
 
 	// Per-show monitor-all turns the show on with only today's or future
-	// regular episodes and the seasons containing them. Past, undated and
-	// special episodes keep their explicit choices.
+	// regular episodes and the seasons containing them. Past and undated
+	// regular episodes are explicitly unmonitored; specials keep their choices.
 	now := time.Now().UTC()
 	today := now.Format(time.DateOnly)
 	tomorrow := now.AddDate(0, 0, 1).Format(time.DateOnly)
@@ -349,12 +349,38 @@ func TestPlanningCarriesSynopsisAndMonitorAllCoversShowsWithoutTouchingSpecials(
 			t.Fatal(q.sql, got, e)
 		}
 	}
+	// Re-monitor everything, then run the action again. Past and undated
+	// regular episodes must be turned off, not just left alone.
+	if _, e = db.Exec(`UPDATE seasons SET monitored=1 WHERE number>0;UPDATE episodes SET monitored=1 WHERE season_id IN (SELECT id FROM seasons WHERE number>0)`); e != nil {
+		t.Fatal(e)
+	}
+	if e = db.QueryRow(`SELECT revision FROM series_details WHERE media_id=10`).Scan(&revision); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.MonitorAllEpisodes(ctx, 10, revision); e != nil {
+		t.Fatal(e)
+	}
+	for _, q := range []struct {
+		sql  string
+		want int
+	}{
+		{`SELECT monitored FROM seasons WHERE id=101`, 1},
+		{`SELECT COUNT(*) FROM seasons WHERE id IN (102,103,104) AND monitored=1`, 0},
+		{`SELECT COUNT(*) FROM episodes WHERE id IN (1002,1003) AND monitored=1`, 2},
+		{`SELECT COUNT(*) FROM episodes WHERE id IN (1001,1004,1005,1006,1007,1008,2001,3001,4001) AND monitored=1`, 0},
+	} {
+		var got int
+		if e = db.QueryRow(q.sql).Scan(&got); e != nil || got != q.want {
+			t.Fatal(q.sql, got, e)
+		}
+	}
 	if e = s.MonitorAllEpisodes(ctx, 10, revision); !errors.Is(e, ErrRevision) {
 		t.Fatal("a stale revision was accepted", e)
 	}
 
-	// The library-wide action applies the same today-or-later rule in scope.
-	if _, e = db.Exec(`UPDATE media_items SET monitored=0;UPDATE seasons SET monitored=0;UPDATE episodes SET monitored=0`); e != nil {
+	// The library-wide action applies the same today-or-later rule in scope,
+	// including turning off previously monitored past episodes.
+	if _, e = db.Exec(`UPDATE media_items SET monitored=0;UPDATE seasons SET monitored=1 WHERE number>0;UPDATE episodes SET monitored=1 WHERE season_id IN (SELECT id FROM seasons WHERE number>0)`); e != nil {
 		t.Fatal(e)
 	}
 	count, e := s.MonitorAllShows(ctx, "")

@@ -943,7 +943,7 @@ function MonitorAllFutureEpisodes({
         },
       );
       setMessage(
-        `Monitoring turned on for ${out.shows} ${label} including all regular seasons and episodes. Specials keep their current choices.`,
+        `Monitoring turned on for ${out.shows} ${label}. Only regular episodes releasing today or later are monitored; past and undated regular episodes are off. Specials keep their current choices.`,
       );
       onDone();
     } catch (e) {
@@ -958,9 +958,10 @@ function MonitorAllFutureEpisodes({
       <div>
         <h2>Monitor all future episodes</h2>
         <p>
-          Turns monitoring on for every {category === "anime" ? "anime" : ""}{" "}
-          show, its regular seasons and its episodes. Use it once when setting
-          up a library; individual choices can still be changed afterwards.
+          Monitors only regular episodes releasing today or later. Past and
+          undated regular episodes are unmonitored; specials keep their current
+          choices. Use it once when setting up a library; individual choices can
+          still be changed afterwards.
         </p>
         {message && <Alert kind="success">{message}</Alert>}
         {error && <Alert kind="danger">{error}</Alert>}
@@ -978,7 +979,7 @@ function MonitorAllFutureEpisodes({
         <Modal
           open
           onOpenChange={(open) => !open && setConfirming(false)}
-          title={`Monitor every episode of your ${label}?`}
+          title={`Monitor future episodes of your ${label}?`}
           footer={
             <>
               <ModalClose>
@@ -987,15 +988,16 @@ function MonitorAllFutureEpisodes({
                 </Button>
               </ModalClose>
               <Button disabled={busy} onClick={() => void apply()}>
-                {busy ? "Updating…" : "Monitor everything"}
+                {busy ? "Updating…" : "Monitor future episodes"}
               </Button>
             </>
           }
         >
           <p>
-            Every show in this collection will be monitored, including all
-            regular seasons and their episodes. Specials are left exactly as
-            they are. This does not download anything by itself; the automation
+            Shows in this collection will be monitored, but only regular
+            episodes releasing today or later are turned on. Past and undated
+            regular episodes are turned off; specials are left exactly as they
+            are. This does not download anything by itself; the automation
             schedule decides what to search.
           </p>
         </Modal>

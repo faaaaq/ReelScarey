@@ -183,7 +183,7 @@ describe("authentication and movies", () => {
     );
     expect(JSON.parse(String(sent?.[1]?.body))).toEqual({
       tmdb_id: 11,
-      monitored: false,
+      monitored: true,
     });
     expect(sent?.[1]?.headers).toMatchObject({ "X-CSRF-Token": "test-csrf" });
   });

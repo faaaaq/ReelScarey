@@ -314,7 +314,7 @@ describe("TV catalog and monitoring", () => {
     );
     expect(JSON.parse(String(call?.[1]?.body))).toEqual({
       tmdb_id: 42,
-      monitored: false,
+      monitored: true,
     });
     expect(call?.[1]?.headers).toMatchObject({ "X-CSRF-Token": "test-csrf" });
     expect(

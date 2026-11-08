@@ -186,7 +186,7 @@ func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, o
 		if full.TMDbID != chosen.TMDbID || !h.matches(full.Title, full.Year, full.TMDbID) {
 			return out, automaticReview("Provider details disagree with the title match; review it.")
 		}
-		item, _, err = store.AddMovieAuthorized(ctx, full, false, authorize, category)
+		item, _, err = store.AddMovieAuthorized(ctx, full, library.DefaultMovieMonitored(full), authorize, category)
 	} else {
 		var full metadata.Series
 		var e error
@@ -204,7 +204,13 @@ func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, o
 		if full.TMDbID != chosen.TMDbID || !h.matches(full.Title, full.Year, full.TMDbID) {
 			return out, automaticReview("Provider details disagree with the show match; review it.")
 		}
-		item, _, err = store.AddSeriesAuthorized(ctx, full, false, authorize, category)
+		var created bool
+		item, created, err = store.AddSeriesAuthorized(ctx, full, library.DefaultSeriesMonitored(full), authorize, category)
+		if err == nil && created && library.DefaultSeriesMonitored(full) {
+			if e := store.ApplyFutureOnlySeries(ctx, item.ID); e != nil {
+				return out, e
+			}
+		}
 	}
 	if err != nil {
 		return out, err

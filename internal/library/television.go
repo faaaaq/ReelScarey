@@ -351,10 +351,9 @@ func monitorDateSQL(column string) string {
 }
 
 // MonitorAllEpisodes turns monitoring on for the show and for regular episodes
-// airing today or later (UTC). A regular season is monitored only when it has
-// such an episode or its own air date is today or later. Past, undated and
-// special episodes keep their explicit choices, and nothing is ever paused.
-// The whole change is one revision-fenced transaction.
+// airing today or later (UTC), and explicitly unmonitors regular episodes and
+// seasons with no episode releasing today or later. Special episodes keep their
+// explicit choices. The whole change is one revision-fenced transaction.
 func (s *Store) MonitorAllEpisodes(ctx context.Context, id, revision int64) error {
 	if revision < 1 {
 		return ErrMonitoringInput
@@ -372,6 +371,15 @@ func (s *Store) MonitorAllEpisodes(ctx context.Context, id, revision int64) erro
 	}
 	seasonDate := monitorDateSQL("s.air_date")
 	episodeDate := monitorDateSQL("e.air_date")
+	// Clear regular items that have nothing releasing today or later. This is
+	// what makes the action future-only even when a past episode was already
+	// monitored.
+	if _, e = tx.ExecContext(ctx, `UPDATE episodes AS e SET monitored=0 WHERE e.monitored=1 AND e.season_id IN (SELECT s.id FROM seasons s WHERE s.series_id=? AND s.number>0) AND NOT (`+episodeDate+`)`, id); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE seasons AS s SET monitored=0 WHERE s.series_id=? AND s.number>0 AND s.monitored=1 AND NOT ((`+seasonDate+`) OR EXISTS(SELECT 1 FROM episodes e WHERE e.season_id=s.id AND `+episodeDate+`))`, id); e != nil {
+		return e
+	}
 	if _, e = tx.ExecContext(ctx, `UPDATE seasons AS s SET monitored=1 WHERE s.series_id=? AND s.number>0 AND s.monitored=0 AND ((`+seasonDate+`) OR EXISTS(SELECT 1 FROM episodes e WHERE e.season_id=s.id AND `+episodeDate+`))`, id); e != nil {
 		return e
 	}
@@ -384,7 +392,8 @@ func (s *Store) MonitorAllEpisodes(ctx context.Context, id, revision int64) erro
 // MonitorAllShows applies MonitorAllEpisodes to every show in one scope. It is
 // an explicit bulk owner action, so it does not require per-show revisions; the
 // category is fixed to the three saved collections. As with the per-show action,
-// only today's or future regular episodes and their seasons are turned on.
+// only today's or future regular episodes and their seasons are monitored, and
+// past or undated regular episodes are explicitly unmonitored.
 func (s *Store) MonitorAllShows(ctx context.Context, category string) (int, error) {
 	if category != "" && category != "standard" && category != "anime" {
 		return 0, ErrMonitoringInput
@@ -409,6 +418,12 @@ func (s *Store) MonitorAllShows(ctx context.Context, category string) (int, erro
 	}
 	seasonDate := monitorDateSQL("s.air_date")
 	episodeDate := monitorDateSQL("e.air_date")
+	if _, e = tx.ExecContext(ctx, `UPDATE episodes AS e SET monitored=0 WHERE e.monitored=1 AND e.season_id IN (SELECT s.id FROM seasons s WHERE s.number>0 AND s.series_id IN (`+scope+`)) AND NOT (`+episodeDate+`)`, args...); e != nil {
+		return 0, e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE seasons AS s SET monitored=0 WHERE s.number>0 AND s.monitored=1 AND s.series_id IN (`+scope+`) AND NOT ((`+seasonDate+`) OR EXISTS(SELECT 1 FROM episodes e WHERE e.season_id=s.id AND `+episodeDate+`))`, args...); e != nil {
+		return 0, e
+	}
 	if _, e = tx.ExecContext(ctx, `UPDATE seasons AS s SET monitored=1 WHERE s.number>0 AND s.monitored=0 AND s.series_id IN (`+scope+`) AND ((`+seasonDate+`) OR EXISTS(SELECT 1 FROM episodes e WHERE e.season_id=s.id AND `+episodeDate+`))`, args...); e != nil {
 		return 0, e
 	}

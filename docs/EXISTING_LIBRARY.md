@@ -64,9 +64,11 @@ in the configured Anime collection. Anime discovery scans series directly in the
 configured Anime folder (for example, /data/anime). Scan films through Movies,
 including anime films.
 
-Matching first checks saved titles, then TMDb when needed. New titles are added
-with monitoring paused, and unloaded canonical season episodes are fetched once
-and reused. Existing monitoring choices are preserved. Movie/show searches are
+Matching first checks saved titles, then TMDb when needed. New titles default to
+future-only monitoring: a title releasing today or later is monitored, while an
+already-released or undated title is paused. Unloaded canonical season episodes
+are fetched once and reused. Existing monitoring choices are preserved.
+Movie/show searches are
 bounded to three complete provider pages; broader results need review or an
 explicit TMDb folder ID. Incomplete saved season definitions may need refresh.
 
@@ -86,8 +88,9 @@ restart. Failed/partial discovery cannot automatically register files.
 Open **Review match** for a discovered file. The original path and size are shown.
 Filename hints only prefill a search; they never select a title or episodes.
 Search/browse saved catalog titles offline, or explicitly search TMDb and choose
-**Add & choose**. New canonical titles start with monitoring paused. A provider
-outage does not prevent linking to a previously saved catalog title.
+**Add & choose**. New canonical titles default to future-only monitoring; an
+already-aired title starts paused. A provider outage does not prevent linking to
+a previously saved catalog title.
 
 For TV, choose a show, load a season's canonical episode metadata if necessary,
 and select every episode covered by this file. One file can cover up to twenty

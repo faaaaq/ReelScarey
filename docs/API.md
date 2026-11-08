@@ -409,11 +409,11 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | POST | `/api/v1/providers/tmdb/test` | Test the saved credential against real TMDb |
 | GET | `/api/v1/metadata/movies?query=title&page=1` | Real TMDb movie search; per-result in_library flag |
 | GET | `/api/v1/metadata/movies/{tmdb_id}` | Canonical movie details from TMDb |
-| POST | `/api/v1/library/movies` | Add canonical metadata by TMDb ID; 201 created or 200 existing |
+| POST | `/api/v1/library/movies` | Add canonical metadata by TMDb ID; omitted `monitored` defaults to future-only; 201 created or 200 existing |
 | GET | `/api/v1/library/movies/{id}` | Saved movie by catalog ID, without a TMDb request |
 | GET | `/api/v1/metadata/series?query=title&page=1` | TMDb TV search with per-result in_library |
 | GET | `/api/v1/metadata/series/{tmdb_id}` | Canonical show details and season summaries |
-| POST | `/api/v1/library/series` | Canonical show add by tmdb_id and optional monitored; 201 new/200 existing |
+| POST | `/api/v1/library/series` | Canonical show add by tmdb_id and optional monitored; omitted defaults to future-only; 201 new/200 existing |
 | GET | `/api/v1/library/series/{id}` | Saved show, revision, status and season summaries |
 | POST | `/api/v1/library/series/{id}/refresh` | `{ "revision": 1 }`; refresh show metadata/seasons, preserve selections |
 | GET | `/api/v1/library/series/{id}/seasons/{number}` | Saved season and episodes; no provider request |
@@ -453,7 +453,7 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | POST | `/api/v1/automation/search-item` | `{ "media_id": 7, "episode_id"?: 10 }`; scope the next run to one title or episode; 202 |
 | POST | `/api/v1/automation/search-bulk` | `{ "scope": "movie" \| "series" }`; scope the next run to every missing monitored movie or TV episode; 202 |
 | GET | `/api/v1/automation/item-results?media_id=7&episode_id=10` | Latest recorded outcome, message, download ID and run for that target |
-| PUT | `/api/v1/library/series/{id}/monitor-all` | `{ "revision" }`; monitor the show and regular episodes airing today or later (UTC), plus seasons with such an episode or a future season air_date; specials and past/undated episodes unchanged |
+| PUT | `/api/v1/library/series/{id}/monitor-all` | `{ "revision" }`; monitor the show and regular episodes airing today or later (UTC), plus seasons with such an episode or a future season air_date; past/undated regular episodes are explicitly unmonitored; specials unchanged |
 | POST | `/api/v1/library/monitor-all-episodes` | `{ "category"?: "standard" \| "anime" }`; same future-date rule for every show in scope; `{ "shows": n }` |
 | POST | `/api/v1/library/series/{id}/episodes/{episodeID}/remove-file` | `{ "revision", "reviewed": true, "delete_file"?: true }`; remove one episode from the library and, when asked, delete its media copy (seeding sources and shared files are protected) |
 | GET | `/api/v1/automation/runs` | `{items}`; latest 30 search runs with state, message, timestamps, mode, checked and queued counts |

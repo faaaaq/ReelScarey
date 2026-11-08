@@ -1,4 +1,10 @@
-import { useId, useState, type MouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { Button, Switch } from "@radix-ui/themes";
 import {
   ChevronLeft,
@@ -113,7 +119,7 @@ export function AddMovieButton({
   id,
   added,
   onAdded,
-  monitored = true,
+  monitored,
   kind = "movie",
   category,
   createFolder = false,
@@ -142,7 +148,7 @@ export function AddMovieButton({
           method: "POST",
           body: JSON.stringify({
             tmdb_id: id,
-            monitored,
+            ...(monitored === undefined ? {} : { monitored }),
             ...(category ? { category } : {}),
           }),
         },
@@ -214,15 +220,29 @@ export function MovieDetails({
   kind?: "movie" | "series";
   category?: "anime";
 }) {
-  const details = useResource<Movie>(
+  const details = useResource<Movie & { seasons?: { air_date: string }[] }>(
     `/metadata/${kind === "series" ? "series" : "movies"}/${id}`,
   );
   const [monitored, setMonitored] = useState(true);
+  const [touched, setTouched] = useState(false);
   const [createFolder, setCreateFolder] = useState(false);
   const monitorId = useId(),
     folderId = useId();
   const noun = kind === "series" ? "show" : "movie";
   const data = details.data;
+
+  useEffect(() => {
+    if (!data || touched) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const dates =
+      kind === "series"
+        ? [
+            data.release_date,
+            ...(data.seasons ?? []).map((season) => season.air_date),
+          ]
+        : [data.release_date];
+    setMonitored(dates.some((date) => Boolean(date) && date >= today));
+  }, [data, kind, touched]);
   return (
     <Modal
       open
@@ -262,7 +282,7 @@ export function MovieDetails({
               id={id}
               added={added}
               onAdded={onAdded}
-              monitored={monitored}
+              monitored={touched ? monitored : undefined}
               createFolder={createFolder}
               variant="solid"
             />
@@ -306,8 +326,8 @@ export function MovieDetails({
                 htmlFor={monitorId}
                 help={
                   kind === "series"
-                    ? "Monitored shows can be searched automatically. Specials start unselected."
-                    : "Monitored movies can be searched automatically."
+                    ? "Monitored shows are searched for episodes releasing today or later; past episodes start unmonitored. Specials start unselected."
+                    : "Monitored movies are searched when they release today or later; already-released movies start unmonitored."
                 }
               >
                 <span className="add-modal-switch">
@@ -315,7 +335,10 @@ export function MovieDetails({
                     id={monitorId}
                     aria-label={`Monitor this ${noun}`}
                     checked={monitored}
-                    onCheckedChange={setMonitored}
+                    onCheckedChange={(value) => {
+                      setTouched(true);
+                      setMonitored(value);
+                    }}
                   />
                 </span>
               </FormGroup>

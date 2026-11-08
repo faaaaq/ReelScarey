@@ -3,6 +3,7 @@ package httpapi
 import (
 	"database/sql"
 	"errors"
+	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"net/http"
 	"strconv"
@@ -148,7 +149,7 @@ func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
 		s.providerError(w, err)
 		return
 	}
-	monitored := true
+	monitored := library.DefaultMovieMonitored(movie)
 	if body.Monitored != nil {
 		monitored = *body.Monitored
 	}

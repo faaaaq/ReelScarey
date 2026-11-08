@@ -101,14 +101,21 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 		s.tvError(w, e)
 		return
 	}
-	monitored := true
-	if body.Monitored != nil {
+	monitored := library.DefaultSeriesMonitored(show)
+	explicit := body.Monitored != nil
+	if explicit {
 		monitored = *body.Monitored
 	}
 	item, created, e := s.library.AddSeries(r.Context(), show, monitored, body.Category)
 	if e != nil {
 		s.tvError(w, e)
 		return
+	}
+	if created && !explicit && monitored {
+		if e := s.library.ApplyFutureOnlySeries(r.Context(), item.ID); e != nil {
+			s.tvError(w, e)
+			return
+		}
 	}
 	status := 200
 	if created {
