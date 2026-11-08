@@ -1,5 +1,30 @@
 # Validation record — 2026-10-29
 
+## Cross-season existing-library matching (2026-11-08)
+
+Implementation checks on 2026-11-08 (Windows development host):
+
+- Automatic existing-library matching now tries the filename's canonical
+  season/episode first, then one unique exact normalized episode title across
+  the show's bounded eligible seasons. The generated Dan Da Dan-shaped fixture
+  maps a file labeled `S02E11` to TMDb `S01E11`, registers the canonical episode,
+  and reports the cross-season mapping after verification.
+- New fixtures keep duplicate cross-season titles and numbered files without a
+  usable title in review. Existing season/episode matching still passes.
+- A saved show that predates a newly added TMDb season refreshes and loads the
+  new season before matching. A simulated metadata-refresh revision race retries
+  once with the current show revision instead of pausing or reporting a missing
+  season.
+- `go test ./... -count=1` passed for every package except
+  `TestLargeExistingRegistrationDoesNotReadWholeVideo` in `internal/transfer`,
+  which could not create its 4 GiB temporary fixture on this host ("There is not
+  enough space on the disk"); that check is environment-limited and unrelated to
+  matching. Targeted automatic/existing/bulk transfer tests pass.
+- `go vet ./...` and `go build ./cmd/reelscarey` passed after building
+  `web/dist`; no frontend source changed.
+- Not exercised here: a live TMDb account, owner media, an existing library or a
+  Docker/Linux run. All provider behavior used generated fixtures.
+
 ## Music import discovery (2026-11-08)
 
 - The Music toolbar and empty state now link directly to **Music Library

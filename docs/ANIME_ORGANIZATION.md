@@ -26,8 +26,11 @@ v2 suffix), but every suggestion still requires confirmation. Conflicting,
 unknown or ambiguous labels produce no suggestion. New jobs snapshot aliases;
 later alias changes cannot rename an already queued job differently. Shared
 files still require at most 20 consecutive canonical episodes from one season.
-AniDB/AniList identity, automatic alternate-order matching and cross-season packs
-are not implemented.
+Existing-library automatic matching may use one unique exact normalized episode
+title to map a file to a different TMDb season; it does not infer ordering from
+aliases, AniList/Kitsu counts or title similarity. AniDB/AniList identity,
+automatic alternate-order matching and cross-season packs are not implemented.
+See [existing-library import](EXISTING_LIBRARY.md).
 
 ## Main root and collections
 

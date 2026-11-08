@@ -23,6 +23,7 @@ type automaticHint struct {
 var automaticProviderID = regexp.MustCompile(`(?i)[\[{]tmdb[-= ]([0-9]+)[\]}]`)
 var automaticOtherID = regexp.MustCompile(`(?i)[\[{](?:imdb[-= ]tt[0-9]+|tvdb[-= ][0-9]+)[\]}]`)
 var automaticSeasonFolder = regexp.MustCompile(`(?i)^season[ ._-]*([0-9]{1,3})$`)
+var automaticEpisodePlaceholder = regexp.MustCompile(`(?i)^(?:episode|ep|e)[ ._-]*[0-9]{1,5}$`)
 
 type automaticReview string
 
@@ -104,7 +105,7 @@ func automaticIdentity(scan LibraryScan, f DiscoveredFile) (automaticHint, error
 		}
 		return h, nil
 	}
-	season, episodes, start, _, ok := quality.EpisodeSpan(base)
+	season, episodes, start, end, ok := quality.EpisodeSpan(base)
 	if !ok {
 		if quality.HasEpisodeLabel(base) {
 			return h, automaticReview("Episode numbering is ambiguous. Review the season and episode mapping.")
@@ -164,7 +165,37 @@ func automaticIdentity(scan LibraryScan, f DiscoveredFile) (automaticHint, error
 	}
 	h.Season = season
 	h.Episodes = episodes
+	h.EpisodeTitle = episodeTitleAfterLabel(base, end)
 	return h, nil
+}
+
+// episodeTitleAfterLabel keeps the text following an explicit SxxExx label as
+// weak secondary evidence. A missing title is fine: the numbered mapping
+// remains authoritative. Pure placeholders such as "Episode 2" are not titles.
+func episodeTitleAfterLabel(base string, end int) string {
+	tail := base[end:]
+	if i := hintQuality.FindStringIndex(tail); i != nil {
+		tail = tail[:i[0]]
+	}
+	tail = strings.Trim(tail, " ._-–—()[]{}")
+	normalized := quality.Normalize(tail)
+	if normalized == "" {
+		return ""
+	}
+	if automaticEpisodePlaceholder.MatchString(normalized) {
+		return ""
+	}
+	digits := true
+	for _, r := range normalized {
+		if r < '0' || r > '9' {
+			digits = false
+			break
+		}
+	}
+	if digits {
+		return ""
+	}
+	return strings.Join(strings.Fields(tail), " ")
 }
 
 func plainSeasonFolder(part string) bool {

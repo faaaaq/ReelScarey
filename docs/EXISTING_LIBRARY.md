@@ -59,15 +59,43 @@ scan and shared across episodes; loaded seasons are reused. An explicit
 `[tmdb-123]` / `{tmdb-123}` ID identifies that provider item without title search
 or a repeated details fetch. Without an ID, matching requires one unique exact
 normalized title (and year when supplied). Loose movie files still require a year
-or TMDb ID. TV uses explicit canonical season/episode labels such as `S01E02`,
-`1x02`, or `S01E02-E03`. Conflicting explicit IDs, years or season numbers,
-ambiguous title results, date/absolute Anime numbering and nonconsecutive episodes
-stay in review. Multiple movie files can attach to the same movie, preserving each
-resolution or edition. Overlapping TV episode files stay in review; the app does
-not choose an arbitrary episode version. Clear canonical Anime numbering works
-in the configured Anime collection. Anime discovery scans series directly in the
-configured Anime folder (for example, /data/anime). Scan films through Movies,
-including anime films.
+or TMDb ID. TV first uses explicit canonical season/episode labels such as
+`S01E02`, `1x02`, or `S01E02-E03`. When the saved show has no such season, or the
+season has no such episode number, one unique exact normalized episode title may
+identify the episode in another TMDb season (see below). Conflicting explicit IDs,
+years or season numbers, ambiguous or duplicate titles, date/absolute Anime
+numbering and nonconsecutive episodes stay in review. Multiple movie files can
+attach to the same movie, preserving each resolution or edition. Overlapping TV
+episode files stay in review; the app does not choose an arbitrary episode version.
+Clear canonical Anime numbering works in the configured Anime collection. Anime
+discovery scans series directly in the configured Anime folder (for example,
+/data/anime). Scan films through Movies, including anime films.
+
+### Cross-season episode titles
+
+TMDb sometimes places an episode in a different season than the file's release
+folder or `SxxExx` label, especially for split-cour Anime. After the requested
+season/episode lookup fails, automatic matching searches the show's eligible
+canonical seasons for exactly one episode whose title equals the filename's
+episode title after case and punctuation normalization. A missing/unloaded
+season is fetched through the normal TMDb season path; loaded seasons are reused
+and the search is bounded to twenty season rows. A unique match is accepted even
+when the season number differs, for example mapping a file labeled `S02E11` to
+TMDb `S01E11`. Registration and organization naming use the matched episode's
+actual canonical season and episode, not the filename label. The matched row
+reports the cross-season mapping, such as `Mapped S02E11 to TMDb S01E11 using the
+exact episode title ...`.
+
+Zero matches and multiple matches stay in review. The message distinguishes a
+missing TMDb season or episode number from a title that appears in more than one
+season. Partial/fuzzy title similarity, absolute-number ordering, AniList/Kitsu
+counts and reviewed provider-order guesses are never used to infer canonical
+order. A multi-episode or range file stays in review when its requested numbering
+is unavailable, because one title cannot prove every episode in the range.
+Metadata refreshes that add a newly announced TMDb season use the current show
+revision and retry one stale-revision write; changed provider identities still
+fail closed. Existing canonical episode IDs, associations and monitoring are not
+rewritten.
 
 Matching first checks saved titles, then TMDb when needed. New titles default to
 future-only monitoring: a title releasing today or later is monitored, while an

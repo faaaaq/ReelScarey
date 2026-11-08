@@ -38,6 +38,8 @@ type AutomaticMatchStatus struct {
 type automaticCandidate struct {
 	Hint     automaticHint `json:"hint"`
 	Snapshot reviewedMatch `json:"snapshot"`
+	// Note records accepted cross-season/number evidence for the review UI.
+	Note string `json:"note,omitempty"`
 }
 
 func (s *Service) AutomaticMatchStatus(ctx context.Context, scan string) (*AutomaticMatchStatus, error) {
@@ -351,10 +353,16 @@ func (s *Service) registerAutomaticCandidate(ctx context.Context, scanID, owner,
 		if err = s.queueExistingRegistrationTx(ctx, tx, file, ExistingRegistration{MediaID: now.Choice.MediaID, Episodes: now.Choice.Episodes}, false); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE library_match_candidates SET state='queued',message='Automatically matched using exact title and episode evidence.' WHERE file_id=?`, file); err != nil {
+		message := "Automatically matched using exact title and episode evidence."
+		scanMessage := "Automatically matched; waiting for file verification."
+		if saved.Note != "" {
+			message = "Automatically matched. " + saved.Note
+			scanMessage = message + " Waiting for file verification."
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE library_match_candidates SET state='queued',message=? WHERE file_id=?`, message, file); err != nil {
 			return err
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE library_scan_files SET message='Automatically matched; waiting for file verification.' WHERE id=?`, file)
+		_, err = tx.ExecContext(ctx, `UPDATE library_scan_files SET message=? WHERE id=?`, scanMessage, file)
 		return err
 	})
 }

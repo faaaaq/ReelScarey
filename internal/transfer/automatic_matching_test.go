@@ -226,6 +226,18 @@ func TestAutomaticEpisodeTitleFallbackIdentity(t *testing.T) {
 	if err != nil || h.Title != "Example Show" || h.Season != 2 || h.EpisodeTitle != "Promise" {
 		t.Fatalf("%+v %v", h, err)
 	}
+	h, err = automaticIdentity(LibraryScan{Kind: "series", Folder: "TV"}, DiscoveredFile{Path: "TV/Example Show (2020)/Season 02/Example Show - S02E04 - Promise.mkv"})
+	if err != nil || h.Season != 2 || !reflect.DeepEqual(h.Episodes, []int{4}) || h.EpisodeTitle != "Promise" {
+		t.Fatalf("numbered episode title not retained: %+v %v", h, err)
+	}
+	h, err = automaticIdentity(LibraryScan{Kind: "series", Folder: "TV"}, DiscoveredFile{Path: "TV/Example Show (2020)/Season 02/Example Show - S02E04 - Episode 4.mkv"})
+	if err != nil || h.EpisodeTitle != "" {
+		t.Fatalf("episode placeholder became title evidence: %+v %v", h, err)
+	}
+	h, err = automaticIdentity(LibraryScan{Kind: "series", Folder: "TV"}, DiscoveredFile{Path: "TV/Example Show (2020)/Season 02/Example Show - S02E04 - 1080p.mkv"})
+	if err != nil || h.EpisodeTitle != "" {
+		t.Fatalf("quality label became title evidence: %+v %v", h, err)
+	}
 	if _, err := automaticIdentity(LibraryScan{Kind: "series", Folder: "TV"}, DiscoveredFile{Path: "TV/Example Show/Example Show.mkv"}); err == nil {
 		t.Fatal("accepted a file without an episode title")
 	}
@@ -267,6 +279,67 @@ func TestAutomaticMatchingCreatesSeasonsAddedAfterTheShowWasSaved(t *testing.T) 
 	var season2, episode int64
 	if err := f.db.QueryRow(`SELECT s.number,e.tmdb_id FROM episode_files ef JOIN episodes e ON e.id=ef.episode_id JOIN seasons s ON s.id=e.season_id WHERE e.tmdb_id=962`).Scan(&season2, &episode); err != nil || season2 != 2 || episode != 962 {
 		t.Fatal("season 2 episode was not registered", season2, episode, err)
+	}
+	// Refreshing a show saved before TMDb added season 2 must save the new
+	// season and load it rather than reporting that the provider has no season.
+	var loaded int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM seasons s JOIN media_items m ON m.id=s.series_id WHERE m.tmdb_id=950 AND s.number=2 AND s.loaded_at<>''`).Scan(&loaded); err != nil || loaded != 1 {
+		t.Fatal("new provider season was not refreshed and loaded", loaded, err)
+	}
+	var message string
+	if err := f.db.QueryRow(`SELECT message FROM library_scan_files WHERE scan_id=? AND relative_path LIKE '%S02E01%'`, scan.ID).Scan(&message); err != nil || strings.Contains(message, "does not list this season") {
+		t.Fatal("new provider season was reported as missing", message, err)
+	}
+}
+
+func TestAutomaticMatchingRetriesStaleSeriesRevisionWhenProviderAddsSeason(t *testing.T) {
+	f := setupWorkflow(t)
+	year := 2023
+	s1 := metadata.SeasonSummary{TMDbID: 971, Number: 1, Title: "Season 1", EpisodeCount: 1}
+	s2 := metadata.SeasonSummary{TMDbID: 972, Number: 2, Title: "Season 2", EpisodeCount: 1}
+	provider := &automaticProviderFixture{
+		show: metadata.Series{Movie: metadata.Movie{TMDbID: 970, Title: "Revision Show", Year: &year}, Seasons: []metadata.SeasonSummary{s1}},
+		seasonsByNumber: map[int]metadata.Season{
+			1: {SeasonSummary: s1, Episodes: []metadata.Episode{{TMDbID: 981, Number: 1, Title: "First"}}},
+			2: {SeasonSummary: s2, Episodes: []metadata.Episode{{TMDbID: 982, Number: 1, Title: "Second"}}},
+		},
+	}
+	f.s.SetAutomaticMetadata(provider)
+	existingVideo(t, f, "Anime/Revision Show (2023) [tmdb-970]/Season 01/Revision Show - S01E01.mp4", []byte("owned season one revision fixture"))
+	existingVideo(t, f, "Anime/Revision Show (2023) [tmdb-970]/Season 2/Revision Show - S02E01.mp4", []byte("owned season two revision fixture"))
+	scan, err := f.s.StartLibraryScanWithMatching(context.Background(), "series", "anime", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishScan(t, f, scan.ID)
+	if _, err := f.s.ProcessAutomaticMatchNext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	provider.show.Seasons = []metadata.SeasonSummary{s1, s2}
+	bumped := false
+	provider.beforeSeries = func() {
+		if bumped {
+			return
+		}
+		bumped = true
+		// Simulate the automatic metadata refresh queue advancing the show
+		// revision between the missing-season read and the refresh write.
+		if _, err := f.db.Exec(`UPDATE series_details SET revision=revision+1 WHERE media_id=(SELECT id FROM media_items WHERE tmdb_id=970 AND kind='series')`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	finishAutomatic(t, f, scan.ID)
+	current, err := f.s.LibraryScan(context.Background(), scan.ID)
+	status, err := f.s.AutomaticMatchStatus(context.Background(), scan.ID)
+	if err != nil || current.Registered != 2 || status.Review != 0 || status.Queued != 2 {
+		t.Fatal(current, status, err)
+	}
+	if !bumped {
+		t.Fatal("stale revision was not exercised")
+	}
+	var count int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM episode_files ef JOIN episodes e ON e.id=ef.episode_id WHERE e.tmdb_id=982`).Scan(&count); err != nil || count != 1 {
+		t.Fatal("season added during a revision race was not registered", count, err)
 	}
 }
 
@@ -328,6 +401,154 @@ func TestAutomaticTitleOnlyAmbiguousTitleStaysReview(t *testing.T) {
 	f.db.QueryRow(`SELECT COUNT(*) FROM episode_files`).Scan(&count)
 	if count != 0 {
 		t.Fatal("ambiguous title registered a file", count)
+	}
+}
+
+func TestAutomaticNumberedEpisodeMapsAcrossSeasonsByExactTitle(t *testing.T) {
+	f := setupWorkflow(t)
+	year := 2024
+	s1 := metadata.SeasonSummary{TMDbID: 2404111, Number: 1, Title: "Season 1", EpisodeCount: 2}
+	s2 := metadata.SeasonSummary{TMDbID: 2404112, Number: 2, Title: "Season 2", EpisodeCount: 2}
+	provider := &automaticProviderFixture{
+		show: metadata.Series{Movie: metadata.Movie{TMDbID: 240411, Title: "Dan Da Dan", Year: &year}, Seasons: []metadata.SeasonSummary{s1, s2}},
+		seasonsByNumber: map[int]metadata.Season{
+			1: {SeasonSummary: s1, Episodes: []metadata.Episode{
+				{TMDbID: 24041101, Number: 1, Title: "That's a Space Alien, Ain't It?!"},
+				{TMDbID: 24041102, Number: 11, Title: "Hey, It's a Kaiju!"},
+			}},
+			2: {SeasonSummary: s2, Episodes: []metadata.Episode{
+				{TMDbID: 24041201, Number: 1, Title: "A New Season"},
+				{TMDbID: 24041202, Number: 2, Title: "Another Episode"},
+			}},
+		},
+	}
+	f.s.SetAutomaticMetadata(provider)
+	// The file's own season/number is not how TMDb numbers this episode.
+	existingVideo(t, f, "Anime/Dan Da Dan (2024) [tmdb-240411]/Season 2/DAN DA DAN - S02E11 - Hey, It's a Kaiju!.mp4", []byte("owned cross-season fixture"))
+	scan, err := f.s.StartLibraryScanWithMatching(context.Background(), "series", "anime", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishScan(t, f, scan.ID)
+	finishAutomatic(t, f, scan.ID)
+	status, err := f.s.AutomaticMatchStatus(context.Background(), scan.ID)
+	current, err := f.s.LibraryScan(context.Background(), scan.ID)
+	if err != nil || status.Review != 0 || status.Queued != 1 || current.Registered != 1 {
+		t.Fatal(status, current, err)
+	}
+	var season, number int
+	var tmdbID int64
+	if err := f.db.QueryRow(`SELECT s.number,e.number,e.tmdb_id FROM episode_files ef JOIN episodes e ON e.id=ef.episode_id JOIN seasons s ON s.id=e.season_id`).Scan(&season, &number, &tmdbID); err != nil || season != 1 || number != 11 || tmdbID != 24041102 {
+		t.Fatal("episode was not mapped to its canonical season", season, number, tmdbID, err)
+	}
+	var message string
+	if err := f.db.QueryRow(`SELECT message FROM library_scan_files WHERE scan_id=?`, scan.ID).Scan(&message); err != nil || !strings.Contains(message, "Mapped S02E11 to TMDb S01E11") {
+		t.Fatal("cross-season mapping was not reported after registration", message, err)
+	}
+}
+
+func TestAutomaticNumberedEpisodeMapsWhenHintSeasonIsAbsent(t *testing.T) {
+	f := setupWorkflow(t)
+	year := 2024
+	s1 := metadata.SeasonSummary{TMDbID: 2404411, Number: 1, Title: "Season 1", EpisodeCount: 2}
+	provider := &automaticProviderFixture{
+		show: metadata.Series{Movie: metadata.Movie{TMDbID: 240441, Title: "Only Season Show", Year: &year}, Seasons: []metadata.SeasonSummary{s1}},
+		seasonsByNumber: map[int]metadata.Season{
+			1: {SeasonSummary: s1, Episodes: []metadata.Episode{
+				{TMDbID: 24044101, Number: 1, Title: "First"},
+				{TMDbID: 24044102, Number: 11, Title: "Hey, It's a Kaiju!"},
+			}},
+		},
+	}
+	f.s.SetAutomaticMetadata(provider)
+	// The file says season 2, but this provider record only has season 1.
+	existingVideo(t, f, "Anime/Only Season Show (2024) [tmdb-240441]/Season 2/Only Season Show - S02E11 - Hey, It's a Kaiju!.mp4", []byte("owned missing-hint-season fixture"))
+	scan, err := f.s.StartLibraryScanWithMatching(context.Background(), "series", "anime", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishScan(t, f, scan.ID)
+	finishAutomatic(t, f, scan.ID)
+	status, err := f.s.AutomaticMatchStatus(context.Background(), scan.ID)
+	current, err := f.s.LibraryScan(context.Background(), scan.ID)
+	if err != nil || status.Review != 0 || status.Queued != 1 || current.Registered != 1 {
+		t.Fatal(status, current, err)
+	}
+	var count int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM episode_files ef JOIN episodes e ON e.id=ef.episode_id WHERE e.tmdb_id=24044102`).Scan(&count); err != nil || count != 1 {
+		t.Fatal("missing hint season was not mapped by exact title", count, err)
+	}
+	var message string
+	if err := f.db.QueryRow(`SELECT message FROM library_scan_files WHERE scan_id=?`, scan.ID).Scan(&message); err != nil || !strings.Contains(message, "Mapped S02E11 to TMDb S01E11") {
+		t.Fatal("missing hint season mapping was not reported", message, err)
+	}
+}
+
+func TestAutomaticNumberedEpisodeCrossSeasonAmbiguousTitleStaysReview(t *testing.T) {
+	f := setupWorkflow(t)
+	year := 2024
+	s1 := metadata.SeasonSummary{TMDbID: 2404211, Number: 1, Title: "Season 1", EpisodeCount: 1}
+	s2 := metadata.SeasonSummary{TMDbID: 2404212, Number: 2, Title: "Season 2", EpisodeCount: 1}
+	provider := &automaticProviderFixture{
+		show: metadata.Series{Movie: metadata.Movie{TMDbID: 240421, Title: "Recap Show", Year: &year}, Seasons: []metadata.SeasonSummary{s1, s2}},
+		seasonsByNumber: map[int]metadata.Season{
+			1: {SeasonSummary: s1, Episodes: []metadata.Episode{{TMDbID: 24042101, Number: 5, Title: "Recap"}}},
+			2: {SeasonSummary: s2, Episodes: []metadata.Episode{{TMDbID: 24042102, Number: 1, Title: "Recap"}}},
+		},
+	}
+	f.s.SetAutomaticMetadata(provider)
+	existingVideo(t, f, "Anime/Recap Show (2024) [tmdb-240421]/Season 2/Recap Show - S02E11 - Recap.mp4", []byte("owned ambiguous cross-season fixture"))
+	scan, err := f.s.StartLibraryScanWithMatching(context.Background(), "series", "anime", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishScan(t, f, scan.ID)
+	finishAutomatic(t, f, scan.ID)
+	status, err := f.s.AutomaticMatchStatus(context.Background(), scan.ID)
+	if err != nil || status.Review != 1 || status.Queued != 0 {
+		t.Fatal(status, err)
+	}
+	var count int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM episode_files`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("ambiguous cross-season title registered a file", count, err)
+	}
+	var message string
+	if err := f.db.QueryRow(`SELECT message FROM library_scan_files WHERE scan_id=?`, scan.ID).Scan(&message); err != nil || !strings.Contains(message, "more than one episode is titled") || !strings.Contains(message, "seasons 1, 2") {
+		t.Fatal("ambiguous cross-season message was not clear", message, err)
+	}
+}
+
+func TestAutomaticNumberedEpisodeWithoutTitleStaysReview(t *testing.T) {
+	f := setupWorkflow(t)
+	year := 2024
+	s1 := metadata.SeasonSummary{TMDbID: 2404311, Number: 1, Title: "Season 1", EpisodeCount: 1}
+	s2 := metadata.SeasonSummary{TMDbID: 2404312, Number: 2, Title: "Season 2", EpisodeCount: 1}
+	provider := &automaticProviderFixture{
+		show: metadata.Series{Movie: metadata.Movie{TMDbID: 240431, Title: "Numbered Show", Year: &year}, Seasons: []metadata.SeasonSummary{s1, s2}},
+		seasonsByNumber: map[int]metadata.Season{
+			1: {SeasonSummary: s1, Episodes: []metadata.Episode{{TMDbID: 24043101, Number: 1, Title: "First"}}},
+			2: {SeasonSummary: s2, Episodes: []metadata.Episode{{TMDbID: 24043102, Number: 1, Title: "Second"}}},
+		},
+	}
+	f.s.SetAutomaticMetadata(provider)
+	existingVideo(t, f, "Anime/Numbered Show (2024) [tmdb-240431]/Season 2/Numbered Show - S02E11.mp4", []byte("owned missing-title fixture"))
+	scan, err := f.s.StartLibraryScanWithMatching(context.Background(), "series", "anime", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishScan(t, f, scan.ID)
+	finishAutomatic(t, f, scan.ID)
+	status, err := f.s.AutomaticMatchStatus(context.Background(), scan.ID)
+	if err != nil || status.Review != 1 || status.Queued != 0 {
+		t.Fatal(status, err)
+	}
+	var count int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM episode_files`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("file without episode title registered", count, err)
+	}
+	var message string
+	if err := f.db.QueryRow(`SELECT message FROM library_scan_files WHERE scan_id=?`, scan.ID).Scan(&message); err != nil || !strings.Contains(message, "does not include a usable episode title") {
+		t.Fatal("missing-title message was not clear", message, err)
 	}
 }
 
@@ -400,6 +621,7 @@ type automaticProviderFixture struct {
 	fail              bool
 	ambiguous         bool
 	beforeMovie       func()
+	beforeSeries      func()
 	movieError        error
 	searchError       error
 	seasonError       error
@@ -433,6 +655,9 @@ func (p *automaticProviderFixture) SearchSeries(context.Context, string, int) (m
 	return metadata.SeriesResults{TotalPages: 1, Items: []metadata.Series{p.show}}, nil
 }
 func (p *automaticProviderFixture) Series(context.Context, int64) (metadata.Series, error) {
+	if p.beforeSeries != nil {
+		p.beforeSeries()
+	}
 	return p.show, nil
 }
 func (p *automaticProviderFixture) Season(_ context.Context, _ int64, number int) (metadata.Season, error) {

@@ -26,6 +26,20 @@ func registeredMessageFor(unverified bool) string {
 	return "Video inspected and added in its existing location."
 }
 
+// automaticMappingNote preserves accepted cross-season evidence in the final
+// registered row. Manual registrations have no automatic candidate payload.
+func automaticMappingNote(ctx context.Context, tx *sql.Tx, fileID string) string {
+	var raw string
+	if err := tx.QueryRowContext(ctx, `SELECT payload FROM library_match_candidates WHERE file_id=? AND state='queued'`, fileID).Scan(&raw); err != nil {
+		return ""
+	}
+	var candidate automaticCandidate
+	if json.Unmarshal([]byte(raw), &candidate) != nil {
+		return ""
+	}
+	return candidate.Note
+}
+
 func (s *Service) runLibrary(ctx context.Context, logger *slog.Logger) {
 	for ctx.Err() == nil {
 		processed, e := s.ProcessLibraryNext(ctx)
@@ -434,7 +448,11 @@ func (s *Service) verifyExisting(ctx context.Context, id, owner string) error {
 	if e != nil {
 		return e
 	}
-	res, e = tx.ExecContext(ctx, `UPDATE library_scan_files SET state='registered',media_file_id=?,message=?,updated_at=unixepoch() WHERE id=? AND lease_owner=? AND state='verifying' AND lease_until>=unixepoch()`, fileID, registeredMessageFor(unverified), id, owner)
+	message := registeredMessageFor(unverified)
+	if note := automaticMappingNote(ctx, tx, id); note != "" {
+		message += " " + note
+	}
+	res, e = tx.ExecContext(ctx, `UPDATE library_scan_files SET state='registered',media_file_id=?,message=?,updated_at=unixepoch() WHERE id=? AND lease_owner=? AND state='verifying' AND lease_until>=unixepoch()`, fileID, message, id, owner)
 	if e != nil {
 		return e
 	}
