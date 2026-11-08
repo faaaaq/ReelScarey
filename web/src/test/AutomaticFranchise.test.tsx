@@ -45,7 +45,7 @@ describe("automatic franchise discovery", () => {
       await screen.findByRole("link", { name: "Fixture show" }),
     ).toHaveAttribute("href", "/series/9");
     expect(screen.getByText("Fixture film")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Add movie" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add monitored" })).toBeVisible();
     expect(fetch).toHaveBeenCalledTimes(1);
   });
   it("shows a retryable provider failure rather than an empty result", async () => {

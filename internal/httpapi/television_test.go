@@ -55,8 +55,11 @@ func TestTVProtectedCanonicalCatalogAndMonitoring(t *testing.T) {
 	if out := request(handler, "POST", "/api/v1/library/series", `{"tmdb_id":42,"title":"Spoofed"}`, &session, true); out.Code != 400 {
 		t.Fatal("spoofed metadata accepted")
 	}
-	out := request(handler, "POST", "/api/v1/library/series", `{"tmdb_id":42,"monitored":false}`, &session, true)
-	if out.Code != 201 || !strings.Contains(out.Body.String(), "Canonical TV title") {
+	if out := request(handler, "POST", "/api/v1/library/series", `{"tmdb_id":42,"monitor":"sometimes"}`, &session, true); out.Code != 400 || !strings.Contains(out.Body.String(), "invalid_monitoring") {
+		t.Fatal("unknown monitoring mode accepted", out.Code, out.Body)
+	}
+	out := request(handler, "POST", "/api/v1/library/series", `{"tmdb_id":42,"monitor":"none"}`, &session, true)
+	if out.Code != 201 || !strings.Contains(out.Body.String(), "Canonical TV title") || !strings.Contains(out.Body.String(), `"monitored":false`) {
 		t.Fatal(out.Code, out.Body)
 	}
 	var added struct {

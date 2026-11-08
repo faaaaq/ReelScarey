@@ -25,6 +25,21 @@ Docker remains the only supported deployment.
 - Accessibility is part of the design: visible focus, labelled icon-only
   controls, keyboard operation and reduced-motion support.
 
+## Add actions (0.40.0)
+
+Search results and the title details modal use the same add controls.
+
+- A movie offers **Add unmonitored** and **Add monitored**. Both buttons are
+  explicit; neither relies on the release-date default.
+- A TV show offers a dropdown with **Add without monitoring**, **Add monitoring
+  missing**, **Add monitoring current season** and **Add monitoring future
+  episodes**. Missing monitors regular seasons that have started and their aired
+  episodes; current monitors the current (or next) season; future monitors the
+  current and later seasons with episodes releasing today or later.
+- The choice applies to the add only. It never loads episodes, queues downloads
+  or modifies files, and later monitoring edits remain the normal per-show,
+  season and episode controls. Specials stay unmonitored.
+
 ## Shell
 
 - **Header** (fixed, 60px): logo, global search, recent activity, theme toggle

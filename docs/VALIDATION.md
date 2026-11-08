@@ -2290,3 +2290,24 @@ Run locally on Windows (development tools only; Docker remains the target):
 - Frontend format:check, check, the full suite (47 files, 265 tests) and the
   build passed. The new toggle has a Toolbar test covering both directions
   with revision fencing.
+
+## Version 0.40.0 explicit add-time monitoring
+
+- Movie adds offer **Add unmonitored** and **Add monitored**. Both send an
+  explicit value, so the result no longer depends on the release-date default.
+- TV adds offer a dropdown: **Add without monitoring**, **Add monitoring
+  missing**, **Add monitoring current season** and **Add monitoring future
+  episodes**. `POST /api/v1/library/series` accepts `monitor` with those four
+  modes; legacy `monitored` still works and `monitor` wins when both are sent.
+  Unknown modes return 400 `invalid_monitoring`.
+- The server applies the one-time choice to regular seasons and episodes:
+  none pauses the show; missing selects started seasons and aired episodes;
+  current selects the current (or next) season; future selects the current and
+  later seasons with episodes releasing today or later. Specials stay
+  unmonitored. No episodes are loaded and no downloads are queued by the add.
+- Go tests cover the full season/episode matrix for all four modes, plus HTTP
+  validation and the `monitor` body. gofmt, vet, the full Go suite and the build
+  passed.
+- Frontend format:check, check, the full suite (47 files, 267 tests) and the
+  build passed. New tests cover the movie unmonitored button, all four show
+  menu choices and their request bodies.

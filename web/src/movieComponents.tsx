@@ -1,12 +1,7 @@
+import { useId, useState, type MouseEvent, type ReactNode } from "react";
+import { Button, DropdownMenu, Switch } from "@radix-ui/themes";
 import {
-  useEffect,
-  useId,
-  useState,
-  type MouseEvent,
-  type ReactNode,
-} from "react";
-import { Button, Switch } from "@radix-ui/themes";
-import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -115,11 +110,19 @@ export function MovieCard({
   );
 }
 
+export type SeriesMonitorMode = "none" | "missing" | "current" | "future";
+
+const seriesMonitorOptions: { mode: SeriesMonitorMode; label: string }[] = [
+  { mode: "none", label: "Add without monitoring" },
+  { mode: "missing", label: "Add monitoring missing" },
+  { mode: "current", label: "Add monitoring current season" },
+  { mode: "future", label: "Add monitoring future episodes" },
+];
+
 export function AddMovieButton({
   id,
   added,
   onAdded,
-  monitored,
   kind = "movie",
   category,
   createFolder = false,
@@ -128,18 +131,19 @@ export function AddMovieButton({
   id: number;
   added: boolean;
   onAdded: (id: number) => void;
-  monitored?: boolean;
   kind?: "movie" | "series";
   category?: "anime";
   createFolder?: boolean;
   variant?: "solid" | "soft";
 }) {
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<
+    "" | "monitored" | "unmonitored" | SeriesMonitorMode
+  >("");
   const [error, setError] = useState("");
   const [folderMessage, setFolderMessage] = useState("");
-  async function add() {
+  async function add(choice: "monitored" | "unmonitored" | SeriesMonitorMode) {
     if (pending) return;
-    setPending(true);
+    setPending(choice);
     setError("");
     try {
       const result = await api<{ item: { id: number } }>(
@@ -148,7 +152,9 @@ export function AddMovieButton({
           method: "POST",
           body: JSON.stringify({
             tmdb_id: id,
-            ...(monitored === undefined ? {} : { monitored }),
+            ...(kind === "series"
+              ? { monitor: choice }
+              : { monitored: choice === "monitored" }),
             ...(category ? { category } : {}),
           }),
         },
@@ -171,7 +177,7 @@ export function AddMovieButton({
     } catch (error) {
       setError(messageFor(error));
     } finally {
-      setPending(false);
+      setPending("");
     }
   }
   if (added)
@@ -187,12 +193,48 @@ export function AddMovieButton({
         )}
       </div>
     );
+  const adding = pending !== "";
   return (
     <div className="add-button">
-      <Button variant={variant} disabled={pending} onClick={() => void add()}>
-        <Plus size={16} aria-hidden="true" />
-        {pending ? "Adding…" : kind === "series" ? "Add show" : "Add movie"}
-      </Button>
+      {kind === "series" ? (
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            <Button variant={variant} disabled={adding}>
+              <Plus size={16} aria-hidden="true" />
+              {adding ? "Adding…" : "Add show"}
+              <ChevronDown size={14} aria-hidden="true" />
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content size="1">
+            {seriesMonitorOptions.map((option) => (
+              <DropdownMenu.Item
+                key={option.mode}
+                disabled={adding}
+                onSelect={() => void add(option.mode)}
+              >
+                {option.label}
+              </DropdownMenu.Item>
+            ))}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      ) : (
+        <div className="add-button-row">
+          <Button
+            variant="soft"
+            disabled={adding}
+            onClick={() => void add("unmonitored")}
+          >
+            {pending === "unmonitored" ? "Adding…" : "Add unmonitored"}
+          </Button>
+          <Button
+            variant={variant}
+            disabled={adding}
+            onClick={() => void add("monitored")}
+          >
+            {pending === "monitored" ? "Adding…" : "Add monitored"}
+          </Button>
+        </div>
+      )}
       {error && (
         <p role="alert" className="add-button-error">
           {error}
@@ -223,26 +265,10 @@ export function MovieDetails({
   const details = useResource<Movie & { seasons?: { air_date: string }[] }>(
     `/metadata/${kind === "series" ? "series" : "movies"}/${id}`,
   );
-  const [monitored, setMonitored] = useState(true);
-  const [touched, setTouched] = useState(false);
   const [createFolder, setCreateFolder] = useState(false);
-  const monitorId = useId(),
-    folderId = useId();
-  const noun = kind === "series" ? "show" : "movie";
+  const folderId = useId();
   const data = details.data;
 
-  useEffect(() => {
-    if (!data || touched) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const dates =
-      kind === "series"
-        ? [
-            data.release_date,
-            ...(data.seasons ?? []).map((season) => season.air_date),
-          ]
-        : [data.release_date];
-    setMonitored(dates.some((date) => Boolean(date) && date >= today));
-  }, [data, kind, touched]);
   return (
     <Modal
       open
@@ -282,7 +308,6 @@ export function MovieDetails({
               id={id}
               added={added}
               onAdded={onAdded}
-              monitored={touched ? monitored : undefined}
               createFolder={createFolder}
               variant="solid"
             />
@@ -321,27 +346,6 @@ export function MovieDetails({
           </div>
           {!added && (
             <div className="add-modal-form">
-              <FormGroup
-                label="Monitor"
-                htmlFor={monitorId}
-                help={
-                  kind === "series"
-                    ? "Monitored shows are searched for episodes releasing today or later; past episodes start unmonitored. Specials start unselected."
-                    : "Monitored movies are searched when they release today or later; already-released movies start unmonitored."
-                }
-              >
-                <span className="add-modal-switch">
-                  <Switch
-                    id={monitorId}
-                    aria-label={`Monitor this ${noun}`}
-                    checked={monitored}
-                    onCheckedChange={(value) => {
-                      setTouched(true);
-                      setMonitored(value);
-                    }}
-                  />
-                </span>
-              </FormGroup>
               <FormGroup
                 label="Create folder"
                 htmlFor={folderId}

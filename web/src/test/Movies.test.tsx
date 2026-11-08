@@ -172,10 +172,7 @@ describe("authentication and movies", () => {
       await within(dialog).findByText("A synopsis used only in tests."),
     ).toBeVisible();
     await userEvent.click(
-      within(dialog).getByRole("switch", { name: "Monitor this movie" }),
-    );
-    await userEvent.click(
-      within(dialog).getByRole("button", { name: "Add movie" }),
+      within(dialog).getByRole("button", { name: "Add monitored" }),
     );
     expect(await within(dialog).findByText("In library")).toBeVisible();
     const sent = fetch.mock.calls.find(([url]) =>
@@ -186,6 +183,22 @@ describe("authentication and movies", () => {
       monitored: true,
     });
     expect(sent?.[1]?.headers).toMatchObject({ "X-CSRF-Token": "test-csrf" });
+  });
+  it("adds a movie unmonitored from the second button", async () => {
+    const fetch = setup();
+    mount("/search?query=Fixture&page=1");
+    await screen.findByRole("heading", { name: "Fixture Movie" });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Add unmonitored" }),
+    );
+    await screen.findByText("In library");
+    const sent = fetch.mock.calls.find(([url]) =>
+      url.endsWith("/library/movies"),
+    );
+    expect(JSON.parse(String(sent?.[1]?.body))).toEqual({
+      tmdb_id: 11,
+      monitored: false,
+    });
   });
   it("optionally creates the added title folder and reports the location", async () => {
     const fetch = setup((url) => {
@@ -211,7 +224,7 @@ describe("authentication and movies", () => {
       }),
     );
     await userEvent.click(
-      within(dialog).getByRole("button", { name: "Add movie" }),
+      within(dialog).getByRole("button", { name: "Add monitored" }),
     );
     expect(
       await within(dialog).findByText(
@@ -238,7 +251,7 @@ describe("authentication and movies", () => {
     mount("/search?query=Fixture&page=1");
     expect(await screen.findByLabelText("Movie title")).toHaveValue("Fixture");
     await userEvent.click(
-      await screen.findByRole("button", { name: "Add movie" }),
+      await screen.findByRole("button", { name: "Add monitored" }),
     );
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "temporarily unavailable",

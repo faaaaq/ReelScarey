@@ -297,12 +297,14 @@ describe("TV catalog and monitoring", () => {
     ).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "View details" }));
     await screen.findByText("TV show details from TMDb.");
-    await userEvent.click(
-      screen.getByRole("switch", { name: "Monitor this show" }),
-    );
     const dialog = screen.getByRole("dialog");
     await userEvent.click(
       within(dialog).getByRole("button", { name: "Add show" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", {
+        name: "Add monitoring future episodes",
+      }),
     );
     await within(dialog).findByText("In library");
     expect(
@@ -314,12 +316,53 @@ describe("TV catalog and monitoring", () => {
     );
     expect(JSON.parse(String(call?.[1]?.body))).toEqual({
       tmdb_id: 42,
-      monitored: true,
+      monitor: "future",
     });
     expect(call?.[1]?.headers).toMatchObject({ "X-CSRF-Token": "test-csrf" });
     expect(
       fetch.mock.calls.some(([url]) => url.includes("/metadata/movies")),
     ).toBe(false);
+  });
+  it("offers every add-time monitoring choice for a show", async () => {
+    const fetch = setup((url, options) => {
+      if (url.includes("/metadata/series?"))
+        return Response.json({
+          items: [{ ...show, in_library: false }],
+          page: 1,
+          total_pages: 1,
+          total_results: 1,
+        });
+      if (url.endsWith("/metadata/series/42")) return Response.json(show);
+      if (url.endsWith("/library/series") && options?.method === "POST")
+        return Response.json({ item: show, created: true }, { status: 201 });
+    });
+    mount("/search?kind=series&query=Test");
+    await screen.findByRole("heading", { name: "Test TV series" });
+    await userEvent.click(screen.getByRole("button", { name: "View details" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Add show" }),
+    );
+    for (const name of [
+      "Add without monitoring",
+      "Add monitoring missing",
+      "Add monitoring current season",
+      "Add monitoring future episodes",
+    ]) {
+      expect(await screen.findByRole("menuitem", { name })).toBeVisible();
+    }
+    await userEvent.click(
+      screen.getByRole("menuitem", { name: "Add without monitoring" }),
+    );
+    await within(dialog).findByText("In library");
+    const call = fetch.mock.calls.find(
+      ([url, options]) =>
+        url.endsWith("/library/series") && options?.method === "POST",
+    );
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+      tmdb_id: 42,
+      monitor: "none",
+    });
   });
   it("lists specials last and mounts show settings only when their tab opens", async () => {
     const specials = {

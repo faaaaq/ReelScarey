@@ -41,6 +41,6 @@ describe("movie collections", () => {
       "href",
       "/movies/12",
     );
-    expect(screen.getByRole("button", { name: "Add movie" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add monitored" })).toBeVisible();
   });
 });

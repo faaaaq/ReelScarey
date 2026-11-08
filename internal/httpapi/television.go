@@ -80,6 +80,7 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		TMDbID    int64  `json:"tmdb_id"`
 		Monitored *bool  `json:"monitored"`
+		Monitor   string `json:"monitor"`
 		Category  string `json:"category"`
 	}
 	if !decodeJSON(w, r, &body) {
@@ -87,6 +88,10 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.TMDbID < 1 || (body.Category != "" && body.Category != "standard" && body.Category != "anime") {
 		fail(w, 400, "invalid_series", "Choose a valid TMDb show ID.")
+		return
+	}
+	if body.Monitor != "" && !library.ValidSeriesMonitorMode(body.Monitor) {
+		fail(w, 400, "invalid_monitoring", "Choose no monitoring, missing episodes, the current season or future episodes.")
 		return
 	}
 	if existing, e := s.library.Series(r.Context(), body.TMDbID); e == nil {
@@ -106,15 +111,31 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	if explicit {
 		monitored = *body.Monitored
 	}
+	if body.Monitor != "" {
+		monitored = body.Monitor != string(library.SeriesMonitorNone)
+	}
 	item, created, e := s.library.AddSeries(r.Context(), show, monitored, body.Category)
 	if e != nil {
 		s.tvError(w, e)
 		return
 	}
-	if created && !explicit && monitored {
-		if e := s.library.ApplyFutureOnlySeries(r.Context(), item.ID); e != nil {
-			s.tvError(w, e)
-			return
+	if created {
+		switch {
+		case body.Monitor != "":
+			if e := s.library.SetSeriesMonitorMode(r.Context(), item.ID, body.Monitor); e != nil {
+				s.tvError(w, e)
+				return
+			}
+		case !explicit && monitored:
+			if e := s.library.ApplyFutureOnlySeries(r.Context(), item.ID); e != nil {
+				s.tvError(w, e)
+				return
+			}
+		}
+		if body.Monitor != "" {
+			// The item from AddSeries already carries the selected show-level
+			// monitoring; the mode only adjusted seasons and episodes.
+			item.Monitored = monitored
 		}
 	}
 	status := 200

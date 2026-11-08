@@ -210,14 +210,16 @@ describe("Anime library and explicit numbering", () => {
     expect(
       screen.getByRole("heading", { name: "Search anime movies" }),
     ).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: "Add movie" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Add monitored" }),
+    );
     await screen.findByText("In library");
     expect(
       fetch.mock.calls.find(
         ([url, init]) =>
           url.endsWith("/library/movies") && init?.method === "POST",
       )?.[1]?.body,
-    ).toBe(JSON.stringify({ tmdb_id: 42 }));
+    ).toBe(JSON.stringify({ tmdb_id: 42, monitored: true }));
     await userEvent.click(screen.getByRole("button", { name: /Next/ }));
     expect(screen.getByLabelText("Current address")).toHaveTextContent(
       "kind=anime&format=movie&query=Feature&page=2",

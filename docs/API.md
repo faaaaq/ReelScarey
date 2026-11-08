@@ -421,7 +421,7 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | GET | `/api/v1/library/movies/{id}` | Saved movie by catalog ID, without a TMDb request |
 | GET | `/api/v1/metadata/series?query=title&page=1` | TMDb TV search with per-result in_library |
 | GET | `/api/v1/metadata/series/{tmdb_id}` | Canonical show details and season summaries |
-| POST | `/api/v1/library/series` | Canonical show add by tmdb_id and optional monitored; omitted defaults to future-only; 201 new/200 existing |
+| POST | `/api/v1/library/series` | Canonical show add by tmdb_id and optional `monitor` (`none`, `missing`, `current`, `future`); legacy `monitored` still works; omitted defaults to future-only; 201 new/200 existing |
 | GET | `/api/v1/library/series/{id}` | Saved show, revision, status and season summaries |
 | POST | `/api/v1/library/series/{id}/refresh` | `{ "revision": 1 }`; refresh show metadata/seasons, preserve selections |
 | GET | `/api/v1/library/series/{id}/seasons/{number}` | Saved season and episodes; no provider request |
@@ -499,15 +499,25 @@ Search responses contain `items`, `page`, `total_pages` (capped at 500), and
 `total_results`. Queries accept 1–200 characters without control characters;
 search pages accept 1–500.
 
-Add movie body: `{ "tmdb_id": 11, "monitored": true }` (`monitored` defaults
-true). The server fetches metadata; caller-supplied titles, artwork or paths are
-rejected as unknown fields. Response is `{ "created": true, "item": {...} }`.
+Add movie body: `{ "tmdb_id": 11, "monitored": true }`. When `monitored` is
+omitted, the future-only default applies: the movie is monitored only when a
+release date is today or later. The server fetches metadata; caller-supplied
+titles, artwork or paths are rejected as unknown fields. Response is
+`{ "created": true, "item": {...} }`.
 The `(kind,tmdb_id)` uniqueness constraint prevents duplicate rows. Existing adds
 return the original item without calling TMDb or changing monitoring preferences.
 New movie adds save status `missing`; selecting a release is a separate action.
 Queueing sets `downloading`; a verified import transaction sets `available`.
 
 TV adds use the same canonical/idempotent add contract and store `kind: series`.
+The add body may also send `"monitor": "none|missing|current|future"` to apply
+the one-time monitoring choice from the add dropdown. `none` pauses the show,
+`missing` monitors regular seasons that have started and their aired episodes,
+`current` monitors only the current (or next) regular season, and `future`
+monitors the current and later seasons with episodes releasing today or later.
+`monitored` remains supported for older clients; when both are present `monitor`
+wins. Unknown modes return 400 `invalid_monitoring`. The choice adjusts only
+monitoring; it does not load episodes, queue downloads or alter files.
 TV metadata shares title/year/artwork fields, using first_air_date as release_date,
 and adds series_status/seasons. Saved TV details add revision/updated_at. Seasons
 have local id, tmdb_id, number (0 means specials), title, overview, air_date,
