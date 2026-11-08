@@ -66,11 +66,11 @@ func parseAutomaticTitle(raw string) (automaticHint, error) {
 
 func automaticIdentity(scan LibraryScan, f DiscoveredFile) (automaticHint, error) {
 	h := automaticHint{}
-	prefix := strings.TrimSuffix(scan.Folder, "/") + "/"
-	if !strings.HasPrefix(f.Path, prefix) {
-		return h, automaticReview("The file is outside this scan's folder.")
+	root, ok := scanRootFor(scan, f.Path)
+	if !ok {
+		return h, automaticReview("The file is outside this scan's configured roots.")
 	}
-	parts := strings.Split(strings.TrimPrefix(f.Path, prefix), "/")
+	parts := strings.Split(strings.TrimPrefix(f.Path, strings.TrimSuffix(root, "/")+"/"), "/")
 	base := strings.TrimSuffix(parts[len(parts)-1], path.Ext(parts[len(parts)-1]))
 	if scan.Kind == "movie" {
 		file, fileErr := parseAutomaticTitle(base)

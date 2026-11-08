@@ -32,16 +32,17 @@ var (
 )
 
 type Scan struct {
-	ID              int64  `json:"id"`
-	Root            string `json:"root"`
-	State           string `json:"state"`
-	FileCount       int    `json:"file_count"`
-	MatchedCount    int    `json:"matched_count"`
-	UnresolvedCount int    `json:"unresolved_count"`
-	RegisteredCount int    `json:"registered_count"`
-	Error           string `json:"error"`
-	CreatedAt       int64  `json:"created_at"`
-	UpdatedAt       int64  `json:"updated_at"`
+	ID              int64    `json:"id"`
+	Root            string   `json:"root"`
+	Roots           []string `json:"roots"`
+	State           string   `json:"state"`
+	FileCount       int      `json:"file_count"`
+	MatchedCount    int      `json:"matched_count"`
+	UnresolvedCount int      `json:"unresolved_count"`
+	RegisteredCount int      `json:"registered_count"`
+	Error           string   `json:"error"`
+	CreatedAt       int64    `json:"created_at"`
+	UpdatedAt       int64    `json:"updated_at"`
 }
 
 type ScanFile struct {
@@ -107,17 +108,49 @@ func scanScanFile(row interface{ Scan(...any) error }) (ScanFile, error) {
 }
 
 func (s *Service) StartScan(ctx context.Context, root string) (Scan, error) {
-	clean, err := s.cleanScanRoot(root)
-	if err != nil {
-		return Scan{}, err
+	return s.StartScanRoots(ctx, []string{root})
+}
+
+// StartScanRoots starts one reviewed scan across every configured music root.
+// A failure in any root marks the whole scan failed; it never reports success
+// for a partial walk.
+func (s *Service) StartScanRoots(ctx context.Context, roots []string) (Scan, error) {
+	if len(roots) == 0 || len(roots) > 20 {
+		return Scan{}, ErrInvalidInput
+	}
+	clean := make([]string, 0, len(roots))
+	for _, root := range roots {
+		value, err := s.cleanScanRoot(root)
+		if err != nil {
+			return Scan{}, err
+		}
+		for _, existing := range clean {
+			if existing == value || strings.HasPrefix(value, existing+"/") || strings.HasPrefix(existing, value+"/") {
+				return Scan{}, ErrInvalidInput
+			}
+		}
+		clean = append(clean, value)
 	}
 	now := time.Now().Unix()
-	result, err := s.store.db.ExecContext(ctx, `INSERT INTO music_scans(root,state,created_at,updated_at) VALUES(?,'scanning',?,?)`, clean, now, now)
+	result, err := s.store.db.ExecContext(ctx, `INSERT INTO music_scans(root,state,created_at,updated_at) VALUES(?,'scanning',?,?)`, strings.Join(clean, ", "), now, now)
 	if err != nil {
 		return Scan{}, err
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
+		return Scan{}, err
+	}
+	tx, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Scan{}, err
+	}
+	defer tx.Rollback()
+	for position, root := range clean {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO music_scan_roots(scan_id,relative_path,position) VALUES(?,?,?)`, id, root, position); err != nil {
+			return Scan{}, err
+		}
+	}
+	if err = tx.Commit(); err != nil {
 		return Scan{}, err
 	}
 	go s.runScan(context.WithoutCancel(ctx), id, clean)
@@ -129,6 +162,9 @@ func (s *Service) cleanScanRoot(root string) (string, error) {
 		return "", ErrInvalidInput
 	}
 	root = strings.TrimSpace(strings.ReplaceAll(root, "\\", "/"))
+	for len(root) > 1 && strings.HasSuffix(root, "/") {
+		root = strings.TrimSuffix(root, "/")
+	}
 	if root == "" || root == "." || strings.HasPrefix(root, "/") || strings.Contains(root, "..") {
 		return "", ErrInvalidInput
 	}
@@ -140,22 +176,39 @@ func (s *Service) cleanScanRoot(root string) (string, error) {
 	if !contained(s.mediaDir, abs) {
 		return "", ErrInvalidInput
 	}
-	info, err := os.Stat(abs)
-	if err != nil || !info.IsDir() {
+	info, err := os.Lstat(abs)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return "", &Error{Code: "music_scan_root", Message: "Choose an existing folder below the media root."}
+	}
+	resolvedMedia, err := filepath.EvalSymlinks(s.mediaDir)
+	if err != nil {
+		return "", &Error{Code: "music_scan_root", Message: "The configured media root is unavailable."}
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil || !contained(resolvedMedia, resolved) {
+		return "", &Error{Code: "music_scan_root", Message: "The music root resolves outside the media root."}
 	}
 	return clean, nil
 }
 
-func (s *Service) runScan(ctx context.Context, id int64, root string) {
+func (s *Service) runScan(ctx context.Context, id int64, roots []string) {
 	defer organization.ReadMedia()()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	state, message := "review", ""
-	if err := s.walkScan(ctx, id, root); err != nil {
+	var walkErr error
+	for _, root := range roots {
+		if err := s.walkScan(ctx, id, root); err != nil {
+			walkErr = errors.Join(walkErr, fmt.Errorf("%s: %w", root, err))
+			if errors.Is(err, errScanCancelled) || errors.Is(err, context.Canceled) {
+				break
+			}
+		}
+	}
+	if walkErr != nil {
 		state = "failed"
-		message = err.Error()
-		if errors.Is(err, errScanCancelled) || errors.Is(err, context.Canceled) {
+		message = walkErr.Error()
+		if errors.Is(walkErr, errScanCancelled) || errors.Is(walkErr, context.Canceled) {
 			state = "cancelled"
 			message = ""
 		}
@@ -168,13 +221,17 @@ func (s *Service) runScan(ctx context.Context, id int64, root string) {
 		state, message = "failed", err.Error()
 	}
 	if state == "review" && files == 0 {
-		state, message = "failed", "No audio files were found in this folder."
+		state, message = "failed", "No audio files were found in these folders."
 	}
 	_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_scans SET state=?,file_count=?,matched_count=?,unresolved_count=?,error=?,updated_at=unixepoch() WHERE id=?`, state, files, matched, unresolved, message, id)
 }
 
 func (s *Service) walkScan(ctx context.Context, id int64, root string) error {
 	absRoot := filepath.Join(s.mediaDir, filepath.FromSlash(root))
+	info, err := os.Lstat(absRoot)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return &Error{Code: "music_scan_root", Message: "A music root is no longer an available folder. Start a new scan."}
+	}
 	media, err := os.OpenRoot(s.mediaDir)
 	if err != nil {
 		return err
@@ -595,6 +652,41 @@ func trackTitleMatches(trackTitle string, keys []string) bool {
 	return false
 }
 
+func (s *Service) scanWithRoots(ctx context.Context, scan Scan) (Scan, error) {
+	rows, err := s.store.db.QueryContext(ctx, `SELECT relative_path FROM music_scan_roots WHERE scan_id=? ORDER BY position,relative_path`, scan.ID)
+	if err != nil {
+		return scan, err
+	}
+	defer rows.Close()
+	roots := []string{}
+	for rows.Next() {
+		var root string
+		if err = rows.Scan(&root); err != nil {
+			return scan, err
+		}
+		roots = append(roots, root)
+	}
+	if err = rows.Err(); err != nil {
+		return scan, err
+	}
+	if len(roots) == 0 && scan.Root != "" {
+		roots = []string{scan.Root}
+	}
+	scan.Roots = roots
+	return scan, nil
+}
+
+func musicRootFor(roots []string, relative string) string {
+	best := ""
+	for _, root := range roots {
+		root = strings.TrimSuffix(root, "/")
+		if root != "" && (relative == root || strings.HasPrefix(relative, root+"/")) && len(root) > len(best) {
+			best = root
+		}
+	}
+	return best
+}
+
 func (s *Service) RegisterScan(ctx context.Context, scanID int64, fileIDs []int64) (int, error) {
 	defer organization.ReadMedia()()
 	s.fileMu.Lock()
@@ -622,6 +714,27 @@ func (s *Service) RegisterScan(ctx context.Context, scanID int64, fileIDs []int6
 	if err := tx.QueryRowContext(ctx, `SELECT root FROM music_scans WHERE id=?`, scanID).Scan(&root); err != nil {
 		return 0, err
 	}
+	scanRoots := []string{}
+	rows, err := tx.QueryContext(ctx, `SELECT relative_path FROM music_scan_roots WHERE scan_id=? ORDER BY position,relative_path`, scanID)
+	if err != nil {
+		return 0, err
+	}
+	for rows.Next() {
+		var item string
+		if err = rows.Scan(&item); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		scanRoots = append(scanRoots, item)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return 0, err
+	}
+	if len(scanRoots) == 0 && root != "" {
+		scanRoots = []string{root}
+	}
 	registered := 0
 	for _, id := range ids {
 		file, err := scanScanFile(tx.QueryRowContext(ctx, `SELECT `+scanFileColumns+` FROM music_scan_files WHERE id=? AND scan_id=?`, id, scanID))
@@ -638,6 +751,10 @@ func (s *Service) RegisterScan(ctx context.Context, scanID int64, fileIDs []int6
 		if !contained(s.mediaDir, abs) {
 			continue
 		}
+		fileRoot := musicRootFor(scanRoots, file.RelativePath)
+		if fileRoot == "" {
+			fileRoot = root
+		}
 		info, err := os.Stat(abs)
 		if err != nil || info.Size() != file.SizeBytes || info.ModTime().Unix() != file.ModifiedAt {
 			if _, err := tx.ExecContext(ctx, `UPDATE music_scan_files SET state='unresolved', error='The file changed after the scan. Rescan it.', updated_at=unixepoch() WHERE id=?`, id); err != nil {
@@ -648,7 +765,7 @@ func (s *Service) RegisterScan(ctx context.Context, scanID int64, fileIDs []int6
 		if _, err := tx.ExecContext(ctx, `INSERT INTO music_files(artist_id,album_id,track_id,root,relative_path,size_bytes,sha256,format,bitrate,sample_rate,channels,duration_ms,tag_json,imported_at,origin,source_name)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,unixepoch(),'existing',?)
 			ON CONFLICT(relative_path) DO UPDATE SET artist_id=excluded.artist_id,album_id=excluded.album_id,track_id=excluded.track_id,root=excluded.root,size_bytes=excluded.size_bytes,sha256=excluded.sha256,format=excluded.format,bitrate=excluded.bitrate,sample_rate=excluded.sample_rate,channels=excluded.channels,duration_ms=excluded.duration_ms,tag_json=excluded.tag_json,imported_at=excluded.imported_at`,
-			*file.ArtistID, *file.AlbumID, *file.TrackID, root, file.RelativePath, file.SizeBytes, file.SHA256, file.Format, file.Bitrate, file.SampleRate, file.Channels, file.DurationMS, file.TagJSON, filepath.Base(file.RelativePath)); err != nil {
+			*file.ArtistID, *file.AlbumID, *file.TrackID, fileRoot, file.RelativePath, file.SizeBytes, file.SHA256, file.Format, file.Bitrate, file.SampleRate, file.Channels, file.DurationMS, file.TagJSON, filepath.Base(file.RelativePath)); err != nil {
 			return 0, err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE music_scan_files SET state='registered', updated_at=unixepoch() WHERE id=?`, id); err != nil {
@@ -681,19 +798,36 @@ func (s *Service) ListScans(ctx context.Context, page int) (ScanList, error) {
 	if err != nil {
 		return ScanList{}, err
 	}
-	defer rows.Close()
+	scans := []Scan{}
 	for rows.Next() {
 		scan, err := scanScan(rows)
+		if err != nil {
+			rows.Close()
+			return ScanList{}, err
+		}
+		scans = append(scans, scan)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return ScanList{}, err
+	}
+	for _, scan := range scans {
+		scan, err = s.scanWithRoots(ctx, scan)
 		if err != nil {
 			return ScanList{}, err
 		}
 		out.Items = append(out.Items, scan)
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func (s *Service) Scan(ctx context.Context, id int64) (Scan, error) {
-	return scanScan(s.store.db.QueryRowContext(ctx, `SELECT `+scanColumns+` FROM music_scans WHERE id=?`, id))
+	scan, err := scanScan(s.store.db.QueryRowContext(ctx, `SELECT `+scanColumns+` FROM music_scans WHERE id=?`, id))
+	if err != nil {
+		return scan, err
+	}
+	return s.scanWithRoots(ctx, scan)
 }
 
 func (s *Service) ScanPage(ctx context.Context, id int64, page int) (ScanPage, error) {

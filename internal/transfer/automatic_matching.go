@@ -79,8 +79,13 @@ func (s *Service) StartAutomaticMatching(ctx context.Context, scanID string) err
 		return err
 	}
 	for _, collection := range prefs.Libraries {
-		if collection.Key == "anime" && scan.Kind == "series" && (scan.Folder == collection.Folder || scan.Folder == collection.Folder+"/TV Shows") {
-			category = "anime"
+		if collection.Key != "anime" || scan.Kind != "series" {
+			continue
+		}
+		for _, root := range scan.Roots {
+			if root == collection.Folder || root == collection.Folder+"/TV Shows" {
+				category = "anime"
+			}
 		}
 	}
 	tx, err := s.db.BeginTx(ctx, nil)

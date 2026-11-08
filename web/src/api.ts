@@ -136,6 +136,7 @@ export type MusicAlbumDetails = {
 export type MusicScan = {
   id: number;
   root: string;
+  roots?: string[];
   state: "scanning" | "review" | "completed" | "failed" | "cancelled";
   file_count: number;
   matched_count: number;
@@ -144,6 +145,28 @@ export type MusicScan = {
   error: string;
   created_at: number;
   updated_at: number;
+};
+
+export type LibraryRoot = {
+  path: string;
+  available: boolean;
+  default: boolean;
+  message?: string;
+};
+
+export type LibraryRoots = {
+  key: "movies" | "tv" | "anime" | "music" | string;
+  name: string;
+  kind: string;
+  configured: boolean;
+  roots: LibraryRoot[];
+  message?: string;
+};
+
+export type LibraryRootsConfig = {
+  revision: number;
+  media_root: string;
+  libraries: LibraryRoots[];
 };
 
 export type MusicScanFile = {

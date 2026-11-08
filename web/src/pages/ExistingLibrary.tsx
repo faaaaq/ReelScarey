@@ -43,6 +43,7 @@ export type LibraryScan = {
   kind: "movie" | "series";
   media_root: string;
   folder: string;
+  roots?: string[];
   state: string;
   message: string;
   created_at: number;
@@ -113,6 +114,12 @@ type ScanList = {
     content: "movie" | "series" | "mixed";
     movie_root: string;
     series_root: string;
+    roots?: {
+      path: string;
+      available: boolean;
+      default: boolean;
+      message?: string;
+    }[];
   }[];
 };
 const stateLabels: Record<string, string> = {
@@ -229,13 +236,23 @@ export function ExistingLibrary() {
     params.get("collection") === "anime" ? "anime" : "movie",
   );
   const [automatic, setAutomatic] = useState(true);
+  const [root, setRoot] = useState("");
   const animeRoot = roots.data?.collections?.find(
     (item) => item.key === "anime",
   )?.series_root;
+  const collection = roots.data?.collections?.find(
+    (item) =>
+      item.key ===
+      (target === "movie" ? "movies" : target === "series" ? "tv" : "anime"),
+  );
+  const targetRoots = collection?.roots ?? [];
+  const selectedRoot = targetRoots.find((item) => item.path === root);
+  const selectedUnavailable = !!selectedRoot && !selectedRoot.available;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function start() {
-    if (busy || (target === "anime" && !animeRoot)) return;
+    if (busy || (target === "anime" && !animeRoot) || selectedUnavailable)
+      return;
     setBusy(true);
     setError("");
     try {
@@ -244,6 +261,7 @@ export function ExistingLibrary() {
         body: JSON.stringify({
           kind: target === "movie" ? "movie" : "series",
           automatic_matching: automatic,
+          ...(root ? { root } : {}),
           ...(target === "anime" ? { library_key: "anime" } : {}),
         }),
       });
@@ -302,6 +320,20 @@ export function ExistingLibrary() {
               <strong>Open Music Import →</strong>
             </Link>
           </div>
+          {selectedUnavailable && (
+            <p className="rs-form-error" role="status">
+              {selectedRoot?.message ||
+                "This scan root is unavailable on the server."}
+            </p>
+          )}
+          {targetRoots.length > 1 && (
+            <p className="rs-form-help">
+              This collection scans {targetRoots.length} configured roots:{" "}
+              {targetRoots.map((item) => item.path).join(" · ")}. Choose one
+              folder above or scan all of them.{" "}
+              <Link to="/settings">Manage library roots</Link>
+            </p>
+          )}
           <p className="rs-form-help">
             Music uses a tag-based scanner because albums and tracks are matched
             through MusicBrainz.{" "}
@@ -310,13 +342,42 @@ export function ExistingLibrary() {
           </p>
 
           <div className="scan-start-row">
+            {targetRoots.length > 0 && (
+              <div className="adm-field">
+                <label htmlFor="scan-root">Folder</label>
+                <select
+                  id="scan-root"
+                  aria-label="Scan folder"
+                  value={root}
+                  onChange={(e) => setRoot(e.target.value)}
+                  disabled={busy}
+                >
+                  <option value="">
+                    All configured roots ({targetRoots.length})
+                  </option>
+                  {targetRoots.map((item) => (
+                    <option
+                      key={item.path}
+                      value={item.path}
+                      disabled={!item.available}
+                    >
+                      {item.path}
+                      {item.available ? "" : " · unavailable"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="adm-field">
               <label htmlFor="scan-media-type">Look for</label>
               <select
                 id="scan-media-type"
                 aria-label="Scan media type"
                 value={target}
-                onChange={(e) => setTarget(e.target.value as typeof target)}
+                onChange={(e) => {
+                  setTarget(e.target.value as typeof target);
+                  setRoot("");
+                }}
                 disabled={busy}
               >
                 <option value="movie">Movies</option>
@@ -347,6 +408,7 @@ export function ExistingLibrary() {
               disabled={
                 busy ||
                 (target === "anime" && !animeRoot) ||
+                selectedUnavailable ||
                 roots.data.items.some((s) =>
                   ["queued", "scanning"].includes(s.state),
                 )
@@ -515,7 +577,9 @@ function ScanReview({
               <h2>{scanLabel(scan)} discovery</h2>
               <p className="scan-sub">
                 Started {new Date(scan.created_at * 1000).toLocaleString()} ·{" "}
-                {scan.folder || "Configured folder"}
+                {scan.roots?.length
+                  ? scan.roots.join(" · ")
+                  : scan.folder || "Configured folder"}
               </p>
             </div>
             <div className="scan-header-meta">

@@ -295,8 +295,8 @@ func (s *Service) verifyExisting(ctx context.Context, id, owner string) error {
 	if _, e = safeRelative(f.Path); e != nil {
 		return e
 	}
-	if !strings.HasPrefix(f.Path, scan.Folder+"/") {
-		return problem("unsafe_path", "This file is outside the selected discovery folder.")
+	if _, ok := scanRootFor(scan, f.Path); !ok {
+		return problem("unsafe_path", "This file is outside the selected discovery roots.")
 	}
 	root, e := s.existingRoot(ctx, &scan)
 	if e != nil {

@@ -72,10 +72,15 @@ no host movie mount in this example; add one before using it. The Anime scan
 finds series directly under /data/anime. Include anime films in the Movies scan. Imports and
 existing-file registration still require the normal review workflow.
 
-For existing music, mount a host folder below `/data` (for example a music bind
-at `/data/Music` or `/data/music`) and enter that exact relative folder in
-**Music → Library Import**. Add the matching artists and open each album once so
-tracks are loaded before registering files.
+For existing music, mount each host folder below `/data` (for example a music
+bind at `/data/Music` or `/data/music`). In **Settings → Media Management →
+Library roots**, Music defaults to the exact `Music` folder beside the video
+folders, or to an existing lowercase `music` folder when that is the only match.
+A missing folder is shown as unavailable, never guessed. Add extra Music roots
+to scan several directories. Video collections keep their existing organization
+folders as default roots; adding scan roots does not change destination folders
+or naming. Add the matching artists and open each album once so tracks are
+loaded before registering files in **Music → Library Import**.
 
 Keep the `library-state:/data` mount: it preserves retained versions and recovery
 files outside the individual library mounts when the container is replaced.

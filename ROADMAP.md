@@ -61,7 +61,8 @@ Historical native and package results below remain as records of past work.
   Per-user encrypted webhooks and durable fulfillment notifications are
   implemented; live owner-service acceptance remains open.
 - [x] Make unmatched files easy to discover and review for matching or registration.
-  Configured-folder scans show unresolved and blocked counts and open to matching review.
+  Configured-root scans, including several roots per collection, show unresolved
+  and blocked counts and open to matching review.
 - [ ] Integrate Emby play activity so users can see what is actually being watched.
   On-demand snapshots and opt-in recording of observed playback sessions are
   implemented; live acceptance and complete server-side history remain open.
@@ -207,8 +208,9 @@ See [setup and exact limits](docs/INDEXERS_DETAILS.md). Current validation is
 recorded in [validation](docs/VALIDATION.md).
 
 ## 8 — Existing-library discovery and registration
-- [x] Explicit bounded discovery of configured movie/TV folders with durable
-  restart recovery, review history, skip/stop controls and no arbitrary paths.
+- [x] Explicit bounded discovery of configured movie/TV roots, with several
+  roots per collection and durable restart recovery, review history, skip/stop
+  controls and no arbitrary paths.
 - [x] Saved-catalog/TMDb match review, new titles paused, explicit consecutive
   TV episode selection and no automatic filename-based registration.
 - [x] Stable identity/size/mtime checks, bounded observations and FFprobe inspection,

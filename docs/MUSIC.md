@@ -107,10 +107,17 @@ imports the completed folder, and runs wanted-album searches on a schedule.
 ## Scan and registration
 
 Open **Music → Library Import** (also linked from the Music toolbar and empty
-state). The music folder must be mounted below `REELSCAREY_MEDIA_DIR`; enter its
-relative name exactly, including case, in the scan dialog.
-- The scan root must be a relative folder below `REELSCAREY_MEDIA_DIR`. Absolute
-  paths and `..` are rejected.
+state). Music roots are configured in **Settings → Media Management → Library
+roots**, alongside the video collections. Music defaults to the exact `Music`
+folder below `REELSCAREY_MEDIA_DIR`; if only a lowercase `music` folder exists,
+that existing directory is shown and used. A missing folder is reported as
+unavailable rather than guessed. Add more music roots to scan several folders in
+one reviewed scan.
+- Every scan root must be a relative folder below `REELSCAREY_MEDIA_DIR`.
+  Absolute paths, `..`, symbolic links and overlapping roots are rejected.
+- **Scan folder** offers the configured roots and starts one scan across the
+  selected directories. Scan results record the root that supplied each file;
+  registration keeps the file in place and stores its own root.
 - Matching order:
   - album: MusicBrainz release-group ID, then a trusted album-artist MBID plus
     exact normalized album title, then exact normalized album title plus
@@ -213,7 +220,7 @@ relative name exactly, including case, in the scan dialog.
 | POST | `/api/v1/library/music/artists` | `{musicbrainz_id,monitored?}`; 201 created or 200 existing |
 | GET | `/api/v1/library/music/artists/{id}` | Artist and albums |
 | GET | `/api/v1/library/music/albums/{id}` | Album and tracks; first read loads tracks |
-| GET/POST | `/api/v1/library/music/scans` | List scans or start `{root}`; 202 |
+| GET/POST | `/api/v1/library/music/scans` | List scans or start `{roots:[...]}` (legacy `{root}` accepted); 202 |
 | GET | `/api/v1/library/music/scans/{id}?page=` | Scan state and 100 files per page |
 | POST | `/api/v1/library/music/scans/{id}/register` | `{file_ids,reviewed:true}` |
 | POST | `/api/v1/library/music/scans/{id}/discover` | `{file_ids,reviewed:true}` or `{all:true,reviewed:true}`; bounded catalog discovery |

@@ -75,7 +75,10 @@ adds one with `{musicbrainz_id, monitored?}`; a repeated add returns 200 with
 its albums. GET `/api/v1/library/music/albums/{id}` returns the album and its
 tracks; the first read loads tracks from MusicBrainz.
 
-GET/POST `/api/v1/library/music/scans` lists scans or starts one with `{root}`.
+GET/POST `/api/v1/library/music/scans` lists scans or starts one with
+`{roots:[...]}`. A legacy `{root}` is still accepted for one contained folder,
+but the UI and configured-root path send `roots`. Scans report their root
+snapshot and keep each registered file's own root.
 GET `/scans/{id}?page=` returns its state and files. POST
 `/scans/{id}/register` accepts `{file_ids,reviewed:true}`; POST `/discover`
 accepts `{file_ids,reviewed:true}` or `{all:true,reviewed:true}` and performs a
@@ -268,9 +271,11 @@ same-origin validation. Reads never start a filesystem scan.
 
 | Method | Path | Behavior |
 | --- | --- | --- |
-| GET | `/api/v1/library/imports` | Recent scans and configured movie/TV server roots |
-| POST | `/api/v1/library/imports` | `{kind:"movie"|"series",library_key?:string,automatic_matching?:boolean}`; queue bounded discovery; matching defaults false; 202 |
-| GET | `/api/v1/library/imports/{id}?page=1&state=` | Scan status/counts plus 50 discovered files; optional review/matched/blocked/registered/skipped filter |
+| GET | `/api/v1/library/imports` | Recent scans, configured roots and movie/TV server roots |
+| POST | `/api/v1/library/imports` | `{kind:"movie"|"series",library_key?:string,root?:string,automatic_matching?:boolean}`; queue discovery for one configured root or every root; matching defaults false; 202 |
+| GET | `/api/v1/library/roots` | Persisted scan roots for Movies, TV Shows, Anime and Music with availability and defaults |
+| PUT | `/api/v1/library/roots` | `{revision,libraries:[{key,roots:[...]}]}`; replaces supplied root sets; authenticated mutation with CSRF; 409 on stale revision |
+| GET | `/api/v1/library/imports/{id}?page=1&state=` | Scan status/counts, its root snapshot, plus 50 discovered files; optional review/matched/blocked/registered/skipped filter |
 | POST | `/api/v1/library/imports/{id}/cancel` | `{}`; stop discovery; prior reviewed registrations remain independent |
 | GET | `/api/v1/library/imports/{id}/duplicates` | Up to 100 unresolved same-episode duplicate groups with every claiming file; read-only |
 | POST | `/api/v1/library/imports/{id}/duplicates/resolve` | `{key,keep_file_id,reviewed:true}`; queue the chosen file and mark the other variants skipped; 202 |
@@ -282,7 +287,13 @@ same-origin validation. Reads never start a filesystem scan.
 | POST | `/api/v1/library/import-files/{id}/skip` | `{}`; skip a review/blocked item |
 
 Paths are immutable server snapshots selected through opaque discovered IDs;
-requests never accept an arbitrary root or file path. File responses include
+requests never accept an arbitrary root or file path. `root` on scan creation
+must exactly match one configured root for that library, and the response's
+`roots` array records every root the scan walks. `PUT /library/roots` rejects
+absolute paths, `..`, missing folders, symbolic links, duplicates and overlapping
+roots; it never changes organization destination folders or naming templates.
+Reads never scan. Several scans may be queued, but the worker leases one at a
+time. File responses include
 relative/full path, size, mtime snapshot, filename search hint, state/message and
 nullable media/file IDs. Stable physical file identities remain internal.
 The backup preview/apply routes read only the Movies or Series title list and

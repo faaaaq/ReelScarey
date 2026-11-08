@@ -27,6 +27,7 @@ type LibraryScan struct {
 	MediaRoot         string                `json:"media_root"`
 	ResolvedRoot      string                `json:"-"`
 	Folder            string                `json:"folder"`
+	Roots             []string              `json:"roots"`
 	State             string                `json:"state"`
 	Message           string                `json:"message"`
 	Created           int64                 `json:"created_at"`
@@ -42,11 +43,18 @@ type LibraryScan struct {
 	owner             string
 }
 
-const libraryScanColumns = `id,kind,media_root,resolved_root,folder,state,message,created_at,updated_at,lease_owner`
+const libraryScanColumns = `id,kind,media_root,resolved_root,folder,roots,state,message,created_at,updated_at,lease_owner`
 
 func scanLibraryScan(row scanner) (LibraryScan, error) {
 	var s LibraryScan
-	e := row.Scan(&s.ID, &s.Kind, &s.MediaRoot, &s.ResolvedRoot, &s.Folder, &s.State, &s.Message, &s.Created, &s.Updated, &s.owner)
+	var roots string
+	e := row.Scan(&s.ID, &s.Kind, &s.MediaRoot, &s.ResolvedRoot, &s.Folder, &roots, &s.State, &s.Message, &s.Created, &s.Updated, &s.owner)
+	if e == nil {
+		e = json.Unmarshal([]byte(roots), &s.Roots)
+	}
+	if e == nil && len(s.Roots) == 0 && s.Folder != "" {
+		s.Roots = []string{s.Folder}
+	}
 	return s, e
 }
 func (s *Service) LibraryScan(ctx context.Context, id string) (LibraryScan, error) {
@@ -139,13 +147,43 @@ func DiscoveryFolder(l organization.Library, kind string) string {
 	return ""
 }
 
+// scanRootFor finds the configured root that contains a discovered path. A
+// multi-root scan records media-relative paths, so prefix checks must use the
+// matching root rather than a comma-joined display value.
+func scanRootFor(scan LibraryScan, relative string) (string, bool) {
+	best := ""
+	roots := scan.Roots
+	if len(roots) == 0 && scan.Folder != "" {
+		roots = []string{scan.Folder}
+	}
+	for _, root := range roots {
+		root = strings.TrimSuffix(root, "/")
+		if root == "" {
+			continue
+		}
+		if relative == root || strings.HasPrefix(relative, root+"/") {
+			if len(root) > len(best) {
+				best = root
+			}
+		}
+	}
+	return best, best != ""
+}
+
 func (s *Service) StartLibraryScan(ctx context.Context, kind string, collection ...string) (LibraryScan, error) {
-	return s.startLibraryScan(ctx, kind, false, collection...)
+	return s.startLibraryScan(ctx, kind, false, "", collection...)
 }
 func (s *Service) StartLibraryScanWithMatching(ctx context.Context, kind, collection string, automatic bool) (LibraryScan, error) {
-	return s.startLibraryScan(ctx, kind, automatic, collection)
+	return s.startLibraryScan(ctx, kind, automatic, "", collection)
 }
-func (s *Service) startLibraryScan(ctx context.Context, kind string, automatic bool, collection ...string) (LibraryScan, error) {
+
+// StartLibraryScanRoots scans every configured root when root is empty, or the
+// one configured root selected by the administrator.
+func (s *Service) StartLibraryScanRoots(ctx context.Context, kind, collection, root string, automatic bool) (LibraryScan, error) {
+	return s.startLibraryScan(ctx, kind, automatic, root, collection)
+}
+
+func (s *Service) startLibraryScan(ctx context.Context, kind string, automatic bool, selectedRoot string, collection ...string) (LibraryScan, error) {
 	defer organization.ReadMedia()()
 	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
 		return LibraryScan{}, e
@@ -172,28 +210,62 @@ func (s *Service) startLibraryScan(ctx context.Context, kind string, automatic b
 	if len(collection) == 1 && collection[0] != "" {
 		key = collection[0]
 	}
-	folder := ""
+	var library organization.Library
+	found := false
 	for _, l := range prefs.Libraries {
 		if l.Key == key {
-			folder = DiscoveryFolder(l, kind)
+			library, found = l, true
 			break
 		}
 	}
-	if folder == "" {
+	if !found {
 		return LibraryScan{}, problem("invalid_scan", "Choose a configured collection compatible with movies or shows.")
 	}
-	if e = segments(root, folder, false); e != nil {
-		return LibraryScan{}, problem("storage_unavailable", "The selected movie or TV folder must already exist inside the media root. Check its mount and folder preference.")
+	if key == "anime" && kind != "series" {
+		return LibraryScan{}, problem("invalid_scan", "The Anime collection is scanned for TV shows, not movies.")
 	}
-	dir, e := root.OpenRoot(folder)
+	if key != "anime" && library.Content != "mixed" && library.Content != kind {
+		return LibraryScan{}, problem("invalid_scan", "Choose a configured collection compatible with movies or shows.")
+	}
+	configured, e := organization.New(s.db, s.cfg).EffectiveRoots(ctx, key, kind)
 	if e != nil {
-		return LibraryScan{}, problem("storage_unavailable", "The selected library folder cannot be read.")
+		return LibraryScan{}, e
 	}
-	dir.Close()
+	roots := configured
+	if selectedRoot != "" {
+		selectedRoot = strings.TrimSpace(strings.ReplaceAll(selectedRoot, "\\", "/"))
+		for len(selectedRoot) > 1 && strings.HasSuffix(selectedRoot, "/") {
+			selectedRoot = strings.TrimSuffix(selectedRoot, "/")
+		}
+		roots = nil
+		for _, candidate := range configured {
+			if candidate == selectedRoot {
+				roots = []string{candidate}
+				break
+			}
+		}
+		if len(roots) == 0 {
+			return LibraryScan{}, problem("invalid_scan", "Choose one of this library's configured scan roots.")
+		}
+	}
+	if len(roots) == 0 {
+		return LibraryScan{}, problem("storage_unavailable", "This library has no scan roots. Add one in library roots first.")
+	}
+	for _, folder := range roots {
+		if e = segments(root, folder, false); e != nil {
+			return LibraryScan{}, problem("storage_unavailable", "Every selected library root must already exist inside the media root. Check its mount and library roots.")
+		}
+		dir, e := root.OpenRoot(folder)
+		if e != nil {
+			return LibraryScan{}, problem("storage_unavailable", "A selected library root cannot be read.")
+		}
+		dir.Close()
+	}
 	resolved, e := filepath.EvalSymlinks(s.cfg.MediaDir)
 	if e != nil {
 		return LibraryScan{}, e
 	}
+	display := strings.Join(roots, ", ")
 	id := ID()
 	now := time.Now().Unix()
 	tx, e := s.db.BeginTx(ctx, nil)
@@ -204,13 +276,6 @@ func (s *Service) startLibraryScan(ctx context.Context, kind string, automatic b
 	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
 		return LibraryScan{}, e
 	}
-	var active int
-	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_scans WHERE state IN ('queued','scanning')`).Scan(&active); e != nil {
-		return LibraryScan{}, e
-	}
-	if active > 0 {
-		return LibraryScan{}, problem("scan_busy", "A library scan is already running. Wait for it or stop it first.")
-	}
 	// Keep bounded history without deleting pending registrations or registered files.
 	var count int
 	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_scans`).Scan(&count); e != nil {
@@ -219,11 +284,17 @@ func (s *Service) startLibraryScan(ctx context.Context, kind string, automatic b
 	if count >= 20 {
 		return LibraryScan{}, problem("scan_history_full", "The scan history is full. Remove a finished scan from the review list before starting another.")
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO library_scans(id,kind,media_root,resolved_root,folder,state,created_at,updated_at) VALUES(?,?,?,?,?,'queued',?,?)`, id, kind, s.cfg.MediaDir, resolved, folder, now, now); e != nil {
+	encodedRoots, e := json.Marshal(roots)
+	if e != nil {
 		return LibraryScan{}, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO library_scan_dirs(scan_id,relative_path) VALUES(?,?)`, id, folder); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO library_scans(id,kind,media_root,resolved_root,folder,roots,state,created_at,updated_at) VALUES(?,?,?,?,?,?,'queued',?,?)`, id, kind, s.cfg.MediaDir, resolved, display, string(encodedRoots), now, now); e != nil {
 		return LibraryScan{}, e
+	}
+	for _, folder := range roots {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO library_scan_dirs(scan_id,relative_path) VALUES(?,?)`, id, folder); e != nil {
+			return LibraryScan{}, e
+		}
 	}
 	if automatic {
 		category := "standard"

@@ -47,6 +47,10 @@ func (f *fakeMusic) Album(context.Context, int64) (music.AlbumDetails, error) {
 func (f *fakeMusic) StartScan(context.Context, string) (music.Scan, error) {
 	return music.Scan{ID: 1, State: "scanning"}, f.err
 }
+
+func (f *fakeMusic) StartScanRoots(context.Context, []string) (music.Scan, error) {
+	return music.Scan{ID: 1, State: "scanning"}, f.err
+}
 func (f *fakeMusic) ListScans(context.Context, int) (music.ScanList, error) {
 	return music.ScanList{Items: []music.Scan{}, Page: 1, Limit: 20}, f.err
 }

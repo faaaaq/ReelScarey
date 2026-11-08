@@ -154,8 +154,12 @@ func TestExistingMovieDiscoveryReviewedRegistrationAndRestart(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = f.s.StartLibraryScan(ctx, "movie"); e == nil {
-		t.Fatal("concurrent scan accepted")
+	other, e := f.s.StartLibraryScan(ctx, "movie")
+	if e != nil {
+		t.Fatal("additional scan was not queued", e)
+	}
+	if e = f.s.CancelLibraryScan(ctx, other.ID); e != nil {
+		t.Fatal(e)
 	}
 	// Persist discovery work before reopening, without using a client/provider.
 	if _, e = f.s.ProcessLibraryNext(ctx); e != nil {

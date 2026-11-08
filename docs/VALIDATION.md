@@ -2600,3 +2600,22 @@ Run locally on Windows (development tools only; Docker remains the target):
   (`There is not enough space on the disk`). The remaining transfer tests passed
   with that test skipped, and `go test ./internal/httpapi`, `go vet`, the frontend
   format check, TypeScript check and the targeted frontend suite passed.
+
+## Multiple library scan roots
+
+- Migration 071 adds `library_root_config`, `library_scans.roots` and
+  `music_scan_roots`, backfills existing scan root snapshots and removes the
+  single-active-scan index so several scans can wait while the worker leases one.
+- Video discoveries scan every configured root or one selected configured root.
+  The scan stores its root snapshot, identity/prefix checks use the matching root,
+  and a failed root marks the scan failed instead of reporting a partial success.
+- Music scans accept configured roots in one scan and record the root that owns
+  each registered file. The default Music root resolves the exact existing
+  `Music` or lowercase `music` directory; a missing folder is unavailable.
+- Root updates reject absolute paths, `..`, missing folders, symbolic links,
+  duplicates, parent/child overlaps and cross-library overlaps. They never change
+  organization destinations or naming templates.
+- Go tests cover persistence across reopen, unsafe/overlapping roots, lowercase
+  default detection, video multi-root discovery and failure, music multi-root
+  registration and API auth/CSRF. Frontend tests cover add/remove root editing,
+  choosing one/all video roots, and scanning multiple configured music roots.

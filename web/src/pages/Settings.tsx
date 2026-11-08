@@ -14,6 +14,7 @@ import {
   CollectionSettings,
   type CollectionConfig,
 } from "../components/CollectionSettings";
+import { LibraryRootsEditor } from "../components/LibraryRootsEditor";
 import { useResource } from "../useResource";
 import {
   Alert,
@@ -465,6 +466,7 @@ function MediaSettings() {
           saved={collections.reload}
         />
       )}
+      <LibraryRootsEditor />
       <FieldSet legend="Related">
         <ul className="adm-settings-list">
           <li>

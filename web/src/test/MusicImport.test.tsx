@@ -267,8 +267,26 @@ describe("music import", () => {
     expect(screen.queryByText(/Added .* to the catalog/)).toBeNull();
   });
 
-  it("starts a scan from the empty state", async () => {
+  it("starts a scan for configured music roots", async () => {
     const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/roots") {
+        return Response.json({
+          revision: 1,
+          media_root: "/media",
+          libraries: [
+            {
+              key: "music",
+              name: "Music",
+              kind: "music",
+              configured: false,
+              roots: [
+                { path: "Music", available: true, default: true },
+                { path: "Music Archive", available: true, default: false },
+              ],
+            },
+          ],
+        });
+      }
       if (path === "/api/v1/library/music/scans" && !options?.method) {
         return Response.json({ items: [], page: 1, total: 0, limit: 20 });
       }
@@ -307,8 +325,8 @@ describe("music import", () => {
     await userEvent.click(
       screen.getAllByRole("button", { name: "Scan folder" })[0],
     );
-    await userEvent.clear(screen.getByLabelText("Music folder"));
-    await userEvent.type(screen.getByLabelText("Music folder"), "Music");
+    expect(await screen.findByLabelText("Music root Music")).toBeChecked();
+    expect(screen.getByLabelText("Music root Music Archive")).toBeChecked();
     await userEvent.click(screen.getByRole("button", { name: "Start scan" }));
     await waitFor(() =>
       expect(
@@ -319,5 +337,13 @@ describe("music import", () => {
         ),
       ).toBe(true),
     );
+    const call = fetch.mock.calls.find(
+      ([url, options]) =>
+        new URL(url, "http://local").pathname ===
+          "/api/v1/library/music/scans" && options?.method === "POST",
+    );
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+      roots: ["Music", "Music Archive"],
+    });
   });
 });

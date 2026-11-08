@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"path/filepath"
 
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
 )
 
@@ -23,7 +24,23 @@ func (s *Server) existingCollection(w http.ResponseWriter, r *http.Request) {
 			s.internal(w, "library_scan_settings", e)
 			return
 		}
-		collections := []map[string]string{}
+		rootConfig, e := s.organization.GetRoots(r.Context())
+		if e != nil {
+			s.internal(w, "library_scan_roots", e)
+			return
+		}
+		byKey := map[string]organization.LibraryRoots{}
+		for _, item := range rootConfig.Libraries {
+			byKey[item.Key] = item
+		}
+		rootPaths := func(key string) []string {
+			paths := []string{}
+			for _, root := range byKey[key].Roots {
+				paths = append(paths, root.Path)
+			}
+			return paths
+		}
+		collections := []map[string]any{}
 		movieRoot, seriesRoot := "", ""
 		for _, l := range prefs.Libraries {
 			m, t := transfer.DiscoveryFolder(l, "movie"), transfer.DiscoveryFolder(l, "series")
@@ -43,19 +60,35 @@ func (s *Server) existingCollection(w http.ResponseWriter, r *http.Request) {
 			if l.Key == "tv" {
 				seriesRoot = t
 			}
-			collections = append(collections, map[string]string{"key": l.Key, "name": l.Name, "content": content, "movie_root": m, "series_root": t})
+			paths := rootPaths(l.Key)
+			if len(paths) > 0 && paths[0] != "" {
+				switch l.Key {
+				case "movies":
+					movieRoot = filepath.Join(s.config.MediaDir, paths[0])
+				case "tv", "anime":
+					seriesRoot = filepath.Join(s.config.MediaDir, paths[0])
+				}
+			}
+			collections = append(collections, map[string]any{"key": l.Key, "name": l.Name, "content": content, "movie_root": m, "series_root": t, "roots": byKey[l.Key].Roots})
 		}
-		send(w, 200, map[string]any{"items": items, "media_root": s.config.MediaDir, "movie_root": movieRoot, "series_root": seriesRoot, "collections": collections})
+		mediaRoots := []organization.LibraryRoots{}
+		for _, key := range []string{"movies", "tv", "anime", "music"} {
+			if item, ok := byKey[key]; ok {
+				mediaRoots = append(mediaRoots, item)
+			}
+		}
+		send(w, 200, map[string]any{"items": items, "media_root": s.config.MediaDir, "movie_root": movieRoot, "series_root": seriesRoot, "collections": collections, "library_roots": mediaRoots})
 	case http.MethodPost:
 		var in struct {
 			Kind              string `json:"kind"`
 			LibraryKey        string `json:"library_key"`
+			Root              string `json:"root"`
 			AutomaticMatching bool   `json:"automatic_matching"`
 		}
 		if !decodeJSON(w, r, &in) {
 			return
 		}
-		out, e := s.transfer.StartLibraryScanWithMatching(r.Context(), in.Kind, in.LibraryKey, in.AutomaticMatching)
+		out, e := s.transfer.StartLibraryScanRoots(r.Context(), in.Kind, in.LibraryKey, in.Root, in.AutomaticMatching)
 		if e != nil {
 			s.transferError(w, e)
 			return

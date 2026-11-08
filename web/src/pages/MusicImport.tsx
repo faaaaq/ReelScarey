@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Button, TextField } from "@radix-ui/themes";
+import { Button } from "@radix-ui/themes";
 import { ArrowLeft, FolderSearch, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   Alert,
   EmptyState,
@@ -17,12 +18,14 @@ import { PageHeading, RequestState } from "../components";
 import {
   api,
   messageFor,
+  type LibraryRootsConfig,
   type MusicDiscoverResult,
   type MusicScan,
   type MusicScanList,
   type MusicScanPage,
 } from "../api";
 import { useLiveResource } from "../useLiveResource";
+import { useResource } from "../useResource";
 import "./Music.css";
 
 function countLabel(count: number, singular: string) {
@@ -62,6 +65,7 @@ function discoverySummary(result: MusicDiscoverResult) {
 
 export function MusicImport() {
   const scans = useLiveResource<MusicScanList>("/library/music/scans", 5000);
+  const rootsResource = useResource<LibraryRootsConfig>("/library/roots");
   const [scanID, setScanID] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const active = useLiveResource<MusicScanPage>(
@@ -69,13 +73,16 @@ export function MusicImport() {
     3000,
   );
   const [open, setOpen] = useState(false);
-  const [root, setRoot] = useState("Music");
+  const [roots, setRoots] = useState<string[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
   const [pending, setPending] = useState(false);
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [discoverResult, setDiscoverResult] =
     useState<MusicDiscoverResult | null>(null);
   const [error, setError] = useState("");
+  const musicRoots =
+    rootsResource.data?.libraries?.find((library) => library.key === "music")
+      ?.roots ?? [];
 
   const items = active.data?.items ?? [];
   const selectedFiles = items.filter((file) => selected.includes(file.id));
@@ -93,6 +100,12 @@ export function MusicImport() {
   }, [scanID, scans.data]);
 
   useEffect(() => {
+    setRoots(
+      musicRoots.filter((root) => root.available).map((root) => root.path),
+    );
+  }, [rootsResource.data]);
+
+  useEffect(() => {
     setSelected([]);
     setDiscoverOpen(false);
     setDiscoverResult(null);
@@ -100,13 +113,13 @@ export function MusicImport() {
 
   async function startScan(e: FormEvent) {
     e.preventDefault();
-    if (pending || !root.trim()) return;
+    if (pending || roots.length === 0) return;
     setPending(true);
     setError("");
     try {
       const scan = await api<MusicScan>("/library/music/scans", {
         method: "POST",
-        body: JSON.stringify({ root: root.trim() }),
+        body: JSON.stringify({ roots }),
       });
       setOpen(false);
       setScanID(scan.id);
@@ -236,8 +249,25 @@ export function MusicImport() {
           exact artist and album matches. Strong evidence only: a release-group
           ID, or one exact normalized artist name and album title. Files with
           ambiguous or missing evidence stay unresolved and are never guessed.
-          The folder is relative to the media root and names are case-sensitive.
+          Roots are relative to the media root and names are case-sensitive.
         </Alert>
+        {musicRoots.length > 0 && (
+          <Alert kind="info" title="Configured music roots">
+            {musicRoots
+              .map(
+                (root) =>
+                  `${root.path}${root.available ? "" : " (unavailable)"}`,
+              )
+              .join(" · ")}{" "}
+            <Link to="/settings">Manage library roots</Link>
+          </Alert>
+        )}
+        {rootsResource.data && musicRoots.length === 0 && (
+          <Alert kind="warning" title="No music root is available">
+            Add an existing music folder below the media root in{" "}
+            <Link to="/settings">Library roots</Link> before scanning.
+          </Alert>
+        )}
         <RequestState
           loading={scans.loading}
           error={scans.error}
@@ -496,8 +526,8 @@ export function MusicImport() {
       <Modal
         open={open}
         onOpenChange={setOpen}
-        title="Scan a music folder"
-        description="Choose a folder below the media root. Files are read in place and never moved."
+        title="Scan music folders"
+        description="Choose configured folders below the media root. Files are read in place and never moved."
         footer={
           <Button variant="soft" color="gray" onClick={() => setOpen(false)}>
             Close
@@ -505,19 +535,38 @@ export function MusicImport() {
         }
       >
         <form onSubmit={(e) => void startScan(e)} className="mus-search">
-          <TextField.Root
-            aria-label="Music folder"
-            value={root}
-            onChange={(e) => setRoot(e.target.value)}
-            placeholder="Music"
-          />
-          <Button type="submit" disabled={pending || !root.trim()}>
+          <fieldset className="mus-scan-roots">
+            {musicRoots.map((root) => (
+              <label className="rs-check" key={root.path}>
+                <input
+                  type="checkbox"
+                  aria-label={`Music root ${root.path}`}
+                  checked={roots.includes(root.path)}
+                  disabled={pending || !root.available}
+                  onChange={(event) =>
+                    setRoots(
+                      event.target.checked
+                        ? [...roots, root.path]
+                        : roots.filter((path) => path !== root.path),
+                    )
+                  }
+                />
+                <span>
+                  <strong>{root.path}</strong>
+                  {!root.available && (
+                    <small>{root.message || "Folder unavailable."}</small>
+                  )}
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          <Button type="submit" disabled={pending || roots.length === 0}>
             Start scan
           </Button>
         </form>
         <p className="rs-form-help">
-          Relative to the media root, for example <code>Music</code> or{" "}
-          <code>music</code>. Folder names are case-sensitive.
+          Relative to the media root. Folder names are case-sensitive. Add or
+          remove roots in <Link to="/settings">Library roots</Link>.
         </p>
         {error && <Alert kind="danger">{error}</Alert>}
       </Modal>

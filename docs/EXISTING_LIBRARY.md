@@ -13,30 +13,45 @@ adding the title, so a permissions or naming error does not undo the add. A
 movie naming template must provide a separate title directory for this option.
 
 Mount the existing library inside `REELSCAREY_MEDIA_DIR`, then set the movie and
-TV folder names in Settings. The page displays the exact server paths it will
-scan. Paths refer to the ReelScarey server/container, not the browser's computer.
-Only these configured folders can be scanned; the API accepts a media type,
-never an arbitrary filesystem path. Importing from external folders or the
-downloads root by copying/moving files is outside this milestone.
+TV folder names in Settings. **Library roots** in Settings  Media Management
+lists the read-only discovery folders for Movies, TV Shows, Anime and Music.
+Video collections default to their existing organization folder; Music defaults
+to the exact `Music` folder below the media root, or an existing lowercase
+`music` folder when that is the only match. A missing default is shown as
+unavailable instead of being guessed. Add extra roots to scan several library
+folders; destination folders and naming rules are unchanged and are still edited
+in **Collections & folders**.
 
-Choose Movies, TV Shows, or Anime under **Look for** and click **Scan and match library**. Automatic matching
-is checked by default; uncheck it for discovery and manual review only. Nothing runs
-automatically on first visit. Discovery reads names, size, modification time and
-stable file identity, without hashing/probing every video. It skips hidden
-entries, symbolic links, samples/trailers, non-regular/empty files, unsupported
-extensions and already registered paths. Supported videos are MKV, MP4, M4V,
-AVI, MOV, WEBM, TS and M2TS. Disc folders and archive extraction are not supported.
+The page displays the exact server paths it will scan. Paths refer to the
+ReelScarey server/container, not the browser's computer. Only configured roots
+can be scanned. The API accepts a media type and, optionally, one configured
+root; it never accepts an arbitrary filesystem path. Importing from external
+folders or the downloads root by copying/moving files is outside this milestone.
+
+Choose Movies, TV Shows, or Anime under **Look for**, choose **All configured
+roots** or one folder under **Folder**, and click **Scan and match library**.
+Automatic matching is checked by default; uncheck it for discovery and manual
+review only. Nothing runs automatically on first visit. Discovery reads names,
+size, modification time and stable file identity, without hashing/probing every
+video. It skips hidden entries, symbolic links, samples/trailers, non-regular/
+empty files, unsupported extensions and already registered paths. Supported
+videos are MKV, MP4, M4V, AVI, MOV, WEBM, TS and M2TS. Disc folders and archive
+extraction are not supported.
 
 **Music** is listed in the same Discover panel and opens the dedicated
 tag-based **Music Import** scanner. Music files are matched to MusicBrainz
 artists, albums and tracks rather than TMDb video metadata; see
 [Music](MUSIC.md).
 
-Discovery is durable and processes one directory at a time. Restarted work
+Discovery is durable and processes one directory at a time across each scan's
+root snapshot. Several scans may wait in the queue; the worker leases one scan at
+a time, so two walkers never write the same state concurrently. Restarted work
 resumes using a lease and unique discovered-path records. Stop discovery leaves
 its previous results available for review; already queued registrations continue.
-There is no total cap on videos, folders or examined entries per scan. Individual
-folders are still limited to 20,000 entries and paths to twelve nested separators.
+Each scan records every root it scanned. There is no total cap on videos, folders
+or examined entries per scan. Individual folders are still limited to 20,000
+entries and paths to twelve nested separators. A collection can have up to twenty
+configured roots.
 Hitting either safeguard or encountering an inaccessible or changed folder produces an explicit failed/partial scan,
 retaining previous results. It never silently labels a partial scan complete.
 Each directory is read in batches of 128 entries. Twenty scan histories are kept;

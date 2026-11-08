@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/faaaaq/ReelScarey/internal/music"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 )
 
 func (s *Server) musicError(w http.ResponseWriter, err error) {
@@ -25,7 +26,7 @@ func (s *Server) musicError(w http.ResponseWriter, err error) {
 			"music_replace_in_progress", "music_rollback_state", "music_source_missing", "music_scan_state":
 			status = http.StatusConflict
 		case "music_no_track", "music_no_tracks", "music_import_source", "music_import_empty",
-			"music_import_unmatched", "music_import_duplicate", "music_import_missing":
+			"music_import_unmatched", "music_import_duplicate", "music_import_missing", "music_scan_root":
 			status = http.StatusBadRequest
 		case "music_import_missing_source":
 			status = http.StatusConflict
@@ -176,17 +177,46 @@ func (s *Server) musicScans(w http.ResponseWriter, r *http.Request) {
 		send(w, 200, items)
 	case http.MethodPost:
 		var body struct {
-			Root string `json:"root"`
+			Root  string   `json:"root"`
+			Roots []string `json:"roots"`
 		}
 		if !decodeJSON(w, r, &body) {
 			return
 		}
 		root := strings.TrimSpace(body.Root)
-		if root == "" {
-			fail(w, 400, "invalid_music_scan", "Choose a folder below the media root.")
+		selected := body.Roots
+		if len(selected) > 0 {
+			configured, err := organization.New(s.db, s.config).EffectiveRoots(r.Context(), "music", "music")
+			if err != nil {
+				s.internal(w, "music_scan_roots", err)
+				return
+			}
+			allowed := map[string]bool{}
+			for _, item := range configured {
+				allowed[item] = true
+			}
+			clean := make([]string, 0, len(selected))
+			for _, item := range selected {
+				item = strings.TrimSpace(strings.ReplaceAll(item, "\\", "/"))
+				for len(item) > 1 && strings.HasSuffix(item, "/") {
+					item = strings.TrimSuffix(item, "/")
+				}
+				if !allowed[item] {
+					fail(w, 400, "invalid_music_scan", "Choose configured music roots from library roots.")
+					return
+				}
+				clean = append(clean, item)
+			}
+			selected = clean
+		}
+		if len(selected) == 0 && root != "" {
+			selected = []string{root}
+		}
+		if len(selected) == 0 {
+			fail(w, 400, "invalid_music_scan", "Choose at least one configured music root below the media root.")
 			return
 		}
-		scan, err := s.music.StartScan(r.Context(), root)
+		scan, err := s.music.StartScanRoots(r.Context(), selected)
 		if err != nil {
 			s.musicError(w, err)
 			return
