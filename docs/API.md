@@ -265,6 +265,8 @@ same-origin validation. Reads never start a filesystem scan.
 | GET | `/api/v1/library/imports/{id}?page=1&state=` | Scan status/counts plus 50 discovered files; optional review/matched/blocked/registered/skipped filter |
 | POST | `/api/v1/library/imports/{id}/cancel` | `{}`; stop discovery; prior reviewed registrations remain independent |
 | DELETE | `/api/v1/library/imports/{id}` | `{}`; forget finished review records; refuses active discovery/matching/verification; never deletes registered media |
+| POST | `/api/v1/library/import/backup/preview` | Raw Radarr or Sonarr backup ZIP (≤256 MiB); returns source and title list with `in_library`; reads only the Movies or Series table |
+| POST | `/api/v1/library/import/backup/apply` | `{items:[{kind,tmdb_id,tvdb_id,monitored}]}`; adds the reviewed titles from a backup; returns added/skipped/errors |
 | GET | `/api/v1/library/imports/catalog?kind=movie&query=title` | Up to 20 saved catalog title matches; offline read |
 | POST | `/api/v1/library/import-files/{id}/register` | `{media_id,episode_ids:[],reviewed:true}`; queue verified in-place registration; 202 |
 | POST | `/api/v1/library/import-files/{id}/skip` | `{}`; skip a review/blocked item |
@@ -273,6 +275,9 @@ Paths are immutable server snapshots selected through opaque discovered IDs;
 requests never accept an arbitrary root or file path. File responses include
 relative/full path, size, mtime snapshot, filename search hint, state/message and
 nullable media/file IDs. Stable physical file identities remain internal.
+The backup preview/apply routes read only the Movies or Series title list and
+monitored flag; indexers, clients, credentials, paths, quality profiles and other
+backup tables are never read. See [Sonarr/Radarr import](ARR_IMPORT.md).
 Scans expose kind/folder/state/message, timestamps, discovery/registration/queued
 counts and directory-completion examination/skip counts. Limits and exact
 semantics are in [existing-library import](EXISTING_LIBRARY.md).

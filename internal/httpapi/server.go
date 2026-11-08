@@ -208,6 +208,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/profiles/preview", method(http.MethodPost, s.reviewProfiles))
 	mux.HandleFunc("/api/v1/library/profiles", method(http.MethodPut, s.applyProfiles))
 	mux.HandleFunc("/api/v1/library/imports", s.existingCollection)
+	mux.HandleFunc("/api/v1/library/import/backup/preview", method(http.MethodPost, s.arrBackupPreview))
+	mux.HandleFunc("/api/v1/library/import/backup/apply", method(http.MethodPost, s.arrBackupApply))
 	mux.HandleFunc("/api/v1/library/imports/catalog", method(http.MethodGet, s.existingCatalog))
 	mux.HandleFunc("/api/v1/library/imports/{id}", s.existingScan)
 	mux.HandleFunc("/api/v1/library/imports/{id}/matches/automatic", method(http.MethodPost, s.existingAutomaticMatching))

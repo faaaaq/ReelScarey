@@ -40,6 +40,16 @@ Search results and the title details modal use the same add controls.
   or modifies files, and later monitoring edits remain the normal per-show,
   season and episode controls. Specials stay unmonitored.
 
+## Sonarr and Radarr backup import (0.43.0)
+
+Settings → **Sonarr / Radarr Import** accepts a backup ZIP, shows the saved
+titles with their monitored choice and TMDb/TVDB identity, and adds only the
+selected titles. It reads only the `Movies` or `Series` table; indexers,
+download clients, credentials, API keys, paths and quality profiles are never
+imported. Selected Radarr movies preserve their monitored flag, including movies
+with future release dates. Sonarr shows are matched from TVDB to TMDb and start
+with future-only monitoring. See [Sonarr/Radarr import](ARR_IMPORT.md).
+
 ## Shell
 
 - **Header** (fixed, 60px): logo, global search, recent activity, theme toggle

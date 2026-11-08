@@ -2403,3 +2403,22 @@ Run locally on Windows (development tools only; Docker remains the target):
   vet, the full Go suite and the build passed.
 - Frontend format:check, check, the full suite (49 files, 273 tests) and the
   build passed. Release lists show a Pack label and the updated import notice.
+
+## Version 0.43.0 Sonarr and Radarr backup title import
+
+- Settings → **Sonarr / Radarr Import** accepts a backup ZIP, previews the saved
+  movie or series title list with monitored state and TMDb/TVDB identity, and
+  adds only selected titles. This is the path for Radarr movies with future
+  release dates that are not yet in ReelScarey.
+- The importer reads only the Radarr `Movies` (or `Movies`/`MovieMetadata`) and
+  Sonarr `Series` tables. Indexers, download clients, credentials, API keys,
+  paths, files, tags and quality profiles are never read or imported. The
+  temporary database is deleted after preview.
+- Radarr movies preserve the backup's monitored flag and therefore appear in
+  Wanted/Calendar with their future release date. Sonarr TVDB IDs resolve to
+  TMDb shows; added shows start with future-only monitoring.
+- Go tests cover Radarr v3/v4-style schemas, Sonarr series, rejection of a
+  non-backup ZIP, HTTP preview/apply and duplicate skipping. The full Go suite,
+  vet and build passed.
+- Frontend format:check, check, the full suite (50 files, 274 tests) and the
+  build passed, including the backup review/apply flow.

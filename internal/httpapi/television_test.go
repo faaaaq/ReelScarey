@@ -28,6 +28,9 @@ func (p *tvProvider) Series(context.Context, string, int64) (metadata.Series, er
 	}
 	return tvFixture(), nil
 }
+func (p *tvProvider) FindTVDB(context.Context, string, string) (metadata.ExternalTitle, error) {
+	return metadata.ExternalTitle{Kind: "series", TMDbID: 42, Title: "Canonical TV title"}, nil
+}
 func (p *tvProvider) Season(context.Context, string, int64, int) (metadata.Season, error) {
 	return metadata.Season{SeasonSummary: tvFixture().Seasons[0], Episodes: []metadata.Episode{{TMDbID: 45, Number: 1, Title: "Pilot"}}}, nil
 }

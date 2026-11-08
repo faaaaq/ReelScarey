@@ -28,6 +28,7 @@ import {
 } from "../ui";
 import { TMDbSettings } from "./TMDbSettings";
 import { IntegrationSettings } from "./IntegrationSettings";
+import { ArrBackupImport } from "./ArrBackupImport";
 import "./Admin.css";
 
 type Area = { title: string; to: string; description: string };
@@ -50,6 +51,12 @@ const groups: { name: string; items: Area[] }[] = [
         title: "Library Import",
         to: "/import",
         description: "Find existing files and register them in place.",
+      },
+      {
+        title: "Sonarr / Radarr Import",
+        to: "/settings/backup-import",
+        description:
+          "Add titles from a backup without importing credentials or paths.",
       },
     ],
   },
@@ -147,6 +154,7 @@ export function Settings() {
   if (section === "media") return <MediaSettings />;
   if (section === "connect") return <ConnectSettings />;
   if (section === "clients") return <ConnectionSettings />;
+  if (section === "backup-import") return <ArrBackupImport />;
   return <Navigate to="/settings" replace />;
 }
 
