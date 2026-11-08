@@ -139,6 +139,9 @@ Do not add global element selectors in page files.
   later; already-released or undated titles start unmonitored. Search-result
   adds use the same default, and a newly monitored show applies it to its
   seasons and episodes.
+- Anime search settings include an **English dub only** toggle. The Anime
+  library page also has reviewed Enable/Disable for all anime actions, an
+  editable dub rule and a test box for a sample release title.
 - The Calendar remembers its month, filters and view; Reset clears them.
 
 ## Library and search (0.38.7)

@@ -404,6 +404,12 @@ export type MusicDownloadFileList = {
   items: MusicDownloadFile[];
 };
 
+export type AnimePreferences = {
+  dub_rule: string;
+  revision: number;
+  default_rule: string;
+};
+
 export type AnimeLibrarySettings = {
   id: number;
   kind: "movie" | "series";

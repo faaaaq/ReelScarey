@@ -65,7 +65,8 @@ singleton `admin_account`, `sessions`, `provider_secrets`, `integration_configs`
 `music_albums`, `music_tracks`, `music_scans`, `music_scan_files`,
 `music_files`, `music_edit_jobs`, `music_edit_files`,
 `music_release_candidates`, `music_import_jobs`, `music_import_files`,
-`music_downloads`, `music_preferences` and `music_schedule`.
+`music_downloads`, `music_preferences`, `music_schedule` and
+`anime_preferences`.
 
 Migration 009 adds `library_scans`, `library_scan_dirs` and `library_scan_files`.
 Existing videos register in `media_files` with explicit existing-file provenance

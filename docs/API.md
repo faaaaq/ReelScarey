@@ -174,6 +174,11 @@ include_specials, allow_packs and max_pack_episodes (2–100; default 20). GET
 returns the current and approved order revisions, these options, mapped_count and
 missing_mapping_count. A changed order requires renewed approval. Titles are bounded to 200 UTF-8 bytes; enabled query titles to
 180. Strict ordinary 16 KiB JSON, authentication, CSRF and origin checks apply.
+Per-show settings also include english_dub_only. GET/PUT
+`/library/anime/preferences` manages the global dub rule (one `/regex/i` or
+phrase per line) with a revision; POST `/library/anime/dub-test` tests
+`{rule?, title}`; POST `/library/anime/english-dub` accepts
+`{enabled, reviewed:true}` and applies the toggle to every Anime show.
 Stale revisions return 409; invalid input returns 400. Only Anime shows can save
 policies; existing shows remain disabled. Returned loaded/ready/missing counts
 cover loaded regular seasons and numbering coverage, not search eligibility.

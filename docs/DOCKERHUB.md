@@ -18,6 +18,8 @@ your seeding sources.
 ### Library and metadata
 
 - Movies, TV shows and a separate Anime catalog, backed by TMDb metadata.
+  Anime shows support optional English-dub-only release filtering with an
+  editable rule.
 - Canonical seasons and episodes, on-demand metadata refresh and revision-checked
   monitoring.
 - Poster and table browsing with literal search, status/monitoring filters,

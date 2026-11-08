@@ -824,6 +824,13 @@ A-Z jump bar, Subtitles and YouTube show a first-visit Work in progress overlay,
 Organize Files leaves the navigation (still reachable from Media Management) and
 Automation no longer lists every saved title. See [UI.md](docs/UI.md).
 
+## Anime English-dub filtering
+
+Per-show English-dub-only filtering rejects releases that do not match an
+editable global rule during search and again at queue time. The Anime page can
+enable or disable it for every show in one reviewed action, and includes a rule
+editor and test box. See [Anime searches](docs/ANIME_SEARCH.md).
+
 ## Version 0.39.0 bundled Usenet, seeding limits and subtitle redesign
 
 The Docker image now ships a supervised SABnzbd daemon as an opt-in built-in

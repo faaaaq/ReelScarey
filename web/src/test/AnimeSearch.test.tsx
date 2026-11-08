@@ -144,6 +144,7 @@ describe("Explicit Anime automatic search policy", () => {
       alternate_titles: ["Old query"],
       include_specials: true,
       allow_packs: true,
+      english_dub_only: false,
       max_pack_episodes: 20,
       order_revision: 4,
     });
@@ -389,6 +390,7 @@ describe("Explicit Anime automatic search policy", () => {
       alternate_titles: ["Anime Romaji", "Anime translated"],
       include_specials: false,
       allow_packs: false,
+      english_dub_only: false,
       max_pack_episodes: 20,
     });
     expect(

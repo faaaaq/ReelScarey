@@ -25,6 +25,7 @@ export type AnimeSearchPolicy = {
   include_specials?: boolean;
   allow_packs?: boolean;
   max_pack_episodes?: number;
+  english_dub_only?: boolean;
   order_revision?: number;
   approved_order_revision?: number;
   mapped_count?: number;
@@ -188,6 +189,9 @@ function AnimeSearchForm({
     initial.include_specials ?? false,
   );
   const [allowPacks, setAllowPacks] = useState(initial.allow_packs ?? false);
+  const [englishDubOnly, setEnglishDubOnly] = useState(
+    initial.english_dub_only ?? false,
+  );
   const [maxPackEpisodes, setMaxPackEpisodes] = useState(
     String(initial.max_pack_episodes ?? 20),
   );
@@ -205,6 +209,7 @@ function AnimeSearchForm({
     mode !== initial.mode ||
     includeSpecials !== (initial.include_specials ?? false) ||
     allowPacks !== (initial.allow_packs ?? false) ||
+    englishDubOnly !== (initial.english_dub_only ?? false) ||
     Number(maxPackEpisodes) !== (initial.max_pack_episodes ?? 20) ||
     (mode === "mapped" && unapproved) ||
     searchTitle !== initial.search_title ||
@@ -284,6 +289,7 @@ function AnimeSearchForm({
           alternate_titles: alternateTitles,
           include_specials: includeSpecials,
           allow_packs: allowPacks,
+          english_dub_only: englishDubOnly,
           max_pack_episodes: Number(maxPackEpisodes),
           ...(mode === "mapped"
             ? { order_revision: initial.order_revision }
@@ -331,6 +337,20 @@ function AnimeSearchForm({
             Saved provider mappings (including specials and packs)
           </option>
         </select>
+      </FormGroup>
+      <FormGroup
+        label="English dub only"
+        help="Reject releases that are not labeled as an English dub. The matching rule is editable on the Anime library page."
+      >
+        <OptIn
+          label="Only grab English-dubbed releases"
+          checked={englishDubOnly}
+          disabled={locked}
+          onChange={(value) => {
+            setEnglishDubOnly(value);
+            setReviewed(false);
+          }}
+        />
       </FormGroup>
       <FormGroup
         label="Coverage"

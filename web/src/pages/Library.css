@@ -436,6 +436,21 @@
   }
 }
 
+.anime-dub-rule {
+  width: 100%;
+  min-height: 160px;
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--rs-text);
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  resize: vertical;
+}
+
 .lib-maintenance {
   display: flex;
   flex-wrap: wrap;

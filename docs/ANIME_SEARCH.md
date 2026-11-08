@@ -171,6 +171,25 @@ media, replace credentials or opt existing shows into searches. Graphite/blue an
 plain functional copy are retained. IPTorrents/XSpeeds account testing remains
 deferred.
 
+## English dub filtering
+
+Each Anime show has an **English dub only** toggle in its automatic-search
+settings. When enabled, release titles are checked against the saved dub rule
+during search and again inside the queue/reservation transaction. A release that
+does not match is rejected with a clear reason; editing the rule fences an older
+selection.
+
+The rule is global and editable on the Anime library page. It accepts one term
+per line: `/regex/i` for a case-insensitive regular expression, or a plain
+case-insensitive phrase. A release matches when any term matches. The default
+covers `[English Dub]`, `[Eng Dub]`, `FuniDub`, `Dual Audio`/`Dual-Audio` and
+`[Dual]`. Invalid regexes are refused before saving, and the page includes a
+test box for a sample release title.
+
+The Anime page also has **Enable for all anime** and **Disable for all anime**
+actions. They are reviewed, apply to every Anime show, and bump each show's
+policy revision so a search made before the change cannot be queued.
+
 ## Acceptance status
 
 This document describes the implemented contracts and limits. The current

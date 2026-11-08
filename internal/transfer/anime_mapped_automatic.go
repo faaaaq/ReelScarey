@@ -40,7 +40,14 @@ func (s *Service) SearchAutomaticAnimeOrder(ctx context.Context, seriesID int64,
 	if e != nil {
 		return nil, orderError(e)
 	}
-	a := &AnimeSearchSnapshot{Mode: "mapped", PolicyRevision: policy.Revision, CategoryRevision: policy.CategoryRevision, NumberingRevision: policy.NumberingRevision, CanonicalTitle: policy.CanonicalTitle, AlternateTitles: append([]string{}, policy.AlternateTitles...), OrderRevision: order.Revision, ApprovedOrderRevision: policy.ApprovedOrderRevision, IncludeSpecials: policy.IncludeSpecials, AllowPacks: policy.AllowPacks, MaxPackEpisodes: policy.MaxPackEpisodes}
+	a := &AnimeSearchSnapshot{Mode: "mapped", PolicyRevision: policy.Revision, CategoryRevision: policy.CategoryRevision, NumberingRevision: policy.NumberingRevision, CanonicalTitle: policy.CanonicalTitle, AlternateTitles: append([]string{}, policy.AlternateTitles...), OrderRevision: order.Revision, ApprovedOrderRevision: policy.ApprovedOrderRevision, IncludeSpecials: policy.IncludeSpecials, AllowPacks: policy.AllowPacks, MaxPackEpisodes: policy.MaxPackEpisodes, EnglishDubOnly: policy.EnglishDubOnly}
+	if policy.EnglishDubOnly {
+		prefs, e := library.New(s.db).AnimePreferences(ctx)
+		if e != nil {
+			return nil, e
+		}
+		a.DubRuleText = prefs.DubRule
+	}
 	targets := []TVTarget{}
 	for _, id := range ids {
 		var target TVTarget
@@ -220,7 +227,7 @@ func validateMappedAnimeSnapshot(ctx context.Context, tx *sql.Tx, v Candidate) e
 	if e != nil {
 		return e
 	}
-	if policy.Category != "anime" || policy.Mode != "mapped" || policy.Revision != a.PolicyRevision || policy.CategoryRevision != a.CategoryRevision || policy.NumberingRevision != a.NumberingRevision || policy.CanonicalTitle != a.CanonicalTitle || !reflect.DeepEqual(policy.AlternateTitles, a.AlternateTitles) || policy.IncludeSpecials != a.IncludeSpecials || policy.AllowPacks != a.AllowPacks || policy.MaxPackEpisodes != a.MaxPackEpisodes || policy.OrderRevision < 1 || policy.ApprovedOrderRevision != policy.OrderRevision || policy.ApprovedOrderRevision != a.ApprovedOrderRevision || policy.OrderRevision != a.OrderRevision || v.AnimeOrder.Revision != a.OrderRevision {
+	if policy.Category != "anime" || policy.Mode != "mapped" || policy.Revision != a.PolicyRevision || policy.CategoryRevision != a.CategoryRevision || policy.NumberingRevision != a.NumberingRevision || policy.CanonicalTitle != a.CanonicalTitle || !reflect.DeepEqual(policy.AlternateTitles, a.AlternateTitles) || policy.IncludeSpecials != a.IncludeSpecials || policy.AllowPacks != a.AllowPacks || policy.MaxPackEpisodes != a.MaxPackEpisodes || policy.EnglishDubOnly != a.EnglishDubOnly || policy.OrderRevision < 1 || policy.ApprovedOrderRevision != policy.OrderRevision || policy.ApprovedOrderRevision != a.ApprovedOrderRevision || policy.OrderRevision != a.OrderRevision || v.AnimeOrder.Revision != a.OrderRevision {
 		return problem("anime_search_changed", "Mapped Anime consent, order, flags or canonical metadata changed. Review again before downloading.")
 	}
 	if e = library.ValidateAnimeOrderSnapshot(ctx, tx, v.AnimeOrder); e != nil {

@@ -17,6 +17,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import {
   api,
   messageFor,
+  type AnimePreferences,
   type LibraryPage,
   type MediaItem,
   type CatalogProfileContext,
@@ -908,6 +909,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
             onDone={reload}
           />
         )}
+        {kind === "anime" && <AnimeDubSettings />}
       </PageBody>
     </>
   );
@@ -999,6 +1001,197 @@ function MonitorAllFutureEpisodes({
             regular episodes are turned off; specials are left exactly as they
             are. This does not download anything by itself; the automation
             schedule decides what to search.
+          </p>
+        </Modal>
+      )}
+    </section>
+  );
+}
+
+export function AnimeDubSettings() {
+  const prefs = useResource<AnimePreferences>("/library/anime/preferences");
+  const [rule, setRule] = useState("");
+  const [testTitle, setTestTitle] = useState("");
+  const [testResult, setTestResult] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [confirming, setConfirming] = useState<"enable" | "disable" | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (prefs.data) setRule(prefs.data.dub_rule);
+  }, [prefs.data]);
+
+  async function saveRule() {
+    if (!prefs.data || busy) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await api("/library/anime/preferences", {
+        method: "PUT",
+        body: JSON.stringify({ dub_rule: rule, revision: prefs.data.revision }),
+      });
+      prefs.reload();
+      setMessage("English-dub rule saved.");
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function test() {
+    if (busy || !testTitle.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api<{ matches: boolean }>(
+        "/library/anime/dub-test",
+        {
+          method: "POST",
+          body: JSON.stringify({ rule, title: testTitle.trim() }),
+        },
+      );
+      setTestResult(result.matches);
+    } catch (e) {
+      setError(messageFor(e));
+      setTestResult(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyAll(enabled: boolean) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await api<{ shows: number }>(
+        "/library/anime/english-dub",
+        {
+          method: "POST",
+          body: JSON.stringify({ enabled, reviewed: true }),
+        },
+      );
+      setMessage(
+        `${result.shows} Anime shows updated. Existing downloads and files are unchanged.`,
+      );
+      setConfirming(null);
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="lib-maintenance" aria-label="Anime English dub">
+      <div>
+        <h2>English dub only</h2>
+        <p>
+          Set the per-show English-dub filter for every Anime show, and edit the
+          rule used to recognize dub releases. The rule accepts one term per
+          line: <code>/regex/i</code> or a case-insensitive phrase. A release is
+          a dub when any term matches.
+        </p>
+        {message && <Alert kind="success">{message}</Alert>}
+        {error && <Alert kind="danger">{error}</Alert>}
+        <div className="rs-row">
+          <Button
+            variant="soft"
+            disabled={busy}
+            onClick={() => setConfirming("enable")}
+          >
+            Enable for all anime
+          </Button>
+          <Button
+            variant="soft"
+            color="gray"
+            disabled={busy}
+            onClick={() => setConfirming("disable")}
+          >
+            Disable for all anime
+          </Button>
+        </div>
+        <label htmlFor="anime-dub-rule">English-dub rule</label>
+        <textarea
+          id="anime-dub-rule"
+          className="anime-dub-rule"
+          rows={8}
+          value={rule}
+          onChange={(e) => setRule(e.target.value)}
+        />
+        <div className="rs-row">
+          <Button
+            disabled={busy || !prefs.data}
+            onClick={() => void saveRule()}
+          >
+            Save rule
+          </Button>
+          <Button
+            variant="soft"
+            color="gray"
+            disabled={busy || !prefs.data}
+            onClick={() => setRule(prefs.data?.default_rule ?? "")}
+          >
+            Reset to default
+          </Button>
+        </div>
+        <div className="rs-row">
+          <TextField.Root
+            aria-label="Test release title"
+            placeholder="Test a release title"
+            value={testTitle}
+            onChange={(e) => setTestTitle(e.target.value)}
+          />
+          <Button
+            variant="soft"
+            disabled={busy || !testTitle.trim()}
+            onClick={() => void test()}
+          >
+            Test
+          </Button>
+          {testResult !== null && (
+            <Label kind={testResult ? "success" : "warning"}>
+              {testResult ? "Matches" : "Does not match"}
+            </Label>
+          )}
+        </div>
+      </div>
+      {confirming && (
+        <Modal
+          open
+          onOpenChange={(open) => !open && setConfirming(null)}
+          title={
+            confirming === "enable"
+              ? "Enable English dub only for all anime?"
+              : "Disable English dub only for all anime?"
+          }
+          footer={
+            <>
+              <ModalClose>
+                <Button variant="soft" color="gray">
+                  Cancel
+                </Button>
+              </ModalClose>
+              <Button
+                disabled={busy}
+                onClick={() => void applyAll(confirming === "enable")}
+              >
+                Apply
+              </Button>
+            </>
+          }
+        >
+          <p>
+            {confirming === "enable"
+              ? "Every Anime show will reject releases that are not labeled as an English dub under the saved rule."
+              : "Every Anime show will stop applying the English-dub filter."}{" "}
+            Existing downloads and files are unchanged.
           </p>
         </Modal>
       )}

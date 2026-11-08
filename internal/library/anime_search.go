@@ -34,6 +34,7 @@ type AnimeSearchSettings struct {
 	IncludeSpecials       bool     `json:"include_specials"`
 	AllowPacks            bool     `json:"allow_packs"`
 	MaxPackEpisodes       int      `json:"max_pack_episodes"`
+	EnglishDubOnly        bool     `json:"english_dub_only"`
 	MappedCount           int      `json:"mapped_count"`
 	MissingMappingCount   int      `json:"missing_mapping_count"`
 }
@@ -48,12 +49,13 @@ type AnimeSearchUpdate struct {
 	IncludeSpecials   bool     `json:"include_specials"`
 	AllowPacks        bool     `json:"allow_packs"`
 	MaxPackEpisodes   int      `json:"max_pack_episodes"`
+	EnglishDubOnly    bool     `json:"english_dub_only"`
 }
 
 func readAnimeSearch(ctx context.Context, tx *sql.Tx, id int64) (AnimeSearchSettings, error) {
 	out := AnimeSearchSettings{MediaID: id, Mode: "disabled", AlternateTitles: []string{}}
 	var raw, kind string
-	e := tx.QueryRowContext(ctx, `SELECT m.title,m.kind,m.category,m.category_revision,COALESCE(d.revision,0),COALESCE(a.revision,0),COALESCE(a.mode,'disabled'),COALESCE(a.search_title,''),COALESCE(a.alternate_titles,'[]'),COALESCE(o.revision,0),COALESCE(a.approved_order_revision,0),COALESCE(a.include_specials,0),COALESCE(a.allow_packs,0),COALESCE(a.max_pack_episodes,20) FROM media_items m LEFT JOIN series_details d ON d.media_id=m.id LEFT JOIN anime_search_settings a ON a.media_id=m.id LEFT JOIN anime_orders o ON o.media_id=m.id WHERE m.id=?`, id).Scan(&out.CanonicalTitle, &kind, &out.Category, &out.CategoryRevision, &out.NumberingRevision, &out.Revision, &out.Mode, &out.SearchTitle, &raw, &out.OrderRevision, &out.ApprovedOrderRevision, &out.IncludeSpecials, &out.AllowPacks, &out.MaxPackEpisodes)
+	e := tx.QueryRowContext(ctx, `SELECT m.title,m.kind,m.category,m.category_revision,COALESCE(d.revision,0),COALESCE(a.revision,0),COALESCE(a.mode,'disabled'),COALESCE(a.search_title,''),COALESCE(a.alternate_titles,'[]'),COALESCE(o.revision,0),COALESCE(a.approved_order_revision,0),COALESCE(a.include_specials,0),COALESCE(a.allow_packs,0),COALESCE(a.max_pack_episodes,20),COALESCE(a.english_dub_only,0) FROM media_items m LEFT JOIN series_details d ON d.media_id=m.id LEFT JOIN anime_search_settings a ON a.media_id=m.id LEFT JOIN anime_orders o ON o.media_id=m.id WHERE m.id=?`, id).Scan(&out.CanonicalTitle, &kind, &out.Category, &out.CategoryRevision, &out.NumberingRevision, &out.Revision, &out.Mode, &out.SearchTitle, &raw, &out.OrderRevision, &out.ApprovedOrderRevision, &out.IncludeSpecials, &out.AllowPacks, &out.MaxPackEpisodes, &out.EnglishDubOnly)
 	if e != nil {
 		return out, e
 	}
@@ -182,14 +184,14 @@ func (s *Store) SaveAnimeSearch(ctx context.Context, id int64, in AnimeSearchUpd
 			return old, ErrAnimeSearchInput
 		}
 	}
-	if old.Mode == in.Mode && old.SearchTitle == in.SearchTitle && reflect.DeepEqual(old.AlternateTitles, aliases) && old.IncludeSpecials == in.IncludeSpecials && old.AllowPacks == in.AllowPacks && old.MaxPackEpisodes == in.MaxPackEpisodes && old.ApprovedOrderRevision == approved {
+	if old.Mode == in.Mode && old.SearchTitle == in.SearchTitle && reflect.DeepEqual(old.AlternateTitles, aliases) && old.IncludeSpecials == in.IncludeSpecials && old.AllowPacks == in.AllowPacks && old.MaxPackEpisodes == in.MaxPackEpisodes && old.EnglishDubOnly == in.EnglishDubOnly && old.ApprovedOrderRevision == approved {
 		return old, tx.Commit()
 	}
 	raw, e := json.Marshal(aliases)
 	if e != nil {
 		return old, e
 	}
-	_, e = tx.ExecContext(ctx, `INSERT INTO anime_search_settings(media_id,mode,search_title,alternate_titles,revision,include_specials,allow_packs,max_pack_episodes,approved_order_revision) VALUES(?,?,?,?,1,?,?,?,?) ON CONFLICT(media_id) DO UPDATE SET mode=excluded.mode,search_title=excluded.search_title,alternate_titles=excluded.alternate_titles,revision=anime_search_settings.revision+1,include_specials=excluded.include_specials,allow_packs=excluded.allow_packs,max_pack_episodes=excluded.max_pack_episodes,approved_order_revision=excluded.approved_order_revision`, id, in.Mode, in.SearchTitle, string(raw), in.IncludeSpecials, in.AllowPacks, in.MaxPackEpisodes, approved)
+	_, e = tx.ExecContext(ctx, `INSERT INTO anime_search_settings(media_id,mode,search_title,alternate_titles,revision,include_specials,allow_packs,max_pack_episodes,approved_order_revision,english_dub_only) VALUES(?,?,?,?,1,?,?,?,?,?) ON CONFLICT(media_id) DO UPDATE SET mode=excluded.mode,search_title=excluded.search_title,alternate_titles=excluded.alternate_titles,revision=anime_search_settings.revision+1,include_specials=excluded.include_specials,allow_packs=excluded.allow_packs,max_pack_episodes=excluded.max_pack_episodes,approved_order_revision=excluded.approved_order_revision,english_dub_only=excluded.english_dub_only`, id, in.Mode, in.SearchTitle, string(raw), in.IncludeSpecials, in.AllowPacks, in.MaxPackEpisodes, approved, in.EnglishDubOnly)
 	if e != nil {
 		return old, e
 	}
