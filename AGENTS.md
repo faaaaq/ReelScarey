@@ -139,10 +139,11 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   are magnet links or bounded uploaded metainfo (never server-fetched URLs), and
   destructive removal always requires an explicit reviewed choice.
 - internal/arrimport reads only the Movies or Series title list and monitored
-  flag from a Radarr or Sonarr backup. It never reads or imports indexers,
-  download clients, credentials, API keys, paths, quality profiles or files.
-  Preview and apply are explicit administrator actions; a selected Radarr movie
-  keeps its monitored flag, while Sonarr shows start with future-only monitoring.
+  flag from a Radarr or Sonarr backup, or the summary/date/UID of a calendar
+  export. It never reads or imports indexers, download clients, credentials, API
+  keys, paths, quality profiles or files. Preview and apply are explicit
+  administrator actions; a selected Radarr movie keeps its monitored flag, while
+  Sonarr shows start with future-only monitoring.
 - internal/automation owns interval scheduling, leased searches, the
   Sonarr/Radarr-style release feed check and bounded audit history. It delegates
   downloads/imports to transfer; automatic queueing must be fenced inside the

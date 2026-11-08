@@ -24,12 +24,14 @@ const (
 )
 
 type Candidate struct {
-	Kind      string `json:"kind"`
-	TMDbID    int64  `json:"tmdb_id,omitempty"`
-	TVDBID    int64  `json:"tvdb_id,omitempty"`
-	Title     string `json:"title"`
-	Year      *int   `json:"year,omitempty"`
-	Monitored bool   `json:"monitored"`
+	Kind        string `json:"kind"`
+	TMDbID      int64  `json:"tmdb_id,omitempty"`
+	TVDBID      int64  `json:"tvdb_id,omitempty"`
+	Title       string `json:"title"`
+	Year        *int   `json:"year,omitempty"`
+	Monitored   bool   `json:"monitored"`
+	Date        string `json:"date,omitempty"`
+	ReleaseKind string `json:"release_kind,omitempty"`
 }
 
 type Backup struct {

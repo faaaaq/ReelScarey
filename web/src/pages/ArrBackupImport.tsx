@@ -13,6 +13,8 @@ type PreviewItem = {
   title: string;
   year?: number;
   monitored: boolean;
+  date?: string;
+  release_kind?: string;
   in_library: boolean;
   error?: string;
 };
@@ -50,6 +52,7 @@ export function ArrBackupImport() {
         signal: AbortSignal.timeout(180000),
       });
       setPreview(next);
+      const today = new Date().toISOString().slice(0, 10);
       setSelected(
         new Set(
           next.items
@@ -57,7 +60,8 @@ export function ArrBackupImport() {
               (item) =>
                 !item.in_library &&
                 !item.error &&
-                Boolean(item.tmdb_id || item.tvdb_id),
+                Boolean(item.tmdb_id || item.tvdb_id) &&
+                (!item.date || item.date >= today),
             )
             .map(itemKey),
         ),
@@ -123,16 +127,16 @@ export function ArrBackupImport() {
     <PageBody>
       <PageHeading title="Sonarr / Radarr Import" />
       <FieldSet
-        legend="Import titles from a backup"
-        description="Adds the saved title list and monitored choice. It reads only the Movies or Series table from radarr.db or sonarr.db. Indexers, download clients, paths, API keys, quality profiles and other credentials are never read or imported."
+        legend="Import titles from a backup or calendar"
+        description="Adds the saved title list and monitored choice from a Radarr/Sonarr backup ZIP or calendar export. Indexers, download clients, paths, API keys, quality profiles and other credentials are never read or imported."
       >
         <div className="rs-stack">
           <label className="rs-field">
-            <span>Backup ZIP</span>
+            <span>Backup ZIP or calendar .ics</span>
             <input
               type="file"
-              accept=".zip,application/zip"
-              aria-label="Sonarr or Radarr backup"
+              accept=".zip,.ics,application/zip,text/calendar"
+              aria-label="Sonarr or Radarr backup or calendar"
               onChange={(event) => {
                 setFile(event.target.files?.[0] ?? null);
                 setPreview(null);
@@ -142,10 +146,12 @@ export function ArrBackupImport() {
             />
           </label>
           <p className="rs-form-help">
-            The ZIP is processed in memory and never stored. Maximum size 256
-            MiB. Radarr movies keep their TMDb identity and monitored flag.
-            Sonarr shows are matched from TVDB to TMDb and start with
-            future-only monitoring; per-season choices are not imported.
+            The file is processed in the server's temporary directory and never
+            stored. Maximum size 256 MiB for a backup ZIP or 5 MiB for a
+            calendar. A Radarr backup or calendar keeps TMDb movie identity and
+            the monitored flag. A Sonarr backup matches TVDB to TMDb and starts
+            shows with future-only monitoring; Sonarr calendar per-season
+            choices are not imported.
           </p>
           <div className="rs-form-actions">
             <Button
@@ -163,8 +169,16 @@ export function ArrBackupImport() {
 
       {preview && (
         <FieldSet
-          legend={`${preview.source === "radarr" ? "Radarr" : "Sonarr"} backup`}
-          description={`${preview.items.length} titles in the backup. ${candidates} can be added. Unmatched or already saved titles stay unselected.`}
+          legend={`${
+            preview.source.startsWith("radarr")
+              ? "Radarr"
+              : preview.source.startsWith("sonarr")
+                ? "Sonarr"
+                : "Calendar"
+          } ${preview.source.endsWith("-ical") ? "calendar" : "backup"}`}
+          description={`${preview.items.length} titles in the ${
+            preview.source.endsWith("-ical") ? "calendar" : "backup"
+          }. ${candidates} can be added. Unmatched or already saved titles stay unselected.`}
           actions={
             <Button
               type="button"
@@ -179,15 +193,18 @@ export function ArrBackupImport() {
         >
           <div className="rs-stack">
             {preview.items.length === 0 ? (
-              <p className="rs-muted">The backup contains no titles.</p>
+              <p className="rs-muted">The file contains no titles.</p>
             ) : (
-              <Table label="Backup titles" className="adm-settings-table">
+              <Table label="Import titles" className="adm-settings-table">
                 <thead>
                   <tr>
                     <th scope="col" className="is-shrink">
                       Add
                     </th>
                     <th scope="col">Title</th>
+                    <th scope="col" className="is-shrink">
+                      Date
+                    </th>
                     <th scope="col" className="is-shrink">
                       Year
                     </th>
@@ -212,6 +229,7 @@ export function ArrBackupImport() {
                           />
                         </td>
                         <td>{item.title}</td>
+                        <td>{item.date ?? "—"}</td>
                         <td>{item.year ?? "—"}</td>
                         <td>{item.monitored ? "Yes" : "No"}</td>
                         <td>

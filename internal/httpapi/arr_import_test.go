@@ -152,6 +152,30 @@ func TestArrSonarrBackupPreviewAndApply(t *testing.T) {
 	}
 }
 
+func TestArrCalendarPreviewAndApply(t *testing.T) {
+	handler, db, accounts, code := rawFixture(t, &testProvider{})
+	session, err := accounts.Setup(context.Background(), "testadmin", "test-only-password", code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out := request(handler, "PUT", "/api/v1/providers/tmdb", `{"token":"test-only-valid-provider-token"}`, &session, true); out.Code != 200 {
+		t.Fatal(out.Code, out.Body.String())
+	}
+	calendar := []byte("BEGIN:VCALENDAR\r\nX-WR-CALNAME:Radarr Movies Calendar\r\nBEGIN:VEVENT\r\nSUMMARY:Search fixture (Theatrical Release)\r\nDTSTART;VALUE=DATE:20261110\r\nUID:Radarr_movie_11_cinemas\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+	out := rawRequest(handler, "/api/v1/library/import/backup/preview", calendar, "text/calendar", session.Token, session.CSRFToken)
+	if out.Code != 200 || !bytes.Contains(out.Body.Bytes(), []byte(`"source":"radarr-ical"`)) || !bytes.Contains(out.Body.Bytes(), []byte(`"tmdb_id":11`)) || !bytes.Contains(out.Body.Bytes(), []byte(`"date":"2026-11-10"`)) {
+		t.Fatal(out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/import/backup/apply", `{"items":[{"kind":"movie","tmdb_id":11,"monitored":true}]}`, &session, true)
+	if out.Code != 200 || !bytes.Contains(out.Body.Bytes(), []byte(`"added":1`)) {
+		t.Fatal(out.Code, out.Body.String())
+	}
+	var monitored int
+	if err = db.QueryRow(`SELECT monitored FROM media_items WHERE kind='movie' AND tmdb_id=11`).Scan(&monitored); err != nil || monitored != 1 {
+		t.Fatal("the calendar movie was not added", monitored, err)
+	}
+}
+
 func TestArrBackupRejectsInvalidZip(t *testing.T) {
 	handler, _, accounts, code := rawFixture(t, &testProvider{})
 	session, err := accounts.Setup(context.Background(), "testadmin", "test-only-password", code)

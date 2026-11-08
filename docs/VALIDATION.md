@@ -2422,3 +2422,20 @@ Run locally on Windows (development tools only; Docker remains the target):
   vet and build passed.
 - Frontend format:check, check, the full suite (50 files, 274 tests) and the
   build passed, including the backup review/apply flow.
+
+## Version 0.43.1 Radarr and Sonarr calendar import
+
+- The same Settings page accepts a Radarr or Sonarr `.ics` calendar export as
+  well as a backup ZIP. The calendar parser reads only `SUMMARY`, `DTSTART` and
+  `UID`; descriptions, categories and URLs are ignored.
+- Radarr release-kind suffixes (`Theatrical`, `Digital`, `Physical`, `Cinema`)
+  are stripped, duplicate release events for one movie collapse to the latest
+  date, and the event date/year is shown in the review. Calendar titles dated
+  before today start unselected.
+- Calendar events have no TMDb ID, so the preview resolves them through an exact
+  TMDb title search (with the event year for movies). Multiple or missing matches
+  stay unselected for manual addition.
+- Tests cover the Radarr and Sonarr calendar formats, `ParseAny` detection and
+  the HTTP calendar preview/apply path. The full Go suite, vet and build passed;
+  frontend format:check, check, the full suite (50 files, 274 tests) and the
+  build passed.

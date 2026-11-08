@@ -43,7 +43,7 @@ function mount() {
 describe("Sonarr and Radarr backup import", () => {
   it("reviews and adds a backup title", async () => {
     const calls = mount();
-    const input = screen.getByLabelText("Sonarr or Radarr backup");
+    const input = screen.getByLabelText("Sonarr or Radarr backup or calendar");
     const file = new File([new Uint8Array([1, 2, 3])], "radarr_backup.zip", {
       type: "application/zip",
     });

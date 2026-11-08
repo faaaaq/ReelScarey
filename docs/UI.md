@@ -42,13 +42,15 @@ Search results and the title details modal use the same add controls.
 
 ## Sonarr and Radarr backup import (0.43.0)
 
-Settings → **Sonarr / Radarr Import** accepts a backup ZIP, shows the saved
-titles with their monitored choice and TMDb/TVDB identity, and adds only the
-selected titles. It reads only the `Movies` or `Series` table; indexers,
-download clients, credentials, API keys, paths and quality profiles are never
-imported. Selected Radarr movies preserve their monitored flag, including movies
-with future release dates. Sonarr shows are matched from TVDB to TMDb and start
-with future-only monitoring. See [Sonarr/Radarr import](ARR_IMPORT.md).
+Settings → **Sonarr / Radarr Import** accepts a backup ZIP or calendar `.ics`,
+shows the saved titles with their monitored choice and TMDb/TVDB identity, and
+adds only the selected titles. It reads only the `Movies`/`Series` table or the
+calendar summary/date/UID; indexers, download clients, credentials, API keys,
+paths and quality profiles are never imported. Selected Radarr movies preserve
+their monitored flag, including movies with future release dates. Sonarr shows
+are matched from TVDB to TMDb and start with future-only monitoring. Calendar
+titles dated before today start unselected. See
+[Sonarr/Radarr import](ARR_IMPORT.md).
 
 ## Shell
 

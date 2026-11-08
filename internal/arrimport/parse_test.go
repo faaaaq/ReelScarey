@@ -101,6 +101,40 @@ func TestParseRadarrMovieMetadataFallback(t *testing.T) {
 	}
 }
 
+func TestParseCalendarMoviesAndSeries(t *testing.T) {
+	radarr := []byte("BEGIN:VCALENDAR\r\nX-WR-CALNAME:Radarr Movies Calendar\r\nBEGIN:VEVENT\r\nSUMMARY:KPop Demon Hunters (Theatrical Release)\r\nDTSTART;VALUE=DATE:20250823\r\nUID:Radarr_movie_1466_cinemas\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nSUMMARY:KPop Demon Hunters (Digital Release)\r\nDTSTART;VALUE=DATE:20261103\r\nUID:Radarr_movie_1466_digital\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nSUMMARY:Focker-in-Law (Theatrical Release)\r\nDTSTART;VALUE=DATE:20261125\r\nUID:Radarr_movie_1619_cinemas\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+	backup, err := ParseCalendar(radarr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backup.Source != "radarr-ical" || len(backup.Items) != 2 {
+		t.Fatal(backup)
+	}
+	if backup.Items[0].Title != "Focker-in-Law" || backup.Items[0].Date != "2026-11-25" || backup.Items[0].Year == nil || *backup.Items[0].Year != 2026 {
+		t.Fatal(backup.Items[0])
+	}
+	if backup.Items[1].Title != "KPop Demon Hunters" || backup.Items[1].Date != "2026-11-03" || backup.Items[1].ReleaseKind != "digital release" {
+		t.Fatal(backup.Items[1])
+	}
+
+	sonarr := []byte("BEGIN:VCALENDAR\r\nX-WR-CALNAME:Sonarr Calendar\r\nBEGIN:VEVENT\r\nSUMMARY:Fixture Show - S01E02 - Arrival\r\nDTSTART;VALUE=DATE:20261110\r\nUID:Sonarr_episode_100\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n")
+	backup, err = ParseCalendar(sonarr)
+	if err != nil || backup.Source != "sonarr-ical" || len(backup.Items) != 1 || backup.Items[0].Kind != "series" || backup.Items[0].Title != "Fixture Show" {
+		t.Fatal(backup, err)
+	}
+}
+
+func TestParseAnyDetectsCalendar(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "radarr.ics")
+	if err := os.WriteFile(path, []byte("BEGIN:VCALENDAR\r\nX-WR-CALNAME:Radarr\r\nEND:VCALENDAR\r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if backup, err := ParseAny(context.Background(), path); err != nil || backup.Source != "radarr-ical" || len(backup.Items) != 0 {
+		t.Fatal("calendar detection", backup, err)
+	}
+}
+
 func TestParseRejectsNonBackupZip(t *testing.T) {
 	dir := t.TempDir()
 	archive := filepath.Join(dir, "backup.zip")
