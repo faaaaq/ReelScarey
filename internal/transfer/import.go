@@ -390,12 +390,27 @@ func (i *Importer) Execute(ctx context.Context, j Job, source string, size int64
 		} else if !errors.Is(e, os.ErrNotExist) {
 			return e
 		}
-		mode := "hardlink"
-		if e = i.link(src, parent, p.Stage); e != nil {
-			if errors.Is(e, os.ErrExist) {
+		preferHardlink := p.Mode == "hardlink"
+		if p.Mode == "" || p.Mode == "pending" {
+			prefs, err := settings.New(s.db).Get(ctx)
+			if err != nil {
+				return err
+			}
+			preferHardlink = prefs.ImportMode != "copy"
+		}
+		mode := "copy"
+		if preferHardlink {
+			if e = i.link(src, parent, p.Stage); e == nil {
+				mode = "hardlink"
+			} else if errors.Is(e, os.ErrExist) {
 				return problem("staging_conflict", "An unexpected staging file appeared. Retry after reviewing it.")
 			}
-			mode = "copy"
+		}
+		if mode == "hardlink" {
+			if e = i.phase(ctx, j, &p, "planned", mode); e != nil {
+				return e
+			}
+		} else {
 			stage, e := folder.OpenFile(p.Stage, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
 			if e != nil {
 				return problem("storage_unavailable", "The library staging file could not be created safely.")
@@ -407,11 +422,6 @@ func (i *Importer) Execute(ctx context.Context, j Job, source string, size int64
 			e = i.copy(ctx, src, stage, p)
 			stage.Close()
 			if e != nil {
-				return e
-			}
-		}
-		if mode == "hardlink" {
-			if e = i.phase(ctx, j, &p, "planned", mode); e != nil {
 				return e
 			}
 		}

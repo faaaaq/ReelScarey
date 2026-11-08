@@ -21,9 +21,13 @@ type Settings struct {
 	// RegisterUnverifiedVideo permits existing-library registration when the
 	// video cannot be inspected. Registered files carry no resolution facts
 	// and are labeled as unverified.
-	RegisterUnverifiedVideo bool   `json:"register_unverified_video"`
-	Revision                int    `json:"revision"`
-	UpdatedAt               string `json:"updated_at"`
+	RegisterUnverifiedVideo bool `json:"register_unverified_video"`
+	// ImportMode selects whether completed downloads are hardlinked into the
+	// library when possible or always copied. Publication inside the library
+	// still uses a private no-overwrite hardlink.
+	ImportMode string `json:"import_mode"`
+	Revision   int    `json:"revision"`
+	UpdatedAt  string `json:"updated_at"`
 }
 
 type Update struct {
@@ -33,7 +37,9 @@ type Update struct {
 	EpisodeNaming string `json:"episode_naming"`
 	// Pointer so a missing field keeps the saved preference unchanged.
 	RegisterUnverifiedVideo *bool `json:"register_unverified_video,omitempty"`
-	Revision                int   `json:"revision"`
+	// Pointer so older callers that omit the field keep the saved method.
+	ImportMode *string `json:"import_mode,omitempty"`
+	Revision   int     `json:"revision"`
 }
 
 type ValidationError struct{ Message string }
@@ -64,6 +70,49 @@ func (u *Update) Validate() error {
 	if u.EpisodeNaming != "" && u.EpisodeNaming != "standard" && u.EpisodeNaming != "with-title" {
 		return &ValidationError{"Choose standard episode names or names with episode titles."}
 	}
+	if u.ImportMode != nil {
+		*u.ImportMode = strings.TrimSpace(*u.ImportMode)
+		if err := ValidateImportMode(*u.ImportMode); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ValidateImportMode accepts the supported download-to-library import methods.
+// Empty is not a stored method; callers that omit the existing setting should
+// leave the pointer nil instead.
+func ValidateImportMode(mode string) error {
+	if mode != "hardlink" && mode != "copy" {
+		return &ValidationError{"Choose hardlink imports when possible or always copy."}
+	}
+	return nil
+}
+
+// SetImportModeTx persists the first-run import method inside the administrator
+// setup transaction. The settings row is created by the foundation migration.
+func SetImportModeTx(ctx context.Context, tx *sql.Tx, mode string) error {
+	if err := ValidateImportMode(mode); err != nil {
+		return err
+	}
+	var current string
+	if err := tx.QueryRowContext(ctx, `SELECT import_mode FROM settings WHERE id=1`).Scan(&current); err != nil {
+		return err
+	}
+	if current == mode {
+		return nil
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE settings SET import_mode=?, revision=revision+1, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1`, mode)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return errors.New("the settings row is missing")
+	}
 	return nil
 }
 
@@ -73,7 +122,7 @@ func New(db *sql.DB) *Store { return &Store{db: db} }
 
 func (s *Store) Get(ctx context.Context) (Settings, error) {
 	var out Settings
-	err := s.db.QueryRowContext(ctx, "SELECT library_name, movie_folder, series_folder, episode_naming, register_unverified_video, revision, updated_at FROM settings WHERE id = 1").Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.RegisterUnverifiedVideo, &out.Revision, &out.UpdatedAt)
+	err := s.db.QueryRowContext(ctx, "SELECT library_name, movie_folder, series_folder, episode_naming, register_unverified_video, import_mode, revision, updated_at FROM settings WHERE id = 1").Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.RegisterUnverifiedVideo, &out.ImportMode, &out.Revision, &out.UpdatedAt)
 	return out, err
 }
 
@@ -82,7 +131,7 @@ func (s *Store) Update(ctx context.Context, in Update) (Settings, error) {
 		return Settings{}, err
 	}
 	var out Settings
-	err := s.db.QueryRowContext(ctx, `UPDATE settings SET library_name=?,movie_folder=?,series_folder=?,episode_naming=CASE WHEN ?='' THEN episode_naming ELSE ? END,register_unverified_video=COALESCE(?,register_unverified_video),revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND revision=? RETURNING library_name,movie_folder,series_folder,episode_naming,register_unverified_video,revision,updated_at`, in.LibraryName, in.MovieFolder, in.SeriesFolder, in.EpisodeNaming, in.EpisodeNaming, in.RegisterUnverifiedVideo, in.Revision).Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.RegisterUnverifiedVideo, &out.Revision, &out.UpdatedAt)
+	err := s.db.QueryRowContext(ctx, `UPDATE settings SET library_name=?,movie_folder=?,series_folder=?,episode_naming=CASE WHEN ?='' THEN episode_naming ELSE ? END,register_unverified_video=COALESCE(?,register_unverified_video),import_mode=COALESCE(?,import_mode),revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND revision=? RETURNING library_name,movie_folder,series_folder,episode_naming,register_unverified_video,import_mode,revision,updated_at`, in.LibraryName, in.MovieFolder, in.SeriesFolder, in.EpisodeNaming, in.EpisodeNaming, in.RegisterUnverifiedVideo, in.ImportMode, in.Revision).Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.RegisterUnverifiedVideo, &out.ImportMode, &out.Revision, &out.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Settings{}, ErrConflict
 	}

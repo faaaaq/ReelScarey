@@ -42,6 +42,15 @@ Media and download ownership/permissions are never changed. Grant the selected
 account access to your existing Anime and TV folders. Downloads are read-only;
 seeding sources remain untouched. `TZ` accepts a timezone such as America/Chicago.
 
+The example mounts `/downloads` read-only and the library folders separately.
+That forces imports to use a verified copy because Linux hardlinks require one
+writable mounted filesystem. To allow hardlink imports, mount one writable host
+parent that contains both downloads and library folders, then set the container
+roots inside it, for example `REELSCAREY_MEDIA_DIR=/data/media` and
+`REELSCAREY_DOWNLOADS_DIR=/data/downloads`. The first-run setup asks for the
+import method, and **Settings → General → File imports** can change it later.
+Symbolic-link imports are not supported.
+
 The example uses your exact host paths, including `/mnt/masstorage`; check that
 spelling against your server before starting Docker.
 

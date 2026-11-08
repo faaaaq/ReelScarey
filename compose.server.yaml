@@ -19,6 +19,12 @@ services:
     environment:
       REELSCAREY_PUBLIC_URL: ${REELSCAREY_PUBLIC_URL:?Set the exact browser URL in server.env}
       REELSCAREY_LOG_LEVEL: info
+      # Optional hardlink imports: mount one writable parent and use
+      # REELSCAREY_MEDIA_DIR=/data/media, REELSCAREY_DOWNLOADS_DIR=/data/downloads.
+      # The default mounts below are separate and downloads is read-only, so
+      # imports use a verified copy. Setup asks for the import method.
+      # REELSCAREY_MEDIA_DIR: /data/media
+      # REELSCAREY_DOWNLOADS_DIR: /data/downloads
     # Optional VPN support for the built-in torrent client: uncomment the
     # capability together with REELSCAREY_KEEP_NET_ADMIN=1 in server.env. The
     # tunnel only carries torrent traffic the client binds to it.
@@ -26,6 +32,10 @@ services:
     #   - NET_ADMIN
     volumes:
       - config:/config
+      # Separate mounts and a read-only download root force verified copies.
+      # To allow hardlink imports, replace the two bind mounts below with one
+      # writable parent (for example ${DATA_PATH:?}:/data) and set the two
+      # environment roots above to /data/media and /data/downloads.
       - type: bind
         source: ${MEDIA_PATH:?Set an existing test media folder in server.env}
         target: /media

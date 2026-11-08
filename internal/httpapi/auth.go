@@ -3,10 +3,12 @@ package httpapi
 import (
 	"context"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/faaaaq/ReelScarey/internal/auth"
+	"github.com/faaaaq/ReelScarey/internal/settings"
 	"io"
 	"mime"
 	"net"
@@ -183,11 +185,22 @@ func (s *Server) authSetup(w http.ResponseWriter, r *http.Request) {
 		Username   string `json:"username"`
 		Password   string `json:"password"`
 		SetupToken string `json:"setup_token"`
+		ImportMode string `json:"import_mode"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	session, err := s.auth.Setup(r.Context(), body.Username, body.Password, body.SetupToken)
+	mode := strings.TrimSpace(body.ImportMode)
+	if mode == "" {
+		mode = "hardlink"
+	}
+	if err := settings.ValidateImportMode(mode); err != nil {
+		fail(w, 400, "validation_error", err.Error())
+		return
+	}
+	session, err := s.auth.SetupWith(r.Context(), body.Username, body.Password, body.SetupToken, func(ctx context.Context, tx *sql.Tx) error {
+		return settings.SetImportModeTx(ctx, tx, mode)
+	})
 	if err != nil {
 		s.authError(w, err)
 		return

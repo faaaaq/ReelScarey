@@ -18,6 +18,12 @@ Historical native and package results below remain as records of past work.
   verified review, pre-restore safety copy, controlled restart and interrupted
   switch rollback. Media files and host deployment settings remain separate.
 
+- [x] Choose hardlink-when-possible or copy-only library imports during first-run
+  setup, with a Settings control for existing installations. Hardlink imports
+  require the download and media roots to share one writable mount; separate or
+  read-only mounts use a verified copy. Publication remains hardlink-only and
+  symbolic-link imports are not supported.
+
 - [x] Add a Music catalog with MusicBrainz artist, album and track metadata, a
   Music tab, existing-file scanning and reviewed registration, reviewed
   organization and verified tag writing with rollback, audio release search and

@@ -185,6 +185,7 @@ function pick(value: LibrarySettings): SettingsUpdate {
     series_folder,
     episode_naming,
     register_unverified_video,
+    import_mode,
     revision,
   } = value;
   return {
@@ -193,6 +194,7 @@ function pick(value: LibrarySettings): SettingsUpdate {
     series_folder,
     episode_naming,
     register_unverified_video,
+    import_mode: import_mode ?? "hardlink",
     revision,
   };
 }
@@ -344,6 +346,32 @@ function GeneralSettings() {
                     maxLength={80}
                     required
                   />
+                </FormGroup>
+              </FieldSet>
+              <FieldSet
+                legend="File imports"
+                description="Controls how completed downloads enter the library. ReelScarey still uses private, no-overwrite hardlinks inside the library for publication and reorganization."
+              >
+                <FormGroup
+                  label="Library import method"
+                  htmlFor="import-mode"
+                  help="Hardlink saves space only when downloads and the library share the same writable mounted filesystem. Otherwise the import automatically uses a verified copy. Always copy writes an independent library copy and needs space for both files while the download seeds. Symbolic-link imports are not supported because removing a seeding source would break the library file."
+                >
+                  <select
+                    id="import-mode"
+                    value={form.import_mode}
+                    onChange={(e) =>
+                      update(
+                        "import_mode",
+                        e.target.value as SettingsUpdate["import_mode"],
+                      )
+                    }
+                  >
+                    <option value="hardlink">
+                      Hardlink when possible (default)
+                    </option>
+                    <option value="copy">Always copy</option>
+                  </select>
                 </FormGroup>
               </FieldSet>
               <FieldSet legend="File verification">

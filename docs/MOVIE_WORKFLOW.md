@@ -81,15 +81,22 @@ destination are journaled before writes. Paths are deterministic:
 Preferences apply when planning; changing them does not move files or an existing
 import plan. Library folder settings alone do not scan or mutate files.
 
-Linux first attempts a hardlink between anchored source/destination handles.
-Other hosts, cross-device operations, read-only source mounts and unsupported
-links use a staged copy. A partial copy resumes only after its prefix matches
-the unchanged source. Full size and SHA-256 are verified before publication.
+Linux first attempts a hardlink between anchored source/destination handles when
+the **Library import method** is *Hardlink when possible* (the default, chosen
+during first-run setup and editable in Settings). *Always copy* skips that
+attempt. Other hosts, cross-device operations, read-only source mounts and
+unsupported links use a staged copy. A partial copy resumes only after its prefix
+matches the unchanged source. Full size and SHA-256 are verified before
+publication.
 
 Publication is an exclusive atomic hardlink from the verified staging file
 inside the destination directory. It never overwrites an existing file. The
 media filesystem must therefore support hardlinks (such as NTFS, ext4, XFS or
 ZFS); unsupported publication stops safely and retains staging for review.
+Download-to-library hardlinks additionally require both roots on one writable
+mounted filesystem. The default container mounts are separate and downloads is
+read-only, so imports copy there even when the preference is *Hardlink when
+possible*. Symbolic-link imports are not supported.
 Linux syncs file/directory changes. Windows flushes staged file contents and
 uses the same recovery checks without a directory-fsync guarantee.
 

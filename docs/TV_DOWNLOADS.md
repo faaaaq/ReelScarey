@@ -56,9 +56,10 @@ components are bounded in UTF-8 bytes. Specials use Season 00. A multi-episode
 file is stored once, with multiple episode associations. Each video has a separate
 plan/staging name identified by parent job and client file index. The shared
 importer anchors filesystem access, rejects traversal/symlinks, requires FFprobe,
-journals size/mtime/hash, prefers Linux hardlinks, resumes verified copies and
-publishes exclusively without overwrite. Media filesystems must support the
-existing staging-to-final hardlink publication. Sources remain unchanged.
+journals size/mtime/hash, prefers Linux hardlinks when the shared **Library import
+method** allows, resumes verified copies and publishes exclusively without
+overwrite. Media filesystems must support the existing staging-to-final hardlink
+publication. Sources remain unchanged.
 
 File registration, episode associations and that file's committed journal phase
 are transactional. The parent job completes only after all mapped files commit.

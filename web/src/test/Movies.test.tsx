@@ -107,6 +107,36 @@ describe("authentication and movies", () => {
       username: "testadmin",
       password: "test-only-password",
       setup_token: "x".repeat(43),
+      import_mode: "hardlink",
+    });
+  });
+  it("sends the chosen copy-only import method during setup", async () => {
+    const fetch = setup((url) =>
+      url.endsWith("/auth/session")
+        ? Response.json({ authenticated: false, setup_required: true })
+        : url.endsWith("/auth/setup")
+          ? Response.json(session, { status: 201 })
+          : undefined,
+    );
+    mount();
+    await screen.findByLabelText("Setup code");
+    await userEvent.type(screen.getByLabelText("Setup code"), "x".repeat(43));
+    await userEvent.type(screen.getByLabelText("Username"), "testadmin");
+    await userEvent.type(
+      screen.getByLabelText("Password"),
+      "test-only-password",
+    );
+    await userEvent.selectOptions(
+      screen.getByLabelText("Import method"),
+      "copy",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create administrator" }),
+    );
+    await screen.findByRole("heading", { name: "Set up your library" });
+    const sent = fetch.mock.calls.find(([url]) => url.endsWith("/auth/setup"));
+    expect(JSON.parse(String(sent?.[1]?.body))).toMatchObject({
+      import_mode: "copy",
     });
   });
   it("explains a truncated setup code before sending an authentication attempt", async () => {

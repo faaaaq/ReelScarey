@@ -9,6 +9,7 @@ const settings = {
   library_name: "My library",
   movie_folder: "Movies",
   series_folder: "TV Shows",
+  import_mode: "hardlink",
   revision: 1,
   updated_at: "2026-10-22T00:00:00Z",
 };
@@ -182,9 +183,25 @@ describe("foundation UI", () => {
       library_name: "Friday cinema",
       movie_folder: "Movies",
       series_folder: "TV Shows",
+      import_mode: "hardlink",
       revision: 1,
     });
     expect(screen.getByRole("button", { name: "Save Changes" })).toBeDisabled();
+  });
+
+  it("saves a copy-only import method from general settings", async () => {
+    const fetch = setupFetch();
+    mount("/settings/general");
+    const method = await screen.findByLabelText("Library import method");
+    await userEvent.selectOptions(method, "copy");
+    await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    expect(await screen.findByText("Preferences saved.")).toBeVisible();
+    const saveCall = fetch.mock.calls.find(
+      ([, options]) => options?.method === "PUT",
+    );
+    expect(JSON.parse(String(saveCall?.[1]?.body))).toMatchObject({
+      import_mode: "copy",
+    });
   });
 
   it("preserves unsaved edits on a revision conflict and allows reload", async () => {

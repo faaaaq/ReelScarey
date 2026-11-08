@@ -53,6 +53,34 @@ func TestEpisodeNamingPersistsAcrossLegacyUpdates(t *testing.T) {
 	}
 }
 
+func TestImportModeValidationAndPersistence(t *testing.T) {
+	ctx := context.Background()
+	db, e := database.Open(ctx, t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	store := New(db)
+	out, e := store.Get(ctx)
+	if e != nil || out.ImportMode != "hardlink" {
+		t.Fatalf("default import mode: %+v %v", out, e)
+	}
+	bad := Update{LibraryName: "Cinema", MovieFolder: "Movies", SeriesFolder: "TV", ImportMode: new(string), Revision: out.Revision}
+	*bad.ImportMode = "symlink"
+	if bad.Validate() == nil {
+		t.Fatal("unsupported import mode accepted")
+	}
+	copyMode := "copy"
+	out, e = store.Update(ctx, Update{LibraryName: "Cinema", MovieFolder: "Movies", SeriesFolder: "TV", ImportMode: &copyMode, Revision: out.Revision})
+	if e != nil || out.ImportMode != "copy" {
+		t.Fatalf("copy mode not saved: %+v %v", out, e)
+	}
+	out, e = store.Update(ctx, Update{LibraryName: "Cinema", MovieFolder: "Movies", SeriesFolder: "TV", Revision: out.Revision})
+	if e != nil || out.ImportMode != "copy" {
+		t.Fatalf("omitted import mode reset the preference: %+v %v", out, e)
+	}
+}
+
 func TestConcurrentUpdateAndRestart(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

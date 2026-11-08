@@ -101,6 +101,33 @@ func TestRequesterCannotAccessAdministratorAPIs(t *testing.T) {
 	}
 }
 
+func TestSetupSavesImportMethod(t *testing.T) {
+	for _, test := range []struct{ name, body, want string }{
+		{"copy", `"import_mode":"copy"`, "copy"},
+		{"default", ``, "hardlink"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h, db, _, code := rawFixture(t, nil)
+			body := `{"username":"testadmin","password":"test-only-password","setup_token":"` + code + `"`
+			if test.body != "" {
+				body += "," + test.body
+			}
+			body += "}"
+			req := httptest.NewRequest("POST", "/api/v1/auth/setup", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != 201 {
+				t.Fatalf("setup failed: %d %s", rec.Code, rec.Body)
+			}
+			var mode string
+			if e := db.QueryRow(`SELECT import_mode FROM settings WHERE id=1`).Scan(&mode); e != nil || mode != test.want {
+				t.Fatalf("saved import mode: %q %v", mode, e)
+			}
+		})
+	}
+}
+
 func TestAPIInputBoundaries(t *testing.T) {
 	for _, test := range []struct {
 		name, method, path, body, contentType, origin string

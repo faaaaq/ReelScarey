@@ -52,7 +52,8 @@ type Guide struct {
 func (s *Service) Guide(ctx context.Context) (Guide, error) {
 	var out Guide
 	var admin, tmdb, media int
-	if e := s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM admin_account),(SELECT COUNT(*) FROM provider_secrets WHERE provider='tmdb'),(SELECT COUNT(*) FROM media_files),library_name FROM settings WHERE id=1`).Scan(&admin, &tmdb, &media, &out.LibraryName); e != nil {
+	var importMode string
+	if e := s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM admin_account),(SELECT COUNT(*) FROM provider_secrets WHERE provider='tmdb'),(SELECT COUNT(*) FROM media_files),library_name,import_mode FROM settings WHERE id=1`).Scan(&admin, &tmdb, &media, &out.LibraryName, &importMode); e != nil {
 		return out, e
 	}
 	out.HasMedia = media > 0
@@ -63,7 +64,11 @@ func (s *Service) Guide(ctx context.Context) (Guide, error) {
 		}
 		return "pending"
 	}
-	out.Steps = []Step{{"account", "Administrator", "Your local administrator controls this installation.", state(admin == 1), "/setup", false}, {"library", "Library preferences", "Choose library and destination folder names. Storage checks verify access separately.", "ready", "/settings", false}, {"metadata", "Movie and TV metadata", "Save a TMDb connection to search and add titles.", state(tmdb > 0), "/settings#tmdb", false}}
+	importMessage := "Completed downloads are hardlinked into the library when the download and media roots share a writable mount; otherwise ReelScarey writes a verified copy."
+	if importMode == "copy" {
+		importMessage = "Every completed download is copied into the library. The download source remains available for seeding."
+	}
+	out.Steps = []Step{{"account", "Administrator", "Your local administrator controls this installation.", state(admin == 1), "/setup", false}, {"library", "Library preferences", "Choose library and destination folder names. Storage checks verify access separately.", "ready", "/settings", false}, {"imports", "File imports", importMessage, "ready", "/settings/general", false}, {"metadata", "Movie and TV metadata", "Save a TMDb connection to search and add titles.", state(tmdb > 0), "/settings#tmdb", false}}
 	for _, item := range []struct{ name, title, href string }{{"torznab", "Indexers", "/indexers"}, {"qbittorrent", "Torrent download client", "/settings#qbittorrent"}, {"sabnzbd", "Usenet download client", "/settings#sabnzbd"}, {"opensubtitles", "Subtitle provider", "/subtitles"}} {
 		var n int
 		if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM integration_configs WHERE name=?`, item.name).Scan(&n); e != nil {

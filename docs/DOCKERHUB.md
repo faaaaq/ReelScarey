@@ -69,7 +69,8 @@ seeding.
 
 - FFprobe verification, SHA-256 evidence and journaled imports that resume after
   a restart.
-- Linux hardlinks where possible; verified staged copies otherwise.
+- Choose hardlink-when-possible or copy-only library imports; Linux hardlinks
+  where possible, verified staged copies otherwise.
 - **No overwrite.** Publication is exclusive and existing files are refused.
 - Sources stay in place for seeding; an import never deletes a torrent.
 - Reviewed renaming and organization with Movies/TV/Anime/custom collections,
@@ -173,6 +174,11 @@ services:
       - /srv/reelscarey/media:/media
       # Read-only keeps torrent/usenet sources safe from accidental edits.
       - /srv/reelscarey/downloads:/downloads:ro
+      # Separate mounts (and the read-only download root) force verified
+      # copies. For hardlink imports, use one writable parent instead:
+      #   - /srv/reelscarey/data:/data
+      # and set REELSCAREY_MEDIA_DIR=/data/media plus
+      # REELSCAREY_DOWNLOADS_DIR=/data/downloads above.
 ```
 
 ### Start and create the administrator
@@ -183,7 +189,9 @@ docker compose exec reelscarey reelscarey setup-token
 ```
 
 Open the URL from `REELSCAREY_PUBLIC_URL`, paste the one-time setup code and
-create the administrator. The code is also stored at
+create the administrator. The form also asks whether to prefer hardlinks or
+always copy completed downloads; the choice is available later under
+**Settings → General → File imports**. The code is also stored at
 `/config/state/setup-token` and is removed after setup. **No default password
 exists.**
 
@@ -204,9 +212,12 @@ installation to save its own token.
 3. **Download clients**: add an external client, or configure the bundled
    qBittorrent and optional SABnzbd clients and choose protocol defaults.
 4. **Organize library**: set your Movies/TV/Anime folders and naming presets.
-5. **Add a title**, search releases, and follow the download and import in
+5. **Settings → General → File imports**: confirm hardlink-when-possible or
+   always-copy for completed downloads. Separate or read-only download mounts
+   make imports copy in practice.
+6. **Add a title**, search releases, and follow the download and import in
    **Activity**.
-6. **Backups**: create a snapshot immediately. Keep `secrets.key` with it.
+7. **Backups**: create a snapshot immediately. Keep `secrets.key` with it.
 
 ---
 

@@ -114,6 +114,7 @@ function AuthForm({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
+  const [importMode, setImportMode] = useState<"hardlink" | "copy">("hardlink");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   async function submit(event: FormEvent) {
@@ -135,7 +136,9 @@ function AuthForm({
           body: JSON.stringify({
             username,
             password,
-            ...(setup ? { setup_token: code.trim() } : {}),
+            ...(setup
+              ? { setup_token: code.trim(), import_mode: importMode }
+              : {}),
           }),
         },
       );
@@ -233,6 +236,27 @@ function AuthForm({
                 </p>
               )}
             </div>
+            {setup && (
+              <div className="rs-auth-field">
+                <label htmlFor="auth-import-mode">Import method</label>
+                <select
+                  id="auth-import-mode"
+                  value={importMode}
+                  onChange={(e) =>
+                    setImportMode(e.target.value as "hardlink" | "copy")
+                  }
+                >
+                  <option value="hardlink">Hardlink when possible</option>
+                  <option value="copy">Always copy</option>
+                </select>
+                <p className="rs-form-help">
+                  Hardlinks save space only when downloads and the library are
+                  on the same writable mounted filesystem; otherwise ReelScarey
+                  writes a verified copy. You can change this later in Settings.
+                  Symbolic links are not used for library imports.
+                </p>
+              </div>
+            )}
           </fieldset>
           {error && (
             <p className="rs-form-error" role="alert">

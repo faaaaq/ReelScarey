@@ -114,6 +114,17 @@ func (s *Service) acquire() bool {
 }
 
 func (s *Service) Setup(ctx context.Context, username, password, code string) (Session, error) {
+	return s.setup(ctx, username, password, code, nil)
+}
+
+// SetupWith applies a transaction-bound configuration callback before the
+// administrator is committed. It lets first-run setup save preferences in the
+// same transaction without committing them if account creation fails.
+func (s *Service) SetupWith(ctx context.Context, username, password, code string, configure func(context.Context, *sql.Tx) error) (Session, error) {
+	return s.setup(ctx, username, password, code, configure)
+}
+
+func (s *Service) setup(ctx context.Context, username, password, code string, configure func(context.Context, *sql.Tx) error) (Session, error) {
 	configured, err := s.Configured(ctx)
 	if err != nil {
 		return Session{}, err
@@ -156,6 +167,11 @@ func (s *Service) Setup(ctx context.Context, username, password, code string) (S
 	}
 	if count == 0 {
 		return Session{}, ErrSetupClosed
+	}
+	if configure != nil {
+		if err := configure(ctx, tx); err != nil {
+			return Session{}, err
+		}
 	}
 	session, err := issue(ctx, tx, username)
 	if err != nil {

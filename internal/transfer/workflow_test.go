@@ -360,6 +360,46 @@ func TestMovieDownloadImportAndIdempotency(t *testing.T) {
 		})
 	}
 }
+func TestCopyImportPreferenceWritesIndependentFile(t *testing.T) {
+	f := setupWorkflow(t)
+	if _, e := f.db.Exec(`UPDATE settings SET import_mode='copy'`); e != nil {
+		t.Fatal(e)
+	}
+	j := f.queue(t)
+	f.tick(t)
+	data := []byte(strings.Repeat("copy-only video bytes ", 10000))
+	f.complete(t, j, data)
+	f.tick(t)
+	job, e := f.s.Job(context.Background(), j.ID)
+	if e != nil || job.State != "completed" {
+		t.Fatalf("copy-mode import did not complete: %+v %v", job, e)
+	}
+	var relative, mode, phase string
+	if e = f.db.QueryRow(`SELECT relative_path FROM media_files WHERE download_id=?`, j.ID).Scan(&relative); e != nil {
+		t.Fatal(e)
+	}
+	if e = f.db.QueryRow(`SELECT mode,phase FROM import_operations WHERE download_id=?`, j.ID).Scan(&mode, &phase); e != nil {
+		t.Fatal(e)
+	}
+	source := filepath.Join(f.cfg.DownloadsDir, "ReelScarey", j.ID, "movie.mkv")
+	dest := filepath.Join(f.cfg.MediaDir, filepath.FromSlash(relative))
+	a, e := os.Stat(source)
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, e := os.Stat(dest)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if mode != "copy" || phase != "committed" || os.SameFile(a, b) {
+		t.Fatalf("copy preference was not honored: mode=%s phase=%s same=%v", mode, phase, os.SameFile(a, b))
+	}
+	saved, e := os.ReadFile(dest)
+	if e != nil || string(saved) != string(data) {
+		t.Fatal("library copy does not match the source", e)
+	}
+}
+
 func TestLostAddResponseReconcilesAfterRestart(t *testing.T) {
 	f := setupWorkflow(t)
 	f.client.lostResponse = true

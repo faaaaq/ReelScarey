@@ -138,7 +138,14 @@ The private `reelscarey_backups` volume stores managed snapshots under `/backups
 Change `MEDIA_PATH` and `DOWNLOADS_PATH` in `.env` for your host folders; they map
 to `/media` (writable for imports) and `/downloads` (read-only to preserve torrent
 sources). The host download folder must contain the same files as qBittorrent's
-configured download root. This source-build Compose runs
+configured download root. The sample mounts are separate and `/downloads` is
+read-only, so imports use a verified staged copy. Hardlink imports require one
+writable mounted filesystem shared by both roots: mount a single parent such as
+`${DATA_PATH}:/data` and set `REELSCAREY_MEDIA_DIR=/data/media` and
+`REELSCAREY_DOWNLOADS_DIR=/data/downloads`. The first-run setup asks whether to
+prefer hardlinks or always copy, and **Settings → General → File imports** can
+change it later. Symbolic-link imports are not supported because removing a
+seeding source would break the library file. This source-build Compose runs
 as UID/GID 10001; if you replace the config volume with a bind mount, give that
 user read/write access. `docker compose down` keeps the database; adding `-v`
 deletes the named volume and its data.
@@ -176,7 +183,9 @@ the API to port 8787. Rebuild UI and Go for changes to the embedded production U
 
 Native imports also require `ffprobe` on PATH. Media/download directories must
 already exist, remain separate from config and each other, and be accessible to
-the application. Mount a remote qBittorrent's downloads locally before importing.
+the application. Hardlink imports additionally need both roots on one writable
+mounted filesystem; otherwise ReelScarey writes a verified copy. Mount a remote
+qBittorrent's downloads locally before importing.
 
 ## Configuration
 

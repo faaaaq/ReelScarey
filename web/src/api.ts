@@ -4,6 +4,7 @@ export type Settings = {
   series_folder: string;
   episode_naming?: "standard" | "with-title";
   register_unverified_video: boolean;
+  import_mode: "hardlink" | "copy";
   revision: number;
   updated_at: string;
 };

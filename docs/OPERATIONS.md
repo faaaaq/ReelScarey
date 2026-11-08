@@ -33,6 +33,9 @@ availability. The probes create/remove only tiny private config/media files;
 downloads are checked for read access. `reelscarey doctor` provides the same
 report locally and exits nonzero if attention is needed. Provider live tests
 remain on their settings pages. Results are snapshots, not background monitors.
+The **Library import method** preference is separate from the publication
+check: copy-only imports are valid, but the media filesystem must still support
+the private no-overwrite hardlink used to publish each file.
 
 ## Administration backup interface
 

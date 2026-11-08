@@ -1,5 +1,21 @@
 # Validation record — 2026-10-29
 
+## Import method preference (2026-11-08)
+
+Implementation checks on 2026-11-08 (Windows development host):
+
+- Migration 069 adds the persisted `import_mode` setting (`hardlink` default,
+  `copy` alternative). First-run setup saves the chosen method in the same
+  transaction as the administrator; existing installations can change it in
+  Settings.
+- `go test ./...`, `go vet ./...` and `go build ./cmd/reelscarey` passed,
+  including new setup persistence, settings validation/preservation and
+  copy-only importer tests.
+- Web `format:check`, `check`, `test` (51 files, 277 tests) and `build` passed.
+- Not exercised here: a live Docker hardlink-enabled parent mount or a real
+  download client. Copy-only behavior and legacy-default preservation are
+  covered by generated local fixtures only.
+
 ## Release feed sync (0.40 development)
 
 Implementation checks on 2026-11-08 (Windows development host):
