@@ -132,6 +132,12 @@ body {
   --cursor-checkbox: pointer;
   --cursor-switch: pointer;
   --cursor-menu-item: pointer;
+}
+/* Radix Themes also puts the radix-themes class on portalled menu, select and
+   popover surfaces. Page-level sizing and background belong to the app root
+   only; applying min-height: 100vh to every surface stretched dropdowns to the
+   bottom of the page. */
+.radix-themes.rs-app-theme {
   background: var(--rs-page-bg);
   color: var(--rs-text);
   min-height: 100vh;

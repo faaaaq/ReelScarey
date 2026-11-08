@@ -2311,3 +2311,15 @@ Run locally on Windows (development tools only; Docker remains the target):
 - Frontend format:check, check, the full suite (47 files, 267 tests) and the
   build passed. New tests cover the movie unmonitored button, all four show
   menu choices and their request bodies.
+
+## Version 0.40.1 dropdown surface sizing
+
+- Radix Themes copies the `radix-themes` class onto portalled menu, select and
+  popover content. The app's page-only `min-height: 100vh` and page background
+  were therefore applied to every dropdown, stretching it to the viewport.
+- Page sizing now requires the new `rs-app-theme` class on the root Theme; the
+  theme tokens stay on all surfaces. Verified in Chromium: the four-item Add
+  show menu is 104px high instead of filling the viewport.
+- A new Theme test asserts the root class and that the portalled menu neither
+  carries the page-only class nor computes `min-height: 100vh`. Type-check and
+  the affected Movie, TV and Torrents tests pass.

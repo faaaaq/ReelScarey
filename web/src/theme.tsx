@@ -61,6 +61,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         grayColor="gray"
         radius="small"
         panelBackground="solid"
+        className="rs-app-theme"
       >
         {children}
       </Theme>
