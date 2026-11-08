@@ -546,6 +546,11 @@ function stubIntervals() {
 }
 
 it("states the saved download mode and reports what the run did", async () => {
+  // A previously hidden coverage notice must not suppress a new search result.
+  window.localStorage.setItem(
+    "reelscarey-notice:calendar-bulk-search",
+    "hidden",
+  );
   const intervals = stubIntervals();
   const posts: unknown[] = [];
   let phase: "idle" | "completed" = "idle";
@@ -570,6 +575,7 @@ it("states the saved download mode and reports what the run did", async () => {
                   mode: "download",
                   checked: 4,
                   queued: 2,
+                  matched: 2,
                 },
               ],
       });
@@ -590,7 +596,9 @@ it("states the saved download mode and reports what the run did", async () => {
   const poll = intervals.find((interval) => interval.ms === 2500)!;
   await act(async () => poll.run());
   expect(
-    await screen.findByText(/Searched 4 items and queued 2 downloads/),
+    await screen.findByText(
+      /Searched 4 items; found 2 matching releases and queued 2 downloads/,
+    ),
   ).toBeVisible();
   expect(posts).toEqual([{ scope: "movie" }]);
 });
@@ -622,6 +630,7 @@ it("shows live indeterminate progress while a bulk search runs", async () => {
                   mode: "download",
                   checked: 2,
                   queued: 1,
+                  matched: 1,
                 },
               ],
       });
@@ -653,7 +662,9 @@ it("shows live indeterminate progress while a bulk search runs", async () => {
     ).not.toBeInTheDocument(),
   );
   expect(
-    screen.getByText(/Searched 2 items and queued 1 download/),
+    screen.getByText(
+      /Searched 2 items; found 1 matching release and queued 1 download/,
+    ),
   ).toBeVisible();
 });
 
@@ -739,7 +750,7 @@ it("states search-only mode and explains a run that checked nothing", async () =
   );
   const poll = intervals.find((interval) => interval.ms === 2500)!;
   await act(async () => poll.run());
-  const message = await screen.findByText(/No items were checked/);
+  const message = await screen.findByText(/No items needed a search/);
   expect(message).toHaveTextContent(/Waiting for an enabled indexer/);
   expect(message).toHaveTextContent(
     /waiting for an indexer or download client/,

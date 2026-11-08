@@ -466,7 +466,7 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | PUT | `/api/v1/library/series/{id}/monitor-all` | `{ "revision" }`; monitor the show and regular episodes airing today or later (UTC), plus seasons with such an episode or a future season air_date; past/undated regular episodes are explicitly unmonitored; specials unchanged |
 | POST | `/api/v1/library/monitor-all-episodes` | `{ "category"?: "standard" \| "anime" }`; same future-date rule for every show in scope; `{ "shows": n }` |
 | POST | `/api/v1/library/series/{id}/episodes/{episodeID}/remove-file` | `{ "revision", "reviewed": true, "delete_file"?: true }`; remove one episode from the library and, when asked, delete its media copy (seeding sources and shared files are protected) |
-| GET | `/api/v1/automation/runs` | `{items}`; latest 30 search runs with state, message, timestamps, mode, checked and queued counts |
+| GET | `/api/v1/automation/runs` | `{items}`; latest 30 search runs with state, message, timestamps, mode, checked, matched and queued counts |
 | GET | `/api/v1/automation/runs/{id}` | `{items}`; up to 25 target results, outcomes, download IDs and ranked decisions |
 | GET | `/api/v1/automation/items?page=1` | Profile assignments/monitoring, items/page/total/limit 24 |
 | PUT | `/api/v1/automation/items/{id}` | Revision-checked profile assignment and optional movie monitoring |

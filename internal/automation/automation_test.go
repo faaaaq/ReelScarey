@@ -247,6 +247,9 @@ func TestSearchOnlyThenAutomaticQueuePersistsAndDeduplicates(t *testing.T) {
 	if len(results) != 1 || results[0].Outcome != "match" {
 		t.Fatal(results)
 	}
+	if runs[0].Matched != 1 || runs[0].Queued != 0 {
+		t.Fatal("search-only run did not count its matching release", runs[0])
+	}
 	var count int
 	_ = f.db.QueryRow(`SELECT COUNT(*) FROM downloads`).Scan(&count)
 	if count != 0 {
@@ -259,6 +262,10 @@ func TestSearchOnlyThenAutomaticQueuePersistsAndDeduplicates(t *testing.T) {
 	_ = f.db.QueryRow(`SELECT COUNT(*) FROM downloads`).Scan(&count)
 	if count != 1 {
 		t.Fatal(count)
+	}
+	runs, _ = f.s.Runs(ctx)
+	if len(runs) == 0 || runs[0].Matched != 1 || runs[0].Queued != 1 {
+		t.Fatal("download run did not count its matched and queued release", runs)
 	}
 	f.db.Close()
 	db, e := database.Open(ctx, f.dir)

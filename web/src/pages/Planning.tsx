@@ -447,7 +447,6 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
             <Alert
               kind={bulk.state.status === "error" ? "danger" : "success"}
               role="status"
-              dismissKey="calendar-bulk-search"
             >
               <p>{bulkSearchMessage(bulk.state)}</p>
               <div className="rs-row">

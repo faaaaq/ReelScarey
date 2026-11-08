@@ -272,6 +272,9 @@ type Run struct {
 	Mode     string `json:"mode"`
 	Checked  int    `json:"checked"`
 	Queued   int    `json:"queued"`
+	// Matched counts targets where the run found an eligible release, whether
+	// it queued a download or recorded the candidate for review.
+	Matched int `json:"matched"`
 }
 type Result struct {
 	Kind       string             `json:"kind"`
@@ -289,14 +292,16 @@ type Result struct {
 
 func (s *Service) Runs(ctx context.Context) ([]Run, error) {
 	out := []Run{}
-	rows, e := s.db.QueryContext(ctx, `SELECT id,started_at,finished_at,state,message,mode,checked,queued FROM automation_runs ORDER BY started_at DESC,rowid DESC LIMIT 30`)
+	rows, e := s.db.QueryContext(ctx, `SELECT r.id,r.started_at,r.finished_at,r.state,r.message,r.mode,r.checked,r.queued,
+		(SELECT COUNT(*) FROM automation_results ar WHERE ar.run_id=r.id AND ar.outcome IN ('match','upgrade_available','queued'))
+		FROM automation_runs r ORDER BY r.started_at DESC,r.rowid DESC LIMIT 30`)
 	if e != nil {
 		return nil, e
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var v Run
-		if e = rows.Scan(&v.ID, &v.Started, &v.Finished, &v.State, &v.Message, &v.Mode, &v.Checked, &v.Queued); e != nil {
+		if e = rows.Scan(&v.ID, &v.Started, &v.Finished, &v.State, &v.Message, &v.Mode, &v.Checked, &v.Queued, &v.Matched); e != nil {
 			return nil, e
 		}
 		out = append(out, v)

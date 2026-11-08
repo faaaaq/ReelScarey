@@ -10,6 +10,8 @@ export type RunSummary = {
   mode: string;
   checked: number;
   queued: number;
+  /** Targets where an eligible release was found, queued or saved for review. */
+  matched: number;
 };
 
 export type BulkSearchState =
@@ -30,6 +32,7 @@ export type BulkSearchState =
       mode: string;
       checked: number;
       queued: number;
+      matched: number;
       interrupted: boolean;
       message: string;
     }
@@ -118,6 +121,10 @@ export function useBulkSearch() {
             mode: newest.mode,
             checked: fresh.reduce((total, run) => total + run.checked, 0),
             queued: fresh.reduce((total, run) => total + run.queued, 0),
+            matched: fresh.reduce(
+              (total, run) => total + (run.matched ?? 0),
+              0,
+            ),
             interrupted: fresh.some((run) => run.state !== "completed"),
             message: newest.message,
           });
@@ -172,12 +179,22 @@ export function bulkSearchMessage(state: BulkSearchState): string {
   if (state.status !== "done") return "";
   if (state.checked === 0) {
     const message = state.message.trim();
-    return `No items were checked. ${message ? `${message} ` : ""}This usually means the run is waiting for an indexer or download client; open Automation for details.`;
+    return `No items needed a search. ${message ? `${message} ` : ""}This usually means the run is waiting for an indexer or download client; open Automation for details.`;
   }
-  if (state.mode === "download")
-    return `Searched ${state.checked} item${state.checked === 1 ? "" : "s"} and queued ${state.queued} download${state.queued === 1 ? "" : "s"}.`;
-  const results = `${state.queued} result${state.queued === 1 ? "" : "s"}`;
-  return state.queued === 0
-    ? `Searched ${state.checked} item${state.checked === 1 ? "" : "s"}; no releases matched, so nothing was saved for review in Automation.`
-    : `Searched ${state.checked} item${state.checked === 1 ? "" : "s"}; ${results} are saved for review in Automation.`;
+  const items = `${state.checked} item${state.checked === 1 ? "" : "s"}`;
+  const found = `${state.matched} matching release${state.matched === 1 ? "" : "s"}`;
+  const downloads = `${state.queued} download${state.queued === 1 ? "" : "s"}`;
+  const interrupted = state.interrupted
+    ? " The run was interrupted; results may be incomplete."
+    : "";
+  if (state.mode === "download") {
+    if (state.matched === 0)
+      return `Searched ${items}; no matching releases were found.${interrupted}`;
+    if (state.queued === 0)
+      return `Searched ${items}; found ${found}, but queued no downloads. Open Automation for details.${interrupted}`;
+    return `Searched ${items}; found ${found} and queued ${downloads}.${interrupted}`;
+  }
+  if (state.matched === 0)
+    return `Searched ${items}; no matching releases were found.${interrupted}`;
+  return `Searched ${items}; found ${found}, saved for review in Automation.${interrupted}`;
 }

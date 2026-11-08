@@ -49,6 +49,7 @@ type Run = {
   mode: string;
   checked: number;
   queued: number;
+  matched: number;
 };
 export type RSSRun = {
   id: string;
@@ -612,7 +613,7 @@ function RunHistory() {
               {runs.data.items.map((r) => (
                 <option key={r.id} value={r.id}>
                   {date(r.started_at)} · {readable(r.state)} · {r.checked}{" "}
-                  checked · {r.queued} queued
+                  checked · {r.matched} matched · {r.queued} queued
                 </option>
               ))}
             </select>

@@ -2358,3 +2358,19 @@ Run locally on Windows (development tools only; Docker remains the target):
   build passed.
 - Frontend format:check, check, the full suite (48 files, 270 tests) and the
   build passed, including the shared-default replace/fallback flow.
+
+## Version 0.41.1 persistent and precise bulk-search results
+
+- The Calendar and Series completion alert no longer uses a dismissable notice
+  key, so a previous "don't show again" choice cannot hide a new result. It
+  stays visible until Dismiss is clicked or another search starts.
+- Search runs now expose `matched`: targets where an eligible release was
+  found, whether it was queued or saved for review. Messages report
+  checked/found/queued plainly, for example "Searched 4 items; found 2 matching
+  releases and queued 2 downloads", "found 1 matching release, but queued no
+  downloads", "found 2 matching releases, saved for review in Automation",
+  "no matching releases were found", or "No items needed a search."
+- The Automation run label also shows the matched count.
+- Go tests cover the matched count in search-only and download modes. Frontend
+  format:check, check, the full suite (49 files, 273 tests) and the build passed,
+  including direct message-variant tests and a hidden-notice regression.

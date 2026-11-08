@@ -274,7 +274,6 @@ function SeriesView({ initial }: { initial: TVSeries }) {
                   : "success"
             }
             role="status"
-            dismissKey="series-bulk-search"
           >
             <p>{bulkSearchMessage(bulk.state)}</p>
             <div className="rs-row">
