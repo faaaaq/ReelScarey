@@ -37,7 +37,7 @@ func sameMappedTarget(a, b searchTarget) bool {
 
 func (s *Service) mappedEligibility(ctx context.Context, mediaID int64) (map[int64]searchTarget, error) {
 	date := s.now().UTC().Format("2006-01-02")
-	rows, e := s.db.QueryContext(ctx, targetSQL+` AS mapped WHERE media_id=? AND anime_mode='mapped' AND episode_id IN (SELECT episode_id FROM anime_order_entries WHERE media_id=?) AND NOT EXISTS(SELECT 1 FROM episode_files ef WHERE ef.episode_id=mapped.episode_id) ORDER BY key LIMIT 5001`, date, date, mediaID, mediaID)
+	rows, e := s.db.QueryContext(ctx, targetSQL+` AS mapped WHERE media_id=? AND anime_mode='mapped' AND episode_id IN (SELECT episode_id FROM anime_order_entries WHERE media_id=?) AND NOT EXISTS(SELECT 1 FROM episode_files ef WHERE ef.episode_id=mapped.episode_id) ORDER BY key LIMIT 5001`, date, date, 0, mediaID, mediaID)
 	if e != nil {
 		return nil, e
 	}
@@ -312,7 +312,7 @@ func (s *Service) mappedGuard(c claim, plan mappedPlan, profile quality.Profile)
 			if expected.EpisodeID == nil || !targetIDs[*expected.EpisodeID] {
 				return ErrLease
 			}
-			fresh, err := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, date, expected.Key))
+			fresh, err := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, date, 0, expected.Key))
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrLease
 			}

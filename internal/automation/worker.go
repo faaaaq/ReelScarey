@@ -45,7 +45,9 @@ const targetSQL = `SELECT key,media_id,episode_id,title,year,season,episode,prob
  UNION ALL
  SELECT printf('e:%020d',e.id),m.id,e.id,m.title,m.year,s.number,e.number,COALESCE(f.probe_json,''),COALESCE(a.profile_id,ss.default_profile_id),COALESCE(a.revision,0),m.category,COALESCE(ans.mode,'disabled'),COALESCE(ans.alternate_titles,'[]'),an.absolute_number,COALESCE(ans.revision,0),COALESCE(ans.search_title,''),m.category_revision,d.revision,COALESCE(rr.codec,''),COALESCE(rr.release_group,''),COALESCE(rr.revision,0),'',0
  FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id JOIN series_details d ON d.media_id=m.id CROSS JOIN search_schedule ss LEFT JOIN item_automation a ON a.media_id=m.id LEFT JOIN episode_files ef ON ef.episode_id=e.id LEFT JOIN media_files f ON f.id=ef.media_file_id LEFT JOIN anime_search_settings ans ON ans.media_id=m.id LEFT JOIN anime_episode_numbers an ON an.episode_id=e.id LEFT JOIN series_release_rules rr ON rr.media_id=m.id
- WHERE m.monitored=1 AND (m.category='standard' OR (m.category='anime' AND ((s.number>0 AND ans.mode IN ('season','absolute')) OR (ans.mode='mapped' AND (s.number>0 OR ans.include_specials=1))))) AND s.monitored=1 AND e.monitored=1 AND s.loaded_at<>'' AND length(e.air_date)=10 AND substr(e.air_date,1,4) BETWEEN '0001' AND '9999' AND date(e.air_date,'+0 days')=e.air_date AND e.air_date<=? AND NOT EXISTS(SELECT 1 FROM episode_downloads ed JOIN downloads d ON d.id=ed.download_id WHERE ed.episode_id=e.id AND d.state NOT IN ('completed','cancelled'))
+ WHERE m.monitored=1 AND s.monitored=1 AND e.monitored=1 AND s.loaded_at<>'' AND length(e.air_date)=10 AND substr(e.air_date,1,4) BETWEEN '0001' AND '9999' AND date(e.air_date,'+0 days')=e.air_date AND e.air_date<=?
+ AND (m.category='standard' OR (m.category='anime' AND ((s.number>0 AND ans.mode IN ('season','absolute')) OR (ans.mode='mapped' AND (s.number>0 OR ans.include_specials=1)) OR (?=1 AND COALESCE(ans.mode,'disabled')='disabled' AND s.number>0))))
+ AND NOT EXISTS(SELECT 1 FROM episode_downloads ed JOIN downloads d ON d.id=ed.download_id WHERE ed.episode_id=e.id AND d.state NOT IN ('completed','cancelled'))
 )`
 
 func scanTarget(row interface{ Scan(...any) error }) (searchTarget, error) {
@@ -53,7 +55,10 @@ func scanTarget(row interface{ Scan(...any) error }) (searchTarget, error) {
 	var category, aliases string
 	e := row.Scan(&t.Key, &t.MediaID, &t.EpisodeID, &t.Title, &t.Year, &t.Season, &t.Episode, &t.Probe, &t.ProfileID, &t.AssignmentRevision, &category, &t.AnimeMode, &aliases, &t.AbsoluteNumber, &t.AnimeRevision, &t.AnimeSearchTitle, &t.CategoryRevision, &t.NumberingRevision, &t.SeriesCodec, &t.SeriesGroup, &t.SeriesRulesRevision, &t.MovieVersion, &t.VersionRevision)
 	t.TV = t.EpisodeID != nil
-	t.Anime = t.TV && category == "anime"
+	// An Anime show with automatic Anime searching off is still a monitored
+	// show: an explicit bulk search treats it as a standard SxxExx title
+	// instead of excluding it or failing its anime policy check.
+	t.Anime = t.TV && category == "anime" && t.AnimeMode != "disabled"
 	if e == nil {
 		e = json.Unmarshal([]byte(aliases), &t.AlternateTitles)
 	}
@@ -96,14 +101,14 @@ func (s *Service) targets(ctx context.Context, cursor string, limit int, focusMe
 	focused := focusMedia != "" || focusEpisode != "" || focusKind != ""
 	for pass := 0; pass < 2 && len(out) < limit; pass++ {
 		suffix := ` WHERE key>?` + filter + ` ORDER BY key LIMIT ?`
-		args2 := append([]any{date, date, cursor}, args...)
+		args2 := append([]any{date, date, boolInt(focused), cursor}, args...)
 		args2 = append(args2, limit-len(out))
 		if pass == 1 {
 			if cursor == "" || focused {
 				break
 			}
 			suffix = ` WHERE key<=?` + filter + ` ORDER BY key LIMIT ?`
-			args2 = append([]any{date, date, cursor}, args...)
+			args2 = append([]any{date, date, boolInt(focused), cursor}, args...)
 			args2 = append(args2, limit-len(out))
 		}
 		rows, e := s.db.QueryContext(ctx, targetSQL+suffix, args2...)
@@ -136,7 +141,7 @@ func (s *Service) focusRemaining(ctx context.Context, cursor, focusMedia, focusE
 	}
 	date := s.now().UTC().Format("2006-01-02")
 	filter := ` AND key>?`
-	args := []any{date, date, cursor}
+	args := []any{date, date, 1, cursor}
 	if focusMedia != "" {
 		media, e := strconv.ParseInt(focusMedia, 10, 64)
 		if e != nil {
@@ -225,7 +230,7 @@ func (s *Service) guard(c claim, t searchTarget, p quality.Profile) transfer.Que
 			return ErrLease
 		}
 		date := s.now().UTC().Format("2006-01-02")
-		current, e := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, date, t.Key))
+		current, e := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, date, 1, t.Key))
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrLease
 		}

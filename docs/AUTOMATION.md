@@ -75,8 +75,11 @@ release, search-only mode records candidates for review. A title or Calendar
 bulk search is one bounded pass: it continues across batches until every
 selected target has been checked once, then clears the request even when some
 targets stay missing. Missing targets are never re-searched by the same request;
-the ordinary scheduled cycle picks them up later. The latest recorded outcome per
-title is readable at `GET /automation/item-results`.
+the ordinary scheduled cycle picks them up later. An explicit title or bulk
+search also covers a monitored Anime show whose per-show automatic Anime search
+is off, using standard season/episode identity for that request; the saved Anime
+policy is unchanged. The latest recorded outcome per title is readable at
+`GET /automation/item-results`.
 
 ## Modes and file safety
 

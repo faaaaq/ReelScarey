@@ -127,9 +127,11 @@ Do not add global element selectors in page files.
   scheduled pipeline for that exact target, with the outcome reported inline).
 - The Calendar toolbar can search every missing monitored movie or TV episode in
   one confirmed action; both report how many targets were searched and how many
-  downloads were queued. Each request is one pass over those targets. If another
-  search still owns the scheduler the page says it is waiting instead of appearing
-  stuck, and an unstarted request times out with a pointer to Automation.
+  downloads were queued. Each request is one pass over those targets. Monitored
+  Anime shows whose per-show automatic search is off are included with standard
+  season/episode matching. If another search still owns the scheduler the page
+  says it is waiting instead of appearing stuck, and an unstarted request times
+  out with a pointer to Automation.
 - Series details offer Search (one title), Search All Monitored (every monitored
   missing episode) and per-episode automatic search, manual search, Replace and
   Remove from library (the file stays on disk). Seasons list newest first.

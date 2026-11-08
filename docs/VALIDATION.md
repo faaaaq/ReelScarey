@@ -2253,3 +2253,13 @@ Run locally on Windows (development tools only; Docker remains the target):
 - Frontend format:check, check, the full suite (47 files, 264 tests) and the
   build passed. Tests now use the real `{items}` envelope and add a regression
   for an unreadable run list. Go is unchanged from 0.39.5.
+
+## Version 0.39.7 all missing shows and automatic downloads
+
+- An explicit title or Calendar bulk search now also checks monitored Anime
+  shows whose per-show automatic Anime search is off, using standard
+  season/episode identity for that request. Scheduled cycles keep the per-show
+  opt-in. The saved Anime policy is unchanged by the search.
+- Go tests cover the disabled-Anime bulk queue and the scheduled exclusion. The
+  full Go suite, vet and build passed.
+- The frontend is unchanged from 0.39.6 (47 files, 264 tests).

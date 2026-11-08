@@ -10,7 +10,7 @@ global schedule, change monitoring or alter existing downloads/files.
 
 | Mode | Episode identity used for searching and matching |
 | --- | --- |
-| Off | The Anime show is excluded from automatic episode searches. |
+| Off | The Anime show is excluded from scheduled automatic episode searches. An explicit title or Calendar bulk search still checks it with standard season/episode identity; that request does not change this setting. |
 | Season and episode | The saved canonical TMDb season/episode, such as S02E01. |
 | Absolute episode number | The explicit number saved for that canonical episode in Library section. No number is inferred from season order. |
 | Saved mappings | Explicit release titles and typed episode labels from the reviewed provider order. |

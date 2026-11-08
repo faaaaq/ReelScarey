@@ -874,6 +874,62 @@ func TestBulkSearchWithoutResultsDoesNotLoop(t *testing.T) {
 	}
 }
 
+// An explicit bulk search also covers monitored Anime shows whose per-show
+// automatic Anime searching is off, using standard season/episode identity for
+// that request. The saved policy is not changed by the search.
+func TestBulkSearchIncludesAnimeWithAutomaticSearchDisabled(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	if _, e := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,category,monitored) VALUES(77,'series',77,'Anime Show',2020,'anime',1);INSERT INTO series_details(media_id) VALUES(77);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,77,10,1,'Season','','2020-01-01',1,1,'loaded');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,11,1,'One','','2020-01-01',1);INSERT INTO anime_search_settings(media_id,mode) VALUES(77,'disabled')`); e != nil {
+		t.Fatal(e)
+	}
+	f.i.titleFor = func(query string) string {
+		return strings.ReplaceAll(query, " ", ".") + ".1080p.English.WEB"
+	}
+	configure(t, f.s, false, "download", 10)
+
+	if e := f.s.RequestBulk(ctx, "series"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	runs, e := f.s.Runs(ctx)
+	if e != nil || len(runs) != 1 {
+		t.Fatal(runs, e)
+	}
+	results, e := f.s.Results(ctx, runs[0].ID)
+	if e != nil || runs[0].Checked != 1 || runs[0].Queued != 1 || len(results) != 1 || results[0].Outcome != "queued" {
+		t.Fatalf("the disabled-Anime show was not searched: %+v %+v %v", runs, results, e)
+	}
+	var mode string
+	if e := f.db.QueryRow(`SELECT mode FROM anime_search_settings WHERE media_id=77`).Scan(&mode); e != nil || mode != "disabled" {
+		t.Fatal("the bulk search changed the saved Anime policy", mode, e)
+	}
+}
+
+func TestScheduledSearchLeavesDisabledAnimeOut(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	if _, e := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,category,monitored) VALUES(77,'series',77,'Anime Show',2020,'anime',1);INSERT INTO series_details(media_id) VALUES(77);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,77,10,1,'Season','','2020-01-01',1,1,'loaded');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,11,1,'One','','2020-01-01',1);INSERT INTO anime_search_settings(media_id,mode) VALUES(77,'disabled')`); e != nil {
+		t.Fatal(e)
+	}
+	configure(t, f.s, true, "search", 10)
+	if _, e := f.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	runs, _ := f.s.Runs(ctx)
+	results, e := f.s.Results(ctx, runs[0].ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, r := range results {
+		if r.MediaID == 77 {
+			t.Fatal("the scheduled cycle searched an Anime show with automatic search off", r)
+		}
+	}
+}
+
 func TestBulkSearchScopesToMoviesOrEpisodes(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
