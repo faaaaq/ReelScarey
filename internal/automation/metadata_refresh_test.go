@@ -12,12 +12,14 @@ import (
 )
 
 type refreshProvider struct {
-	movie   metadata.Movie
-	series  metadata.Series
-	season  metadata.Season
-	onMovie func()
-	err     error
-	calls   int
+	movie       metadata.Movie
+	series      metadata.Series
+	season      metadata.Season
+	seasons     map[int]metadata.Season
+	seasonCalls []int
+	onMovie     func()
+	err         error
+	calls       int
 }
 
 func (p *refreshProvider) Movie(context.Context, int64) (metadata.Movie, error) {
@@ -30,7 +32,13 @@ func (p *refreshProvider) Movie(context.Context, int64) (metadata.Movie, error) 
 func (p *refreshProvider) Series(context.Context, int64) (metadata.Series, error) {
 	return p.series, p.err
 }
-func (p *refreshProvider) Season(context.Context, int64, int) (metadata.Season, error) {
+func (p *refreshProvider) Season(_ context.Context, _ int64, number int) (metadata.Season, error) {
+	p.seasonCalls = append(p.seasonCalls, number)
+	if p.seasons != nil {
+		if season, ok := p.seasons[number]; ok {
+			return season, p.err
+		}
+	}
 	return p.season, p.err
 }
 func (p *refreshProvider) Information(context.Context, string, int64) (metadata.Information, error) {
@@ -90,6 +98,114 @@ func TestScheduledMetadataRefreshIsPausedBoundedAndPreservesCatalogChoices(t *te
 		t.Fatal(calendar, e)
 	}
 }
+func TestAddedTitleQueuesAutomaticRefreshWhileSchedulePaused(t *testing.T) {
+	s, _, db, item := refreshFixture(t)
+	ctx := context.Background()
+	var queued int
+	if e := db.QueryRow(`SELECT COUNT(*) FROM metadata_refresh_queue WHERE media_id=?`, item.ID).Scan(&queued); e != nil || queued != 1 {
+		t.Fatalf("new title was not queued: %d %v", queued, e)
+	}
+	// The insert leaves a short grace period for the add path to apply its
+	// monitoring mode before the worker consumes the request.
+	if _, e := db.Exec(`UPDATE metadata_refresh_queue SET next_attempt=0`); e != nil {
+		t.Fatal(e)
+	}
+	worked, e := s.ProcessQueued(ctx)
+	if e != nil || !worked {
+		t.Fatal(worked, e)
+	}
+	got, e := library.New(db).Item(ctx, item.ID)
+	if e != nil || got.Title != "Fresh title" {
+		t.Fatal("queued refresh did not run while the schedule was paused", got, e)
+	}
+	if e = db.QueryRow(`SELECT COUNT(*) FROM metadata_refresh_queue`).Scan(&queued); e != nil || queued != 0 {
+		t.Fatal("completed request was not removed", queued, e)
+	}
+	schedule, e := s.Get(ctx)
+	if e != nil || schedule.Enabled {
+		t.Fatal("queue processing enabled the schedule", schedule, e)
+	}
+}
+
+func TestLibraryRefreshQueuesScopeAndLoadsAllEligibleSeasons(t *testing.T) {
+	ctx := context.Background()
+	db, e := database.Open(ctx, t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	store := library.New(db)
+	standard := metadata.Series{Movie: metadata.Movie{TMDbID: 10, Title: "Standard show"}, SeriesStatus: "Returning Series", Seasons: []metadata.SeasonSummary{
+		{TMDbID: 101, Number: 1, Title: "Season 1", AirDate: "2020-01-01", EpisodeCount: 1},
+		{TMDbID: 102, Number: 2, Title: "Season 2", AirDate: "2026-01-01", EpisodeCount: 1},
+		{TMDbID: 103, Number: 3, Title: "Season 3", AirDate: "2026-11-20", EpisodeCount: 1},
+	}}
+	show, _, e := store.AddSeries(ctx, standard, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	anime, _, e := store.AddSeries(ctx, metadata.Series{Movie: metadata.Movie{TMDbID: 20, Title: "Anime show"}, SeriesStatus: "Returning Series", Seasons: []metadata.SeasonSummary{{TMDbID: 201, Number: 1, Title: "Season 1", AirDate: "2026-01-01", EpisodeCount: 1}}}, true, "anime")
+	if e != nil {
+		t.Fatal(e)
+	}
+	movie, _, e := store.AddMovie(ctx, metadata.Movie{TMDbID: 30, Title: "Movie"}, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`DELETE FROM metadata_refresh_queue`); e != nil {
+		t.Fatal(e)
+	}
+	p := &refreshProvider{
+		series: metadata.Series{Movie: metadata.Movie{TMDbID: 10, Title: "Fresh standard show"}, SeriesStatus: "Returning Series", Seasons: standard.Seasons},
+		seasons: map[int]metadata.Season{
+			1: {SeasonSummary: standard.Seasons[0], Episodes: []metadata.Episode{{TMDbID: 1001, Number: 1, Title: "Episode 1", AirDate: "2020-01-01"}}},
+			2: {SeasonSummary: standard.Seasons[1], Episodes: []metadata.Episode{{TMDbID: 1002, Number: 1, Title: "Episode 2", AirDate: "2026-01-01"}}},
+			3: {SeasonSummary: standard.Seasons[2], Episodes: []metadata.Episode{{TMDbID: 1003, Number: 1, Title: "Episode 3", AirDate: "2026-11-20"}}},
+		},
+	}
+	s := NewMetadataRefresher(db, p)
+	queued, e := s.EnqueueLibrary(ctx, "series")
+	if e != nil || queued != 1 {
+		t.Fatal("series library scope queued the wrong count", queued, e)
+	}
+	var queuedID int64
+	var full bool
+	if e = db.QueryRow(`SELECT media_id,full FROM metadata_refresh_queue`).Scan(&queuedID, &full); e != nil || queuedID != show.ID || !full {
+		t.Fatal("series library request was not full or used the wrong title", queuedID, full, e)
+	}
+	for {
+		worked, e := s.ProcessQueued(ctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if !worked {
+			break
+		}
+	}
+	var loaded int
+	if e = db.QueryRow(`SELECT COUNT(*) FROM seasons WHERE series_id=? AND loaded_at<>''`, show.ID).Scan(&loaded); e != nil || loaded != 3 {
+		t.Fatal("full library refresh did not load every eligible season", loaded, e)
+	}
+	if len(p.seasonCalls) != 3 {
+		t.Fatal("unexpected season request set", p.seasonCalls)
+	}
+	if _, e = s.EnqueueLibrary(ctx, "anime"); e != nil {
+		t.Fatal(e)
+	}
+	if e = db.QueryRow(`SELECT media_id FROM metadata_refresh_queue`).Scan(&queuedID); e != nil || queuedID != anime.ID {
+		t.Fatal("anime library request used the wrong title", queuedID, e)
+	}
+	if _, e = db.Exec(`DELETE FROM metadata_refresh_queue`); e != nil {
+		t.Fatal(e)
+	}
+	if queued, e = s.EnqueueLibrary(ctx, "movie"); e != nil || queued != 1 {
+		t.Fatal("movie library scope queued the wrong count", queued, e)
+	}
+	if e = db.QueryRow(`SELECT media_id FROM metadata_refresh_queue`).Scan(&queuedID); e != nil || queuedID != movie.ID {
+		t.Fatal("movie library request used the wrong title", queuedID, e)
+	}
+}
+
 func TestPauseDuringMetadataFetchFencesAllWritesAndUnavailableProviderWaits(t *testing.T) {
 	s, p, db, item := refreshFixture(t)
 	ctx := context.Background()

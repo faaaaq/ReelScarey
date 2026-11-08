@@ -40,7 +40,7 @@ function mount(path = "/movies", kind: "movie" | "series" = "movie") {
 }
 function mock(response?: (url: string) => Response | undefined) {
   const fetch = vi.fn(
-    async (url: string) =>
+    async (url: string, _options?: RequestInit) =>
       response?.(url) ??
       Response.json({
         items: [item],
@@ -465,5 +465,22 @@ describe("catalog browsing", () => {
       screen.getByRole("link", { name: /Connected · test/ }),
     ).toHaveAttribute("href", "/system");
     expect(screen.getByText("No active downloads.")).toBeVisible();
+  });
+  it("queues a full metadata refresh for the current library", async () => {
+    const fetch = mock((url) =>
+      url.endsWith("/library/refresh")
+        ? Response.json({ queued: 1 }, { status: 202 })
+        : undefined,
+    );
+    mount("/movies");
+    await screen.findByRole("link", { name: "Saved title" });
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(
+      await screen.findByText(/Queued a metadata refresh for 1 title/),
+    ).toBeVisible();
+    const sent = fetch.mock.calls.find(([url]) =>
+      url.endsWith("/library/refresh"),
+    );
+    expect(JSON.parse(String(sent?.[1]?.body))).toEqual({ kind: "movie" });
   });
 });

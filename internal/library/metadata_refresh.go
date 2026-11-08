@@ -18,6 +18,22 @@ type MetadataRefresh struct {
 	SeasonCursor int
 }
 
+// QueueMetadataRefreshTx records a durable metadata refresh request in the
+// current catalog transaction. Add/import paths use full=false; a manual
+// library refresh uses full=true so every eligible loaded/upcoming season is
+// fetched instead of the scheduled five-season rotation.
+func QueueMetadataRefreshTx(ctx context.Context, tx *sql.Tx, mediaID int64, full bool) error {
+	if mediaID < 1 {
+		return ErrRevision
+	}
+	value := 0
+	if full {
+		value = 1
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO metadata_refresh_queue(media_id,full,next_attempt) VALUES(?,?,unixepoch()+10) ON CONFLICT(media_id) DO UPDATE SET requested_at=unixepoch(),full=CASE WHEN excluded.full=1 THEN 1 ELSE metadata_refresh_queue.full END,attempts=0,next_attempt=0,last_error=''`, mediaID, value)
+	return err
+}
+
 // ApplyMetadataRefresh atomically applies fetched facts only while the catalog
 // snapshot and scheduling authorization still match. Monitoring, files and
 // canonical IDs are retained. Missing provider entries are never deleted.

@@ -9,6 +9,7 @@ import {
   LayoutGrid,
   ListChecks,
   Plus,
+  RefreshCw,
   Rows3,
   Search,
   Table2,
@@ -184,10 +185,15 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
   const [monitoringMessage, setMonitoringMessage] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState("");
+  const [refreshError, setRefreshError] = useState("");
   const wasCapped = useRef(false);
   useEffect(() => {
     setSelected([]);
     setMonitoringMessage("");
+    setRefreshMessage("");
+    setRefreshError("");
   }, [selectionScope, requestedPage]);
   // Entering the paginated fallback cannot honour a library-wide selection, so
   // drop it without touching the last successful bulk-action message.
@@ -198,6 +204,29 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   function reload() {
     all.reload();
     if (capped) paged.reload();
+  }
+  async function refreshLibraryMetadata() {
+    if (refreshing) return;
+    setRefreshing(true);
+    setRefreshMessage("");
+    setRefreshError("");
+    try {
+      const out = await api<{ queued: number }>("/library/refresh", {
+        method: "POST",
+        body: JSON.stringify({ kind }),
+      });
+      setRefreshMessage(
+        out.queued === 0
+          ? "This library has no titles to refresh."
+          : out.queued === 1
+            ? "Queued a metadata refresh for 1 title. Details and episode dates appear as the worker finishes."
+            : `Queued a metadata refresh for ${out.queued} titles. Details and episode dates appear as the worker finishes.`,
+      );
+    } catch (e) {
+      setRefreshError(messageFor(e));
+    } finally {
+      setRefreshing(false);
+    }
   }
   function toggle(id: number, checked: boolean) {
     setSelected((current) =>
@@ -312,6 +341,14 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
             icon={FolderInput}
             label="Library Import"
             to={importPath}
+          />
+          <ToolbarButton
+            icon={RefreshCw}
+            label={refreshing ? "Refreshing…" : "Refresh"}
+            title="Queue a full metadata refresh for this library"
+            spinning={refreshing}
+            disabled={refreshing}
+            onClick={() => void refreshLibraryMetadata()}
           />
           <ToolbarSeparator />
           <ToolbarButton
@@ -495,6 +532,17 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
         {monitoringMessage && (
           <Alert kind="success" role="status">
             {monitoringMessage}
+          </Alert>
+        )}
+
+        {refreshMessage && (
+          <Alert kind="success" role="status">
+            {refreshMessage}
+          </Alert>
+        )}
+        {refreshError && (
+          <Alert kind="danger" role="alert">
+            {refreshError}
           </Alert>
         )}
 

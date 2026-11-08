@@ -76,13 +76,74 @@ func (s *MetadataRefresher) Request(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Enqueue queues one title for a durable metadata refresh. Add and import
+// paths use this so a provider outage or restart does not lose the request.
+func (s *MetadataRefresher) Enqueue(ctx context.Context, mediaID int64, full bool) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := library.QueueMetadataRefreshTx(ctx, tx, mediaID, full); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// EnqueueLibrary queues every title in one library. full=true fetches all
+// eligible loaded/upcoming seasons instead of the scheduled five-season slice.
+func (s *MetadataRefresher) EnqueueLibrary(ctx context.Context, kind string) (int64, error) {
+	where := ""
+	switch kind {
+	case "movie":
+		where = "kind='movie'"
+	case "series":
+		where = "kind='series' AND category='standard'"
+	case "anime":
+		where = "kind='series' AND category='anime'"
+	default:
+		return 0, errors.New("choose movie, series or anime")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `INSERT INTO metadata_refresh_queue(media_id,full) SELECT id,1 FROM media_items WHERE tmdb_id>0 AND `+where+` ON CONFLICT(media_id) DO UPDATE SET requested_at=unixepoch(),full=1,attempts=0,next_attempt=0,last_error=''`)
+	if err != nil {
+		return 0, err
+	}
+	queued, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	return queued, nil
+}
 func (s *MetadataRefresher) Run(ctx context.Context, logger *slog.Logger) {
 	for ctx.Err() == nil {
-		_, e := s.ProcessNext(ctx)
-		if e != nil && ctx.Err() == nil {
+		worked := false
+		for i := 0; i < 5; i++ {
+			ok, e := s.ProcessQueued(ctx)
+			if e != nil && ctx.Err() == nil {
+				logger.Warn("queued metadata refresh deferred", "error", e)
+			}
+			if !ok || e != nil {
+				break
+			}
+			worked = true
+		}
+		if _, e := s.ProcessNext(ctx); e != nil && ctx.Err() == nil {
 			logger.Warn("metadata refresh deferred", "error", e)
 		}
-		timer := time.NewTimer(30 * time.Second)
+		delay := 30 * time.Second
+		if worked {
+			delay = 2 * time.Second
+		}
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -91,6 +152,90 @@ func (s *MetadataRefresher) Run(ctx context.Context, logger *slog.Logger) {
 		}
 	}
 }
+func metadataRetryDelay(attempts int) int64 {
+	steps := [...]int64{60, 300, 900, 3600, 21600, 86400}
+	if attempts < 1 {
+		attempts = 1
+	}
+	if attempts > len(steps) {
+		attempts = len(steps)
+	}
+	return steps[attempts-1]
+}
+
+func metadataMessage(err error) string {
+	text := err.Error()
+	if len(text) > 500 {
+		text = text[:500]
+	}
+	return text
+}
+
+// ProcessQueued refreshes at most one durable add/import/library request. It
+// runs independently of the paused-by-default schedule so new catalog items
+// receive details and episode air dates promptly after they are created.
+func (s *MetadataRefresher) ProcessQueued(ctx context.Context) (bool, error) {
+	owner := transfer.ID()
+	now := time.Now().Unix()
+	var mediaID, requestedAt int64
+	var full bool
+	var attempts int
+	err := s.db.QueryRowContext(ctx, `UPDATE metadata_refresh_queue SET lease_owner=?,lease_until=?,attempts=attempts+1 WHERE media_id=(SELECT media_id FROM metadata_refresh_queue WHERE lease_until<? AND next_attempt<=? ORDER BY requested_at,media_id LIMIT 1) RETURNING media_id,requested_at,full,attempts`, owner, now+600, now, now).Scan(&mediaID, &requestedAt, &full, &attempts)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	work, cancel := context.WithTimeout(ctx, 8*time.Minute)
+	refreshErr := s.refreshItem(work, mediaID, full, func(tx *sql.Tx) error {
+		var n int
+		if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM metadata_refresh_queue WHERE media_id=? AND requested_at=? AND lease_owner=? AND lease_until>=?`, mediaID, requestedAt, owner, time.Now().Unix()).Scan(&n); e != nil {
+			return e
+		}
+		if n != 1 {
+			return ErrLease
+		}
+		return nil
+	})
+	cancel()
+	finish, done := context.WithTimeout(context.Background(), 5*time.Second)
+	defer done()
+	if refreshErr == nil {
+		result, err := s.db.ExecContext(finish, `DELETE FROM metadata_refresh_queue WHERE media_id=? AND requested_at=? AND lease_owner=?`, mediaID, requestedAt, owner)
+		if err != nil {
+			return true, err
+		}
+		if changed, _ := result.RowsAffected(); changed == 0 {
+			// A newer request replaced this row while it was running; release
+			// only this worker's stale lease so the replacement can run.
+			_, _ = s.db.ExecContext(finish, `UPDATE metadata_refresh_queue SET lease_owner='',lease_until=0 WHERE media_id=? AND lease_owner=?`, mediaID, owner)
+		}
+		return true, nil
+	}
+	delay := metadataRetryDelay(attempts)
+	var provider *metadata.Error
+	if errors.As(refreshErr, &provider) && provider.Code == "tmdb_not_configured" {
+		delay = 3600
+	}
+	result, err := s.db.ExecContext(finish, `UPDATE metadata_refresh_queue SET lease_owner='',lease_until=0,last_error=?,next_attempt=? WHERE media_id=? AND requested_at=? AND lease_owner=?`, metadataMessage(refreshErr), time.Now().Unix()+delay, mediaID, requestedAt, owner)
+	if err != nil {
+		return true, err
+	}
+	changed, _ := result.RowsAffected()
+	if changed == 0 {
+		// A newer request replaced this one while it was running. Leave the
+		// replacement queued and release only this worker's stale lease.
+		_, _ = s.db.ExecContext(finish, `UPDATE metadata_refresh_queue SET lease_owner='',lease_until=0 WHERE media_id=? AND lease_owner=?`, mediaID, owner)
+		return true, nil
+	}
+	if attempts >= 8 {
+		_, _ = s.db.ExecContext(finish, `DELETE FROM metadata_refresh_queue WHERE media_id=? AND requested_at=?`, mediaID, requestedAt)
+		_, _ = s.db.ExecContext(finish, `INSERT INTO metadata_refresh_state(media_id,state,message) VALUES(?,'attention','Automatic metadata refresh failed; saved metadata and files were retained.') ON CONFLICT(media_id) DO UPDATE SET state=excluded.state,message=excluded.message`, mediaID)
+	}
+	return true, nil
+}
+
 func (s *MetadataRefresher) ProcessNext(ctx context.Context) (bool, error) {
 	owner := transfer.ID()
 	now := time.Now().Unix()
@@ -178,10 +323,30 @@ func (s *MetadataRefresher) ProcessNext(ctx context.Context) (bool, error) {
 	return true, saveErr
 }
 func (s *MetadataRefresher) refresh(ctx context.Context, id int64, p MetadataSchedule, owner string) error {
+	return s.refreshItem(ctx, id, false, func(tx *sql.Tx) error {
+		var n int
+		e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM metadata_refresh_schedule WHERE id=1 AND lease_owner=? AND revision=? AND lease_until>=? AND (enabled=1 OR requested=1)`, owner, p.Revision, time.Now().Unix()).Scan(&n)
+		if e != nil {
+			return e
+		}
+		if n != 1 {
+			return ErrLease
+		}
+		return nil
+	})
+}
+
+// refreshItem fetches and applies provider facts for one catalog item. full
+// requests every eligible loaded/upcoming season, capped per pass; scheduled
+// and automatic requests rotate through five seasons at a time.
+func (s *MetadataRefresher) refreshItem(ctx context.Context, id int64, full bool, authorize func(*sql.Tx) error) error {
 	store := library.New(s.db)
 	item, e := store.Item(ctx, id)
 	if e != nil {
 		return e
+	}
+	if authorize == nil {
+		authorize = func(*sql.Tx) error { return nil }
 	}
 	fresh := library.MetadataRefresh{SeasonCursor: -1}
 	revision := int64(0)
@@ -207,12 +372,16 @@ func (s *MetadataRefresher) refresh(ctx context.Context, id int64, p MetadataSch
 				eligible = append(eligible, v.Number)
 			}
 		}
-		for pass := 0; pass < 2 && len(fresh.Seasons) < min(5, len(eligible)); pass++ {
+		limit := min(5, len(eligible))
+		if full {
+			limit = min(50, len(eligible))
+		}
+		for pass := 0; pass < 2 && len(fresh.Seasons) < limit; pass++ {
 			for _, n := range eligible {
 				if (pass == 0 && n <= cursor) || (pass == 1 && n > cursor) {
 					continue
 				}
-				if len(fresh.Seasons) >= min(5, len(eligible)) {
+				if len(fresh.Seasons) >= limit {
 					break
 				}
 				season, e := s.provider.Season(ctx, item.TMDbID, n)
@@ -234,15 +403,5 @@ func (s *MetadataRefresher) refresh(ctx context.Context, id int64, p MetadataSch
 	if e != nil {
 		return e
 	}
-	return store.ApplyMetadataRefresh(ctx, item, revision, fresh, func(tx *sql.Tx) error {
-		var n int
-		e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM metadata_refresh_schedule WHERE id=1 AND lease_owner=? AND revision=? AND lease_until>=? AND (enabled=1 OR requested=1)`, owner, p.Revision, time.Now().Unix()).Scan(&n)
-		if e != nil {
-			return e
-		}
-		if n != 1 {
-			return ErrLease
-		}
-		return nil
-	})
+	return store.ApplyMetadataRefresh(ctx, item, revision, fresh, authorize)
 }

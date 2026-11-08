@@ -173,7 +173,9 @@ function RefreshForm({
           Each batch refreshes at most five seasons per show, rotating through
           loaded seasons and monitored seasons due within 90 days. Provider
           identity changes are held for review; saved episodes and files are
-          retained.
+          retained. Newly added, registered and imported titles also enter a
+          durable refresh queue automatically, and each library page has a
+          refresh action for every title in that collection.
         </p>
       </section>
     </>

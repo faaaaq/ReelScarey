@@ -56,6 +56,11 @@ work counts, saved upcoming dates for the current UTC month and configured stora
 roots. Each preview shows at most four entries with links to the full views;
 errors remain visible per section. Calendar retains its saved-metadata limits.
 
+Each Movies, TV Shows and Anime toolbar includes **Refresh**, which queues a
+metadata pass for every title in that collection. The durable worker runs it even
+when the scheduled refresh is paused. Added, registered and imported titles queue
+automatically; the button is for existing catalogs and manual rechecks.
+
 Native table semantics, labeled controls, keyboard focus, reduced-motion support
 and phone navigation remain. Narrow tables scroll inside a labeled, focusable
 region. No external fonts, application dependencies or migrations are added.

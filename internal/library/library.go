@@ -251,6 +251,11 @@ func (s *Store) AddMovieAuthorized(ctx context.Context, movie metadata.Movie, mo
 	if err != nil {
 		return Item{}, false, err
 	}
+	if count == 1 {
+		if err = QueueMetadataRefreshTx(ctx, tx, item.ID, false); err != nil {
+			return Item{}, false, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return Item{}, false, err
 	}

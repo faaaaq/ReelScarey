@@ -21,7 +21,10 @@ headless SABnzbd client; a news server is always owner-supplied. See
 Wanted and the monthly release calendar organize missing movies and loaded
 episodes, saved dates and tracked job status. They work offline with explicit
 search/Activity links. See [planning and metadata limits](docs/PLANNING.md).
-One server owns the UI, REST API,
+Adding a title, registering an existing file or importing a completed download
+queues a durable metadata refresh, so show episodes and air dates load without
+opening the details page. Each library page also has a **Refresh** action that
+queues every title in that library. One server owns the UI, REST API,
 worker and SQLite database.
 
 Movies and TV libraries support literal title search, status/monitoring filters,

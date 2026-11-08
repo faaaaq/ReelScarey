@@ -69,7 +69,7 @@ func TestUnverifiedVideoRegistrationFollowsOwnerPreference(t *testing.T) {
 	if e != nil || updated.NeedsAttention != 1 || updated.Registered != 0 {
 		t.Fatal("registered without the owner preference", updated, e)
 	}
-	if _, e = f.db.Exec(`UPDATE settings SET register_unverified_video=1`); e != nil {
+	if _, e = f.db.Exec(`UPDATE settings SET register_unverified_video=1; DELETE FROM metadata_refresh_queue`); e != nil {
 		t.Fatal(e)
 	}
 	// Blocked files return through the reviewed retry path, exactly like the
@@ -83,6 +83,10 @@ func TestUnverifiedVideoRegistrationFollowsOwnerPreference(t *testing.T) {
 	updated, e = f.s.LibraryScan(ctx, scan.ID)
 	if e != nil || updated.Registered != 1 || updated.NeedsAttention != 0 {
 		t.Fatal("preference did not allow registration", updated, e)
+	}
+	var queued int
+	if e = f.db.QueryRow(`SELECT COUNT(*) FROM metadata_refresh_queue WHERE media_id=?`, f.movie.ID).Scan(&queued); e != nil || queued != 1 {
+		t.Fatal("existing-media registration did not queue a metadata refresh", queued, e)
 	}
 	var raw string
 	if e = f.db.QueryRow(`SELECT probe_json FROM media_files WHERE movie_id=?`, f.movie.ID).Scan(&raw); e != nil {

@@ -14,6 +14,14 @@ rotate through at most five loaded or monitored upcoming seasons per title per
 pass. Metadata requires the existing TMDb connection; an absent provider is a
 visible waiting state. Changes during a fetch invalidate its write permission.
 
+Adding a movie or show, registering an existing file, and importing a completed
+download also create a durable per-title refresh request. That queue runs even
+while the schedule is paused, so new titles receive full details and their
+eligible upcoming/loaded episode air dates without opening the details page.
+Each library page has a **Refresh** action that queues every title in that
+library; a manual library pass loads all eligible seasons (up to 50 per show per
+pass) instead of the scheduled five-season slice.
+
 Canonical IDs, monitoring decisions and registered media are preserved. Removed
 provider episodes are retained. Calendar reads remain local and now show saved
 runtime, series status and metadata freshness; refreshing is an explicit worker

@@ -437,6 +437,7 @@ symbolic-link imports are not supported.
 | GET | `/api/v1/metadata/series?query=title&page=1` | TMDb TV search with per-result in_library |
 | GET | `/api/v1/metadata/series/{tmdb_id}` | Canonical show details and season summaries |
 | POST | `/api/v1/library/series` | Canonical show add by tmdb_id and optional `monitor` (`none`, `missing`, `current`, `future`); legacy `monitored` still works; omitted defaults to future-only; 201 new/200 existing |
+| POST | `/api/v1/library/refresh` | `{ "kind": "movie" \| "series" \| "anime" }`; queues a full metadata refresh for every title in that library; 202 `{ "queued": n }` |
 | GET | `/api/v1/library/series/{id}` | Saved show, revision, status and season summaries |
 | POST | `/api/v1/library/series/{id}/refresh` | `{ "revision": 1 }`; refresh show metadata/seasons, preserve selections |
 | GET | `/api/v1/library/series/{id}/seasons/{number}` | Saved season and episodes; no provider request |
@@ -856,6 +857,7 @@ snapshots return conflicts. See [behavior and limits](SEVEN_FEATURES.md).
 | --- | --- | --- |
 | `/system/metadata-refresh` | GET, PUT | Schedule fields: enabled, interval_hours, batch_size, only_monitored, revision. |
 | `/system/metadata-refresh/run` | POST | Empty object requests one bounded pass; busy requests conflict. |
+| `/library/refresh` | POST | `{ "kind": "movie" \| "series" \| "anime" }` queues a full pass for that library independently of the schedule; 202 with queued count. |
 | `/library/items/{id}/anime-order/refresh` | POST | Current revision creates a fresh-facts order review; existing apply route commits it. |
 | `/library/series/{id}/subtitles` | GET, PUT, DELETE | Show preferences with override revision and global_revision; DELETE returns to inheritance. |
 | `/subtitles/files/{id}/edits` | GET, POST | History or review: language, variant, action offset/replace/rollback plus offset_ms/content/previous_edit_id. |

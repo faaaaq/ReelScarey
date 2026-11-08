@@ -173,11 +173,15 @@ Migration 003 adds this without altering prior migrations or account/provider st
 
 Migration 004 adds TV details, season summaries and episodes. TV uses the same
 catalog item and encrypted TMDb connection. Adding a show fetches canonical series
-metadata once and transactionally inserts its summaries; season episodes load on
-explicit request. Show-level revision checks serialize all metadata refreshes and
-monitoring changes. Parent monitoring switches gate effective episode monitoring
-without changing child selections. Refresh upserts metadata by season/episode
-number while retaining selections and rows absent from later provider responses.
+metadata once and transactionally inserts its summaries. A durable per-title
+metadata queue is populated by adds, existing-file registration and completed
+imports; it loads eligible episodes independently of the paused-by-default
+schedule. Library pages can queue every title in one collection, while explicit
+per-season refresh remains available. Show-level revision checks serialize all
+metadata refreshes and monitoring changes. Parent monitoring switches gate
+effective episode monitoring without changing child selections. Refresh upserts
+metadata by season/episode number while retaining selections and rows absent from
+later provider responses.
 Migration 005 generalizes the shared download/import pipeline for TV. The existing
 downloads.movie_id column remains the parent catalog ID for compatibility; kind
 distinguishes movies from series. TV jobs snapshot canonical episode targets and

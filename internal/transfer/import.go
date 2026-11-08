@@ -16,6 +16,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/quality"
 	"github.com/faaaaq/ReelScarey/internal/settings"
@@ -629,6 +630,11 @@ func (i *Importer) commitPublished(ctx context.Context, j Job, p importPlan, fol
 			return e
 		}
 		if e = recordDownloadCompleted(ctx, tx, j.ID, j.Title); e != nil {
+			return e
+		}
+	}
+	if j.MovieID > 0 {
+		if e = library.QueueMetadataRefreshTx(ctx, tx, j.MovieID, false); e != nil {
 			return e
 		}
 	}

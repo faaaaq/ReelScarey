@@ -203,6 +203,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/wanted", method(http.MethodGet, s.planning))
 	mux.HandleFunc("/api/v1/calendar", method(http.MethodGet, s.planning))
 	mux.HandleFunc("/api/v1/library", method(http.MethodGet, s.listLibrary))
+	mux.HandleFunc("/api/v1/library/refresh", method(http.MethodPost, s.refreshLibrary))
 	mux.HandleFunc("/api/v1/library/monitoring/preview", method(http.MethodPost, s.reviewMonitoring))
 	mux.HandleFunc("/api/v1/library/monitoring", method(http.MethodPut, s.applyMonitoring))
 	mux.HandleFunc("/api/v1/library/profiles/preview", method(http.MethodPost, s.reviewProfiles))

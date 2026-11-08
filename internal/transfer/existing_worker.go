@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/faaaaq/ReelScarey/internal/filecheck"
+	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/settings"
 	"io"
@@ -439,6 +440,9 @@ func (s *Service) verifyExisting(ctx context.Context, id, owner string) error {
 	}
 	if n, _ := res.RowsAffected(); n != 1 {
 		return ErrLease
+	}
+	if e = library.QueueMetadataRefreshTx(ctx, tx, *f.MediaID, false); e != nil {
+		return e
 	}
 	return tx.Commit()
 }

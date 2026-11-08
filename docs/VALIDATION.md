@@ -1,5 +1,22 @@
 # Validation record — 2026-10-29
 
+## Automatic and library metadata refresh (2026-11-08)
+
+Implementation checks on 2026-11-08 (Windows development host):
+
+- Migration 070 adds a durable per-title metadata refresh queue. Adding a
+  movie/show, registering an existing file and committing a download import
+  queue the title automatically; it runs independently of the paused-by-default
+  schedule. Library pages queue every title in the current collection with a
+  full-season pass.
+- `go test ./...`, `go vet ./...` and `go build ./cmd/reelscarey` passed,
+  including new queue scope, automatic-add, full-season, API CSRF and migration
+  tests.
+- Web `format:check`, `check`, `test` (51 files, 278 tests) and `build` passed.
+- Not exercised here: a live TMDb account, a real library-wide provider pass or
+  a Docker container. Generated provider fixtures cover queueing, library scoping
+  and all-eligible-season loading.
+
 ## Import method preference (2026-11-08)
 
 Implementation checks on 2026-11-08 (Windows development host):

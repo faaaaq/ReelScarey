@@ -99,7 +99,8 @@ release kind, title ignoring ASCII case, parent ID and episode ID. New requests
 reflect catalog changes; bookmarks are filters, not frozen snapshots.
 
 Migration 057 adds the three movie date columns with empty defaults; existing
-rows and the canonical release_date are preserved. This milestone does not add
-changed/deleted-file checks, automatic metadata refresh, future episode
-prediction, timezone-specific broadcasts, upgrade replacement, bulk actions,
-media requests or private-account acceptance.
+rows and the canonical release_date are preserved. This milestone did not add
+changed/deleted-file checks, future episode prediction, timezone-specific
+broadcasts, upgrade replacement, bulk actions, media requests or private-account
+acceptance. Later releases add a durable automatic metadata queue for added,
+registered and imported titles plus library-wide refresh.

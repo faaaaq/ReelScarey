@@ -83,7 +83,7 @@ func TestNewFeatureRoutesKeepRequesterBoundaryAndMetadataScheduleRequiresCSRF(t 
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, p := range []struct{ method, path string }{{"GET", "/api/v1/system/metadata-refresh"}, {"POST", "/api/v1/system/metadata-refresh/run"}, {"POST", "/api/v1/library/items/1/anime-order/refresh"}, {"PUT", "/api/v1/library/series/1/subtitles"}, {"POST", "/api/v1/subtitles/files/1/edits"}, {"POST", "/api/v1/subtitles/edits/id/apply"}, {"POST", "/api/v1/youtube/bulk/review"}, {"POST", "/api/v1/youtube/bulk/queue"}, {"GET", "/api/v1/youtube/subscriptions"}, {"POST", "/api/v1/library/imports/id/matches/suggest"}, {"POST", "/api/v1/library/imports/id/matches/apply"}} {
+	for _, p := range []struct{ method, path string }{{"GET", "/api/v1/system/metadata-refresh"}, {"POST", "/api/v1/system/metadata-refresh/run"}, {"POST", "/api/v1/library/refresh"}, {"POST", "/api/v1/library/items/1/anime-order/refresh"}, {"PUT", "/api/v1/library/series/1/subtitles"}, {"POST", "/api/v1/subtitles/files/1/edits"}, {"POST", "/api/v1/subtitles/edits/id/apply"}, {"POST", "/api/v1/youtube/bulk/review"}, {"POST", "/api/v1/youtube/bulk/queue"}, {"GET", "/api/v1/youtube/subscriptions"}, {"POST", "/api/v1/library/imports/id/matches/suggest"}, {"POST", "/api/v1/library/imports/id/matches/apply"}} {
 		if out := request(h, p.method, p.path, "{}", &viewer, true); out.Code != 403 {
 			t.Fatal("requester access", p, out.Code, out.Body.String())
 		}
@@ -102,6 +102,15 @@ func TestNewFeatureRoutesKeepRequesterBoundaryAndMetadataScheduleRequiresCSRF(t 
 	}
 	if out = request(h, "PUT", path, body, &admin, true); out.Code != 409 {
 		t.Fatal("stale schedule accepted", out.Code)
+	}
+	if out = request(h, "POST", "/api/v1/library/refresh", `{"kind":"movie"}`, &admin, false); out.Code != 403 {
+		t.Fatal("library refresh accepted without CSRF", out.Code)
+	}
+	if out = request(h, "POST", "/api/v1/library/refresh", `{"kind":"movie"}`, &admin, true); out.Code != 202 || !strings.Contains(out.Body.String(), `"queued":0`) {
+		t.Fatal("library refresh did not queue an empty movie library", out.Code, out.Body.String())
+	}
+	if out = request(h, "POST", "/api/v1/library/refresh", `{"kind":"music"}`, &admin, true); out.Code != 400 {
+		t.Fatal("invalid library kind accepted", out.Code)
 	}
 	for _, page := range []string{"/metadata-refresh", "/youtube/subscriptions"} {
 		r := httptest.NewRequest(http.MethodGet, "http://example.com"+page, nil)

@@ -64,3 +64,28 @@ func (s *Server) metadataRefreshRun(w http.ResponseWriter, r *http.Request) {
 	}
 	send(w, 202, map[string]bool{"queued": true})
 }
+
+// refreshLibrary queues every title in one library for a full metadata pass.
+// The durable worker runs it even while the scheduled refresh is paused.
+func (s *Server) refreshLibrary(w http.ResponseWriter, r *http.Request) {
+	if s.metadataRefresh == nil {
+		fail(w, 503, "metadata_unavailable", "Metadata refresh is unavailable.")
+		return
+	}
+	var body struct {
+		Kind string `json:"kind"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if body.Kind != "movie" && body.Kind != "series" && body.Kind != "anime" {
+		fail(w, 400, "invalid_kind", "Choose movie, series or anime.")
+		return
+	}
+	queued, e := s.metadataRefresh.EnqueueLibrary(r.Context(), body.Kind)
+	if e != nil {
+		s.internal(w, "metadata_refresh_library", e)
+		return
+	}
+	send(w, 202, map[string]any{"queued": queued})
+}

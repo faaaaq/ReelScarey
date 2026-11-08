@@ -24,6 +24,11 @@ Historical native and package results below remain as records of past work.
   read-only mounts use a verified copy. Publication remains hardlink-only and
   symbolic-link imports are not supported.
 
+- [x] Queue automatic metadata details for every added title, existing-file
+  registration and completed import, independent of the paused-by-default
+  schedule. Library pages expose a full-library refresh that loads all eligible
+  seasons while preserving canonical IDs, monitoring and files.
+
 - [x] Add a Music catalog with MusicBrainz artist, album and track metadata, a
   Music tab, existing-file scanning and reviewed registration, reviewed
   organization and verified tag writing with rollback, audio release search and

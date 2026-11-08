@@ -178,6 +178,9 @@ func (s *Store) AddSeriesAuthorized(ctx context.Context, show metadata.Series, m
 		if e = putSeasons(ctx, tx, item.ID, show.Seasons); e != nil {
 			return Item{}, false, e
 		}
+		if e = QueueMetadataRefreshTx(ctx, tx, item.ID, false); e != nil {
+			return Item{}, false, e
+		}
 	}
 	return item, n == 1, tx.Commit()
 }

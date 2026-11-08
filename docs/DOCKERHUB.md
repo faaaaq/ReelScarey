@@ -34,6 +34,8 @@ seeding.
   TMDb and MusicBrainz.
 - Canonical seasons and episodes, on-demand metadata refresh and
   revision-checked monitoring.
+- Added, registered and imported titles automatically enter a durable metadata
+  queue; each library page can queue a full refresh for its collection.
 - New titles default to **future-only monitoring**, so adding an old show does
   not mark its entire back catalog for search.
 - Poster and table browsing with literal search, status/monitoring filters,
