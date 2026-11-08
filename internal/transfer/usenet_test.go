@@ -235,8 +235,8 @@ func TestUsenetPostProcessingRestartAndSourceRetention(t *testing.T) {
 		t.Fatal("secret not encrypted")
 	}
 }
-func TestUsenetTVRequiresReviewedMapping(t *testing.T) {
-	f, id, targets := setupTV(t)
+func TestUsenetTVPackImportsAutomatically(t *testing.T) {
+	f, id, _ := setupTV(t)
 	v := installUsenet(t, f)
 	j := queueUsenet(t, f, id, true)
 	f.tick(t)
@@ -248,11 +248,8 @@ func TestUsenetTVRequiresReviewedMapping(t *testing.T) {
 	v.mu.Unlock()
 	f.tick(t)
 	current, _ := f.s.Job(context.Background(), j.ID)
-	if current.ErrorCode != "map_episodes" || f.probe.calls != 0 || len(current.Choices) != 2 {
-		t.Fatal("TV bypassed review", current.ErrorCode)
-	}
-	if e := f.s.ConfirmTVMapping(context.Background(), j.ID, TVMappingUpdate{Files: []TVMapping{{FileIndex: 0, EpisodeIDs: []int64{targets[0].EpisodeID, targets[1].EpisodeID}}, {FileIndex: 1, EpisodeIDs: []int64{targets[2].EpisodeID}}}}); e != nil {
-		t.Fatal(e)
+	if current.ErrorCode != "" || current.State != "importing" || len(current.Choices) != 0 {
+		t.Fatal("a labeled TV pack waited for review", current.ErrorCode)
 	}
 	f.reopen(t)
 	f.tick(t)

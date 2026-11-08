@@ -243,7 +243,7 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           <ToolbarButton
             icon={ListChecks}
             label="Search All Monitored"
-            title="Search every monitored, missing episode of this show now"
+            title="Try a season pack first, then search every missing monitored episode of this show"
             spinning={bulk.state.status === "running"}
             disabled={bulk.state.status === "running"}
             onClick={() =>

@@ -488,7 +488,7 @@ function ReleaseBrowser() {
                     : ""}
                   .{" "}
                   {tv &&
-                    "TV files still need your episode mapping confirmation in Activity."}
+                    "Labeled single episodes and packs import automatically; only unmatched or ambiguous files need mapping review."}
                 </p>
                 <Table label="Releases" className="rel-table">
                   <thead>
@@ -571,6 +571,7 @@ function ReleaseBrowser() {
                                 release.title
                               )}
                             </span>
+                            {release.pack && <Label kind="info">Pack</Label>}
                             {release.freeleech && (
                               <Label kind="success">Freeleech</Label>
                             )}

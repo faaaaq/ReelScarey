@@ -65,6 +65,20 @@ func completeTV(t *testing.T, f *workflowFixture, j Job) {
 	}
 }
 
+func completeAmbiguousTV(t *testing.T, f *workflowFixture, j Job) {
+	t.Helper()
+	for _, name := range []string{"Test.Show.Part1.mkv", "Test.Show.Part2.mkv"} {
+		f.source(t, j, name, []byte("owned fixture video "+name))
+	}
+	f.client.torrent.Progress = 1
+	f.client.torrent.AmountLeft = 0
+	f.client.torrent.State = "uploading"
+	f.client.files = []TorrentFile{}
+	for n, name := range []string{"Test.Show.Part1.mkv", "Test.Show.Part2.mkv"} {
+		f.client.files = append(f.client.files, TorrentFile{Index: n, Name: name, Size: int64(len("owned fixture video " + name)), Progress: 1, Priority: 1})
+	}
+}
+
 // A release with exactly one completed video whose filename parses to
 // precisely the one reserved episode imports without review; everything else
 // keeps the explicit mapping review.
@@ -150,6 +164,49 @@ func TestTVSingleEpisodeImportsAutomatically(t *testing.T) {
 	}
 }
 
+func TestTVSeasonPackImportsAutomatically(t *testing.T) {
+	f, id, targets := setupTV(t)
+	ctx := context.Background()
+	j := queueSeason(t, f, id)
+	f.tick(t)
+	completeTV(t, f, j)
+	f.tick(t)
+	current, e := f.s.Job(ctx, j.ID)
+	if e != nil || current.ErrorCode != "" || current.State != "importing" || len(current.Choices) != 0 {
+		t.Fatal("a labeled season pack waited for review", current, e)
+	}
+	var mappings int
+	if e = f.db.QueryRow(`SELECT COUNT(*) FROM download_mappings WHERE download_id=?`, j.ID).Scan(&mappings); e != nil || mappings != len(targets) {
+		t.Fatal("the pack did not map every reserved episode", mappings, e)
+	}
+	f.tick(t)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		current, e = f.s.Job(ctx, j.ID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if current.State == "completed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the automatic pack import never completed", current)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	season, e := library.New(f.db).TVSeason(ctx, id, 1)
+	if e != nil || season.Season.AvailableEpisodes != 3 {
+		t.Fatal("the pack episodes were not registered", season, e)
+	}
+	if season.Episodes[0].FilePath == "" || season.Episodes[0].FilePath != season.Episodes[1].FilePath || season.Episodes[1].FilePath == season.Episodes[2].FilePath {
+		t.Fatal("the pack files were registered incorrectly", season.Episodes)
+	}
+	var events int
+	if e = f.db.QueryRow(`SELECT COUNT(*) FROM activity_events WHERE kind='download' AND object_id=? AND state LIKE 'imported automatically%'`, j.ID).Scan(&events); e != nil || events != 1 {
+		t.Fatal("the automatic pack import left no honest event", events, e)
+	}
+}
+
 func TestTVMultiEpisodeImportReopenAndSourceRetention(t *testing.T) {
 	for _, copyMode := range []bool{false, true} {
 		t.Run(map[bool]string{false: "link", true: "copy"}[copyMode], func(t *testing.T) {
@@ -158,10 +215,10 @@ func TestTVMultiEpisodeImportReopenAndSourceRetention(t *testing.T) {
 			j := queueSeason(t, f, id)
 			f.client.lostResponse = true
 			f.tick(t)
-			completeTV(t, f, j)
+			completeAmbiguousTV(t, f, j)
 			f.tick(t)
 			current, e := f.s.Job(ctx, j.ID)
-			if e != nil || current.ErrorCode != "map_episodes" || f.probe.calls != 0 || len(current.Choices) != 2 || len(current.Choices[0].Suggestions) != 2 {
+			if e != nil || current.ErrorCode != "map_episodes" || f.probe.calls != 0 || len(current.Choices) != 2 || len(current.Choices[0].Suggestions) != 0 {
 				t.Fatal("import bypassed review", current, e)
 			}
 			bad := TVMappingUpdate{Files: []TVMapping{{FileIndex: 0, EpisodeIDs: []int64{targets[0].EpisodeID, targets[2].EpisodeID}}, {FileIndex: 1, EpisodeIDs: []int64{targets[1].EpisodeID}}}}
@@ -240,7 +297,7 @@ func TestTVPartialImportCollisionAndRestart(t *testing.T) {
 	ctx := context.Background()
 	j := queueSeason(t, f, id)
 	f.tick(t)
-	completeTV(t, f, j)
+	completeAmbiguousTV(t, f, j)
 	f.tick(t)
 	mapping := TVMappingUpdate{Files: []TVMapping{{FileIndex: 0, EpisodeIDs: []int64{targets[0].EpisodeID, targets[1].EpisodeID}}, {FileIndex: 1, EpisodeIDs: []int64{targets[2].EpisodeID}}}}
 	if e := f.s.ConfirmTVMapping(ctx, j.ID, mapping); e != nil {
@@ -296,7 +353,7 @@ func TestTVReservationsSkipAndDuplicateProtection(t *testing.T) {
 	ctx := context.Background()
 	j := queueSeason(t, f, id)
 	f.tick(t)
-	completeTV(t, f, j)
+	completeAmbiguousTV(t, f, j)
 	f.tick(t)
 	if e := f.s.ConfirmTVMapping(ctx, j.ID, TVMappingUpdate{Files: []TVMapping{{FileIndex: 55, EpisodeIDs: []int64{targets[0].EpisodeID}}}, SkipEpisodeIDs: []int64{targets[1].EpisodeID, targets[2].EpisodeID}}); e == nil {
 		t.Fatal("unlisted file accepted")
@@ -354,7 +411,7 @@ func TestTVActiveReservationsAndCancelledResumeConflicts(t *testing.T) {
 	ctx := context.Background()
 	old := queueSeason(t, f, id)
 	f.tick(t)
-	completeTV(t, f, old)
+	completeAmbiguousTV(t, f, old)
 	f.tick(t)
 	f.indexer.hash = strings.Repeat("a", 40)
 	out, e := f.s.SearchTV(ctx, id, 1, 1, "")

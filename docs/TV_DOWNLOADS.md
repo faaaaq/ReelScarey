@@ -21,19 +21,21 @@ to a different target set. An identical retry returns its existing job. This avo
 adopting or editing unrelated qBittorrent torrents. Loss of an add response uses
 the existing hash/tag reconciliation and durable worker leases.
 
-Completed TV downloads stop for review before any media write when the mapping
-is not unambiguous: more than one completed video, more than one reserved
-episode, a replaced registered version, or a filename without exact episode
-evidence all keep the explicit review. Activity lists complete, selected,
-supported videos, excluding archives/samples/trailers. The path snapshot must
-remain in the job's dedicated download directory. Filename patterns S01E01,
-S01E01E02, S01E01-E03 and 1x01-02 provide suggestions only; wrong seasons,
-ambiguous tokens, nonconsecutive groups and unknown episodes produce no
-suggestion. Date/absolute-number filenames can be assigned manually.
+Completed TV downloads wait for review only when the mapping is not complete
+and unambiguous: a reserved episode without a matching video, a video that
+names no reserved episode uniquely, a replaced registered version, or an
+ambiguous/duplicate label. Labeled single episodes and multi-file packs map
+themselves when every reserved episode has exactly one matching file; extra
+videos that do not name a reserved episode are ignored. Activity lists complete,
+selected, supported videos, excluding archives/samples/trailers. The path
+snapshot must remain in the job's dedicated download directory. Filename
+patterns S01E01, S01E01E02, S01E01-E03 and 1x01-02 provide suggestions only;
+wrong seasons, ambiguous tokens, nonconsecutive groups and unknown episodes
+produce no suggestion. Date/absolute-number filenames can be assigned manually.
 
 Assign every target episode to a listed file or explicitly skip it when a
-review is required. Unambiguous downloads map themselves: the server records
-the same mapping the review would have confirmed, journals an "imported
+review is required. Complete mappings map themselves: the server records the
+same mappings the review would have confirmed, journals an "imported
 automatically" event, and runs the identical ffprobe verification and journaled
 import. A shared file can cover up to 20 consecutive target episodes in one
 season. Confirm that you reviewed the assignments, then select Confirm files &
@@ -75,12 +77,14 @@ metadata refresh for review rather than silently changing associations.
 
 Limits: at most 100 missing targets per job, 500 eligible videos per torrent and
 20 consecutive episodes per shared file. Season catalogs still support up to
-2,000 episodes, subject to provider response bounds. Multi-season packs, arbitrary
+2,000 episodes, subject to provider response bounds. A show-scoped automatic
+search tries one eligible season pack per season with multiple missing episodes,
+then falls back to individual episodes. A single multi-season pack spanning
+several seasons is still split into separate season downloads; arbitrary
 template expressions, replacement imports, existing-file scans,
 archive extraction and playback are outside this milestone. Opt-in automation
-can queue individual missing episodes and suggest resolution upgrades, while
-retaining mandatory mapping review; see AUTOMATION.md. Split large or
-multi-season releases into separate, explicitly chosen downloads.
+can queue individual missing episodes and suggest resolution upgrades; labeled
+packs import without review and see AUTOMATION.md for the search order.
 
 Migration 005 preserves prior movie jobs, encrypted payloads, file IDs and import
 phases while adding a default -1 file index for existing movie operations. Back

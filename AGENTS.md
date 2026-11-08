@@ -33,12 +33,13 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - internal/transfer owns Torznab/qBittorrent adapters, encrypted integration
   settings, release selections, leased download jobs, TV episode
   reservations/reviewed file mappings and per-file journaled imports. TV shares
-  the importer. Owner decision in 0.38.5: a TV download imports without review
-  only when exactly one video completed, exactly one episode is reserved, no
-  replacement is registered, and the filename parses to precisely that episode;
-  packs, multi-file releases, replacements and ambiguous labels keep the
-  explicit mapping review, and the automatic path journals an "imported
-  automatically" event.
+  the importer. Owner decision in 0.38.5, extended in 0.42.0: a TV download
+  imports without review when every reserved episode has exactly one completed
+  file whose parsed label names it, including labeled season packs and shared
+  range files; extra videos that do not name a reserved episode are ignored.
+  Replacements, missing target files, duplicate/ambiguous labels and multi-target
+  Anime mapped packs keep the explicit mapping review, and every automatic path
+  journals an "imported automatically" event.
   It also owns explicit existing-library discovery and in-place registration.
   Manual registration requires review. Automatic registration requires an explicit
   matching job, exact title/episode evidence, whole-scan duplicate checks and a

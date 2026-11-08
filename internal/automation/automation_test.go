@@ -679,7 +679,12 @@ func TestItemSearchScopesTheRunAndContinuesAcrossBatches(t *testing.T) {
 	if _, e := f2.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,category,monitored) VALUES(5,'series',5,'Show',2020,'standard',1);INSERT INTO series_details(media_id) VALUES(5);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,5,10,1,'Season','','2020-01-01',2,1,'loaded');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,11,1,'One','','2020-01-01',1),(2,1,12,2,'Two','','2020-01-02',1)`); e != nil {
 		t.Fatal(e)
 	}
-	f2.i.titleFor = func(query string) string { return strings.ReplaceAll(query, " ", ".") + ".1080p.English.WEB" }
+	f2.i.titleFor = func(query string) string {
+		if !strings.Contains(query, "E") {
+			return "Show.S01E01.1080p.English.WEB"
+		}
+		return strings.ReplaceAll(query, " ", ".") + ".1080p.English.WEB"
+	}
 	v, e := f2.s.Get(ctx)
 	if e != nil {
 		t.Fatal(e)
@@ -953,6 +958,42 @@ func TestScheduledSearchLeavesDisabledAnimeOut(t *testing.T) {
 		if r.MediaID == 77 {
 			t.Fatal("the scheduled cycle searched an Anime show with automatic search off", r)
 		}
+	}
+}
+
+func TestShowSearchQueuesOneSeasonPackBeforeEpisodes(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	if _, e := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,category,monitored) VALUES(5,'series',5,'Pack Show',2020,'standard',1);INSERT INTO series_details(media_id) VALUES(5);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,5,10,1,'Season','','2020-01-01',3,1,'loaded');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,11,1,'One','','2020-01-01',1),(2,1,12,2,'Two','','2020-01-02',1),(3,1,13,3,'Three','','2020-01-03',1)`); e != nil {
+		t.Fatal(e)
+	}
+	f.i.titleFor = func(query string) string {
+		if strings.Contains(query, "E") {
+			return strings.ReplaceAll(query, " ", ".") + ".1080p.English.WEB"
+		}
+		return "Pack.Show.S01.1080p.English.WEB"
+	}
+	configure(t, f.s, false, "download", 1)
+	if e := f.s.RequestItem(ctx, 5, nil); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	runs, e := f.s.Runs(ctx)
+	if e != nil || len(runs) != 1 {
+		t.Fatal(runs, e)
+	}
+	if runs[0].Checked != 1 || runs[0].Queued != 1 || runs[0].Matched != 1 {
+		t.Fatalf("the show search did not queue one pack: %+v", runs[0])
+	}
+	results, e := f.s.Results(ctx, runs[0].ID)
+	if e != nil || len(results) != 1 || results[0].Outcome != "queued" || !strings.Contains(results[0].Message, "Season pack queued for 3 episodes") {
+		t.Fatalf("pack result: %+v %v", results, e)
+	}
+	var downloads, targets, reservations int
+	if e = f.db.QueryRow(`SELECT (SELECT COUNT(*) FROM downloads),(SELECT COUNT(*) FROM download_targets),(SELECT COUNT(*) FROM episode_downloads)`).Scan(&downloads, &targets, &reservations); e != nil || downloads != 1 || targets != 3 || reservations != 3 {
+		t.Fatal("pack reservations", downloads, targets, reservations, e)
 	}
 }
 

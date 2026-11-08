@@ -108,7 +108,7 @@ func TestQueuedAnimeAbsoluteAliasesAndCustomNamingStayImmutable(t *testing.T) {
 		t.Fatal(e)
 	}
 	f.tick(t)
-	completeTV(t, f, j)
+	completeAmbiguousTV(t, f, j)
 	f.tick(t)
 	mapping := TVMappingUpdate{Files: []TVMapping{{FileIndex: 0, EpisodeIDs: []int64{targets[0].EpisodeID, targets[1].EpisodeID}}, {FileIndex: 1, EpisodeIDs: []int64{targets[2].EpisodeID}}}}
 	if e = f.s.ConfirmTVMapping(ctx, j.ID, mapping); e != nil {

@@ -123,6 +123,9 @@ type Release struct {
 	// one. It is never synthesized, fetched server-side or treated as a
 	// download link.
 	InfoURL string `json:"info_url"`
+	// Pack marks a season/range/complete-series release found by a season
+	// search. Single-episode searches leave it false.
+	Pack bool `json:"pack,omitempty"`
 }
 type Candidate struct {
 	Release

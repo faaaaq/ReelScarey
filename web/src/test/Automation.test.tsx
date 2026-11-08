@@ -179,7 +179,7 @@ describe("automation", () => {
       "download",
     );
     expect(
-      screen.getByText(/single-episode TV download imports automatically/),
+      screen.getByText(/labeled season pack imports automatically/),
     ).toBeVisible();
     await userEvent.click(
       screen.getByRole("button", { name: "Save automation" }),

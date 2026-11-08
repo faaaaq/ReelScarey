@@ -2383,3 +2383,23 @@ Run locally on Windows (development tools only; Docker remains the target):
   episode-to-file review. The indexer guide says the same instead of claiming
   every TV import needs review.
 - Type-check and the Automation UI test pass.
+
+## Version 0.42.0 TV pack imports and pack-first searches
+
+- A completed TV download now imports without review when every reserved episode
+  has exactly one completed file whose parsed label names it. This covers labeled
+  season packs and shared range files; extra videos that do not name a reserved
+  episode are ignored. Replacements, missing target files, duplicate/ambiguous
+  labels and multi-target Anime mapped packs keep the explicit mapping review.
+- Season release searches mark pack releases and list them first. A show-scoped
+  automatic search tries one eligible season pack per season with multiple
+  missing episodes, then falls back to individual episodes. The Calendar bulk
+  search still searches its per-target batch.
+- Quality pack targets verify the show title and season or complete-series
+  evidence before applying the ordinary profile rules. The pack queue guard
+  rechecks every reserved episode, profile and revision after metainfo.
+- Go tests cover automatic labeled pack import, ambiguous review fallback, a
+  pack-first show search with batch size 1, and pack identity/ranking. gofmt,
+  vet, the full Go suite and the build passed.
+- Frontend format:check, check, the full suite (49 files, 273 tests) and the
+  build passed. Release lists show a Pack label and the updated import notice.

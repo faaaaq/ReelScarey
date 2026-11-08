@@ -125,20 +125,32 @@ func (s *Service) prepareTVMapping(ctx context.Context, j Job, choices []FileCho
 			return e
 		}
 	}
-	// A download imports without review when the mapping is unambiguous: one
-	// completed video, exactly one reserved episode, and a release filename
-	// that parses to precisely that episode (or, for Anime, exactly the
-	// reviewed order entry). Packs, multi-file releases, replacements and
-	// ambiguous labels keep the explicit review. The same target validation,
-	// journaled import and ffprobe verification run either way.
-	auto := len(choices) == 1 && len(j.Targets) == 1 &&
-		choices[0].Suggestions != nil && len(choices[0].Suggestions) == 1 &&
-		choices[0].Suggestions[0] == j.Targets[0].EpisodeID
+	// A download imports without review when every reserved episode has exactly
+	// one completed file whose parsed label names it, and no file is ambiguous.
+	// This covers single episodes and multi-file season packs. Extras that do
+	// not name a reserved episode are ignored. Replacements still require the
+	// explicit review. The same target validation, journaled import and
+	// ffprobe verification run either way.
+	mapping := map[int64]int{}
+	auto := len(j.Targets) > 0
+	for n := range choices {
+		for _, episodeID := range choices[n].Suggestions {
+			if _, exists := mapping[episodeID]; exists {
+				auto = false
+			}
+			mapping[episodeID] = choices[n].Index
+		}
+	}
+	for _, target := range j.Targets {
+		if _, ok := mapping[target.EpisodeID]; !ok {
+			auto = false
+		}
+	}
 	var replacement int
 	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM acquisition_replacements WHERE source_kind='download' AND job_id=?`, j.ID).Scan(&replacement); e != nil {
 		return e
 	}
-	auto = auto && replacement == 0
+	auto = auto && replacement == 0 && (j.AnimeOrder == nil || len(j.Targets) == 1)
 	b, e := json.Marshal(choices)
 	if e != nil {
 		return e
@@ -152,12 +164,14 @@ func (s *Service) prepareTVMapping(ctx context.Context, j Job, choices []FileCho
 		return ErrLease
 	}
 	if auto {
-		target := j.Targets[0]
-		if e = validateTVTarget(ctx, tx, j.MovieID, target); e != nil {
-			return e
-		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO download_mappings(download_id,episode_id,file_index) VALUES(?,?,?)`, j.ID, target.EpisodeID, choices[0].Index); e != nil {
-			return e
+		for _, target := range j.Targets {
+			fileIndex := mapping[target.EpisodeID]
+			if e = validateTVTarget(ctx, tx, j.MovieID, target); e != nil {
+				return e
+			}
+			if _, e = tx.ExecContext(ctx, `INSERT INTO download_mappings(download_id,episode_id,file_index) VALUES(?,?,?)`, j.ID, target.EpisodeID, fileIndex); e != nil {
+				return e
+			}
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE download_tv SET mapping_confirmed=1 WHERE download_id=?`, j.ID); e != nil {
 			return e
@@ -165,7 +179,11 @@ func (s *Service) prepareTVMapping(ctx context.Context, j Job, choices []FileCho
 		if _, e = tx.ExecContext(ctx, `UPDATE downloads SET state='importing',choices='[]',error_code='',error_message='',next_run=0,attempts=0,updated_at=unixepoch() WHERE id=? AND lease_owner=?`, j.ID, j.owner); e != nil {
 			return e
 		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'download',?,?,'imported automatically: the release name matched exactly one episode')`, j.ID, j.Title); e != nil {
+		message := "imported automatically: the release name matched exactly one episode"
+		if len(j.Targets) > 1 || len(mapping) > 1 {
+			message = "imported automatically: every pack file matched a reserved episode"
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'download',?,?,?)`, j.ID, j.Title, message); e != nil {
 			return e
 		}
 	}

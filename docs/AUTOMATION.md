@@ -65,7 +65,10 @@ source, codec and preferred-term bonuses rank just below it. Usenet releases
 have no seed bonus. Title order breaks remaining ties. The indexer supplies at
 most 50 candidates; the ten highest ranked decisions
 and their rejection reasons are retained per target. Manual release choices are
-not silently blocked by these automation-only rules.
+not silently blocked by these automation-only rules. A show-scoped automatic
+search tries one eligible season pack first for each season with multiple
+missing episodes; if no pack qualifies, it searches the individual episodes.
+Pack titles are still excluded from single-episode identity matching.
 
 ## Title searches from library pages
 
@@ -130,9 +133,11 @@ there is still found by the scheduled missing-title search.
 
 Search mode records decisions without queuing downloads. Download mode queues
 the best matching **missing** target through the existing transfer service. A
-completed TV download waits for episode/file review in Activity unless it is
-unambiguous (one video, one reserved episode, exact filename evidence) and then
-imports automatically with the same journaling; see TV_DOWNLOADS.md. Existing
+completed TV download maps itself when every reserved episode has exactly one
+matching file (single episodes and labeled packs); replacements and incomplete or
+ambiguous mappings wait for episode/file review in Activity. The same journaling,
+ffprobe verification and no-overwrite import run either way; see TV_DOWNLOADS.md.
+Existing
 hash/target reservations, encrypted payloads, authenticated client submission,
 source retention, collision refusal and journaled imports are shared with manual
 downloads. A queue policy check runs transactionally after metainfo retrieval and

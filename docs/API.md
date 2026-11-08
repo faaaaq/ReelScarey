@@ -314,9 +314,11 @@ Revision conflicts return 409. The legacy connection edits through its original
 integration API; it supports testing/removal from this list.
 
 Movie and TV release responses now add `warnings` for unavailable sources.
-Each release may add `indexer_id`, `indexer`, `freeleech` and `info_url`, the
+Each release may add `indexer_id`, `indexer`, `freeleech`, `pack` and `info_url`, the
 provider's own details page when one was supplied. `info_url` is empty when the
 source gave no page; it is never fabricated and the server never fetches it.
+`pack` marks a season, range or complete-series release found by a season search;
+packs are listed first.
 Selections remain opaque, encrypted and expiring. Sources are rechecked at queue
 time. Search errors from all sources fail the request; partial failures retain
 healthy results.
@@ -436,7 +438,7 @@ them. Files ffprobe reads but finds no video stream in are never registered.
 | GET | `/api/v1/downloads?page=1` | Activity queue: items, page, total, limit 24; completed jobs are excluded and remain readable through the direct job route |
 | POST | `/api/v1/downloads` | `{ "release_id": "..." }`; 202 queued or 200 existing; item + created |
 | POST | `/api/v1/library/movies/{id}/manual-torrent[?movie_version=additional]` | Raw `.torrent` body (≤4 MiB); registers the upload as this movie's selected release and queues it through the normal pipeline; 202 queued or 200 existing |
-| POST | `/api/v1/library/series/{id}/manual-torrent?season=1[&episodes=2,3]` | Raw `.torrent` body; with no episodes the torrent covers the season's selected missing episodes; import still requires the mapping review |
+| POST | `/api/v1/library/series/{id}/manual-torrent?season=1[&episodes=2,3]` | Raw `.torrent` body; with no episodes the torrent covers the season's selected missing episodes; labeled packs import automatically, unmatched or ambiguous files keep the mapping review |
 | GET | `/api/v1/downloads/{id}` | One durable job with progress/error fields, including a completed job no longer listed in the queue |
 | POST | `/api/v1/downloads/{id}/retry` | `{}`; retry/resume blocked, failed or stopped tracking |
 | POST | `/api/v1/downloads/{id}/stop` | `{}`; stop blocked/failed local tracking, leaving client/files untouched |

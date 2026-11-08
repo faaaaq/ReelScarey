@@ -152,6 +152,10 @@ Do not add global element selectors in page files.
 - Series details offer Search (one title), Search All Monitored (every monitored
   missing episode) and per-episode automatic search, manual search, Replace and
   Remove from library (the file stays on disk). Seasons list newest first.
+  Season release searches list packs first and label them. Search All Monitored
+  tries one qualifying season pack per season before individual episodes. A
+  labeled pack imports automatically when every reserved episode has exactly one
+  matching file; unmatched or ambiguous files wait for mapping review.
 - The TV Shows and Anime libraries end with a confirmed "Monitor all future
   episodes" action. It monitors only regular episodes releasing today or later;
   past and undated regular episodes are turned off, and specials keep their

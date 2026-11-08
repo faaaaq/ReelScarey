@@ -88,9 +88,9 @@ Scheduled searches use all enabled sources through the same search path.
 
 NYAA supports manual search. Automatic anime matching remains conservative:
 absolute episode numbering and ambiguous season mappings are not inferred.
-A downloaded TV file imports automatically only when one video exactly matches
-one reserved episode; packs, multi-file releases and ambiguous names wait for
-explicit mapping review.
+A downloaded TV file imports automatically only when every reserved episode has
+exactly one matching file; unmatched files, missing targets and ambiguous names
+wait for explicit mapping review.
 Website HTML does not always provide publication dates or seed counts; unknown
 values remain unknown and may make automatic quality selection ineligible.
 Torznab/Newznab/RSS publication dates are normalized to RFC3339 UTC when the

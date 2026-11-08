@@ -510,6 +510,7 @@ export type Release = {
   indexer?: string;
   indexer_id?: string;
   freeleech?: boolean;
+  pack?: boolean;
   /** Tracker page for this exact release; absent when the source has none. */
   info_url?: string | null;
   id: string;

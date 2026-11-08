@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/organization"
+	"github.com/faaaaq/ReelScarey/internal/quality"
 	"github.com/faaaaq/ReelScarey/internal/settings"
 )
 
@@ -94,6 +96,16 @@ func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode 
 	}
 	if e != nil {
 		return nil, e
+	}
+	if episode == 0 {
+		for n := range candidates {
+			candidates[n].Pack = quality.PackTitle(candidates[n].Title)
+		}
+		// Season and collection releases come first; the rest keep the
+		// provider's order.
+		sort.SliceStable(candidates, func(i, j int) bool {
+			return candidates[i].Pack && !candidates[j].Pack
+		})
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {

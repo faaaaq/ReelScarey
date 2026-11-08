@@ -48,6 +48,9 @@ type Target struct {
 	SeriesCodec         string
 	SeriesGroup         string
 	SeriesRulesRevision int
+	// Pack marks a season/range/complete-series target. Episode identity is
+	// replaced by show title and season/collection evidence.
+	Pack bool
 }
 type Release struct {
 	Protocol  string
@@ -132,6 +135,9 @@ func identifyStandard(title string, t Target) bool {
 	return prefix == base || (t.Year != nil && prefix == base+" "+strconv.Itoa(*t.Year))
 }
 func identityLabels(title string, t Target) (string, bool) {
+	if t.Pack && t.TV {
+		return identifyPack(title, t)
+	}
 	if t.Anime && t.TV {
 		if t.AnimeMode == "mapped" {
 			return identifyMappedAnime(title, t)
@@ -176,7 +182,7 @@ func Evaluate(p Profile, t Target, r Release) Decision {
 	if t.TV && t.SeriesGroup != "" && !matchesReleaseGroup(r.Title, t.SeriesGroup) {
 		reject("Required release group not explicitly labeled: " + t.SeriesGroup)
 	}
-	if t.TV {
+	if t.TV && !t.Pack {
 		for _, bad := range []string{"complete", "season", "pack", "batch"} {
 			if strings.Contains(tokens, " "+bad+" ") {
 				reject("Season packs require manual episode selection and review.")

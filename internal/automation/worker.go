@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"log/slog"
 	"reflect"
@@ -422,9 +423,18 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 	if e != nil {
 		return "", "", e
 	}
+	covered := map[int64]bool{}
+	if c.Mode == "download" && c.FocusMedia != "" && c.FocusEpisode == "" {
+		if e = s.processPacks(ctx, c, covered); e != nil {
+			return "", "", e
+		}
+	}
 	mappedSeen := map[string]bool{}
 	mappedQueued := map[int64]bool{}
 	for _, t := range targets {
+		if t.EpisodeID != nil && covered[*t.EpisodeID] {
+			continue
+		}
 		if e = s.fence(ctx, c); e != nil {
 			return "", "", e
 		}
@@ -582,6 +592,210 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 	}
 	return "completed", "Search complete. Results include matching releases and any items needing attention.", nil
 }
+
+// packSeasons lists seasons with at least two eligible missing standard
+// episodes, so a focused show search can try one season pack before falling
+// back to individual episodes.
+func (s *Service) packSeasons(ctx context.Context, mediaID int64) ([]int, error) {
+	date := s.now().UTC().Format("2006-01-02")
+	rows, e := s.db.QueryContext(ctx, `SELECT season FROM (`+targetSQL+`) WHERE media_id=? AND category='standard' AND season>0 AND episode_id IS NOT NULL GROUP BY season HAVING COUNT(*)>1 ORDER BY season`, date, date, 1, mediaID)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []int{}
+	for rows.Next() {
+		var season int
+		if e = rows.Scan(&season); e != nil {
+			return nil, e
+		}
+		out = append(out, season)
+	}
+	return out, rows.Err()
+}
+
+func (s *Service) seasonTargets(ctx context.Context, mediaID int64, season int) ([]searchTarget, error) {
+	date := s.now().UTC().Format("2006-01-02")
+	rows, e := s.db.QueryContext(ctx, `SELECT * FROM (`+targetSQL+`) WHERE media_id=? AND season=? AND category='standard' AND episode_id IS NOT NULL ORDER BY episode`, date, date, 1, mediaID, season)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []searchTarget{}
+	for rows.Next() {
+		t, e := scanTarget(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// processPacks tries one season pack for every season with multiple eligible
+// missing episodes in a focused show search. A queued pack marks all of its
+// episodes as covered so the per-episode pass does not duplicate requests.
+func (s *Service) processPacks(ctx context.Context, c claim, covered map[int64]bool) error {
+	mediaID, e := strconv.ParseInt(c.FocusMedia, 10, 64)
+	if e != nil {
+		return e
+	}
+	seasons, e := s.packSeasons(ctx, mediaID)
+	if e != nil {
+		return e
+	}
+	for _, season := range seasons {
+		group, e := s.seasonTargets(ctx, mediaID, season)
+		if e != nil {
+			return e
+		}
+		if len(group) < 2 || group[0].Anime {
+			continue
+		}
+		first := group[0]
+		same := true
+		for _, t := range group {
+			if t.ProfileID != first.ProfileID || t.AssignmentRevision != first.AssignmentRevision || t.AnimeRevision != first.AnimeRevision || t.CategoryRevision != first.CategoryRevision || t.NumberingRevision != first.NumberingRevision {
+				same = false
+				break
+			}
+		}
+		if !same {
+			continue
+		}
+		profile, e := quality.New(s.db).Get(ctx, first.ProfileID)
+		if e != nil {
+			return e
+		}
+		releases, e := s.workflow.SearchTV(ctx, mediaID, season, 0, "")
+		if e != nil {
+			return e
+		}
+		packs := []transfer.Release{}
+		byID := map[string]transfer.Release{}
+		for _, r := range releases {
+			if r.Pack {
+				packs = append(packs, r)
+				byID[r.ID] = r
+			}
+		}
+		if len(packs) == 0 {
+			continue
+		}
+		packTarget := first.Target
+		packTarget.Pack, packTarget.Episode = true, 0
+		candidates := make([]quality.Release, 0, len(packs))
+		for _, r := range packs {
+			candidates = append(candidates, quality.Release{ID: r.ID, Title: r.Title, Size: r.Size, Seeders: r.Seeders, Protocol: r.Protocol, Published: r.Published, Now: s.now().Unix()})
+		}
+		decisions := quality.Rank(profile, packTarget, candidates)
+		var best *quality.Decision
+		for n := range decisions {
+			if decisions[n].Eligible {
+				best = &decisions[n]
+				break
+			}
+		}
+		if best == nil {
+			continue
+		}
+		chosen, ok := byID[best.ID]
+		if !ok {
+			continue
+		}
+		job, created, qe := s.workflow.QueueAutomatic(ctx, chosen.ID, s.guardPack(c, group, profile))
+		if errors.Is(qe, ErrLease) {
+			return qe
+		}
+		if qe != nil {
+			var typed *transfer.Error
+			if errors.As(qe, &typed) && typed.Temporary {
+				return qe
+			}
+			continue
+		}
+		outcome, message := "queued", fmt.Sprintf("Season pack queued for %d episodes.", len(group))
+		var downloadID *string
+		if created {
+			downloadID = &job.ID
+		} else {
+			outcome = "already_tracked"
+			message = "This season pack already has a download record."
+		}
+		last := group[len(group)-1]
+		if len(decisions) > 10 {
+			decisions = decisions[:10]
+		}
+		if e = s.record(ctx, c, last, outcome, message, decisions, downloadID); e != nil {
+			return e
+		}
+		for _, t := range group {
+			if t.EpisodeID != nil {
+				covered[*t.EpisodeID] = true
+			}
+		}
+	}
+	return nil
+}
+
+// guardPack rechecks every reserved episode in a season pack after metainfo is
+// fetched. All targets must still be eligible, share the same profile and
+// revisions, and the release must still satisfy that profile.
+func (s *Service) guardPack(c claim, group []searchTarget, p quality.Profile) transfer.QueueGuard {
+	return func(ctx context.Context, tx *sql.Tx, v transfer.Candidate) error {
+		now := s.now().Unix()
+		var count int
+		if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM search_schedule WHERE id=1 AND revision=? AND lease_owner=? AND lease_until>=? AND mode='download' AND (enabled=1 OR requested=1)`, c.Revision, c.ID, now).Scan(&count); e != nil {
+			return e
+		}
+		if count != 1 {
+			return ErrLease
+		}
+		first := group[0]
+		if len(v.Targets) == 0 || len(v.Targets) > 100 || v.Kind != "series" || v.MovieID != first.MediaID || v.AnimeSearch != nil {
+			return ErrLease
+		}
+		allowed := map[int64]bool{}
+		for _, t := range group {
+			if t.EpisodeID != nil {
+				allowed[*t.EpisodeID] = true
+			}
+		}
+		for _, vt := range v.Targets {
+			if !allowed[vt.EpisodeID] || vt.Season != first.Season {
+				return ErrLease
+			}
+		}
+		date := s.now().UTC().Format("2006-01-02")
+		for _, vt := range v.Targets {
+			key := fmt.Sprintf("e:%020d", vt.EpisodeID)
+			current, e := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, date, 1, key))
+			if errors.Is(e, sql.ErrNoRows) {
+				return ErrLease
+			}
+			if e != nil {
+				return e
+			}
+			if current.Anime || current.ProfileID != first.ProfileID || current.AssignmentRevision != first.AssignmentRevision || current.AnimeRevision != first.AnimeRevision || current.CategoryRevision != first.CategoryRevision || current.NumberingRevision != first.NumberingRevision || current.Target.Season != first.Season || current.Target.Episode != vt.Number {
+				return ErrLease
+			}
+		}
+		if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM quality_profiles WHERE id=? AND revision=?`, p.ID, p.Revision).Scan(&count); e != nil {
+			return e
+		}
+		if count != 1 {
+			return ErrLease
+		}
+		packTarget := first.Target
+		packTarget.Pack, packTarget.Episode = true, 0
+		d := quality.Evaluate(p, packTarget, quality.Release{ID: v.ID, Title: v.Title, Size: v.Size, Seeders: v.Seeders, Protocol: v.Protocol, Published: v.Published, Now: now})
+		if !d.Eligible {
+			return ErrLease
+		}
+		return nil
+	}
+}
+
 func (s *Service) record(ctx context.Context, c claim, t searchTarget, outcome, message string, decisions []quality.Decision, downloadID *string) error {
 	if decisions == nil {
 		decisions = []quality.Decision{}
