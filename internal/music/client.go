@@ -194,14 +194,28 @@ type mbReleaseBrowse struct {
 }
 
 func (c *Client) SearchArtists(ctx context.Context, query string, page int) (SearchResults, error) {
+	return c.searchArtists(ctx, query, page, true)
+}
+
+// SearchArtistName searches the exact artist-name field across one bounded
+// page. Discovery uses it so a common name is not buried by free-text ranking;
+// the caller still has to compare the returned names exactly.
+func (c *Client) SearchArtistName(ctx context.Context, name string, page int) (SearchResults, error) {
+	return c.searchArtists(ctx, "artist:"+quoteSearchValue(name), page, false)
+}
+
+func (c *Client) searchArtists(ctx context.Context, query string, page int, dismax bool) (SearchResults, error) {
 	const limit = 25
-	var body mbArtistSearch
-	if err := c.request(ctx, "/artist", url.Values{
+	values := url.Values{
 		"query":  {query},
 		"limit":  {strconv.Itoa(limit)},
 		"offset": {strconv.Itoa((page - 1) * limit)},
-		"dismax": {"true"},
-	}, &body, 2<<20); err != nil {
+	}
+	if dismax {
+		values.Set("dismax", "true")
+	}
+	var body mbArtistSearch
+	if err := c.request(ctx, "/artist", values, &body, 2<<20); err != nil {
 		return SearchResults{}, err
 	}
 	if body.Count < 0 || body.Offset < 0 || len(body.Artists) > limit {

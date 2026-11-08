@@ -79,8 +79,11 @@ GET/POST `/api/v1/library/music/scans` lists scans or starts one with `{root}`.
 GET `/scans/{id}?page=` returns its state and files. POST
 `/scans/{id}/register` accepts `{file_ids,reviewed:true}`; POST `/discover`
 accepts `{file_ids,reviewed:true}` or `{all:true,reviewed:true}` and performs a
-bounded, reviewed MusicBrainz catalog discovery for unresolved files. Its
-response reports `selected`, `matched`, `artists_added`, `albums_added`,
+bounded, reviewed MusicBrainz catalog discovery for unresolved files. It uses a
+tagged release-group or album-artist MBID, or one exact normalized artist and
+album title (with a bounded discography fallback), and is idempotent on rerun;
+unmatched or ambiguous evidence stays unresolved with a warning or file message.
+Its response reports `selected`, `matched`, `artists_added`, `albums_added`,
 `unresolved`, `remaining`, `deferred` and `warnings`. POST
 `/cancel` and `/skip` handle review exceptions.
 GET `/api/v1/library/music/files?page=` lists registered files. POST

@@ -17,6 +17,7 @@ func TestParseAudioProbeReadsFormatTags(t *testing.T) {
 				"disc": "1/2",
 				"date": "2020-05-01",
 				"musicbrainz_artistid": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+				"musicbrainz_albumartistid": "11111111-1111-4111-8111-111111111112",
 				"musicbrainz_albumid": "b1392450-e666-3926-a536-22c65f834433",
 				"musicbrainz_releasegroupid": "b1392450-e666-3926-a536-22c65f834433",
 				"musicbrainz_trackid": "65806a55-e874-3cde-92ba-8a5dc0dce42e",
@@ -38,7 +39,8 @@ func TestParseAudioProbeReadsFormatTags(t *testing.T) {
 	if tags.Track == nil || *tags.Track != 3 || tags.Disc == nil || *tags.Disc != 1 || tags.Year == nil || *tags.Year != 2020 {
 		t.Fatal("number tags", tags)
 	}
-	if tags.MusicBrainzArtistID == "" || tags.MusicBrainzReleaseGroupID == "" || tags.MusicBrainzTrackID == "" || tags.MusicBrainzRecordingID == "" {
+	if tags.MusicBrainzArtistID == "" || tags.MusicBrainzAlbumArtistID != "11111111-1111-4111-8111-111111111112" ||
+		tags.MusicBrainzReleaseGroupID == "" || tags.MusicBrainzTrackID == "" || tags.MusicBrainzRecordingID == "" {
 		t.Fatal("musicbrainz tags", tags)
 	}
 }

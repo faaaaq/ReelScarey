@@ -207,6 +207,17 @@ func (s *Store) SaveArtist(ctx context.Context, artist Artist, albums []Album) (
 		return Artist{}, err
 	}
 	for _, album := range albums {
+		// A release group is one catalog album. Saving a second artist's
+		// discography must not copy an album that already belongs to another
+		// artist, even though the table's unique key includes artist_id.
+		var owner int64
+		err = tx.QueryRowContext(ctx, `SELECT artist_id FROM music_albums WHERE musicbrainz_id=? ORDER BY id LIMIT 1`, album.MusicBrainzID).Scan(&owner)
+		if err == nil && owner != id {
+			continue
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return Artist{}, err
+		}
 		secondary := strings.Join(album.SecondaryTypes, ", ")
 		if _, err = tx.ExecContext(ctx, `INSERT INTO music_albums(artist_id,musicbrainz_id,title,primary_type,secondary_types,year,release_date,cover_url,monitored,status,created_at,updated_at)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,?)

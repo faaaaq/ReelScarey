@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -287,23 +288,36 @@ func (s *Service) matchScan(ctx context.Context, id int64) error {
 
 func (s *Service) matchFile(ctx context.Context, file ScanFile) (int64, int64, int64, error) {
 	var artistID, albumID int64
-	if file.MusicBrainzReleaseGroupID != "" {
-		err := s.store.db.QueryRowContext(ctx, `SELECT artist_id,id FROM music_albums WHERE musicbrainz_id=?`, file.MusicBrainzReleaseGroupID).Scan(&artistID, &albumID)
+	if ValidMBID(file.MusicBrainzReleaseGroupID) {
+		err := s.store.db.QueryRowContext(ctx, `SELECT artist_id,id FROM music_albums WHERE musicbrainz_id=? ORDER BY id LIMIT 1`, file.MusicBrainzReleaseGroupID).Scan(&artistID, &albumID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return 0, 0, 0, err
 		}
 	}
 	if albumID < 1 && file.Album != "" {
-		artist := firstNonEmpty(file.AlbumArtist, file.Artist)
-		if artist != "" {
-			err := s.store.db.QueryRowContext(ctx, `SELECT a.artist_id,a.id FROM music_albums a JOIN music_artists ar ON ar.id=a.artist_id WHERE lower(trim(a.title))=lower(?) AND lower(trim(ar.name))=lower(?) ORDER BY a.id LIMIT 1`, file.Album, artist).Scan(&artistID, &albumID)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if mbid := trustedArtistMusicBrainzID(file); mbid != "" {
+			var id int64
+			err := s.store.db.QueryRowContext(ctx, `SELECT id FROM music_artists WHERE musicbrainz_id=?`, mbid).Scan(&id)
+			if err == nil {
+				if album, ok, err := s.findAlbumIDByTitle(ctx, id, file.Album); err != nil {
+					return 0, 0, 0, err
+				} else if ok {
+					artistID, albumID = id, album
+				}
+			} else if !errors.Is(err, sql.ErrNoRows) {
 				return 0, 0, 0, err
 			}
 		}
 	}
+	if albumID < 1 && file.Album != "" {
+		var err error
+		artistID, albumID, err = s.findCatalogAlbum(ctx, file.Album, firstNonEmpty(file.AlbumArtist, file.Artist))
+		if err != nil {
+			return 0, 0, 0, err
+		}
+	}
 	if albumID < 1 {
-		return 0, 0, 0, &Error{Code: "music_unmatched", Message: "No catalog album matches this file's tags. Add the artist first or tag the file with MusicBrainz IDs."}
+		return 0, 0, 0, &Error{Code: "music_unmatched", Message: "No catalog album matches this file's tags. Add the artist first, tag the file with MusicBrainz IDs or run discovery."}
 	}
 	trackID, err := s.matchTrack(ctx, file, albumID)
 	if err != nil {
@@ -312,56 +326,273 @@ func (s *Service) matchFile(ctx context.Context, file ScanFile) (int64, int64, i
 	return artistID, albumID, trackID, nil
 }
 
-// matchTrack finds the catalog track inside an album that was already resolved.
+// findCatalogAlbum resolves one saved album by normalized title inside one
+// artist. It never creates anything and never guesses between two exact titles.
+func (s *Service) findCatalogAlbum(ctx context.Context, title, artistName string) (int64, int64, error) {
+	if strings.TrimSpace(artistName) == "" {
+		return 0, 0, nil
+	}
+	seen := map[int64]bool{}
+	ids := []int64{}
+	for _, name := range artistNameVariants(artistName) {
+		rows, err := s.store.db.QueryContext(ctx, `SELECT id,name FROM music_artists WHERE lower(trim(name))=lower(?) ORDER BY id`, name)
+		if err != nil {
+			return 0, 0, err
+		}
+		for rows.Next() {
+			var id int64
+			var stored string
+			if err := rows.Scan(&id, &stored); err != nil {
+				rows.Close()
+				return 0, 0, err
+			}
+			if !seen[id] && artistNamesEqual(stored, artistName) {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return 0, 0, err
+		}
+		rows.Close()
+	}
+	artistID, albumID, _, err := s.albumByTitleInArtists(ctx, ids, title)
+	return artistID, albumID, err
+}
+
+// artistNameVariants covers the common "The ..." article difference without a
+// full catalog scan.
+func artistNameVariants(name string) []string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	out := []string{name}
+	if len(name) > 4 && strings.EqualFold(name[:4], "the ") {
+		if trimmed := strings.TrimSpace(name[4:]); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	} else {
+		out = append(out, "The "+name)
+	}
+	return out
+}
+
+func (s *Service) albumByTitleInArtists(ctx context.Context, artistIDs []int64, title string) (int64, int64, bool, error) {
+	matchedArtist, matchedAlbum := int64(0), int64(0)
+	for _, artistID := range artistIDs {
+		albumID, ok, err := s.findAlbumIDByTitle(ctx, artistID, title)
+		if err != nil {
+			return 0, 0, false, err
+		}
+		if !ok {
+			continue
+		}
+		if matchedAlbum != 0 && matchedAlbum != albumID {
+			return 0, 0, false, &Error{Code: "music_ambiguous_album", Message: fmt.Sprintf("More than one saved album matches this file's title %q. Tag the file with the MusicBrainz release-group ID.", title)}
+		}
+		matchedArtist, matchedAlbum = artistID, albumID
+	}
+	return matchedArtist, matchedAlbum, matchedAlbum != 0, nil
+}
+
+// findAlbumIDByTitle keeps the common exact-title case to one indexed query and
+// only loads the bounded album list when Unicode or punctuation folding is
+// needed. Two exact matches are reported as no match, never guessed.
+func (s *Service) findAlbumIDByTitle(ctx context.Context, artistID int64, title string) (int64, bool, error) {
+	rows, err := s.store.db.QueryContext(ctx, `SELECT id FROM music_albums WHERE artist_id=? AND lower(trim(title))=lower(?) ORDER BY id LIMIT 2`, artistID, title)
+	if err != nil {
+		return 0, false, err
+	}
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, false, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, false, err
+	}
+	rows.Close()
+	switch len(ids) {
+	case 1:
+		return ids[0], true, nil
+	case 2:
+		return 0, false, nil
+	}
+	albums, err := s.store.Albums(ctx, artistID)
+	if err != nil {
+		return 0, false, err
+	}
+	found := int64(0)
+	for _, album := range albums {
+		if !matchNameEqual(album.Title, title) {
+			continue
+		}
+		if found != 0 && found != album.ID {
+			return 0, false, nil
+		}
+		found = album.ID
+	}
+	return found, found != 0, nil
+}
+
+// matchTrack finds the catalog track inside an album that was already resolved
+// using the same evidence order as discovery: provider track IDs, then the
+// disc/track number, then an exact normalized title.
 func (s *Service) matchTrack(ctx context.Context, file ScanFile, albumID int64) (int64, error) {
-	var tracks int
-	if err := s.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_tracks WHERE album_id=?`, albumID).Scan(&tracks); err != nil {
+	if err := s.ensureAlbumTracks(ctx, albumID); err != nil {
+		return 0, &Error{Code: "music_album_tracks_unavailable", Message: "The album matched but its MusicBrainz track list could not be loaded. Try again later."}
+	}
+	tracks, err := s.store.Tracks(ctx, albumID)
+	if err != nil {
 		return 0, err
 	}
-	if tracks == 0 {
-		if _, err := s.Album(ctx, albumID); err != nil {
-			return 0, err
+	return matchAlbumTrack(file, tracks)
+}
+
+func matchAlbumTrack(file ScanFile, tracks []Track) (int64, error) {
+	if len(tracks) == 0 {
+		return 0, &Error{Code: "music_unmatched_track", Message: "The album matched but MusicBrainz returned no tracks for it."}
+	}
+	if id := strings.ToLower(strings.TrimSpace(file.MusicBrainzTrackID)); id != "" {
+		for _, track := range tracks {
+			if strings.EqualFold(track.MusicBrainzID, id) {
+				return track.ID, nil
+			}
 		}
 	}
-	queries := []struct {
-		query string
-		args  []any
-	}{}
-	if file.MusicBrainzTrackID != "" {
-		queries = append(queries, struct {
-			query string
-			args  []any
-		}{`SELECT id FROM music_tracks WHERE album_id=? AND musicbrainz_id=?`, []any{albumID, file.MusicBrainzTrackID}})
-	}
-	if file.MusicBrainzRecordingID != "" {
-		queries = append(queries, struct {
-			query string
-			args  []any
-		}{`SELECT id FROM music_tracks WHERE album_id=? AND recording_id=?`, []any{albumID, file.MusicBrainzRecordingID}})
-	}
-	if file.Track != nil && file.Disc != nil {
-		queries = append(queries, struct {
-			query string
-			args  []any
-		}{`SELECT id FROM music_tracks WHERE album_id=? AND disc=? AND number=?`, []any{albumID, *file.Disc, *file.Track}})
-	}
-	if file.Title != "" {
-		queries = append(queries, struct {
-			query string
-			args  []any
-		}{`SELECT id FROM music_tracks WHERE album_id=? AND lower(trim(title))=lower(?) ORDER BY disc,number,id LIMIT 1`, []any{albumID, file.Title}})
-	}
-	var trackID int64
-	for _, candidate := range queries {
-		if err := s.store.db.QueryRowContext(ctx, candidate.query, candidate.args...).Scan(&trackID); err == nil && trackID > 0 {
-			break
+	if id := strings.ToLower(strings.TrimSpace(file.MusicBrainzRecordingID)); id != "" {
+		for _, track := range tracks {
+			if strings.EqualFold(track.RecordingID, id) {
+				return track.ID, nil
+			}
 		}
-		trackID = 0
 	}
-	if trackID < 1 {
-		return 0, &Error{Code: "music_unmatched_track", Message: "The album matched but no track matches this file's number or title."}
+	if file.Track != nil && *file.Track > 0 {
+		if file.Disc != nil && *file.Disc > 0 {
+			for _, track := range tracks {
+				if track.Disc == *file.Disc && track.Number == *file.Track {
+					return track.ID, nil
+				}
+			}
+		} else {
+			// Missing disc tags default to the only disc; for a multi-disc
+			// album use the title to choose instead of assuming disc 1.
+			numbers := []Track{}
+			for _, track := range tracks {
+				if track.Number == *file.Track {
+					numbers = append(numbers, track)
+				}
+			}
+			if len(numbers) == 1 {
+				return numbers[0].ID, nil
+			}
+			if len(numbers) > 1 {
+				if id, unique := uniqueTrackByTitle(numbers, file.Title); unique {
+					return id, nil
+				}
+			}
+		}
 	}
-	return trackID, nil
+	if id, unique := uniqueTrackByTitle(tracks, file.Title); unique {
+		return id, nil
+	} else if !unique && normalizeMatchName(file.Title) != "" && countTracksByTitle(tracks, file.Title) > 1 {
+		return 0, &Error{Code: "music_unmatched_track", Message: "More than one track in the album matches this file's title. Add disc and track numbers to the tags and try again."}
+	}
+	return 0, &Error{Code: "music_unmatched_track", Message: "The album matched but no track matches this file's MusicBrainz track ID, disc/track number or title. Correct the tags and try again."}
+}
+
+func uniqueTrackByTitle(tracks []Track, title string) (int64, bool) {
+	keys := trackTitleKeys(title)
+	if len(keys) == 0 {
+		return 0, false
+	}
+	found := int64(0)
+	for _, track := range tracks {
+		if !trackTitleMatches(track.Title, keys) {
+			continue
+		}
+		if found != 0 && found != track.ID {
+			return 0, false
+		}
+		found = track.ID
+	}
+	return found, found != 0
+}
+
+func countTracksByTitle(tracks []Track, title string) int {
+	keys := trackTitleKeys(title)
+	count := 0
+	for _, track := range tracks {
+		if trackTitleMatches(track.Title, keys) {
+			count++
+		}
+	}
+	return count
+}
+
+// trackTitleKeys returns the normalized title plus the base title without a
+// trailing featured-credit parenthetical. Both are exact comparisons; a title
+// with two candidate keys still has to match exactly one catalog track.
+func trackTitleKeys(title string) []string {
+	keys := []string{}
+	add := func(value string) {
+		value = normalizeMatchName(value)
+		if value == "" {
+			return
+		}
+		for _, existing := range keys {
+			if existing == value {
+				return
+			}
+		}
+		keys = append(keys, value)
+	}
+	add(title)
+	if base, ok := baseTrackTitle(title); ok {
+		add(base)
+	}
+	return keys
+}
+
+func baseTrackTitle(title string) (string, bool) {
+	trimmed := strings.TrimSpace(title)
+	for _, pair := range [][2]string{{"(", ")"}, {"[", "]"}} {
+		if !strings.HasSuffix(trimmed, pair[1]) {
+			continue
+		}
+		index := strings.LastIndex(trimmed, pair[0])
+		if index <= 0 {
+			continue
+		}
+		inner := strings.ToLower(strings.TrimSpace(trimmed[index+len(pair[0]) : len(trimmed)-len(pair[1])]))
+		if !strings.HasPrefix(inner, "feat") && !strings.HasPrefix(inner, "ft.") &&
+			!strings.HasPrefix(inner, "ft ") && !strings.HasPrefix(inner, "featuring") {
+			continue
+		}
+		if base := strings.TrimSpace(trimmed[:index]); base != "" {
+			return base, true
+		}
+	}
+	return "", false
+}
+
+func trackTitleMatches(trackTitle string, keys []string) bool {
+	for _, trackKey := range trackTitleKeys(trackTitle) {
+		compact := strings.ReplaceAll(trackKey, " ", "")
+		for _, key := range keys {
+			if trackKey == key || compact == strings.ReplaceAll(key, " ", "") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *Service) RegisterScan(ctx context.Context, scanID int64, fileIDs []int64) (int, error) {
@@ -555,7 +786,8 @@ func (s *Service) observeAudio(ctx context.Context, media *os.Root, name string)
 		return out, err
 	}
 	out.stamp = string(data)
-	if previous == out.stamp && len(previousSHA) == 64 && json.Unmarshal([]byte(previousTags), &out.tags) == nil {
+	unchanged := previous == out.stamp && len(previousSHA) == 64
+	if unchanged && json.Unmarshal([]byte(previousTags), &out.tags) == nil && out.tags.Version == audioTagVersion {
 		out.sha, out.tagJSON = previousSHA, previousTags
 		return out, nil
 	}
@@ -565,8 +797,12 @@ func (s *Service) observeAudio(ctx context.Context, media *os.Root, name string)
 		out.message = err.Error()
 		return out, nil
 	}
-	out.sha, err = filecheck.Digest(ctx, file)
-	if err != nil {
+	out.tags.Version = audioTagVersion
+	if unchanged {
+		// The saved observation still describes the same bytes; only the tag
+		// parser changed, so the digest does not need to be read again.
+		out.sha = previousSHA
+	} else if out.sha, err = filecheck.Digest(ctx, file); err != nil {
 		return out, err
 	}
 	after, err := filecheck.Capture(ctx, file)

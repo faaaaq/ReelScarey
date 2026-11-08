@@ -11,9 +11,15 @@ import (
 	"time"
 )
 
+// audioTagVersion is stored with every tag document. A scan reuses a saved
+// observation only when the document was produced by the current parser, so a
+// new tag field is not hidden behind an unchanged file from an older scan.
+const audioTagVersion = 2
+
 // AudioTags is the bounded tag and stream information read from one audio
 // file. It is evidence for matching, not a verified identity.
 type AudioTags struct {
+	Version                   int    `json:"tag_version"`
 	Format                    string `json:"format"`
 	DurationMS                int    `json:"duration_ms"`
 	Bitrate                   int    `json:"bitrate"`
@@ -27,6 +33,7 @@ type AudioTags struct {
 	Disc                      *int   `json:"disc"`
 	Year                      *int   `json:"year"`
 	MusicBrainzArtistID       string `json:"musicbrainz_artist_id"`
+	MusicBrainzAlbumArtistID  string `json:"musicbrainz_album_artist_id"`
 	MusicBrainzAlbumID        string `json:"musicbrainz_album_id"`
 	MusicBrainzReleaseGroupID string `json:"musicbrainz_release_group_id"`
 	MusicBrainzTrackID        string `json:"musicbrainz_track_id"`
@@ -108,6 +115,7 @@ func parseAudioProbe(body []byte) (AudioTags, error) {
 		merge(stream.Tags, false)
 	}
 	out := AudioTags{
+		Version:                   audioTagVersion,
 		Format:                    strings.TrimSpace(raw.Format.Name),
 		Artist:                    tags["artist"],
 		AlbumArtist:               firstNonEmpty(tags["album_artist"], tags["albumartist"], tags["artist"]),
@@ -117,6 +125,7 @@ func parseAudioProbe(body []byte) (AudioTags, error) {
 		Disc:                      leadingInt(tags["disc"], tags["discnumber"]),
 		Year:                      yearValue(tags["date"], tags["year"], tags["originaldate"]),
 		MusicBrainzArtistID:       mbidValue(tags["musicbrainz_artistid"], tags["musicbrainz artist id"]),
+		MusicBrainzAlbumArtistID:  mbidValue(tags["musicbrainz_albumartistid"], tags["musicbrainz album artist id"]),
 		MusicBrainzAlbumID:        mbidValue(tags["musicbrainz_albumid"], tags["musicbrainz album id"]),
 		MusicBrainzReleaseGroupID: mbidValue(tags["musicbrainz_releasegroupid"], tags["musicbrainz release group id"]),
 		MusicBrainzTrackID:        mbidValue(tags["musicbrainz_trackid"], tags["musicbrainz track id"]),

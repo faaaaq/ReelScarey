@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -189,3 +190,110 @@ func waitForScan(t *testing.T, ctx context.Context, service *Service, id int64) 
 }
 
 func intPtr(value int) *int { return &value }
+
+func TestMatchAlbumTrackUsesProviderIDsBeforeNumbersAndTitles(t *testing.T) {
+	tracks := []Track{
+		{ID: 10, MusicBrainzID: testTrackID, RecordingID: testRecordingID, Disc: 1, Number: 1, Title: "Intro"},
+		{ID: 11, MusicBrainzID: discoveryTrack2, RecordingID: discoveryRecording2, Disc: 2, Number: 1, Title: "Don’t Stop Me Now"},
+	}
+	byTrackID := ScanFile{MusicBrainzTrackID: testTrackID, Track: intPtr(1), Disc: intPtr(2), Title: "Song"}
+	if id, err := matchAlbumTrack(byTrackID, tracks); err != nil || id != 10 {
+		t.Fatal("track id", id, err)
+	}
+	byRecording := ScanFile{MusicBrainzTrackID: "99999999-9999-4999-8999-999999999999", MusicBrainzRecordingID: discoveryRecording2, Track: intPtr(1), Disc: intPtr(1)}
+	if id, err := matchAlbumTrack(byRecording, tracks); err != nil || id != 11 {
+		t.Fatal("recording id", id, err)
+	}
+	byNumber := ScanFile{Track: intPtr(1), Disc: intPtr(2)}
+	if id, err := matchAlbumTrack(byNumber, tracks); err != nil || id != 11 {
+		t.Fatal("disc and number", id, err)
+	}
+	byTitle := ScanFile{Title: "Dont Stop Me Now"}
+	if id, err := matchAlbumTrack(byTitle, tracks); err != nil || id != 11 {
+		t.Fatal("normalized title", id, err)
+	}
+	byFeatured := ScanFile{Title: "Don’t Stop Me Now (feat. Rihanna)"}
+	if id, err := matchAlbumTrack(byFeatured, tracks); err != nil || id != 11 {
+		t.Fatal("featured title", id, err)
+	}
+}
+
+func TestMatchAlbumTrackRejectsAmbiguousTitle(t *testing.T) {
+	tracks := []Track{
+		{ID: 10, Disc: 1, Number: 1, Title: "Song"},
+		{ID: 11, Disc: 2, Number: 9, Title: "Song (feat. Guest)"},
+	}
+	_, err := matchAlbumTrack(ScanFile{Title: "Song"}, tracks)
+	var provider *Error
+	if !errors.As(err, &provider) || provider.Code != "music_unmatched_track" || !strings.Contains(provider.Message, "More than one track") {
+		t.Fatal("ambiguous title", err)
+	}
+}
+
+func TestFindCatalogAlbumIgnoresArticleAndUnicodeForm(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO music_artists(id,musicbrainz_id,name,monitored,status,created_at,updated_at) VALUES(1,?,'Beatles',1,'missing',1,1)`, testMBID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO music_albums(id,artist_id,musicbrainz_id,title,monitored,status,created_at,updated_at) VALUES(2,1,?,'Björk Live',1,'missing',1,1)`, testRGID); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(db, t.TempDir())
+	artistID, albumID, err := service.findCatalogAlbum(ctx, "Bjo\u0308rk Live", "The Beatles")
+	if err != nil || artistID != 1 || albumID != 2 {
+		t.Fatal("normalized album lookup", artistID, albumID, err)
+	}
+}
+
+func TestScanReprobesLegacyTagDocumentOnce(t *testing.T) {
+	ctx := context.Background()
+	s, db, media := editFixture(t)
+	prober := &countingProber{}
+	s.SetProber(prober)
+	folder := filepath.Join(media, "Music")
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, "Song.flac"), []byte("fixture 1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	scan := func() {
+		t.Helper()
+		result, err := s.StartScan(ctx, "Music")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result = waitForScan(t, ctx, s, result.ID); result.State != "review" || result.MatchedCount != 1 {
+			t.Fatal(result)
+		}
+	}
+	scan()
+	if prober.calls.Load() != 1 {
+		t.Fatalf("first scan probed %d times", prober.calls.Load())
+	}
+	// Simulate a tag document written before the album-artist MBID field was
+	// added. The file bytes are unchanged, but the parser must run again.
+	if _, err := db.Exec(`UPDATE music_scan_files SET tag_json='{"artist":"Artist","album":"Album","title":"Song"}' WHERE id=(SELECT MAX(id) FROM music_scan_files)`); err != nil {
+		t.Fatal(err)
+	}
+	scan()
+	if prober.calls.Load() != 2 {
+		t.Fatalf("legacy tag document was reused: %d probes", prober.calls.Load())
+	}
+	scan()
+	if prober.calls.Load() != 2 {
+		t.Fatalf("versioned tag document was not reused: %d probes", prober.calls.Load())
+	}
+	var version int
+	if err := db.QueryRow(`SELECT json_extract(tag_json,'$.tag_version') FROM music_scan_files ORDER BY id DESC LIMIT 1`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != audioTagVersion {
+		t.Fatal("tag version", version)
+	}
+}

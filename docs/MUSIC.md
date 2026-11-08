@@ -40,10 +40,23 @@ imports the completed folder, and runs wanted-album searches on a schedule.
     album title plus artist name;
   - review of matched and unresolved files.
 - Discover missing catalog entries for selected unresolved files through an
-  explicit reviewed action. It uses a release-group ID, or one exact normalized
-  artist name and album title, creates only the matching artist/album, loads the
-  album tracks and re-matches those files. Ambiguous or missing evidence stays
-  unresolved.
+  explicit reviewed action. It uses a tagged release-group ID, a tagged album
+  artist/artist MBID, or one exact normalized artist name and album title,
+  creates only the matching artist/album, loads the album tracks and re-matches
+  those files. Ambiguous or missing evidence stays unresolved.
+  - Exact-name searches are bounded to five pages of 25 results so a common
+    artist name is not lost behind the first page.
+  - If a release-group search is incomplete or misses an exact title, discovery
+    compares the artist's bounded discography instead. This is still an exact
+    normalized-title comparison, never title similarity.
+  - An album-artist MBID (`MUSICBRAINZ_ALBUMARTISTID`) is preferred over the
+    track-artist MBID. The track-artist MBID is used only when the album artist
+    and track artist tags name the same artist, so a compilation track is never
+    attached to one featured artist.
+  - Common Unicode equivalents, accents, typographic quotes/dashes, punctuation
+    and repeated whitespace are folded for comparison. A leading English "The"
+    and the `Various`/`Various Artists` compilation aliases are comparison-only;
+    the stored catalog name always comes from MusicBrainz.
 - Register matched files in place. Registration verifies the file size and
   modification time and records `music_files`; it never moves a file.
 - Search configured indexers with the audio category, parse release names and
@@ -99,20 +112,41 @@ relative name exactly, including case, in the scan dialog.
 - The scan root must be a relative folder below `REELSCAREY_MEDIA_DIR`. Absolute
   paths and `..` are rejected.
 - Matching order:
-  - album: MusicBrainz release-group ID, then exact (case-insensitive) album
-    title plus artist/album-artist name;
-  - track: MusicBrainz track ID, recording ID, disc/number, then exact title.
+  - album: MusicBrainz release-group ID, then a trusted album-artist MBID plus
+    exact normalized album title, then exact normalized album title plus
+    artist/album-artist name;
+  - track: MusicBrainz track ID, recording ID, disc/number, then exact
+    normalized title. The same order is used again after discovery.
+- A missing disc tag is not a reason to skip the number match. A single-disc
+  album matches its only disc; a multi-disc album uses the title to choose
+  between equal track numbers instead of assuming disc 1.
+- For track titles only, a trailing `(feat. ...)` or `[ft. ...]` credit is also
+  compared with its base title. If both the base and credited titles exist in
+  the album, the file stays unresolved instead of picking one.
+- Album-artist MBIDs are read from `MUSICBRAINZ_ALBUMARTISTID` and stored in the
+  scan's tag document (`tag_json`). The document carries a parser version; an
+  unchanged file whose saved document predates the current parser is probed once
+  more while its saved SHA-256 is reused. Older scans therefore pick up the new
+  field on the next scan without reading the media again.
 - Unmatched files stay `unresolved` with their tags and an explanation. Select
   those files and choose **Discover missing catalog** to review a bounded
   MusicBrainz search. Discovery only acts on strong evidence:
   - a release-group MusicBrainz ID in the file tag; or
+  - a trusted album-artist/artist MusicBrainz ID in the file tag; or
   - exactly one artist whose normalized name equals the tagged album artist (or
     artist), and exactly one release group whose normalized title equals the
     tagged album. The year is used only to disambiguate multiple exact title
     matches.
 - Discovery adds only the missing artist and release group, loads the album's
   tracks, and re-matches the selected files. It never moves, tags or registers a
-  file, and a file it cannot prove stays unresolved with a clear message.
+  file, and a file it cannot prove stays unresolved with a clear message:
+  missing artist or album tag, no exact artist, ambiguous artist, no exact
+  release group, ambiguous release group, or album in the catalog with no
+  matching track.
+- Adding an artist or album is idempotent. A release group is stored once even
+  if two artists list it, and a rerun finds the same catalog rows instead of
+  copying them. A provider failure keeps the existing catalog, scan rows and
+  registered files and reports an actionable warning.
 - A request processes at most 10 album groups and 500 files, and stops starting
   new provider work before the server write deadline. The response reports
   matched files, added artists/albums, unresolved files, deferred files and
@@ -147,8 +181,21 @@ relative name exactly, including case, in the scan dialog.
 - Search mode stores candidates for review; it does not queue.
 - No playlists, lyrics, ratings, scrobbling or MusicBrainz editing.
 - Catalog discovery requires exact normalized artist and album-title evidence,
-  or a release-group ID. It is not a fuzzy matcher, does not use title
-  similarity as identity and does not add a complete artist discography.
+  a trusted tagged MBID, or a release-group ID. It is not a fuzzy matcher, does
+  not use title similarity as identity and does not add a complete artist
+  discography. The discography fallback compares exact normalized titles and
+  stores only the one match.
+- A compilation whose album-artist tag is missing is not guessed: per-track
+  artist searches can fail, and the file stays unresolved until the album
+  artist or a release-group ID is tagged. Featured-credit fallback applies only
+  when the album artist and track artist are the same tagged name.
+- `MUSICBRAINZ_ALBUMARTISTID` is persisted in the scan's tag document only;
+  there is no dedicated scan column or migration. A scan created before this
+  field existed needs a new scan to use it; the new scan re-probes unchanged
+  files once as described above.
+- A release MBID (`MUSICBRAINZ_ALBUMID`) is stored but not used for discovery:
+  the catalog is keyed by release group. Files that carry only a release MBID
+  fall back to the tagged artist and album title.
 - No embedded cover-art writing and no CUE/multi-track single-file albums.
 - Edits only touch registered files below the media root. Symlinks are skipped.
 - A cross-device move falls back to a verified copy; it is not an atomic rename.
@@ -228,14 +275,23 @@ upgrade replacement and richer multi-profile assignment.
 
 - `internal/music/client_test.go` — normalization, pagination, rate limits,
   oversized bodies, redirect refusal, exact release-group search and lookup.
-- `internal/music/tags_test.go` — format tags, OGG stream tags, invalid bodies.
-- `internal/music/store_test.go` — idempotent artist saves, track replacement,
-  invalid paging.
+- `internal/music/normalize_test.go` — case, punctuation, typographic quotes and
+  dashes, non-breaking spaces, composed/decomposed accents, leading articles,
+  Various Artists aliases and featured-credit splitting.
+- `internal/music/tags_test.go` — format tags, album-artist MBID, OGG stream
+  tags, invalid bodies.
+- `internal/music/store_test.go` — idempotent artist saves, release-group reuse
+  across artists, track replacement, invalid paging.
 - `internal/music/scan_test.go` — bounded scan, matching, in-place registration,
-  availability and escaping roots.
-- `internal/music/discovery_test.go` — release-group ID creation, exact
-  artist/album creation, ambiguous and missing evidence retention, duplicate
-  artist reuse, provider failure retention, scan count refresh and re-match.
+  availability, escaping roots, track evidence order, missing disc handling,
+  ambiguous titles, article/Unicode album lookup.
+- `internal/music/discovery_test.go` — release-group ID creation, tagged artist
+  MBID use, later artist-search pages, discography fallback (including a later
+  browse page), missing disc tags, multi-disc titles, compilation album-artist
+  MBIDs, Various Artists and featured-artist aliases, exact artist/album
+  creation, ambiguous and missing evidence retention, unknown tagged MBIDs,
+  album added without a matching track, duplicate artist reuse, provider failure
+  retention, scan count refresh, rerun idempotence and re-match.
 - `internal/music/edits_test.go` — move/retag/no-op plans, move apply/rollback,
   FFmpeg tag write, retained backup and rollback.
 - `internal/httpapi/music_test.go` — authentication, CSRF, catalog, scan,
@@ -252,6 +308,8 @@ upgrade replacement and richer multi-profile assignment.
 
 Catalog discovery was validated locally with targeted Go tests
 (`go test ./internal/music ./internal/httpapi`), the frontend format/type checks
-and the `MusicImport` Vitest suite. It was not run against the live acceptance
-server or a real MusicBrainz library; provider behavior is covered by local
-fake MusicBrainz responses.
+and the `MusicImport` Vitest suite. The 0.46 discovery hardening added the
+normalization, tagged-MBID, bounded-page, discography-fallback, compilation and
+track-evidence cases above. It was not run against the live acceptance server or
+a real MusicBrainz library; provider behavior is covered by local fake
+MusicBrainz responses.

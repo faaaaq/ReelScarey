@@ -78,6 +78,34 @@ func TestStoreSavesArtistsAlbumsAndTracks(t *testing.T) {
 	}
 }
 
+func TestStoreDoesNotCopyReleaseGroupUnderAnotherArtist(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := NewStore(db)
+	first := Artist{MusicBrainzID: testMBID, Name: "First Artist", Monitored: true, Status: "missing"}
+	album := Album{MusicBrainzID: testRGID, Title: "Shared Release", Monitored: true, Status: "missing"}
+	saved, err := store.SaveArtist(ctx, first, []Album{album})
+	if err != nil || saved.AlbumCount != 1 {
+		t.Fatal("first artist", saved, err)
+	}
+	second := Artist{MusicBrainzID: discoveryArtist2, Name: "Second Artist", Monitored: true, Status: "missing"}
+	savedSecond, err := store.SaveArtist(ctx, second, []Album{album})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if savedSecond.AlbumCount != 0 {
+		t.Fatal("release group was copied to another artist", savedSecond)
+	}
+	var albums int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM music_albums`).Scan(&albums); err != nil || albums != 1 {
+		t.Fatal("album rows", albums, err)
+	}
+}
+
 func TestStoreRejectsInvalidPaging(t *testing.T) {
 	ctx := context.Background()
 	db, err := database.Open(ctx, t.TempDir())
