@@ -330,7 +330,13 @@ function RequestLists({ onImported }: { onImported: () => void }) {
   );
   const [accessToken, setAccessToken] = useState("");
   const [provider, setProvider] = useState<
-      "tmdb" | "trakt" | "imdb_mdblist" | "tmdb_private" | "trakt_private"
+      | "tmdb"
+      | "trakt"
+      | "imdb_mdblist"
+      | "tmdb_private"
+      | "trakt_private"
+      | "trakt_watchlist"
+      | "trakt_watchlist_private"
     >("tmdb"),
     [owner, setOwner] = useState(""),
     [listID, setListID] = useState(""),
@@ -351,7 +357,9 @@ function RequestLists({ onImported }: { onImported: () => void }) {
           provider,
           access_token: provider.endsWith("_private") ? accessToken.trim() : "",
           owner: provider.startsWith("trakt") ? owner.trim() : "",
-          list_id: listID.trim(),
+          list_id: provider.startsWith("trakt_watchlist")
+            ? "watchlist"
+            : listID.trim(),
           client_id: !provider.startsWith("tmdb") ? clientID.trim() : "",
         }),
       });
@@ -431,7 +439,9 @@ function RequestLists({ onImported }: { onImported: () => void }) {
                   | "trakt"
                   | "imdb_mdblist"
                   | "tmdb_private"
-                  | "trakt_private",
+                  | "trakt_private"
+                  | "trakt_watchlist"
+                  | "trakt_watchlist_private",
               );
               setClientID("");
               setAccessToken("");
@@ -439,8 +449,12 @@ function RequestLists({ onImported }: { onImported: () => void }) {
           >
             <option value="tmdb_private">TMDb private list</option>
             <option value="trakt_private">Trakt private list</option>
+            <option value="trakt_watchlist_private">
+              Trakt private watchlist
+            </option>
             <option value="tmdb">TMDb</option>
             <option value="trakt">Trakt</option>
+            <option value="trakt_watchlist">Trakt watchlist</option>
             <option value="imdb_mdblist">IMDb via MDBList</option>
           </select>
         </label>
@@ -461,7 +475,9 @@ function RequestLists({ onImported }: { onImported: () => void }) {
         )}
         {provider.startsWith("trakt") && (
           <label>
-            Trakt list owner{" "}
+            {provider.startsWith("trakt_watchlist")
+              ? "Trakt username"
+              : "Trakt list owner"}{" "}
             <TextField.Root
               value={owner}
               onChange={(e) => setOwner(e.target.value)}
@@ -469,18 +485,20 @@ function RequestLists({ onImported }: { onImported: () => void }) {
             />
           </label>
         )}
-        <label>
-          {provider.startsWith("trakt")
-            ? "Trakt list slug or ID"
-            : provider === "imdb_mdblist"
-              ? "MDBList external list ID"
-              : "TMDb numeric list ID"}{" "}
-          <TextField.Root
-            value={listID}
-            onChange={(e) => setListID(e.target.value)}
-            required
-          />
-        </label>
+        {!provider.startsWith("trakt_watchlist") && (
+          <label>
+            {provider.startsWith("trakt")
+              ? "Trakt list slug or ID"
+              : provider === "imdb_mdblist"
+                ? "MDBList external list ID"
+                : "TMDb numeric list ID"}{" "}
+            <TextField.Root
+              value={listID}
+              onChange={(e) => setListID(e.target.value)}
+              required
+            />
+          </label>
+        )}
         {!provider.startsWith("tmdb") && (
           <label>
             {provider.startsWith("trakt")
@@ -494,6 +512,13 @@ function RequestLists({ onImported }: { onImported: () => void }) {
               required
             />
           </label>
+        )}
+        {provider.startsWith("trakt_watchlist") && (
+          <p>
+            {provider.endsWith("_private")
+              ? "Use a Trakt user access token for a private profile. ReelScarey imports the newest 200 watchlist titles daily."
+              : "The Trakt profile must be public. ReelScarey imports the newest 200 watchlist titles daily."}
+          </p>
         )}
         {provider === "imdb_mdblist" && (
           <p>
@@ -517,7 +542,11 @@ function RequestLists({ onImported }: { onImported: () => void }) {
             <li key={l.id}>
               {l.provider === "imdb_mdblist"
                 ? "IMDb via MDBList"
-                : l.provider.toUpperCase()}{" "}
+                : l.provider === "trakt_watchlist"
+                  ? "Trakt watchlist"
+                  : l.provider === "trakt_watchlist_private"
+                    ? "Trakt private watchlist"
+                    : l.provider.toUpperCase()}{" "}
               · {l.owner ? `${l.owner}/` : ""}
               {l.list_id}
               {l.last_checked

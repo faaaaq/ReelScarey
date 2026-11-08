@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Clapperboard,
   CloudDownload,
+  Disc3,
   Film,
   Inbox,
   LayoutDashboard,
@@ -124,6 +125,17 @@ export const navigation: NavItem[] = [
     ],
   },
   {
+    label: "Music",
+    to: "/music",
+    icon: Disc3,
+    match: (p) => starts(p, "/music"),
+    children: [
+      { label: "Library", to: "/music" },
+      { label: "Library Import", to: "/music/import" },
+      { label: "Organize", to: "/music/organize" },
+    ],
+  },
+  {
     label: "YouTube",
     to: "/youtube",
     icon: MonitorPlay,
@@ -228,6 +240,9 @@ const titles: Record<string, string> = {
   "/movies": "Movies",
   "/series": "TV Shows",
   "/anime": "Anime",
+  "/music": "Music",
+  "/music/import": "Music import",
+  "/music/organize": "Organize music",
   "/youtube": "YouTube",
   "/youtube/subscriptions": "YouTube subscriptions",
   "/search": "Add New",
@@ -262,5 +277,7 @@ export function pageTitle(pathname: string) {
   if (titles[pathname]) return titles[pathname];
   if (/^\/series\/[^/]+$/.test(pathname)) return "TV show";
   if (/^\/movies\/[^/]+$/.test(pathname)) return "Movie details";
+  if (/^\/music\/artists\/[^/]+$/.test(pathname)) return "Music artist";
+  if (/^\/music\/albums\/[^/]+$/.test(pathname)) return "Music album";
   return "Page not found";
 }

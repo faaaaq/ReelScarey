@@ -74,14 +74,17 @@ func (s *Lists) Add(ctx context.Context, account int64, provider, owner, id, key
 	if len(accessToken) > 0 {
 		token = accessToken[0]
 	}
-	if private && (!validPrivateToken(token) || base != "tmdb" && base != "trakt") {
+	if private && (!validPrivateToken(token) || base != "tmdb" && base != "trakt" && base != "trakt_watchlist") {
 		return ImportList{}, ErrList
 	}
 	if !private && token != "" {
 		return ImportList{}, ErrList
 	}
-	if account < 1 || (base != "tmdb" && base != "trakt" && base != "imdb_mdblist") || (base == "tmdb" && (!listNumber.MatchString(id) || owner != "" || key != "")) || (base == "trakt" && (!listSlug.MatchString(owner) || !listSlug.MatchString(id) || !traktClientID.MatchString(key))) || (base == "imdb_mdblist" && (!listNumber.MatchString(id) || owner != "" || !mdblistKey.MatchString(key))) {
+	if account < 1 || (base != "tmdb" && base != "trakt" && base != "imdb_mdblist" && base != "trakt_watchlist") || (base == "tmdb" && (!listNumber.MatchString(id) || owner != "" || key != "")) || (base == "trakt" && (!listSlug.MatchString(owner) || !listSlug.MatchString(id) || !traktClientID.MatchString(key))) || (base == "imdb_mdblist" && (!listNumber.MatchString(id) || owner != "" || !mdblistKey.MatchString(key))) || (base == "trakt_watchlist" && (!listSlug.MatchString(owner) || !traktClientID.MatchString(key))) {
 		return ImportList{}, ErrList
+	}
+	if base == "trakt_watchlist" {
+		id = "watchlist"
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -189,6 +192,12 @@ func (s *Lists) fetch(ctx context.Context, provider, owner, id, key string) ([]l
 			return nil, ErrList
 		}
 		return s.fetchIMDbMDBList(ctx, id, key)
+	}
+	if provider == "trakt_watchlist" {
+		if !listSlug.MatchString(owner) || !traktClientID.MatchString(key) {
+			return nil, ErrList
+		}
+		return s.fetchTraktWatchlist(ctx, owner, key, token)
 	}
 	if provider == "tmdb" {
 		if !listNumber.MatchString(id) || owner != "" || len(key) < 20 || len(key) > 4096 {
@@ -312,6 +321,87 @@ func (s *Lists) fetch(ctx context.Context, provider, owner, id, key string) ([]l
 		}
 	}
 	return nil, errors.New("The list exceeds the supported page limit.")
+}
+
+func (s *Lists) fetchTraktWatchlist(ctx context.Context, owner, key, token string) ([]listTitle, error) {
+	items := []listTitle{}
+	seen := map[string]bool{}
+	for _, media := range []string{"movies", "shows"} {
+		for page := 1; page <= 10; page++ {
+			endpoint := "https://api.trakt.tv/users/" + url.PathEscape(owner) + "/watchlist/" + media + "/added?limit=100&page=" + strconv.Itoa(page)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+			if err != nil {
+				return nil, ErrList
+			}
+			req.Header.Set("Accept", "application/json")
+			req.Header.Set("User-Agent", "ReelScarey/0.20")
+			req.Header.Set("trakt-api-key", key)
+			req.Header.Set("trakt-api-version", "2")
+			if token != "" {
+				req.Header.Set("Authorization", "Bearer "+token)
+			}
+			resp, err := s.client.Do(req)
+			if err != nil {
+				return nil, errors.New("The Trakt watchlist could not be reached.")
+			}
+			body, e := io.ReadAll(io.LimitReader(resp.Body, 2<<20+1))
+			resp.Body.Close()
+			if e != nil || len(body) > 2<<20 {
+				return nil, errors.New("The Trakt watchlist returned an unreadable response.")
+			}
+			if resp.StatusCode != 200 {
+				return nil, errors.New("The Trakt watchlist is unavailable. Check the profile visibility and client ID.")
+			}
+			var data []struct {
+				Type  string `json:"type"`
+				Movie *struct {
+					Title string `json:"title"`
+					IDs   struct {
+						TMDb int64 `json:"tmdb"`
+					} `json:"ids"`
+				} `json:"movie"`
+				Show *struct {
+					Title string `json:"title"`
+					IDs   struct {
+						TMDb int64 `json:"tmdb"`
+					} `json:"ids"`
+				} `json:"show"`
+			}
+			if json.Unmarshal(body, &data) != nil || len(data) > 100 {
+				return nil, errors.New("The Trakt watchlist response could not be verified.")
+			}
+			for _, v := range data {
+				var item listTitle
+				if v.Type == "movie" && v.Movie != nil {
+					item = listTitle{"movie", v.Movie.IDs.TMDb, v.Movie.Title}
+				} else if v.Type == "show" && v.Show != nil {
+					item = listTitle{"series", v.Show.IDs.TMDb, v.Show.Title}
+				} else {
+					continue
+				}
+				if item.ID < 1 || len(strings.TrimSpace(item.Title)) == 0 || len(item.Title) > 400 {
+					return nil, errors.New("A watchlist item is missing a TMDb identity.")
+				}
+				itemKey := fmt.Sprintf("%s:%d", item.Kind, item.ID)
+				if seen[itemKey] {
+					continue
+				}
+				seen[itemKey] = true
+				items = append(items, item)
+				if len(items) >= 200 {
+					return items, nil
+				}
+			}
+			pages, e := strconv.Atoi(resp.Header.Get("X-Pagination-Page-Count"))
+			if e != nil || pages < 0 || pages > 10 {
+				return nil, errors.New("The Trakt watchlist pagination could not be verified.")
+			}
+			if pages < 1 || page >= pages {
+				break
+			}
+		}
+	}
+	return items, nil
 }
 
 func (s *Lists) Tick(ctx context.Context) (bool, error) {

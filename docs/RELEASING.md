@@ -5,10 +5,16 @@ Docker remains the only supported deployment target. The primary branch is
 `DOCKERHUB_USERNAME` and secret `DOCKERHUB_TOKEN`; it does not create accounts or
 change repository visibility. Manual dispatch is restricted to the primary ref.
 
-The workflow reads the application version from web/package.json, embeds it in
-the binary and OCI labels, and publishes `latest`, the version, and `sha-<full commit>` tags.
-BuildKit attaches maximal build provenance and an SBOM. Use the digest or commit
-tag for review and rollback; `latest` changes on each successful publication.
+The workflow runs on every push to `codex/foundation`, on `v*` tags and on a
+manual dispatch from the primary ref. It reads the application version from
+web/package.json and embeds it in the binary and OCI labels. Branch pushes
+publish `latest` and `sha-<full commit>`; a `v*` tag also publishes the version
+tag. BuildKit attaches maximal build provenance and an SBOM. Use the digest or
+commit tag for review and rollback; `latest` moves on every successful
+publication, including each primary-branch push. The release-candidate smoke
+suite therefore runs on every primary-branch push, so keep that branch
+releasable; a failed run blocks that publication and leaves the previous
+`latest` in place.
 
 The pinned official GitHub attestation action signs the exact published digest
 using OIDC only when the repository is public or the owner has explicitly set

@@ -52,6 +52,267 @@ export type MediaItem = {
   category_revision?: number;
 };
 
+export type MusicArtist = {
+  id?: number;
+  musicbrainz_id: string;
+  name: string;
+  sort_name: string;
+  disambiguation: string;
+  country: string;
+  type: string;
+  overview: string;
+  image_url: string;
+  monitored: boolean;
+  status: string;
+  album_count: number;
+  in_library?: boolean;
+};
+
+export type MusicAlbum = {
+  id?: number;
+  artist_id?: number;
+  artist_name?: string;
+  musicbrainz_id: string;
+  title: string;
+  primary_type: string;
+  secondary_types: string[];
+  year: number | null;
+  release_date: string;
+  cover_url: string;
+  monitored: boolean;
+  status: string;
+  track_count: number;
+};
+
+export type MusicTrack = {
+  id?: number;
+  album_id?: number;
+  musicbrainz_id: string;
+  recording_id: string;
+  disc: number;
+  number: number;
+  title: string;
+  duration_ms: number;
+};
+
+export type MusicArtistPage = {
+  items: MusicArtist[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
+export type MusicSearchResults = {
+  items: MusicArtist[];
+  page: number;
+  total_pages: number;
+  total_results: number;
+};
+
+export type MusicArtistDetails = {
+  artist: MusicArtist;
+  albums: MusicAlbum[];
+};
+
+export type MusicAlbumDetails = {
+  album: MusicAlbum;
+  tracks: MusicTrack[];
+};
+
+export type MusicScan = {
+  id: number;
+  root: string;
+  state: "scanning" | "review" | "completed" | "failed" | "cancelled";
+  file_count: number;
+  matched_count: number;
+  unresolved_count: number;
+  registered_count: number;
+  error: string;
+  created_at: number;
+  updated_at: number;
+};
+
+export type MusicScanFile = {
+  id: number;
+  scan_id: number;
+  relative_path: string;
+  size_bytes: number;
+  modified_at: number;
+  sha256: string;
+  format: string;
+  duration_ms: number;
+  bitrate: number;
+  sample_rate: number;
+  channels: number;
+  tag_artist: string;
+  tag_album_artist: string;
+  tag_album: string;
+  tag_title: string;
+  tag_track: number | null;
+  tag_disc: number | null;
+  tag_year: number | null;
+  tag_musicbrainz_artist: string;
+  tag_musicbrainz_album: string;
+  tag_musicbrainz_release_group: string;
+  tag_musicbrainz_track: string;
+  tag_musicbrainz_recording: string;
+  tag_json: string;
+  artist_id: number | null;
+  album_id: number | null;
+  track_id: number | null;
+  state: "matched" | "unresolved" | "registered" | "skipped";
+  error: string;
+};
+
+export type MusicScanList = {
+  items: MusicScan[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
+export type MusicScanPage = {
+  scan: MusicScan;
+  items: MusicScanFile[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
+export type MusicFile = {
+  id: number;
+  artist_id: number;
+  album_id: number;
+  track_id: number | null;
+  artist_name: string;
+  album_title: string;
+  track_title: string;
+  disc: number;
+  number: number;
+  relative_path: string;
+  format: string;
+  duration_ms: number;
+  size_bytes: number;
+};
+
+export type MusicFilePage = {
+  items: MusicFile[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
+export type MusicEditTags = {
+  artist: string;
+  album_artist: string;
+  album: string;
+  title: string;
+  track: number;
+  track_total: number;
+  disc: number;
+  disc_total: number;
+  year: number;
+  musicbrainz_artist_id: string;
+  musicbrainz_album_id: string;
+  musicbrainz_release_group_id: string;
+  musicbrainz_track_id: string;
+  musicbrainz_recording_id: string;
+};
+
+export type MusicEditFile = {
+  music_file_id: number;
+  source_path: string;
+  destination_path: string;
+  action: "move" | "retag" | "move_retag";
+  tags: MusicEditTags;
+};
+
+export type MusicEditPlan = {
+  files: MusicEditFile[];
+  plan_hash: string;
+};
+
+export type MusicEditJobFile = {
+  music_file_id: number;
+  source_path: string;
+  destination_path: string;
+  action: string;
+  state: string;
+  error: string;
+};
+
+export type MusicEditJob = {
+  id: number;
+  state: "running" | "completed" | "failed" | "rolled_back";
+  file_count: number;
+  error: string;
+  created_at: number;
+  updated_at: number;
+  files?: MusicEditJobFile[];
+};
+
+export type MusicEditJobList = {
+  items: MusicEditJob[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
+export type MusicRelease = {
+  id: string;
+  protocol: string;
+  indexer_id: string;
+  indexer_name: string;
+  freeleech: boolean;
+  title: string;
+  size: number;
+  seeders: number | null;
+  peers: number | null;
+  published: string;
+  info_url: string;
+  parsed_artist: string;
+  parsed_album: string;
+  year: number | null;
+  format: string;
+  bitrate: number;
+  lossless: boolean;
+};
+
+export type MusicReleaseSearch = {
+  items: MusicRelease[];
+  warnings?: string[];
+};
+
+export type MusicImportFile = {
+  id: number;
+  source_path: string;
+  track_id: number | null;
+  destination_path: string;
+  state: string;
+  error: string;
+};
+
+export type MusicImportJob = {
+  id: number;
+  album_id: number;
+  root: string;
+  source_path: string;
+  state: "running" | "completed" | "failed";
+  file_count: number;
+  imported_count: number;
+  error: string;
+  created_at: number;
+  updated_at: number;
+  files?: MusicImportFile[];
+};
+
+export type MusicImportJobList = {
+  items: MusicImportJob[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
 export type AnimeLibrarySettings = {
   id: number;
   kind: "movie" | "series";

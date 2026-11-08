@@ -18,6 +18,13 @@ Historical native and package results below remain as records of past work.
   verified review, pre-restore safety copy, controlled restart and interrupted
   switch rollback. Media files and host deployment settings remain separate.
 
+- [x] Add a Music catalog with MusicBrainz artist, album and track metadata, a
+  Music tab, existing-file scanning and reviewed registration, reviewed
+  organization and verified tag writing with rollback, audio release search and
+  reviewed completed-folder import. Automatic queueing/download reconciliation,
+  quality profiles and scheduled automation remain open. See
+  [music catalog](docs/MUSIC.md).
+
 - [x] Update embedded movie and TV titles while organizing and renaming media,
   with verified copies and recovery that preserve streams and seeding sources.
   Reviewed MP4/M4V, Matroska, MOV, AVI and WebM updates preserve streams and rollback copies, and
@@ -34,7 +41,8 @@ Historical native and package results below remain as records of past work.
   Request accounts, approval, public TMDb/Trakt synchronization, automatic IMDb
   synchronization via an MDBList account, and one-time IMDb CSV imports are
   implemented. Private TMDb/Trakt lists now use encrypted per-user access tokens.
-  Direct/private IMDb synchronization and owner-service acceptance remain open.
+  Public and private Trakt watchlists import as pending requests. Direct/private
+  IMDb synchronization and owner-service acceptance remain open.
 - [ ] Add built-in Discord webhook notifications. Let users supply their own
   webhook information and receive notifications when their requests are fulfilled.
   Per-user encrypted webhooks and durable fulfillment notifications are

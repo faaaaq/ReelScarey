@@ -91,6 +91,102 @@ func TestPublicListImportIsBoundedOwnedAndFenced(t *testing.T) {
 	}
 }
 
+func TestTraktWatchlistImportsMoviesAndShowsWithoutOAuth(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := database.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	secrets, err := securestore.New(ctx, db, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
+		t.Fatal(err)
+	}
+	lists := NewLists(db, secrets)
+	key := strings.Repeat("w", 30)
+	list, err := lists.Add(ctx, 1, "trakt_watchlist", "viewer", "ignored", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list.ListID != "watchlist" {
+		t.Fatal("watchlist id was not normalized", list.ListID)
+	}
+	var sealed []byte
+	if err = db.QueryRow(`SELECT ciphertext FROM request_lists WHERE id=?`, list.ID).Scan(&sealed); err != nil || strings.Contains(string(sealed), key) {
+		t.Fatal("Trakt client ID was not encrypted", err)
+	}
+	paths := []string{}
+	lists.client = &http.Client{Timeout: time.Second, Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host != "api.trakt.tv" || r.Header.Get("trakt-api-key") != key {
+			t.Fatal("unexpected watchlist request", r.URL, r.Header)
+		}
+		if r.Header.Get("Authorization") != "" {
+			t.Fatal("public watchlist sent an authorization header")
+		}
+		paths = append(paths, r.URL.Path)
+		h := make(http.Header)
+		h.Set("X-Pagination-Page-Count", "1")
+		body := `[]`
+		switch r.URL.Path {
+		case "/users/viewer/watchlist/movies/added":
+			body = `[{"type":"movie","movie":{"title":"One","ids":{"tmdb":11}}}]`
+		case "/users/viewer/watchlist/shows/added":
+			body = `[{"type":"show","show":{"title":"Two","ids":{"tmdb":22}}}]`
+		default:
+			t.Fatal("unexpected watchlist path", r.URL.Path)
+		}
+		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	if did, err := lists.Tick(ctx); err != nil || !did {
+		t.Fatal("watchlist import failed", did, err)
+	}
+	if len(paths) != 2 {
+		t.Fatal("watchlist did not fetch both media types", paths)
+	}
+	items, err := New(db).List(ctx, 1)
+	if err != nil || len(items) != 2 {
+		t.Fatal("watchlist requests missing", items, err)
+	}
+}
+
+func TestTraktPrivateWatchlistSendsUserToken(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := database.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	secrets, err := securestore.New(ctx, db, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
+		t.Fatal(err)
+	}
+	lists := NewLists(db, secrets)
+	key := strings.Repeat("c", 30)
+	token := strings.Repeat("t", 30)
+	if _, err = lists.Add(ctx, 1, "trakt_watchlist_private", "viewer", "watchlist", key, token); err != nil {
+		t.Fatal(err)
+	}
+	lists.client = &http.Client{Timeout: time.Second, Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host != "api.trakt.tv" || r.Header.Get("trakt-api-key") != key || r.Header.Get("Authorization") != "Bearer "+token {
+			t.Fatal("private watchlist used the wrong credentials", r.URL, r.Header)
+		}
+		h := make(http.Header)
+		h.Set("X-Pagination-Page-Count", "1")
+		return &http.Response{StatusCode: 200, Header: h, Body: io.NopCloser(strings.NewReader(`[]`))}, nil
+	})}
+	if did, err := lists.Tick(ctx); err != nil || !did {
+		t.Fatal("private watchlist import failed", did, err)
+	}
+}
+
 func TestIMDbMDBListSyncRequiresOwnedIMDbSource(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

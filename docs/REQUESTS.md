@@ -20,10 +20,12 @@ IMDb external-list ID and API key from their MDBList account. For IMDb, first
 add the IMDb list to MDBList; MDBList refreshes that copy on its own account
 schedule, then ReelScarey checks the copy daily. This explicitly uses a third
 party and requires an MDBList account. **Check now** schedules another check;
-imports create pending requests. Private TMDb/Trakt lists and personal
-watchlists requiring OAuth are not supported. The app uses the administrator's
-TMDb connection; Trakt client IDs and MDBList API keys are stored encrypted and
-never returned. Imports are bounded to 200 movies/shows and ten
+imports create pending requests. Private TMDb/Trakt lists use a provider-issued
+user access token. Trakt watchlists are supported for public profiles
+(application client ID only) and private profiles (user access token); the
+newest 200 titles are imported. OAuth enrollment and token refresh are not
+automated. The app uses the administrator's TMDb connection; Trakt client IDs
+and MDBList API keys are stored encrypted and never returned. Imports are bounded to 200 movies/shows and ten
 pages per list; an item missing its TMDb ID stops that list without partial
 import. Removing a list does not remove previously created requests.
 

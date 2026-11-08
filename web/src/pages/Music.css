@@ -1,0 +1,59 @@
+/* Music catalog. Layout only; colors come from the shared --rs tokens. */
+
+.mus-body {
+  padding-bottom: 28px;
+}
+
+.mus-search {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.mus-search > :first-child {
+  flex: 1;
+}
+
+.mus-album-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mus-cover {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  object-fit: cover;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface);
+}
+
+.mus-cover-empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rs-muted);
+}
+
+.mus-scan-summary,
+.mus-scan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+}
+
+.mus-scan-summary {
+  margin-bottom: 12px;
+}
+
+.mus-scan-actions {
+  margin-top: 12px;
+}
+
+.mus-path {
+  word-break: break-all;
+}

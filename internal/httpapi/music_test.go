@@ -1,0 +1,296 @@
+package httpapi
+
+import (
+	"context"
+	"database/sql"
+	"encoding/base64"
+	"io"
+	"log/slog"
+	"net/http"
+	"path/filepath"
+	"strings"
+	"testing"
+	"testing/fstest"
+
+	"github.com/faaaaq/ReelScarey/internal/auth"
+	"github.com/faaaaq/ReelScarey/internal/config"
+	"github.com/faaaaq/ReelScarey/internal/database"
+	"github.com/faaaaq/ReelScarey/internal/metadata"
+	"github.com/faaaaq/ReelScarey/internal/music"
+	"github.com/faaaaq/ReelScarey/internal/securestore"
+)
+
+const musicTestMBID = "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+
+type fakeMusic struct {
+	search  music.SearchResults
+	artist  music.Artist
+	created bool
+	err     error
+}
+
+func (f *fakeMusic) SearchArtists(context.Context, string, int) (music.SearchResults, error) {
+	return f.search, f.err
+}
+func (f *fakeMusic) AddArtist(context.Context, string, bool) (music.Artist, bool, error) {
+	return f.artist, f.created, f.err
+}
+func (f *fakeMusic) ListArtists(context.Context, string, int) (music.ArtistPage, error) {
+	return music.ArtistPage{Items: []music.Artist{}, Page: 1, Limit: 48}, f.err
+}
+func (f *fakeMusic) Artist(context.Context, int64) (music.ArtistDetails, error) {
+	return music.ArtistDetails{Artist: music.Artist{ID: 1, Name: "Artist"}, Albums: []music.Album{}}, f.err
+}
+func (f *fakeMusic) Album(context.Context, int64) (music.AlbumDetails, error) {
+	return music.AlbumDetails{Album: music.Album{ID: 1, Title: "Album"}, Tracks: []music.Track{}}, f.err
+}
+func (f *fakeMusic) StartScan(context.Context, string) (music.Scan, error) {
+	return music.Scan{ID: 1, State: "scanning"}, f.err
+}
+func (f *fakeMusic) ListScans(context.Context, int) (music.ScanList, error) {
+	return music.ScanList{Items: []music.Scan{}, Page: 1, Limit: 20}, f.err
+}
+func (f *fakeMusic) Scan(context.Context, int64) (music.Scan, error) {
+	return music.Scan{ID: 1, State: "review"}, f.err
+}
+func (f *fakeMusic) ScanPage(context.Context, int64, int) (music.ScanPage, error) {
+	return music.ScanPage{Scan: music.Scan{ID: 1, State: "review"}, Items: []music.ScanFile{}, Page: 1, Limit: 100}, f.err
+}
+func (f *fakeMusic) RegisterScan(context.Context, int64, []int64) (int, error) {
+	return 1, f.err
+}
+func (f *fakeMusic) CancelScan(context.Context, int64) error { return f.err }
+func (f *fakeMusic) SkipScanFile(context.Context, int64, int64) error {
+	return f.err
+}
+func (f *fakeMusic) ListFiles(context.Context, int) (music.MusicFilePage, error) {
+	return music.MusicFilePage{Items: []music.MusicFile{}, Page: 1, Limit: 100}, f.err
+}
+func (f *fakeMusic) PreviewEdits(context.Context, []int64) (music.EditPlan, error) {
+	return music.EditPlan{Files: []music.EditFile{}, PlanHash: "hash"}, f.err
+}
+func (f *fakeMusic) ApplyEdits(context.Context, []int64, string, bool) (music.EditJob, error) {
+	return music.EditJob{ID: 1, State: "running"}, f.err
+}
+func (f *fakeMusic) EditJob(context.Context, int64) (music.EditJob, error) {
+	return music.EditJob{ID: 1, State: "completed", Files: []music.EditJobFile{}}, f.err
+}
+func (f *fakeMusic) ListEditJobs(context.Context, int) (music.EditJobList, error) {
+	return music.EditJobList{Items: []music.EditJob{}, Page: 1, Limit: 20}, f.err
+}
+func (f *fakeMusic) RollbackEdits(context.Context, int64, bool) (music.EditJob, error) {
+	return music.EditJob{ID: 1, State: "rolled_back"}, f.err
+}
+func (f *fakeMusic) StartImport(context.Context, int64, string, string) (music.ImportJob, error) {
+	return music.ImportJob{ID: 1, State: "running"}, f.err
+}
+func (f *fakeMusic) ImportJob(context.Context, int64) (music.ImportJob, error) {
+	return music.ImportJob{ID: 1, State: "completed"}, f.err
+}
+func (f *fakeMusic) ListImports(context.Context, int) (music.ImportJobList, error) {
+	return music.ImportJobList{Items: []music.ImportJob{}, Page: 1, Limit: 20}, f.err
+}
+
+func musicFixture(t *testing.T, service MusicService) (http.Handler, *auth.Session) {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := database.Open(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	assets := fstest.MapFS{"index.html": {Data: []byte("app shell")}}
+	authService, err := auth.New(context.Background(), db, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := securestore.New(context.Background(), db, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := securestore.SecretFile(filepath.Join(dir, "setup-token"), 32, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := authService.Setup(context.Background(), "admin", "test-only-password", base64.RawURLEncoding.EncodeToString(code))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := New(db, config.Config{ConfigDir: dir, MediaDir: "/media", DownloadsDir: "/downloads", PublicURL: "http://example.com"}, slog.New(slog.NewTextHandler(io.Discard, nil)), assets, "test", Dependencies{
+		Auth:     authService,
+		Metadata: metadata.New(store, metadata.NewTMDb()),
+		Music:    service,
+		Secrets:  store,
+	})
+	return handler, &session
+}
+
+func TestMusicRoutesRequireAuthenticationAndCSRF(t *testing.T) {
+	handler, session := musicFixture(t, &fakeMusic{})
+	if out := request(handler, "GET", "/api/v1/library/music/artists", "", nil, false); out.Code != 401 {
+		t.Fatal("unauthenticated music read", out.Code)
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/artists", `{"musicbrainz_id":"`+musicTestMBID+`"}`, session, false); out.Code != 403 {
+		t.Fatal("music add without CSRF", out.Code)
+	}
+}
+
+func TestMusicSearchAndAdd(t *testing.T) {
+	service := &fakeMusic{
+		search:  music.SearchResults{Page: 1, TotalPages: 1, TotalResults: 1, Items: []music.Artist{{MusicBrainzID: musicTestMBID, Name: "Radiohead"}}},
+		artist:  music.Artist{ID: 7, MusicBrainzID: musicTestMBID, Name: "Radiohead"},
+		created: true,
+	}
+	handler, session := musicFixture(t, service)
+	out := request(handler, "GET", "/api/v1/metadata/music/artists?query=radiohead", "", session, false)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"name":"Radiohead"`) {
+		t.Fatal("search", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/artists", `{"musicbrainz_id":"`+musicTestMBID+`"}`, session, true)
+	if out.Code != 201 || !strings.Contains(out.Body.String(), `"created":true`) {
+		t.Fatal("add", out.Code, out.Body.String())
+	}
+	service.created = false
+	out = request(handler, "POST", "/api/v1/library/music/artists", `{"musicbrainz_id":"`+musicTestMBID+`"}`, session, true)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"created":false`) {
+		t.Fatal("idempotent add", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/artists", `{"musicbrainz_id":"not-a-uuid"}`, session, true)
+	if out.Code != 400 {
+		t.Fatal("invalid mbid", out.Code, out.Body.String())
+	}
+	out = request(handler, "GET", "/api/v1/metadata/music/artists?query=", "", session, false)
+	if out.Code != 400 {
+		t.Fatal("empty search", out.Code, out.Body.String())
+	}
+}
+
+func TestMusicArtistAndAlbumRoutes(t *testing.T) {
+	handler, session := musicFixture(t, &fakeMusic{})
+	for _, path := range []string{"/api/v1/library/music/artists/1", "/api/v1/library/music/albums/1"} {
+		out := request(handler, "GET", path, "", session, false)
+		if out.Code != 200 {
+			t.Fatal(path, out.Code, out.Body.String())
+		}
+	}
+	if out := request(handler, "GET", "/api/v1/library/music/albums/nope", "", session, false); out.Code != 400 {
+		t.Fatal("invalid album id", out.Code)
+	}
+}
+
+func TestMusicProviderErrorsMapToStatus(t *testing.T) {
+	cases := []struct {
+		err    error
+		status int
+		header string
+	}{
+		{&music.Error{Code: "music_rate_limited", Message: "slow down", RetryAfter: 3}, 429, "3"},
+		{&music.Error{Code: "music_not_found", Message: "missing"}, 404, ""},
+		{music.ErrInvalidInput, 400, ""},
+		{sql.ErrNoRows, 404, ""},
+	}
+	for _, tc := range cases {
+		handler, session := musicFixture(t, &fakeMusic{err: tc.err})
+		out := request(handler, "GET", "/api/v1/library/music/artists/1", "", session, false)
+		if out.Code != tc.status {
+			t.Fatal(tc.err, out.Code, out.Body.String())
+		}
+		if tc.header != "" && out.Header().Get("Retry-After") != tc.header {
+			t.Fatal("retry-after", out.Header().Get("Retry-After"))
+		}
+	}
+}
+
+func TestMusicScanRoutes(t *testing.T) {
+	handler, session := musicFixture(t, &fakeMusic{})
+	out := request(handler, "POST", "/api/v1/library/music/scans", `{"root":"Music"}`, session, true)
+	if out.Code != 202 {
+		t.Fatal("start scan", out.Code, out.Body.String())
+	}
+	out = request(handler, "GET", "/api/v1/library/music/scans/1", "", session, false)
+	if out.Code != 200 {
+		t.Fatal("scan status", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/register", `{"file_ids":[1]}`, session, true)
+	if out.Code != 400 {
+		t.Fatal("register without review", out.Code)
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/register", `{"file_ids":[1],"reviewed":true}`, session, true)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"registered":1`) {
+		t.Fatal("register", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/skip", `{"file_id":1}`, session, true)
+	if out.Code != 200 {
+		t.Fatal("skip", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/cancel", `{}`, session, true)
+	if out.Code != 200 {
+		t.Fatal("cancel", out.Code, out.Body.String())
+	}
+	out = request(handler, "GET", "/api/v1/library/music/scans", "", session, false)
+	if out.Code != 200 {
+		t.Fatal("scan list", out.Code, out.Body.String())
+	}
+}
+
+func TestMusicEditRoutes(t *testing.T) {
+	handler, session := musicFixture(t, &fakeMusic{})
+	out := request(handler, "GET", "/api/v1/library/music/files", "", session, false)
+	if out.Code != 200 {
+		t.Fatal("files", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/edits/preview", `{"file_ids":[1]}`, session, true)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"plan_hash":"hash"`) {
+		t.Fatal("preview", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/edits/apply", `{"file_ids":[1],"plan_hash":"hash"}`, session, true)
+	if out.Code != 400 {
+		t.Fatal("apply without review", out.Code)
+	}
+	out = request(handler, "POST", "/api/v1/library/music/edits/apply", `{"file_ids":[1],"plan_hash":"hash","reviewed":true}`, session, true)
+	if out.Code != 202 {
+		t.Fatal("apply", out.Code, out.Body.String())
+	}
+	out = request(handler, "GET", "/api/v1/library/music/edits/1", "", session, false)
+	if out.Code != 200 {
+		t.Fatal("edit job", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/edits/1/rollback", `{"reviewed":true}`, session, true)
+	if out.Code != 200 {
+		t.Fatal("rollback", out.Code, out.Body.String())
+	}
+	out = request(handler, "GET", "/api/v1/library/music/edits", "", session, false)
+	if out.Code != 200 {
+		t.Fatal("edit list", out.Code, out.Body.String())
+	}
+}
+
+func TestMusicImportRoutes(t *testing.T) {
+	handler, session := musicFixture(t, &fakeMusic{})
+	out := request(handler, "POST", "/api/v1/library/music/albums/1/import", `{"source_path":"Album","root":"Music"}`, session, true)
+	if out.Code != 202 {
+		t.Fatal("start import", out.Code, out.Body.String())
+	}
+	out = request(handler, "GET", "/api/v1/library/music/imports/1", "", session, false)
+	if out.Code != 200 {
+		t.Fatal("import job", out.Code, out.Body.String())
+	}
+	out = request(handler, "GET", "/api/v1/library/music/imports", "", session, false)
+	if out.Code != 200 {
+		t.Fatal("import list", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/albums/1/import", `{"source_path":""}`, session, true)
+	if out.Code != 400 {
+		t.Fatal("empty source", out.Code)
+	}
+}
+
+func TestMusicFrontendRoutes(t *testing.T) {
+	handler := frontend(fstest.MapFS{"index.html": {Data: []byte("app shell")}})
+	for _, path := range []string{"/music", "/music/artists/1", "/music/albums/1"} {
+		out := request(handler, "GET", path, "", nil, false)
+		if out.Code != 200 || out.Body.String() != "app shell" {
+			t.Fatal(path, out.Code, out.Body.String())
+		}
+	}
+}

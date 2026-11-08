@@ -112,6 +112,21 @@ const WatchActivity = lazy(() =>
 const Timeline = lazy(() =>
   import("./pages/Timeline").then((m) => ({ default: m.Timeline })),
 );
+const Music = lazy(() =>
+  import("./pages/Music").then((m) => ({ default: m.Music })),
+);
+const MusicArtist = lazy(() =>
+  import("./pages/Music").then((m) => ({ default: m.MusicArtistPage })),
+);
+const MusicAlbum = lazy(() =>
+  import("./pages/Music").then((m) => ({ default: m.MusicAlbumPage })),
+);
+const MusicImport = lazy(() =>
+  import("./pages/MusicImport").then((m) => ({ default: m.MusicImport })),
+);
+const MusicOrganize = lazy(() =>
+  import("./pages/MusicOrganize").then((m) => ({ default: m.MusicOrganize })),
+);
 
 export default function App() {
   return (
@@ -343,6 +358,11 @@ function AppShell() {
             <Route path="/download-clients" element={<DownloadClients />} />
             <Route path="/metadata-refresh" element={<MetadataRefresh />} />
             <Route path="/series/:id" element={<Series />} />
+            <Route path="/music" element={<Music />} />
+            <Route path="/music/artists/:id" element={<MusicArtist />} />
+            <Route path="/music/albums/:id" element={<MusicAlbum />} />
+            <Route path="/music/import" element={<MusicImport />} />
+            <Route path="/music/organize" element={<MusicOrganize />} />
             <Route path="/search" element={<MovieSearch />} />
             <Route path="/releases" element={<Releases />} />
             <Route path="/activity" element={<DownloadActivity />} />

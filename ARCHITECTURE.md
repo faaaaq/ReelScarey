@@ -26,6 +26,7 @@ internal/library/    unified media item read model
 internal/auth/       administrator, Argon2id passwords and persistent sessions
 internal/securestore/ encrypted provider credentials and local key lifecycle
 internal/metadata/   real TMDb adapter and normalized movie service
+internal/music/      MusicBrainz client and the local music catalog
 internal/transfer/   Torznab/qBittorrent, durable downloads and safe imports
 internal/quality/    conservative identity, profile persistence and release ranking
 internal/automation/ persistent scheduled searches, audit history and policy fences
@@ -60,7 +61,10 @@ singleton `admin_account`, `sessions`, `provider_secrets`, `integration_configs`
 `quality_profiles`, `item_automation`, `search_schedule`, `automation_runs` and
 `automation_results`, `subtitle_preferences`, `subtitle_provider_state`,
 `subtitle_jobs`, `subtitle_candidates`, `subtitle_inspections`, `subtitles` and
-`subtitle_imports`, `indexers` and `media_enrichment`.
+`subtitle_imports`, `indexers`, `media_enrichment`, `music_artists`,
+`music_albums`, `music_tracks`, `music_scans`, `music_scan_files`,
+`music_files`, `music_edit_jobs`, `music_edit_files`,
+`music_release_candidates`, `music_import_jobs` and `music_import_files`.
 
 Migration 009 adds `library_scans`, `library_scan_dirs` and `library_scan_files`.
 Existing videos register in `media_files` with explicit existing-file provenance
@@ -215,6 +219,7 @@ consumers. Every operation receives a context and returns typed results/errors.
 | Module | Responsibility | Primary service contract |
 | --- | --- | --- |
 | Metadata | TMDb mapping, artwork, provider rate limits | Search(kind, query, page), Get(kind, providerID) |
+| Music | MusicBrainz artist/album/track normalization and local catalog | SearchArtists(query, page), Artist(id), Album(id) |
 | Library | Catalog, monitoring, seasons/episodes, availability | Add(metadata, profile), List(filter), SetMonitored(id, value) |
 | Indexers | Torznab/Newznab protocol, credentials, capabilities | Test(), Capabilities(), Search(query) |
 | Releases | Parse, match and rank normalized releases | Match(release, target), Score(match, profile) |
@@ -463,3 +468,20 @@ transfer owns per-version reservations and checks actual resolution before impor
 Library planning projects each enabled target independently. Additional versions
 and per-file replacements require explicit manual intent; organization snapshots
 include stable version suffixes for multi-file movies. See [movie versions](docs/MOVIE_VERSIONS.md).
+
+## Music catalog, import and edits
+
+Migrations 059–061 add the music catalog (`music_artists`, `music_albums`,
+`music_tracks`), scan/registration state (`music_scans`, `music_scan_files`,
+`music_files`) and reviewed edit journals (`music_edit_jobs`,
+`music_edit_files`). `internal/music` owns the fixed MusicBrainz client,
+normalization, FFprobe tag reading, the bounded scanner and staged edit
+publication; HTTP handlers only orchestrate it. Artist adds are idempotent,
+discographies are browsed to avoid the provider's 25-item lookup cap, and album
+tracks load on first open from the earliest official release. Organization and
+tag writes are previewed, hash-checked, staged, verified, published without
+overwrite, and retained for rollback. Release search reuses the existing
+indexer fan-out with the audio category and stores short-lived sealed
+candidates; completed album folders are imported through a reviewed
+copy/tag/publish path. No download-client submission, music worker or scheduled
+automation exists yet. See [music catalog](docs/MUSIC.md).

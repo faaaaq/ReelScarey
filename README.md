@@ -50,6 +50,12 @@ join exact saved episode IDs. Reviewed manual packs can span seasons through
 separate files, with immutable order history and mandatory import review. See
 [Anime providers and episode orders](docs/ANIME_PROVIDER_ORDERS.md).
 
+A Music tab catalogs MusicBrainz artists, albums and tracks, scans existing
+files, registers reviewed matches in place, applies reviewed organization and
+tag rewrites with rollback, searches audio releases and imports a completed
+album folder. Automatic queueing, a music download worker and scheduled
+automation are not implemented yet. See [music catalog](docs/MUSIC.md).
+
 YouTube source inspection supports explicit video selection from public channels
 and playlists, mapped to existing movies/episodes or named custom collections.
 Selected creator or automatic subtitles are reviewed and imported as VTT sidecars

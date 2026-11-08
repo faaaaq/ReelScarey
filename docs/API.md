@@ -46,8 +46,10 @@ request. Approval adds the exact TMDb title to the catalog and is retryable.
 Only requester sessions can use `/api/v1/requester/requests`, the search paths
 `/api/v1/requester/search/movies` and `/series`, or `/api/v1/requester/lists`.
 Lists use POST to create, DELETE `/{id}` to remove and POST `/{id}/refresh` to
-schedule a check. POST `/api/v1/requester/imdb-csv` accepts a bounded CSV
-snapshot. `/api/v1/requester/discord` provides write-only webhook PUT, status
+schedule a check. Providers are `tmdb`, `trakt`, `imdb_mdblist`, `tmdb_private`,
+`trakt_private`, `trakt_watchlist` and `trakt_watchlist_private`; a Trakt
+watchlist uses the literal `watchlist` list ID and the profile owner as `owner`.
+POST `/api/v1/requester/imdb-csv` accepts a bounded CSV snapshot. `/api/v1/requester/discord` provides write-only webhook PUT, status
 GET and DELETE; POST `/api/v1/requester/requests/{id}/notification/retry`
 explicitly retries an uncertain delivery. PUT `/api/v1/requester/password`
 changes the requester's password and revokes their sessions. Requesters are denied all other
@@ -60,6 +62,36 @@ POST `/api/v1/discord-bot/notices/{id}/retry` retries an uncertain notice.
 POST `/api/v1/discord/interactions` is the companion bot's external endpoint:
 it is intentionally not cookie-authenticated and verifies Discord's Ed25519
 signature instead. See [request accounts and limits](REQUESTS.md).
+
+## Music catalog
+
+Administrator GET `/api/v1/metadata/music/artists?query=&page=` searches
+MusicBrainz. GET/POST `/api/v1/library/music/artists` lists saved artists or
+adds one with `{musicbrainz_id, monitored?}`; a repeated add returns 200 with
+`created:false`. GET `/api/v1/library/music/artists/{id}` returns the artist and
+its albums. GET `/api/v1/library/music/albums/{id}` returns the album and its
+tracks; the first read loads tracks from MusicBrainz.
+
+GET/POST `/api/v1/library/music/scans` lists scans or starts one with `{root}`.
+GET `/scans/{id}?page=` returns its state and files. POST
+`/scans/{id}/register` accepts `{file_ids,reviewed:true}`; POST `/cancel` and
+`/skip` handle review exceptions. GET `/api/v1/library/music/files?page=` lists
+registered files. POST `/api/v1/library/music/edits/preview` accepts
+`{file_ids}` and returns a plan with `plan_hash`; POST `/edits/apply` accepts
+`{file_ids,plan_hash,reviewed:true}`; GET `/edits/{id}` returns the job; POST
+`/edits/{id}/rollback` accepts `{reviewed:true}`.
+
+POST `/api/v1/library/music/albums/{id}/releases` accepts `{query?}` and returns
+ranked audio-indexer results without queueing. POST
+`/api/v1/library/music/albums/{id}/import` accepts `{source_path,root}` and
+starts a reviewed folder import; GET `/imports?page=` lists jobs and GET
+`/imports/{id}` returns one. Imports map a complete set of audio files to the
+album's tracks, copy and tag them without modifying the source, and publish
+without overwrite.
+
+These routes are administrator-only. Edits stage the source, verify the result,
+publish without overwriting an existing destination, retain a backup before a
+tag rewrite and support rollback. See [music scope and limits](MUSIC.md).
 
 ## YouTube sourcing
 

@@ -2,6 +2,7 @@
 services:
   reelscarey:
     image: faaaaq/reelscarey:latest
+    pull_policy: always
     container_name: reelscarey
     environment:
       PUID: 1000

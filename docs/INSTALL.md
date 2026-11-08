@@ -78,6 +78,11 @@ docker compose up -d
 docker compose exec reelscarey reelscarey doctor
 ```
 
+The published templates set `pull_policy: always`, so `docker compose up -d` also
+re-checks the `:latest` tag on every start. `docker compose pull` remains the
+explicit way to fetch before restarting. `:latest` moves with each successful
+release; pin a version tag or digest for production rollback control.
+
 Existing installations should keep their current volume mappings and
 `REELSCAREY_CONFIG_DIR`. Do not point an existing flat `/config` database at
 `/config/state`: that is a different, fresh database location. The old

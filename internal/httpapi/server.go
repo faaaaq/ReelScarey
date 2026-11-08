@@ -27,6 +27,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/emby"
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
+	"github.com/faaaaq/ReelScarey/internal/music"
 	"github.com/faaaaq/ReelScarey/internal/operations"
 	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/requests"
@@ -48,6 +49,7 @@ type Server struct {
 	started          time.Time
 	auth             *auth.Service
 	metadata         *metadata.Service
+	music            MusicService
 	transfer         *transfer.Service
 	automation       *automation.Service
 	subtitle         *subtitle.Service
@@ -73,6 +75,7 @@ type Server struct {
 type Dependencies struct {
 	Auth             *auth.Service
 	Metadata         *metadata.Service
+	Music            MusicService
 	Transfer         *transfer.Service
 	Automation       *automation.Service
 	Subtitle         *subtitle.Service
@@ -94,8 +97,38 @@ type YouTubeInspector interface {
 	Inspect(context.Context, string) (youtube.Inspection, error)
 }
 
+type MusicService interface {
+	SearchArtists(context.Context, string, int) (music.SearchResults, error)
+	AddArtist(context.Context, string, bool) (music.Artist, bool, error)
+	ListArtists(context.Context, string, int) (music.ArtistPage, error)
+	Artist(context.Context, int64) (music.ArtistDetails, error)
+	Album(context.Context, int64) (music.AlbumDetails, error)
+	StartScan(context.Context, string) (music.Scan, error)
+	ListScans(context.Context, int) (music.ScanList, error)
+	Scan(context.Context, int64) (music.Scan, error)
+	ScanPage(context.Context, int64, int) (music.ScanPage, error)
+	RegisterScan(context.Context, int64, []int64) (int, error)
+	CancelScan(context.Context, int64) error
+	SkipScanFile(context.Context, int64, int64) error
+	ListFiles(context.Context, int) (music.MusicFilePage, error)
+	PreviewEdits(context.Context, []int64) (music.EditPlan, error)
+	ApplyEdits(context.Context, []int64, string, bool) (music.EditJob, error)
+	EditJob(context.Context, int64) (music.EditJob, error)
+	ListEditJobs(context.Context, int) (music.EditJobList, error)
+	RollbackEdits(context.Context, int64, bool) (music.EditJob, error)
+	StartImport(context.Context, int64, string, string) (music.ImportJob, error)
+	ImportJob(context.Context, int64) (music.ImportJob, error)
+	ListImports(context.Context, int) (music.ImportJobList, error)
+}
+
 func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string, deps Dependencies) http.Handler {
 	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle}
+	s.music = deps.Music
+	if s.music == nil {
+		service := music.NewService(db, cfg.MediaDir)
+		service.SetDownloadsDir(cfg.DownloadsDir)
+		s.music = service
+	}
 	s.youtube = youtube.NewStore(db)
 	s.backups = deps.Backups
 	s.vpn = deps.VPN
@@ -302,6 +335,25 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/metadata/series/{id}", method(http.MethodGet, s.seriesDetails))
 	mux.HandleFunc("/api/v1/library/series", method(http.MethodPost, s.addSeries))
 	mux.HandleFunc("/api/v1/library/series/{id}", method(http.MethodGet, s.catalogSeries))
+	mux.HandleFunc("/api/v1/metadata/music/artists", method(http.MethodGet, s.searchMusicArtists))
+	mux.HandleFunc("/api/v1/library/music/artists", s.musicArtists)
+	mux.HandleFunc("/api/v1/library/music/artists/{id}", method(http.MethodGet, s.musicArtist))
+	mux.HandleFunc("/api/v1/library/music/albums/{id}", method(http.MethodGet, s.musicAlbum))
+	mux.HandleFunc("/api/v1/library/music/scans", s.musicScans)
+	mux.HandleFunc("/api/v1/library/music/scans/{id}", method(http.MethodGet, s.musicScan))
+	mux.HandleFunc("/api/v1/library/music/scans/{id}/register", method(http.MethodPost, s.musicScanRegister))
+	mux.HandleFunc("/api/v1/library/music/scans/{id}/cancel", method(http.MethodPost, s.musicScanCancel))
+	mux.HandleFunc("/api/v1/library/music/scans/{id}/skip", method(http.MethodPost, s.musicScanSkip))
+	mux.HandleFunc("/api/v1/library/music/files", method(http.MethodGet, s.musicFiles))
+	mux.HandleFunc("/api/v1/library/music/edits", method(http.MethodGet, s.musicEdits))
+	mux.HandleFunc("/api/v1/library/music/edits/preview", method(http.MethodPost, s.musicEditPreview))
+	mux.HandleFunc("/api/v1/library/music/edits/apply", method(http.MethodPost, s.musicEditApply))
+	mux.HandleFunc("/api/v1/library/music/edits/{id}", method(http.MethodGet, s.musicEdit))
+	mux.HandleFunc("/api/v1/library/music/edits/{id}/rollback", method(http.MethodPost, s.musicEditRollback))
+	mux.HandleFunc("/api/v1/library/music/albums/{id}/releases", method(http.MethodPost, s.musicAlbumReleases))
+	mux.HandleFunc("/api/v1/library/music/albums/{id}/import", method(http.MethodPost, s.musicAlbumImport))
+	mux.HandleFunc("/api/v1/library/music/imports", method(http.MethodGet, s.musicImports))
+	mux.HandleFunc("/api/v1/library/music/imports/{id}", method(http.MethodGet, s.musicImport))
 	mux.HandleFunc("/api/v1/library/series/{id}/refresh", method(http.MethodPost, s.refreshTV))
 	mux.HandleFunc("/api/v1/library/series/{id}/monitor", method(http.MethodPut, s.monitorTV))
 	mux.HandleFunc("/api/v1/library/series/{id}/monitor-all", method(http.MethodPut, s.monitorAllEpisodes))
@@ -388,7 +440,7 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 		"name": "ReelScarey", "version": s.version, "milestone": "hardening",
 		"database": "connected", "schema_version": version, "uptime_seconds": int(time.Since(s.started).Seconds()),
 		"paths":        map[string]string{"config": s.config.ConfigDir, "media": s.config.MediaDir, "downloads": s.config.DownloadsDir},
-		"capabilities": map[string]bool{"authentication": true, "library_settings": true, "metadata_search": true, "movie_add": true, "series_catalog": s.metadata != nil && s.metadata.SupportsSeries(), "episode_monitoring": true, "tv_downloads": s.transfer != nil, "torznab_search": s.transfer != nil, "downloads": s.transfer != nil, "import": s.transfer != nil, "persistent_jobs": s.transfer != nil, "subtitles": s.subtitle != nil, "automation": s.automation != nil, "quality_profiles": true},
+		"capabilities": map[string]bool{"authentication": true, "library_settings": true, "metadata_search": true, "movie_add": true, "series_catalog": s.metadata != nil && s.metadata.SupportsSeries(), "episode_monitoring": true, "tv_downloads": s.transfer != nil, "torznab_search": s.transfer != nil, "downloads": s.transfer != nil, "import": s.transfer != nil, "persistent_jobs": s.transfer != nil, "subtitles": s.subtitle != nil, "automation": s.automation != nil, "quality_profiles": true, "music": s.music != nil},
 	})
 }
 
@@ -544,6 +596,9 @@ func frontend(assets fs.FS) http.HandlerFunc {
 	routes["/announces"] = true
 	routes["/torrents"] = true
 	routes["/usenet"] = true
+	routes["/music"] = true
+	routes["/music/import"] = true
+	routes["/music/organize"] = true
 	serveIndex := func(w http.ResponseWriter, r *http.Request, status int) {
 		body, err := fs.ReadFile(assets, "index.html")
 		if err != nil {
@@ -566,7 +621,9 @@ func frontend(assets fs.FS) http.HandlerFunc {
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 		seriesID, seriesErr := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/series/"), 10, 64)
 		movieID, movieErr := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/movies/"), 10, 64)
-		if routes[r.URL.Path] || (strings.HasPrefix(r.URL.Path, "/series/") && seriesErr == nil && seriesID > 0) || (strings.HasPrefix(r.URL.Path, "/movies/") && movieErr == nil && movieID > 0) {
+		musicArtistID, musicArtistErr := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/music/artists/"), 10, 64)
+		musicAlbumID, musicAlbumErr := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/music/albums/"), 10, 64)
+		if routes[r.URL.Path] || (strings.HasPrefix(r.URL.Path, "/series/") && seriesErr == nil && seriesID > 0) || (strings.HasPrefix(r.URL.Path, "/movies/") && movieErr == nil && movieID > 0) || (strings.HasPrefix(r.URL.Path, "/music/artists/") && musicArtistErr == nil && musicArtistID > 0) || (strings.HasPrefix(r.URL.Path, "/music/albums/") && musicAlbumErr == nil && musicAlbumID > 0) {
 			serveIndex(w, r, http.StatusOK)
 			return
 		}
@@ -615,7 +672,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://image.tmdb.org; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://image.tmdb.org https://coverartarchive.org https://archive.org; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 		if r.TLS != nil || strings.HasPrefix(s.config.PublicURL, "https://") {
 			w.Header().Set("Strict-Transport-Security", "max-age=86400")
 		}
