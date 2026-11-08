@@ -89,6 +89,14 @@ starts a reviewed folder import; GET `/imports?page=` lists jobs and GET
 album's tracks, copy and tag them without modifying the source, and publish
 without overwrite.
 
+POST `/api/v1/library/music/albums/{id}/download` accepts `{release_id,root}`
+and queues the candidate through the selected download client. GET
+`/downloads?page=` lists music jobs; GET `/downloads/{id}` returns one; POST
+`/downloads/{id}/cancel` and `/retry` manage it. GET/PUT `/preferences` manages
+lossless, minimum-bitrate and preferred-format rules. GET `/wanted?page=` lists
+monitored albums with no registered files. GET/PUT `/schedule` manages the
+wanted-album schedule and POST `/schedule/run` performs one bounded run.
+
 These routes are administrator-only. Edits stage the source, verify the result,
 publish without overwriting an existing destination, retain a backup before a
 tag rewrite and support rollback. See [music scope and limits](MUSIC.md).

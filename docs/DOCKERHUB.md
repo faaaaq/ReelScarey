@@ -29,7 +29,8 @@ your seeding sources.
   trailers and title details.
 - Music: MusicBrainz catalog, existing-file scan and reviewed registration,
   reviewed organization and verified tag writing with rollback, audio release
-  search and reviewed completed-folder import.
+  search, automatic client queueing, a leased download worker, audio
+  preferences, wanted albums and a search schedule.
 
 ### Search and acquisition
 
@@ -230,11 +231,8 @@ Images are built for **linux/amd64**.
 - A Usenet server and any external download client remain owner-supplied.
 - **No playback, streaming, transcoding, HLS/DASH or media-server API.** Use your
   existing player for that.
-- **Music acquisition and automation are not implemented.** Music supports
-  cataloging, existing-file scan/registration, reviewed organization and tag
-  writing, audio release search and reviewed folder import. Automatic queueing,
-  a music download worker, quality profiles, wanted albums and scheduled
-  searches are not available. No books.
+- **Music is implemented end to end** except a per-file mapping editor for
+  ambiguous downloads, upgrade suggestions and per-album overrides. No books.
 - No live TV, DVR, trailers streaming or built-in reverse proxy/TLS.
 - The Emby integration is read-only activity; it does not control playback.
 - Discord/MDBList/provider acceptance depends on your own accounts and network.

@@ -64,7 +64,8 @@ singleton `admin_account`, `sessions`, `provider_secrets`, `integration_configs`
 `subtitle_imports`, `indexers`, `media_enrichment`, `music_artists`,
 `music_albums`, `music_tracks`, `music_scans`, `music_scan_files`,
 `music_files`, `music_edit_jobs`, `music_edit_files`,
-`music_release_candidates`, `music_import_jobs` and `music_import_files`.
+`music_release_candidates`, `music_import_jobs`, `music_import_files`,
+`music_downloads`, `music_preferences` and `music_schedule`.
 
 Migration 009 adds `library_scans`, `library_scan_dirs` and `library_scan_files`.
 Existing videos register in `media_files` with explicit existing-file provenance
@@ -482,6 +483,8 @@ tracks load on first open from the earliest official release. Organization and
 tag writes are previewed, hash-checked, staged, verified, published without
 overwrite, and retained for rollback. Release search reuses the existing
 indexer fan-out with the audio category and stores short-lived sealed
-candidates; completed album folders are imported through a reviewed
-copy/tag/publish path. No download-client submission, music worker or scheduled
-automation exists yet. See [music catalog](docs/MUSIC.md).
+candidates; a selected release is queued through the existing client adapters,
+a leased worker reconciles it and imports the completed folder through a
+reviewed copy/tag/publish path, and a wanted-album schedule reuses the same
+queue. Audio preferences filter automatic choices. See
+[music catalog](docs/MUSIC.md).

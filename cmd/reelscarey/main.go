@@ -134,6 +134,32 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	}
 	transferService := transfer.New(db, secretStore, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
 	transferService.SetAutomaticMetadata(metadataService)
+	transferService.SetMusicImporter(musicService)
+	musicService.SetScheduleRunner(func(ctx context.Context, schedule music.MusicSchedule, prefs music.MusicPreferences, albums []music.WantedAlbum) error {
+		for _, album := range albums {
+			releases, err := transferService.SearchMusicAlbum(ctx, album.ID, "")
+			if err != nil {
+				return err
+			}
+			var chosen *transfer.MusicRelease
+			for i := range releases {
+				candidate := releases[i]
+				if music.CandidateAllowed(prefs, candidate.Format, candidate.Bitrate, candidate.Lossless) {
+					chosen = &candidate
+					break
+				}
+			}
+			if chosen == nil {
+				continue
+			}
+			if schedule.Mode == "download" {
+				if _, err := transferService.QueueMusic(ctx, album.ID, chosen.ID, "Music"); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
 	automationService := automation.New(db, transferService)
 	metadataRefresh := automation.NewMetadataRefresher(db, metadataService)
 	subtitleService := subtitle.New(db, secretStore, cfg, subtitle.NewOpenSubtitles())
@@ -197,6 +223,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		return false, fmt.Errorf("listen: %w", err)
 	}
 	workerCtx, workerCancel := context.WithCancel(ctx)
+	musicScheduleDone := make(chan struct{})
+	go func() {
+		defer close(musicScheduleDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			musicService.RunScheduleLoop(workerCtx)
+		}
+	}()
+	defer func() { workerCancel(); <-musicScheduleDone }()
 	subscriptionsDone := make(chan struct{})
 	go func() {
 		defer close(subscriptionsDone)

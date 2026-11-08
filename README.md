@@ -53,8 +53,9 @@ separate files, with immutable order history and mandatory import review. See
 A Music tab catalogs MusicBrainz artists, albums and tracks, scans existing
 files, registers reviewed matches in place, applies reviewed organization and
 tag rewrites with rollback, searches audio releases and imports a completed
-album folder. Automatic queueing, a music download worker and scheduled
-automation are not implemented yet. See [music catalog](docs/MUSIC.md).
+album folder, queues releases through the selected client, reconciles them with
+a leased worker, and runs wanted-album searches on a schedule. See
+[music catalog](docs/MUSIC.md).
 
 YouTube source inspection supports explicit video selection from public channels
 and playlists, mapped to existing movies/episodes or named custom collections.

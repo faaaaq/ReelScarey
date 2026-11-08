@@ -16,7 +16,9 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 	go func() { defer close(libraryDone); s.runLibrary(libraryCtx, logger) }()
 	matchingDone := make(chan struct{})
 	go func() { defer close(matchingDone); s.runAutomaticMatching(libraryCtx, logger) }()
-	defer func() { libraryCancel(); <-libraryDone; <-matchingDone }()
+	musicDone := make(chan struct{})
+	go func() { defer close(musicDone); s.RunMusic(libraryCtx, logger) }()
+	defer func() { libraryCancel(); <-libraryDone; <-matchingDone; <-musicDone }()
 	if err := s.cleanupCommitted(ctx); err != nil && ctx.Err() == nil {
 		logger.Warn("committed import staging cleanup deferred")
 	}

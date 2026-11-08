@@ -515,6 +515,118 @@ func (s *Server) musicImport(w http.ResponseWriter, r *http.Request) {
 	send(w, 200, job)
 }
 
+func musicDownloadID(w http.ResponseWriter, r *http.Request) (string, bool) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" || len(id) > 80 {
+		fail(w, 400, "invalid_music", "Choose a valid music download.")
+		return "", false
+	}
+	return id, true
+}
+
+func (s *Server) musicAlbumDownload(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		ReleaseID string `json:"release_id"`
+		Root      string `json:"root"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	releaseID := strings.TrimSpace(body.ReleaseID)
+	if releaseID == "" {
+		fail(w, 400, "invalid_music", "Choose a release to download.")
+		return
+	}
+	root := strings.TrimSpace(body.Root)
+	if root == "" {
+		root = "Music"
+	}
+	job, err := s.transfer.QueueMusic(r.Context(), id, releaseID, root)
+	if err != nil {
+		s.transferError(w, err)
+		return
+	}
+	send(w, 202, job)
+}
+
+func (s *Server) musicDownloads(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	page, valid := pageNumber(r, 100000)
+	if !valid {
+		fail(w, 400, "invalid_music", "Choose a valid page.")
+		return
+	}
+	out, err := s.transfer.MusicJobs(r.Context(), page)
+	if err != nil {
+		s.transferError(w, err)
+		return
+	}
+	send(w, 200, out)
+}
+
+func (s *Server) musicDownload(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	id, ok := musicDownloadID(w, r)
+	if !ok {
+		return
+	}
+	job, err := s.transfer.MusicJob(r.Context(), id)
+	if err != nil {
+		s.transferError(w, err)
+		return
+	}
+	send(w, 200, job)
+}
+
+func (s *Server) musicDownloadCancel(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	id, ok := musicDownloadID(w, r)
+	if !ok {
+		return
+	}
+	var body struct{}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if err := s.transfer.CancelMusic(r.Context(), id); err != nil {
+		s.transferError(w, err)
+		return
+	}
+	send(w, 200, map[string]bool{"cancelled": true})
+}
+
+func (s *Server) musicDownloadRetry(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	id, ok := musicDownloadID(w, r)
+	if !ok {
+		return
+	}
+	var body struct{}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if err := s.transfer.RetryMusic(r.Context(), id); err != nil {
+		s.transferError(w, err)
+		return
+	}
+	send(w, 200, map[string]bool{"retried": true})
+}
+
 func musicID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id < 1 {

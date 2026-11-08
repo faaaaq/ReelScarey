@@ -21,8 +21,9 @@ Historical native and package results below remain as records of past work.
 - [x] Add a Music catalog with MusicBrainz artist, album and track metadata, a
   Music tab, existing-file scanning and reviewed registration, reviewed
   organization and verified tag writing with rollback, audio release search and
-  reviewed completed-folder import. Automatic queueing/download reconciliation,
-  quality profiles and scheduled automation remain open. See
+  reviewed completed-folder import, automatic client queueing, a leased download
+  worker, audio preferences, wanted albums and a search schedule. A manual
+  per-file mapping editor, upgrades and per-album overrides remain open. See
   [music catalog](docs/MUSIC.md).
 
 - [x] Update embedded movie and TV titles while organizing and renaming media,

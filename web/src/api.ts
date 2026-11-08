@@ -313,6 +313,62 @@ export type MusicImportJobList = {
   limit: number;
 };
 
+export type MusicPreferences = {
+  allow_lossless: boolean;
+  min_bitrate: number;
+  preferred_formats: string[];
+  revision: number;
+};
+
+export type MusicWantedAlbum = {
+  id: number;
+  artist_id: number;
+  artist_name: string;
+  title: string;
+  year: number | null;
+  status: string;
+  track_count: number;
+};
+
+export type MusicWantedPage = {
+  items: MusicWantedAlbum[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
+export type MusicSchedule = {
+  enabled: boolean;
+  interval_hours: number;
+  mode: "search" | "download";
+  next_run: number;
+  last_run: number;
+  last_error: string;
+  revision: number;
+};
+
+export type MusicJob = {
+  id: string;
+  album_id: number;
+  release_id: string;
+  title: string;
+  state: string;
+  progress: number;
+  total_bytes: number;
+  downloaded_bytes: number;
+  error: string;
+  import_job_id?: number;
+  created_at: number;
+  updated_at: number;
+};
+
+export type MusicJobPage = {
+  items: MusicJob[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
 export type AnimeLibrarySettings = {
   id: number;
   kind: "movie" | "series";

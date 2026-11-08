@@ -31,6 +31,7 @@ import {
   type MusicArtistDetails,
   type MusicArtistPage,
   type MusicImportJob,
+  type MusicJob,
   type MusicRelease,
   type MusicReleaseSearch,
   type MusicSearchResults,
@@ -392,11 +393,16 @@ export function MusicAlbumPage() {
   const [importPath, setImportPath] = useState("");
   const [importRoot, setImportRoot] = useState("Music");
   const [importID, setImportID] = useState<number | null>(null);
+  const [downloadJobID, setDownloadJobID] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const importJob = useLiveResource<MusicImportJob>(
     importID ? `/library/music/imports/${importID}` : null,
     2000,
+  );
+  const downloadJob = useLiveResource<MusicJob>(
+    downloadJobID ? `/library/music/downloads/${downloadJobID}` : null,
+    3000,
   );
 
   async function searchReleases(e: FormEvent) {
@@ -438,6 +444,24 @@ export function MusicAlbumPage() {
       );
       setImportID(job.id);
       setImportOpen(false);
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function download(releaseID: string) {
+    if (!id || pending) return;
+    setPending(true);
+    setError("");
+    try {
+      const job = await api<MusicJob>(`/library/music/albums/${id}/download`, {
+        method: "POST",
+        body: JSON.stringify({ release_id: releaseID, root: "Music" }),
+      });
+      setDownloadJobID(job.id);
+      setReleaseOpen(false);
     } catch (e) {
       setError(messageFor(e));
     } finally {
@@ -514,6 +538,28 @@ export function MusicAlbumPage() {
           </Table>
         )}
         {error && <Alert kind="danger">{error}</Alert>}
+        {downloadJob.data && (
+          <FieldSet legend={`Download · ${downloadJob.data.title}`}>
+            <div className="mus-scan-summary">
+              <Label
+                kind={
+                  downloadJob.data.state === "completed"
+                    ? "success"
+                    : downloadJob.data.state === "blocked" ||
+                        downloadJob.data.state === "failed"
+                      ? "danger"
+                      : "info"
+                }
+              >
+                {downloadJob.data.state}
+              </Label>
+              <span>{Math.round(downloadJob.data.progress * 100)}%</span>
+              {downloadJob.data.error && (
+                <span className="rs-muted">{downloadJob.data.error}</span>
+              )}
+            </div>
+          </FieldSet>
+        )}
         {importJob.data && (
           <FieldSet legend={`Import #${importJob.data.id}`}>
             <div className="mus-scan-summary">
@@ -637,6 +683,13 @@ export function MusicAlbumPage() {
                   <td>{formatBytes(release.size)}</td>
                   <td>{release.seeders ?? "—"}</td>
                   <td className="is-actions">
+                    <Button
+                      size="1"
+                      disabled={pending}
+                      onClick={() => void download(release.id)}
+                    >
+                      Download
+                    </Button>{" "}
                     {release.info_url ? (
                       <a
                         href={release.info_url}

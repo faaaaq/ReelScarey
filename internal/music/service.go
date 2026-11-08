@@ -12,11 +12,12 @@ import (
 // which stages, verifies, publishes without overwrite and retains a backup
 // before a tag rewrite.
 type Service struct {
-	client       *Client
-	store        *Store
-	mediaDir     string
-	downloadsDir string
-	prober       AudioProber
+	client         *Client
+	store          *Store
+	mediaDir       string
+	downloadsDir   string
+	prober         AudioProber
+	scheduleRunner ScheduleRunner
 }
 
 func (s *Service) SetDownloadsDir(dir string) { s.downloadsDir = dir }

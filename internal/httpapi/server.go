@@ -354,6 +354,15 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/albums/{id}/import", method(http.MethodPost, s.musicAlbumImport))
 	mux.HandleFunc("/api/v1/library/music/imports", method(http.MethodGet, s.musicImports))
 	mux.HandleFunc("/api/v1/library/music/imports/{id}", method(http.MethodGet, s.musicImport))
+	mux.HandleFunc("/api/v1/library/music/preferences", s.musicPreferences)
+	mux.HandleFunc("/api/v1/library/music/wanted", method(http.MethodGet, s.musicWantedAlbums))
+	mux.HandleFunc("/api/v1/library/music/schedule", s.musicSchedule)
+	mux.HandleFunc("/api/v1/library/music/schedule/run", method(http.MethodPost, s.musicScheduleRun))
+	mux.HandleFunc("/api/v1/library/music/albums/{id}/download", method(http.MethodPost, s.musicAlbumDownload))
+	mux.HandleFunc("/api/v1/library/music/downloads", method(http.MethodGet, s.musicDownloads))
+	mux.HandleFunc("/api/v1/library/music/downloads/{id}", method(http.MethodGet, s.musicDownload))
+	mux.HandleFunc("/api/v1/library/music/downloads/{id}/cancel", method(http.MethodPost, s.musicDownloadCancel))
+	mux.HandleFunc("/api/v1/library/music/downloads/{id}/retry", method(http.MethodPost, s.musicDownloadRetry))
 	mux.HandleFunc("/api/v1/library/series/{id}/refresh", method(http.MethodPost, s.refreshTV))
 	mux.HandleFunc("/api/v1/library/series/{id}/monitor", method(http.MethodPut, s.monitorTV))
 	mux.HandleFunc("/api/v1/library/series/{id}/monitor-all", method(http.MethodPut, s.monitorAllEpisodes))
@@ -599,6 +608,7 @@ func frontend(assets fs.FS) http.HandlerFunc {
 	routes["/music"] = true
 	routes["/music/import"] = true
 	routes["/music/organize"] = true
+	routes["/music/wanted"] = true
 	serveIndex := func(w http.ResponseWriter, r *http.Request, status int) {
 		body, err := fs.ReadFile(assets, "index.html")
 		if err != nil {

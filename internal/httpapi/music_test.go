@@ -90,6 +90,24 @@ func (f *fakeMusic) ImportJob(context.Context, int64) (music.ImportJob, error) {
 func (f *fakeMusic) ListImports(context.Context, int) (music.ImportJobList, error) {
 	return music.ImportJobList{Items: []music.ImportJob{}, Page: 1, Limit: 20}, f.err
 }
+func (f *fakeMusic) GetPreferences(context.Context) (music.MusicPreferences, error) {
+	return music.MusicPreferences{AllowLossless: true, PreferredFormats: []string{"FLAC"}, Revision: 1}, f.err
+}
+func (f *fakeMusic) SavePreferences(_ context.Context, in music.MusicPreferences) (music.MusicPreferences, error) {
+	in.Revision++
+	return in, f.err
+}
+func (f *fakeMusic) WantedAlbums(context.Context, int) (music.WantedAlbumPage, error) {
+	return music.WantedAlbumPage{Items: []music.WantedAlbum{}, Page: 1, Limit: 48}, f.err
+}
+func (f *fakeMusic) GetSchedule(context.Context) (music.MusicSchedule, error) {
+	return music.MusicSchedule{Enabled: false, IntervalHours: 24, Mode: "search", Revision: 1}, f.err
+}
+func (f *fakeMusic) SaveSchedule(_ context.Context, in music.MusicSchedule) (music.MusicSchedule, error) {
+	in.Revision++
+	return in, f.err
+}
+func (f *fakeMusic) RunSchedule(context.Context) error { return f.err }
 
 func musicFixture(t *testing.T, service MusicService) (http.Handler, *auth.Session) {
 	t.Helper()
@@ -282,6 +300,25 @@ func TestMusicImportRoutes(t *testing.T) {
 	out = request(handler, "POST", "/api/v1/library/music/albums/1/import", `{"source_path":""}`, session, true)
 	if out.Code != 400 {
 		t.Fatal("empty source", out.Code)
+	}
+}
+
+func TestMusicAutomationRoutes(t *testing.T) {
+	handler, session := musicFixture(t, &fakeMusic{})
+	for _, path := range []string{"/api/v1/library/music/preferences", "/api/v1/library/music/schedule"} {
+		out := request(handler, "GET", path, "", session, false)
+		if out.Code != 200 {
+			t.Fatal(path, out.Code, out.Body.String())
+		}
+	}
+	if out := request(handler, "GET", "/api/v1/library/music/wanted", "", session, false); out.Code != 200 {
+		t.Fatal("wanted", out.Code, out.Body.String())
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/schedule/run", "{}", session, true); out.Code != 202 {
+		t.Fatal("run", out.Code, out.Body.String())
+	}
+	if out := request(handler, "PUT", "/api/v1/library/music/preferences", `{"allow_lossless":false,"min_bitrate":192,"preferred_formats":["MP3"],"revision":1}`, session, true); out.Code != 200 {
+		t.Fatal("preferences", out.Code, out.Body.String())
 	}
 }
 

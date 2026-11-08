@@ -1,11 +1,10 @@
 # Music catalog, import and organization
 
-Status: **phases 1–3 implemented.** The Music tab can catalog MusicBrainz
-artists, albums and tracks, scan existing music folders, register matched files
-in place, apply reviewed organization and tag rewrites with rollback, search
-audio releases and import a completed album folder. Automatic queueing
-(download-client submission and a music download worker) and **automation**
-(wanted albums, scheduled searches) are not implemented.
+Status: **implemented end to end.** The Music tab catalogs MusicBrainz artists,
+albums and tracks, scans and registers existing files, applies reviewed
+organization and tag rewrites with rollback, searches audio releases, queues
+them through the selected download client, reconciles them with a leased worker,
+imports the completed folder, and runs wanted-album searches on a schedule.
 
 ## What works
 
@@ -27,6 +26,13 @@ audio releases and import a completed album folder. Automatic queueing
   map a complete one-to-one set to the catalog tracks, copy and tag into the
   music root, publish without overwrite and register `music_files`. Sources are
   never modified.
+- Queue a searched release through the configured client; a leased worker
+  reconciles torrent/Usenet progress, imports the completed folder, and marks
+  the download completed or blocked.
+- Audio preferences (`allow_lossless`, minimum bitrate, preferred formats)
+  filter automatic choices.
+- Wanted albums (monitored with no files) and an interval schedule in search or
+  download mode.
 - Preview and apply reviewed organization:
   - destination `root/Artist/Album/NN Title.ext` (or `D-NN` for multi-disc
     albums);
@@ -90,10 +96,11 @@ audio releases and import a completed album folder. Automatic queueing
 
 ## Limits
 
-- No automatic download-client submission, music download worker, quality
-  profiles, wanted list, calendar, upgrades or scheduled automation. The user
-  opens a release in the tracker/client and imports the completed folder.
-- Release search stores short-lived candidates but does not queue them.
+- The worker imports a completed folder only when every catalog track has one
+  matching disc/track file. A release with missing or ambiguous tags becomes
+  `blocked` for manual review; there is no per-file mapping editor yet.
+- No resolution/format upgrade suggestions and no per-album profile overrides.
+- Search mode stores candidates for review; it does not queue.
 - No playlists, lyrics, ratings, scrobbling or MusicBrainz editing.
 - No embedded cover-art writing and no CUE/multi-track single-file albums.
 - Edits only touch registered files below the media root. Symlinks are skipped.
@@ -127,6 +134,15 @@ audio releases and import a completed album folder. Automatic queueing
 | POST | `/api/v1/library/music/albums/{id}/import` | `{source_path,root}`; reviewed folder import; 202 |
 | GET | `/api/v1/library/music/imports?page=` | Import jobs |
 | GET | `/api/v1/library/music/imports/{id}` | Import job and files |
+| POST | `/api/v1/library/music/albums/{id}/download` | `{release_id,root}`; queue through the selected client; 202 |
+| GET | `/api/v1/library/music/downloads?page=` | Music download jobs |
+| GET | `/api/v1/library/music/downloads/{id}` | One job |
+| POST | `/api/v1/library/music/downloads/{id}/cancel` | `{}` |
+| POST | `/api/v1/library/music/downloads/{id}/retry` | `{}` |
+| GET/PUT | `/api/v1/library/music/preferences` | Audio preferences |
+| GET | `/api/v1/library/music/wanted?page=` | Monitored albums with no files |
+| GET/PUT | `/api/v1/library/music/schedule` | Wanted-album schedule |
+| POST | `/api/v1/library/music/schedule/run` | `{}`; one bounded run |
 
 All routes are administrator-only. Mutations require CSRF and same-origin
 validation. Request accounts cannot read or write the music catalog.
@@ -139,17 +155,18 @@ validation. Request accounts cannot read or write the music catalog.
   `music_edit_files`.
 - `062_music_acquisition.sql` — `music_albums.revision`,
   `music_release_candidates`, `music_import_jobs`, `music_import_files`.
+- `063_music_downloads.sql` — `music_downloads`, `music_preferences`,
+  `music_schedule`.
 
 The migrations are additive except for the `music_files.root` column. Existing
 movie/TV rows, foreign keys and consumers are untouched.
 
 ## Next phase
 
-Automatic music queueing and automation are the remaining milestone: submit a
-selected release through the named download client, run a leased music download
-worker (reconcile, discover audio, map tracks, import), add audio quality
-profiles, wanted albums and scheduled searches. Do not describe any of these as
-available until implemented and tested.
+Remaining polish: a per-file mapping editor for ambiguous downloads, upgrade
+suggestions and per-album profile overrides. The core Lidarr-style path —
+catalog, want, search, download, reconcile, import, organize and tag — is
+implemented.
 
 ## Validation
 
