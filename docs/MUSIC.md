@@ -143,6 +143,8 @@ imports the completed folder, and runs wanted-album searches on a schedule.
 | GET | `/api/v1/library/music/wanted?page=` | Monitored albums with no files |
 | GET/PUT | `/api/v1/library/music/schedule` | Wanted-album schedule |
 | POST | `/api/v1/library/music/schedule/run` | `{}`; one bounded run |
+| GET/PUT/DELETE | `/api/v1/library/music/albums/{id}/preferences` | Per-album override or reset to global |
+| GET | `/api/v1/library/music/upgrades` | Albums below their effective preference |
 
 All routes are administrator-only. Mutations require CSRF and same-origin
 validation. Request accounts cannot read or write the music catalog.
@@ -157,16 +159,18 @@ validation. Request accounts cannot read or write the music catalog.
   `music_release_candidates`, `music_import_jobs`, `music_import_files`.
 - `063_music_downloads.sql` — `music_downloads`, `music_preferences`,
   `music_schedule`.
+- `064_music_album_preferences.sql` — per-album `allow_lossless`,
+  `min_bitrate` and `preferred_formats` overrides.
 
 The migrations are additive except for the `music_files.root` column. Existing
 movie/TV rows, foreign keys and consumers are untouched.
 
 ## Next phase
 
-Remaining polish: a per-file mapping editor for ambiguous downloads, upgrade
-suggestions and per-album profile overrides. The core Lidarr-style path —
-catalog, want, search, download, reconcile, import, organize and tag — is
-implemented.
+Remaining polish: a per-file mapping editor for ambiguous downloads. Upgrade
+suggestions and per-album preference overrides are implemented. The core
+Lidarr-style path — catalog, want, search, download, reconcile, import,
+organize and tag — is implemented.
 
 ## Validation
 

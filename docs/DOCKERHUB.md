@@ -232,7 +232,7 @@ Images are built for **linux/amd64**.
 - **No playback, streaming, transcoding, HLS/DASH or media-server API.** Use your
   existing player for that.
 - **Music is implemented end to end** except a per-file mapping editor for
-  ambiguous downloads, upgrade suggestions and per-album overrides. No books.
+  ambiguous downloads. No books.
 - No live TV, DVR, trailers streaming or built-in reverse proxy/TLS.
 - The Emby integration is read-only activity; it does not control playback.
 - Discord/MDBList/provider acceptance depends on your own accounts and network.

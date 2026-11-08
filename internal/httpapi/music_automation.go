@@ -17,6 +17,10 @@ type musicAutomationService interface {
 	WantedAlbums(context.Context, int) (music.WantedAlbumPage, error)
 	GetSchedule(context.Context) (music.MusicSchedule, error)
 	SaveSchedule(context.Context, music.MusicSchedule) (music.MusicSchedule, error)
+	AlbumPreferences(context.Context, int64) (music.AlbumPreferences, error)
+	SaveAlbumPreferences(context.Context, int64, music.MusicPreferences) (music.AlbumPreferences, error)
+	ResetAlbumPreferences(context.Context, int64) (music.AlbumPreferences, error)
+	UpgradeSuggestions(context.Context, int) ([]music.UpgradeSuggestion, error)
 }
 
 // musicScheduleRunner is optional until a concrete runner is wired.
@@ -127,6 +131,62 @@ func (s *Server) musicSchedule(w http.ResponseWriter, r *http.Request) {
 // musicScheduleRun serves POST /api/v1/library/music/schedule/run. The run
 // action is wired only when the music service exposes
 // RunSchedule(context.Context) error; otherwise it fails explicitly.
+func (s *Server) musicAlbumPreferences(w http.ResponseWriter, r *http.Request) {
+	service, ok := s.musicAutomation()
+	if !ok {
+		fail(w, http.StatusServiceUnavailable, "music_unavailable", "The music preferences are unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		prefs, err := service.AlbumPreferences(r.Context(), id)
+		if err != nil {
+			s.musicAutomationError(w, err)
+			return
+		}
+		send(w, http.StatusOK, prefs)
+	case http.MethodPut:
+		var body music.MusicPreferences
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		prefs, err := service.SaveAlbumPreferences(r.Context(), id, body)
+		if err != nil {
+			s.musicAutomationError(w, err)
+			return
+		}
+		send(w, http.StatusOK, prefs)
+	case http.MethodDelete:
+		prefs, err := service.ResetAlbumPreferences(r.Context(), id)
+		if err != nil {
+			s.musicAutomationError(w, err)
+			return
+		}
+		send(w, http.StatusOK, prefs)
+	default:
+		w.Header().Set("Allow", "GET, PUT, DELETE")
+		fail(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use GET, PUT or DELETE.")
+	}
+}
+
+func (s *Server) musicUpgrades(w http.ResponseWriter, r *http.Request) {
+	service, ok := s.musicAutomation()
+	if !ok {
+		fail(w, http.StatusServiceUnavailable, "music_unavailable", "The music upgrades are unavailable.")
+		return
+	}
+	items, err := service.UpgradeSuggestions(r.Context(), 200)
+	if err != nil {
+		s.musicAutomationError(w, err)
+		return
+	}
+	send(w, http.StatusOK, map[string]any{"items": items})
+}
+
 func (s *Server) musicScheduleRun(w http.ResponseWriter, r *http.Request) {
 	if s.music == nil {
 		fail(w, http.StatusServiceUnavailable, "music_unavailable", "The music schedule is unavailable.")

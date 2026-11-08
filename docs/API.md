@@ -96,6 +96,9 @@ and queues the candidate through the selected download client. GET
 lossless, minimum-bitrate and preferred-format rules. GET `/wanted?page=` lists
 monitored albums with no registered files. GET/PUT `/schedule` manages the
 wanted-album schedule and POST `/schedule/run` performs one bounded run.
+GET/PUT/DELETE `/albums/{id}/preferences` reads, saves or resets a per-album
+preference override. GET `/upgrades` lists albums whose registered files fall
+below their effective preference; it is a suggestion only.
 
 These routes are administrator-only. Edits stage the source, verify the result,
 publish without overwriting an existing destination, retain a backup before a

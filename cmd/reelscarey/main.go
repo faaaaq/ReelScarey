@@ -141,10 +141,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			if err != nil {
 				return err
 			}
+			albumPrefs, err := musicService.AlbumPreferences(ctx, album.ID)
+			if err != nil {
+				return err
+			}
 			var chosen *transfer.MusicRelease
 			for i := range releases {
 				candidate := releases[i]
-				if music.CandidateAllowed(prefs, candidate.Format, candidate.Bitrate, candidate.Lossless) {
+				if music.CandidateAllowed(albumPrefs.Preferences, candidate.Format, candidate.Bitrate, candidate.Lossless) {
 					chosen = &candidate
 					break
 				}

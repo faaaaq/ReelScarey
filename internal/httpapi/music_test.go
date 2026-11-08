@@ -108,6 +108,19 @@ func (f *fakeMusic) SaveSchedule(_ context.Context, in music.MusicSchedule) (mus
 	return in, f.err
 }
 func (f *fakeMusic) RunSchedule(context.Context) error { return f.err }
+func (f *fakeMusic) AlbumPreferences(context.Context, int64) (music.AlbumPreferences, error) {
+	return music.AlbumPreferences{Preferences: music.MusicPreferences{AllowLossless: true, Revision: 1}, Inherited: true, Revision: 1}, f.err
+}
+func (f *fakeMusic) SaveAlbumPreferences(_ context.Context, _ int64, in music.MusicPreferences) (music.AlbumPreferences, error) {
+	in.Revision++
+	return music.AlbumPreferences{Preferences: in, Revision: 2}, f.err
+}
+func (f *fakeMusic) ResetAlbumPreferences(context.Context, int64) (music.AlbumPreferences, error) {
+	return music.AlbumPreferences{Inherited: true, Revision: 2}, f.err
+}
+func (f *fakeMusic) UpgradeSuggestions(context.Context, int) ([]music.UpgradeSuggestion, error) {
+	return []music.UpgradeSuggestion{}, f.err
+}
 
 func musicFixture(t *testing.T, service MusicService) (http.Handler, *auth.Session) {
 	t.Helper()

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import {
   ArrowLeft,
@@ -27,6 +27,7 @@ import {
   api,
   messageFor,
   type MusicAlbumDetails,
+  type MusicAlbumPreferences,
   type MusicArtist,
   type MusicArtistDetails,
   type MusicArtistPage,
@@ -404,6 +405,20 @@ export function MusicAlbumPage() {
     downloadJobID ? `/library/music/downloads/${downloadJobID}` : null,
     3000,
   );
+  const albumPrefs = useResource<MusicAlbumPreferences>(
+    id ? `/library/music/albums/${id}/preferences` : null,
+  );
+  const [allowLossless, setAllowLossless] = useState(true);
+  const [minBitrate, setMinBitrate] = useState("0");
+  const [formats, setFormats] = useState("");
+  const [prefsPending, setPrefsPending] = useState(false);
+
+  useEffect(() => {
+    if (!albumPrefs.data?.preferences) return;
+    setAllowLossless(albumPrefs.data.preferences.allow_lossless);
+    setMinBitrate(String(albumPrefs.data.preferences.min_bitrate));
+    setFormats(albumPrefs.data.preferences.preferred_formats.join(","));
+  }, [albumPrefs.data]);
 
   async function searchReleases(e: FormEvent) {
     e.preventDefault();
@@ -466,6 +481,48 @@ export function MusicAlbumPage() {
       setError(messageFor(e));
     } finally {
       setPending(false);
+    }
+  }
+
+  async function saveAlbumPrefs(e: FormEvent) {
+    e.preventDefault();
+    if (!id || !albumPrefs.data || prefsPending) return;
+    setPrefsPending(true);
+    setError("");
+    try {
+      await api(`/library/music/albums/${id}/preferences`, {
+        method: "PUT",
+        body: JSON.stringify({
+          allow_lossless: allowLossless,
+          min_bitrate: Number(minBitrate) || 0,
+          preferred_formats: formats
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean),
+          revision: albumPrefs.data.revision,
+        }),
+      });
+      albumPrefs.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPrefsPending(false);
+    }
+  }
+
+  async function resetAlbumPrefs() {
+    if (!id || prefsPending) return;
+    setPrefsPending(true);
+    setError("");
+    try {
+      await api(`/library/music/albums/${id}/preferences`, {
+        method: "DELETE",
+      });
+      albumPrefs.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPrefsPending(false);
     }
   }
 
@@ -536,6 +593,59 @@ export function MusicAlbumPage() {
               ))}
             </tbody>
           </Table>
+        )}
+        {albumPrefs.data?.preferences && (
+          <FieldSet legend="Album preferences">
+            <form
+              className="mus-search"
+              onSubmit={(e) => void saveAlbumPrefs(e)}
+            >
+              <label>
+                <input
+                  type="checkbox"
+                  checked={allowLossless}
+                  onChange={(e) => setAllowLossless(e.target.checked)}
+                />{" "}
+                Allow lossless
+              </label>
+              <label>
+                Minimum bitrate{" "}
+                <TextField.Root
+                  aria-label="Album minimum bitrate"
+                  value={minBitrate}
+                  onChange={(e) => setMinBitrate(e.target.value)}
+                  style={{ width: 90 }}
+                />
+              </label>
+              <label>
+                Formats{" "}
+                <TextField.Root
+                  aria-label="Album preferred formats"
+                  value={formats}
+                  onChange={(e) => setFormats(e.target.value)}
+                />
+              </label>
+              <Button type="submit" disabled={prefsPending}>
+                Save
+              </Button>
+              {!albumPrefs.data.inherited && (
+                <Button
+                  type="button"
+                  variant="soft"
+                  color="gray"
+                  disabled={prefsPending}
+                  onClick={() => void resetAlbumPrefs()}
+                >
+                  Use global
+                </Button>
+              )}
+            </form>
+            <p className="rs-muted">
+              {albumPrefs.data.inherited
+                ? "Inheriting the global music preferences."
+                : "This album has its own preferences."}
+            </p>
+          </FieldSet>
         )}
         {error && <Alert kind="danger">{error}</Alert>}
         {downloadJob.data && (

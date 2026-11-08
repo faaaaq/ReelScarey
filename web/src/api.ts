@@ -369,6 +369,27 @@ export type MusicJobPage = {
   limit: number;
 };
 
+export type MusicAlbumPreferences = {
+  preferences: MusicPreferences;
+  inherited: boolean;
+  revision: number;
+};
+
+export type MusicUpgradeSuggestion = {
+  album_id: number;
+  artist_id: number;
+  artist_name: string;
+  title: string;
+  year: number | null;
+  formats: string[];
+  bitrate: number;
+  reason: string;
+};
+
+export type MusicUpgradeList = {
+  items: MusicUpgradeSuggestion[];
+};
+
 export type AnimeLibrarySettings = {
   id: number;
   kind: "movie" | "series";

@@ -73,6 +73,9 @@ describe("music wanted", () => {
       if (path === "/api/v1/library/music/downloads") {
         return Response.json({ items: [], page: 1, total: 0, limit: 24 });
       }
+      if (path === "/api/v1/library/music/upgrades") {
+        return Response.json({ items: [] });
+      }
       return undefined;
     });
 

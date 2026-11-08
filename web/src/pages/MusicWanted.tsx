@@ -20,6 +20,7 @@ import {
   type MusicJobPage,
   type MusicPreferences,
   type MusicSchedule,
+  type MusicUpgradeList,
   type MusicWantedPage,
 } from "../api";
 import { useResource } from "../useResource";
@@ -41,6 +42,7 @@ export function MusicWanted() {
   const prefs = useResource<MusicPreferences>("/library/music/preferences");
   const schedule = useResource<MusicSchedule>("/library/music/schedule");
   const jobs = useLiveResource<MusicJobPage>("/library/music/downloads", 5000);
+  const upgrades = useResource<MusicUpgradeList>("/library/music/upgrades");
   const [allowLossless, setAllowLossless] = useState(true);
   const [minBitrate, setMinBitrate] = useState("0");
   const [formats, setFormats] = useState("FLAC,ALAC,MP3");
@@ -328,6 +330,40 @@ export function MusicWanted() {
                     <td>{album.track_count || "—"}</td>
                     <td className="is-actions">
                       <Link to={`/music/albums/${album.id}`}>Find release</Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </FieldSet>
+        )}
+        {upgrades.data?.items && upgrades.data.items.length > 0 && (
+          <FieldSet legend="Upgrade suggestions">
+            <Table label="Music upgrade suggestions">
+              <thead>
+                <tr>
+                  <th scope="col">Artist</th>
+                  <th scope="col">Album</th>
+                  <th scope="col">Formats</th>
+                  <th scope="col">Bitrate</th>
+                  <th scope="col">Reason</th>
+                  <th scope="col" className="is-actions">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {upgrades.data.items.map((item) => (
+                  <tr key={item.album_id}>
+                    <td>{item.artist_name}</td>
+                    <td>{item.title}</td>
+                    <td>{item.formats.join(", ") || "—"}</td>
+                    <td>{item.bitrate || "—"}</td>
+                    <td>{item.reason}</td>
+                    <td className="is-actions">
+                      <Link to={`/music/albums/${item.album_id}`}>
+                        Find release
+                      </Link>
                     </td>
                   </tr>
                 ))}

@@ -359,6 +359,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/schedule", s.musicSchedule)
 	mux.HandleFunc("/api/v1/library/music/schedule/run", method(http.MethodPost, s.musicScheduleRun))
 	mux.HandleFunc("/api/v1/library/music/albums/{id}/download", method(http.MethodPost, s.musicAlbumDownload))
+	mux.HandleFunc("/api/v1/library/music/albums/{id}/preferences", s.musicAlbumPreferences)
+	mux.HandleFunc("/api/v1/library/music/upgrades", method(http.MethodGet, s.musicUpgrades))
 	mux.HandleFunc("/api/v1/library/music/downloads", method(http.MethodGet, s.musicDownloads))
 	mux.HandleFunc("/api/v1/library/music/downloads/{id}", method(http.MethodGet, s.musicDownload))
 	mux.HandleFunc("/api/v1/library/music/downloads/{id}/cancel", method(http.MethodPost, s.musicDownloadCancel))
