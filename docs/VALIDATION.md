@@ -1,5 +1,29 @@
 # Validation record — 2026-10-29
 
+## Music catalog discovery (2026-11-08)
+
+Implementation checks on 2026-11-08 (Windows development host):
+
+- Reviewed discovery resolves selected unresolved music files through strong
+  evidence only: a release-group MusicBrainz ID, or one exact normalized album
+  artist and album title with year only used for disambiguation. It creates the
+  missing artist/release group, loads tracks and re-matches the files.
+- Provider work is bounded to 500 files, 10 album groups and a time budget.
+  Ambiguous/missing evidence, provider failures and deferred groups remain
+  unresolved with explicit messages; scan counts are refreshed.
+- Tests cover release-group and exact tag paths, ambiguous/missing evidence,
+  duplicate artist reuse, provider failure retention, deferral, count refresh,
+  re-match, HTTP auth/CSRF/validation and the Music Import UI action.
+- Combined `go test ./... -count=1` passed for every package except
+  `TestLargeExistingRegistrationDoesNotReadWholeVideo` in `internal/transfer`,
+  which could not create its 4 GiB temporary fixture on this host. Targeted
+  music, HTTP, automatic-matching and existing-library tests pass.
+- `go vet ./...`, `go build ./cmd/reelscarey`, frontend `format:check`, `check`,
+  `test` (51 files, 280 tests) and `build` passed.
+- Not exercised here: a real MusicBrainz account/library, live TMDb/library
+  acceptance, owner media or a Docker/Linux run. Provider behavior uses local
+  fake MusicBrainz/TMDb responses.
+
 ## Cross-season existing-library matching (2026-11-08)
 
 Implementation checks on 2026-11-08 (Windows development host):
@@ -34,7 +58,7 @@ Implementation checks on 2026-11-08 (Windows development host):
   route to it rather than pretending audio is TMDb video discovery.
 - Installation docs now show an optional `/data/music` bind mount and explain
   that the scan folder is relative to the media root and case-sensitive.
-- Web `format:check`, `check`, `test` (51 files, 278 tests) and `build` passed.
+- Web `format:check`, `check`, `test` (51 files, 280 tests) and `build` passed.
   No Go behavior changed for this UI discovery fix.
 
 ## Automatic and library metadata refresh (2026-11-08)
