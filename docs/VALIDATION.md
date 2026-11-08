@@ -2569,3 +2569,34 @@ Run locally on Windows (development tools only; Docker remains the target):
 - Frontend format:check, check, the full suite (51 files, 275 tests) and the build
   passed. The Automation copy now states that movies do not wait for their saved
   release date.
+
+## Version 0.46.1 existing-library hints and duplicate episode variants
+
+- Discovery hints now remove trailing `-`, `.`, `_` and space separators after
+  truncating an episode label, so `Hunter x Hunter - S02E63 - A x Hard x Master.mkv`
+  pre-fills `Hunter x Hunter` rather than `Hunter x Hunter -`. The numbered
+  filename still retains `A x Hard x Master` as the exact episode-title evidence
+  for the cross-season fallback; show-title tokens and quality-looking words in
+  the episode title are not treated as release labels.
+- Files that resolve to one canonical episode are no longer a dead end. The scan
+  records them as a duplicate group, keeps every variant in review, and exposes
+  up to 100 groups through read-only `GET /library/imports/{id}/duplicates`.
+  `POST /library/imports/{id}/duplicates/resolve` requires an explicit reviewed
+  choice, queues that one file through the ordinary verification path and marks
+  the other variants skipped with a message naming the chosen file. No two files
+  are registered for one episode. A variant covering an additional episode is
+  refused and stays in review.
+- The match review resets its query, remote results, chosen title, episodes,
+  review checkbox and error when the reviewed file changes, and initializes from
+  the cleaned hint. A Fire Force-like previous query therefore cannot leak into a
+  Hunter x Hunter review.
+- Go tests cover hint cleanup, `Hunter x Hunter - S02E63 - A x Hard x Master.mkv`
+  identity, duplicate grouping and reviewed resolution (including a refused
+  multi-episode variant), and unreviewed resolution rejection. Frontend tests
+  cover the grouped duplicate resolution action and the stale-query reset.
+  `go test ./internal/transfer` passed except
+  `TestLargeExistingRegistrationDoesNotReadWholeVideo`, which could not create its
+  sparse fixture because the development volume was full
+  (`There is not enough space on the disk`). The remaining transfer tests passed
+  with that test skipped, and `go test ./internal/httpapi`, `go vet`, the frontend
+  format check, TypeScript check and the targeted frontend suite passed.

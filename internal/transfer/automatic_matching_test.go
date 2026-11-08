@@ -238,6 +238,12 @@ func TestAutomaticEpisodeTitleFallbackIdentity(t *testing.T) {
 	if err != nil || h.EpisodeTitle != "" {
 		t.Fatalf("quality label became title evidence: %+v %v", h, err)
 	}
+	// Show-title tokens and a quality-looking word inside the episode title must
+	// not be mistaken for the episode or a release label.
+	h, err = automaticIdentity(LibraryScan{Kind: "series", Folder: "anime"}, DiscoveredFile{Path: "anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E63 - A x Hard x Master.mkv"})
+	if err != nil || h.Title != "Hunter x Hunter" || h.Year != 2011 || h.ProviderID != 46298 || h.Season != 2 || !reflect.DeepEqual(h.Episodes, []int{63}) || h.EpisodeTitle != "A x Hard x Master" {
+		t.Fatalf("show-title tokens or episode title were misread: %+v %v", h, err)
+	}
 	if _, err := automaticIdentity(LibraryScan{Kind: "series", Folder: "TV"}, DiscoveredFile{Path: "TV/Example Show/Example Show.mkv"}); err == nil {
 		t.Fatal("accepted a file without an episode title")
 	}

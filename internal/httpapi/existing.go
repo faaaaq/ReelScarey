@@ -136,6 +136,42 @@ func (s *Server) existingSkip(w http.ResponseWriter, r *http.Request) {
 	}
 	send(w, 200, map[string]bool{"skipped": true})
 }
+func (s *Server) existingDuplicates(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	id := r.PathValue("id")
+	if len(id) != 32 {
+		fail(w, 400, "invalid_scan", "Choose a saved library scan.")
+		return
+	}
+	out, e := s.transfer.DuplicateGroups(r.Context(), id)
+	if e != nil {
+		s.transferError(w, e)
+		return
+	}
+	send(w, 200, out)
+}
+func (s *Server) existingDuplicateResolve(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	id := r.PathValue("id")
+	if len(id) != 32 {
+		fail(w, 400, "invalid_scan", "Choose a saved library scan.")
+		return
+	}
+	var in transfer.DuplicateResolution
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	skipped, e := s.transfer.ResolveDuplicate(r.Context(), id, in)
+	if e != nil {
+		s.transferError(w, e)
+		return
+	}
+	send(w, 202, map[string]any{"queued": true, "skipped": skipped})
+}
 func (s *Server) existingCatalog(w http.ResponseWriter, r *http.Request) {
 	if !s.transferReady(w) {
 		return

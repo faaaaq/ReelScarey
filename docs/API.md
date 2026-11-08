@@ -269,6 +269,8 @@ same-origin validation. Reads never start a filesystem scan.
 | POST | `/api/v1/library/imports` | `{kind:"movie"|"series",library_key?:string,automatic_matching?:boolean}`; queue bounded discovery; matching defaults false; 202 |
 | GET | `/api/v1/library/imports/{id}?page=1&state=` | Scan status/counts plus 50 discovered files; optional review/matched/blocked/registered/skipped filter |
 | POST | `/api/v1/library/imports/{id}/cancel` | `{}`; stop discovery; prior reviewed registrations remain independent |
+| GET | `/api/v1/library/imports/{id}/duplicates` | Up to 100 unresolved same-episode duplicate groups with every claiming file; read-only |
+| POST | `/api/v1/library/imports/{id}/duplicates/resolve` | `{key,keep_file_id,reviewed:true}`; queue the chosen file and mark the other variants skipped; 202 |
 | DELETE | `/api/v1/library/imports/{id}` | `{}`; forget finished review records; refuses active discovery/matching/verification; never deletes registered media |
 | POST | `/api/v1/library/import/backup/preview` | Raw Radarr or Sonarr backup ZIP (≤256 MiB) or iCalendar export (≤5 MiB); returns source, title list and `in_library`; reads only Movies/Series or SUMMARY/DTSTART/UID |
 | POST | `/api/v1/library/import/backup/apply` | `{items:[{kind,tmdb_id,tvdb_id,monitored}]}`; adds the reviewed titles from a backup or calendar; returns added/skipped/errors |

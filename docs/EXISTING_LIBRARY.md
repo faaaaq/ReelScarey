@@ -66,8 +66,9 @@ identify the episode in another TMDb season (see below). Conflicting explicit ID
 years or season numbers, ambiguous or duplicate titles, date/absolute Anime
 numbering and nonconsecutive episodes stay in review. Multiple movie files can
 attach to the same movie, preserving each resolution or edition. Overlapping TV
-episode files stay in review; the app does not choose an arbitrary episode version.
-Clear canonical Anime numbering works in the configured Anime collection. Anime
+episode files stay in review; the app does not choose an arbitrary episode
+version (see [duplicate episode variants](#duplicate-episode-variants)). Clear
+canonical Anime numbering works in the configured Anime collection. Anime
 discovery scans series directly in the configured Anime folder (for example,
 /data/anime). Scan films through Movies, including anime films.
 
@@ -97,6 +98,26 @@ revision and retry one stale-revision write; changed provider identities still
 fail closed. Existing canonical episode IDs, associations and monitoring are not
 rewritten.
 
+### Duplicate episode variants
+
+When more than one discovered file resolves to the same canonical episode, none
+is queued automatically. The files are stored as one duplicate group and every
+variant stays in review; the app never picks a version for you. The Library
+Import page lists each group with its show, canonical season/episode and every
+claiming file (for example an MKV and an MP4 of the same release). Choose one
+file, confirm the explicit choice and queue it for ordinary verification and
+registration. The other variants are marked skipped with a message naming the
+chosen file: they stay unregistered and are never attached to that episode.
+Only one file can be registered for an episode.
+
+A variant that claims an episode outside the chosen file's target set is
+refused and stays in review, because skipping it could discard the only source
+for that episode. Groups are keyed by canonical episode ID, so files for
+genuinely different episodes or seasons are not merged merely because their
+episode titles are similar. Reviewing up to 100 groups is supported per request;
+a truncated overview says more groups remain. Restarting or re-running automatic
+matching discards unresolved duplicate choices and recomputes the groups.
+
 Matching first checks saved titles, then TMDb when needed. New titles default to
 future-only monitoring: a title releasing today or later is monitored, while an
 already-released or undated title is paused. Unloaded canonical season episodes
@@ -119,7 +140,11 @@ restart. Failed/partial discovery cannot automatically register files.
 ## Review the identity
 
 Open **Review match** for a discovered file. The original path and size are shown.
-Filename hints only prefill a search; they never select a title or episodes.
+Filename hints only prefill a search; they never select a title or episodes. A
+hint removes the episode label, year/quality suffixes and trailing separators, so
+`Hunter x Hunter - S02E63 - A x Hard x Master.mkv` suggests `Hunter x Hunter`,
+not `Hunter x Hunter -`. The review opens with the cleaned hint and resets its
+query, draft title and episode choices when another file is reviewed.
 Search/browse saved catalog titles offline, or explicitly search TMDb and choose
 **Add & choose**. New canonical titles default to future-only monitoring; an
 already-aired title starts paused. A provider outage does not prevent linking to

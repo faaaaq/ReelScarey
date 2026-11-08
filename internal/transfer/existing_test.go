@@ -47,6 +47,20 @@ func finishScan(t *testing.T, f *workflowFixture, id string) DiscoveredPage {
 	t.Fatal("scan did not finish")
 	return DiscoveredPage{}
 }
+func TestDiscoveryHintRemovesShowAndTrailingSeparators(t *testing.T) {
+	for _, v := range []struct{ name, kind, want string }{
+		{"anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E63 - A x Hard x Master.mkv", "series", "Hunter x Hunter"},
+		{"anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E63 - A x Hard x Master.mp4", "series", "Hunter x Hunter"},
+		{"TV/Example Show/Season 02/Example Show - S02E04 - Promise.mkv", "series", "Example Show"},
+		{"Movies/Test Movie (2026)/Test.Movie.2026.mp4", "movie", "Test Movie"},
+		{"Movies/Test Movie (2026)/Test.Movie.2026.1080p.mkv", "movie", "Test Movie"},
+	} {
+		if got := discoveryHint(v.name, v.kind); got != v.want {
+			t.Fatalf("%s: hint %q, want %q", v.name, got, v.want)
+		}
+	}
+}
+
 func TestUnverifiedVideoRegistrationFollowsOwnerPreference(t *testing.T) {
 	f := setupWorkflow(t)
 	ctx := context.Background()

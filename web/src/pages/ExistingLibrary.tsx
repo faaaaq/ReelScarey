@@ -1,5 +1,5 @@
 import { PageBody } from "../ui";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { AlertDialog, Button, Dialog, TextField } from "@radix-ui/themes";
 import {
   AlertTriangle,
@@ -75,6 +75,32 @@ export type DiscoveredPage = {
   page: number;
   total: number;
   limit: number;
+};
+export type DuplicateEpisode = {
+  episode_id: number;
+  tmdb_id: number;
+  season: number;
+  number: number;
+  title: string;
+};
+export type DuplicateFile = {
+  id: string;
+  path: string;
+  full_path: string;
+  hint: string;
+  size_bytes: number;
+  message: string;
+  episodes: DuplicateEpisode[];
+};
+export type DuplicateGroup = {
+  key: string;
+  series_title: string;
+  episode: DuplicateEpisode;
+  files: DuplicateFile[];
+};
+export type DuplicateGroupPage = {
+  items: DuplicateGroup[];
+  truncated: boolean;
 };
 type ScanList = {
   items: LibraryScan[];
@@ -415,6 +441,10 @@ function ScanReview({
     `/library/imports/${id}?page=${page}&state=${filter}`,
     3000,
   );
+  const duplicates = useLiveResource<DuplicateGroupPage>(
+    `/library/imports/${id}/duplicates`,
+    5000,
+  );
   async function action(op: "cancel" | "forget" | "skip", fileID?: string) {
     setBusy(true);
     setError("");
@@ -428,6 +458,7 @@ function ScanReview({
       if (op === "forget") forgotten();
       else {
         result.reload();
+        duplicates.reload();
         changed();
       }
     } catch (e) {
@@ -445,6 +476,7 @@ function ScanReview({
         body: JSON.stringify({ action }),
       });
       result.reload();
+      duplicates.reload();
       changed();
     } catch (error) {
       setError(messageFor(error));
@@ -730,6 +762,19 @@ function ScanReview({
           </div>
         </section>
       )}
+      {!matchingActive &&
+        duplicates.data &&
+        duplicates.data.items.length > 0 && (
+          <DuplicateGroups
+            scanID={id}
+            page={duplicates.data}
+            reload={() => {
+              result.reload();
+              duplicates.reload();
+              changed();
+            }}
+          />
+        )}
       {error && (
         <p role="alert" className="rs-alert is-danger">
           {error}
@@ -883,6 +928,7 @@ function ScanReview({
               done={() => {
                 setFile(undefined);
                 result.reload();
+                duplicates.reload();
                 changed();
               }}
             />
@@ -892,7 +938,154 @@ function ScanReview({
     </>
   );
 }
-function MatchReview({
+function DuplicateGroups({
+  scanID,
+  page,
+  reload,
+}: {
+  scanID: string;
+  page: DuplicateGroupPage;
+  reload: () => void;
+}) {
+  return (
+    <section
+      className="rs-panel scan-overview"
+      aria-label="Duplicate episode files"
+    >
+      <div className="scan-header">
+        <div>
+          <p className="rs-form-help">3 · Resolve duplicates</p>
+          <h2>Duplicate episode files</h2>
+          <p className="scan-sub">
+            These files map to the same canonical episode. Choose one file for
+            each episode and confirm. Nothing is registered until you choose.
+            The other variants stay unregistered.
+          </p>
+        </div>
+        <span className="rs-label amber">Needs a choice</span>
+      </div>
+      {page.truncated && (
+        <p className="scan-notice">
+          Showing the first {page.items.length} duplicate groups. Resolve these
+          groups, then refresh the scan for more.
+        </p>
+      )}
+      <div className="rs-stack">
+        {page.items.map((group) => (
+          <DuplicateGroupCard
+            key={group.key}
+            scanID={scanID}
+            group={group}
+            reload={reload}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+function DuplicateGroupCard({
+  scanID,
+  group,
+  reload,
+}: {
+  scanID: string;
+  group: DuplicateGroup;
+  reload: () => void;
+}) {
+  const [keep, setKeep] = useState("");
+  const [reviewed, setReviewed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function resolve() {
+    if (!keep || !reviewed || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/library/imports/${scanID}/duplicates/resolve`, {
+        method: "POST",
+        body: JSON.stringify({
+          key: group.key,
+          keep_file_id: keep,
+          reviewed: true,
+        }),
+      });
+      reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const label = `S${String(group.episode.season).padStart(2, "0")}E${String(
+    group.episode.number,
+  ).padStart(2, "0")}`;
+  return (
+    <article className="scan-file-row" aria-label={label}>
+      <div className="scan-file-head">
+        <div>
+          <h3>
+            {group.series_title} · {label} · {group.episode.title}
+          </h3>
+          <p className="scan-file-meta">
+            {group.files.length} files claim this episode
+          </p>
+        </div>
+      </div>
+      <fieldset className="backup-fields" disabled={busy}>
+        <legend>Choose the file to register for this episode</legend>
+        {group.files.map((candidate) => (
+          <label className="rs-check" key={candidate.id}>
+            <input
+              type="radio"
+              name={`duplicate-${group.key}`}
+              value={candidate.id}
+              checked={keep === candidate.id}
+              onChange={() => {
+                setKeep(candidate.id);
+                setReviewed(false);
+              }}
+            />
+            <span>
+              <strong>{candidate.path.split("/").at(-1)}</strong>
+              <small>
+                {bytes(candidate.size_bytes)} · {candidate.full_path}
+              </small>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <label className="rs-check">
+        <input
+          type="checkbox"
+          checked={reviewed}
+          disabled={busy || !keep}
+          onChange={(e) => setReviewed(e.target.checked)}
+        />
+        <span>
+          I chose one file for this episode. The other variants stay
+          unregistered.
+        </span>
+      </label>
+      {error && (
+        <p role="alert" className="rs-alert is-danger">
+          {error}
+        </p>
+      )}
+      <div className="rs-form-actions">
+        <Button
+          disabled={busy || !keep || !reviewed}
+          onClick={() => void resolve()}
+        >
+          {busy ? "Resolving…" : "Register selected variant"}
+        </Button>
+      </div>
+    </article>
+  );
+}
+function reviewQuery(hint: string) {
+  return hint.replace(/[\s._\-–—]+$/u, "").trim();
+}
+export function MatchReview({
   file,
   kind,
   busy,
@@ -905,8 +1098,8 @@ function MatchReview({
   setBusy: (busy: boolean) => void;
   done: () => void;
 }) {
-  const [query, setQuery] = useState(file.hint);
-  const [savedQuery, setSavedQuery] = useState(file.hint);
+  const [query, setQuery] = useState(reviewQuery(file.hint));
+  const [savedQuery, setSavedQuery] = useState(reviewQuery(file.hint));
   const catalog = useResource<{ items: MediaItem[] }>(
     `/library/imports/catalog?kind=${kind}&query=${encodeURIComponent(savedQuery)}`,
   );
@@ -916,6 +1109,19 @@ function MatchReview({
   const [episodes, setEpisodes] = useState<number[]>([]);
   const [reviewed, setReviewed] = useState(false);
   const [error, setError] = useState("");
+  // A parent may keep this component mounted while it points at another file.
+  // Reset every draft so one title's query or episode choice cannot leak into
+  // the next review.
+  useEffect(() => {
+    const hint = reviewQuery(file.hint);
+    setQuery(hint);
+    setSavedQuery(hint);
+    setRemote(undefined);
+    setChosen(undefined);
+    setEpisodes([]);
+    setReviewed(false);
+    setError("");
+  }, [file.id, file.hint]);
   function choose(item: MediaItem) {
     setChosen(item);
     setEpisodes([]);

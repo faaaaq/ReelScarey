@@ -326,12 +326,12 @@ func discoveryHint(name, kind string) string {
 		base = base[:i[0]]
 	}
 	base = strings.NewReplacer(".", " ", "_", " ", "(", " ", ")", " ").Replace(base)
-	base = strings.Join(strings.Fields(base), " ")
+	base = strings.TrimRight(strings.Join(strings.Fields(base), " "), " -–—")
 	if base == "" {
 		base = path.Base(path.Dir(name))
 	}
 	if len(base) > 200 {
-		base = base[:200]
+		base = strings.TrimRight(base[:200], " -–—")
 	}
 	return base
 }

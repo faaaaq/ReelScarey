@@ -1,10 +1,14 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Theme } from "@radix-ui/themes";
+import { Dialog, Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi } from "vitest";
 import App from "../App";
-import type { DiscoveredFile, LibraryScan } from "../pages/ExistingLibrary";
+import {
+  MatchReview,
+  type DiscoveredFile,
+  type LibraryScan,
+} from "../pages/ExistingLibrary";
 
 const movie = {
   id: 1,
@@ -94,6 +98,8 @@ function setup(
       });
     if (url.includes("/library/imports/catalog?"))
       return Response.json({ items: [{ ...movie, kind }] });
+    if (url.endsWith(`/library/imports/${scan.id}/duplicates`))
+      return Response.json({ items: [], truncated: false });
     if (url.endsWith("/providers/tmdb"))
       return Response.json({ configured: true });
     if (url.endsWith("/register") && options?.method === "POST") {
@@ -449,5 +455,149 @@ describe("automatic existing-library matching", () => {
     expect(calls[0][1]?.headers).toMatchObject({
       "X-CSRF-Token": "fixture-csrf",
     });
+  });
+});
+
+describe("existing-library duplicate variants and review reset", () => {
+  const duplicateFile = (
+    id: string,
+    extension: string,
+    size: number,
+  ): DiscoveredFile => ({
+    ...file,
+    id,
+    path: `Anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E63 - A x Hard x Master.${extension}`,
+    full_path: `/media/Anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E63 - A x Hard x Master.${extension}`,
+    hint: "Hunter x Hunter",
+    size_bytes: size,
+    message:
+      "Multiple files map to the same episode. Choose one file to register for this episode and skip the duplicate variants.",
+  });
+
+  it("registers only the explicitly chosen duplicate variant", async () => {
+    const keep = duplicateFile("c".repeat(32), "mkv", 3000000000);
+    const other = duplicateFile("d".repeat(32), "mp4", 1000000000);
+    const group = {
+      key: "episode:501",
+      series_title: "Hunter x Hunter",
+      episode: {
+        episode_id: 501,
+        tmdb_id: 4629801,
+        season: 2,
+        number: 1,
+        title: "A x Hard x Master",
+      },
+      files: [keep, other],
+    };
+    const fetch = setup((url, options) => {
+      if (url.endsWith(`/library/imports/${scan.id}/duplicates`))
+        return Response.json({ items: [group], truncated: false });
+      if (url.endsWith("/duplicates/resolve") && options?.method === "POST")
+        return Response.json({ queued: true, skipped: 1 }, { status: 202 });
+    }, "series");
+    mount();
+    const panel = await screen.findByRole("region", {
+      name: "Duplicate episode files",
+    });
+    expect(within(panel).getByText(/2 files claim this episode/)).toBeVisible();
+    await userEvent.click(
+      within(panel).getByRole("radio", { name: /A x Hard x Master\.mkv/ }),
+    );
+    await userEvent.click(
+      within(panel).getByRole("checkbox", {
+        name: /I chose one file for this episode/,
+      }),
+    );
+    await userEvent.click(
+      within(panel).getByRole("button", {
+        name: "Register selected variant",
+      }),
+    );
+    await waitFor(() => {
+      const call = fetch.mock.calls.find(([url]) =>
+        url.endsWith("/duplicates/resolve"),
+      );
+      expect(call).toBeTruthy();
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+        key: "episode:501",
+        keep_file_id: keep.id,
+        reviewed: true,
+      });
+      expect(call?.[1]?.headers).toMatchObject({
+        "X-CSRF-Token": "fixture-csrf",
+      });
+    });
+  });
+
+  it("resets a previous title query when another file opens in the same review", async () => {
+    const fireForce: DiscoveredFile = {
+      ...file,
+      id: "e".repeat(32),
+      path: "TV/Fire Force/Season 3/Fire Force - S03E01 - A new threat.mkv",
+      full_path:
+        "/media/TV/Fire Force/Season 3/Fire Force - S03E01 - A new threat.mkv",
+      hint: "Fire Force",
+    };
+    const hunter: DiscoveredFile = {
+      ...file,
+      id: "f".repeat(32),
+      path: "Anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E63 - A x Hard x Master.mkv",
+      full_path:
+        "/media/Anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E63 - A x Hard x Master.mkv",
+      hint: "Hunter x Hunter",
+    };
+    const fetch = vi.fn(async (url: string) => {
+      if (url.includes("/library/imports/catalog?"))
+        return Response.json({ items: [] });
+      if (url.endsWith("/providers/tmdb"))
+        return Response.json({ configured: true });
+      return Response.json(
+        { error: { message: "Unexpected fixture request" } },
+        { status: 404 },
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+    const view = (reviewed: DiscoveredFile) => (
+      <Theme>
+        <Dialog.Root open>
+          <Dialog.Content>
+            <MatchReview
+              file={reviewed}
+              kind="series"
+              busy={false}
+              setBusy={() => undefined}
+              done={() => undefined}
+            />
+          </Dialog.Content>
+        </Dialog.Root>
+      </Theme>
+    );
+    const { rerender } = render(view(fireForce));
+    const input = await screen.findByRole("textbox", {
+      name: "Match title search",
+    });
+    expect(input).toHaveValue("Fire Force");
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(([url]) =>
+          String(url).includes("query=Fire%20Force"),
+        ),
+      ).toBe(true),
+    );
+    rerender(view(hunter));
+    expect(input).toHaveValue("Hunter x Hunter");
+    await waitFor(() => {
+      const catalog = fetch.mock.calls.filter(([url]) =>
+        String(url).includes("/library/imports/catalog?"),
+      );
+      expect(String(catalog.at(-1)?.[0])).toContain(
+        "query=Hunter%20x%20Hunter",
+      );
+    });
+    expect(
+      fetch.mock.calls.some(([url]) =>
+        String(url).includes("query=Fire%20Force"),
+      ),
+    ).toBe(true);
   });
 });

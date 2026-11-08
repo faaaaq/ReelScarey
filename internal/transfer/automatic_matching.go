@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -40,6 +41,10 @@ type automaticCandidate struct {
 	Snapshot reviewedMatch `json:"snapshot"`
 	// Note records accepted cross-season/number evidence for the review UI.
 	Note string `json:"note,omitempty"`
+	// DuplicateKeys marks the canonical targets this file shares with other
+	// resolved files. Such candidates stay in review until the owner chooses
+	// one file for every group.
+	DuplicateKeys []string `json:"duplicate_keys,omitempty"`
 }
 
 func (s *Service) AutomaticMatchStatus(ctx context.Context, scan string) (*AutomaticMatchStatus, error) {
@@ -237,6 +242,7 @@ func (s *Service) finishAutomaticResolution(ctx context.Context, scan, owner str
 			return err
 		}
 		targets := map[string][]string{}
+		payloads := map[string]string{}
 		for rows.Next() {
 			var id, raw string
 			var v automaticCandidate
@@ -248,6 +254,7 @@ func (s *Service) finishAutomaticResolution(ctx context.Context, scan, owner str
 				rows.Close()
 				return err
 			}
+			payloads[id] = raw
 			for _, key := range automaticTargetKeys(v) {
 				targets[key] = append(targets[key], id)
 			}
@@ -258,17 +265,27 @@ func (s *Service) finishAutomaticResolution(ctx context.Context, scan, owner str
 			return err
 		}
 		// Resolve duplicates across the entire completed scan before queuing any file.
-		duplicates := map[string]bool{}
-		for _, files := range targets {
-			if len(files) > 1 {
-				for _, id := range files {
-					duplicates[id] = true
-				}
+		duplicates := map[string][]string{}
+		for key, files := range targets {
+			if len(files) < 2 {
+				continue
+			}
+			for _, id := range files {
+				duplicates[id] = append(duplicates[id], key)
 			}
 		}
-		for id := range duplicates {
-			message := "Multiple files claim the same episode or file path. Review the overlap."
-			if _, err = tx.ExecContext(ctx, `UPDATE library_match_candidates SET state='review',message=? WHERE file_id=?`, message, id); err != nil {
+		for id, keys := range duplicates {
+			sort.Strings(keys)
+			message := "Multiple files map to the same episode. Choose one file to register for this episode and skip the duplicate variants."
+			raw := payloads[id]
+			var candidate automaticCandidate
+			if json.Unmarshal([]byte(raw), &candidate) == nil {
+				candidate.DuplicateKeys = keys
+				if encoded, err := json.Marshal(candidate); err == nil {
+					raw = string(encoded)
+				}
+			}
+			if _, err = tx.ExecContext(ctx, `UPDATE library_match_candidates SET state='review',payload=?,message=? WHERE file_id=?`, raw, message, id); err != nil {
 				return err
 			}
 			if _, err = tx.ExecContext(ctx, `UPDATE library_scan_files SET message=? WHERE id=? AND state='review'`, message, id); err != nil {

@@ -219,6 +219,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/imports/{id}/matches/review", method(http.MethodPost, s.bulkMatchReview))
 	mux.HandleFunc("/api/v1/library/imports/{id}/matches/apply", method(http.MethodPost, s.bulkMatchApply))
 	mux.HandleFunc("/api/v1/library/imports/{id}/cancel", method(http.MethodPost, s.existingCancel))
+	mux.HandleFunc("/api/v1/library/imports/{id}/duplicates", method(http.MethodGet, s.existingDuplicates))
+	mux.HandleFunc("/api/v1/library/imports/{id}/duplicates/resolve", method(http.MethodPost, s.existingDuplicateResolve))
 	mux.HandleFunc("/api/v1/library/import-files/{id}/register", method(http.MethodPost, s.existingRegister))
 	mux.HandleFunc("/api/v1/library/import-files/{id}/skip", method(http.MethodPost, s.existingSkip))
 	mux.HandleFunc("/api/v1/library/items/{id}", method(http.MethodGet, s.itemDetails))

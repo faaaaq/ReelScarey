@@ -82,7 +82,7 @@ func TestExistingLibraryAPIAuthenticationReviewAndPathBoundaries(t *testing.T) {
 	if out := request(handler, "GET", "/api/v1/emby", "", &session, false); out.Code != 200 || strings.Contains(out.Body.String(), "private") {
 		t.Fatal("Emby key returned", out.Code, out.Body)
 	}
-	for _, op := range []struct{ method, path string }{{"POST", "/api/v1/library/imports/" + strings.Repeat("a", 32) + "/matches/automatic"}, {"POST", "/api/v1/library/imports"}, {"POST", "/api/v1/library/import-files/" + strings.Repeat("a", 32) + "/register"}, {"POST", "/api/v1/library/import-files/" + strings.Repeat("a", 32) + "/skip"}, {"POST", "/api/v1/library/imports/" + strings.Repeat("a", 32) + "/cancel"}, {"DELETE", "/api/v1/library/imports/" + strings.Repeat("a", 32)}} {
+	for _, op := range []struct{ method, path string }{{"POST", "/api/v1/library/imports/" + strings.Repeat("a", 32) + "/matches/automatic"}, {"POST", "/api/v1/library/imports"}, {"POST", "/api/v1/library/import-files/" + strings.Repeat("a", 32) + "/register"}, {"POST", "/api/v1/library/import-files/" + strings.Repeat("a", 32) + "/skip"}, {"POST", "/api/v1/library/imports/" + strings.Repeat("a", 32) + "/cancel"}, {"POST", "/api/v1/library/imports/" + strings.Repeat("a", 32) + "/duplicates/resolve"}, {"DELETE", "/api/v1/library/imports/" + strings.Repeat("a", 32)}} {
 		if out := request(handler, op.method, op.path, "{}", &session, false); out.Code != 403 {
 			t.Fatal("missing CSRF", op, out.Code)
 		}
