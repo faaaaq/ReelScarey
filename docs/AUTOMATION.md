@@ -71,10 +71,12 @@ not silently blocked by these automation-only rules.
 flows) trigger one focused automatic search for that title via
 `POST /automation/search-item`. The run is the ordinary scheduled pipeline with
 its lease, retries, batching and mode: download mode queues the best matching
-release, search-only mode records candidates for review. A show-scoped search
-continues across runs until its missing monitored episodes are done. The
-latest recorded outcome per title is readable at
-`GET /automation/item-results`.
+release, search-only mode records candidates for review. A title or Calendar
+bulk search is one bounded pass: it continues across batches until every
+selected target has been checked once, then clears the request even when some
+targets stay missing. Missing targets are never re-searched by the same request;
+the ordinary scheduled cycle picks them up later. The latest recorded outcome per
+title is readable at `GET /automation/item-results`.
 
 ## Modes and file safety
 

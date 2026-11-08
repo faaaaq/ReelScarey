@@ -784,6 +784,96 @@ func TestBulkCalendarSearchQueuesWithOnlyTheBuiltInClient(t *testing.T) {
 	})
 }
 
+// A bulk search in search-only mode must visit each missing target exactly
+// once and clear its request. A missing episode can never be "satisfied", so
+// counting still-missing targets would re-search the same items every tick.
+func TestBulkSearchOnlyFinishesItsSinglePass(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	if _, e := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,category,monitored) VALUES(5,'series',5,'Show',2020,'standard',1);INSERT INTO series_details(media_id) VALUES(5);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,5,10,1,'Season','','2020-01-01',2,1,'loaded');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,11,1,'One','','2020-01-01',1),(2,1,12,2,'Two','','2020-01-02',1)`); e != nil {
+		t.Fatal(e)
+	}
+	configure(t, f.s, false, "search", 1)
+
+	if e := f.s.RequestBulk(ctx, "series"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	schedule, e := f.s.Get(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !schedule.Requested || schedule.FocusKind != "series" {
+		t.Fatalf("the first batch stopped before the focused pass finished: %+v", schedule)
+	}
+
+	if _, e := f.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	schedule, e = f.s.Get(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if schedule.Requested || schedule.FocusKind != "" {
+		t.Fatalf("a completed bulk search kept looping: %+v", schedule)
+	}
+	var cursor string
+	if e := f.db.QueryRow(`SELECT cursor FROM search_schedule WHERE id=1`).Scan(&cursor); e != nil {
+		t.Fatal(e)
+	}
+	if cursor != "" {
+		t.Fatalf("a completed bulk search kept its cursor: %q", cursor)
+	}
+	staleRuns, _ := f.s.Runs(ctx)
+	if len(staleRuns) != 2 {
+		t.Fatalf("expected one run per batch, got %d", len(staleRuns))
+	}
+
+	// Nothing is requested any more, so the worker must stay idle.
+	if ok, e := f.s.ProcessNext(ctx); ok || e != nil {
+		t.Fatal("the finished bulk search started again", ok, e)
+	}
+	runs, _ := f.s.Runs(ctx)
+	if len(runs) != 2 || runs[0].Checked != 1 || runs[1].Checked != 1 {
+		t.Fatalf("targets were searched more than once: %+v", runs)
+	}
+}
+
+// A bulk search that matches nothing still ends after one pass; it must not
+// keep re-searching the same unsupported targets.
+func TestBulkSearchWithoutResultsDoesNotLoop(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	if _, e := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,category,monitored) VALUES(5,'series',5,'Show',2020,'standard',1);INSERT INTO series_details(media_id) VALUES(5);INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored,loaded_at) VALUES(1,5,10,1,'Season','','2020-01-01',1,1,'loaded');INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,11,1,'One','','2020-01-01',1)`); e != nil {
+		t.Fatal(e)
+	}
+	f.i.titleFor = func(query string) string { return "Unrelated.Release.2020.720p.WEB" }
+	configure(t, f.s, false, "search", 10)
+
+	if e := f.s.RequestBulk(ctx, "series"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.s.ProcessNext(ctx); e != nil {
+		t.Fatal(e)
+	}
+	schedule, e := f.s.Get(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if schedule.Requested || schedule.FocusKind != "" {
+		t.Fatalf("a bulk search with no results kept looping: %+v", schedule)
+	}
+	if ok, e := f.s.ProcessNext(ctx); ok || e != nil {
+		t.Fatal("the search restarted without a request", ok, e)
+	}
+	runs, _ := f.s.Runs(ctx)
+	if len(runs) != 1 || runs[0].Checked != 1 || runs[0].Queued != 0 {
+		t.Fatalf("the no-result search ran more than once: %+v", runs)
+	}
+}
+
 func TestBulkSearchScopesToMoviesOrEpisodes(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()

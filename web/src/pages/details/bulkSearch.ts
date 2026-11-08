@@ -19,6 +19,8 @@ export type BulkSearchState =
       started: number;
       /** A scheduler run has been observed for this request. */
       active?: boolean;
+      /** An earlier run still holds the scheduler; this request is queued. */
+      waiting?: boolean;
       checked?: number;
       queued?: number;
       message?: string;
@@ -87,6 +89,11 @@ export function useBulkSearch() {
           (run) => run.state === "running" || run.state === "scheduled",
         );
         const active = activeRuns.length > 0;
+        const busy = runs.find(
+          (run) =>
+            run.id === baseline.current &&
+            (run.state === "running" || run.state === "scheduled"),
+        );
         if (active) {
           // The scheduler does not expose a total; report its live counters
           // instead of inventing a percentage.
@@ -113,6 +120,14 @@ export function useBulkSearch() {
             interrupted: fresh.some((run) => run.state !== "completed"),
             message: newest.message,
           });
+        } else if (busy) {
+          // A search already owns the scheduler. Say so instead of looking
+          // stuck until the worker can pick up this request.
+          setState({
+            status: "running",
+            started: started.current,
+            waiting: true,
+          });
         } else if (attempts.current >= 40) {
           setState({
             status: "error",
@@ -138,9 +153,11 @@ export function useBulkSearch() {
 
 export function bulkSearchMessage(state: BulkSearchState): string {
   if (state.status === "running")
-    return state.active
-      ? `Searching… ${state.checked ?? 0} checked, ${state.queued ?? 0} queued.`
-      : "Starting search…";
+    return state.waiting
+      ? "Waiting for the current search to finish…"
+      : state.active
+        ? `Searching… ${state.checked ?? 0} checked, ${state.queued ?? 0} queued.`
+        : "Starting search…";
   if (state.status === "error") return state.message;
   if (state.status !== "done") return "";
   if (state.checked === 0) {

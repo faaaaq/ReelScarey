@@ -653,6 +653,42 @@ it("shows live indeterminate progress while a bulk search runs", async () => {
   ).toBeVisible();
 });
 
+it("waits visibly when an earlier search still owns the scheduler", async () => {
+  const intervals = stubIntervals();
+  setup((url) => {
+    if (url.endsWith("/automation/runs"))
+      return Response.json([
+        {
+          id: "run-0",
+          started_at: Math.floor(Date.now() / 1000) - 60,
+          finished_at: 0,
+          state: "running",
+          message: "Searching.",
+          mode: "search",
+          checked: 3,
+          queued: 0,
+        },
+      ]);
+    if (url.endsWith("/automation/search-bulk"))
+      return Response.json({ requested: true }, { status: 202 });
+    return undefined;
+  });
+  mount("/calendar?month=2026-10");
+  await screen.findByRole("heading", { name: "October 2026" });
+  await userEvent.click(screen.getByRole("button", { name: "Search movies" }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Search every missing monitored movie?",
+  });
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: "Start search" }),
+  );
+  const poll = intervals.find((interval) => interval.ms === 2500)!;
+  await act(async () => poll.run());
+  expect(
+    await screen.findByText(/Waiting for the current search to finish/),
+  ).toBeVisible();
+});
+
 it("states search-only mode and explains a run that checked nothing", async () => {
   const intervals = stubIntervals();
   let phase: "idle" | "completed" = "idle";

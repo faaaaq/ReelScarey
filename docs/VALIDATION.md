@@ -2228,3 +2228,16 @@ Run locally on Windows (development tools only; Docker remains the target):
   refresh, batch progress and the Dashboard.
 - Docker and live provider acceptance were not run locally; the publish
   workflow verifies the release candidate on the tag.
+
+## Version 0.39.5 bounded bulk searches
+
+- gofmt clean; go vet and the full Go suite passed (schema 65). New regression
+  tests cover a search-only bulk pass across batches, a pass with no matching
+  releases, and refusal to start again after the request clears.
+- Frontend format:check, check, the full suite (47 files, 263 tests) and the
+  build passed. A new test covers the Calendar reporting that it is waiting for
+  the search already holding the scheduler.
+- The live 0.39.4 database showed a Calendar episode request re-searching the
+  same four episodes airing that day every few seconds. The focused pass now
+  stops after each target is visited once instead of counting still-missing
+  items forever.

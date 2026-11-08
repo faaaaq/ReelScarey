@@ -161,7 +161,8 @@ func (s *Service) RequestItem(ctx context.Context, mediaID int64, episodeID *int
 	}
 	// A running search is not disturbed: the finish logic preserves requests
 	// made while it was active and starts the focused run immediately after.
-	if _, e = s.db.ExecContext(ctx, `UPDATE search_schedule SET requested=1,focus_media=?,focus_episode=?,focus_kind='',next_run=0 WHERE id=1`, focusMedia, focusEpisode); e != nil {
+	// The cursor restarts so the focused pass visits every matching target.
+	if _, e = s.db.ExecContext(ctx, `UPDATE search_schedule SET requested=1,focus_media=?,focus_episode=?,focus_kind='',cursor='',next_run=0 WHERE id=1`, focusMedia, focusEpisode); e != nil {
 		return e
 	}
 	return nil
@@ -174,7 +175,7 @@ func (s *Service) RequestBulk(ctx context.Context, kind string) error {
 	if kind != "movie" && kind != "series" {
 		return problemInvalidScope
 	}
-	if _, e := s.db.ExecContext(ctx, `UPDATE search_schedule SET requested=1,focus_media='',focus_episode='',focus_kind=?,next_run=0 WHERE id=1`, kind); e != nil {
+	if _, e := s.db.ExecContext(ctx, `UPDATE search_schedule SET requested=1,focus_media='',focus_episode='',focus_kind=?,cursor='',next_run=0 WHERE id=1`, kind); e != nil {
 		return e
 	}
 	return nil

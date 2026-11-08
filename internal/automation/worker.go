@@ -89,12 +89,17 @@ func (s *Service) targets(ctx context.Context, cursor string, limit int, focusMe
 	default:
 		return nil, problemInvalidScope
 	}
+	// A focused request is a single pass over the requested titles. The
+	// wrap-around below keeps the ordinary cycle full, but re-searching a
+	// focused target after its turn would leave a search-only request running
+	// forever because a missing item can never be satisfied.
+	focused := focusMedia != "" || focusEpisode != "" || focusKind != ""
 	for pass := 0; pass < 2 && len(out) < limit; pass++ {
 		suffix := ` WHERE key>?` + filter + ` ORDER BY key LIMIT ?`
 		args2 := append([]any{date, date, cursor}, args...)
 		args2 = append(args2, limit-len(out))
 		if pass == 1 {
-			if cursor == "" {
+			if cursor == "" || focused {
 				break
 			}
 			suffix = ` WHERE key<=?` + filter + ` ORDER BY key LIMIT ?`
@@ -122,15 +127,16 @@ func (s *Service) targets(ctx context.Context, cursor string, limit int, focusMe
 	return out, nil
 }
 
-// focusRemaining counts the focused targets that still need a search, so a
-// title or bulk search larger than one batch continues instead of stopping.
-func (s *Service) focusRemaining(ctx context.Context, focusMedia, focusEpisode, focusKind string) (int, error) {
-	if focusMedia == "" && focusKind == "" {
+// focusRemaining counts the focused targets the current pass has not visited
+// yet, so a title or bulk search continues across batches exactly once and
+// then stops instead of re-searching targets that cannot be satisfied.
+func (s *Service) focusRemaining(ctx context.Context, cursor, focusMedia, focusEpisode, focusKind string) (int, error) {
+	if focusMedia == "" && focusEpisode == "" && focusKind == "" {
 		return 0, nil
 	}
 	date := s.now().UTC().Format("2006-01-02")
-	filter := ""
-	args := []any{date, date}
+	filter := ` AND key>?`
+	args := []any{date, date, cursor}
 	if focusMedia != "" {
 		media, e := strconv.ParseInt(focusMedia, 10, 64)
 		if e != nil {
@@ -157,7 +163,7 @@ func (s *Service) focusRemaining(ctx context.Context, focusMedia, focusEpisode, 
 		return 0, problemInvalidScope
 	}
 	var count int
-	query := `SELECT COUNT(*) FROM (SELECT media_id,episode_id FROM (` + targetSQL + `) WHERE 1=1` + filter + `)`
+	query := `SELECT COUNT(*) FROM (` + targetSQL + `) WHERE 1=1` + filter
 	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
 		return 0, err
 	}
@@ -333,8 +339,9 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 	requestedOut := state == "retrying" || (state == "interrupted" && c.Requested)
 	focusMedia, focusEpisode, focusKind := "", "", ""
 	var pendingRequested bool
-	var pendingFocusMedia, pendingFocusEpisode, pendingFocusKind string
-	_ = s.db.QueryRowContext(finish, `SELECT requested,focus_media,focus_episode,focus_kind FROM search_schedule WHERE id=1`).Scan(&pendingRequested, &pendingFocusMedia, &pendingFocusEpisode, &pendingFocusKind)
+	var pendingFocusMedia, pendingFocusEpisode, pendingFocusKind, pendingCursor string
+	_ = s.db.QueryRowContext(finish, `SELECT requested,focus_media,focus_episode,focus_kind,cursor FROM search_schedule WHERE id=1`).Scan(&pendingRequested, &pendingFocusMedia, &pendingFocusEpisode, &pendingFocusKind, &pendingCursor)
+	cursorOut := pendingCursor
 	if !requestedOut && pendingRequested && !c.Requested {
 		requestedOut = true
 	}
@@ -342,14 +349,21 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 		requestedOut = true
 	}
 	// A finished focused run continues immediately while focused targets
-	// remain; once none are left it returns to the saved cadence.
-	if !requestedOut && c.Requested && (c.FocusMedia != "" || c.FocusKind != "") && state != "retrying" && state != "interrupted" {
-		if remaining, e := s.focusRemaining(finish, c.FocusMedia, c.FocusEpisode, c.FocusKind); e == nil && remaining > 0 {
+	// remain; once none are left it returns to the saved cadence. The pass is
+	// bounded by the cursor, so targets that stay missing are visited once.
+	focused := c.FocusMedia != "" || c.FocusEpisode != "" || c.FocusKind != ""
+	if !requestedOut && c.Requested && focused && state != "retrying" && state != "interrupted" {
+		if remaining, e := s.focusRemaining(finish, pendingCursor, c.FocusMedia, c.FocusEpisode, c.FocusKind); e == nil && remaining > 0 {
 			requestedOut = true
 		}
 	}
 	if requestedOut {
-		if pendingFocusMedia != "" || pendingFocusKind != "" {
+		if pendingFocusMedia != "" || pendingFocusEpisode != "" || pendingFocusKind != "" {
+			if pendingFocusMedia != c.FocusMedia || pendingFocusEpisode != c.FocusEpisode || pendingFocusKind != c.FocusKind {
+				// A newly requested focus starts its own single pass from the
+				// beginning; the previous run may have moved the cursor.
+				cursorOut = ""
+			}
 			focusMedia, focusEpisode, focusKind = pendingFocusMedia, pendingFocusEpisode, pendingFocusKind
 		} else {
 			focusMedia, focusEpisode, focusKind = c.FocusMedia, c.FocusEpisode, c.FocusKind
@@ -357,6 +371,9 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 		if state != "retrying" {
 			next = s.now().Unix()
 		}
+	} else if focused {
+		// The focused pass reached the end and returns to the ordinary cycle.
+		cursorOut = ""
 	}
 	tx, err := s.db.BeginTx(finish, nil)
 	if err != nil {
@@ -366,7 +383,7 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 	if _, err = tx.ExecContext(finish, `UPDATE automation_runs SET finished_at=?,state=?,message=? WHERE id=? AND state='running'`, s.now().Unix(), state, message, c.ID); err != nil {
 		return true, err
 	}
-	if _, err = tx.ExecContext(finish, `UPDATE search_schedule SET next_run=?,requested=?,focus_media=?,focus_episode=?,focus_kind=?,attempts=?,state=?,message=?,lease_owner='',lease_until=0 WHERE id=1 AND lease_owner=? AND revision=?`, next, boolInt(requestedOut), focusMedia, focusEpisode, focusKind, attempts, state, message, c.ID, c.Revision); err != nil {
+	if _, err = tx.ExecContext(finish, `UPDATE search_schedule SET next_run=?,requested=?,focus_media=?,focus_episode=?,focus_kind=?,cursor=?,attempts=?,state=?,message=?,lease_owner='',lease_until=0 WHERE id=1 AND lease_owner=? AND revision=?`, next, boolInt(requestedOut), focusMedia, focusEpisode, focusKind, cursorOut, attempts, state, message, c.ID, c.Revision); err != nil {
 		return true, err
 	}
 	// A changed schedule keeps its new intent, but releases this worker's lease.
