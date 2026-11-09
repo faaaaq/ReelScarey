@@ -380,6 +380,14 @@ func invalidAcoustIDResponse() *Error {
 // count, and the accepted candidates must name exactly one release group. It
 // never guesses between low scores or multiple albums.
 func ResolveAcoustID(candidates []AcoustIDCandidate) (AcoustIDMatch, error) {
+	return ResolveAcoustIDForAlbum(candidates, "", "")
+}
+
+// ResolveAcoustIDForAlbum applies the same strict policy, but when AcoustID
+// returns more than one release group it may use an explicit tagged release-group
+// ID or one exact normalized album title to disambiguate. It never uses fuzzy
+// title similarity.
+func ResolveAcoustIDForAlbum(candidates []AcoustIDCandidate, releaseGroupHint, albumHint string) (AcoustIDMatch, error) {
 	accepted := make([]AcoustIDCandidate, 0, len(candidates))
 	groups := map[string]AcoustIDReleaseGroup{}
 	for _, candidate := range candidates {
@@ -401,7 +409,30 @@ func ResolveAcoustID(candidates []AcoustIDCandidate) (AcoustIDMatch, error) {
 		return AcoustIDMatch{}, &Error{Code: "music_acoustid_no_release_group", Message: "AcoustID matched the fingerprint but returned no release group. Add album tags or the MusicBrainz release-group ID and try again."}
 	case 1:
 	default:
-		return AcoustIDMatch{}, &Error{Code: "music_acoustid_ambiguous_release_group", Message: "AcoustID matched more than one release group. Add the MusicBrainz release-group ID or correct the album tags; the file stays unresolved instead of guessing."}
+		hint := strings.ToLower(strings.TrimSpace(releaseGroupHint))
+		if ValidMBID(hint) {
+			if group, ok := groups[hint]; ok {
+				groups = map[string]AcoustIDReleaseGroup{hint: group}
+			}
+		}
+		if len(groups) > 1 && strings.TrimSpace(albumHint) != "" {
+			exact := map[string]AcoustIDReleaseGroup{}
+			for id, group := range groups {
+				if matchNameEqual(group.Title, albumHint) {
+					exact[id] = group
+				}
+			}
+			if len(exact) == 1 {
+				groups = exact
+			}
+		}
+		if len(groups) > 1 {
+			message := "AcoustID matched more than one release group. Add the MusicBrainz release-group ID or correct the album tags; the file stays unresolved instead of guessing."
+			if ValidMBID(hint) {
+				message = "AcoustID matched more than one release group and the tagged release-group ID was not one of them. Correct the tag; the file stays unresolved instead of guessing."
+			}
+			return AcoustIDMatch{}, &Error{Code: "music_acoustid_ambiguous_release_group", Message: message}
+		}
 	}
 	groupID := ""
 	for id := range groups {

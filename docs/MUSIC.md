@@ -62,10 +62,12 @@ completed folder, and runs wanted-album searches on a schedule.
   a separate reviewed action that requires a saved application API key and
   fpcalc (Chromaprint) on the server. A request runs
   `fpcalc -json -length 120`, sends only the fingerprint and whole-file duration,
-  requires a score of at least 0.85 and exactly one distinct release group, then
-  adds or loads that exact MusicBrainz release group and matches the track by
-  AcoustID recording ID before existing tag/track evidence. Missing or ambiguous
-  matches stay unresolved. Audio is never uploaded. This is native
+  requires a score of at least 0.85 and one release group. When AcoustID returns
+  several release groups, the file's tagged release-group ID or one exact
+  normalized album title may disambiguate; otherwise it stays unresolved. It
+  then adds or loads that exact MusicBrainz release group and matches the track
+  by AcoustID recording ID before existing tag/track evidence. Missing or
+  ambiguous matches stay unresolved. Audio is never uploaded. This is native
   AcoustID/Chromaprint matching, not MusicBrainz Picard.
 - Register matched files in place. Registration verifies the file size and
   modification time and records `music_files`; it never moves a file.
@@ -228,11 +230,11 @@ one reviewed scan.
   looks it up through AcoustID, adds only the matched artist and album, loads
   the album tracks and re-matches those files. A request processes at most 20
   files and 10 album groups and stops early within its time budget. It adds only
-  the exact release group AcoustID names with a score of at least 0.85 and
-  exactly one distinct release group. Audio with no confident match, an
-  ambiguous result or a provider warning stays unresolved; nothing is moved,
-  tagged or registered. The response reports `fingerprinted` files,
-  `provider_calls`, matched files, added artists/albums, unresolved files,
+  the exact release group AcoustID names with a score of at least 0.85 and one
+  release group after tagged-ID/exact-album disambiguation. Audio with no
+  confident match, an ambiguous result or a provider warning stays unresolved;
+  nothing is moved, tagged or registered. The response reports `fingerprinted`
+  files, `provider_calls`, matched files, added artists/albums, unresolved files,
   deferred files, unresolved files remaining in the scan and warnings.
 - The AcoustID status panel reports whether an application key is configured,
   whether fpcalc is available and the server's message. **Configure AcoustID**
@@ -268,8 +270,9 @@ one reviewed scan.
   and does not guarantee a match. A provider outage leaves files unresolved.
 - Only Chromaprint fingerprint and duration are sent. No audio is uploaded.
   A release group is added only from one unique result with score `>= 0.85`;
-  low scores, multiple release groups and missing release groups require better
-  tags or manual review instead of a guess.
+  a tagged release-group ID or one exact normalized album title can disambiguate
+  multiple release groups. Low scores, unresolved multiple groups and missing
+  release groups require better tags or manual review instead of a guess.
 - Fingerprint work is bounded to 20 files and 10 album groups per request.
   Select the remaining unresolved files and run the action again to continue.
   Cached evidence is local to this media path and is replaced when size or mtime

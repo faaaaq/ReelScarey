@@ -273,6 +273,26 @@ func TestResolveAcoustIDPolicy(t *testing.T) {
 	}
 }
 
+func TestResolveAcoustIDUsesTaggedReleaseGroupOrExactAlbum(t *testing.T) {
+	groupA := AcoustIDReleaseGroup{ID: testRGID, Title: "OK Computer", Type: "Album"}
+	groupB := AcoustIDReleaseGroup{ID: discoveryRG2, Title: "The Bends", Type: "Album"}
+	input := []AcoustIDCandidate{
+		{Score: 0.99, RecordingID: testRecordingID, ReleaseGroups: []AcoustIDReleaseGroup{groupA}},
+		{Score: 0.98, RecordingID: discoveryRecording2, ReleaseGroups: []AcoustIDReleaseGroup{groupB}},
+	}
+	if _, err := ResolveAcoustID(input); err == nil {
+		t.Fatal("multiple release groups resolved without a hint")
+	}
+	byAlbum, err := ResolveAcoustIDForAlbum(input, "", "OK Computer")
+	if err != nil || byAlbum.ReleaseGroupID != strings.ToLower(testRGID) || byAlbum.RecordingID != testRecordingID {
+		t.Fatalf("exact album hint did not disambiguate: %+v %v", byAlbum, err)
+	}
+	byTag, err := ResolveAcoustIDForAlbum(input, discoveryRG2, "")
+	if err != nil || byTag.ReleaseGroupID != strings.ToLower(discoveryRG2) || byTag.RecordingID != discoveryRecording2 {
+		t.Fatalf("tagged release-group hint did not disambiguate: %+v %v", byTag, err)
+	}
+}
+
 func TestAcoustIDClientErrors(t *testing.T) {
 	t.Run("invalid key", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

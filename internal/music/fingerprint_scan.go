@@ -106,7 +106,7 @@ func (s *Service) FingerprintScan(ctx context.Context, scanID int64, fileIDs []i
 			}
 			continue
 		}
-		match, err := ResolveAcoustID(candidates)
+		match, err := ResolveAcoustIDForAlbum(candidates, file.MusicBrainzReleaseGroupID, file.Album)
 		if err != nil {
 			if saveErr := s.updateScanFileState(dbCtx, file.ID, "unresolved", 0, 0, 0, acoustidFileMessage(err)); saveErr != nil {
 				return result, saveErr

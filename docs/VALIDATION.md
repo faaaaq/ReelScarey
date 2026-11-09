@@ -2628,7 +2628,8 @@ Run locally on Windows (development tools only; Docker remains the target):
 - `internal/music/acoustid_test.go` uses a fake fingerprinter, a fake AcoustID
   HTTP server and fake MusicBrainz responses. It covers a strong unique release
   group, recording-ID-first track matching, the 0.85 score floor, multiple and
-  missing release groups, no match, invalid key, rate limit, missing key and
+  missing release groups, tagged release-group/exact-album disambiguation,
+  no match, invalid key, rate limit, missing key and
   `fpcalc`, 20-file deferral, cached fingerprint reuse, size/mtime invalidation,
   status without key disclosure and bounded `fpcalc` output parsing.
 - `internal/httpapi/music_test.go` covers AcoustID status/save/delete
