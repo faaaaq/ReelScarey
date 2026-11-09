@@ -7,6 +7,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,6 +36,7 @@ type fakeMusic struct {
 	savedBaseURL      string
 	resetBaseURL      bool
 	fingerprintResult music.DiscoverResult
+	audioPath         string
 }
 
 func (f *fakeMusic) SearchArtists(context.Context, string, int) (music.SearchResults, error) {
@@ -50,6 +53,21 @@ func (f *fakeMusic) Artist(context.Context, int64) (music.ArtistDetails, error) 
 }
 func (f *fakeMusic) ArtistTracks(context.Context, int64, int, int) (music.ArtistTrackPage, error) {
 	return music.ArtistTrackPage{Items: []music.ArtistTrack{}, Page: 1, Total: 0, Limit: 15}, f.err
+}
+func (f *fakeMusic) OpenAudioFile(context.Context, int64) (music.AudioStream, error) {
+	if f.err != nil {
+		return music.AudioStream{}, f.err
+	}
+	file, err := os.Open(f.audioPath)
+	if err != nil {
+		return music.AudioStream{}, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return music.AudioStream{}, err
+	}
+	return music.AudioStream{File: file, Name: filepath.Base(f.audioPath), ContentType: "audio/mpeg", Size: info.Size(), ModTime: info.ModTime()}, nil
 }
 func (f *fakeMusic) Album(context.Context, int64) (music.AlbumDetails, error) {
 	return music.AlbumDetails{Album: music.Album{ID: 1, Title: "Album"}, Tracks: []music.Track{}}, f.err
@@ -317,6 +335,32 @@ func TestMusicArtistAndAlbumRoutes(t *testing.T) {
 	}
 	if out := request(handler, "GET", "/api/v1/library/music/artists/1/tracks?limit=101", "", session, false); out.Code != 400 {
 		t.Fatal("invalid track limit", out.Code)
+	}
+}
+
+func TestMusicFileStreamSupportsRange(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(path, []byte("0123456789"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler, session := musicFixture(t, &fakeMusic{audioPath: path})
+	if out := request(handler, "GET", "/api/v1/library/music/files/1/stream", "", nil, false); out.Code != 401 {
+		t.Fatal("stream leaked to anonymous request", out.Code)
+	}
+	out := request(handler, "GET", "/api/v1/library/music/files/1/stream", "", session, false)
+	if out.Code != 200 || out.Body.String() != "0123456789" || out.Header().Get("Content-Type") != "audio/mpeg" {
+		t.Fatal("stream", out.Code, out.Header().Get("Content-Type"), out.Body.String())
+	}
+	r := httptest.NewRequest("GET", "/api/v1/library/music/files/1/stream", nil)
+	r.AddCookie(&http.Cookie{Name: cookieName, Value: session.Token})
+	r.Header.Set("Range", "bytes=2-4")
+	rangeOut := httptest.NewRecorder()
+	handler.ServeHTTP(rangeOut, r)
+	if rangeOut.Code != http.StatusPartialContent || rangeOut.Body.String() != "234" || rangeOut.Header().Get("Content-Range") != "bytes 2-4/10" {
+		t.Fatal("range stream", rangeOut.Code, rangeOut.Header().Get("Content-Range"), rangeOut.Body.String())
+	}
+	if out := request(handler, "GET", "/api/v1/library/music/files/nope/stream", "", session, false); out.Code != 400 {
+		t.Fatal("invalid stream id", out.Code)
 	}
 }
 

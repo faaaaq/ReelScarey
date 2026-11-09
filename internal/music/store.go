@@ -143,7 +143,9 @@ func (s *Store) SaveAlbum(ctx context.Context, artistID int64, album Album) (int
 }
 
 func (s *Store) Tracks(ctx context.Context, albumID int64) ([]Track, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, album_id, musicbrainz_id, recording_id, disc, number, title, duration_ms FROM music_tracks WHERE album_id=? ORDER BY disc, number, id`, albumID)
+	rows, err := s.db.QueryContext(ctx, `SELECT t.id, t.album_id, t.musicbrainz_id, t.recording_id, t.disc, t.number, t.title, t.duration_ms,
+		(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id)
+		FROM music_tracks t WHERE t.album_id=? ORDER BY t.disc, t.number, t.id`, albumID)
 	if err != nil {
 		return nil, err
 	}
@@ -151,8 +153,13 @@ func (s *Store) Tracks(ctx context.Context, albumID int64) ([]Track, error) {
 	out := []Track{}
 	for rows.Next() {
 		var track Track
-		if err := rows.Scan(&track.ID, &track.AlbumID, &track.MusicBrainzID, &track.RecordingID, &track.Disc, &track.Number, &track.Title, &track.DurationMS); err != nil {
+		var fileID sql.NullInt64
+		if err := rows.Scan(&track.ID, &track.AlbumID, &track.MusicBrainzID, &track.RecordingID, &track.Disc, &track.Number, &track.Title, &track.DurationMS, &fileID); err != nil {
 			return nil, err
+		}
+		if fileID.Valid {
+			value := fileID.Int64
+			track.FileID = &value
 		}
 		out = append(out, track)
 	}
@@ -174,7 +181,8 @@ func (s *Store) ArtistTracks(ctx context.Context, artistID int64, page, limit in
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*)`+registered, artistID).Scan(&out.Total); err != nil {
 		return ArtistTrackPage{}, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT t.id,t.album_id,t.musicbrainz_id,t.recording_id,t.disc,t.number,t.title,t.duration_ms,a.title,a.year,a.cover_url`+
+	rows, err := s.db.QueryContext(ctx, `SELECT t.id,t.album_id,t.musicbrainz_id,t.recording_id,t.disc,t.number,t.title,t.duration_ms,
+		(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id),a.title,a.year,a.cover_url`+
 		registered+` ORDER BY a.year IS NULL, a.year DESC, a.title COLLATE NOCASE, t.disc, t.number, t.id LIMIT ? OFFSET ?`,
 		artistID, limit, (page-1)*limit)
 	if err != nil {
@@ -183,9 +191,14 @@ func (s *Store) ArtistTracks(ctx context.Context, artistID int64, page, limit in
 	defer rows.Close()
 	for rows.Next() {
 		var track ArtistTrack
+		var fileID sql.NullInt64
 		if err := rows.Scan(&track.ID, &track.AlbumID, &track.MusicBrainzID, &track.RecordingID, &track.Disc, &track.Number, &track.Title, &track.DurationMS,
-			&track.AlbumTitle, &track.AlbumYear, &track.CoverURL); err != nil {
+			&fileID, &track.AlbumTitle, &track.AlbumYear, &track.CoverURL); err != nil {
 			return ArtistTrackPage{}, err
+		}
+		if fileID.Valid {
+			value := fileID.Int64
+			track.FileID = &value
 		}
 		out.Items = append(out.Items, track)
 	}

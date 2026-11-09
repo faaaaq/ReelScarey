@@ -4,6 +4,7 @@ import { Theme } from "@radix-ui/themes";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { Music, MusicAlbumPage, MusicArtistPage } from "../pages/Music";
+import { MusicPlayerProvider } from "../musicPlayer";
 
 function mockFetch(
   handler: (path: string, options?: RequestInit) => Response | undefined,
@@ -57,9 +58,11 @@ describe("music", () => {
 
     render(
       <Theme>
-        <MemoryRouter initialEntries={["/music"]}>
-          <Music />
-        </MemoryRouter>
+        <MusicPlayerProvider>
+          <MemoryRouter initialEntries={["/music"]}>
+            <Music />
+          </MemoryRouter>
+        </MusicPlayerProvider>
       </Theme>,
     );
 
@@ -114,9 +117,11 @@ describe("music", () => {
 
     render(
       <Theme>
-        <MemoryRouter initialEntries={["/music"]}>
-          <Music />
-        </MemoryRouter>
+        <MusicPlayerProvider>
+          <MemoryRouter initialEntries={["/music"]}>
+            <Music />
+          </MemoryRouter>
+        </MusicPlayerProvider>
       </Theme>,
     );
 
@@ -166,6 +171,7 @@ describe("music", () => {
               album_title: "OK Computer",
               album_year: 1997,
               cover_url: "",
+              file_id: 9,
             },
           ],
           page: 1,
@@ -178,11 +184,13 @@ describe("music", () => {
 
     render(
       <Theme>
-        <MemoryRouter initialEntries={["/music/artists/1"]}>
-          <Routes>
-            <Route path="/music/artists/:id" element={<MusicArtistPage />} />
-          </Routes>
-        </MemoryRouter>
+        <MusicPlayerProvider>
+          <MemoryRouter initialEntries={["/music/artists/1"]}>
+            <Routes>
+              <Route path="/music/artists/:id" element={<MusicArtistPage />} />
+            </Routes>
+          </MemoryRouter>
+        </MusicPlayerProvider>
       </Theme>,
     );
 
@@ -223,6 +231,7 @@ describe("music", () => {
               number: 1,
               title: "Airbag",
               duration_ms: 284000,
+              file_id: 9,
             },
           ],
         });
@@ -232,11 +241,13 @@ describe("music", () => {
 
     render(
       <Theme>
-        <MemoryRouter initialEntries={["/music/albums/2"]}>
-          <Routes>
-            <Route path="/music/albums/:id" element={<MusicAlbumPage />} />
-          </Routes>
-        </MemoryRouter>
+        <MusicPlayerProvider>
+          <MemoryRouter initialEntries={["/music/albums/2"]}>
+            <Routes>
+              <Route path="/music/albums/:id" element={<MusicAlbumPage />} />
+            </Routes>
+          </MemoryRouter>
+        </MusicPlayerProvider>
       </Theme>,
     );
 
@@ -245,6 +256,7 @@ describe("music", () => {
     ).toBeVisible();
     expect(screen.getByText("Airbag")).toBeVisible();
     expect(screen.getByText("4:44")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Play Airbag" })).toBeVisible();
   });
 
   it("searches releases and imports a completed folder", async () => {
@@ -343,11 +355,13 @@ describe("music", () => {
 
     render(
       <Theme>
-        <MemoryRouter initialEntries={["/music/albums/2"]}>
-          <Routes>
-            <Route path="/music/albums/:id" element={<MusicAlbumPage />} />
-          </Routes>
-        </MemoryRouter>
+        <MusicPlayerProvider>
+          <MemoryRouter initialEntries={["/music/albums/2"]}>
+            <Routes>
+              <Route path="/music/albums/:id" element={<MusicAlbumPage />} />
+            </Routes>
+          </MemoryRouter>
+        </MusicPlayerProvider>
       </Theme>,
     );
 

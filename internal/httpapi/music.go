@@ -22,6 +22,8 @@ func (s *Server) musicError(w http.ResponseWriter, err error) {
 			status = http.StatusBadRequest
 		case "music_not_found":
 			status = http.StatusNotFound
+		case "music_file_missing":
+			status = http.StatusNotFound
 		case "music_rate_limited", "music_acoustid_rate_limited":
 			status = http.StatusTooManyRequests
 		case "music_acoustid_not_configured", "music_fingerprint_unavailable", "music_musicbrainz_unavailable":
@@ -178,6 +180,31 @@ func (s *Server) musicArtistTracks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, tracks)
+}
+
+// musicFileStream serves one registered audio file with Range support so the
+// browser player can seek without downloading the whole track. The URL carries
+// only the catalog file ID; the stored relative path is never exposed.
+func (s *Server) musicFileStream(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	stream, err := s.music.OpenAudioFile(r.Context(), id)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	defer stream.File.Close()
+	w.Header().Set("Content-Type", stream.ContentType)
+	w.Header().Set("Content-Disposition", "inline")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(w, r, stream.Name, stream.ModTime, stream.File)
 }
 
 func (s *Server) musicAlbum(w http.ResponseWriter, r *http.Request) {

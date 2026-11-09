@@ -74,7 +74,10 @@ adds one with `{musicbrainz_id, monitored?}`; a repeated add returns 200 with
 `created:false`. GET `/api/v1/library/music/artists/{id}` returns the artist and
 its albums. GET `/api/v1/library/music/artists/{id}/tracks?page=&limit=`
 returns only tracks with registered files, in newest-album order; `limit`
-defaults to 15 and is capped at 100. GET `/api/v1/library/music/albums/{id}`
+defaults to 15 and is capped at 100. GET
+`/api/v1/library/music/files/{id}/stream` serves one registered audio file
+with its media type and HTTP Range support; the response never exposes the
+stored path. GET `/api/v1/library/music/albums/{id}`
 returns the album and its tracks; the first read loads tracks from MusicBrainz.
 
 GET/POST `/api/v1/library/music/scans` lists scans or starts one with

@@ -37,6 +37,10 @@ completed folder, and runs wanted-album searches on a schedule.
   files, newest albums first, with an explicit all-tracks view. This is a
   library selection, not a play-count or provider popularity ranking.
 - Browse albums and on-demand album tracks.
+- Stream registered tracks in the authenticated web player with HTTP Range
+  seeking, queue/next/previous, volume, and a persistent player bar. Playback
+  addresses catalog file IDs; the stored media path is never sent to the
+  browser.
 - Scan a folder below the media root:
   - bounded walk (20,000 audio files, 24 folder levels, no symlinks);
   - a name-only pre-count before the walk feeds a live progress bar;

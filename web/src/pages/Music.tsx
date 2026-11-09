@@ -6,6 +6,7 @@ import {
   ExternalLink,
   FolderInput,
   ListMusic,
+  Play,
   Plus,
   RefreshCw,
   Search,
@@ -45,6 +46,7 @@ import {
 } from "../api";
 import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
+import { useMusicPlayer, type PlayerTrack } from "../musicPlayer";
 import "./Library.css";
 import "./Music.css";
 
@@ -476,13 +478,40 @@ function AlbumTile({ album }: { album: MusicAlbum }) {
   );
 }
 
+function artistPlayerTrack(
+  track: MusicArtistTrack,
+  artistName: string,
+): PlayerTrack | null {
+  if (!track.file_id) return null;
+  return {
+    fileID: track.file_id,
+    title: track.title,
+    artist: artistName,
+    album: track.album_title,
+    coverURL: track.cover_url || undefined,
+    durationMS: track.duration_ms,
+    albumID: track.album_id,
+  };
+}
+
 function ArtistTrackTable({
   tracks,
   label,
+  artistName,
 }: {
   tracks: MusicArtistTrack[];
   label: string;
+  artistName: string;
 }) {
+  const player = useMusicPlayer();
+  const playable = tracks.flatMap((track) => {
+    const item = artistPlayerTrack(track, artistName);
+    return item ? [item] : [];
+  });
+  function play(fileID: number) {
+    const item = playable.find((candidate) => candidate.fileID === fileID);
+    if (item) player.play(item, playable);
+  }
   return (
     <Table label={label}>
       <thead>
@@ -493,28 +522,49 @@ function ArtistTrackTable({
           <th scope="col">Title</th>
           <th scope="col">Album</th>
           <th scope="col">Duration</th>
+          <th scope="col" className="is-actions">
+            <span className="sr-only">Play</span>
+          </th>
         </tr>
       </thead>
       <tbody>
-        {tracks.map((track) => (
-          <tr
-            key={
-              track.id ??
-              `${track.album_id}-${track.disc}-${track.number}-${track.title}`
-            }
-          >
-            <td>
-              {track.disc > 1 ? `${track.disc}.${track.number}` : track.number}
-            </td>
-            <td>{track.title}</td>
-            <td>
-              <Link to={`/music/albums/${track.album_id}`}>
-                {track.album_title}
-              </Link>
-            </td>
-            <td>{formatDuration(track.duration_ms)}</td>
-          </tr>
-        ))}
+        {tracks.map((track) => {
+          const fileID = track.file_id;
+          return (
+            <tr
+              key={
+                track.id ??
+                `${track.album_id}-${track.disc}-${track.number}-${track.title}`
+              }
+            >
+              <td>
+                {track.disc > 1
+                  ? `${track.disc}.${track.number}`
+                  : track.number}
+              </td>
+              <td>{track.title}</td>
+              <td>
+                <Link to={`/music/albums/${track.album_id}`}>
+                  {track.album_title}
+                </Link>
+              </td>
+              <td>{formatDuration(track.duration_ms)}</td>
+              <td className="is-actions">
+                {fileID ? (
+                  <Button
+                    size="1"
+                    variant="ghost"
+                    color="gray"
+                    aria-label={`Play ${track.title}`}
+                    onClick={() => play(fileID)}
+                  >
+                    <Play size={14} aria-hidden="true" />
+                  </Button>
+                ) : null}
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </Table>
   );
@@ -536,6 +586,11 @@ export function MusicArtistPage() {
       : null,
   );
   const artist = details.data?.artist;
+  const player = useMusicPlayer();
+  const playableTop = (topTracks.data?.items ?? []).flatMap((track) => {
+    const item = artistPlayerTrack(track, artist?.name ?? "");
+    return item ? [item] : [];
+  });
   const allPages = allTracks.data
     ? Math.ceil(allTracks.data.total / allTracks.data.limit)
     : 1;
@@ -584,19 +639,30 @@ export function MusicArtistPage() {
                   Tracks with registered files, newest albums first.
                 </p>
               </div>
-              {topTracks.data &&
-                topTracks.data.total > topTracks.data.items.length && (
+              <div className="mus-section-actions">
+                {playableTop.length > 0 && (
                   <Button
                     variant="soft"
-                    onClick={() => {
-                      setAllPage(1);
-                      setAllOpen(true);
-                    }}
+                    onClick={() => player.play(playableTop[0], playableTop)}
                   >
-                    <ListMusic size={15} aria-hidden="true" />
-                    See every track ({topTracks.data.total})
+                    <Play size={15} aria-hidden="true" />
+                    Play top tracks
                   </Button>
                 )}
+                {topTracks.data &&
+                  topTracks.data.total > topTracks.data.items.length && (
+                    <Button
+                      variant="soft"
+                      onClick={() => {
+                        setAllPage(1);
+                        setAllOpen(true);
+                      }}
+                    >
+                      <ListMusic size={15} aria-hidden="true" />
+                      See every track ({topTracks.data.total})
+                    </Button>
+                  )}
+              </div>
             </div>
             {topTracks.loading && <p className="rs-muted">Loading tracks…</p>}
             {topTracks.error && <Alert kind="danger">{topTracks.error}</Alert>}
@@ -605,6 +671,7 @@ export function MusicArtistPage() {
                 <ArtistTrackTable
                   tracks={topTracks.data.items}
                   label="Top tracks"
+                  artistName={artist?.name ?? ""}
                 />
               ) : (
                 <p className="rs-muted">
@@ -641,6 +708,7 @@ export function MusicArtistPage() {
             <ArtistTrackTable
               tracks={allTracks.data.items}
               label="All tracks"
+              artistName={artist?.name ?? ""}
             />
           ) : (
             <p className="rs-muted">No tracks with registered files.</p>
@@ -684,6 +752,31 @@ export function MusicAlbumPage() {
   const album = details.data?.album;
   const tracks = details.data?.tracks ?? [];
   const multiDisc = new Set(tracks.map((track) => track.disc)).size > 1;
+  const player = useMusicPlayer();
+  const playableTracks: PlayerTrack[] =
+    album?.id === undefined
+      ? []
+      : tracks.flatMap((track) =>
+          track.file_id
+            ? [
+                {
+                  fileID: track.file_id,
+                  title: track.title,
+                  artist: album.artist_name ?? "",
+                  album: album.title,
+                  coverURL: album.cover_url || undefined,
+                  durationMS: track.duration_ms,
+                  albumID: album.id,
+                },
+              ]
+            : [],
+        );
+  function playTrack(fileID: number) {
+    const item = playableTracks.find(
+      (candidate) => candidate.fileID === fileID,
+    );
+    if (item) player.play(item, playableTracks);
+  }
   const [releases, setReleases] = useState<MusicRelease[]>([]);
   const [releaseOpen, setReleaseOpen] = useState(false);
   const [releaseQuery, setReleaseQuery] = useState("");
@@ -843,6 +936,15 @@ export function MusicAlbumPage() {
             }
           />
           <ToolbarButton
+            icon={Play}
+            label="Play album"
+            disabled={playableTracks.length === 0}
+            onClick={() =>
+              playableTracks.length > 0 &&
+              player.play(playableTracks[0], playableTracks)
+            }
+          />
+          <ToolbarButton
             icon={Search}
             label="Find releases"
             onClick={() => setReleaseOpen(true)}
@@ -907,18 +1009,39 @@ export function MusicAlbumPage() {
                 <th scope="col">{multiDisc ? "Disc" : "#"}</th>
                 <th scope="col">Title</th>
                 <th scope="col">Duration</th>
+                <th scope="col" className="is-actions">
+                  <span className="sr-only">Play</span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {tracks.map((track) => (
-                <tr key={`${track.disc}-${track.number}`}>
-                  <td>
-                    {multiDisc ? `${track.disc}.${track.number}` : track.number}
-                  </td>
-                  <td>{track.title}</td>
-                  <td>{formatDuration(track.duration_ms)}</td>
-                </tr>
-              ))}
+              {tracks.map((track) => {
+                const fileID = track.file_id;
+                return (
+                  <tr key={`${track.disc}-${track.number}`}>
+                    <td>
+                      {multiDisc
+                        ? `${track.disc}.${track.number}`
+                        : track.number}
+                    </td>
+                    <td>{track.title}</td>
+                    <td>{formatDuration(track.duration_ms)}</td>
+                    <td className="is-actions">
+                      {fileID ? (
+                        <Button
+                          size="1"
+                          variant="ghost"
+                          color="gray"
+                          aria-label={`Play ${track.title}`}
+                          onClick={() => playTrack(fileID)}
+                        >
+                          <Play size={14} aria-hidden="true" />
+                        </Button>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </Table>
         )}

@@ -107,6 +107,8 @@ export type MusicTrack = {
   number: number;
   title: string;
   duration_ms: number;
+  /** Preferred registered file for playback, when one exists. */
+  file_id?: number | null;
 };
 
 export type MusicArtistPage = {

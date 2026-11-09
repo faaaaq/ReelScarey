@@ -13,6 +13,7 @@ import { GlobalSearch } from "./components/GlobalSearch";
 import { PageLoadBoundary } from "./components/PageLoadBoundary";
 import { HistoryTray } from "./components/HistoryTray";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { MusicPlayerBar, MusicPlayerProvider } from "./musicPlayer";
 import { AuthGate, useAuth } from "./auth";
 import { childActive, navigation, pageTitle, type Place } from "./navigation";
 import { Alert, EmptyState, LoadingIndicator, PageBody } from "./ui";
@@ -275,128 +276,131 @@ function AppShell() {
   }, [menuOpen]);
 
   return (
-    <div className="rs-app">
-      <a href="#main-content" className="skip-link">
-        Skip to content
-      </a>
-      <header className="rs-header">
-        <div className="rs-header-logo">
-          <button
-            ref={menuButton}
-            type="button"
-            className="rs-header-button rs-menu-toggle"
-            aria-label={menuOpen ? "Close navigation" : "Open navigation"}
-            aria-expanded={menuOpen}
-            aria-controls="main-navigation"
-            onClick={() => setMenuOpen(!menuOpen)}
-          >
-            {menuOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
-          <Link to="/" className="rs-logo" aria-label="ReelScarey dashboard">
-            <span className="rs-logo-mark">
-              <ReelMark />
-            </span>
-            <span className="rs-logo-text">ReelScarey</span>
-          </Link>
-        </div>
-        <GlobalSearch />
-        <div className="rs-header-actions">
-          <HistoryTray />
-          <ThemeToggle />
-          <AccountMenu onError={setAccountError} />
-        </div>
-      </header>
-      <Sidebar place={place} open={menuOpen} />
-      <button
-        type="button"
-        className={`rs-sidebar-backdrop ${menuOpen ? "is-open" : ""}`}
-        aria-hidden="true"
-        tabIndex={-1}
-        onClick={() => setMenuOpen(false)}
-      />
-      <main id="main-content" className="rs-main" tabIndex={-1}>
-        {accountError && (
-          <PageBody>
-            <Alert kind="danger">{accountError}</Alert>
-          </PageBody>
-        )}
-        <Suspense fallback={<LoadingIndicator />}>
-          <Routes>
-            <Route path="/login" element={<Navigate to="/" replace />} />
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/youtube" element={<YouTube />} />
-            <Route
-              path="/youtube/subscriptions"
-              element={<YouTubeSubscriptions />}
-            />
-            <Route
-              path="/movies"
-              element={<Library key="movie" kind="movie" />}
-            />
-            <Route
-              path="/series"
-              element={<Library key="series" kind="series" />}
-            />
-            <Route
-              path="/anime"
-              element={<Library key="anime" kind="anime" />}
-            />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/settings/:section" element={<Settings />} />
-            <Route path="/requests" element={<AdminRequests />} />
-            <Route path="/organization" element={<Organization />} />
-            <Route path="/indexers" element={<Indexers />} />
-            <Route path="/announces" element={<Announces />} />
-            <Route path="/import" element={<ExistingLibrary />} />
-            <Route path="/wanted" element={<Planning key="wanted" />} />
-            <Route
-              path="/calendar"
-              element={<Planning key="calendar" calendar />}
-            />
-            <Route path="/movies/:id" element={<ItemDetails />} />
-            <Route path="/setup" element={<Setup />} />
-            <Route path="/system" element={<SystemChecks />} />
-            <Route path="/backups" element={<Backups />} />
-            <Route path="/storage" element={<Storage />} />
-            <Route path="/download-clients" element={<DownloadClients />} />
-            <Route path="/metadata-refresh" element={<MetadataRefresh />} />
-            <Route path="/series/:id" element={<Series />} />
-            <Route path="/music" element={<Music />} />
-            <Route path="/music/artists/:id" element={<MusicArtist />} />
-            <Route path="/music/albums/:id" element={<MusicAlbum />} />
-            <Route path="/music/import" element={<MusicImport />} />
-            <Route path="/music/organize" element={<MusicOrganize />} />
-            <Route path="/music/wanted" element={<MusicWanted />} />
-            <Route path="/search" element={<MovieSearch />} />
-            <Route path="/releases" element={<Releases />} />
-            <Route path="/activity" element={<DownloadActivity />} />
-            <Route path="/torrents" element={<Torrents />} />
-            <Route path="/usenet" element={<Usenet />} />
-            <Route path="/watch-activity" element={<WatchActivity />} />
-            <Route path="/timeline" element={<Timeline />} />
-            <Route path="/automation" element={<Automation />} />
-            <Route path="/subtitles" element={<Subtitles />} />
-            <Route
-              path="*"
-              element={
-                <PageBody>
-                  <EmptyState
-                    title="Page not found"
-                    actions={
-                      <Button asChild variant="soft">
-                        <Link to="/">Back to dashboard</Link>
-                      </Button>
-                    }
-                  >
-                    This address does not match a page in ReelScarey.
-                  </EmptyState>
-                </PageBody>
-              }
-            />
-          </Routes>
-        </Suspense>
-      </main>
-    </div>
+    <MusicPlayerProvider>
+      <div className="rs-app">
+        <a href="#main-content" className="skip-link">
+          Skip to content
+        </a>
+        <header className="rs-header">
+          <div className="rs-header-logo">
+            <button
+              ref={menuButton}
+              type="button"
+              className="rs-header-button rs-menu-toggle"
+              aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+              aria-expanded={menuOpen}
+              aria-controls="main-navigation"
+              onClick={() => setMenuOpen(!menuOpen)}
+            >
+              {menuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+            <Link to="/" className="rs-logo" aria-label="ReelScarey dashboard">
+              <span className="rs-logo-mark">
+                <ReelMark />
+              </span>
+              <span className="rs-logo-text">ReelScarey</span>
+            </Link>
+          </div>
+          <GlobalSearch />
+          <div className="rs-header-actions">
+            <HistoryTray />
+            <ThemeToggle />
+            <AccountMenu onError={setAccountError} />
+          </div>
+        </header>
+        <Sidebar place={place} open={menuOpen} />
+        <button
+          type="button"
+          className={`rs-sidebar-backdrop ${menuOpen ? "is-open" : ""}`}
+          aria-hidden="true"
+          tabIndex={-1}
+          onClick={() => setMenuOpen(false)}
+        />
+        <main id="main-content" className="rs-main" tabIndex={-1}>
+          {accountError && (
+            <PageBody>
+              <Alert kind="danger">{accountError}</Alert>
+            </PageBody>
+          )}
+          <Suspense fallback={<LoadingIndicator />}>
+            <Routes>
+              <Route path="/login" element={<Navigate to="/" replace />} />
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/youtube" element={<YouTube />} />
+              <Route
+                path="/youtube/subscriptions"
+                element={<YouTubeSubscriptions />}
+              />
+              <Route
+                path="/movies"
+                element={<Library key="movie" kind="movie" />}
+              />
+              <Route
+                path="/series"
+                element={<Library key="series" kind="series" />}
+              />
+              <Route
+                path="/anime"
+                element={<Library key="anime" kind="anime" />}
+              />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/settings/:section" element={<Settings />} />
+              <Route path="/requests" element={<AdminRequests />} />
+              <Route path="/organization" element={<Organization />} />
+              <Route path="/indexers" element={<Indexers />} />
+              <Route path="/announces" element={<Announces />} />
+              <Route path="/import" element={<ExistingLibrary />} />
+              <Route path="/wanted" element={<Planning key="wanted" />} />
+              <Route
+                path="/calendar"
+                element={<Planning key="calendar" calendar />}
+              />
+              <Route path="/movies/:id" element={<ItemDetails />} />
+              <Route path="/setup" element={<Setup />} />
+              <Route path="/system" element={<SystemChecks />} />
+              <Route path="/backups" element={<Backups />} />
+              <Route path="/storage" element={<Storage />} />
+              <Route path="/download-clients" element={<DownloadClients />} />
+              <Route path="/metadata-refresh" element={<MetadataRefresh />} />
+              <Route path="/series/:id" element={<Series />} />
+              <Route path="/music" element={<Music />} />
+              <Route path="/music/artists/:id" element={<MusicArtist />} />
+              <Route path="/music/albums/:id" element={<MusicAlbum />} />
+              <Route path="/music/import" element={<MusicImport />} />
+              <Route path="/music/organize" element={<MusicOrganize />} />
+              <Route path="/music/wanted" element={<MusicWanted />} />
+              <Route path="/search" element={<MovieSearch />} />
+              <Route path="/releases" element={<Releases />} />
+              <Route path="/activity" element={<DownloadActivity />} />
+              <Route path="/torrents" element={<Torrents />} />
+              <Route path="/usenet" element={<Usenet />} />
+              <Route path="/watch-activity" element={<WatchActivity />} />
+              <Route path="/timeline" element={<Timeline />} />
+              <Route path="/automation" element={<Automation />} />
+              <Route path="/subtitles" element={<Subtitles />} />
+              <Route
+                path="*"
+                element={
+                  <PageBody>
+                    <EmptyState
+                      title="Page not found"
+                      actions={
+                        <Button asChild variant="soft">
+                          <Link to="/">Back to dashboard</Link>
+                        </Button>
+                      }
+                    >
+                      This address does not match a page in ReelScarey.
+                    </EmptyState>
+                  </PageBody>
+                }
+              />
+            </Routes>
+          </Suspense>
+        </main>
+        <MusicPlayerBar />
+      </div>
+    </MusicPlayerProvider>
   );
 }
 

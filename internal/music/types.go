@@ -79,6 +79,9 @@ type Track struct {
 	Number        int    `json:"number"`
 	Title         string `json:"title"`
 	DurationMS    int    `json:"duration_ms"`
+	// FileID is the preferred registered file for playback. It stays nil for
+	// provider-only tracks that have no local audio.
+	FileID *int64 `json:"file_id,omitempty"`
 }
 
 // ArtistTrack is one catalog track that has at least one registered file. The
