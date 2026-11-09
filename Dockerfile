@@ -39,7 +39,7 @@ FROM debian:bookworm-slim AS runtime
 # sabnzbdplus is in Debian's contrib component; par2 is in main. The sources
 # line above enables both, and unrar comes from non-free for SABnzbd.
 RUN sed -i 's/^Components: main$/Components: main contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources \
-    && apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg python3 gosu tzdata qbittorrent-nox sabnzbdplus par2 wireguard-tools iproute2 iptables util-linux p7zip-full unrar \
+    && apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg libchromaprint-tools python3 gosu tzdata qbittorrent-nox sabnzbdplus par2 wireguard-tools iproute2 iptables util-linux p7zip-full unrar \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 reelscarey \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin reelscarey \

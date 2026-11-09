@@ -28,14 +28,16 @@ const (
 // DiscoverResult reports what a reviewed catalog-discovery request changed.
 // Remaining counts unresolved files in the whole scan, not only the selection.
 type DiscoverResult struct {
-	Selected     int      `json:"selected"`
-	Matched      int      `json:"matched"`
-	ArtistsAdded int      `json:"artists_added"`
-	AlbumsAdded  int      `json:"albums_added"`
-	Unresolved   int      `json:"unresolved"`
-	Remaining    int      `json:"remaining"`
-	Deferred     int      `json:"deferred"`
-	Warnings     []string `json:"warnings"`
+	Selected      int      `json:"selected"`
+	Matched       int      `json:"matched"`
+	ArtistsAdded  int      `json:"artists_added"`
+	AlbumsAdded   int      `json:"albums_added"`
+	Fingerprinted int      `json:"fingerprinted"`
+	ProviderCalls int      `json:"provider_calls"`
+	Unresolved    int      `json:"unresolved"`
+	Remaining     int      `json:"remaining"`
+	Deferred      int      `json:"deferred"`
+	Warnings      []string `json:"warnings"`
 }
 
 type discoverGroup struct {

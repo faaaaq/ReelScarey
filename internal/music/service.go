@@ -6,18 +6,24 @@ import (
 	"errors"
 	"strings"
 	"sync"
+
+	"github.com/faaaaq/ReelScarey/internal/securestore"
 )
 
 // Service combines the fixed MusicBrainz provider with the local catalog,
-// scanning, reviewed catalog discovery and reviewed file edits. Media writes
-// happen only in ApplyEdits, which stages, verifies, publishes without
-// overwrite and retains a backup before a tag rewrite.
+// scanning, reviewed catalog discovery, reviewed AcoustID/Chromaprint matching
+// and reviewed file edits. Media writes happen only in ApplyEdits, which
+// stages, verifies, publishes without overwrite and retains a backup before a
+// tag rewrite.
 type Service struct {
 	client         *Client
 	store          *Store
 	mediaDir       string
 	downloadsDir   string
 	prober         AudioProber
+	fingerprinter  Fingerprinter
+	acoustid       *AcoustIDClient
+	secrets        *securestore.Store
 	scheduleRunner ScheduleRunner
 	fileMu         sync.Mutex
 	scheduleMu     sync.Mutex
@@ -26,16 +32,22 @@ type Service struct {
 func (s *Service) SetDownloadsDir(dir string) { s.downloadsDir = dir }
 
 func NewService(db *sql.DB, mediaDir string) *Service {
-	return &Service{client: New(), store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}}
+	return &Service{client: New(), store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}, fingerprinter: NewChromaprint(), acoustid: NewAcoustID()}
 }
 
 func NewServiceWithClient(db *sql.DB, client *Client, mediaDir string) *Service {
-	return &Service{client: client, store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}}
+	return &Service{client: client, store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}, fingerprinter: NewChromaprint(), acoustid: NewAcoustID()}
 }
 
 func (s *Service) SetProber(prober AudioProber) {
 	if prober != nil {
 		s.prober = prober
+	}
+}
+
+func (s *Service) SetFingerprinter(fingerprinter Fingerprinter) {
+	if fingerprinter != nil {
+		s.fingerprinter = fingerprinter
 	}
 }
 

@@ -131,6 +131,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	metadataService.SetDefaultToken(cfg.TMDbToken)
 	musicService := music.NewService(db, cfg.MediaDir)
 	musicService.SetDownloadsDir(cfg.DownloadsDir)
+	musicService.SetSecrets(secretStore)
 	if err := musicService.RecoverScans(ctx); err != nil {
 		return false, err
 	}

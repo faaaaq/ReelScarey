@@ -23,10 +23,14 @@ import (
 const musicTestMBID = "a74b1b7f-71a5-4011-9441-d0b5e4122711"
 
 type fakeMusic struct {
-	search  music.SearchResults
-	artist  music.Artist
-	created bool
-	err     error
+	search            music.SearchResults
+	artist            music.Artist
+	created           bool
+	err               error
+	acoustidStatus    music.AcoustIDStatus
+	savedKey          string
+	deletedKey        bool
+	fingerprintResult music.DiscoverResult
 }
 
 func (f *fakeMusic) SearchArtists(context.Context, string, int) (music.SearchResults, error) {
@@ -65,6 +69,26 @@ func (f *fakeMusic) RegisterScan(context.Context, int64, []int64) (int, error) {
 }
 func (f *fakeMusic) DiscoverScan(context.Context, int64, []int64, bool) (music.DiscoverResult, error) {
 	return music.DiscoverResult{Selected: 1, Matched: 1, ArtistsAdded: 1, AlbumsAdded: 1, Remaining: 0, Warnings: []string{}}, f.err
+}
+func (f *fakeMusic) FingerprintScan(context.Context, int64, []int64, bool) (music.DiscoverResult, error) {
+	return f.fingerprintResult, f.err
+}
+func (f *fakeMusic) AcoustIDStatus(context.Context) (music.AcoustIDStatus, error) {
+	return f.acoustidStatus, f.err
+}
+func (f *fakeMusic) SaveAcoustIDKey(_ context.Context, key string) error {
+	if f.err == nil {
+		f.savedKey = key
+		f.acoustidStatus.Configured = true
+	}
+	return f.err
+}
+func (f *fakeMusic) DeleteAcoustIDKey(context.Context) error {
+	if f.err == nil {
+		f.deletedKey = true
+		f.acoustidStatus.Configured = false
+	}
+	return f.err
 }
 func (f *fakeMusic) CancelScan(context.Context, int64) error { return f.err }
 func (f *fakeMusic) SkipScanFile(context.Context, int64, int64) error {
@@ -376,5 +400,93 @@ func TestMusicFrontendRoutes(t *testing.T) {
 		if out.Code != 200 || out.Body.String() != "app shell" {
 			t.Fatal(path, out.Code, out.Body.String())
 		}
+	}
+}
+
+func TestMusicAcoustIDSettingsNeverExposeKey(t *testing.T) {
+	service := &fakeMusic{acoustidStatus: music.AcoustIDStatus{
+		Configured:           true,
+		UpdatedAt:            "2026-11-08T10:00:00.000Z",
+		FingerprintAvailable: true,
+		Message:              "Only the Chromaprint fingerprint and duration are sent; audio is never uploaded.",
+	}}
+	handler, session := musicFixture(t, service)
+	if out := request(handler, "GET", "/api/v1/library/music/acoustid", "", nil, false); out.Code != 401 {
+		t.Fatal("unauthenticated status", out.Code)
+	}
+	out := request(handler, "GET", "/api/v1/library/music/acoustid", "", session, false)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"configured":true`) ||
+		!strings.Contains(out.Body.String(), `"fingerprint_available":true`) ||
+		!strings.Contains(out.Body.String(), `"updated_at":"2026-11-08T10:00:00.000Z"`) {
+		t.Fatal("status", out.Code, out.Body.String())
+	}
+	if strings.Contains(out.Body.String(), "api_key") || strings.Contains(out.Body.String(), "secret") {
+		t.Fatalf("status exposed a key field: %s", out.Body.String())
+	}
+	if out := request(handler, "PUT", "/api/v1/library/music/acoustid", `{"api_key":"a-better-key-value"}`, session, false); out.Code != 403 {
+		t.Fatal("save without CSRF", out.Code)
+	}
+	if out := request(handler, "PUT", "/api/v1/library/music/acoustid", `{"api_key":"short"}`, session, true); out.Code != 400 {
+		t.Fatal("short key", out.Code, out.Body.String())
+	}
+	if out := request(handler, "PUT", "/api/v1/library/music/acoustid", `{"api_key":"bad\u0001key-value"}`, session, true); out.Code != 400 {
+		t.Fatal("control key", out.Code, out.Body.String())
+	}
+	out = request(handler, "PUT", "/api/v1/library/music/acoustid", `{"api_key":"a-better-key-value"}`, session, true)
+	if out.Code != 200 || service.savedKey != "a-better-key-value" || !strings.Contains(out.Body.String(), `"configured":true`) {
+		t.Fatal("save", out.Code, out.Body.String(), service.savedKey)
+	}
+	out = request(handler, "DELETE", "/api/v1/library/music/acoustid", "", session, true)
+	if out.Code != 200 || !service.deletedKey || !strings.Contains(out.Body.String(), `"configured":false`) {
+		t.Fatal("delete", out.Code, out.Body.String())
+	}
+	if out := request(handler, "DELETE", "/api/v1/library/music/acoustid", "", session, false); out.Code != 403 {
+		t.Fatal("delete without CSRF", out.Code)
+	}
+}
+
+func TestMusicScanFingerprintRoutes(t *testing.T) {
+	service := &fakeMusic{fingerprintResult: music.DiscoverResult{
+		Selected: 1, Matched: 1, Fingerprinted: 1, ProviderCalls: 1, Warnings: []string{},
+	}}
+	handler, session := musicFixture(t, service)
+	if out := request(handler, "POST", "/api/v1/library/music/scans/1/fingerprint", `{"file_ids":[1],"reviewed":true}`, nil, false); out.Code != 401 {
+		t.Fatal("unauthenticated", out.Code)
+	}
+	out := request(handler, "POST", "/api/v1/library/music/scans/1/fingerprint", `{"file_ids":[1],"reviewed":true}`, session, true)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"fingerprinted":1`) || !strings.Contains(out.Body.String(), `"provider_calls":1`) {
+		t.Fatal("fingerprint", out.Code, out.Body.String())
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/scans/1/fingerprint", `{"file_ids":[1]}`, session, true); out.Code != 400 {
+		t.Fatal("without review", out.Code)
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/scans/1/fingerprint", `{"file_ids":[1],"all":true,"reviewed":true}`, session, true); out.Code != 400 {
+		t.Fatal("conflicting selection", out.Code)
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/scans/1/fingerprint", `{"file_ids":[],"reviewed":true}`, session, true); out.Code != 400 {
+		t.Fatal("empty selection", out.Code)
+	}
+	ids := make([]string, 501)
+	for i := range ids {
+		ids[i] = "1"
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/scans/1/fingerprint", `{"file_ids":[`+strings.Join(ids, ",")+`],"reviewed":true}`, session, true); out.Code != 400 {
+		t.Fatal("oversized selection", out.Code)
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/scans/1/fingerprint", `{"file_ids":[1],"reviewed":true}`, session, true); out.Code != 200 {
+		t.Fatal("fingerprint after errors", out.Code, out.Body.String())
+	}
+	service.err = &music.Error{Code: "music_acoustid_invalid_key", Message: "AcoustID rejected the application key."}
+	if out := request(handler, "POST", "/api/v1/library/music/scans/1/fingerprint", `{"file_ids":[1],"reviewed":true}`, session, true); out.Code != 400 {
+		t.Fatal("invalid key mapping", out.Code, out.Body.String())
+	}
+	service.err = &music.Error{Code: "music_acoustid_rate_limited", Message: "AcoustID is limiting requests.", RetryAfter: 9}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/fingerprint", `{"file_ids":[1],"reviewed":true}`, session, true)
+	if out.Code != 429 || out.Header().Get("Retry-After") != "9" {
+		t.Fatal("rate limit mapping", out.Code, out.Header().Get("Retry-After"))
+	}
+	service.err = nil
+	if out := request(handler, "GET", "/api/v1/library/music/scans/1/fingerprint", "", session, false); out.Code != 405 {
+		t.Fatal("method", out.Code)
 	}
 }

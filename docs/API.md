@@ -88,7 +88,16 @@ album title (with a bounded discography fallback), and is idempotent on rerun;
 unmatched or ambiguous evidence stays unresolved with a warning or file message.
 Its response reports `selected`, `matched`, `artists_added`, `albums_added`,
 `unresolved`, `remaining`, `deferred` and `warnings`. POST
-`/cancel` and `/skip` handle review exceptions.
+`/scans/{id}/fingerprint` accepts `{file_ids,reviewed:true}` or
+`{all:true,reviewed:true}` and performs bounded AcoustID/Chromaprint matching
+for unresolved files. It processes at most 20 files and 10 album groups, sends
+only the fingerprint and whole-file duration, requires a score of at least 0.85
+and exactly one distinct release group, and never moves or edits media. Its
+response adds `fingerprinted` and `provider_calls`. GET/PUT/DELETE
+`/api/v1/library/music/acoustid` returns
+`{configured, updated_at, fingerprint_available, message}`, saves `{api_key}`
+after basic format validation or removes the key; the key is never returned.
+POST `/cancel` and `/skip` handle review exceptions.
 GET `/api/v1/library/music/files?page=` lists registered files. POST
 `/api/v1/library/music/edits/preview` accepts `{file_ids}` and returns a plan
 with `plan_hash`; POST `/edits/apply` accepts
@@ -119,7 +128,10 @@ below their effective preference; it is a suggestion only.
 
 These routes are administrator-only. Edits stage the source, verify the result,
 publish without overwriting an existing destination, retain a backup before a
-tag rewrite and support rollback. See [music scope and limits](MUSIC.md).
+tag rewrite and support rollback. The AcoustID application key is stored
+encrypted in the integration store and covered by the existing `secrets.key`
+backup validation; only the Chromaprint fingerprint and duration are sent to
+AcoustID. See [music scope and limits](MUSIC.md).
 
 ## YouTube sourcing
 

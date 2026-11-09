@@ -50,11 +50,17 @@ func TestMusicUpgradeIsAdditive(t *testing.T) {
 	if err = db.QueryRow(`SELECT title FROM media_items WHERE id=1`).Scan(&title); err != nil || title != "Preserved" {
 		t.Fatal("existing catalog row changed", title, err)
 	}
-	for _, table := range []string{"music_artists", "music_albums", "music_tracks"} {
+	for _, table := range []string{"music_artists", "music_albums", "music_tracks", "music_fingerprints"} {
 		var count int
 		if err = db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&count); err != nil || count != 1 {
 			t.Fatal("missing music table", table, count, err)
 		}
+	}
+	if _, err = db.Exec(`INSERT INTO integration_configs(name,ciphertext) VALUES('acoustid',x'00')`); err != nil {
+		t.Fatal("acoustid integration name rejected", err)
+	}
+	if _, err = db.Exec(`DELETE FROM integration_configs WHERE name='acoustid'`); err != nil {
+		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO music_artists(musicbrainz_id,name,monitored,status,created_at,updated_at) VALUES('a74b1b7f-71a5-4011-9441-d0b5e4122711','Artist',1,'missing',1,1)`); err != nil {
 		t.Fatal(err)

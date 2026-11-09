@@ -31,7 +31,8 @@ Historical native and package results below remain as records of past work.
 
 - [x] Add a Music catalog with MusicBrainz artist, album and track metadata, a
   Music tab, existing-file scanning, reviewed catalog discovery for unresolved
-  files, reviewed registration and organization, verified tag writing with
+  files, native AcoustID/Chromaprint fingerprint matching, reviewed registration
+  and organization, verified tag writing with
   rollback, audio release search and reviewed completed-folder import,
   automatic client queueing, a leased download worker, audio preferences,
   wanted albums, upgrade suggestions, per-album overrides, blocked-download

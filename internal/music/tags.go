@@ -64,11 +64,13 @@ func (FFprobeTagger) ProbeAudio(ctx context.Context, path string) (AudioTags, er
 
 type boundedBuffer struct {
 	bytes.Buffer
-	max int
+	max      int
+	overflow bool
 }
 
 func (b *boundedBuffer) Write(p []byte) (int, error) {
 	if len(p) > b.max-b.Len() {
+		b.overflow = true
 		return 0, io.ErrShortWrite
 	}
 	return b.Buffer.Write(p)

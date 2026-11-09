@@ -42,6 +42,9 @@ ready() {
 }
 ready
 
+# Chromaprint is used for AcoustID matching and must be present in the image.
+docker exec "$name" fpcalc -version >/dev/null
+
 code=$(docker exec -u "$uid:$gid" "$name" reelscarey setup-token)
 cookies="$fixture/cookies"
 setup=$(curl -fsS -c "$cookies" -X POST "$base/api/v1/auth/setup" \

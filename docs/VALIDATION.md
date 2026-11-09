@@ -2619,3 +2619,22 @@ Run locally on Windows (development tools only; Docker remains the target):
   default detection, video multi-root discovery and failure, music multi-root
   registration and API auth/CSRF. Frontend tests cover add/remove root editing,
   choosing one/all video roots, and scanning multiple configured music roots.
+
+## AcoustID and Chromaprint matching
+
+- Migration 072 adds the `music_fingerprints` cache and adds `acoustid` to the
+  encrypted integration allowlist; existing integration rows and triggers are
+  preserved.
+- `internal/music/acoustid_test.go` uses a fake fingerprinter, a fake AcoustID
+  HTTP server and fake MusicBrainz responses. It covers a strong unique release
+  group, recording-ID-first track matching, the 0.85 score floor, multiple and
+  missing release groups, no match, invalid key, rate limit, missing key and
+  `fpcalc`, 20-file deferral, cached fingerprint reuse, size/mtime invalidation,
+  status without key disclosure and bounded `fpcalc` output parsing.
+- `internal/httpapi/music_test.go` covers AcoustID status/save/delete
+  authentication and CSRF, no key in responses, fingerprint route validation
+  and 400/429 error mapping.
+- The Docker runtime installs Debian `libchromaprint-tools`; the disposable
+  music container smoke script checks `fpcalc -version`. This was validated with
+  generated/fake media only: no owner media, real AcoustID account or live
+  provider request was used.

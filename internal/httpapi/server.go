@@ -110,6 +110,10 @@ type MusicService interface {
 	ScanPage(context.Context, int64, int) (music.ScanPage, error)
 	RegisterScan(context.Context, int64, []int64) (int, error)
 	DiscoverScan(context.Context, int64, []int64, bool) (music.DiscoverResult, error)
+	FingerprintScan(context.Context, int64, []int64, bool) (music.DiscoverResult, error)
+	AcoustIDStatus(context.Context) (music.AcoustIDStatus, error)
+	SaveAcoustIDKey(context.Context, string) error
+	DeleteAcoustIDKey(context.Context) error
 	CancelScan(context.Context, int64) error
 	SkipScanFile(context.Context, int64, int64) error
 	ListFiles(context.Context, int) (music.MusicFilePage, error)
@@ -129,6 +133,9 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	if s.music == nil {
 		service := music.NewService(db, cfg.MediaDir)
 		service.SetDownloadsDir(cfg.DownloadsDir)
+		if deps.Secrets != nil {
+			service.SetSecrets(deps.Secrets)
+		}
 		s.music = service
 	}
 	s.youtube = youtube.NewStore(db)
@@ -355,9 +362,11 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/artists/{id}", method(http.MethodGet, s.musicArtist))
 	mux.HandleFunc("/api/v1/library/music/albums/{id}", method(http.MethodGet, s.musicAlbum))
 	mux.HandleFunc("/api/v1/library/music/scans", s.musicScans)
+	mux.HandleFunc("/api/v1/library/music/acoustid", s.musicAcoustID)
 	mux.HandleFunc("/api/v1/library/music/scans/{id}", method(http.MethodGet, s.musicScan))
 	mux.HandleFunc("/api/v1/library/music/scans/{id}/register", method(http.MethodPost, s.musicScanRegister))
 	mux.HandleFunc("/api/v1/library/music/scans/{id}/discover", method(http.MethodPost, s.musicScanDiscover))
+	mux.HandleFunc("/api/v1/library/music/scans/{id}/fingerprint", method(http.MethodPost, s.musicScanFingerprint))
 	mux.HandleFunc("/api/v1/library/music/scans/{id}/cancel", method(http.MethodPost, s.musicScanCancel))
 	mux.HandleFunc("/api/v1/library/music/scans/{id}/skip", method(http.MethodPost, s.musicScanSkip))
 	mux.HandleFunc("/api/v1/library/music/files", method(http.MethodGet, s.musicFiles))

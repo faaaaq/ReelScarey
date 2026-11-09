@@ -24,9 +24,10 @@ quality preferences when reserving each download. A rescan reuses tags and
 hashes only when the saved file observation still matches.
 Status: **implemented end to end.** The Music tab catalogs MusicBrainz artists,
 albums and tracks, scans and registers existing files, applies reviewed
-organization and tag rewrites with rollback, searches audio releases, queues
-them through the selected download client, reconciles them with a leased worker,
-imports the completed folder, and runs wanted-album searches on a schedule.
+organization and tag rewrites with rollback, fingerprints unresolved files
+through AcoustID/Chromaprint, searches audio releases, queues them through the
+selected download client, reconciles them with a leased worker, imports the
+completed folder, and runs wanted-album searches on a schedule.
 
 ## What works
 
@@ -59,9 +60,13 @@ imports the completed folder, and runs wanted-album searches on a schedule.
     the stored catalog name always comes from MusicBrainz.
 - Match selected unresolved files by audio fingerprint through AcoustID. It is
   a separate reviewed action that requires a saved application API key and
-  fpcalc (Chromaprint) on the server. It adds only matched artists and albums,
-  loads their tracks and re-matches the selected files; missing or ambiguous
-  matches stay unresolved.
+  fpcalc (Chromaprint) on the server. A request runs
+  `fpcalc -json -length 120`, sends only the fingerprint and whole-file duration,
+  requires a score of at least 0.85 and exactly one distinct release group, then
+  adds or loads that exact MusicBrainz release group and matches the track by
+  AcoustID recording ID before existing tag/track evidence. Missing or ambiguous
+  matches stay unresolved. Audio is never uploaded. This is native
+  AcoustID/Chromaprint matching, not MusicBrainz Picard.
 - Register matched files in place. Registration verifies the file size and
   modification time and records `music_files`; it never moves a file.
 - Search configured indexers with the audio category, parse release names and
@@ -94,6 +99,48 @@ imports the completed folder, and runs wanted-album searches on a schedule.
 - Roll back a completed or failed edit, restoring the file and its previous
   tag record.
 
+## AcoustID and Chromaprint matching
+
+This is the provider-native AcoustID/Chromaprint path. It is not MusicBrainz
+Picard, it does not read Picard's database, and it does not use acoustic
+similarity beyond the Chromaprint fingerprint.
+
+- The Docker image installs Debian `libchromaprint-tools`, which provides
+  `fpcalc`. `REELSCAREY_FPCALC_PATH` may point at a different executable; the
+  default command is `fpcalc`. The child process runs without a shell, with a
+  bounded timeout and bounded output. The media path is rechecked for
+  media-root containment, regular-file status and symlink escape immediately
+  before it runs.
+- The administrator must save an AcoustID **application** key. Create one at
+  <https://acoustid.org/new-application>. The key is stored through
+  `securestore` as the encrypted integration `acoustid`; it is covered by the
+  existing `secrets.key` backup validation and is never returned by the API or
+  written to logs. AcoustID is free for non-commercial use and its availability
+  is not guaranteed.
+- Only the Chromaprint fingerprint string and the whole-file duration are sent
+  to AcoustID. Audio bytes, file paths, tags, library contents and account data
+  are never uploaded.
+- Confidence policy: only candidates with score `>= 0.85` count. The accepted
+  candidates must name exactly one distinct release-group ID. Zero or multiple
+  release groups leave the file unresolved with a specific message; the code
+  never guesses from a low score or between albums. The highest-score recording
+  for that release group is used first for track matching. Equal-score
+  recordings for the same release group fall back to existing tag/track
+  evidence instead of picking one arbitrarily.
+- Fingerprints are cached in `music_fingerprints` by relative path together
+  with the file size, mtime, duration and fingerprint. The cache is reused only
+  while size and mtime still match; a changed file is fingerprinted again and
+  replaces the row. A moved or renamed file is a new path and is fingerprinted
+  again.
+- The reviewed `POST /scans/{id}/fingerprint` action processes at most 20
+  unresolved files and starts MusicBrainz work for at most 10 album groups per
+  request. Excess files are deferred and reported. It stops starting work
+  before the server write deadline, keeps sequential AcoustID lookups at least
+  350 ms apart, and never moves, renames or edits a file.
+- Re-running is safe: matched files are no longer unresolved, cached
+  fingerprints are reported as fingerprinted again without running `fpcalc`,
+  and catalog rows are found instead of copied.
+
 ## Provider and bounds
 
 - Fixed provider: `https://musicbrainz.org/ws/2`. No credentials are stored.
@@ -108,6 +155,15 @@ imports the completed folder, and runs wanted-album searches on a schedule.
   selection is not implemented.
 - Cover art uses `https://coverartarchive.org/release-group/{mbid}/front-500`;
   the browser follows the archive.org redirect.
+- Fixed AcoustID provider: `https://api.acoustid.org/v2/lookup`. Requests send
+  `client` (the saved application key), `duration`, `fingerprint` and
+  `meta=recordings+releasegroups` and request JSON. Arbitrary URLs and
+  redirects are refused. Responses and parsed lists are bounded (2 MiB, 100
+  results/recordings/release groups per result). Sequential lookups are spaced
+  at least 350 ms apart to stay below the published three-per-second limit.
+  `429` becomes a rate limit with `Retry-After`; `400`/`401`/`403` become an
+  invalid-key error; transport and server failures become unavailable. Nothing
+  is silently retried.
 
 ## Scan and registration
 
@@ -170,8 +226,11 @@ one reviewed scan.
   (Chromaprint) on the server; the button stays disabled when either is
   missing. Fingerprinting computes Chromaprint evidence for the selected files,
   looks it up through AcoustID, adds only the matched artist and album, loads
-  the album tracks and re-matches those files. Audio with no confident match,
-  an ambiguous result or a provider warning stays unresolved; nothing is moved,
+  the album tracks and re-matches those files. A request processes at most 20
+  files and 10 album groups and stops early within its time budget. It adds only
+  the exact release group AcoustID names with a score of at least 0.85 and
+  exactly one distinct release group. Audio with no confident match, an
+  ambiguous result or a provider warning stays unresolved; nothing is moved,
   tagged or registered. The response reports `fingerprinted` files,
   `provider_calls`, matched files, added artists/albums, unresolved files,
   deferred files, unresolved files remaining in the scan and warnings.
@@ -204,6 +263,17 @@ one reviewed scan.
 
 ## Limits
 
+- AcoustID matching requires the bundled `fpcalc` and an owner-supplied
+  application key. It is not Picard, does not write MusicBrainz tags on its own,
+  and does not guarantee a match. A provider outage leaves files unresolved.
+- Only Chromaprint fingerprint and duration are sent. No audio is uploaded.
+  A release group is added only from one unique result with score `>= 0.85`;
+  low scores, multiple release groups and missing release groups require better
+  tags or manual review instead of a guess.
+- Fingerprint work is bounded to 20 files and 10 album groups per request.
+  Select the remaining unresolved files and run the action again to continue.
+  Cached evidence is local to this media path and is replaced when size or mtime
+  changes.
 - The worker imports a completed folder automatically only when every track has
   one matching disc/track file. Missing or ambiguous tags leave the job
   `blocked`; its files can be mapped explicitly from the Wanted page.
@@ -299,6 +369,8 @@ validation. Request accounts cannot read or write the music catalog.
   `music_schedule`.
 - `064_music_album_preferences.sql` — per-album `allow_lossless`,
   `min_bitrate` and `preferred_formats` overrides.
+- `072_music_fingerprints.sql` — `music_fingerprints` cache and the encrypted
+  `acoustid` integration name.
 
 The migrations are additive except for the `music_files.root` column. Existing
 movie/TV rows, foreign keys and consumers are untouched.
@@ -331,10 +403,17 @@ upgrade replacement and richer multi-profile assignment.
   creation, ambiguous and missing evidence retention, unknown tagged MBIDs,
   album added without a matching track, duplicate artist reuse, provider failure
   retention, scan count refresh, rerun idempotence and re-match.
+- `internal/music/acoustid_test.go` — fake fingerprinter and fake AcoustID HTTP
+  server: strong unique release-group matching, recording-ID-first track match,
+  score `>= 0.85`, multiple/no release groups, no match, invalid key, rate limit,
+  missing key/fpcalc, 20-file deferral, cached fingerprint reuse, cache
+  invalidation on size/mtime change, status without key disclosure and
+  `fpcalc` output validation.
 - `internal/music/edits_test.go` — move/retag/no-op plans, move apply/rollback,
   FFmpeg tag write, retained backup and rollback.
 - `internal/httpapi/music_test.go` — authentication, CSRF, catalog, scan,
-  discovery and edit routes, error mapping, SPA routes.
+  discovery, AcoustID key status/save/delete without key disclosure, fingerprint
+  route validation and error mapping, edit routes, error mapping, SPA routes.
 - `internal/database/music_upgrade_test.go` — additive catalog migration.
 - `web/src/test/Music.test.tsx`, `MusicImport.test.tsx`,
   `MusicOrganize.test.tsx` — catalog, import, tag discovery, AcoustID status,
@@ -355,4 +434,10 @@ track-evidence cases above. It was not run against the live acceptance server or
 a real MusicBrainz library; provider behavior is covered by local fake
 MusicBrainz responses. The AcoustID status, key save/remove and fingerprint
 result UI were validated with fake API responses in the `MusicImport` suite; no
-real AcoustID account, fpcalc run or audio file was used.
+real AcoustID account, fpcalc run or audio file was used. Backend
+AcoustID/Chromaprint matching was validated locally with generated media and
+fake `fpcalc`/AcoustID/MusicBrainz responses. It was not run against a real
+AcoustID account or owner media; the service is free for non-commercial use but
+its availability is not guaranteed. The Docker runtime installs
+`libchromaprint-tools`; `scripts/music-container-smoke.sh` checks
+`fpcalc -version` in the disposable container.

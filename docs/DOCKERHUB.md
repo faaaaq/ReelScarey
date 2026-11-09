@@ -358,8 +358,10 @@ need reproducible deploys and controlled rollback.
   deployment target.
 - One container, one SQLite database. No Redis, no external database.
 - SQLite must live on local storage, not a network filesystem.
-- FFmpeg/FFprobe, qBittorrent-nox and SABnzbd are bundled; SABnzbd stays
-  opt-in. A Usenet server and any external indexer/client accounts are
+- FFmpeg/FFprobe, Chromaprint `fpcalc`, qBittorrent-nox and SABnzbd are
+  bundled; SABnzbd stays opt-in. AcoustID matching needs your own free
+  application key from <https://acoustid.org/new-application>; the image never
+  includes one. A Usenet server and any external indexer/client accounts are
   owner-supplied.
 - **No playback, streaming, transcoding, HLS/DASH or media-server API.** Use
   your existing player for that.

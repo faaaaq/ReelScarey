@@ -20,8 +20,12 @@ func (s *Server) musicError(w http.ResponseWriter, err error) {
 			status = http.StatusBadRequest
 		case "music_not_found":
 			status = http.StatusNotFound
-		case "music_rate_limited":
+		case "music_rate_limited", "music_acoustid_rate_limited":
 			status = http.StatusTooManyRequests
+		case "music_acoustid_not_configured", "music_fingerprint_unavailable":
+			status = http.StatusConflict
+		case "music_acoustid_invalid_key", "music_acoustid_invalid_request", "music_fingerprint_input", "music_fingerprint_failed":
+			status = http.StatusBadRequest
 		case "music_nothing_to_do", "music_destination_exists", "music_backup_exists", "music_rollback_changed", "music_rollback_unverified",
 			"music_replace_in_progress", "music_rollback_state", "music_source_missing", "music_scan_state":
 			status = http.StatusConflict
@@ -319,6 +323,100 @@ func (s *Server) musicScanDiscover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, result)
+}
+
+func (s *Server) musicScanFingerprint(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		FileIDs  []int64 `json:"file_ids"`
+		All      bool    `json:"all"`
+		Reviewed bool    `json:"reviewed"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !body.Reviewed {
+		fail(w, 400, "review_required", "Review the unresolved files before fingerprint matching.")
+		return
+	}
+	if body.All && len(body.FileIDs) > 0 {
+		fail(w, 400, "invalid_music", "Choose selected unresolved files or all unresolved files, not both.")
+		return
+	}
+	if !body.All && (len(body.FileIDs) < 1 || len(body.FileIDs) > music.MaxDiscoverFiles) {
+		fail(w, 400, "invalid_music", "Choose between 1 and 500 unresolved files; at most 20 are fingerprinted per run.")
+		return
+	}
+	for _, fileID := range body.FileIDs {
+		if fileID < 1 {
+			fail(w, 400, "invalid_music", "Choose valid unresolved files.")
+			return
+		}
+	}
+	result, err := s.music.FingerprintScan(r.Context(), id, body.FileIDs, body.All)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, result)
+}
+
+func (s *Server) musicAcoustID(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		status, err := s.music.AcoustIDStatus(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, status)
+	case http.MethodPut:
+		var body struct {
+			APIKey string `json:"api_key"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		if !music.ValidAcoustIDKey(body.APIKey) {
+			fail(w, 400, "invalid_acoustid_key", "Enter an AcoustID application key of 8–128 printable characters.")
+			return
+		}
+		if err := s.music.SaveAcoustIDKey(r.Context(), body.APIKey); err != nil {
+			s.musicError(w, err)
+			return
+		}
+		status, err := s.music.AcoustIDStatus(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, status)
+	case http.MethodDelete:
+		if err := s.music.DeleteAcoustIDKey(r.Context()); err != nil {
+			s.musicError(w, err)
+			return
+		}
+		status, err := s.music.AcoustIDStatus(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, status)
+	default:
+		w.Header().Set("Allow", "GET, PUT, DELETE")
+		fail(w, 405, "method_not_allowed", "Use GET, PUT or DELETE.")
+	}
 }
 
 func (s *Server) musicScanCancel(w http.ResponseWriter, r *http.Request) {
