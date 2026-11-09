@@ -1,5 +1,27 @@
 # Validation record — 2026-10-29
 
+## Fast local-tag music matching (2026-11-08)
+
+Implementation checks on 2026-11-08 (Windows development host):
+
+- Complete embedded tags now create/reuse a local catalog and match without
+  MusicBrainz, AcoustID or fingerprint calls. A 1,200-file generated well-tagged
+  fixture matched in about 1.55 seconds with zero provider calls.
+- Mixed fixtures fall through to AcoustID and then MusicBrainz only when tags are
+  insufficient. Genuine tagged MBIDs are reused; synthetic `local-*` IDs are never
+  written to MusicBrainz tag fields. Multi-disc, missing disc, duplicate position,
+  case/punctuation and idempotent rerun cases are covered.
+- Finalize/organize works from local tag rows and still uses the existing
+  no-overwrite, retained-backup and journal safety.
+- Full Go suite passed with the known environment-only 64 GiB sparse-fixture test
+  skipped; `go vet` and `go build` passed.
+- Frontend `format:check`, `check`, `test` (52 files, 299 tests) and `build`
+  passed. The unrelated Requests test flaked under load once, then passed in
+  isolation and in the complete rerun.
+- Not exercised: owner media, live MusicBrainz/AcoustID accounts, Docker/Linux
+  acceptance or a real 11k-file scan. Streaming/probing an initial 11k library is
+  disk-bound; only the matching phase is covered by the 1,200-file fixture.
+
 ## MusicBrainz cache, persistent cooldown and optional mirror (2026-11-08)
 
 Implementation checks on 2026-11-08 (Windows development host):
