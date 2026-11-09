@@ -395,7 +395,7 @@ func (s *Service) runAutomaticMatching(ctx context.Context, logger *slog.Logger)
 	for ctx.Err() == nil {
 		processed, err := s.ProcessAutomaticMatchNext(ctx)
 		if err != nil && ctx.Err() == nil {
-			logger.Error("automatic library matching step failed")
+			logger.Error("automatic library matching step failed", "error", err)
 		}
 		if processed && err == nil {
 			continue

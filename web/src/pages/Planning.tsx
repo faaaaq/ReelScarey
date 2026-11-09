@@ -219,8 +219,9 @@ function metadataNote(entry: PlanningEntry) {
 
 export function Planning({ calendar = false }: { calendar?: boolean }) {
   const [params, setParams] = useSearchParams();
-  const [input, setInput] = useState(params.get("query") ?? "");
-  useEffect(() => setInput(params.get("query") ?? ""), [params]);
+  const queryParam = params.get("query") ?? "";
+  const [input, setInput] = useState(queryParam);
+  useEffect(() => setInput(queryParam), [queryParam]);
   const [view, setViewState] = useState<"month" | "agenda">(() =>
     typeof localStorage !== "undefined" &&
     localStorage.getItem(viewKey) === "agenda"

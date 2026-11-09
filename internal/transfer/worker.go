@@ -27,7 +27,7 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 	for ctx.Err() == nil {
 		processed, err := s.ProcessNext(ctx)
 		if err != nil && ctx.Err() == nil {
-			logger.Error("download worker failed", "operation", "reconcile")
+			logger.Error("download worker failed", "operation", "reconcile", "error", err)
 		}
 		if processed && err == nil {
 			continue

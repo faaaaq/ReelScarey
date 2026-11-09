@@ -403,11 +403,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		}
 	}()
 	defer func() { workerCancel(); <-nfoDone }()
+	bundledDone := make(chan struct{})
 	go func() {
+		defer close(bundledDone)
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			transferService.SuperviseBundled(workerCtx, logger)
 		}
 	}()
+	defer func() { workerCancel(); <-bundledDone }()
 	usenetBuiltinDone := make(chan struct{})
 	go func() {
 		defer close(usenetBuiltinDone)

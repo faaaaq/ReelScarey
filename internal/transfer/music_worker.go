@@ -56,7 +56,7 @@ func (s *Service) RunMusic(ctx context.Context, logger *slog.Logger) {
 	for ctx.Err() == nil {
 		processed, err := s.ProcessMusic(ctx)
 		if err != nil && ctx.Err() == nil {
-			logger.Error("music download worker failed", "operation", "reconcile")
+			logger.Error("music download worker failed", "operation", "reconcile", "error", err)
 		}
 		if processed && err == nil {
 			continue

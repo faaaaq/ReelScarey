@@ -44,7 +44,7 @@ func (s *Service) runLibrary(ctx context.Context, logger *slog.Logger) {
 	for ctx.Err() == nil {
 		processed, e := s.ProcessLibraryNext(ctx)
 		if e != nil && ctx.Err() == nil {
-			logger.Error("library review worker failed")
+			logger.Error("library review worker failed", "error", e)
 		}
 		if processed && e == nil {
 			continue

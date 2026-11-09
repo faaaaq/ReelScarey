@@ -216,7 +216,7 @@ func (s *Service) RunRSS(ctx context.Context, logger *slog.Logger) {
 	for ctx.Err() == nil {
 		_, e := s.ProcessRSS(ctx)
 		if e != nil && ctx.Err() == nil {
-			logger.Warn("release detection deferred")
+			logger.Warn("release detection deferred", "error", e)
 		}
 		timer := time.NewTimer(5 * time.Second)
 		select {

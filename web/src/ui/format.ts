@@ -1,3 +1,8 @@
+/** Validated positive integer page from a query parameter; defaults to 1. */
+export function pageParam(value: string | null | undefined) {
+  return value && /^[1-9][0-9]*$/.test(value) ? Number(value) : 1;
+}
+
 /** Binary byte size, e.g. "1.4 GiB". */
 export function formatBytes(value: number | null | undefined, digits = 1) {
   if (!value || value < 0) return "0 B";

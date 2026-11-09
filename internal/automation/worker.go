@@ -266,7 +266,7 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 	for ctx.Err() == nil {
 		_, e := s.ProcessNext(ctx)
 		if e != nil && ctx.Err() == nil {
-			logger.Warn("scheduled search deferred")
+			logger.Warn("scheduled search deferred", "error", e)
 		}
 		timer := time.NewTimer(5 * time.Second)
 		select {

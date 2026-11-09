@@ -935,7 +935,12 @@ export async function api<T>(
     signal: options.signal ?? AbortSignal.timeout(30000),
   });
   if (response.status === 204) return undefined as T;
-  const body = await response.json();
+  let body: { error?: { message?: string } } | null = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
   if (!response.ok) {
     if (
       response.status === 401 &&
@@ -944,7 +949,8 @@ export async function api<T>(
     )
       window.dispatchEvent(new Event("reelscarey:unauthorized"));
     throw new APIError(
-      body.error?.message ?? "The request could not be completed.",
+      body?.error?.message ??
+        `The request could not be completed (HTTP ${response.status}).`,
       response.status,
     );
   }

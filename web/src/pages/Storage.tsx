@@ -1,4 +1,4 @@
-import { PageBody } from "../ui";
+import { PageBody, pageParam } from "../ui";
 import { Button, Badge } from "@radix-ui/themes";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -44,7 +44,7 @@ export function Storage() {
   const [search, setSearch] = useSearchParams();
   const root = search.get("root") ?? "media",
     path = search.get("path") ?? "",
-    page = Number(search.get("page") ?? 1);
+    page = pageParam(search.get("page"));
   const listing = useResource<Listing>(
     `/system/storage?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}&page=${page}`,
   );

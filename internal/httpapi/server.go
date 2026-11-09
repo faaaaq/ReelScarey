@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -795,7 +796,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		}
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				s.logger.Error("request panic", "method", r.Method, "path", r.URL.Path)
+				s.logger.Error("request panic", "method", r.Method, "path", r.URL.Path, "panic", recovered, "stack", string(debug.Stack()))
 				if wrapped.status == 0 {
 					fail(wrapped, 500, "internal_error", "An unexpected error occurred.")
 				}

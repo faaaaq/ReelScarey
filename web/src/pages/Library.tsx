@@ -37,6 +37,7 @@ import {
   ToolbarButton,
   ToolbarSection,
   ToolbarSeparator,
+  pageParam,
   type Kind,
 } from "../ui";
 import { useResource } from "../useResource";
@@ -130,10 +131,10 @@ function MonitorIcon({ monitored }: { monitored: boolean }) {
 
 export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const [params, setParams] = useSearchParams();
-  const [input, setInput] = useState(params.get("query") ?? "");
-  useEffect(() => setInput(params.get("query") ?? ""), [params]);
-  const pageParam = params.get("page") ?? "";
-  const requestedPage = /^[1-9][0-9]*$/.test(pageParam) ? Number(pageParam) : 1;
+  const queryParam = params.get("query") ?? "";
+  const [input, setInput] = useState(queryParam);
+  useEffect(() => setInput(queryParam), [queryParam]);
+  const requestedPage = pageParam(params.get("page"));
   // Ask for the whole collection. A server that ignores `page=all` returns a
   // normal page; the mismatch below falls back to the paginated view.
   const apiParams = new URLSearchParams({ kind, page: "all" });

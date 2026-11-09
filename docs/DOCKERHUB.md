@@ -154,7 +154,7 @@ public URL, then start it.
 ```yaml
 services:
   reelscarey:
-    image: faaaq/reelscarey:latest
+    image: faaaaq/reelscarey:latest
     pull_policy: always
     container_name: reelscarey
     restart: unless-stopped

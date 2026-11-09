@@ -26,6 +26,7 @@ jobs:
     # machine. Push/schedule/dispatch jobs use the configured runner label;
     # the default stays the existing self-hosted Linux x64 runner.
     runs-on: ${{ (github.event_name == 'pull_request' && 'ubuntu-latest') || vars.REELSCAREY_RUNNER || 'reelscarey-ci' }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,6 +41,13 @@ jobs:
       - run: npm ci && npm run format:check && npm run check && npm test && npm run build
         working-directory: web
       - run: go test ./...
+      - name: Go formatting
+        run: |
+          unformatted="$(gofmt -l ./cmd ./internal)"
+          if [ -n "$unformatted" ]; then
+            echo "$unformatted"
+            exit 1
+          fi
       - name: Cross-filesystem folder move and recovery
         run: |
           fixture="$RUNNER_TEMP/reelscarey-cross-fixture"
@@ -68,6 +76,7 @@ jobs:
     # REELSCAREY_RUNNER) at a second machine to stop releases queueing behind
     # a long acceptance run.
     runs-on: ${{ vars.REELSCAREY_ACCEPTANCE_RUNNER || vars.REELSCAREY_RUNNER || 'reelscarey-ci' }}
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - name: Set up Docker Buildx

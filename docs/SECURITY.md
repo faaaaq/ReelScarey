@@ -49,8 +49,8 @@ CI runs race/static/API tests, private real-client torrents and generated media,
 restart/recovery checks, dependency scans and container smoke. govulncheck checks
 reachable known Go vulnerabilities against its current database; npm audit checks
 the locked frontend dependency tree. These are not an independent security audit
-and do not prove the absence of vulnerabilities. Packages are unsigned private
-development artifacts; SHA256SUMS supplies corruption detection, not provenance.
+and do not prove the absence of vulnerabilities. Docker images are the only
+supported deployment; no standalone package or checksum manifest is produced.
 
 Before public release: independent security review, representative NAS/storage
 validation, target arm64 runtime validation, sustained workload/resource budgets,

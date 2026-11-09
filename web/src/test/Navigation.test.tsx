@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { Theme } from "@radix-ui/themes";
 import { expect, it, vi } from "vitest";
 import App from "../App";
+import { pageTitle } from "../navigation";
 vi.mock("../auth", () => ({
   AuthGate: ({ children }: { children: ReactNode }) => children,
   useAuth: () => ({
@@ -38,6 +39,14 @@ it.each([
     await waitFor(() => expect(document.title).toBe(`${title} · ReelScarey`));
   },
 );
+it.each([
+  ["/settings/clients", "Primary connections"],
+  ["/settings/backup-import", "Sonarr / Radarr import"],
+  ["/music/discover", "Music discover"],
+  ["/music/server", "Music server"],
+])("names the %s route for the browser tab", (path, title) => {
+  expect(pageTitle(path)).toBe(title);
+});
 it("returns keyboard focus when navigation closes and focuses content after a route change", async () => {
   const user = userEvent.setup();
   render(

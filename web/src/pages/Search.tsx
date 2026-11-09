@@ -10,7 +10,7 @@ import {
   MovieDetails,
   Pagination,
 } from "../movieComponents";
-import { EmptyState, Label, PageBody } from "../ui";
+import { EmptyState, Label, PageBody, pageParam } from "../ui";
 import { useResource } from "../useResource";
 import "./Search.css";
 
@@ -57,7 +57,7 @@ function MediaSearch({
   const tv = kind === "series";
   const [params, setParams] = useSearchParams();
   const query = params.get("query") ?? "";
-  const page = Number(params.get("page") ?? 1);
+  const page = pageParam(params.get("page"));
   const [input, setInput] = useState(query);
   // The header search navigates here with a new query; keep the field in step.
   useEffect(() => setInput(query), [query]);

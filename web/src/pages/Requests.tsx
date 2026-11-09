@@ -44,6 +44,9 @@ type Result = {
 
 export function RequesterHome() {
   const { session, signOut } = useAuth();
+  useEffect(() => {
+    document.title = "My requests · ReelScarey";
+  }, []);
   const requests = useLiveResource<{ items: Request[] }>(
     "/requester/requests",
     15000,

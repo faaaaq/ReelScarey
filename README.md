@@ -207,6 +207,11 @@ qBittorrent's downloads locally before importing.
 | `REELSCAREY_BACKUPS_DIR` | sibling `backups` beside config; `/backups` in Docker | Separate private snapshot directory; parent must exist |
 | `REELSCAREY_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 | `REELSCAREY_PUBLIC_URL` | empty | Explicit browser origin for another hostname or HTTPS reverse proxy |
+| `REELSCAREY_TMDB_TOKEN` | empty | TMDb Read Access Token seeded at startup; normally saved in Settings instead |
+| `REELSCAREY_BROWSE_ROOTS` | empty | JSON object of up to eight named absolute folders shown read-only in Storage |
+| `REELSCAREY_YOUTUBE_STAGING_DIR` | `/youtube-staging` in Docker | Private staging folder for YouTube downloads |
+| `REELSCAREY_KEEP_NET_ADMIN` | `0` | Keep `NET_ADMIN` after startup for the optional VPN kill switch |
+| `REELSCAREY_FPCALC_PATH` | `fpcalc` from `PATH` | Chromaprint audio-fingerprint executable |
 
 Only loopback Host names are accepted by default. For remote use, terminate TLS
 at a reverse proxy, forward the original Host, and set `REELSCAREY_PUBLIC_URL`
@@ -238,8 +243,8 @@ After building into `bin`, run `node scripts/smoke.mjs` for a real process
 startup/restart and API/frontend smoke test. It creates and removes its own
 temporary config directory and does not use your library.
 
-Linux CI also runs the Go race detector and a container restart/persistence
-smoke test. `reelscarey healthcheck` checks database readiness with a timeout.
+The nightly Linux acceptance job also runs the Go race detector and a container
+restart/persistence smoke test; pushes run the plain Go suite. `reelscarey healthcheck` checks database readiness with a timeout.
 `GET /healthz` reports process liveness; `GET /readyz` checks SQLite.
 
 ## Backup and restore

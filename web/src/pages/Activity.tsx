@@ -34,6 +34,7 @@ import {
   episodeCode,
   formatRelative,
   formatTimestamp,
+  pageParam,
   type Kind,
 } from "../ui";
 import { bytes } from "./Releases";
@@ -117,7 +118,7 @@ function reviewLabel(job: DownloadJob) {
 
 export function Activity() {
   const [params, setParams] = useSearchParams();
-  const page = Number(params.get("page") ?? 1);
+  const page = pageParam(params.get("page"));
   const focus = params.get("job");
   // Completed is no longer a queue filter; old bookmarks fall back to all.
   const requestedFilter = params.get("state") ?? "all";
