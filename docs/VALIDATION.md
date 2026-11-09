@@ -1,5 +1,52 @@
 # Validation record — 2026-10-29
 
+## Music resumable import workflow (2026-11-08)
+
+Implementation checks on 2026-11-08 (Windows development host):
+
+- Migration 073 adds the resumable workflow columns to `music_scans`
+  (`full_scan`, `phase`, `progress_total`, `progress_done`, `current_path`,
+  `message`, `skipped_count`, `request`, `requested_at`, `work_owner`,
+  `work_until`) plus path/work indexes. Existing state, counts and error fields
+  are unchanged.
+- A scan does a name-only pre-count with the walk's extension/depth/symlink/file
+  limits, then writes `progress_done`, `file_count`, `skipped_count` and a
+  message after each bounded batch. The walk still enforces 20,000 files, 24
+  levels, no symlinks, a 30-minute budget and the cancellation check.
+- Normal scans skip unchanged registered paths and carry unchanged
+  matched-but-unregistered paths forward with their artist/album/track IDs and
+  current tag parser version, without re-probing. Previously unresolved paths
+  are reconsidered against the current catalog. Changed size or saved
+  nanosecond mtime re-reads the file. A full scan re-examines every eligible
+  file but reuses an unchanged digest/tag observation; registering never
+  duplicates a `music_files` row for the same relative path.
+- `POST /scans/{id}/match-all {reviewed:true}` and
+  `POST /scans/{id}/finalize {reviewed:true}` return 202 with a queued request.
+  `RunWorkflow` claims one record with a database owner/lease, renews it per
+  batch, matches tags then fingerprints remaining files, or registers and then
+  applies one edit plan at a time. `RecoverScans` re-queues interrupted requests
+  with an explicit message and clears stale leases; interrupted walks still fail.
+- `internal/music/workflow_test.go` covers pre-count/live progress, the skip and
+  carry-forward policy, unresolved reconsideration, full rescan without duplicate
+  library rows, restart re-queue and one-at-a-time claiming, request
+  validation/consent, tag-then-fingerprint matching, unavailable-AcoustID
+  warnings, finalize registration + sequential edit organization and partial
+  failure staying in review. `internal/httpapi/music_test.go` covers the new
+  routes' authentication, CSRF, consent validation, progress fields and method
+  rejection. All fixtures use generated files and fake providers; no owner media
+  or real AcoustID/MusicBrainz account was used.
+- `go test ./internal/music ./internal/httpapi ./internal/database
+  ./internal/maintenance -count=1`, `go test ./...`, `go vet ./...` and
+  `go build ./cmd/reelscarey` (after `web` `npm run build`) passed. The only
+  broad-suite failure is the known environment limit
+  `TestLargeExistingRegistrationDoesNotReadWholeVideo` in `internal/transfer`,
+  which cannot create its 4 GiB temporary fixture on this host ("There is not
+  enough space on the disk").
+- Not exercised here: a real AcoustID key/fpcalc run, live MusicBrainz rate
+  limiting, a Docker/Linux acceptance run or the Music Import UI controls (a
+  separate change owns `web/src`). Match All/Finalize provider behavior uses
+  fake MusicBrainz/AcoustID responses.
+
 ## Music catalog discovery (2026-11-08)
 
 Implementation checks on 2026-11-08 (Windows development host):

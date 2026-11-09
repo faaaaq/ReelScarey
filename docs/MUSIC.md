@@ -35,11 +35,16 @@ completed folder, and runs wanted-album searches on a schedule.
 - Browse saved artists, release groups (albums) and on-demand album tracks.
 - Scan a folder below the media root:
   - bounded walk (20,000 audio files, 24 folder levels, no symlinks);
+  - a name-only pre-count before the walk feeds a live progress bar;
   - FFprobe tag reading for MP3, FLAC, M4A/MP4, OGG/Opus, WAV, AIFF and WMA;
   - SHA-256 evidence (up to 512 MiB per file);
   - matching against the local catalog by MusicBrainz release-group ID or by
     album title plus artist name;
   - review of matched and unresolved files.
+- Resume an interrupted import: a normal rescan skips unchanged registered files
+  and carries matched-but-unregistered files forward without repeated work,
+  while a full rescan re-examines every eligible file. Match All and Finalize
+  are durable, resumable worker requests with live phase and progress fields.
 - Discover missing catalog entries for selected unresolved files through an
   explicit reviewed action. It uses a tagged release-group ID, a tagged album
   artist/artist MBID, or one exact normalized artist name and album title,
@@ -244,8 +249,80 @@ one reviewed scan.
   missing fpcalc, rejected keys, rate limits, ambiguous matches and no-match
   results produce an actionable warning instead of a success message.
 - A scan is a reviewed job: start it, poll its state, discover catalog entries,
-  fingerprint unresolved files or register selected matched files with
-  `reviewed: true`. Restart marks an interrupted scan failed.
+  fingerprint unresolved files, run **Match All** or **Finalize**, or register
+  selected matched files with `reviewed: true`. An interrupted walk is marked
+  failed; a queued Match All/Finalize request is re-queued and resumed by the
+  durable worker after a restart.
+
+## Resumable import workflow
+
+The import screen drives a resumable pipeline: add a media root, scan with live
+progress, run **Match All** for the remaining unresolved files, then run
+**Finalize** to register and organize the matched files. Unmatched files stay in
+the scan for manual review. Every long step is saved in `music_scans` and run by
+one durable background worker; the browser's HTTP request never owns the work.
+
+- **Live scan progress.** Before walking, the scan does a fast name-only count of
+  eligible audio files (same extension, depth, symlink and 20,000-file rules) and
+  stores it in `progress_total`. The walk writes `progress_done`, `file_count`,
+  `skipped_count` and a message after every bounded batch, not after every file.
+  If the pre-count fails, `progress_total` stays `0` and the message says the bar
+  is approximate. `current_path` is the file being processed by a matching,
+  fingerprinting or organizing phase.
+- **Phases.** `phase` is one of `queued`, `scanning`, `matching`,
+  `fingerprinting`, `ready`, `organizing`, `completed`, `failed` or `cancelled`.
+  The existing `state` values (`scanning`, `review`, `completed`, `failed`,
+  `cancelled`) are unchanged for backward compatibility.
+- **Skip policy (normal scan).** With no full rescan, a path is skipped without
+  repeated work when its saved observation still matches the file's size and
+  saved nanosecond modification time:
+  - a path already registered in `music_files` is skipped entirely and counted
+    in `skipped_count`;
+  - a path that was `matched` in a previous scan but was never registered is
+    copied into the new scan as `matched`, with its previous artist/album/track
+    IDs, and counted in `skipped_count`; it stays visible and finalizable;
+  - a previously `unresolved` path is not skipped: it is observed and matched
+    again against the current catalog, so a catalog entry added after the first
+    scan can resolve it;
+  - a path whose size or modification time changed is read and matched again.
+  Skipped means "no repeated work", never "hidden from the workflow".
+- **Full rescan.** `full:true` walks every eligible file and re-observes and
+  re-matches it, including registered files. It does not duplicate library rows:
+  registering a file again updates the existing `music_files` row keyed by
+  relative path. A full rescan still reuses a saved digest/tag observation while
+  the file bytes are unchanged, so it re-examines the file without needlessly
+  reading or tagging it again.
+- **Match All.** `POST /scans/{id}/match-all {reviewed:true}` records the
+  owner's consent and returns `202` with `request:"match"` and
+  `phase:"queued"`. The worker then runs `matching` (local catalog matching,
+  then MusicBrainz tag discovery for every unresolved file) and
+  `fingerprinting` (AcoustID for files still unresolved, when a key and fpcalc
+  are available). It processes bounded batches, renews its database lease and
+  saves progress after each batch. Provider, rate-limit and transient errors
+  keep the matched rows, leave the rest unresolved and end in `ready` with a
+  warning; a missing AcoustID key or fpcalc adds a warning and continues. Match
+  All never registers, moves, renames or tags a file. `reviewed:true` is consent
+  to create catalog entries only.
+- **Finalize.** `POST /scans/{id}/finalize {reviewed:true}` returns `202` with
+  `request:"finalize"`. The `organizing` phase registers the matched files in
+  place through the existing verification path, finds the registered file IDs,
+  previews each edit plan and applies move/retag/move_retag jobs one at a time,
+  waiting for each before starting the next. Files that are already correct need
+  no edit. The existing no-overwrite, retained-backup, journal and rollback
+  safety rules still apply. A succeeded finalize ends with `phase:"completed"`
+  and `state:"completed"`; any registration or edit failure leaves the scan in
+  `review` with `phase:"ready"`, an explicit count and message, and the failed or
+  unmatched files available for manual review. Finalize never creates download
+  rows or fabricated file history for existing files.
+- **Restart recovery.** `RecoverScans` fails an interrupted walk because its rows
+  may be incomplete. A queued/matching/fingerprinting/organizing request is put
+  back in the queue with an explicit "interrupted by a restart" message, its
+  stale lease is cleared and the worker resumes it. Work is never silently
+  reported as completed.
+- **One worker.** A claim sets `work_owner` and a five-minute `work_until`
+  lease. Only one scan is claimed at a time, and the database row — not an
+  in-memory queue — is the source of truth. A request is rejected while a scan is
+  running or another match/finalize request already owns the scan.
 
 ## Organization and tagging
 
@@ -273,10 +350,18 @@ one reviewed scan.
   a tagged release-group ID or one exact normalized album title can disambiguate
   multiple release groups. Low scores, unresolved multiple groups and missing
   release groups require better tags or manual review instead of a guess.
-- Fingerprint work is bounded to 20 files and 10 album groups per request.
-  Select the remaining unresolved files and run the action again to continue.
-  Cached evidence is local to this media path and is replaced when size or mtime
-  changes.
+- Fingerprint work through the manual `/fingerprint` endpoint is bounded to 20
+  files and 10 album groups per request. Select the remaining unresolved files
+  and run the action again to continue. **Match All** is not limited to one
+  request: it processes bounded batches and renews its lease, and a rate limit
+  stops the phase with a warning instead of looping. Cached evidence is local to
+  this media path and is replaced when size or mtime changes.
+- Match All never registers, moves or tags media. Finalize registers in place and
+  then applies the reviewed edit plan; it does not replace an existing library
+  file with a downloaded upgrade.
+- A full rescan re-examines registered files but never creates a second
+  `music_files` row for the same relative path. It also does not delete catalog
+  rows, registered files or scan history, and it does not re-tag files by itself.
 - The worker imports a completed folder automatically only when every track has
   one matching disc/track file. Missing or ambiguous tags leave the job
   `blocked`; its files can be mapped explicitly from the Wanted page.
@@ -298,8 +383,9 @@ one reviewed scan.
   when the album artist and track artist are the same tagged name.
 - `MUSICBRAINZ_ALBUMARTISTID` is persisted in the scan's tag document only;
   there is no dedicated scan column or migration. A scan created before this
-  field existed needs a new scan to use it; the new scan re-probes unchanged
-  files once as described above.
+  field existed needs a new scan to use it; an unchanged matched-but-unregistered
+  file is probed once more by a normal rescan, and a registered file is only
+  re-probed by a full rescan.
 - A release MBID (`MUSICBRAINZ_ALBUMID`) is stored but not used for discovery:
   the catalog is keyed by release group. Files that carry only a release MBID
   fall back to the tagged artist and album title.
@@ -320,8 +406,10 @@ one reviewed scan.
 | POST | `/api/v1/library/music/artists` | `{musicbrainz_id,monitored?}`; 201 created or 200 existing |
 | GET | `/api/v1/library/music/artists/{id}` | Artist and albums |
 | GET | `/api/v1/library/music/albums/{id}` | Album and tracks; first read loads tracks |
-| GET/POST | `/api/v1/library/music/scans` | List scans or start `{roots:[...]}` (legacy `{root}` accepted); 202 |
-| GET | `/api/v1/library/music/scans/{id}?page=` | Scan state and 100 files per page |
+| GET/POST | `/api/v1/library/music/scans` | List scans or start `{roots:[...],full?}` (legacy `{root}` accepted); 202 |
+| GET | `/api/v1/library/music/scans/{id}?page=` | Scan state, phase, progress and 100 files per page |
+| POST | `/api/v1/library/music/scans/{id}/match-all` | `{reviewed:true}`; queues durable tag/MusicBrainz then AcoustID matching; 202 |
+| POST | `/api/v1/library/music/scans/{id}/finalize` | `{reviewed:true}`; queues registration then sequential organization/tagging; 202 |
 | POST | `/api/v1/library/music/scans/{id}/register` | `{file_ids,reviewed:true}` |
 | POST | `/api/v1/library/music/scans/{id}/discover` | `{file_ids,reviewed:true}` or `{all:true,reviewed:true}`; bounded catalog discovery |
 | POST | `/api/v1/library/music/scans/{id}/fingerprint` | `{file_ids,reviewed:true}` or `{all:true,reviewed:true}`; reviewed Chromaprint/AcoustID matching |
@@ -355,9 +443,11 @@ one reviewed scan.
 The discovery response reports `selected`, `matched`, `artists_added`,
 `albums_added`, `unresolved`, `remaining`, `deferred` and `warnings`. The
 fingerprint response adds `fingerprinted` and `provider_calls` to the same
-shape. AcoustID status reports `configured`, `updated_at`,
-`fingerprint_available` and `message`; it never includes the saved key.
-All routes are administrator-only. Mutations require CSRF and same-origin
+shape. Every scan row also reports `full_scan`, `phase`, `progress_total`,
+`progress_done`, `current_path`, `message`, `skipped_count`, `request`,
+`requested_at` and `work_until`. AcoustID status reports `configured`,
+`updated_at`, `fingerprint_available` and `message`; it never includes the saved
+key. All routes are administrator-only. Mutations require CSRF and same-origin
 validation. Request accounts cannot read or write the music catalog.
 
 ## Data model
@@ -372,8 +462,12 @@ validation. Request accounts cannot read or write the music catalog.
   `music_schedule`.
 - `064_music_album_preferences.sql` — per-album `allow_lossless`,
   `min_bitrate` and `preferred_formats` overrides.
-- `072_music_fingerprints.sql` — `music_fingerprints` cache and the encrypted
+- `072_music_fingerprints.sql` - `music_fingerprints` cache and the encrypted
   `acoustid` integration name.
+- `073_music_scan_workflow.sql` - `music_scans.full_scan`, `phase`,
+  `progress_total`, `progress_done`, `current_path`, `message`, `skipped_count`,
+  `request`, `requested_at`, `work_owner`, `work_until` and the workflow/path
+  indexes.
 
 The migrations are additive except for the `music_files.root` column. Existing
 movie/TV rows, foreign keys and consumers are untouched.
@@ -396,9 +490,17 @@ upgrade replacement and richer multi-profile assignment.
   tags, invalid bodies.
 - `internal/music/store_test.go` — idempotent artist saves, release-group reuse
   across artists, track replacement, invalid paging.
-- `internal/music/scan_test.go` — bounded scan, matching, in-place registration,
+- `internal/music/scan_test.go` - bounded scan, matching, in-place registration,
   availability, escaping roots, track evidence order, missing disc handling,
   ambiguous titles, article/Unicode album lookup.
+- `internal/music/workflow_test.go` - name-only pre-count before the walk, live
+  scanning progress, skip of unchanged registered files, carry-forward of
+  matched-but-unregistered files, unresolved reconsideration after a catalog
+  change, full rescan without duplicate library rows, restart re-queue/lease
+  recovery, request validation/consent/state rejection, tag matching followed by
+  AcoustID fingerprint fallback, unavailable-AcoustID warning, finalize
+  registration plus sequential edit organization, and partial failure that stays
+  in review.
 - `internal/music/discovery_test.go` — release-group ID creation, tagged artist
   MBID use, later artist-search pages, discography fallback (including a later
   browse page), missing disc tags, multi-disc titles, compilation album-artist
@@ -414,9 +516,10 @@ upgrade replacement and richer multi-profile assignment.
   `fpcalc` output validation.
 - `internal/music/edits_test.go` — move/retag/no-op plans, move apply/rollback,
   FFmpeg tag write, retained backup and rollback.
-- `internal/httpapi/music_test.go` — authentication, CSRF, catalog, scan,
+- `internal/httpapi/music_test.go` - authentication, CSRF, catalog, scan,
   discovery, AcoustID key status/save/delete without key disclosure, fingerprint
-  route validation and error mapping, edit routes, error mapping, SPA routes.
+  route validation and error mapping, match-all/finalize route validation and
+  progress fields, edit routes, error mapping, SPA routes.
 - `internal/database/music_upgrade_test.go` — additive catalog migration.
 - `web/src/test/Music.test.tsx`, `MusicImport.test.tsx`,
   `MusicOrganize.test.tsx` — catalog, import, tag discovery, AcoustID status,

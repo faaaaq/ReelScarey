@@ -55,6 +55,15 @@ func (f *fakeMusic) StartScan(context.Context, string) (music.Scan, error) {
 func (f *fakeMusic) StartScanRoots(context.Context, []string) (music.Scan, error) {
 	return music.Scan{ID: 1, State: "scanning"}, f.err
 }
+func (f *fakeMusic) StartScanRootsFull(context.Context, []string, bool) (music.Scan, error) {
+	return music.Scan{ID: 1, State: "scanning"}, f.err
+}
+func (f *fakeMusic) RequestMatchAll(context.Context, int64, bool) (music.Scan, error) {
+	return music.Scan{ID: 1, State: "review", Phase: "queued", Request: "match"}, f.err
+}
+func (f *fakeMusic) RequestFinalize(context.Context, int64, bool) (music.Scan, error) {
+	return music.Scan{ID: 1, State: "review", Phase: "queued", Request: "finalize"}, f.err
+}
 func (f *fakeMusic) ListScans(context.Context, int) (music.ScanList, error) {
 	return music.ScanList{Items: []music.Scan{}, Page: 1, Limit: 20}, f.err
 }
@@ -319,6 +328,56 @@ func TestMusicScanRoutes(t *testing.T) {
 	out = request(handler, "GET", "/api/v1/library/music/scans", "", session, false)
 	if out.Code != 200 {
 		t.Fatal("scan list", out.Code, out.Body.String())
+	}
+}
+
+func TestMusicScanWorkflowRoutes(t *testing.T) {
+	handler, session := musicFixture(t, &fakeMusic{})
+	out := request(handler, "POST", "/api/v1/library/music/scans", `{"roots":["Music"],"full":true}`, session, true)
+	if out.Code != 202 {
+		t.Fatal("full scan", out.Code, out.Body.String())
+	}
+	out = request(handler, "GET", "/api/v1/library/music/scans/1", "", session, false)
+	for _, field := range []string{"full_scan", "phase", "progress_total", "progress_done", "current_path", "message", "skipped_count", "request", "requested_at"} {
+		if !strings.Contains(out.Body.String(), `"`+field+`"`) {
+			t.Fatal("scan status is missing", field, out.Body.String())
+		}
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/match-all", `{"reviewed":true}`, nil, true)
+	if out.Code != 401 {
+		t.Fatal("match-all unauthenticated", out.Code)
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/match-all", `{"reviewed":true}`, session, false)
+	if out.Code != 403 {
+		t.Fatal("match-all without CSRF", out.Code)
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/match-all", `{}`, session, true)
+	if out.Code != 400 {
+		t.Fatal("match-all without review", out.Code)
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/match-all", `{"reviewed":true}`, session, true)
+	if out.Code != 202 || !strings.Contains(out.Body.String(), `"request":"match"`) || !strings.Contains(out.Body.String(), `"phase":"queued"`) {
+		t.Fatal("match-all", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/finalize", `{"reviewed":true}`, nil, true)
+	if out.Code != 401 {
+		t.Fatal("finalize unauthenticated", out.Code)
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/finalize", `{"reviewed":true}`, session, false)
+	if out.Code != 403 {
+		t.Fatal("finalize without CSRF", out.Code)
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/finalize", `{"reviewed":false}`, session, true)
+	if out.Code != 400 {
+		t.Fatal("finalize without review", out.Code)
+	}
+	out = request(handler, "POST", "/api/v1/library/music/scans/1/finalize", `{"reviewed":true}`, session, true)
+	if out.Code != 202 || !strings.Contains(out.Body.String(), `"request":"finalize"`) {
+		t.Fatal("finalize", out.Code, out.Body.String())
+	}
+	out = request(handler, "GET", "/api/v1/library/music/scans/1/match-all", "", session, false)
+	if out.Code != 405 {
+		t.Fatal("match-all method", out.Code)
 	}
 }
 

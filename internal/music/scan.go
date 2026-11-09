@@ -36,10 +36,20 @@ type Scan struct {
 	Root            string   `json:"root"`
 	Roots           []string `json:"roots"`
 	State           string   `json:"state"`
+	FullScan        bool     `json:"full_scan"`
+	Phase           string   `json:"phase"`
+	ProgressTotal   int      `json:"progress_total"`
+	ProgressDone    int      `json:"progress_done"`
+	CurrentPath     string   `json:"current_path"`
+	Message         string   `json:"message"`
 	FileCount       int      `json:"file_count"`
 	MatchedCount    int      `json:"matched_count"`
 	UnresolvedCount int      `json:"unresolved_count"`
 	RegisteredCount int      `json:"registered_count"`
+	SkippedCount    int      `json:"skipped_count"`
+	Request         string   `json:"request"`
+	RequestedAt     int64    `json:"requested_at"`
+	WorkUntil       int64    `json:"work_until"`
 	Error           string   `json:"error"`
 	CreatedAt       int64    `json:"created_at"`
 	UpdatedAt       int64    `json:"updated_at"`
@@ -92,12 +102,14 @@ type ScanPage struct {
 	Limit int        `json:"limit"`
 }
 
-const scanColumns = `id, root, state, file_count, matched_count, unresolved_count, registered_count, error, created_at, updated_at`
+const scanColumns = `id, root, state, full_scan, phase, progress_total, progress_done, current_path, message, file_count, matched_count, unresolved_count, registered_count, skipped_count, request, requested_at, work_until, error, created_at, updated_at`
 const scanFileColumns = `id, scan_id, relative_path, size_bytes, modified_at, sha256, format, duration_ms, bitrate, sample_rate, channels, tag_artist, tag_album_artist, tag_album, tag_title, tag_track, tag_disc, tag_year, tag_musicbrainz_artist, tag_musicbrainz_album, tag_musicbrainz_release_group, tag_musicbrainz_track, tag_musicbrainz_recording, tag_json, artist_id, album_id, track_id, state, error`
 
 func scanScan(row interface{ Scan(...any) error }) (Scan, error) {
 	var s Scan
-	err := row.Scan(&s.ID, &s.Root, &s.State, &s.FileCount, &s.MatchedCount, &s.UnresolvedCount, &s.RegisteredCount, &s.Error, &s.CreatedAt, &s.UpdatedAt)
+	err := row.Scan(&s.ID, &s.Root, &s.State, &s.FullScan, &s.Phase, &s.ProgressTotal, &s.ProgressDone, &s.CurrentPath, &s.Message,
+		&s.FileCount, &s.MatchedCount, &s.UnresolvedCount, &s.RegisteredCount, &s.SkippedCount, &s.Request, &s.RequestedAt, &s.WorkUntil,
+		&s.Error, &s.CreatedAt, &s.UpdatedAt)
 	return s, err
 }
 
@@ -115,6 +127,15 @@ func (s *Service) StartScan(ctx context.Context, root string) (Scan, error) {
 // A failure in any root marks the whole scan failed; it never reports success
 // for a partial walk.
 func (s *Service) StartScanRoots(ctx context.Context, roots []string) (Scan, error) {
+	return s.StartScanRootsFull(ctx, roots, false)
+}
+
+// StartScanRootsFull starts one reviewed scan. Unless full is set, files that
+// were already registered (unchanged) are skipped without repeated work, and
+// matched-but-unregistered files are carried into the new scan as matched so
+// they stay visible and finalizable. A full scan re-probes and re-matches every
+// eligible file; registered library rows are updated in place, never duplicated.
+func (s *Service) StartScanRootsFull(ctx context.Context, roots []string, full bool) (Scan, error) {
 	if len(roots) == 0 || len(roots) > 20 {
 		return Scan{}, ErrInvalidInput
 	}
@@ -132,7 +153,8 @@ func (s *Service) StartScanRoots(ctx context.Context, roots []string) (Scan, err
 		clean = append(clean, value)
 	}
 	now := time.Now().Unix()
-	result, err := s.store.db.ExecContext(ctx, `INSERT INTO music_scans(root,state,created_at,updated_at) VALUES(?,'scanning',?,?)`, strings.Join(clean, ", "), now, now)
+	result, err := s.store.db.ExecContext(ctx, `INSERT INTO music_scans(root,state,full_scan,phase,message,created_at,updated_at)
+		VALUES(?,'scanning',?, 'queued','Waiting for the scan worker.',?,?)`, strings.Join(clean, ", "), full, now, now)
 	if err != nil {
 		return Scan{}, err
 	}
@@ -153,7 +175,7 @@ func (s *Service) StartScanRoots(ctx context.Context, roots []string) (Scan, err
 	if err = tx.Commit(); err != nil {
 		return Scan{}, err
 	}
-	go s.runScan(context.WithoutCancel(ctx), id, clean)
+	go s.runScan(context.WithoutCancel(ctx), id, clean, full)
 	return s.Scan(ctx, id)
 }
 
@@ -191,42 +213,223 @@ func (s *Service) cleanScanRoot(root string) (string, error) {
 	return clean, nil
 }
 
-func (s *Service) runScan(ctx context.Context, id int64, roots []string) {
+func (s *Service) runScan(ctx context.Context, id int64, roots []string, full bool) {
 	defer organization.ReadMedia()()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
-	state, message := "review", ""
+	state, phase, message := "review", "ready", ""
+	skipMessage := ""
+	total, countErr := s.countScanEligible(ctx, roots)
+	if countErr != nil {
+		total = 0
+		if !errors.Is(countErr, errScanLimit) {
+			skipMessage = "Counting the audio files is unavailable; the progress bar is only approximate."
+		}
+	}
+	previous, registered := map[string]previousScanFile{}, map[string]bool{}
+	var prepareErr error
+	if !full {
+		previous, prepareErr = s.previousScanFiles(context.WithoutCancel(ctx))
+		if prepareErr == nil {
+			registered, prepareErr = s.registeredScanPaths(context.WithoutCancel(ctx))
+		}
+	}
+	_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_scans SET phase='scanning',progress_total=?,progress_done=0,message=?,error='',updated_at=unixepoch() WHERE id=?`,
+		total, firstNonEmpty(skipMessage, "Scanning audio files."), id)
+	progress := &scanProgress{}
 	var walkErr error
+	if prepareErr != nil {
+		walkErr = prepareErr
+	}
 	for _, root := range roots {
-		if err := s.walkScan(ctx, id, root); err != nil {
+		if walkErr != nil {
+			break
+		}
+		if err := s.walkScan(ctx, id, root, progress, previous, registered); err != nil {
 			walkErr = errors.Join(walkErr, fmt.Errorf("%s: %w", root, err))
 			if errors.Is(err, errScanCancelled) || errors.Is(err, context.Canceled) {
 				break
 			}
 		}
 	}
+	if walkErr == nil || errors.Is(walkErr, errScanLimit) {
+		walkErr = errors.Join(walkErr, s.flushScanBatch(ctx, id, progress))
+	}
 	if walkErr != nil {
-		state = "failed"
-		message = walkErr.Error()
-		if errors.Is(walkErr, errScanCancelled) || errors.Is(walkErr, context.Canceled) {
-			state = "cancelled"
-			message = ""
+		state, phase, message = "failed", "failed", walkErr.Error()
+		if errors.Is(walkErr, errScanCancelled) || errors.Is(walkErr, context.Canceled) || errors.Is(walkErr, context.DeadlineExceeded) {
+			state, phase, message = "cancelled", "cancelled", ""
 		}
-	} else if err := s.matchScan(ctx, id); err != nil {
-		state = "failed"
-		message = err.Error()
+		if errors.Is(walkErr, context.DeadlineExceeded) {
+			state, phase, message = "failed", "failed", "The scan took too long. Narrow the folder and try again."
+		}
+	} else {
+		_ = s.updateScanPhase(context.WithoutCancel(ctx), id, "matching", "Matching scanned files against the saved catalog.", total, progress.done)
+		if err := s.matchScan(ctx, id); err != nil {
+			state, phase, message = "failed", "failed", err.Error()
+		}
 	}
 	var files, matched, unresolved int
 	if err := s.store.db.QueryRowContext(context.WithoutCancel(ctx), `SELECT COUNT(*), COALESCE(SUM(state='matched'),0), COALESCE(SUM(state='unresolved'),0) FROM music_scan_files WHERE scan_id=?`, id).Scan(&files, &matched, &unresolved); err != nil && state == "review" {
-		state, message = "failed", err.Error()
+		state, phase, message = "failed", "failed", err.Error()
 	}
-	if state == "review" && files == 0 {
-		state, message = "failed", "No audio files were found in these folders."
+	if state == "review" && files == 0 && progress.skipped == 0 {
+		state, phase, message = "failed", "failed", "No audio files were found in these folders."
 	}
-	_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_scans SET state=?,file_count=?,matched_count=?,unresolved_count=?,error=?,updated_at=unixepoch() WHERE id=?`, state, files, matched, unresolved, message, id)
+	if state == "review" {
+		message = scanSummary(files, matched, unresolved, progress.skipped)
+		if skipMessage != "" {
+			message += " " + skipMessage
+		}
+	}
+	done := progress.done
+	if total < done {
+		total = done
+	}
+	_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_scans SET state=?,phase=?,progress_total=?,progress_done=?,current_path='',message=?,file_count=?,matched_count=?,unresolved_count=?,skipped_count=?,error=?,updated_at=unixepoch() WHERE id=?`,
+		state, phase, total, done, message, files, matched, unresolved, progress.skipped, scanError(state, message), id)
 }
 
-func (s *Service) walkScan(ctx context.Context, id int64, root string) error {
+func scanSummary(files, matched, unresolved, skipped int) string {
+	message := fmt.Sprintf("Scanned %d audio files: %d matched, %d unresolved.", files, matched, unresolved)
+	if skipped > 0 {
+		message += fmt.Sprintf(" %d already processed files were skipped without repeated work.", skipped)
+	}
+	return message
+}
+
+func scanError(state, message string) string {
+	if state == "failed" {
+		return message
+	}
+	return ""
+}
+
+func (s *Service) updateScanPhase(ctx context.Context, id int64, phase, message string, total, done int) error {
+	_, err := s.store.db.ExecContext(ctx, `UPDATE music_scans SET phase=?,message=?,progress_total=?,progress_done=?,updated_at=unixepoch() WHERE id=?`,
+		phase, message, total, done, id)
+	return err
+}
+
+// countScanEligible is the fast name-only pre-count for the progress bar. It
+// applies the same extension, depth, symlink and file-count rules as the walk
+// and never opens a file, so a slow prober cannot make the count expensive.
+func (s *Service) countScanEligible(ctx context.Context, roots []string) (int, error) {
+	total := 0
+	for _, root := range roots {
+		absRoot := filepath.Join(s.mediaDir, filepath.FromSlash(root))
+		info, err := os.Lstat(absRoot)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return 0, &Error{Code: "music_scan_root", Message: "A music root is no longer an available folder. Start a new scan."}
+		}
+		err = filepath.WalkDir(absRoot, func(name string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return nil
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if entry.IsDir() {
+				if entry.Name() == ".reelscarey" {
+					return filepath.SkipDir
+				}
+				rel, e := filepath.Rel(absRoot, name)
+				if e == nil && rel != "." && strings.Count(rel, string(filepath.Separator)) >= MaxScanDepth {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
+			if !audioExtensions[strings.ToLower(filepath.Ext(name))] {
+				return nil
+			}
+			total++
+			if total > MaxScanFiles {
+				return errScanLimit
+			}
+			return nil
+		})
+		if err != nil {
+			return 0, err
+		}
+	}
+	return total, nil
+}
+
+// scanProgress accumulates the walk counters shared by every root. Records are
+// written in bounded batches so the UI can poll an accurate progress bar.
+type scanProgress struct {
+	done, files, skipped int
+	current              string
+	batch                []audioObservation
+	carries              []int64
+}
+
+type previousScanFile struct {
+	ID         int64
+	SizeBytes  int64
+	ModifiedAt int64
+	MtimeNano  int64
+	TagVersion int
+	State      string
+	ArtistID   sql.NullInt64
+	AlbumID    sql.NullInt64
+	TrackID    sql.NullInt64
+}
+
+// previousScanFiles loads the newest observation for each relative path. It is
+// keyed by path because a rescan must compare the file's evidence with the
+// observation that was actually seen before, including matched-but-unregistered
+// files. The nanosecond mtime comes from the saved verification snapshot so a
+// change within the same second is still detected.
+func (s *Service) previousScanFiles(ctx context.Context) (map[string]previousScanFile, error) {
+	rows, err := s.store.db.QueryContext(ctx, `SELECT f.id,f.relative_path,f.size_bytes,f.modified_at,f.verification_json,f.tag_json,f.state,f.artist_id,f.album_id,f.track_id
+		FROM music_scan_files f
+		JOIN (SELECT relative_path,MAX(id) AS id FROM music_scan_files GROUP BY relative_path) latest ON latest.id=f.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]previousScanFile{}
+	for rows.Next() {
+		var path, verification, tagJSON string
+		var item previousScanFile
+		if err := rows.Scan(&item.ID, &path, &item.SizeBytes, &item.ModifiedAt, &verification, &tagJSON, &item.State, &item.ArtistID, &item.AlbumID, &item.TrackID); err != nil {
+			return nil, err
+		}
+		var snapshot filecheck.Snapshot
+		if json.Unmarshal([]byte(verification), &snapshot) == nil {
+			item.MtimeNano = snapshot.Mtime
+		}
+		var tags AudioTags
+		if json.Unmarshal([]byte(tagJSON), &tags) == nil {
+			item.TagVersion = tags.Version
+		}
+		out[path] = item
+	}
+	return out, rows.Err()
+}
+
+func (s *Service) registeredScanPaths(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.store.db.QueryContext(ctx, `SELECT relative_path FROM music_files`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		out[path] = true
+	}
+	return out, rows.Err()
+}
+
+func (s *Service) walkScan(ctx context.Context, id int64, root string, progress *scanProgress, previous map[string]previousScanFile, registered map[string]bool) error {
 	absRoot := filepath.Join(s.mediaDir, filepath.FromSlash(root))
 	info, err := os.Lstat(absRoot)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
@@ -237,8 +440,6 @@ func (s *Service) walkScan(ctx context.Context, id int64, root string) error {
 		return err
 	}
 	defer media.Close()
-	count := 0
-	batch := make([]audioObservation, 0, 128)
 	err = filepath.WalkDir(absRoot, func(name string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return nil
@@ -262,10 +463,10 @@ func (s *Service) walkScan(ctx context.Context, id int64, root string) error {
 		if !audioExtensions[strings.ToLower(filepath.Ext(name))] {
 			return nil
 		}
-		if count >= MaxScanFiles {
+		if progress.done >= MaxScanFiles {
 			return errScanLimit
 		}
-		if count%50 == 0 {
+		if progress.done%50 == 0 {
 			cancelled, e := s.scanCancelled(ctx, id)
 			if e != nil {
 				return e
@@ -283,31 +484,103 @@ func (s *Service) walkScan(ctx context.Context, id int64, root string) error {
 			return nil
 		}
 		relative = filepath.ToSlash(relative)
+		progress.current = relative
+		size, modified, nano := info.Size(), info.ModTime().Unix(), info.ModTime().UnixNano()
+		isRegistered := registered[relative]
+		if prev, ok := previous[relative]; ok {
+			unchanged := prev.SizeBytes == size && (prev.MtimeNano == nano || (prev.MtimeNano == 0 && prev.ModifiedAt == modified))
+			if unchanged {
+				if isRegistered {
+					progress.done++
+					progress.skipped++
+					if progress.done%128 == 0 {
+						if err := s.flushScanBatch(ctx, id, progress); err != nil {
+							return err
+						}
+					}
+					return nil
+				}
+				// A matched-but-unregistered file is carried forward only when
+				// its saved tag document was written by the current parser.
+				if prev.State == "matched" && prev.TagVersion == audioTagVersion && prev.ArtistID.Valid && prev.AlbumID.Valid && prev.TrackID.Valid {
+					progress.done++
+					progress.skipped++
+					progress.carries = append(progress.carries, prev.ID)
+					if progress.done%128 == 0 {
+						if err := s.flushScanBatch(ctx, id, progress); err != nil {
+							return err
+						}
+					}
+					return nil
+				}
+			}
+		}
 		observation, err := s.observeAudio(ctx, media, relative)
 		if err != nil {
 			return err
 		}
 		observation.relative = relative
 		if observation.size == 0 {
-			observation.size, observation.modified = info.Size(), info.ModTime().Unix()
+			observation.size, observation.modified = size, modified
 		}
-		batch = append(batch, observation)
-		count++
-		if len(batch) == cap(batch) {
-			if err := s.saveAudioObservations(ctx, id, batch); err != nil {
+		progress.batch = append(progress.batch, observation)
+		progress.done++
+		if len(progress.batch)+len(progress.carries) >= 128 {
+			if err := s.flushScanBatch(ctx, id, progress); err != nil {
 				return err
 			}
-			batch = batch[:0]
 		}
 		return nil
 	})
 	if err == nil || errors.Is(err, errScanLimit) {
-		err = errors.Join(err, s.saveAudioObservations(ctx, id, batch))
+		err = errors.Join(err, s.flushScanBatch(ctx, id, progress))
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return errors.New("The scan took too long. Narrow the folder and try again.")
 	}
 	return err
+}
+
+func (s *Service) flushScanBatch(ctx context.Context, id int64, progress *scanProgress) error {
+	if len(progress.batch) == 0 && len(progress.carries) == 0 {
+		return nil
+	}
+	if err := s.finishScanCarries(ctx, id, progress.carries); err != nil {
+		return err
+	}
+	progress.files += len(progress.carries)
+	progress.carries = progress.carries[:0]
+	if err := s.saveAudioObservations(ctx, id, progress.batch); err != nil {
+		return err
+	}
+	progress.files += len(progress.batch)
+	progress.batch = progress.batch[:0]
+	_, err := s.store.db.ExecContext(ctx, `UPDATE music_scans SET progress_done=?,file_count=?,skipped_count=?,current_path=?,message=?,updated_at=unixepoch() WHERE id=?`,
+		progress.done, progress.files, progress.skipped, progress.current, "Scanning audio files.", id)
+	return err
+}
+
+// finishScanCarries copies a previously matched observation into the new scan
+// without probing or matching it again. The file stays visible and finalizable.
+func (s *Service) finishScanCarries(ctx context.Context, id int64, previousIDs []int64) error {
+	if len(previousIDs) == 0 {
+		return nil
+	}
+	for _, previousID := range previousIDs {
+		if _, err := s.store.db.ExecContext(ctx, `INSERT INTO music_scan_files(scan_id,relative_path,size_bytes,modified_at,sha256,format,duration_ms,bitrate,sample_rate,channels,
+			tag_artist,tag_album_artist,tag_album,tag_title,tag_track,tag_disc,tag_year,
+			tag_musicbrainz_artist,tag_musicbrainz_album,tag_musicbrainz_release_group,tag_musicbrainz_track,tag_musicbrainz_recording,
+			tag_json,artist_id,album_id,track_id,state,error,verification_json,created_at,updated_at)
+			SELECT ?,relative_path,size_bytes,modified_at,sha256,format,duration_ms,bitrate,sample_rate,channels,
+			tag_artist,tag_album_artist,tag_album,tag_title,tag_track,tag_disc,tag_year,
+			tag_musicbrainz_artist,tag_musicbrainz_album,tag_musicbrainz_release_group,tag_musicbrainz_track,tag_musicbrainz_recording,
+			tag_json,artist_id,album_id,track_id,'matched','',verification_json,unixepoch(),unixepoch()
+			FROM music_scan_files WHERE id=? AND state='matched'
+			ON CONFLICT(scan_id,relative_path) DO NOTHING`, id, previousID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) matchScan(ctx context.Context, id int64) error {
@@ -859,7 +1132,7 @@ func (s *Service) ScanPage(ctx context.Context, id int64, page int) (ScanPage, e
 }
 
 func (s *Service) CancelScan(ctx context.Context, id int64) error {
-	result, err := s.store.db.ExecContext(ctx, `UPDATE music_scans SET state='cancelled', updated_at=unixepoch() WHERE id=? AND state IN ('scanning','review')`, id)
+	result, err := s.store.db.ExecContext(ctx, `UPDATE music_scans SET state='cancelled', phase='cancelled', request='', work_owner='', work_until=0, current_path='', message='', updated_at=unixepoch() WHERE id=? AND state IN ('scanning','review')`, id)
 	if err != nil {
 		return err
 	}

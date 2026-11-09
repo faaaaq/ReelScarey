@@ -256,6 +256,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		}
 	}()
 	defer func() { workerCancel(); <-musicScheduleDone }()
+	musicWorkflowDone := make(chan struct{})
+	go func() {
+		defer close(musicWorkflowDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			musicService.RunWorkflow(workerCtx, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-musicWorkflowDone }()
 	subscriptionsDone := make(chan struct{})
 	go func() {
 		defer close(subscriptionsDone)

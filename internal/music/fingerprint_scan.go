@@ -60,20 +60,56 @@ func (s *Service) FingerprintScan(ctx context.Context, scanID int64, fileIDs []i
 		result.Remaining, err = s.refreshScanCounts(dbCtx, scanID)
 		return result, err
 	}
+	run := fingerprintRun{
+		maxFiles:        MaxFingerprintFiles,
+		maxAlbums:       MaxFingerprintAlbums,
+		workBudget:      fingerprintWorkBudget,
+		providerTimeout: acoustidProviderTimeout,
+	}
+	result, err = s.runFingerprint(ctx, scanID, files, key, run)
+	return result, err
+}
+
+// fingerprintRun bounds one fingerprint pass. A zero maxFiles, maxAlbums or
+// workBudget lifts that bound so the durable worker's own lease and context
+// govern the pass; onFile reports each examined file.
+type fingerprintRun struct {
+	maxFiles        int
+	maxAlbums       int
+	workBudget      time.Duration
+	providerTimeout time.Duration
+	onFile          func(file ScanFile)
+}
+
+func (s *Service) runFingerprint(ctx context.Context, scanID int64, files []ScanFile, key string, run fingerprintRun) (DiscoverResult, error) {
+	result := DiscoverResult{Selected: len(files), Warnings: []string{}}
+	dbCtx := context.WithoutCancel(ctx)
 	cache := &discoveryCache{
 		artists:        map[string]Artist{},
 		pendingArtists: map[string]Artist{},
 		artistMatches:  map[string][]string{},
 		discographies:  map[string][]Album{},
 	}
-	providerCtx, cancel := context.WithTimeout(ctx, acoustidProviderTimeout)
+	providerCtx := ctx
+	cancel := func() {}
+	if run.providerTimeout > 0 {
+		providerCtx, cancel = context.WithTimeout(ctx, run.providerTimeout)
+	}
 	defer cancel()
-	workDeadline := time.Now().Add(fingerprintWorkBudget)
+	var workDeadline time.Time
+	if run.workBudget > 0 {
+		workDeadline = time.Now().Add(run.workBudget)
+	}
 	groups := map[string]fingerprintGroup{}
 	attempted := 0
 	var fatalErr error
 	for index, file := range files {
-		if attempted >= MaxFingerprintFiles || time.Now().After(workDeadline) {
+		if (run.maxFiles > 0 && attempted >= run.maxFiles) ||
+			(!workDeadline.IsZero() && time.Now().After(workDeadline)) {
+			result.Deferred += len(files) - index
+			break
+		}
+		if err := ctx.Err(); err != nil {
 			result.Deferred += len(files) - index
 			break
 		}
@@ -82,6 +118,9 @@ func (s *Service) FingerprintScan(ctx context.Context, scanID int64, fileIDs []i
 		if err != nil {
 			if saveErr := s.updateScanFileState(dbCtx, file.ID, "unresolved", 0, 0, 0, acoustidFileMessage(err)); saveErr != nil {
 				return result, saveErr
+			}
+			if run.onFile != nil {
+				run.onFile(file)
 			}
 			if fingerprintStops(err) {
 				fatalErr = err
@@ -98,6 +137,9 @@ func (s *Service) FingerprintScan(ctx context.Context, scanID int64, fileIDs []i
 			if saveErr := s.updateScanFileState(dbCtx, file.ID, "unresolved", 0, 0, 0, acoustidFileMessage(err)); saveErr != nil {
 				return result, saveErr
 			}
+			if run.onFile != nil {
+				run.onFile(file)
+			}
 			if acoustidStops(err) {
 				fatalErr = err
 				result.Deferred += len(files) - index - 1
@@ -111,11 +153,14 @@ func (s *Service) FingerprintScan(ctx context.Context, scanID int64, fileIDs []i
 			if saveErr := s.updateScanFileState(dbCtx, file.ID, "unresolved", 0, 0, 0, acoustidFileMessage(err)); saveErr != nil {
 				return result, saveErr
 			}
+			if run.onFile != nil {
+				run.onFile(file)
+			}
 			continue
 		}
 		resolved, known := groups[match.ReleaseGroupID]
 		if !known {
-			if len(groups) >= MaxFingerprintAlbums {
+			if run.maxAlbums > 0 && len(groups) >= run.maxAlbums {
 				result.Deferred += len(files) - index
 				break
 			}
@@ -125,6 +170,9 @@ func (s *Service) FingerprintScan(ctx context.Context, scanID int64, fileIDs []i
 				message := acoustidFileMessage(err)
 				if saveErr := s.updateScanFileState(dbCtx, file.ID, "unresolved", artistID, albumID, 0, message); saveErr != nil {
 					return result, saveErr
+				}
+				if run.onFile != nil {
+					run.onFile(file)
 				}
 				if discoveryStops(err) {
 					fatalErr = err
@@ -143,12 +191,18 @@ func (s *Service) FingerprintScan(ctx context.Context, scanID int64, fileIDs []i
 			if saveErr := s.updateScanFileState(dbCtx, file.ID, "unresolved", resolved.artistID, resolved.albumID, 0, message); saveErr != nil {
 				return result, saveErr
 			}
+			if run.onFile != nil {
+				run.onFile(file)
+			}
 			continue
 		}
 		if err := s.updateScanFileState(dbCtx, file.ID, "matched", resolved.artistID, resolved.albumID, trackID, ""); err != nil {
 			return result, err
 		}
 		result.Matched++
+		if run.onFile != nil {
+			run.onFile(file)
+		}
 	}
 	result.ArtistsAdded = cache.addedArtists
 	result.AlbumsAdded = cache.addedAlbums

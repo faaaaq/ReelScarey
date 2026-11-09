@@ -183,6 +183,7 @@ func (s *Server) musicScans(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Root  string   `json:"root"`
 			Roots []string `json:"roots"`
+			Full  bool     `json:"full"`
 		}
 		if !decodeJSON(w, r, &body) {
 			return
@@ -220,7 +221,7 @@ func (s *Server) musicScans(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "invalid_music_scan", "Choose at least one configured music root below the media root.")
 			return
 		}
-		scan, err := s.music.StartScanRoots(r.Context(), selected)
+		scan, err := s.music.StartScanRootsFull(r.Context(), selected, body.Full)
 		if err != nil {
 			s.musicError(w, err)
 			return
@@ -366,6 +367,60 @@ func (s *Server) musicScanFingerprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, result)
+}
+
+func (s *Server) musicScanMatchAll(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Reviewed bool `json:"reviewed"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !body.Reviewed {
+		fail(w, 400, "review_required", "Review the unresolved files before matching them all.")
+		return
+	}
+	scan, err := s.music.RequestMatchAll(r.Context(), id, true)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 202, scan)
+}
+
+func (s *Server) musicScanFinalize(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Reviewed bool `json:"reviewed"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !body.Reviewed {
+		fail(w, 400, "review_required", "Review the matched files before registering and organizing them.")
+		return
+	}
+	scan, err := s.music.RequestFinalize(r.Context(), id, true)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 202, scan)
 }
 
 func (s *Server) musicAcoustID(w http.ResponseWriter, r *http.Request) {

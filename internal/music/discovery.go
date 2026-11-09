@@ -79,11 +79,31 @@ func (s *Service) DiscoverScan(ctx context.Context, scanID int64, fileIDs []int6
 	if err != nil {
 		return DiscoverResult{}, err
 	}
+	result, _, err := s.runDiscovery(ctx, scanID, files, discoveryRun{
+		maxAlbums:       MaxDiscoverAlbums,
+		workBudget:      discoveryWorkBudget,
+		providerTimeout: discoveryProviderTimeout,
+	})
+	return result, err
+}
+
+// discoveryRun bounds one matching pass. A zero maxAlbums, workBudget or
+// providerTimeout means the caller's own context and the durable worker lease
+// govern the pass; onFile receives each file whose state was updated so a
+// background workflow can report live progress.
+type discoveryRun struct {
+	maxAlbums       int
+	workBudget      time.Duration
+	providerTimeout time.Duration
+	onFile          func(file ScanFile)
+}
+
+func (s *Service) runDiscovery(ctx context.Context, scanID int64, files []ScanFile, run discoveryRun) (DiscoverResult, bool, error) {
 	result := DiscoverResult{Selected: len(files), Warnings: []string{}}
 	dbCtx := context.WithoutCancel(ctx)
 	groups, err := s.buildDiscoveryGroups(dbCtx, files)
 	if err != nil {
-		return result, err
+		return result, false, err
 	}
 	cache := &discoveryCache{
 		artists:        map[string]Artist{},
@@ -91,27 +111,49 @@ func (s *Service) DiscoverScan(ctx context.Context, scanID int64, fileIDs []int6
 		artistMatches:  map[string][]string{},
 		discographies:  map[string][]Album{},
 	}
-	providerCtx, cancel := context.WithTimeout(ctx, discoveryProviderTimeout)
+	providerCtx := ctx
+	cancel := func() {}
+	if run.providerTimeout > 0 {
+		providerCtx, cancel = context.WithTimeout(ctx, run.providerTimeout)
+	}
 	defer cancel()
-	workDeadline := time.Now().Add(discoveryWorkBudget)
+	var workDeadline time.Time
+	if run.workBudget > 0 {
+		workDeadline = time.Now().Add(run.workBudget)
+	}
 	stopped := false
 	processed := 0
 	for i, group := range groups {
-		if stopped || processed >= MaxDiscoverAlbums || time.Now().After(workDeadline) {
+		if stopped || (run.maxAlbums > 0 && processed >= run.maxAlbums) ||
+			(!workDeadline.IsZero() && time.Now().After(workDeadline)) {
 			for _, remaining := range groups[i:] {
 				result.Deferred += len(remaining.files)
 			}
+			stopped = true
+			break
+		}
+		if err := ctx.Err(); err != nil {
+			for _, remaining := range groups[i:] {
+				result.Deferred += len(remaining.files)
+			}
+			stopped = true
 			break
 		}
 		processed++
 		artistID, albumID, err := s.discoverGroupAlbum(providerCtx, group, cache)
 		if err != nil {
 			if saveErr := s.markDiscoverGroup(dbCtx, group, artistID, albumID, discoveryErrorMessage(err)); saveErr != nil {
-				return result, saveErr
+				return result, stopped, saveErr
+			}
+			if run.onFile != nil {
+				for _, file := range group.files {
+					run.onFile(file)
+				}
 			}
 			if discoveryStops(err) {
 				cache.addWarning(discoveryWarning(err))
 				stopped = true
+				continue
 			}
 			continue
 		}
@@ -120,14 +162,20 @@ func (s *Service) DiscoverScan(ctx context.Context, scanID int64, fileIDs []int6
 			if err != nil {
 				message := discoveryTrackMessage(err)
 				if saveErr := s.updateScanFileState(dbCtx, file.ID, "unresolved", artistID, albumID, 0, message); saveErr != nil {
-					return result, saveErr
+					return result, stopped, saveErr
+				}
+				if run.onFile != nil {
+					run.onFile(file)
 				}
 				continue
 			}
 			if err := s.updateScanFileState(dbCtx, file.ID, "matched", artistID, albumID, trackID, ""); err != nil {
-				return result, err
+				return result, stopped, err
 			}
 			result.Matched++
+			if run.onFile != nil {
+				run.onFile(file)
+			}
 		}
 	}
 	result.ArtistsAdded = cache.addedArtists
@@ -136,10 +184,10 @@ func (s *Service) DiscoverScan(ctx context.Context, scanID int64, fileIDs []int6
 	result.Warnings = append(result.Warnings, cache.warnings...)
 	remaining, err := s.refreshScanCounts(dbCtx, scanID)
 	if err != nil {
-		return result, err
+		return result, stopped, err
 	}
 	result.Remaining = remaining
-	return result, nil
+	return result, stopped, nil
 }
 
 func (s *Service) unresolvedScanFiles(ctx context.Context, scanID int64, fileIDs []int64, all bool) ([]ScanFile, error) {

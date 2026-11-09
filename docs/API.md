@@ -76,10 +76,25 @@ its albums. GET `/api/v1/library/music/albums/{id}` returns the album and its
 tracks; the first read loads tracks from MusicBrainz.
 
 GET/POST `/api/v1/library/music/scans` lists scans or starts one with
-`{roots:[...]}`. A legacy `{root}` is still accepted for one contained folder,
-but the UI and configured-root path send `roots`. Scans report their root
-snapshot and keep each registered file's own root.
-GET `/scans/{id}?page=` returns its state and files. POST
+`{roots:[...],full?}`. A legacy `{root}` is still accepted for one contained
+folder, but the UI and configured-root path send `roots`. Scans report their root
+snapshot and keep each registered file's own root. `full:true` re-examines every
+eligible file, including registered ones; a normal scan skips unchanged
+registered paths and carries matched-but-unregistered paths forward without
+repeated work. Neither path duplicates `music_files` rows for one relative path.
+GET `/scans/{id}?page=` returns its state and files, plus `full_scan`, `phase`,
+`progress_total`, `progress_done`, `current_path`, `message`, `skipped_count`,
+`request`, `requested_at` and `work_until`. The scan list reports the same
+fields. POST `/scans/{id}/match-all` accepts `{reviewed:true}` and returns `202`
+with the queued scan (`request:"match"`); the durable worker first matches
+catalog tags/MusicBrainz, then fingerprints still-unresolved files through
+AcoustID when configured. It never registers, moves or tags media. POST
+`/scans/{id}/finalize` accepts `{reviewed:true}` and returns `202` with
+`request:"finalize"`; the worker registers the matched files in place and then
+applies each reviewed edit plan sequentially, waiting for every edit job. A
+partial failure leaves the scan in `review` with `phase:"ready"` and an explicit
+count; unmatched files stay for manual review. Both requests are rejected (409)
+while the scan is running or another request already owns it. POST
 `/scans/{id}/register` accepts `{file_ids,reviewed:true}`; POST `/discover`
 accepts `{file_ids,reviewed:true}` or `{all:true,reviewed:true}` and performs a
 bounded, reviewed MusicBrainz catalog discovery for unresolved files. It uses a
@@ -97,7 +112,8 @@ response adds `fingerprinted` and `provider_calls`. GET/PUT/DELETE
 `/api/v1/library/music/acoustid` returns
 `{configured, updated_at, fingerprint_available, message}`, saves `{api_key}`
 after basic format validation or removes the key; the key is never returned.
-POST `/cancel` and `/skip` handle review exceptions.
+POST `/cancel` and `/skip` handle review exceptions. Cancel clears any queued
+workflow request so the worker cannot resume it.
 GET `/api/v1/library/music/files?page=` lists registered files. POST
 `/api/v1/library/music/edits/preview` accepts `{file_ids}` and returns a plan
 with `plan_hash`; POST `/edits/apply` accepts
