@@ -127,6 +127,11 @@ func (s *Service) ListFiles(ctx context.Context, page int) (MusicFilePage, error
 	return s.store.ListFiles(ctx, page)
 }
 
+// ArtistTracks returns tracks with registered files for one artist.
+func (s *Service) ArtistTracks(ctx context.Context, artistID int64, page, limit int) (ArtistTrackPage, error) {
+	return s.store.ArtistTracks(ctx, artistID, page, limit)
+}
+
 func (s *Service) Artist(ctx context.Context, id int64) (ArtistDetails, error) {
 	artist, err := s.store.Artist(ctx, id)
 	if err != nil {

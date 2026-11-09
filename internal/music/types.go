@@ -81,6 +81,23 @@ type Track struct {
 	DurationMS    int    `json:"duration_ms"`
 }
 
+// ArtistTrack is one catalog track that has at least one registered file. The
+// album context lets the artist page rank and label tracks without a second
+// read per album.
+type ArtistTrack struct {
+	Track
+	AlbumTitle string `json:"album_title"`
+	AlbumYear  *int   `json:"album_year"`
+	CoverURL   string `json:"cover_url"`
+}
+
+type ArtistTrackPage struct {
+	Items []ArtistTrack `json:"items"`
+	Page  int           `json:"page"`
+	Total int           `json:"total"`
+	Limit int           `json:"limit"`
+}
+
 type SearchResults struct {
 	Page         int      `json:"page"`
 	TotalPages   int      `json:"total_pages"`

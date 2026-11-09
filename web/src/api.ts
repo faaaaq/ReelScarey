@@ -128,6 +128,19 @@ export type MusicArtistDetails = {
   albums: MusicAlbum[];
 };
 
+export type MusicArtistTrack = MusicTrack & {
+  album_title: string;
+  album_year: number | null;
+  cover_url: string;
+};
+
+export type MusicArtistTrackPage = {
+  items: MusicArtistTrack[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
 export type MusicAlbumDetails = {
   album: MusicAlbum;
   tracks: MusicTrack[];

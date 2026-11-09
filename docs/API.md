@@ -72,8 +72,10 @@ Administrator GET `/api/v1/metadata/music/artists?query=&page=` searches
 MusicBrainz. GET/POST `/api/v1/library/music/artists` lists saved artists or
 adds one with `{musicbrainz_id, monitored?}`; a repeated add returns 200 with
 `created:false`. GET `/api/v1/library/music/artists/{id}` returns the artist and
-its albums. GET `/api/v1/library/music/albums/{id}` returns the album and its
-tracks; the first read loads tracks from MusicBrainz.
+its albums. GET `/api/v1/library/music/artists/{id}/tracks?page=&limit=`
+returns only tracks with registered files, in newest-album order; `limit`
+defaults to 15 and is capped at 100. GET `/api/v1/library/music/albums/{id}`
+returns the album and its tracks; the first read loads tracks from MusicBrainz.
 
 GET/POST `/api/v1/library/music/scans` lists scans or starts one with
 `{roots:[...],full?}`. A legacy `{root}` is still accepted for one contained

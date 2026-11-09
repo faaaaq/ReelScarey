@@ -40,6 +40,7 @@ import {
   type Kind,
 } from "../ui";
 import { useResource } from "../useResource";
+import { groupID, groupedTitles, sortLetters } from "../libraryGroups";
 import { BulkMonitoring } from "./BulkMonitoring";
 import { BulkProfiles } from "./BulkProfiles";
 import "./Library.css";
@@ -51,34 +52,6 @@ const sorts = [
   { value: "year", label: "Year, oldest first" },
   { value: "added", label: "Recently added" },
 ];
-
-/** Matches the server's title sort: ignore one leading "The ". */
-export function firstLetter(title: string) {
-  const trimmed = title
-    .trim()
-    .replace(/^the\s+/i, "")
-    .trimStart();
-  const letter = trimmed.charAt(0).toUpperCase();
-  return /^[A-Z]$/.test(letter) ? letter : "#";
-}
-export function groupedTitles(items: MediaItem[]) {
-  const groups = new Map<string, MediaItem[]>();
-  for (const item of items) {
-    const letter = firstLetter(item.title);
-    const rows = groups.get(letter);
-    if (rows) rows.push(item);
-    else groups.set(letter, [item]);
-  }
-  return [...groups.entries()];
-}
-function groupID(letter: string) {
-  return `lib-letter-${letter === "#" ? "other" : letter.toLowerCase()}`;
-}
-function sortLetters(letters: string[]) {
-  return [...letters].sort((a, b) =>
-    a === "#" ? 1 : b === "#" ? -1 : a.localeCompare(b),
-  );
-}
 
 function ProfileLabel({ item }: { item: MediaItem }) {
   const profile = item.quality_profile;

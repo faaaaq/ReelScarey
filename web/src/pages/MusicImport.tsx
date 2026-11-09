@@ -745,6 +745,7 @@ export function MusicImport() {
                 : "warning"
             }
             title="AcoustID fingerprint matching"
+            dismissKey="music-import-acoustid"
           >
             <div className="mus-acoustid">
               <Label kind={acoustid.data.configured ? "success" : "disabled"}>
@@ -786,6 +787,7 @@ export function MusicImport() {
           <Alert
             kind={musicbrainzCooldown ? "warning" : "info"}
             title="MusicBrainz provider and cache"
+            dismissKey="music-import-musicbrainz"
           >
             <div className="mus-acoustid">
               <Label kind={musicbrainz.data.using_default ? "info" : "success"}>
@@ -821,7 +823,11 @@ export function MusicImport() {
             </div>
           </Alert>
         )}
-        <Alert kind="info" title="Scan, match, then finalize">
+        <Alert
+          kind="info"
+          title="Scan, match, then finalize"
+          dismissKey="music-import-guide"
+        >
           Start a scan of the configured roots. When it is ready, use{" "}
           <strong>Match all unmatched</strong> to match every remaining file
           with MusicBrainz tags and, when needed, AcoustID fingerprinting. Then
@@ -833,7 +839,11 @@ export function MusicImport() {
           and names are case-sensitive.
         </Alert>
         {musicRoots.length > 0 && (
-          <Alert kind="info" title="Configured music roots">
+          <Alert
+            kind="info"
+            title="Configured music roots"
+            dismissKey="music-import-roots"
+          >
             {musicRoots
               .map(
                 (root) =>
@@ -875,64 +885,6 @@ export function MusicImport() {
               ? "Choose a music folder below the media root."
               : "Add a music folder in Settings → Media Management → Library roots first."}
           </EmptyState>
-        )}
-        {scans.data && scans.data.items.length > 0 && (
-          <FieldSet legend="Scans">
-            <Table label="Music scans">
-              <thead>
-                <tr>
-                  <th scope="col">Folder</th>
-                  <th scope="col">State</th>
-                  <th scope="col">Files</th>
-                  <th scope="col">Matched</th>
-                  <th scope="col">Registered</th>
-                  <th scope="col" className="is-actions">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {scans.data.items.map((scan) => (
-                  <tr key={scan.id}>
-                    <td>
-                      {scan.root}
-                      {scan.full_scan && (
-                        <span className="rs-muted"> · full rescan</span>
-                      )}
-                    </td>
-                    <td>
-                      <Label
-                        kind={
-                          scan.state === "review" || scan.state === "completed"
-                            ? "success"
-                            : scan.state === "failed"
-                              ? "danger"
-                              : "info"
-                        }
-                      >
-                        {phaseLabels[scanPhase(scan)]}
-                      </Label>
-                    </td>
-                    <td>{scan.file_count}</td>
-                    <td>{scan.matched_count}</td>
-                    <td>{scan.registered_count}</td>
-                    <td className="is-actions">
-                      <Button
-                        size="1"
-                        variant="soft"
-                        onClick={() => {
-                          setScanID(scan.id);
-                          setPage(1);
-                        }}
-                      >
-                        View
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </FieldSet>
         )}
         {error && <Alert kind="danger">{error}</Alert>}
         {active.data?.scan && scan && (

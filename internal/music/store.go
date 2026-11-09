@@ -159,6 +159,39 @@ func (s *Store) Tracks(ctx context.Context, albumID int64) ([]Track, error) {
 	return out, rows.Err()
 }
 
+// ArtistTracks lists tracks that have at least one registered file. Catalog
+// tracks that were loaded from MusicBrainz but never matched to a file are
+// deliberately excluded: "top tracks" is a library view, not a provider view.
+// Newest albums come first, then catalog disc/track order; the catalog has no
+// play-count or popularity evidence, so no stronger claim is made.
+func (s *Store) ArtistTracks(ctx context.Context, artistID int64, page, limit int) (ArtistTrackPage, error) {
+	if artistID < 1 || page < 1 || page > 100000 || limit < 1 || limit > 100 {
+		return ArtistTrackPage{}, ErrInvalidInput
+	}
+	out := ArtistTrackPage{Items: []ArtistTrack{}, Page: page, Limit: limit}
+	const registered = ` FROM music_tracks t JOIN music_albums a ON a.id=t.album_id
+		WHERE a.artist_id=? AND EXISTS(SELECT 1 FROM music_files f WHERE f.track_id=t.id)`
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*)`+registered, artistID).Scan(&out.Total); err != nil {
+		return ArtistTrackPage{}, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT t.id,t.album_id,t.musicbrainz_id,t.recording_id,t.disc,t.number,t.title,t.duration_ms,a.title,a.year,a.cover_url`+
+		registered+` ORDER BY a.year IS NULL, a.year DESC, a.title COLLATE NOCASE, t.disc, t.number, t.id LIMIT ? OFFSET ?`,
+		artistID, limit, (page-1)*limit)
+	if err != nil {
+		return ArtistTrackPage{}, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var track ArtistTrack
+		if err := rows.Scan(&track.ID, &track.AlbumID, &track.MusicBrainzID, &track.RecordingID, &track.Disc, &track.Number, &track.Title, &track.DurationMS,
+			&track.AlbumTitle, &track.AlbumYear, &track.CoverURL); err != nil {
+			return ArtistTrackPage{}, err
+		}
+		out.Items = append(out.Items, track)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) ListFiles(ctx context.Context, page int) (MusicFilePage, error) {
 	if page < 1 || page > 100000 {
 		return MusicFilePage{}, ErrInvalidInput

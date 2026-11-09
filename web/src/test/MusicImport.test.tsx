@@ -1119,6 +1119,54 @@ describe("music import", () => {
     expect(screen.getByText(/MusicBrainz is limiting requests/)).toBeVisible();
   });
 
+  it("dismisses the import notices and does not list earlier scans", async () => {
+    mockFetch((path, options) => {
+      if (path === "/api/v1/library/roots" && !options?.method) {
+        return Response.json(rootsConfig);
+      }
+      if (path === "/api/v1/library/music/acoustid" && !options?.method) {
+        return Response.json(acoustidReady);
+      }
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return scanList([scan]);
+      }
+      if (path === "/api/v1/library/music/scans/1" && !options?.method) {
+        return scanPage(scan, []);
+      }
+      return undefined;
+    });
+
+    mount();
+
+    await screen.findByText("AcoustID is ready and fpcalc is available.");
+    const titles = [
+      "AcoustID fingerprint matching",
+      "MusicBrainz provider and cache",
+      "Scan, match, then finalize",
+      "Configured music roots",
+    ];
+    for (const title of titles) {
+      const alert = (await screen.findByText(title)).closest(".rs-alert");
+      expect(alert).not.toBeNull();
+      expect(
+        within(alert as HTMLElement).getByRole("button", { name: "Dismiss" }),
+      ).toBeVisible();
+    }
+    expect(
+      screen.queryByRole("table", { name: "Music scans" }),
+    ).not.toBeInTheDocument();
+
+    const guide = (
+      await screen.findByText("Scan, match, then finalize")
+    ).closest(".rs-alert");
+    await userEvent.click(
+      within(guide as HTMLElement).getByRole("button", { name: "Dismiss" }),
+    );
+    expect(
+      screen.queryByText("Scan, match, then finalize"),
+    ).not.toBeInTheDocument();
+  });
+
   it("saves and resets the MusicBrainz base URL without leaking secrets", async () => {
     let status = musicbrainzDefault;
     const fetch = mockFetch((path, options) => {

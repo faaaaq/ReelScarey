@@ -48,6 +48,9 @@ func (f *fakeMusic) ListArtists(context.Context, string, int) (music.ArtistPage,
 func (f *fakeMusic) Artist(context.Context, int64) (music.ArtistDetails, error) {
 	return music.ArtistDetails{Artist: music.Artist{ID: 1, Name: "Artist"}, Albums: []music.Album{}}, f.err
 }
+func (f *fakeMusic) ArtistTracks(context.Context, int64, int, int) (music.ArtistTrackPage, error) {
+	return music.ArtistTrackPage{Items: []music.ArtistTrack{}, Page: 1, Total: 0, Limit: 15}, f.err
+}
 func (f *fakeMusic) Album(context.Context, int64) (music.AlbumDetails, error) {
 	return music.AlbumDetails{Album: music.Album{ID: 1, Title: "Album"}, Tracks: []music.Track{}}, f.err
 }
@@ -303,7 +306,7 @@ func TestMusicSearchAndAdd(t *testing.T) {
 
 func TestMusicArtistAndAlbumRoutes(t *testing.T) {
 	handler, session := musicFixture(t, &fakeMusic{})
-	for _, path := range []string{"/api/v1/library/music/artists/1", "/api/v1/library/music/albums/1"} {
+	for _, path := range []string{"/api/v1/library/music/artists/1", "/api/v1/library/music/artists/1/tracks?limit=15", "/api/v1/library/music/albums/1"} {
 		out := request(handler, "GET", path, "", session, false)
 		if out.Code != 200 {
 			t.Fatal(path, out.Code, out.Body.String())
@@ -311,6 +314,9 @@ func TestMusicArtistAndAlbumRoutes(t *testing.T) {
 	}
 	if out := request(handler, "GET", "/api/v1/library/music/albums/nope", "", session, false); out.Code != 400 {
 		t.Fatal("invalid album id", out.Code)
+	}
+	if out := request(handler, "GET", "/api/v1/library/music/artists/1/tracks?limit=101", "", session, false); out.Code != 400 {
+		t.Fatal("invalid track limit", out.Code)
 	}
 }
 

@@ -1,15 +1,16 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import {
   ArrowLeft,
   Disc3,
   ExternalLink,
   FolderInput,
+  ListMusic,
   Plus,
   RefreshCw,
   Search,
 } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   Alert,
   EmptyState,
@@ -23,14 +24,19 @@ import {
   ToolbarSection,
 } from "../ui";
 import { PageHeading, RequestState } from "../components";
+import { Pagination } from "../movieComponents";
+import { groupID, groupedByLetter, sortLetters } from "../libraryGroups";
 import {
   api,
   messageFor,
+  type MusicAlbum,
   type MusicAlbumDetails,
   type MusicAlbumPreferences,
   type MusicArtist,
   type MusicArtistDetails,
   type MusicArtistPage,
+  type MusicArtistTrack,
+  type MusicArtistTrackPage,
   type MusicImportJob,
   type MusicJob,
   type MusicRelease,
@@ -39,6 +45,7 @@ import {
 } from "../api";
 import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
+import "./Library.css";
 import "./Music.css";
 
 function formatDuration(ms: number) {
@@ -53,23 +60,110 @@ function ArtistType({ artist }: { artist: MusicArtist }) {
   );
 }
 
+function statusKind(status: string, monitored: boolean) {
+  if (status === "available") return "success";
+  return monitored ? "danger" : "disabled";
+}
+
+function ArtistTile({ artist }: { artist: MusicArtist }) {
+  const [failed, setFailed] = useState(false);
+  const initial = artist.name.trim().charAt(0).toUpperCase() || "?";
+  const label =
+    artist.status === "available" ? "In library" : "No registered files";
+  return (
+    <li className="lib-card">
+      <Link
+        className="lib-card-art mus-card-art"
+        to={`/music/artists/${artist.id}`}
+        aria-label={`Open ${artist.name}`}
+      >
+        {artist.image_url && !failed ? (
+          <img
+            className="mus-tile-img"
+            src={artist.image_url}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={() => setFailed(true)}
+          />
+        ) : (
+          <span
+            className="mus-tile-fallback mus-tile-initial"
+            aria-hidden="true"
+          >
+            {initial}
+          </span>
+        )}
+      </Link>
+      <span
+        className={`lib-status-bar is-${statusKind(artist.status, artist.monitored)}`}
+        title={label}
+      />
+      <div className="lib-card-info">
+        <div className="lib-card-line">
+          <h2 className="lib-card-title">
+            <Link to={`/music/artists/${artist.id}`}>{artist.name}</Link>
+          </h2>
+        </div>
+        <div className="lib-card-meta">
+          <span>
+            {artist.album_count} {artist.album_count === 1 ? "album" : "albums"}
+          </span>
+          <span>
+            {[artist.type, artist.country].filter(Boolean).join(" · ") ||
+              "Artist"}
+          </span>
+        </div>
+        {artist.disambiguation && (
+          <span className="lib-profile">{artist.disambiguation}</span>
+        )}
+        <span className="sr-only">{label}</span>
+      </div>
+    </li>
+  );
+}
+
 export function Music() {
-  const artists = useResource<MusicArtistPage>("/library/music/artists");
+  const [params, setParams] = useSearchParams();
+  const pageValue = params.get("page") ?? "";
+  const page = /^[1-9][0-9]*$/.test(pageValue) ? Number(pageValue) : 1;
+  const query = params.get("query") ?? "";
+  const [input, setInput] = useState(query);
+  const artistsParams = new URLSearchParams({ page: String(page) });
+  if (query) artistsParams.set("query", query);
+  const artists = useResource<MusicArtistPage>(
+    `/library/music/artists?${artistsParams.toString()}`,
+  );
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [results, setResults] = useState<MusicArtist[]>([]);
   const [searching, setSearching] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => setInput(query), [query]);
+
+  function change(key: string, value: string) {
+    const next = new URLSearchParams(params);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    if (key !== "page") next.delete("page");
+    setParams(next);
+  }
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    change("query", input.trim());
+  }
+
   async function search(e: FormEvent) {
     e.preventDefault();
-    if (searching || !query.trim()) return;
+    if (searching || !searchQuery.trim()) return;
     setSearching(true);
     setError("");
     try {
       const data = await api<MusicSearchResults>(
-        `/metadata/music/artists?query=${encodeURIComponent(query.trim())}&page=1`,
+        `/metadata/music/artists?query=${encodeURIComponent(searchQuery.trim())}&page=1`,
       );
       setResults(data.items);
     } catch (e) {
@@ -89,7 +183,7 @@ export function Music() {
         body: JSON.stringify({ musicbrainz_id: musicbrainzID }),
       });
       setOpen(false);
-      setQuery("");
+      setSearchQuery("");
       setResults([]);
       artists.reload();
     } catch (e) {
@@ -99,20 +193,27 @@ export function Music() {
     }
   }
 
+  const data = artists.data;
+  const items = data?.items ?? [];
+  const groups = groupedByLetter(items, (artist) => artist.name);
+  const letters = sortLetters(groups.map(([letter]) => letter));
+  const ready = !artists.loading && !artists.error && !!data;
+  const pages = data ? Math.ceil(data.total / data.limit) : 1;
+
   return (
     <>
       <PageToolbar label="Music actions">
         <ToolbarSection>
           <ToolbarButton
+            icon={Plus}
+            label="Add artist"
+            onClick={() => setOpen(true)}
+          />
+          <ToolbarButton
             icon={FolderInput}
             label="Library Import"
             title="Scan an existing music folder and register files"
             to="/music/import"
-          />
-          <ToolbarButton
-            icon={Plus}
-            label="Add artist"
-            onClick={() => setOpen(true)}
           />
           <ToolbarButton
             icon={RefreshCw}
@@ -122,25 +223,84 @@ export function Music() {
           />
         </ToolbarSection>
       </PageToolbar>
-      <PageBody className="mus-body">
-        <PageHeading
-          title="Music"
-          description="MusicBrainz artist and album catalog."
-        />
-        <Alert kind="info" title="Add existing music">
-          Use <Link to="/music/import">Music Library Import</Link> to scan a
-          folder below the media root. Add the artist and open each album once
-          so its tracks are loaded before registering files. Then use{" "}
-          <Link to="/music/organize">Organize</Link> to rename and tag
-          registered files.
-        </Alert>
+      <PageBody className="lib-body">
+        <div className="lib-head">
+          <h1 className="lib-title">Music</h1>
+          <form onSubmit={submit} className="lib-search" role="search">
+            <TextField.Root
+              aria-label="Filter saved artists"
+              placeholder="Filter by artist"
+              maxLength={200}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+            >
+              <TextField.Slot>
+                <Search size={15} aria-hidden="true" />
+              </TextField.Slot>
+            </TextField.Root>
+            <Button
+              type="submit"
+              variant="soft"
+              aria-label="Apply artist filter"
+            >
+              Apply
+            </Button>
+          </form>
+        </div>
+
+        {ready && letters.length > 1 && (
+          <nav className="lib-az" aria-label="Jump to artist letter">
+            {letters.map((letter) => (
+              <button
+                key={letter}
+                type="button"
+                aria-label={`Jump to ${letter === "#" ? "other artists" : letter}`}
+                onClick={() =>
+                  document
+                    .getElementById(groupID(letter))
+                    ?.scrollIntoView({ block: "start" })
+                }
+              >
+                {letter}
+              </button>
+            ))}
+          </nav>
+        )}
+
         <RequestState
           loading={artists.loading}
           error={artists.error}
           retry={artists.reload}
         />
-        {artists.data &&
-          (artists.data.items.length === 0 ? (
+        {ready &&
+          (items.length ? (
+            <ul className="lib-grid" aria-label="Music artists">
+              {groups.map(([letter, rows]) => (
+                <Fragment key={letter}>
+                  <li className="lib-group-row">
+                    <h2 className="lib-group-heading" id={groupID(letter)}>
+                      {letter}
+                    </h2>
+                  </li>
+                  {rows.map((artist) => (
+                    <ArtistTile key={artist.id} artist={artist} />
+                  ))}
+                </Fragment>
+              ))}
+            </ul>
+          ) : query ? (
+            <EmptyState
+              icon={Search}
+              title="No matching artists"
+              actions={
+                <Button onClick={() => setParams({})}>
+                  Clear artist filter
+                </Button>
+              }
+            >
+              Try a different artist name or clear the filter.
+            </EmptyState>
+          ) : (
             <EmptyState
               icon={Disc3}
               title="No artists yet"
@@ -158,54 +318,32 @@ export function Music() {
               Scan an existing music folder, or search MusicBrainz and add an
               artist to the catalog.
             </EmptyState>
-          ) : (
-            <Table label="Music artists">
-              <thead>
-                <tr>
-                  <th scope="col">Artist</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Albums</th>
-                  <th scope="col">Status</th>
-                  <th scope="col" className="is-actions">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {artists.data.items.map((artist) => (
-                  <tr key={artist.id}>
-                    <td>
-                      <Link to={`/music/artists/${artist.id}`}>
-                        {artist.name}
-                      </Link>
-                      {artist.disambiguation && (
-                        <span className="rs-muted">
-                          {" "}
-                          · {artist.disambiguation}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <ArtistType artist={artist} />
-                    </td>
-                    <td>{artist.album_count}</td>
-                    <td>
-                      <Label
-                        kind={
-                          artist.status === "available" ? "success" : "info"
-                        }
-                      >
-                        {artist.status}
-                      </Label>
-                    </td>
-                    <td className="is-actions">
-                      <Link to={`/music/artists/${artist.id}`}>Details</Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
           ))}
+
+        {!artists.error && (
+          <footer className="lib-footer">
+            <p role="status" className="lib-totals">
+              {ready && data
+                ? `${data.total} matching ${
+                    data.total === 1 ? "artist" : "artists"
+                  }${
+                    items.length
+                      ? ` · showing ${(page - 1) * data.limit + 1}–${
+                          (page - 1) * data.limit + items.length
+                        }`
+                      : ""
+                  }`
+                : ""}
+            </p>
+            {ready && data && (
+              <Pagination
+                page={data.page}
+                pages={pages}
+                onPage={(p) => change("page", String(p))}
+              />
+            )}
+          </footer>
+        )}
       </PageBody>
       <Modal
         open={open}
@@ -223,11 +361,11 @@ export function Music() {
           <TextField.Root
             aria-label="Artist name"
             placeholder="Search MusicBrainz"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             maxLength={200}
           />
-          <Button type="submit" disabled={searching || !query.trim()}>
+          <Button type="submit" disabled={searching || !searchQuery.trim()}>
             <Search size={15} aria-hidden="true" /> Search
           </Button>
         </form>
@@ -283,12 +421,124 @@ export function Music() {
   );
 }
 
+function AlbumTile({ album }: { album: MusicAlbum }) {
+  const [failed, setFailed] = useState(false);
+  const label =
+    album.status === "available" ? "In library" : "No registered files";
+  const type =
+    [album.primary_type, ...(album.secondary_types ?? [])]
+      .filter(Boolean)
+      .join(" · ") || "Release";
+  return (
+    <li className="lib-card">
+      <Link
+        className="lib-card-art mus-card-art"
+        to={`/music/albums/${album.id}`}
+        aria-label={`Open ${album.title}`}
+      >
+        {album.cover_url && !failed ? (
+          <img
+            className="mus-tile-img"
+            src={album.cover_url}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={() => setFailed(true)}
+          />
+        ) : (
+          <span className="mus-tile-fallback" aria-hidden="true">
+            <Disc3 size={34} strokeWidth={1} />
+          </span>
+        )}
+      </Link>
+      <span
+        className={`lib-status-bar is-${statusKind(album.status, album.monitored)}`}
+        title={label}
+      />
+      <div className="lib-card-info">
+        <div className="lib-card-line">
+          <h2 className="lib-card-title">
+            <Link to={`/music/albums/${album.id}`}>{album.title}</Link>
+          </h2>
+        </div>
+        <div className="lib-card-meta">
+          <span>{album.year ?? "Year unknown"}</span>
+          <span>
+            {album.track_count
+              ? `${album.track_count} ${album.track_count === 1 ? "track" : "tracks"}`
+              : "Tracks not loaded"}
+          </span>
+        </div>
+        <span className="lib-profile">{type}</span>
+        <span className="sr-only">{label}</span>
+      </div>
+    </li>
+  );
+}
+
+function ArtistTrackTable({
+  tracks,
+  label,
+}: {
+  tracks: MusicArtistTrack[];
+  label: string;
+}) {
+  return (
+    <Table label={label}>
+      <thead>
+        <tr>
+          <th scope="col" className="is-shrink">
+            #
+          </th>
+          <th scope="col">Title</th>
+          <th scope="col">Album</th>
+          <th scope="col">Duration</th>
+        </tr>
+      </thead>
+      <tbody>
+        {tracks.map((track) => (
+          <tr
+            key={
+              track.id ??
+              `${track.album_id}-${track.disc}-${track.number}-${track.title}`
+            }
+          >
+            <td>
+              {track.disc > 1 ? `${track.disc}.${track.number}` : track.number}
+            </td>
+            <td>{track.title}</td>
+            <td>
+              <Link to={`/music/albums/${track.album_id}`}>
+                {track.album_title}
+              </Link>
+            </td>
+            <td>{formatDuration(track.duration_ms)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </Table>
+  );
+}
+
 export function MusicArtistPage() {
   const { id } = useParams();
   const details = useResource<MusicArtistDetails>(
     id ? `/library/music/artists/${id}` : null,
   );
+  const topTracks = useResource<MusicArtistTrackPage>(
+    id ? `/library/music/artists/${id}/tracks?limit=15` : null,
+  );
+  const [allOpen, setAllOpen] = useState(false);
+  const [allPage, setAllPage] = useState(1);
+  const allTracks = useResource<MusicArtistTrackPage>(
+    allOpen && id
+      ? `/library/music/artists/${id}/tracks?page=${allPage}&limit=50`
+      : null,
+  );
   const artist = details.data?.artist;
+  const allPages = allTracks.data
+    ? Math.ceil(allTracks.data.total / allTracks.data.limit)
+    : 1;
   return (
     <>
       <PageToolbar label="Music artist actions">
@@ -296,7 +546,7 @@ export function MusicArtistPage() {
           <ToolbarButton icon={ArrowLeft} label="Artists" to="/music" />
         </ToolbarSection>
       </PageToolbar>
-      <PageBody className="mus-body">
+      <PageBody className="lib-body">
         <PageHeading
           title={artist?.name ?? "Music artist"}
           description={
@@ -318,67 +568,98 @@ export function MusicArtistPage() {
               MusicBrainz has no release groups for this artist.
             </EmptyState>
           ) : (
-            <Table label="Music albums">
-              <thead>
-                <tr>
-                  <th scope="col">Album</th>
-                  <th scope="col">Year</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Tracks</th>
-                  <th scope="col">Status</th>
-                  <th scope="col" className="is-actions">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {details.data.albums.map((album) => (
-                  <tr key={album.id}>
-                    <td>
-                      <div className="mus-album-cell">
-                        {album.cover_url ? (
-                          <img
-                            className="mus-cover"
-                            src={album.cover_url}
-                            alt=""
-                            loading="lazy"
-                            onError={(e) => {
-                              e.currentTarget.style.display = "none";
-                            }}
-                          />
-                        ) : (
-                          <span className="mus-cover mus-cover-empty">
-                            <Disc3 size={18} aria-hidden="true" />
-                          </span>
-                        )}
-                        <Link to={`/music/albums/${album.id}`}>
-                          {album.title}
-                        </Link>
-                      </div>
-                    </td>
-                    <td>{album.year ?? "—"}</td>
-                    <td>
-                      {[album.primary_type, ...album.secondary_types]
-                        .filter(Boolean)
-                        .join(" · ") || "—"}
-                    </td>
-                    <td>{album.track_count || "—"}</td>
-                    <td>
-                      <Label
-                        kind={album.status === "available" ? "success" : "info"}
-                      >
-                        {album.status}
-                      </Label>
-                    </td>
-                    <td className="is-actions">
-                      <Link to={`/music/albums/${album.id}`}>Tracks</Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
+            <ul className="lib-grid" aria-label="Music albums">
+              {details.data.albums.map((album) => (
+                <AlbumTile key={album.id} album={album} />
+              ))}
+            </ul>
           ))}
+
+        {details.data && (
+          <section className="mus-section" aria-labelledby="artist-top-tracks">
+            <div className="mus-section-head">
+              <div>
+                <h2 id="artist-top-tracks">Top tracks</h2>
+                <p className="rs-muted rs-small">
+                  Tracks with registered files, newest albums first.
+                </p>
+              </div>
+              {topTracks.data &&
+                topTracks.data.total > topTracks.data.items.length && (
+                  <Button
+                    variant="soft"
+                    onClick={() => {
+                      setAllPage(1);
+                      setAllOpen(true);
+                    }}
+                  >
+                    <ListMusic size={15} aria-hidden="true" />
+                    See every track ({topTracks.data.total})
+                  </Button>
+                )}
+            </div>
+            {topTracks.loading && <p className="rs-muted">Loading tracks…</p>}
+            {topTracks.error && <Alert kind="danger">{topTracks.error}</Alert>}
+            {topTracks.data &&
+              (topTracks.data.items.length ? (
+                <ArtistTrackTable
+                  tracks={topTracks.data.items}
+                  label="Top tracks"
+                />
+              ) : (
+                <p className="rs-muted">
+                  No tracks with registered files yet. Import or register this
+                  artist's files to see them here.
+                </p>
+              ))}
+          </section>
+        )}
       </PageBody>
+      <Modal
+        open={allOpen}
+        onOpenChange={(open) => {
+          setAllOpen(open);
+          if (!open) setAllPage(1);
+        }}
+        title="All tracks"
+        description={
+          artist
+            ? `${artist.name} · tracks with registered files`
+            : "Tracks with registered files"
+        }
+        size="xlarge"
+        footer={
+          <Button variant="soft" color="gray" onClick={() => setAllOpen(false)}>
+            Close
+          </Button>
+        }
+      >
+        {allTracks.loading && <p className="rs-muted">Loading tracks…</p>}
+        {allTracks.error && <Alert kind="danger">{allTracks.error}</Alert>}
+        {allTracks.data &&
+          (allTracks.data.items.length ? (
+            <ArtistTrackTable
+              tracks={allTracks.data.items}
+              label="All tracks"
+            />
+          ) : (
+            <p className="rs-muted">No tracks with registered files.</p>
+          ))}
+        {allTracks.data && allTracks.data.total > 0 && (
+          <div className="mus-modal-footer">
+            <span className="rs-muted">
+              {allTracks.data.total}{" "}
+              {allTracks.data.total === 1 ? "track" : "tracks"} with registered
+              files.
+            </span>
+            <Pagination
+              page={allTracks.data.page}
+              pages={allPages}
+              onPage={setAllPage}
+            />
+          </div>
+        )}
+      </Modal>
     </>
   );
 }
@@ -583,7 +864,37 @@ export function MusicAlbumPage() {
                   .join(" · ")
               : undefined
           }
-        />
+        >
+          {album && (
+            <>
+              <Label
+                kind={
+                  album.status === "available"
+                    ? "success"
+                    : album.monitored
+                      ? "danger"
+                      : "disabled"
+                }
+              >
+                {album.status === "available"
+                  ? "In library"
+                  : "No registered files"}
+              </Label>
+              {album.cover_url && (
+                <img
+                  className="mus-heading-cover"
+                  src={album.cover_url}
+                  alt=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              )}
+            </>
+          )}
+        </PageHeading>
         <RequestState
           loading={details.loading}
           error={details.error}

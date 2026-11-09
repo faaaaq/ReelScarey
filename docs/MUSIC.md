@@ -32,7 +32,11 @@ completed folder, and runs wanted-album searches on a schedule.
 ## What works
 
 - Search MusicBrainz artists and add one idempotently.
-- Browse saved artists, release groups (albums) and on-demand album tracks.
+- Browse saved artists as a tile grid grouped A–Z, then open an artist for
+  album tiles. An artist page also lists up to 15 tracks that have registered
+  files, newest albums first, with an explicit all-tracks view. This is a
+  library selection, not a play-count or provider popularity ranking.
+- Browse albums and on-demand album tracks.
 - Scan a folder below the media root:
   - bounded walk (20,000 audio files, 24 folder levels, no symlinks);
   - a name-only pre-count before the walk feeds a live progress bar;

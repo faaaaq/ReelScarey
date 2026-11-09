@@ -146,6 +146,40 @@ func (s *Server) musicArtist(w http.ResponseWriter, r *http.Request) {
 	send(w, 200, details)
 }
 
+// musicArtistTracks lists tracks that have registered files. The artist page
+// asks for a small limit, then reuses the same route to page through all of
+// them.
+func (s *Server) musicArtistTracks(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	page, valid := pageNumber(r, 100000)
+	if !valid {
+		fail(w, 400, "invalid_music", "Choose a valid track page.")
+		return
+	}
+	limit := 15
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 100 {
+			fail(w, 400, "invalid_music", "Choose a track limit between 1 and 100.")
+			return
+		}
+		limit = value
+	}
+	tracks, err := s.music.ArtistTracks(r.Context(), id, page, limit)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, tracks)
+}
+
 func (s *Server) musicAlbum(w http.ResponseWriter, r *http.Request) {
 	if s.music == nil {
 		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")

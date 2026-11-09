@@ -89,7 +89,45 @@ describe("music", () => {
     );
   });
 
-  it("renders an artist's albums", async () => {
+  it("renders saved artists as tiles", async () => {
+    mockFetch((path) => {
+      if (path === "/api/v1/library/music/artists") {
+        return Response.json({
+          items: [
+            {
+              id: 1,
+              name: "Radiohead",
+              type: "Group",
+              country: "GB",
+              status: "available",
+              monitored: true,
+              album_count: 3,
+            },
+          ],
+          page: 1,
+          total: 1,
+          limit: 48,
+        });
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MemoryRouter initialEntries={["/music"]}>
+          <Music />
+        </MemoryRouter>
+      </Theme>,
+    );
+
+    expect(
+      await screen.findByRole("link", { name: "Open Radiohead" }),
+    ).toHaveAttribute("href", "/music/artists/1");
+    expect(screen.getByRole("list", { name: "Music artists" })).toBeVisible();
+    expect(screen.getByText("3 albums")).toBeVisible();
+  });
+
+  it("renders an artist's albums and top tracks", async () => {
     mockFetch((path) => {
       if (path === "/api/v1/library/music/artists/1") {
         return Response.json({
@@ -115,6 +153,26 @@ describe("music", () => {
           ],
         });
       }
+      if (path === "/api/v1/library/music/artists/1/tracks") {
+        return Response.json({
+          items: [
+            {
+              id: 3,
+              album_id: 2,
+              disc: 1,
+              number: 1,
+              title: "Airbag",
+              duration_ms: 284000,
+              album_title: "OK Computer",
+              album_year: 1997,
+              cover_url: "",
+            },
+          ],
+          page: 1,
+          total: 20,
+          limit: 15,
+        });
+      }
       return undefined;
     });
 
@@ -128,11 +186,21 @@ describe("music", () => {
       </Theme>,
     );
 
-    expect(
-      await screen.findByRole("table", { name: "Music albums" }),
-    ).toBeVisible();
-    expect(screen.getByText("OK Computer")).toBeVisible();
+    const albumLinks = await screen.findAllByRole("link", {
+      name: "OK Computer",
+    });
+    expect(albumLinks[0]).toHaveAttribute("href", "/music/albums/2");
     expect(screen.getByRole("heading", { name: "Radiohead" })).toBeVisible();
+    expect(
+      await screen.findByRole("table", { name: "Top tracks" }),
+    ).toBeVisible();
+    expect(screen.getByText("Airbag")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: /See every track/ }),
+    );
+    expect(
+      await screen.findByRole("table", { name: "All tracks" }),
+    ).toBeVisible();
   });
 
   it("renders album tracks with durations", async () => {
