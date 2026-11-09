@@ -88,6 +88,16 @@ const acoustidReady = {
   message: "AcoustID is ready and fpcalc is available.",
 };
 
+const musicbrainzDefault = {
+  base_url: "https://musicbrainz.org/ws/2",
+  default_base_url: "https://musicbrainz.org/ws/2",
+  using_default: true,
+  cooldown_until: 0,
+  message:
+    "Using public MusicBrainz at one request per second. Responses are cached locally as evidence, not permanent truth.",
+  cache_entries: 0,
+};
+
 const rootsConfig = {
   revision: 1,
   media_root: "/media",
@@ -149,7 +159,9 @@ function mockFetch(
       handler(path, options) ??
       (path === "/api/v1/library/music/acoustid" && !options?.method
         ? Response.json(acoustidUnconfigured)
-        : Response.json({}))
+        : path === "/api/v1/library/music/musicbrainz" && !options?.method
+          ? Response.json(musicbrainzDefault)
+          : Response.json({}))
     );
   });
   vi.stubGlobal("fetch", fetch);
@@ -1075,5 +1087,163 @@ describe("music import", () => {
       "AcoustID rejected the application API key.",
     );
     expect(alert).toHaveTextContent(/acoustid\.org\/new-application/);
+  });
+
+  it("shows the MusicBrainz provider, cache and cooldown status", async () => {
+    const until = Math.floor(Date.now() / 1000) + 600;
+    const paused = {
+      ...musicbrainzDefault,
+      cooldown_until: until,
+      cache_entries: 42,
+      message:
+        "MusicBrainz is limiting requests. Matching is paused until the retry window ends.",
+    };
+    mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/musicbrainz" && !options?.method) {
+        return Response.json(paused);
+      }
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return Response.json({ items: [], page: 1, total: 0, limit: 20 });
+      }
+      return undefined;
+    });
+
+    mount();
+
+    expect(
+      await screen.findByText("MusicBrainz provider and cache"),
+    ).toBeVisible();
+    expect(screen.getByText("Public server")).toBeVisible();
+    expect(screen.getByText("42 cached responses")).toBeVisible();
+    expect(screen.getByText(/Paused until/)).toBeVisible();
+    expect(screen.getByText(/MusicBrainz is limiting requests/)).toBeVisible();
+  });
+
+  it("saves and resets the MusicBrainz base URL without leaking secrets", async () => {
+    let status = musicbrainzDefault;
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/musicbrainz" && !options?.method) {
+        return Response.json(status);
+      }
+      if (
+        path === "/api/v1/library/music/musicbrainz" &&
+        options?.method === "PUT"
+      ) {
+        const body = JSON.parse(String(options.body)) as { base_url: string };
+        status = {
+          ...musicbrainzDefault,
+          base_url: `${body.base_url.replace(/\/$/, "")}/ws/2`,
+          using_default: false,
+          cache_entries: 3,
+          message: "Using a custom MusicBrainz base URL.",
+        };
+        return Response.json(status);
+      }
+      if (
+        path === "/api/v1/library/music/musicbrainz" &&
+        options?.method === "DELETE"
+      ) {
+        status = musicbrainzDefault;
+        return Response.json(status);
+      }
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return Response.json({ items: [], page: 1, total: 0, limit: 20 });
+      }
+      return undefined;
+    });
+
+    mount();
+
+    await screen.findByText("MusicBrainz provider and cache");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Configure MusicBrainz" }),
+    );
+    const input = await screen.findByLabelText("MusicBrainz base URL");
+    expect(input).toHaveValue("");
+    expect(
+      screen.getByRole("link", {
+        name: "MusicBrainz cache and custom mirror documentation",
+      }),
+    ).toHaveAttribute(
+      "href",
+      "https://github.com/faaaaq/ReelScarey/blob/main/docs/MUSIC.md",
+    );
+    await userEvent.type(input, "http://192.168.1.9:5000");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save base URL" }),
+    );
+
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(
+          ([url, options]) =>
+            new URL(url, "http://local").pathname ===
+              "/api/v1/library/music/musicbrainz" && options?.method === "PUT",
+        ),
+      ).toBe(true),
+    );
+    const put = fetch.mock.calls.find(
+      ([url, options]) =>
+        new URL(url, "http://local").pathname ===
+          "/api/v1/library/music/musicbrainz" && options?.method === "PUT",
+    );
+    expect(JSON.parse(String(put?.[1]?.body))).toEqual({
+      base_url: "http://192.168.1.9:5000",
+    });
+    expect(await screen.findByText("Custom base URL")).toBeVisible();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Reset to public server" }),
+    );
+    await waitFor(() =>
+      expect(
+        fetch.mock.calls.some(
+          ([url, options]) =>
+            new URL(url, "http://local").pathname ===
+              "/api/v1/library/music/musicbrainz" &&
+            options?.method === "DELETE",
+        ),
+      ).toBe(true),
+    );
+    expect(await screen.findByText("Public server")).toBeVisible();
+    expect(document.body.textContent).not.toContain("api_key");
+  });
+
+  it("shows a MusicBrainz cooldown as paused matching in the scan status", async () => {
+    const until = Math.floor(Date.now() / 1000) + 600;
+    const cooled = {
+      ...scan,
+      phase: "ready" as const,
+      message:
+        "Matched 1 files before MusicBrainz paused matching. 1 files remain unresolved for review. MusicBrainz is limiting requests. Matching is paused until the retry window ends.",
+    };
+    mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/musicbrainz" && !options?.method) {
+        return Response.json({
+          ...musicbrainzDefault,
+          cooldown_until: until,
+          message: "MusicBrainz is limiting requests. Matching is paused.",
+        });
+      }
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return scanList([cooled]);
+      }
+      if (path === "/api/v1/library/music/scans/1" && !options?.method) {
+        return scanPage(cooled);
+      }
+      return undefined;
+    });
+
+    mount();
+
+    expect(
+      await screen.findByText("MusicBrainz matching is paused"),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(/MusicBrainz is limiting requests/).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("1 warning")).toBeVisible();
+    expect(screen.queryByText("Needs attention")).toBeNull();
+    expect(screen.getAllByText("Ready").length).toBeGreaterThan(0);
   });
 });

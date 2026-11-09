@@ -18,11 +18,13 @@ func (s *Server) musicError(w http.ResponseWriter, err error) {
 		switch provider.Code {
 		case "music_invalid_request":
 			status = http.StatusBadRequest
+		case "music_invalid_url", "music_invalid_musicbrainz_url":
+			status = http.StatusBadRequest
 		case "music_not_found":
 			status = http.StatusNotFound
 		case "music_rate_limited", "music_acoustid_rate_limited":
 			status = http.StatusTooManyRequests
-		case "music_acoustid_not_configured", "music_fingerprint_unavailable":
+		case "music_acoustid_not_configured", "music_fingerprint_unavailable", "music_musicbrainz_unavailable":
 			status = http.StatusConflict
 		case "music_acoustid_invalid_key", "music_acoustid_invalid_request", "music_fingerprint_input", "music_fingerprint_failed":
 			status = http.StatusBadRequest
@@ -463,6 +465,49 @@ func (s *Server) musicAcoustID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		status, err := s.music.AcoustIDStatus(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, status)
+	default:
+		w.Header().Set("Allow", "GET, PUT, DELETE")
+		fail(w, 405, "method_not_allowed", "Use GET, PUT or DELETE.")
+	}
+}
+
+func (s *Server) musicMusicBrainz(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		status, err := s.music.MusicBrainzStatus(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, status)
+	case http.MethodPut:
+		var body struct {
+			BaseURL string `json:"base_url"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		if strings.TrimSpace(body.BaseURL) == "" {
+			fail(w, 400, "invalid_musicbrainz_url", "Enter a MusicBrainz base URL, or reset to the public server.")
+			return
+		}
+		status, err := s.music.SaveMusicBrainzBaseURL(r.Context(), body.BaseURL)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, status)
+	case http.MethodDelete:
+		status, err := s.music.DeleteMusicBrainzBaseURL(r.Context())
 		if err != nil {
 			s.musicError(w, err)
 			return

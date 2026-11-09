@@ -50,16 +50,30 @@ func TestMusicUpgradeIsAdditive(t *testing.T) {
 	if err = db.QueryRow(`SELECT title FROM media_items WHERE id=1`).Scan(&title); err != nil || title != "Preserved" {
 		t.Fatal("existing catalog row changed", title, err)
 	}
-	for _, table := range []string{"music_artists", "music_albums", "music_tracks", "music_fingerprints"} {
+	for _, table := range []string{"music_artists", "music_albums", "music_tracks", "music_fingerprints", "musicbrainz_cache", "musicbrainz_provider_state"} {
 		var count int
 		if err = db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&count); err != nil || count != 1 {
 			t.Fatal("missing music table", table, count, err)
 		}
 	}
+	var cooldownRows int
+	if err = db.QueryRow(`SELECT COUNT(*) FROM musicbrainz_provider_state WHERE id=1 AND retry_until=0 AND message=''`).Scan(&cooldownRows); err != nil || cooldownRows != 1 {
+		t.Fatal("missing seeded provider state", cooldownRows, err)
+	}
+	var expiryIndex int
+	if err = db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='musicbrainz_cache_expiry'`).Scan(&expiryIndex); err != nil || expiryIndex != 1 {
+		t.Fatal("missing cache expiry index", expiryIndex, err)
+	}
+	if _, err = db.Exec(`INSERT INTO musicbrainz_cache(key,payload,expires_at,negative) VALUES('k','{}',9999999999,0)`); err != nil {
+		t.Fatal("cache insert rejected", err)
+	}
 	if _, err = db.Exec(`INSERT INTO integration_configs(name,ciphertext) VALUES('acoustid',x'00')`); err != nil {
 		t.Fatal("acoustid integration name rejected", err)
 	}
-	if _, err = db.Exec(`DELETE FROM integration_configs WHERE name='acoustid'`); err != nil {
+	if _, err = db.Exec(`INSERT INTO integration_configs(name,ciphertext) VALUES('musicbrainz',x'00')`); err != nil {
+		t.Fatal("musicbrainz integration name rejected", err)
+	}
+	if _, err = db.Exec(`DELETE FROM integration_configs WHERE name IN ('acoustid','musicbrainz')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO music_artists(musicbrainz_id,name,monitored,status,created_at,updated_at) VALUES('a74b1b7f-71a5-4011-9441-d0b5e4122711','Artist',1,'missing',1,1)`); err != nil {

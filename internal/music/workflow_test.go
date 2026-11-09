@@ -429,6 +429,65 @@ func TestMatchWorkflowWarnsWhenAcoustIDIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestMatchWorkflowStopsSafelyWhenMusicBrainzIsCoolingDown(t *testing.T) {
+	ctx := context.Background()
+	var requests atomic.Int32
+	brainz := func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Retry-After", "120")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}
+	service, db, scanID, _ := acoustidFixture(t, brainz, nil, nil, false)
+	matchedID := insertDiscoveryFile(t, db, scanID, discoveryFile{
+		path: "Music/Radiohead/OK Computer/01 Airbag.flac", artist: "Radiohead", albumArtist: "Radiohead",
+		album: "OK Computer", title: "Airbag", track: intPtr(1), disc: intPtr(1), rg: testRGID,
+	})
+	if _, err := db.Exec(`UPDATE music_scan_files SET state='matched' WHERE id=?`, matchedID); err != nil {
+		t.Fatal(err)
+	}
+	unresolvedID := insertDiscoveryFile(t, db, scanID, discoveryFile{
+		path: "Music/Unknown/track.flac", artist: "Unknown Artist", albumArtist: "Unknown Artist",
+		album: "Unknown Album", title: "Unknown", track: intPtr(1), disc: intPtr(1),
+	})
+	if _, err := service.RequestMatchAll(ctx, scanID, true); err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	if worked, err := service.ProcessWorkflow(ctx); err != nil || !worked {
+		t.Fatalf("workflow %v %v", worked, err)
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("cooldown retried in a tight loop: %s", elapsed)
+	}
+	scan, err := service.Scan(ctx, scanID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scan.State != "review" || scan.Phase != "ready" || scan.Request != "" || scan.Error != "" {
+		t.Fatalf("cooldown was not a safe stop: %+v", scan)
+	}
+	if scan.MatchedCount != 1 || scan.UnresolvedCount != 1 {
+		t.Fatalf("cooldown changed counts: %+v", scan)
+	}
+	if !strings.Contains(scan.Message, "MusicBrainz is limiting requests") || !strings.Contains(scan.Message, "Matching is paused until") {
+		t.Fatal("cooldown warning", scan.Message)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("provider request storm: %d", requests.Load())
+	}
+	var state string
+	if err := db.QueryRow(`SELECT state FROM music_scan_files WHERE id=?`, matchedID).Scan(&state); err != nil || state != "matched" {
+		t.Fatal("matched row was not preserved", state, err)
+	}
+	if err := db.QueryRow(`SELECT state FROM music_scan_files WHERE id=?`, unresolvedID).Scan(&state); err != nil || state != "unresolved" {
+		t.Fatal("unresolved row changed", state, err)
+	}
+	var retryUntil int64
+	if err := db.QueryRow(`SELECT retry_until FROM musicbrainz_provider_state WHERE id=1`).Scan(&retryUntil); err != nil || retryUntil <= time.Now().Unix() {
+		t.Fatal("cooldown was not persisted", retryUntil, err)
+	}
+}
+
 func TestMatchWorkflowStopsSafelyOnProviderRateLimit(t *testing.T) {
 	ctx := context.Background()
 	fingerprinter := &fakeFingerprinter{available: true, fingerprint: Fingerprint{DurationSeconds: 284, Value: "AQADtE"}}

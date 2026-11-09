@@ -24,6 +24,7 @@ type Service struct {
 	fingerprinter  Fingerprinter
 	acoustid       *AcoustIDClient
 	secrets        *securestore.Store
+	brainz         *musicbrainzStore
 	scheduleRunner ScheduleRunner
 	fileMu         sync.Mutex
 	scheduleMu     sync.Mutex
@@ -32,11 +33,20 @@ type Service struct {
 func (s *Service) SetDownloadsDir(dir string) { s.downloadsDir = dir }
 
 func NewService(db *sql.DB, mediaDir string) *Service {
-	return &Service{client: New(), store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}, fingerprinter: NewChromaprint(), acoustid: NewAcoustID()}
+	brainz := &musicbrainzStore{db: db}
+	client := New()
+	client.SetCache(brainz)
+	client.SetCooldownStore(brainz)
+	return &Service{client: client, store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}, fingerprinter: NewChromaprint(), acoustid: NewAcoustID(), brainz: brainz}
 }
 
 func NewServiceWithClient(db *sql.DB, client *Client, mediaDir string) *Service {
-	return &Service{client: client, store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}, fingerprinter: NewChromaprint(), acoustid: NewAcoustID()}
+	brainz := &musicbrainzStore{db: db}
+	if client != nil {
+		client.SetCache(brainz)
+		client.SetCooldownStore(brainz)
+	}
+	return &Service{client: client, store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}, fingerprinter: NewChromaprint(), acoustid: NewAcoustID(), brainz: brainz}
 }
 
 func (s *Service) SetProber(prober AudioProber) {

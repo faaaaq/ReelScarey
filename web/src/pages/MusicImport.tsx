@@ -26,6 +26,7 @@ import {
   type LibraryRootsConfig,
   type MusicDiscoverResult,
   type MusicFingerprintResult,
+  type MusicBrainzStatus,
   type MusicScan,
   type MusicScanList,
   type MusicScanPage,
@@ -113,6 +114,26 @@ function mentionsAcoustidSkip(message: string) {
     text.includes("no application key") ||
     text.includes("disabled");
   return (text.includes("acoustid") || text.includes("fingerprint")) && skipped;
+}
+
+/** Detects a scan message that says MusicBrainz paused matching. */
+function mentionsMusicBrainzCooldown(message: string) {
+  const text = message.toLowerCase();
+  return (
+    text.includes("musicbrainz") &&
+    (text.includes("limiting requests") ||
+      text.includes("paused until") ||
+      text.includes("paused matching") ||
+      text.includes("rate limit") ||
+      text.includes("cooling down"))
+  );
+}
+
+function cooldownLabel(until: number) {
+  if (!until) return "";
+  const date = new Date(until * 1000);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString();
 }
 
 function phaseKind(phase: MusicScanPhase) {
@@ -241,6 +262,9 @@ export function MusicImport() {
   const scans = useLiveResource<MusicScanList>("/library/music/scans", 5000);
   const rootsResource = useResource<LibraryRootsConfig>("/library/roots");
   const acoustid = useResource<AcoustIDStatus>("/library/music/acoustid");
+  const musicbrainz = useResource<MusicBrainzStatus>(
+    "/library/music/musicbrainz",
+  );
   const [scanID, setScanID] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const active = useLiveResource<MusicScanPage>(
@@ -264,12 +288,18 @@ export function MusicImport() {
   const [acoustidPending, setAcoustidPending] = useState(false);
   const [acoustidError, setAcoustidError] = useState("");
   const [acoustidNotice, setAcoustidNotice] = useState("");
+  const [musicbrainzOpen, setMusicbrainzOpen] = useState(false);
+  const [musicbrainzBaseURL, setMusicbrainzBaseURL] = useState("");
+  const [musicbrainzPending, setMusicbrainzPending] = useState(false);
+  const [musicbrainzError, setMusicbrainzError] = useState("");
+  const [musicbrainzNotice, setMusicbrainzNotice] = useState("");
   const [fingerprintOpen, setFingerprintOpen] = useState(false);
   const [fingerprintResult, setFingerprintResult] =
     useState<MusicFingerprintResult | null>(null);
   const [fingerprintError, setFingerprintError] = useState("");
   const [error, setError] = useState("");
   const acoustidKeyID = useId();
+  const musicbrainzURLID = useId();
   const musicRoots =
     rootsResource.data?.libraries?.find((library) => library.key === "music")
       ?.roots ?? [];
@@ -285,6 +315,11 @@ export function MusicImport() {
   const acoustidReady =
     Boolean(acoustid.data?.configured) &&
     Boolean(acoustid.data?.fingerprint_available);
+  const musicbrainzCooldown =
+    (musicbrainz.data?.cooldown_until ?? 0) > Date.now() / 1000;
+  const musicbrainzCooldownText = musicbrainzCooldown
+    ? cooldownLabel(musicbrainz.data?.cooldown_until ?? 0)
+    : "";
   const fingerprintBlockedReason = acoustid.error
     ? "AcoustID status is unavailable. Retry the status check before fingerprinting."
     : !acoustid.data
@@ -315,9 +350,14 @@ export function MusicImport() {
     scan && scan.message && mentionsAcoustidSkip(scan.message)
       ? scan.message
       : "";
+  const scanCooldownMessage =
+    scan && scan.message && mentionsMusicBrainzCooldown(scan.message)
+      ? scan.message
+      : "";
   const scanWarning = Boolean(
     scan?.error ||
-    (scanWarningMessage && mentionsAcoustidSkip(scanWarningMessage)),
+    (scanWarningMessage && mentionsAcoustidSkip(scanWarningMessage)) ||
+    scanCooldownMessage,
   );
   const canMatchAll = phase === "ready" && unresolvedCount > 0;
   const canFinalize = phase === "ready" && matchedCount > 0;
@@ -386,6 +426,55 @@ export function MusicImport() {
     setAcoustidError("");
     setAcoustidNotice("");
     setAcoustidOpen(true);
+  }
+
+  function openMusicBrainz() {
+    setMusicbrainzBaseURL(
+      musicbrainz.data?.using_default ? "" : (musicbrainz.data?.base_url ?? ""),
+    );
+    setMusicbrainzError("");
+    setMusicbrainzNotice("");
+    setMusicbrainzOpen(true);
+  }
+
+  async function saveMusicBrainz(e: FormEvent) {
+    e.preventDefault();
+    const baseURL = musicbrainzBaseURL.trim();
+    if (musicbrainzPending || !baseURL) return;
+    setMusicbrainzPending(true);
+    setMusicbrainzError("");
+    setMusicbrainzNotice("");
+    try {
+      await api<MusicBrainzStatus>("/library/music/musicbrainz", {
+        method: "PUT",
+        body: JSON.stringify({ base_url: baseURL }),
+      });
+      setMusicbrainzNotice("MusicBrainz base URL saved.");
+      musicbrainz.reload();
+    } catch (e) {
+      setMusicbrainzError(messageFor(e));
+    } finally {
+      setMusicbrainzPending(false);
+    }
+  }
+
+  async function resetMusicBrainz() {
+    if (musicbrainzPending) return;
+    setMusicbrainzPending(true);
+    setMusicbrainzError("");
+    setMusicbrainzNotice("");
+    try {
+      await api<MusicBrainzStatus>("/library/music/musicbrainz", {
+        method: "DELETE",
+      });
+      setMusicbrainzBaseURL("");
+      setMusicbrainzNotice("MusicBrainz base URL reset to the public server.");
+      musicbrainz.reload();
+    } catch (e) {
+      setMusicbrainzError(messageFor(e));
+    } finally {
+      setMusicbrainzPending(false);
+    }
   }
 
   async function register() {
@@ -681,6 +770,57 @@ export function MusicImport() {
             </div>
           </Alert>
         )}
+        {musicbrainz.error && (
+          <Alert kind="danger" title="MusicBrainz status unavailable">
+            {musicbrainz.error} Matching still uses the saved provider, but the
+            cache and cooldown state cannot be read.{" "}
+            <Button size="1" variant="soft" onClick={musicbrainz.reload}>
+              Retry status
+            </Button>{" "}
+            <Button size="1" variant="soft" onClick={openMusicBrainz}>
+              Configure MusicBrainz
+            </Button>
+          </Alert>
+        )}
+        {musicbrainz.data && !musicbrainz.error && (
+          <Alert
+            kind={musicbrainzCooldown ? "warning" : "info"}
+            title="MusicBrainz provider and cache"
+          >
+            <div className="mus-acoustid">
+              <Label kind={musicbrainz.data.using_default ? "info" : "success"}>
+                {musicbrainz.data.using_default
+                  ? "Public server"
+                  : "Custom base URL"}
+              </Label>
+              {musicbrainz.data.using_default ? (
+                <span className="rs-muted">
+                  {musicbrainz.data.base_url ||
+                    musicbrainz.data.default_base_url ||
+                    "https://musicbrainz.org/ws/2"}
+                </span>
+              ) : (
+                <span className="rs-muted">
+                  {musicbrainz.data.base_url || "Custom MusicBrainz base URL"}
+                </span>
+              )}
+              <Label kind="disabled">
+                {musicbrainz.data.cache_entries ?? 0} cached responses
+              </Label>
+              {musicbrainzCooldown && (
+                <Label kind="warning">
+                  Paused until {musicbrainzCooldownText}
+                </Label>
+              )}
+              {musicbrainz.data.message && (
+                <span className="rs-muted">{musicbrainz.data.message}</span>
+              )}
+              <Button size="1" variant="soft" onClick={openMusicBrainz}>
+                Configure MusicBrainz
+              </Button>
+            </div>
+          </Alert>
+        )}
         <Alert kind="info" title="Scan, match, then finalize">
           Start a scan of the configured roots. When it is ready, use{" "}
           <strong>Match all unmatched</strong> to match every remaining file
@@ -872,7 +1012,7 @@ export function MusicImport() {
                   Current: {scan.current_path}
                 </p>
               )}
-              {scan.message && !scanWarningMessage && (
+              {scan.message && !scanWarningMessage && !scanCooldownMessage && (
                 <p className="rs-muted">{scan.message}</p>
               )}
             </div>
@@ -884,6 +1024,13 @@ export function MusicImport() {
             {scanWarningMessage && mentionsAcoustidSkip(scanWarningMessage) && (
               <Alert kind="warning" title="AcoustID fingerprinting was skipped">
                 {scanWarningMessage}
+              </Alert>
+            )}
+            {scanCooldownMessage && (
+              <Alert kind="warning" title="MusicBrainz matching is paused">
+                {scanCooldownMessage} This is a provider cooldown, not a failed
+                scan. Matched files are unchanged; wait for the retry window,
+                then run Match all unmatched again.
               </Alert>
             )}
             {!phaseActive && skippedCount > 0 && (
@@ -1420,6 +1567,81 @@ export function MusicImport() {
         </p>
         {acoustidError && <Alert kind="danger">{acoustidError}</Alert>}
         {acoustidNotice && <Alert kind="success">{acoustidNotice}</Alert>}
+      </Modal>
+      <Modal
+        open={musicbrainzOpen}
+        onOpenChange={setMusicbrainzOpen}
+        title="Configure MusicBrainz"
+        description="Choose the public MusicBrainz service or an optional local mirror. No MusicBrainz mirror is bundled with ReelScarey."
+      >
+        <form onSubmit={(e) => void saveMusicBrainz(e)} className="rs-stack">
+          <FormGroup
+            label="MusicBrainz base URL"
+            htmlFor={musicbrainzURLID}
+            help={
+              <>
+                Default:{" "}
+                {musicbrainz.data?.default_base_url ??
+                  "https://musicbrainz.org/ws/2"}
+                . The server root is enough; ReelScarey appends /ws/2 when it is
+                missing. HTTPS is allowed anywhere. Plain HTTP is accepted only
+                for localhost, loopback or a private LAN address.
+              </>
+            }
+          >
+            <TextField.Root
+              id={musicbrainzURLID}
+              name="musicbrainz-base-url"
+              type="url"
+              autoComplete="off"
+              value={musicbrainzBaseURL}
+              onChange={(event) => setMusicbrainzBaseURL(event.target.value)}
+              placeholder={
+                musicbrainz.data?.using_default
+                  ? "https://musicbrainz.org (default)"
+                  : "https://mirror.example"
+              }
+              maxLength={2048}
+              disabled={musicbrainzPending}
+            />
+          </FormGroup>
+          <FormActions>
+            <Button
+              type="submit"
+              disabled={musicbrainzPending || !musicbrainzBaseURL.trim()}
+            >
+              Save base URL
+            </Button>
+            {musicbrainz.data && !musicbrainz.data.using_default && (
+              <Button
+                type="button"
+                variant="soft"
+                color="red"
+                disabled={musicbrainzPending}
+                onClick={() => void resetMusicBrainz()}
+              >
+                Reset to public server
+              </Button>
+            )}
+          </FormActions>
+        </form>
+        <p className="rs-form-help">
+          Public MusicBrainz is paced at one request per second. A local mirror
+          is paced at 50 ms but still honors its own 429/503 Retry-After
+          cooldown. Responses are cached locally for 30 days (searches for 7
+          days, not-found evidence for 1 day). The cache is evidence, not
+          permanent truth. A mirror is optional and is not bundled; see the{" "}
+          <a
+            href="https://github.com/faaaaq/ReelScarey/blob/main/docs/MUSIC.md"
+            target="_blank"
+            rel="noreferrer"
+          >
+            MusicBrainz cache and custom mirror documentation
+          </a>
+          .
+        </p>
+        {musicbrainzError && <Alert kind="danger">{musicbrainzError}</Alert>}
+        {musicbrainzNotice && <Alert kind="success">{musicbrainzNotice}</Alert>}
       </Modal>
       <Modal
         open={fingerprintOpen}

@@ -150,10 +150,21 @@ similarity beyond the Chromaprint fingerprint.
 
 ## Provider and bounds
 
-- Fixed provider: `https://musicbrainz.org/ws/2`. No credentials are stored.
-- Requests send a descriptive User-Agent and are spaced at least one second
-  apart. A `503`/`429` response becomes a rate limit with `Retry-After`; it is
-  never silently retried.
+- Default provider: `https://musicbrainz.org/ws/2`. No credentials are stored.
+  An administrator may save an optional custom base URL (for a local mirror
+  they host themselves); it is encrypted through `securestore` as the
+  integration name `musicbrainz`. No MusicBrainz mirror is bundled with
+  ReelScarey.
+- The custom URL contract is explicit: the value is a server prefix. A path
+  ending in `/ws/2` is kept, and `/ws/2` is appended exactly once to any other
+  path, including the server root. HTTPS is allowed for any host. Plain HTTP is
+  accepted only for `localhost`, loopback (`127.0.0.0/8`, `::1`), RFC1918
+  addresses and IPv6 ULA. Credentials, query strings, fragments, backslashes and
+  path traversal are rejected, and redirects are never followed.
+- The public server is paced at one request per second. A configured local or
+  private mirror is paced at 50 ms. Both still honor the server's own `429`/`503`
+  cooldown. A `429`/`503` response becomes a rate limit with `Retry-After`
+  (delay-seconds or an HTTP date); it is never silently retried.
 - Responses are bounded (2 MiB search/artist, 4 MiB release browse, 8 MiB release
   tracks). Redirects are refused.
 - Discographies are browsed rather than read from the 25-item lookup include.
@@ -171,6 +182,40 @@ similarity beyond the Chromaprint fingerprint.
   `429` becomes a rate limit with `Retry-After`; `400`/`401`/`403` become an
   invalid-key error; transport and server failures become unavailable. Nothing
   is silently retried.
+
+## MusicBrainz cache, cooldown and custom mirror
+
+Large libraries issue many repeated lookups. ReelScarey keeps a persistent,
+local MusicBrainz response cache and a persistent rate-limit cooldown in SQLite.
+
+- Successful raw JSON responses are cached by the exact base URL, endpoint and
+  sorted query string. A different mirror never reuses another server's rows.
+- Positive artist, release-group, release and track metadata is cached for 30
+  days. Search results are cached for 7 days. An explicit `404` or an empty
+  metadata result (zero search/browse rows, or a release with no tracks) is
+  cached as negative evidence for 1 day only. Negative evidence is rechecked
+  after that window.
+- Only a complete, successfully decoded JSON body is cached. Truncated,
+  oversized, invalid and non-404 error responses are never cached.
+- Expired rows are deleted in bounded batches (at most 500 per pass) during
+  occasional provider work, so the table cannot grow without bound.
+- Cache reads, writes and cleanup fail open. A database problem is logged as a
+  warning and matching continues against the provider; it never corrupts match
+  state or blocks a scan.
+- The cache is provider evidence, not permanent truth. Album and artist data
+  change slowly, so a cached response can be incomplete or outdated; removing
+  the cache or retrying later rechecks the provider.
+- On `429` or `503`, the parsed retry window and an actionable message are saved
+  in `musicbrainz_provider_state`. Every provider request checks that row first
+  and returns `music_rate_limited` with `Retry-After` instead of sleeping inside
+  an HTTP request or retrying in a tight loop.
+- When the matching workflow sees that cooldown it stops in `review`/`ready`
+  with an explicit warning. Files already matched are preserved; unresolved
+  files stay available for a later retry. The status API and the Music Import
+  page show the pause, the retry time and the cache entry count.
+- The optional mirror is administrator-supplied and is **not** bundled,
+  downloaded or managed by ReelScarey. There is no MusicBrainz mirror in the
+  Docker image.
 
 ## Scan and registration
 
@@ -359,6 +404,17 @@ one durable background worker; the browser's HTTP request never owns the work.
 - Match All never registers, moves or tags media. Finalize registers in place and
   then applies the reviewed edit plan; it does not replace an existing library
   file with a downloaded upgrade.
+- The MusicBrainz cache is local evidence, not a complete offline catalog. It is
+  not a permanent truth, and clearing it or waiting for its TTL rechecks the
+  provider. Only successful JSON bodies and explicit 404/empty metadata are
+  cached; provider errors, truncated bodies and invalid JSON are not.
+- Rate-limit cooldowns are persisted, so restarting ReelScarey does not bypass a
+  provider's retry window. Matching stops with a review warning instead of
+  sleeping or retrying in a loop.
+- A custom MusicBrainz base URL is optional. ReelScarey does not bundle, host,
+  install or manage a MusicBrainz mirror; the administrator supplies and runs
+  it. Public HTTP mirrors are refused, and redirects from any base URL are
+  never followed.
 - A full rescan re-examines registered files but never creates a second
   `music_files` row for the same relative path. It also does not delete catalog
   rows, registered files or scan history, and it does not re-tag files by itself.
@@ -414,6 +470,7 @@ one durable background worker; the browser's HTTP request never owns the work.
 | POST | `/api/v1/library/music/scans/{id}/discover` | `{file_ids,reviewed:true}` or `{all:true,reviewed:true}`; bounded catalog discovery |
 | POST | `/api/v1/library/music/scans/{id}/fingerprint` | `{file_ids,reviewed:true}` or `{all:true,reviewed:true}`; reviewed Chromaprint/AcoustID matching |
 | GET/PUT/DELETE | `/api/v1/library/music/acoustid` | Status; PUT `{api_key}` saves or replaces the encrypted key, DELETE removes it. The key is never returned |
+| GET/PUT/DELETE | `/api/v1/library/music/musicbrainz` | Status; PUT `{base_url}` saves or replaces the encrypted optional provider URL, DELETE resets to public MusicBrainz. Returns `base_url`, `default_base_url`, `using_default`, `cooldown_until`, `message` and `cache_entries`; never a secret |
 | POST | `/api/v1/library/music/scans/{id}/cancel` | `{}` |
 | POST | `/api/v1/library/music/scans/{id}/skip` | `{file_id}` |
 | GET | `/api/v1/library/music/files?page=` | Registered files |
@@ -447,8 +504,13 @@ shape. Every scan row also reports `full_scan`, `phase`, `progress_total`,
 `progress_done`, `current_path`, `message`, `skipped_count`, `request`,
 `requested_at` and `work_until`. AcoustID status reports `configured`,
 `updated_at`, `fingerprint_available` and `message`; it never includes the saved
-key. All routes are administrator-only. Mutations require CSRF and same-origin
-validation. Request accounts cannot read or write the music catalog.
+key. MusicBrainz status reports the effective `base_url`, `default_base_url`,
+`using_default`, `cooldown_until` (Unix seconds, `0` when not cooling down),
+`message` and the count of unexpired `cache_entries`. A workflow paused by a
+provider cooldown finishes in `review`/`ready` with the matched rows intact and a
+warning naming the retry window; it is not reported as failed. All routes are
+administrator-only. Mutations require CSRF and same-origin validation. Request
+accounts cannot read or write the music catalog.
 
 ## Data model
 
@@ -468,6 +530,9 @@ validation. Request accounts cannot read or write the music catalog.
   `progress_total`, `progress_done`, `current_path`, `message`, `skipped_count`,
   `request`, `requested_at`, `work_owner`, `work_until` and the workflow/path
   indexes.
+- `074_musicbrainz_cache.sql` - `musicbrainz_cache` with an expiry index,
+  `musicbrainz_provider_state` seeded with `id=1`, and the encrypted `musicbrainz`
+  integration name.
 
 The migrations are additive except for the `music_files.root` column. Existing
 movie/TV rows, foreign keys and consumers are untouched.
@@ -483,6 +548,12 @@ upgrade replacement and richer multi-profile assignment.
 
 - `internal/music/client_test.go` — normalization, pagination, rate limits,
   oversized bodies, redirect refusal, exact release-group search and lookup.
+- `internal/music/musicbrainz_test.go` — cache hit/miss, positive/search/negative
+  TTLs, expired rows and bounded cleanup, ignored invalid/error responses,
+  fail-open cache reads/writes, persisted 429 cooldown across reopen,
+  Retry-After seconds/HTTP-date parsing and bounds, public versus local pacing,
+  URL normalization (HTTPS, private HTTP, public HTTP rejection,
+  credentials/query/fragment/traversal), status fields and cache counts.
 - `internal/music/normalize_test.go` — case, punctuation, typographic quotes and
   dashes, non-breaking spaces, composed/decomposed accents, leading articles,
   Various Artists aliases and featured-credit splitting.
@@ -498,7 +569,8 @@ upgrade replacement and richer multi-profile assignment.
   matched-but-unregistered files, unresolved reconsideration after a catalog
   change, full rescan without duplicate library rows, restart re-queue/lease
   recovery, request validation/consent/state rejection, tag matching followed by
-  AcoustID fingerprint fallback, unavailable-AcoustID warning, finalize
+  AcoustID fingerprint fallback, unavailable-AcoustID warning, MusicBrainz
+  cooldown stop with preserved matched rows, finalize
   registration plus sequential edit organization, and partial failure that stays
   in review.
 - `internal/music/discovery_test.go` — release-group ID creation, tagged artist
@@ -517,7 +589,8 @@ upgrade replacement and richer multi-profile assignment.
 - `internal/music/edits_test.go` — move/retag/no-op plans, move apply/rollback,
   FFmpeg tag write, retained backup and rollback.
 - `internal/httpapi/music_test.go` - authentication, CSRF, catalog, scan,
-  discovery, AcoustID key status/save/delete without key disclosure, fingerprint
+  discovery, AcoustID key status/save/delete without key disclosure, MusicBrainz
+  status/save/reset without secrets, fingerprint
   route validation and error mapping, match-all/finalize route validation and
   progress fields, edit routes, error mapping, SPA routes.
 - `internal/database/music_upgrade_test.go` — additive catalog migration.

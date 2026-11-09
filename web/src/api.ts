@@ -254,6 +254,16 @@ export type AcoustIDStatus = {
   message: string;
 };
 
+/** Optional MusicBrainz provider and local cache status. No secret is exposed. */
+export type MusicBrainzStatus = {
+  base_url: string;
+  default_base_url: string;
+  using_default: boolean;
+  cooldown_until: number;
+  message: string;
+  cache_entries: number;
+};
+
 /** Fingerprint matching extends discovery with Chromaprint evidence counts. */
 export type MusicFingerprintResult = MusicDiscoverResult & {
   fingerprinted: number;

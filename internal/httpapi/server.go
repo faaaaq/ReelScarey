@@ -117,6 +117,9 @@ type MusicService interface {
 	AcoustIDStatus(context.Context) (music.AcoustIDStatus, error)
 	SaveAcoustIDKey(context.Context, string) error
 	DeleteAcoustIDKey(context.Context) error
+	MusicBrainzStatus(context.Context) (music.MusicBrainzStatus, error)
+	SaveMusicBrainzBaseURL(context.Context, string) (music.MusicBrainzStatus, error)
+	DeleteMusicBrainzBaseURL(context.Context) (music.MusicBrainzStatus, error)
 	CancelScan(context.Context, int64) error
 	SkipScanFile(context.Context, int64, int64) error
 	ListFiles(context.Context, int) (music.MusicFilePage, error)
@@ -366,6 +369,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/albums/{id}", method(http.MethodGet, s.musicAlbum))
 	mux.HandleFunc("/api/v1/library/music/scans", s.musicScans)
 	mux.HandleFunc("/api/v1/library/music/acoustid", s.musicAcoustID)
+	mux.HandleFunc("/api/v1/library/music/musicbrainz", s.musicMusicBrainz)
 	mux.HandleFunc("/api/v1/library/music/scans/{id}", method(http.MethodGet, s.musicScan))
 	mux.HandleFunc("/api/v1/library/music/scans/{id}/register", method(http.MethodPost, s.musicScanRegister))
 	mux.HandleFunc("/api/v1/library/music/scans/{id}/discover", method(http.MethodPost, s.musicScanDiscover))

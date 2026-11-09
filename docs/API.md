@@ -112,6 +112,13 @@ response adds `fingerprinted` and `provider_calls`. GET/PUT/DELETE
 `/api/v1/library/music/acoustid` returns
 `{configured, updated_at, fingerprint_available, message}`, saves `{api_key}`
 after basic format validation or removes the key; the key is never returned.
+GET/PUT/DELETE `/api/v1/library/music/musicbrainz` returns
+`{base_url, default_base_url, using_default, cooldown_until, message,
+cache_entries}`, saves an encrypted optional `{base_url}` or resets to the
+public server. A saved URL is a server prefix; `/ws/2` is appended once when
+missing. Plain HTTP is accepted only for localhost, loopback, RFC1918 and IPv6
+ULA hosts; credentials, query strings, fragments and path traversal are
+rejected. The status never contains a secret. No MusicBrainz mirror is bundled.
 POST `/cancel` and `/skip` handle review exceptions. Cancel clears any queued
 workflow request so the worker cannot resume it.
 GET `/api/v1/library/music/files?page=` lists registered files. POST
@@ -147,7 +154,10 @@ publish without overwriting an existing destination, retain a backup before a
 tag rewrite and support rollback. The AcoustID application key is stored
 encrypted in the integration store and covered by the existing `secrets.key`
 backup validation; only the Chromaprint fingerprint and duration are sent to
-AcoustID. See [music scope and limits](MUSIC.md).
+AcoustID. MusicBrainz responses and rate-limit cooldowns are stored locally;
+`music_rate_limited` responses include `Retry-After` and a matching workflow
+pauses in `review`/`ready` with its matched rows intact. See
+[music scope and limits](MUSIC.md).
 
 ## YouTube sourcing
 

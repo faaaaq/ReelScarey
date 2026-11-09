@@ -30,6 +30,9 @@ type fakeMusic struct {
 	acoustidStatus    music.AcoustIDStatus
 	savedKey          string
 	deletedKey        bool
+	musicbrainzStatus music.MusicBrainzStatus
+	savedBaseURL      string
+	resetBaseURL      bool
 	fingerprintResult music.DiscoverResult
 }
 
@@ -98,6 +101,29 @@ func (f *fakeMusic) DeleteAcoustIDKey(context.Context) error {
 		f.acoustidStatus.Configured = false
 	}
 	return f.err
+}
+func (f *fakeMusic) MusicBrainzStatus(context.Context) (music.MusicBrainzStatus, error) {
+	return f.musicbrainzStatus, f.err
+}
+func (f *fakeMusic) SaveMusicBrainzBaseURL(_ context.Context, base string) (music.MusicBrainzStatus, error) {
+	if f.err == nil {
+		f.savedBaseURL = base
+		f.musicbrainzStatus.BaseURL = base
+		f.musicbrainzStatus.UsingDefault = false
+		f.musicbrainzStatus.Message = "Using a custom MusicBrainz base URL."
+	}
+	return f.musicbrainzStatus, f.err
+}
+func (f *fakeMusic) DeleteMusicBrainzBaseURL(context.Context) (music.MusicBrainzStatus, error) {
+	if f.err == nil {
+		f.resetBaseURL = true
+		f.musicbrainzStatus.BaseURL = music.DefaultMusicBrainzBaseURL
+		f.musicbrainzStatus.DefaultBaseURL = music.DefaultMusicBrainzBaseURL
+		f.musicbrainzStatus.UsingDefault = true
+		f.musicbrainzStatus.CooldownUntil = 0
+		f.musicbrainzStatus.Message = "Using public MusicBrainz."
+	}
+	return f.musicbrainzStatus, f.err
 }
 func (f *fakeMusic) CancelScan(context.Context, int64) error { return f.err }
 func (f *fakeMusic) SkipScanFile(context.Context, int64, int64) error {
@@ -194,6 +220,42 @@ func musicFixture(t *testing.T, service MusicService) (http.Handler, *auth.Sessi
 		Secrets:  store,
 	})
 	return handler, &session
+}
+
+func TestMusicMusicBrainzStatusAndBaseURLRoutes(t *testing.T) {
+	service := &fakeMusic{musicbrainzStatus: music.MusicBrainzStatus{
+		BaseURL:        music.DefaultMusicBrainzBaseURL,
+		DefaultBaseURL: music.DefaultMusicBrainzBaseURL,
+		UsingDefault:   true,
+		Message:        "Using public MusicBrainz at one request per second.",
+		CacheEntries:   12,
+	}}
+	handler, session := musicFixture(t, service)
+	if out := request(handler, "GET", "/api/v1/library/music/musicbrainz", "", nil, false); out.Code != 401 {
+		t.Fatal("unauthenticated status", out.Code)
+	}
+	out := request(handler, "GET", "/api/v1/library/music/musicbrainz", "", session, false)
+	body := out.Body.String()
+	if out.Code != 200 || !strings.Contains(body, `"using_default":true`) || !strings.Contains(body, `"default_base_url":"`+music.DefaultMusicBrainzBaseURL+`"`) || !strings.Contains(body, `"cache_entries":12`) || strings.Contains(body, "secret") {
+		t.Fatal("status fields", out.Code, body)
+	}
+	if out := request(handler, "PUT", "/api/v1/library/music/musicbrainz", `{"base_url":"https://mb.example"}`, session, false); out.Code != 403 {
+		t.Fatal("save without CSRF", out.Code)
+	}
+	out = request(handler, "PUT", "/api/v1/library/music/musicbrainz", `{"base_url":"https://mb.example"}`, session, true)
+	if out.Code != 200 || service.savedBaseURL != "https://mb.example" || !strings.Contains(out.Body.String(), `"using_default":false`) {
+		t.Fatal("save base url", out.Code, service.savedBaseURL, out.Body.String())
+	}
+	if out := request(handler, "PUT", "/api/v1/library/music/musicbrainz", `{"base_url":""}`, session, true); out.Code != 400 {
+		t.Fatal("empty base url", out.Code)
+	}
+	out = request(handler, "DELETE", "/api/v1/library/music/musicbrainz", "", session, true)
+	if out.Code != 200 || !service.resetBaseURL || !strings.Contains(out.Body.String(), `"using_default":true`) {
+		t.Fatal("reset base url", out.Code, out.Body.String())
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/musicbrainz", `{}`, session, true); out.Code != 405 {
+		t.Fatal("method", out.Code)
+	}
 }
 
 func TestMusicRoutesRequireAuthenticationAndCSRF(t *testing.T) {

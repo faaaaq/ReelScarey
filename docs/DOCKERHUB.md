@@ -361,8 +361,10 @@ need reproducible deploys and controlled rollback.
 - FFmpeg/FFprobe, Chromaprint `fpcalc`, qBittorrent-nox and SABnzbd are
   bundled; SABnzbd stays opt-in. AcoustID matching needs your own free
   application key from <https://acoustid.org/new-application>; the image never
-  includes one. A Usenet server and any external indexer/client accounts are
-  owner-supplied.
+  includes one. MusicBrainz responses are cached locally and rate-limit
+  cooldowns survive restarts. A custom/local MusicBrainz base URL is optional;
+  no MusicBrainz mirror is bundled. A Usenet server and any external
+  indexer/client accounts are owner-supplied.
 - **No playback, streaming, transcoding, HLS/DASH or media-server API.** Use
   your existing player for that.
 - Music is implemented end to end. There are no books or audiobooks.

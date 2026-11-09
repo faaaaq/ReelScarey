@@ -297,6 +297,15 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 	}
 	matched, warnings, err := s.matchAllFiles(ctx, id, owner)
 	if err != nil {
+		if isRateLimited(err) {
+			warnings = append(warnings, matchErrorMessage(err))
+			unresolved, countErr := s.unresolvedCount(base, id)
+			if countErr != nil {
+				return s.handleWorkflowError(ctx, id, owner, countErr, matched)
+			}
+			message := fmt.Sprintf("Matched %d files before MusicBrainz paused matching. %d files remain unresolved for review. %s", matched, unresolved, dedupeWarnings(warnings))
+			return s.finishWorkflow(base, id, owner, "review", "ready", strings.TrimSpace(message), "")
+		}
 		return s.handleWorkflowError(ctx, id, owner, err, matched)
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
@@ -313,30 +322,36 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 		return err
 	}
 	if unresolved > 0 {
-		key, warning := s.fingerprintAvailability(ctx)
-		if warning != "" {
-			warnings = append(warnings, warning)
-		} else {
-			if err := s.startWorkflowPhase(base, id, owner, "fingerprinting", unresolved, "Fingerprinting the remaining unresolved files through AcoustID."); err != nil {
-				if errors.Is(err, errWorkLeaseLost) {
-					return nil
-				}
-				return err
-			}
-			var matchedNow int
-			var fpWarnings []string
-			matchedNow, fpWarnings, err = s.fingerprintAllFiles(ctx, id, owner, key)
-			fingerprinted += matchedNow
-			warnings = append(warnings, fpWarnings...)
-			if err != nil {
-				// A provider/rate-limit error is a warning: matched rows are
-				// preserved and the rest stay unresolved for review. A lease,
-				// context or database error still uses the normal handling.
-				var provider *Error
-				if errors.As(err, &provider) {
-					warnings = append(warnings, matchErrorMessage(err))
+		if s.client != nil {
+			if cooldown := s.client.cooldownError(ctx); cooldown != nil {
+				warnings = append(warnings, matchErrorMessage(cooldown))
+			} else {
+				key, warning := s.fingerprintAvailability(ctx)
+				if warning != "" {
+					warnings = append(warnings, warning)
 				} else {
-					return s.handleWorkflowError(ctx, id, owner, err, matched+fingerprinted)
+					if err := s.startWorkflowPhase(base, id, owner, "fingerprinting", unresolved, "Fingerprinting the remaining unresolved files through AcoustID."); err != nil {
+						if errors.Is(err, errWorkLeaseLost) {
+							return nil
+						}
+						return err
+					}
+					var matchedNow int
+					var fpWarnings []string
+					matchedNow, fpWarnings, err = s.fingerprintAllFiles(ctx, id, owner, key)
+					fingerprinted += matchedNow
+					warnings = append(warnings, fpWarnings...)
+					if err != nil {
+						// A provider/rate-limit error is a warning: matched rows are
+						// preserved and the rest stay unresolved for review. A lease,
+						// context or database error still uses the normal handling.
+						var provider *Error
+						if errors.As(err, &provider) {
+							warnings = append(warnings, matchErrorMessage(err))
+						} else {
+							return s.handleWorkflowError(ctx, id, owner, err, matched+fingerprinted)
+						}
+					}
 				}
 			}
 		}
@@ -396,6 +411,10 @@ func (s *Service) matchAllFiles(ctx context.Context, scanID int64, owner string)
 			if matchErr != nil {
 				file.Error = matchErrorMessage(matchErr)
 				remaining = append(remaining, file)
+				if isRateLimited(matchErr) {
+					warnings = append(warnings, matchErrorMessage(matchErr))
+					return matched, warnings, matchErr
+				}
 				continue
 			}
 			if err := s.updateScanFileState(ctx, file.ID, "matched", artistID, albumID, trackID, ""); err != nil {
@@ -711,6 +730,11 @@ func matchErrorMessage(err error) string {
 		return provider.Message
 	}
 	return err.Error()
+}
+
+func isRateLimited(err error) bool {
+	var provider *Error
+	return errors.As(err, &provider) && provider.Code == "music_rate_limited"
 }
 
 func dedupeWarnings(warnings []string) string {

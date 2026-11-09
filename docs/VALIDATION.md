@@ -1,5 +1,60 @@
 # Validation record — 2026-10-29
 
+## MusicBrainz cache, persistent cooldown and optional mirror (2026-11-08)
+
+Implementation checks on 2026-11-08 (Windows development host):
+
+- Migration 074 adds `musicbrainz_cache` (`key`, raw `payload`, `expires_at`,
+  `negative`) with `musicbrainz_cache_expiry`, plus
+  `musicbrainz_provider_state` seeded at `id=1`. It rebuilds
+  `integration_configs` only to add the encrypted `musicbrainz` name and
+  recreates its activity triggers; existing rows, ciphertexts and foreign keys
+  are preserved. Schema-version assertions now expect 74.
+- MusicBrainz responses are cached by base URL + endpoint + sorted query. The
+  TTLs are 30 days for artist/release-group/release/track metadata, 7 days for
+  searches and 1 day for explicit 404/empty metadata. Invalid, truncated,
+  oversized and non-404 error bodies are never stored. Expired rows are removed
+  in bounded batches of at most 500. Cache read/write/cleanup failures log a
+  warning and continue against the provider.
+- A `429`/`503` parses `Retry-After` as seconds or an HTTP date and persists the
+  retry window and message in `musicbrainz_provider_state`. The next request
+  returns `music_rate_limited` with `Retry-After` without sleeping. The matching
+  workflow stops in `review`/`ready` with the matched rows intact and an explicit
+  cooldown warning; it does not retry in a loop.
+- The optional base URL defaults to `https://musicbrainz.org/ws/2`, is encrypted
+  through `securestore`, and is applied at startup or when saved. Public pacing
+  is one request/second; local/private mirrors use 50 ms. HTTPS is accepted for
+  any host; plain HTTP only for localhost, loopback, RFC1918 and IPv6 ULA.
+  Credentials, query, fragment and path traversal are rejected.
+- `GET/PUT/DELETE /api/v1/library/music/musicbrainz` returns
+  `base_url/default_base_url/using_default/cooldown_until/message/cache_entries`
+  and never a secret. The Music Import page shows the provider, cache count and
+  cooldown, saves/resets the URL, and labels a paused workflow as a provider
+  cooldown rather than a failed scan.
+- `internal/music/musicbrainz_test.go` covers cache hit/miss, TTL classes,
+  expiry and bounded cleanup, negative 404 and empty metadata, ignored
+  invalid/error responses, fail-open cache failures, persisted cooldown across a
+  database reopen, Retry-After seconds/HTTP dates/bounds, public versus local
+  pacing, URL validation and status fields. `internal/music/workflow_test.go`
+  covers a rate-limited match workflow with preserved matched rows and a single
+  provider call. `internal/httpapi/music_test.go` covers auth, CSRF, status
+  fields, save/reset and method rejection. `internal/database/music_upgrade_test.go`
+  covers the new tables, seeded state, expiry index and `musicbrainz`
+  integration name.
+- `go test ./internal/music ./internal/httpapi ./internal/database
+  ./internal/maintenance ./internal/securestore -count=1`, `go test ./...
+  -count=1`, `go vet ./...`, `go build ./cmd/reelscarey`, and frontend
+  `format:check`, `check`, `test` (52 files, 299 tests) and `build` passed. The
+  only broad-suite failure is the known environment limit
+  `TestLargeExistingRegistrationDoesNotReadWholeVideo` in `internal/transfer`,
+  which cannot create its 4 GiB temporary fixture on this host ("There is not
+  enough space on the disk").
+- Not exercised here: a real MusicBrainz request, a real public or local mirror,
+  an actual rate-limit window against MusicBrainz, a Docker/Linux acceptance run
+  or owner media. Tests use local fake MusicBrainz responses, generated database
+  rows and temporary paths only. No MusicBrainz mirror is bundled with the
+  image.
+
 ## Music resumable import workflow (2026-11-08)
 
 Implementation checks on 2026-11-08 (Windows development host):
