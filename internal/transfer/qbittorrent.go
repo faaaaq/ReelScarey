@@ -20,9 +20,14 @@ import (
 type QBittorrent struct {
 	mu       sync.Mutex
 	sessions map[string]*http.Client
+	// locks serializes a login per client key. Holding one global mutex across
+	// the login HTTP call stalled every other client for up to twelve seconds.
+	locks map[string]*sync.Mutex
 }
 
-func NewQBittorrent() *QBittorrent { return &QBittorrent{sessions: map[string]*http.Client{}} }
+func NewQBittorrent() *QBittorrent {
+	return &QBittorrent{sessions: map[string]*http.Client{}, locks: map[string]*sync.Mutex{}}
+}
 func clientKey(c ClientConfig) string {
 	sum := sha256.Sum256([]byte(c.URL + "\x00" + c.Username + "\x00" + c.Password))
 	return hex.EncodeToString(sum[:])
@@ -71,12 +76,27 @@ func qbtRequest(ctx context.Context, c ClientConfig, client *http.Client, method
 	return data, resp.StatusCode, nil
 }
 func (q *QBittorrent) session(ctx context.Context, c ClientConfig) (*http.Client, error) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
 	key := clientKey(c)
+	q.mu.Lock()
 	if client := q.sessions[key]; client != nil {
+		q.mu.Unlock()
 		return client, nil
 	}
+	lock := q.locks[key]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		q.locks[key] = lock
+	}
+	q.mu.Unlock()
+	// Only this client key waits for the login round trip.
+	lock.Lock()
+	defer lock.Unlock()
+	q.mu.Lock()
+	if client := q.sessions[key]; client != nil {
+		q.mu.Unlock()
+		return client, nil
+	}
+	q.mu.Unlock()
 	client := newHTTP()
 	jar, _ := cookiejar.New(nil)
 	client.Jar = jar
@@ -100,10 +120,13 @@ func (q *QBittorrent) session(ctx context.Context, c ClientConfig) (*http.Client
 	if !((status == 200 && strings.TrimSpace(string(data)) == "Ok.") || (status == 204 && len(data) == 0)) || !hasSID {
 		return nil, problem("client_auth", "qBittorrent rejected the username or password. Use its Web UI credentials.")
 	}
+	q.mu.Lock()
 	if len(q.sessions) >= 4 {
 		q.sessions = map[string]*http.Client{}
+		q.locks = map[string]*sync.Mutex{}
 	}
 	q.sessions[key] = client
+	q.mu.Unlock()
 	return client, nil
 }
 func (q *QBittorrent) request(ctx context.Context, c ClientConfig, method, api, ct string, body io.Reader) ([]byte, error) {

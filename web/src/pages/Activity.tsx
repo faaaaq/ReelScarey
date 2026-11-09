@@ -37,7 +37,7 @@ import {
   pageParam,
   type Kind,
 } from "../ui";
-import { bytes } from "./Releases";
+import { releaseBytes as bytes } from "../ui";
 import { EpisodeMappingReview } from "./activity/EpisodeMappingReview";
 import { Pager } from "./activity/Pager";
 import { ToolbarMenu } from "./activity/ToolbarMenu";

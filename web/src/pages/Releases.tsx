@@ -35,6 +35,7 @@ import {
   ToolbarSection,
   ToolbarSeparator,
   episodeCode,
+  releaseBytes as bytes,
   type Kind,
   type SortState,
 } from "../ui";
@@ -43,12 +44,6 @@ import type { MovieVersionSettings } from "./MovieVersions";
 import { ToolbarMenu } from "./activity/ToolbarMenu";
 import "./Releases.css";
 
-export function bytes(size: number) {
-  if (size <= 0) return "Size unknown";
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  const n = Math.min(Math.floor(Math.log(size) / Math.log(1024)), 4);
-  return `${(size / 1024 ** n).toLocaleString(undefined, { maximumFractionDigits: n ? 1 : 0 })} ${units[n]}`;
-}
 export function Releases() {
   const [params] = useSearchParams();
   return <ReleaseBrowser key={params.toString()} />;

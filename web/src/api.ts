@@ -913,6 +913,7 @@ export class APIError extends Error {
   constructor(
     message: string,
     public status: number,
+    public code = "",
   ) {
     super(message);
   }
@@ -935,7 +936,7 @@ export async function api<T>(
     signal: options.signal ?? AbortSignal.timeout(30000),
   });
   if (response.status === 204) return undefined as T;
-  let body: { error?: { message?: string } } | null = null;
+  let body: { error?: { message?: string; code?: string } } | null = null;
   try {
     body = await response.json();
   } catch {
@@ -952,6 +953,7 @@ export async function api<T>(
       body?.error?.message ??
         `The request could not be completed (HTTP ${response.status}).`,
       response.status,
+      body?.error?.code ?? "",
     );
   }
   return body as T;

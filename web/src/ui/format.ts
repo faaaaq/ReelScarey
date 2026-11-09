@@ -58,3 +58,24 @@ export function formatRelative(seconds: number | null | undefined) {
 export function episodeCode(season: number, episode: number) {
   return `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
 }
+
+/** Release size; an unknown or non-positive size is labeled honestly. */
+export function releaseBytes(size: number) {
+  if (size <= 0) return "Size unknown";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  const n = Math.min(Math.floor(Math.log(size) / Math.log(1024)), 4);
+  return `${(size / 1024 ** n).toLocaleString(undefined, {
+    maximumFractionDigits: n ? 1 : 0,
+  })} ${units[n]}`;
+}
+
+/** Reads an uploaded file across browsers that lack File.arrayBuffer. */
+export function readFile(file: File): Promise<ArrayBuffer> {
+  if (typeof file.arrayBuffer === "function") return file.arrayBuffer();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(file);
+  });
+}

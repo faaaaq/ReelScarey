@@ -34,6 +34,7 @@ import {
   ToolbarSeparator,
   formatBytes,
   formatSpeed,
+  readFile,
 } from "../ui";
 import { useLiveResource } from "../useLiveResource";
 import {
@@ -59,16 +60,6 @@ function scrollToSettings() {
   document
     .getElementById("usenet-settings")
     ?.scrollIntoView({ block: "start" });
-}
-
-function readFile(file: File): Promise<ArrayBuffer> {
-  if (typeof file.arrayBuffer === "function") return file.arrayBuffer();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as ArrayBuffer);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsArrayBuffer(file);
-  });
 }
 
 function NewsServerForm({

@@ -53,9 +53,16 @@ func endpoint(raw string) (*url.URL, error) {
 func newHTTP() *http.Client {
 	return &http.Client{Timeout: 12 * time.Second, Transport: &http.Transport{Proxy: nil, MaxIdleConns: 10, IdleConnTimeout: time.Minute}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
+
+var (
+	driveRootRE  = regexp.MustCompile(`^[A-Za-z]:/`)
+	driveOnlyRE  = regexp.MustCompile(`^[A-Za-z]:/?$`)
+	nonWordRunRE = regexp.MustCompile(`[^\pL\pN]+`)
+)
+
 func remoteRoot(s string) (string, error) {
 	s = strings.ReplaceAll(strings.TrimSpace(s), "\\", "/")
-	if (!strings.HasPrefix(s, "/") && !regexp.MustCompile(`^[A-Za-z]:/`).MatchString(s)) || strings.HasPrefix(s, "//") || strings.ContainsAny(s, "\x00\r\n") {
+	if (!strings.HasPrefix(s, "/") && !driveRootRE.MatchString(s)) || strings.HasPrefix(s, "//") || strings.ContainsAny(s, "\x00\r\n") {
 		return "", problem("invalid_settings", "Enter an absolute download path as the download client sees it, such as /downloads or D:/Downloads.")
 	}
 	for _, part := range strings.Split(s, "/") {
@@ -64,7 +71,7 @@ func remoteRoot(s string) (string, error) {
 		}
 	}
 	s = path.Clean(s)
-	if s == "/" || regexp.MustCompile(`^[A-Za-z]:/?$`).MatchString(s) {
+	if s == "/" || driveOnlyRE.MatchString(s) {
 		return "", problem("invalid_settings", "Use a dedicated download directory, not a filesystem root.")
 	}
 	return strings.TrimRight(s, "/"), nil

@@ -26,6 +26,8 @@ type session struct {
 type OpenSubtitles struct {
 	client   *http.Client
 	mu       sync.Mutex
+	loginMu  sync.Mutex
+	paceMu   sync.Mutex
 	sessions map[string]session
 	last     time.Time
 	spacing  time.Duration
@@ -35,6 +37,10 @@ func NewOpenSubtitles() *OpenSubtitles {
 	return &OpenSubtitles{client: &http.Client{Timeout: 15 * time.Second, Transport: &http.Transport{Proxy: nil, MaxIdleConns: 4, IdleConnTimeout: time.Minute}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, sessions: map[string]session{}, spacing: time.Second}
 }
 func (o *OpenSubtitles) wait(ctx context.Context) error {
+	// Pacing is its own short critical section so one provider call's HTTP
+	// round trip never blocks the next job's preparation.
+	o.paceMu.Lock()
+	defer o.paceMu.Unlock()
 	delay := time.Until(o.last.Add(o.spacing))
 	if delay > 0 {
 		timer := time.NewTimer(delay)
@@ -149,11 +155,37 @@ func resetTime(b []byte) int64 {
 	}
 	return now + 24*3600
 }
-func (o *OpenSubtitles) login(ctx context.Context, c Credentials, force bool) (session, error) {
-	if force {
-		delete(o.sessions, c.Generation)
+func (o *OpenSubtitles) cachedSession(generation string) (session, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	s, ok := o.sessions[generation]
+	return s, ok
+}
+
+func (o *OpenSubtitles) storeSession(generation string, s session) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if len(o.sessions) > 8 {
+		clear(o.sessions)
 	}
-	if s, ok := o.sessions[c.Generation]; ok && (s.err != nil || s.until.After(time.Now())) {
+	o.sessions[generation] = s
+}
+
+func (o *OpenSubtitles) clearSession(generation string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.sessions, generation)
+}
+
+func (o *OpenSubtitles) login(ctx context.Context, c Credentials, force bool) (session, error) {
+	// Serialize logins only; a cached session and the provider API calls do not
+	// hold a process-wide lock.
+	o.loginMu.Lock()
+	defer o.loginMu.Unlock()
+	if force {
+		o.clearSession(c.Generation)
+	}
+	if s, ok := o.cachedSession(c.Generation); ok && (s.err != nil || s.until.After(time.Now())) {
 		return s, s.err
 	}
 	var raw struct {
@@ -166,10 +198,7 @@ func (o *OpenSubtitles) login(ctx context.Context, c Credentials, force bool) (s
 		var p *Error
 		if errors.As(e, &p) && (p.Code == "provider_auth" || p.Code == "provider_access") {
 			s.err = e
-			if len(o.sessions) > 8 {
-				clear(o.sessions)
-			}
-			o.sessions[c.Generation] = s
+			o.storeSession(c.Generation, s)
 		}
 		return s, e
 	}
@@ -181,15 +210,10 @@ func (o *OpenSubtitles) login(ctx context.Context, c Credentials, force bool) (s
 		return s, problem("provider_response", "OpenSubtitles did not return a valid account token.")
 	}
 	s = session{token: raw.Token, host: host, until: time.Now().Add(time.Hour)}
-	if len(o.sessions) > 8 {
-		clear(o.sessions)
-	}
-	o.sessions[c.Generation] = s
+	o.storeSession(c.Generation, s)
 	return s, nil
 }
 func (o *OpenSubtitles) Test(ctx context.Context, c Credentials) error {
-	o.mu.Lock()
-	defer o.mu.Unlock()
 	_, e := o.login(ctx, c, true)
 	return e
 }
@@ -222,8 +246,6 @@ func (n *number) UnmarshalJSON(b []byte) error {
 	return e
 }
 func (o *OpenSubtitles) Search(ctx context.Context, c Credentials, t Target, languages []string) ([]Candidate, error) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
 	langs := slices.Clone(languages)
 	slices.Sort(langs)
 	// Machine translations are excluded by the provider's default. Sending that
@@ -315,8 +337,6 @@ func downloadURL(raw string) (*url.URL, error) {
 	return u, nil
 }
 func (o *OpenSubtitles) Fetch(ctx context.Context, c Credentials, candidate Candidate) (Download, error) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
 	format := candidate.Format
 	if format == "" {
 		format = "srt"

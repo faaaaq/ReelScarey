@@ -143,10 +143,9 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
       apiParams.append(key, value);
   const all = useResource<LibraryPage>(`/library?${apiParams.toString()}`);
   // The server may reject page=all past its cap, or return a normal page if
-  // the option is unknown. Both cases fall back to the paginated view.
-  const allLimitReached =
-    !!all.error &&
-    /more than\s+\d+\s+items|narrow the filters/i.test(all.error);
+  // the option is unknown. Both cases fall back to the paginated view. Key on
+  // the machine-readable error code, never on human-readable prose.
+  const allLimitReached = all.code === "library_too_large";
   const capped =
     allLimitReached || (!!all.data && all.data.total > all.data.items.length);
   const pageParams = new URLSearchParams(apiParams);

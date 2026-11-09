@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@radix-ui/themes";
 import { api, messageFor, type DownloadJob } from "../../api";
 import { Alert, Check, episodeCode } from "../../ui";
-import { bytes } from "../Releases";
+import { releaseBytes as bytes } from "../../ui";
 
 /**
  * Explicit file-to-episode review for a completed TV download. Nothing is

@@ -16,6 +16,39 @@ type ParsedMusicRelease struct {
 	Lossless bool
 }
 
+// Package-level patterns: ParseMusicRelease runs for every candidate title, so
+// compiling these per call cost thousands of allocations per search.
+var (
+	musicYearRE    = regexp.MustCompile(`[\[\(]?(\d{4})[\]\)]?`)
+	musicV0RE      = regexp.MustCompile(`(?i)\bV0\b`)
+	musicV2RE      = regexp.MustCompile(`(?i)\bV2\b`)
+	musicBracketRE = regexp.MustCompile(`[\[\(].*[\]\)]`)
+	musicSpaceRE   = regexp.MustCompile(`\s+`)
+	musicBitrateRE = map[int]*regexp.Regexp{
+		320: regexp.MustCompile(`(?i)\b320\b`),
+		256: regexp.MustCompile(`(?i)\b256\b`),
+		192: regexp.MustCompile(`(?i)\b192\b`),
+		128: regexp.MustCompile(`(?i)\b128\b`),
+	}
+	musicFormatRE = map[string]*regexp.Regexp{
+		"FLAC": regexp.MustCompile(`(?i)\bFLAC\b`),
+		"ALAC": regexp.MustCompile(`(?i)\bALAC\b`),
+		"MP3":  regexp.MustCompile(`(?i)\bMP3\b`),
+		"AAC":  regexp.MustCompile(`(?i)\bAAC\b`),
+		"OGG":  regexp.MustCompile(`(?i)\bOGG\b`),
+		"OPUS": regexp.MustCompile(`(?i)\bOPUS\b`),
+		"WAV":  regexp.MustCompile(`(?i)\bWAV\b`),
+	}
+	musicQualityRE = func() []*regexp.Regexp {
+		tokens := []string{"WEB", "WEB-DL", "WEBRip", "CD", "Vinyl", "Remaster", "Deluxe", "EP", "LP"}
+		patterns := make([]*regexp.Regexp, 0, len(tokens))
+		for _, token := range tokens {
+			patterns = append(patterns, regexp.MustCompile(`(?i)\b`+token+`\b`))
+		}
+		return patterns
+	}()
+)
+
 // ParseMusicRelease parses a music release title into a ParsedMusicRelease struct.
 func ParseMusicRelease(title string) ParsedMusicRelease {
 	res := ParsedMusicRelease{}
@@ -36,8 +69,7 @@ func ParseMusicRelease(title string) ParsedMusicRelease {
 	working := title
 
 	// 2. Extract Year (1900-2099) in () or [] or standalone
-	yearRegex := regexp.MustCompile(`[\[\(]?(\d{4})[\]\)]?`)
-	yearMatches := yearRegex.FindAllStringSubmatchIndex(working, -1)
+	yearMatches := musicYearRE.FindAllStringSubmatchIndex(working, -1)
 	for _, m := range yearMatches {
 		yearStr := working[m[2]:m[3]]
 		if y, err := strconv.Atoi(yearStr); err == nil && y >= 1900 && y <= 2099 {
@@ -55,7 +87,7 @@ func ParseMusicRelease(title string) ParsedMusicRelease {
 	// Bitrate
 	bitrates := []int{320, 256, 192, 128}
 	for _, b := range bitrates {
-		pattern := regexp.MustCompile(`(?i)\b` + strconv.Itoa(b) + `\b`)
+		pattern := musicBitrateRE[b]
 		if pattern.MatchString(working) {
 			res.Bitrate = b
 			working = pattern.ReplaceAllString(working, "")
@@ -64,20 +96,20 @@ func ParseMusicRelease(title string) ParsedMusicRelease {
 	}
 
 	// V0, V2 -> MP3, Bitrate 0
-	if v0 := regexp.MustCompile(`(?i)\bV0\b`); v0.MatchString(working) {
+	if musicV0RE.MatchString(working) {
 		res.Bitrate = 0
 		res.Format = "MP3"
-		working = v0.ReplaceAllString(working, "")
-	} else if v2 := regexp.MustCompile(`(?i)\bV2\b`); v2.MatchString(working) {
+		working = musicV0RE.ReplaceAllString(working, "")
+	} else if musicV2RE.MatchString(working) {
 		res.Bitrate = 0
 		res.Format = "MP3"
-		working = v2.ReplaceAllString(working, "")
+		working = musicV2RE.ReplaceAllString(working, "")
 	}
 
 	// Formats
 	formats := []string{"FLAC", "ALAC", "MP3", "AAC", "OGG", "OPUS", "WAV"}
 	for _, f := range formats {
-		pattern := regexp.MustCompile(`(?i)\b` + f + `\b`)
+		pattern := musicFormatRE[f]
 		if pattern.MatchString(working) {
 			res.Format = strings.ToUpper(f)
 			// If it's a known lossless format
@@ -108,19 +140,16 @@ func ParseMusicRelease(title string) ParsedMusicRelease {
 
 	// 5. Clean Album
 	// Remove remaining bracketed groups [anything] or (anything)
-	bracketRegex := regexp.MustCompile(`[\[\(].*[\]\)]`)
-	album = bracketRegex.ReplaceAllString(album, "")
+	album = musicBracketRE.ReplaceAllString(album, "")
 
 	// Remove quality tokens
-	qualityTokens := []string{"WEB", "WEB-DL", "WEBRip", "CD", "Vinyl", "Remaster", "Deluxe", "EP", "LP"}
-	for _, token := range qualityTokens {
-		pattern := regexp.MustCompile(`(?i)\b` + token + `\b`)
+	for _, pattern := range musicQualityRE {
 		album = pattern.ReplaceAllString(album, "")
 	}
 
 	// Trim punctuation and whitespace
 	album = strings.Trim(album, " \t\n\r\f\v\"'.,!?;:-")
-	album = regexp.MustCompile(`\s+`).ReplaceAllString(album, " ")
+	album = musicSpaceRE.ReplaceAllString(album, " ")
 	artist = strings.TrimSpace(artist)
 
 	res.Artist = artist

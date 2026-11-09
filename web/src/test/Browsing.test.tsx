@@ -295,6 +295,7 @@ describe("catalog browsing", () => {
         return Response.json(
           {
             error: {
+              code: "library_too_large",
               message:
                 "This library view has more than 5000 items. Narrow the filters or choose a page.",
             },

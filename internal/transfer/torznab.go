@@ -8,11 +8,26 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
-type Torznab struct{ HTTP *http.Client }
+type Torznab struct {
+	HTTP *http.Client
+	mu   sync.Mutex
+	// caps caches capabilities per endpoint/generation so each search and feed
+	// pass does not spend an extra round trip on an unchanging document.
+	caps map[string]cachedCaps
+}
 
-func NewTorznab() *Torznab { return &Torznab{HTTP: newHTTP()} }
+type cachedCaps struct {
+	value caps
+	until time.Time
+}
+
+func NewTorznab() *Torznab {
+	return &Torznab{HTTP: newHTTP(), caps: map[string]cachedCaps{}}
+}
 
 type feedError struct {
 	Code        string `xml:"code,attr"`
@@ -116,6 +131,26 @@ func (t *Torznab) Test(ctx context.Context, c IndexerConfig) error {
 	return err
 }
 func (t *Torznab) readCaps(ctx context.Context, c IndexerConfig) (caps, error) {
+	key := c.URL + "\x00" + c.Generation + "\x00" + c.APIKey
+	t.mu.Lock()
+	if entry, ok := t.caps[key]; ok && time.Now().Before(entry.until) {
+		t.mu.Unlock()
+		return entry.value, nil
+	}
+	t.mu.Unlock()
+	out, err := t.fetchCaps(ctx, c)
+	if err != nil {
+		return caps{}, err
+	}
+	t.mu.Lock()
+	if len(t.caps) >= 32 {
+		t.caps = map[string]cachedCaps{}
+	}
+	t.caps[key] = cachedCaps{value: out, until: time.Now().Add(15 * time.Minute)}
+	t.mu.Unlock()
+	return out, nil
+}
+func (t *Torznab) fetchCaps(ctx context.Context, c IndexerConfig) (caps, error) {
 	u, err := indexerURL(c, "caps")
 	if err != nil {
 		return caps{}, err

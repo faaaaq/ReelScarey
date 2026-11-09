@@ -93,7 +93,7 @@ func MapSource(save, file, remote string) (string, error) {
 		return "", problem("path_mapping", "The download client returned an unsafe save path.")
 	}
 	compareBase, compareSave := base, save
-	if regexp.MustCompile(`^[A-Za-z]:/`).MatchString(base) {
+	if driveRootRE.MatchString(base) {
 		compareBase = strings.ToLower(base)
 		compareSave = strings.ToLower(save)
 	}

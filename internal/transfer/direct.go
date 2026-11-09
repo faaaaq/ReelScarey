@@ -202,7 +202,7 @@ func (d *Direct) Search(ctx context.Context, c IndexerConfig, query string) ([]C
 }
 func matchesWords(title, query string) bool {
 	normalize := func(s string) string {
-		return strings.ToLower(regexp.MustCompile(`[^\pL\pN]+`).ReplaceAllString(s, " "))
+		return strings.ToLower(nonWordRunRE.ReplaceAllString(s, " "))
 	}
 	words := strings.Fields(normalize(title))
 	lookup := map[string]bool{}

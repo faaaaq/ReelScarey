@@ -7,7 +7,7 @@ import { PageHeading, RequestState } from "../components";
 import { Pagination } from "../movieComponents";
 import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
-import { bytes } from "./Releases";
+import { releaseBytes as bytes } from "../ui";
 import "./Admin.css";
 
 type Library = {

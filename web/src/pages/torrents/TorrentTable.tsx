@@ -250,7 +250,6 @@ export function TorrentTable({
                         type="button"
                         className="tor-sort"
                         title={c.title ?? c.label}
-                        tabIndex={-1}
                         onClick={() =>
                           onSort({
                             key: c.key,

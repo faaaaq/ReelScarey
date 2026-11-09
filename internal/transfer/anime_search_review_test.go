@@ -18,6 +18,7 @@ import (
 type animeSearchReviewHTTP struct {
 	mu         sync.Mutex
 	requests   int
+	caps       int
 	queries    []string
 	categories []string
 	deadlines  []time.Time
@@ -75,6 +76,9 @@ func animeSearchTorznabReview(t *testing.T, mapped bool, mode string) (*workflow
 		}
 		switch r.URL.Query().Get("t") {
 		case "caps":
+			capture.mu.Lock()
+			capture.caps++
+			capture.mu.Unlock()
 			fmt.Fprint(w, `<caps><searching><search available="yes" supportedParams="q"/></searching></caps>`)
 		case "search":
 			capture.mu.Lock()
@@ -124,8 +128,14 @@ func TestReviewAnimeRealTorznabQueriesDeduplicateAndShareOneBudget(t *testing.T)
 	if !reflect.DeepEqual(queries, want) || !reflect.DeepEqual(categories, []string{"5000", "5000", "5000"}) {
 		t.Fatal("queries did not preserve exact selected name/category or fanned out aliases", queries, categories)
 	}
-	if len(deadlines) != 6 || deadlines[0].IsZero() {
-		t.Fatal("expected bounded caps/search HTTP requests", deadlines)
+	if len(deadlines) != 3 || deadlines[0].IsZero() {
+		t.Fatal("expected three bounded search requests with one cached caps read", deadlines)
+	}
+	capture.mu.Lock()
+	capsCalls := capture.caps
+	capture.mu.Unlock()
+	if capsCalls != 1 {
+		t.Fatalf("caps were fetched %d times; expected one cached read", capsCalls)
 	}
 	for _, deadline := range deadlines {
 		if !deadline.Equal(deadlines[0]) {
