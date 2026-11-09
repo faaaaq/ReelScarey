@@ -44,6 +44,7 @@ type fixtureClient struct {
 	files        []TorrentFile
 	adds         int
 	lostResponse bool
+	addErr       error
 	offline      bool
 	transfer     TransferInfo
 	list         []Torrent
@@ -86,6 +87,9 @@ func (f *fixtureClient) Add(_ context.Context, _ ClientConfig, tag, save string,
 	}
 	f.adds++
 	f.lastTag, f.lastSave, f.lastPayload = tag, save, p
+	if f.addErr != nil {
+		return f.addErr
+	}
 	f.torrent = &Torrent{Hash: testHash, Tags: tag, SavePath: save, State: "downloading", AmountLeft: 10}
 	if f.lostResponse {
 		return unavailable("test lost response")

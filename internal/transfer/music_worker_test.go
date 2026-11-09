@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/music"
 )
@@ -224,5 +225,34 @@ func TestMusicWorkerRefusesAChangedClientSnapshot(t *testing.T) {
 	got := musicTestState(t, f, job.ID)
 	if got.State != "blocked" || !strings.Contains(got.Error, "original download client") {
 		t.Fatal("a changed music client snapshot was not blocked", got)
+	}
+}
+
+func TestMusicWorkerResubmitsOnlyAfterADefinitiveRejection(t *testing.T) {
+	ctx := context.Background()
+	f := setupWorkflow(t)
+	albumID := musicTestAlbum(t, f)
+	musicTestCandidate(t, f, albumID, "release-1", time.Now().Unix()+600)
+	f.client.addErr = problem("client_add_rejected", "test rejection")
+	job, e := f.s.QueueMusic(ctx, albumID, "release-1", "Music")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if job.State != "blocked" || job.SubmissionAttempted != 0 || f.client.adds != 1 {
+		t.Fatalf("a definitive rejection was not recorded for resubmission: %+v adds=%d", job, f.client.adds)
+	}
+	f.client.addErr = nil
+	if e := f.s.RetryMusic(ctx, job.ID); e != nil {
+		t.Fatal(e)
+	}
+	if processed, e := musicTestProcess(t, f); e != nil || !processed {
+		t.Fatal("the rejected music submission was not retried", processed, e)
+	}
+	got := musicTestState(t, f, job.ID)
+	if got.State != "downloading" || got.SubmissionAttempted != 1 {
+		t.Fatalf("the retried music submission did not resume: %+v", got)
+	}
+	if f.client.adds != 2 {
+		t.Fatalf("expected exactly one resubmission, got %d adds", f.client.adds)
 	}
 }

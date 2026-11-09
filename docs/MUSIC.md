@@ -5,8 +5,11 @@
 
 Music submissions reserve a job before calling the download client. If a
 response is lost or ReelScarey restarts, Retry tracks the same torrent hash
-and job tag or the saved Usenet identity. Stop tracking releases the
-reservation without changing the client's queue.
+and job tag or the saved Usenet identity. An explicit client rejection is the
+one exception: Retry resubmits that saved selection once the client is fixed,
+re-reading the encrypted candidate and re-checking the indexer generation and
+info hash first. An uncertain submission is never resubmitted automatically.
+Stop tracking releases the reservation without changing the client's queue.
 
 Imports save the staged file checksum before publishing, then commit each
 registration with its import progress. On restart the worker can finish

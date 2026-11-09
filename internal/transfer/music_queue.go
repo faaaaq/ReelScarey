@@ -47,6 +47,10 @@ type MusicJob struct {
 	CreatedAt       int64   `json:"created_at"`
 	UpdatedAt       int64   `json:"updated_at"`
 
+	// SubmissionAttempted distinguishes a known-rejected submission (0, safe to
+	// resubmit on explicit retry) from an uncertain one (1, reconcile only).
+	SubmissionAttempted int `json:"submission_attempted"`
+
 	nextRun   int64
 	owner     string
 	remoteID  string
@@ -60,7 +64,7 @@ type MusicJobPage struct {
 	Limit int        `json:"limit"`
 }
 
-const musicJobColumns = `id,album_id,release_id,title,info_hash,protocol,client_key,client_kind,client_label,client_download_root,client_local_folder,save_path,root,indexer_name,state,progress,total_bytes,downloaded_bytes,error,import_job_id,attempts,next_run,created_at,updated_at,remote_id,client_url`
+const musicJobColumns = `id,album_id,release_id,title,info_hash,protocol,client_key,client_kind,client_label,client_download_root,client_local_folder,save_path,root,indexer_name,state,progress,total_bytes,downloaded_bytes,error,import_job_id,attempts,next_run,created_at,updated_at,remote_id,client_url,submission_attempted`
 
 func scanMusicJob(row scanner) (MusicJob, error) {
 	var j MusicJob
@@ -68,7 +72,7 @@ func scanMusicJob(row scanner) (MusicJob, error) {
 	e := row.Scan(&j.ID, &j.AlbumID, &j.ReleaseID, &j.Title, &j.InfoHash, &j.Protocol,
 		&j.ClientKey, &j.ClientKind, &j.ClientLabel, &j.ClientRoot, &j.ClientLocal,
 		&j.SavePath, &j.Root, &j.IndexerName, &j.State, &j.Progress, &j.TotalBytes,
-		&j.DownloadedBytes, &j.Error, &importID, &j.Attempts, &j.nextRun, &j.CreatedAt, &j.UpdatedAt, &j.remoteID, &j.clientURL)
+		&j.DownloadedBytes, &j.Error, &importID, &j.Attempts, &j.nextRun, &j.CreatedAt, &j.UpdatedAt, &j.remoteID, &j.clientURL, &j.SubmissionAttempted)
 	if importID.Valid {
 		id := importID.Int64
 		j.ImportJobID = &id
@@ -234,8 +238,8 @@ func (s *Service) QueueMusicGuarded(ctx context.Context, albumID int64, releaseI
 	if occupied {
 		return MusicJob{}, problem("duplicate_music_download", "A music download already tracks this album or release. Resolve or stop tracking it before submitting again.")
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO music_downloads(id,album_id,release_id,title,info_hash,protocol,client_key,client_kind,client_label,client_download_root,client_local_folder,save_path,root,indexer_name,state,next_run,created_at,updated_at,indexer_public,client_url)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'submitting',?,?,?,?,?)`,
+	if _, e = tx.ExecContext(ctx, `INSERT INTO music_downloads(id,album_id,release_id,title,info_hash,protocol,client_key,client_kind,client_label,client_download_root,client_local_folder,save_path,root,indexer_name,state,next_run,created_at,updated_at,indexer_public,client_url,submission_attempted)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'submitting',?,?,?,?,?,0)`,
 		id, albumID, releaseID, v.Title, hash, protocol, client.profileKey, client.kind, client.label,
 		client.DownloadPath, client.LocalFolder, save, root, v.IndexerName, now+60, now, now, indexerPublic, client.URL); e != nil {
 		return MusicJob{}, e
@@ -262,12 +266,19 @@ func (s *Service) QueueMusicGuarded(ctx context.Context, albumID int64, releaseI
 	finish, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer stop()
 	state, message := "downloading", ""
+	attempted := 1
 	if e != nil {
 		state = "blocked"
 		message = "The download client did not confirm the music submission. Retry tracking to reconcile it, or check the client before stopping tracking."
+		if definitiveAddRejection(e) {
+			// The client explicitly refused the submission, so nothing is
+			// running remotely. An explicit retry may submit it again.
+			attempted = 0
+			message = "The download client rejected the music submission. Fix the client, then retry tracking; retrying submits it again."
+		}
 	}
-	if _, e = s.db.ExecContext(finish, `UPDATE music_downloads SET state=?,error=?,remote_id=?,next_run=unixepoch(),updated_at=unixepoch()
-		WHERE id=? AND state='submitting'`, state, message, remoteID, id); e != nil {
+	if _, e = s.db.ExecContext(finish, `UPDATE music_downloads SET state=?,error=?,remote_id=?,submission_attempted=?,next_run=unixepoch(),updated_at=unixepoch()
+		WHERE id=? AND state='submitting'`, state, message, remoteID, attempted, id); e != nil {
 		return MusicJob{}, e
 	}
 	return s.MusicJob(finish, id)

@@ -3,7 +3,9 @@ package transfer
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"path"
@@ -261,10 +263,21 @@ func (s *Service) processMusicTorrent(ctx context.Context, j MusicJob, c ClientC
 	}
 	tag := "reelscarey-" + j.ID
 	if torrent == nil {
+		if j.SubmissionAttempted == 0 {
+			// A definitive client rejection was recorded: this explicit retry
+			// may submit the saved selection again. An uncertain submission has
+			// SubmissionAttempted set and stays reconcile-only.
+			return s.resubmitMusic(ctx, j, c)
+		}
 		if time.Now().Unix()-j.CreatedAt > 90 {
 			return problem("submission_unknown", "The music torrent is not visible in its client. Check the client, then retry only if it was not accepted. The same info hash is never resubmitted automatically.")
 		}
 		return nil
+	}
+	if j.SubmissionAttempted == 0 {
+		if e = s.ownedMusic(ctx, j, `UPDATE music_downloads SET submission_attempted=1,updated_at=unixepoch()`); e != nil {
+			return e
+		}
 	}
 	if !containsPart(torrent.Tags, tag) {
 		return problem("torrent_exists", "This torrent already exists outside this music download. It was left unchanged; choose another release or stop tracking this job.")
@@ -314,10 +327,18 @@ func (s *Service) processMusicUsenet(ctx context.Context, j MusicJob, c ClientCo
 		return e
 	}
 	if remote == nil {
+		if j.SubmissionAttempted == 0 {
+			return s.resubmitMusic(ctx, j, c)
+		}
 		if time.Now().Unix()-j.CreatedAt > 90 {
 			return problem("usenet_submission_unknown", "The music Usenet job is not visible. Restore its original name/category or history, then retry tracking. An uncertain NZB is never resubmitted automatically.")
 		}
 		return nil
+	}
+	if j.SubmissionAttempted == 0 {
+		if e = s.ownedMusic(ctx, j, `UPDATE music_downloads SET submission_attempted=1,updated_at=unixepoch()`); e != nil {
+			return e
+		}
 	}
 	if e = s.ownedMusic(ctx, j, `UPDATE music_downloads SET state='downloading',progress=?,total_bytes=?,downloaded_bytes=?,updated_at=unixepoch()`, remote.Progress, remote.Total, remote.Downloaded); e != nil {
 		return e
@@ -406,4 +427,100 @@ func musicErrorText(message string) string {
 		message = message[:1000]
 	}
 	return message
+}
+
+// definitiveAddRejection reports whether a client proved it did not accept a
+// submission. Only this class of failure may be resubmitted; ambiguous results
+// are reconciled by identity and never submitted again automatically.
+func definitiveAddRejection(err error) bool {
+	var typed *Error
+	return errors.As(err, &typed) && typed.Code == "client_add_rejected"
+}
+
+// resubmitMusic submits a saved music selection again after a definitive client
+// rejection. It re-reads the encrypted candidate, re-resolves the same indexer
+// generation and re-fetches the payload, so a changed release never silently
+// becomes a different download.
+func (s *Service) resubmitMusic(ctx context.Context, j MusicJob, c ClientConfig) error {
+	key := fmt.Sprintf("%d:%s", j.AlbumID, j.ReleaseID)
+	var sealed []byte
+	var expires int64
+	if e := s.db.QueryRowContext(ctx, `SELECT payload,expires_at FROM music_release_candidates WHERE id=? AND album_id=?`, key, j.AlbumID).Scan(&sealed, &expires); e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			return problem("release_expired", "The saved music release expired. Search again to resubmit it.")
+		}
+		return e
+	}
+	if expires < time.Now().Unix() {
+		return problem("release_expired", "The saved music release expired. Search again to resubmit it.")
+	}
+	plain, e := s.secrets.Open("music-release", sealed)
+	if e != nil {
+		return e
+	}
+	var v Candidate
+	if e = json.Unmarshal(plain, &v); e != nil {
+		return e
+	}
+	if v.ID != j.ReleaseID {
+		return problem("invalid_release", "The saved music release does not match this download. Search again.")
+	}
+	indexer, e := s.candidateIndexer(ctx, v)
+	if e != nil {
+		return e
+	}
+	if v.Generation != indexer.Generation {
+		return problem("release_expired", "The indexer settings changed. Search again before resubmitting.")
+	}
+	protocol := "torrent"
+	if indexer.Kind == "newznab" {
+		protocol = "usenet"
+	}
+	if protocol != j.Protocol {
+		return problem("invalid_release", "The saved music release protocol changed. Search again.")
+	}
+	adapter := s.adapter(indexer)
+	if adapter == nil {
+		return problem("release_expired", "The source adapter is unavailable. Search again.")
+	}
+	payload, hash, e := adapter.Fetch(ctx, indexer, v)
+	if e != nil {
+		return e
+	}
+	if hash != j.InfoHash {
+		return problem("payload_mismatch", "The saved release no longer matches its info hash. Search again.")
+	}
+	if e = validateMusicPayload(protocol, payload, hash); e != nil {
+		return e
+	}
+	submit, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	tag := "reelscarey-" + j.ID
+	var remoteID string
+	var addErr error
+	if protocol == "usenet" {
+		var usenet interface {
+			Add(context.Context, ClientConfig, string, []byte) (string, error)
+		} = s.sab
+		if c.kind == "nzbget" {
+			usenet = s.nzbget
+		}
+		remoteID, addErr = usenet.Add(submit, c, tag, payload.NZB)
+	} else {
+		addErr = s.torrentClient(c).Add(submit, c, tag, j.SavePath, payload)
+	}
+	finish, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer stop()
+	if addErr != nil {
+		attempted := 1
+		if definitiveAddRejection(addErr) {
+			attempted = 0
+		}
+		if _, e := s.db.ExecContext(finish, `UPDATE music_downloads SET error=?,submission_attempted=?,updated_at=unixepoch() WHERE id=?`, musicErrorText(addErr.Error()), attempted, j.ID); e != nil {
+			return e
+		}
+		return addErr
+	}
+	_, e = s.db.ExecContext(finish, `UPDATE music_downloads SET state='downloading',error='',remote_id=?,submission_attempted=1,next_run=unixepoch(),updated_at=unixepoch() WHERE id=?`, remoteID, j.ID)
+	return e
 }
