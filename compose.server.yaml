@@ -19,6 +19,7 @@ services:
     environment:
       REELSCAREY_PUBLIC_URL: ${REELSCAREY_PUBLIC_URL:?Set the exact browser URL in server.env}
       REELSCAREY_LOG_LEVEL: info
+      TZ: ${TZ:-UTC}
       # Optional hardlink imports: mount one writable parent and use
       # REELSCAREY_MEDIA_DIR=/data/media, REELSCAREY_DOWNLOADS_DIR=/data/downloads.
       # The default mounts below are separate and downloads is read-only, so

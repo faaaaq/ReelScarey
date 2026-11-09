@@ -368,7 +368,7 @@ func (s *MetadataRefresher) refreshItem(ctx context.Context, id int64, full bool
 		_ = s.db.QueryRowContext(ctx, `SELECT season_cursor FROM metadata_refresh_state WHERE media_id=?`, id).Scan(&cursor)
 		eligible := []int{}
 		for _, v := range show.Seasons {
-			if v.LoadedAt != "" || (v.Monitored && v.AirDate != "" && v.AirDate <= time.Now().AddDate(0, 0, 90).UTC().Format(time.DateOnly)) {
+			if v.LoadedAt != "" || (v.Monitored && v.AirDate != "" && v.AirDate <= time.Now().AddDate(0, 0, 90).Format(time.DateOnly)) {
 				eligible = append(eligible, v.Number)
 			}
 		}

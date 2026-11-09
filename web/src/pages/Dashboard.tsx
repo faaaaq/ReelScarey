@@ -379,8 +379,9 @@ export function Dashboard() {
                       </p>
                     )}
                     <p className="rs-muted rs-small">
-                      Release dates use UTC; TV dates follow saved episodes.
-                      Movie entries show the release kind when it is saved.
+                      Release dates follow the server timezone (TZ); TV dates
+                      follow saved episodes. Movie entries show the release kind
+                      when it is saved.
                     </p>
                   </div>
                 )}

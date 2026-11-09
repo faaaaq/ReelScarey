@@ -24,7 +24,7 @@ func newMonitorFixture(t *testing.T) monitorFixture {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { db.Close() })
-	now := time.Now().UTC()
+	now := time.Now()
 	dates := map[string]string{
 		"past":   now.AddDate(0, 0, -3).Format("2006-01-02"),
 		"today":  now.Format("2006-01-02"),

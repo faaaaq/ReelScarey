@@ -8,7 +8,7 @@ import (
 )
 
 func TestDefaultMonitoringUsesFutureReleaseDates(t *testing.T) {
-	now := time.Now().UTC()
+	now := time.Now()
 	today := now.Format("2006-01-02")
 	tomorrow := now.AddDate(0, 0, 1).Format("2006-01-02")
 	past := now.AddDate(0, 0, -1).Format("2006-01-02")

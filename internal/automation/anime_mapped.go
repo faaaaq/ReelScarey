@@ -36,7 +36,7 @@ func sameMappedTarget(a, b searchTarget) bool {
 }
 
 func (s *Service) mappedEligibility(ctx context.Context, mediaID int64) (map[int64]searchTarget, error) {
-	date := s.now().UTC().Format("2006-01-02")
+	date := s.now().Format("2006-01-02")
 	rows, e := s.db.QueryContext(ctx, targetSQL+` AS mapped WHERE media_id=? AND anime_mode='mapped' AND episode_id IN (SELECT episode_id FROM anime_order_entries WHERE media_id=?) AND NOT EXISTS(SELECT 1 FROM episode_files ef WHERE ef.episode_id=mapped.episode_id) ORDER BY key LIMIT 5001`, date, 0, mediaID, mediaID)
 	if e != nil {
 		return nil, e
@@ -300,7 +300,7 @@ func (s *Service) mappedGuard(c claim, plan mappedPlan, profile quality.Profile)
 			}
 			seen[entry.EpisodeID] = true
 		}
-		date := s.now().UTC().Format("2006-01-02")
+		date := s.now().Format("2006-01-02")
 		targetIDs := map[int64]bool{}
 		for _, target := range v.Targets {
 			if targetIDs[target.EpisodeID] {

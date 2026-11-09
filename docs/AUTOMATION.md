@@ -25,7 +25,8 @@ case-insensitive `The ` while displaying the saved title unchanged.
 Searches include every effectively monitored target with no registered file and
 no active job. A movie is searched whatever its saved release date, so a release
 that lands earlier than its scheduled date is not missed. TV episodes still need
-a known air date on or before today's UTC date, and the show, season and episode
+a known air date on or before today's date in the server's configured timezone,
+and the show, season and episode
 must all be monitored; load season metadata explicitly in the TV library first.
 Pausing a parent retains child selections. Movie monitoring can be changed
 alongside its automation profile. The scheduler does not refresh TMDb, discover
@@ -34,7 +35,8 @@ unloaded episodes or scan existing media folders.
 The show-level **Monitor all future episodes** action (`monitor-all`) applies a
 different, explicit owner rule: it turns the show on, monitors only regular
 episodes whose `air_date` is a valid full YYYY-MM-DD date on or after today's
-UTC date, and explicitly unmonitors regular episodes and seasons with no such
+date in the server timezone, and explicitly unmonitors regular episodes and
+seasons with no such
 episode. A regular season is monitored only when it contains such an episode or
 its own `air_date` is valid and today-or-later. Past, undated and invalid regular
 episodes are therefore off; specials keep their explicit choices. The

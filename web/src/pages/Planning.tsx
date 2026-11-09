@@ -698,7 +698,8 @@ export function Planning({ calendar = false }: { calendar?: boolean }) {
               <p>
                 {data.total} matching {data.total === 1 ? "item" : "items"}.
                 Based on your saved catalog as of {dateLabel(data.as_of_date)}{" "}
-                (UTC); availability reflects registered files and tracked jobs.
+                (server timezone); availability reflects registered files and
+                tracked jobs.
               </p>
               {calendar && resource.updatedAt !== undefined && (
                 <p className="plan-updated" role="status">

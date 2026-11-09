@@ -68,7 +68,7 @@ func scanTarget(row interface{ Scan(...any) error }) (searchTarget, error) {
 	return t, e
 }
 func (s *Service) targets(ctx context.Context, cursor string, limit int, focusMedia, focusEpisode, focusKind string) ([]searchTarget, error) {
-	date := s.now().UTC().Format("2006-01-02")
+	date := s.now().Format("2006-01-02")
 	out := []searchTarget{}
 	filter := ""
 	args := []any{}
@@ -142,7 +142,7 @@ func (s *Service) focusRemaining(ctx context.Context, cursor, focusMedia, focusE
 	if focusMedia == "" && focusEpisode == "" && focusKind == "" {
 		return 0, nil
 	}
-	date := s.now().UTC().Format("2006-01-02")
+	date := s.now().Format("2006-01-02")
 	filter := ` AND key>?`
 	args := []any{date, 1, cursor}
 	if focusMedia != "" {
@@ -232,7 +232,7 @@ func (s *Service) guard(c claim, t searchTarget, p quality.Profile) transfer.Que
 		if count != 1 {
 			return ErrLease
 		}
-		date := s.now().UTC().Format("2006-01-02")
+		date := s.now().Format("2006-01-02")
 		current, e := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, 1, t.Key))
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrLease
@@ -599,7 +599,7 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 // episodes, so a focused show search can try one season pack before falling
 // back to individual episodes.
 func (s *Service) packSeasons(ctx context.Context, mediaID int64) ([]int, error) {
-	date := s.now().UTC().Format("2006-01-02")
+	date := s.now().Format("2006-01-02")
 	rows, e := s.db.QueryContext(ctx, `SELECT season FROM (`+targetSQL+`) WHERE media_id=? AND category='standard' AND season>0 AND episode_id IS NOT NULL GROUP BY season HAVING COUNT(*)>1 ORDER BY season`, date, 1, mediaID)
 	if e != nil {
 		return nil, e
@@ -617,7 +617,7 @@ func (s *Service) packSeasons(ctx context.Context, mediaID int64) ([]int, error)
 }
 
 func (s *Service) seasonTargets(ctx context.Context, mediaID int64, season int) ([]searchTarget, error) {
-	date := s.now().UTC().Format("2006-01-02")
+	date := s.now().Format("2006-01-02")
 	rows, e := s.db.QueryContext(ctx, `SELECT * FROM (`+targetSQL+`) WHERE media_id=? AND season=? AND category='standard' AND episode_id IS NOT NULL ORDER BY episode`, date, 1, mediaID, season)
 	if e != nil {
 		return nil, e
@@ -768,7 +768,7 @@ func (s *Service) guardPack(c claim, group []searchTarget, p quality.Profile) tr
 				return ErrLease
 			}
 		}
-		date := s.now().UTC().Format("2006-01-02")
+		date := s.now().Format("2006-01-02")
 		for _, vt := range v.Targets {
 			key := fmt.Sprintf("e:%020d", vt.EpisodeID)
 			current, e := scanTarget(tx.QueryRowContext(ctx, targetSQL+` WHERE key=?`, date, 1, key))

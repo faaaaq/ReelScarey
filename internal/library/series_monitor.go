@@ -39,7 +39,7 @@ func validDateSQL(column string) string {
 // next regular season that has not started yet. A nil result means the show has
 // no usable season date.
 func currentSeasonID(ctx context.Context, tx *sql.Tx, seriesID int64) (*int64, error) {
-	started := validDateSQL("air_date") + ` AND air_date<=date('now')`
+	started := validDateSQL("air_date") + ` AND air_date<=date('now','localtime')`
 	var id int64
 	err := tx.QueryRowContext(ctx, `SELECT id FROM seasons WHERE series_id=? AND number>0 AND `+started+` ORDER BY number DESC LIMIT 1`, seriesID).Scan(&id)
 	if err == nil {
@@ -48,7 +48,7 @@ func currentSeasonID(ctx context.Context, tx *sql.Tx, seriesID int64) (*int64, e
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	upcoming := validDateSQL("air_date") + ` AND air_date>date('now')`
+	upcoming := validDateSQL("air_date") + ` AND air_date>date('now','localtime')`
 	err = tx.QueryRowContext(ctx, `SELECT id FROM seasons WHERE series_id=? AND number>0 AND `+upcoming+` ORDER BY number ASC LIMIT 1`, seriesID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -102,10 +102,10 @@ func (s *Store) SetSeriesMonitorMode(ctx context.Context, id int64, mode string)
 		case SeriesMonitorMissing:
 			// Every regular season that has started, and its episodes that
 			// have already aired.
-			if _, err = tx.ExecContext(ctx, `UPDATE seasons SET monitored=1 WHERE series_id=? AND number>0 AND `+seasonDate+` AND air_date<=date('now')`, id); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE seasons SET monitored=1 WHERE series_id=? AND number>0 AND `+seasonDate+` AND air_date<=date('now','localtime')`, id); err != nil {
 				return err
 			}
-			if _, err = tx.ExecContext(ctx, `UPDATE episodes AS e SET monitored=1 WHERE e.season_id IN (SELECT s.id FROM seasons s WHERE s.series_id=? AND s.monitored=1) AND `+episodeDate+` AND e.air_date<=date('now')`, id); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE episodes AS e SET monitored=1 WHERE e.season_id IN (SELECT s.id FROM seasons s WHERE s.series_id=? AND s.monitored=1) AND `+episodeDate+` AND e.air_date<=date('now','localtime')`, id); err != nil {
 				return err
 			}
 		case SeriesMonitorCurrent:
@@ -128,7 +128,7 @@ func (s *Store) SetSeriesMonitorMode(ctx context.Context, id int64, mode string)
 			if err != nil {
 				return err
 			}
-			if _, err = tx.ExecContext(ctx, `UPDATE seasons SET monitored=1 WHERE series_id=? AND number>0 AND `+seasonDate+` AND air_date>=date('now')`, id); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE seasons SET monitored=1 WHERE series_id=? AND number>0 AND `+seasonDate+` AND air_date>=date('now','localtime')`, id); err != nil {
 				return err
 			}
 			if current != nil {
@@ -136,7 +136,7 @@ func (s *Store) SetSeriesMonitorMode(ctx context.Context, id int64, mode string)
 					return err
 				}
 			}
-			if _, err = tx.ExecContext(ctx, `UPDATE episodes AS e SET monitored=1 WHERE e.season_id IN (SELECT s.id FROM seasons s WHERE s.series_id=? AND s.monitored=1) AND `+episodeDate+` AND e.air_date>=date('now')`, id); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE episodes AS e SET monitored=1 WHERE e.season_id IN (SELECT s.id FROM seasons s WHERE s.series_id=? AND s.monitored=1) AND `+episodeDate+` AND e.air_date>=date('now','localtime')`, id); err != nil {
 				return err
 			}
 		}

@@ -347,7 +347,7 @@ func (s *Store) MonitorEpisodes(ctx context.Context, id, revision int64, season 
 
 // monitorDatePredicate accepts only a complete civil date, matching the
 // Calendar and scheduler rule. Dates are compared to SQLite's UTC today.
-const monitorDatePredicate = `length(%s)=10 AND substr(%s,1,4) BETWEEN '0001' AND '9999' AND date(%s,'+0 days')=%s AND %s>=date('now')`
+const monitorDatePredicate = `length(%s)=10 AND substr(%s,1,4) BETWEEN '0001' AND '9999' AND date(%s,'+0 days')=%s AND %s>=date('now','localtime')`
 
 func monitorDateSQL(column string) string {
 	return fmt.Sprintf(monitorDatePredicate, column, column, column, column, column)

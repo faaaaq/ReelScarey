@@ -105,7 +105,8 @@ combining movie/loaded-episode metadata, registration existence and active targe
 reservations. HTTP owns strict filter validation and a five-second read budget;
 the UI uses bookmarkable filters and explicit existing workflow links. No provider,
 worker or filesystem operation is started by these reads. Calendar dates remain
-civil dates; UTC supplies the comparison day. Invalid saved dates stay undated
+civil dates; the configured server timezone supplies the comparison day. Invalid
+saved dates stay undated
 and cannot authorize automation. This adds no tables or migrations. See
 docs/PLANNING.md.
 Library browsing extends the existing paginated read with strict literal-title,
@@ -257,7 +258,7 @@ profiles, item assignments and bounded run/result history. Searches have a separ
 leased task lifecycle in the same process/database and delegate all download work
 to transfer. An atomic claim captures settings revision, issues a 60-second lease
 renewed every 15 seconds, and records an auditable run. Cursor rotation bounds each
-run to 1–25 known released targets. UTC calendar dates gate monitoring; missing
+run to 1–25 known released targets. The configured server timezone gates monitoring; missing
 dates and unloaded TV metadata are not inferred. Failed requests back off for up
 to five attempts; interrupted runs are reclaimed. History retains 100 runs.
 

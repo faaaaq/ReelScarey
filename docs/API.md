@@ -262,7 +262,8 @@ optional library_key. See [exact payloads, worker invariants and limits](ANIME_O
 Authenticated GET `/api/v1/wanted` and `/api/v1/calendar` accept kind
 (all/movie/series), status (all/missing/upcoming/undated/downloading/attention;
 Calendar also permits available), monitored (monitored/all), query and page.
-Calendar additionally accepts month YYYY-MM (default is the current UTC month)
+Calendar additionally accepts month YYYY-MM (default is the current month in the
+server's configured timezone)
 and a calendar-only `release` filter: `all`, `theatrical`, `digital` or
 `physical` (default `all`). Supplying `release` to `/api/v1/wanted` is rejected.
 Unknown/repeated keys and invalid values return 400.
@@ -542,7 +543,7 @@ symbolic-link imports are not supported.
 | POST | `/api/v1/automation/search-item` | `{ "media_id": 7, "episode_id"?: 10 }`; scope the next run to one title or episode; 202 |
 | POST | `/api/v1/automation/search-bulk` | `{ "scope": "movie" \| "series" }`; scope the next run to every missing monitored movie or TV episode; 202 |
 | GET | `/api/v1/automation/item-results?media_id=7&episode_id=10` | Latest recorded outcome, message, download ID and run for that target |
-| PUT | `/api/v1/library/series/{id}/monitor-all` | `{ "revision" }`; monitor the show and regular episodes airing today or later (UTC), plus seasons with such an episode or a future season air_date; past/undated regular episodes are explicitly unmonitored; specials unchanged |
+| PUT | `/api/v1/library/series/{id}/monitor-all` | `{ "revision" }`; monitor the show and regular episodes airing today or later in the server timezone, plus seasons with such an episode or a future season air_date; past/undated regular episodes are explicitly unmonitored; specials unchanged |
 | POST | `/api/v1/library/monitor-all-episodes` | `{ "category"?: "standard" \| "anime" }`; same future-date rule for every show in scope; `{ "shows": n }` |
 | POST | `/api/v1/library/series/{id}/episodes/{episodeID}/remove-file` | `{ "revision", "reviewed": true, "delete_file"?: true }`; remove one episode from the library and, when asked, delete its media copy (seeding sources and shared files are protected) |
 | GET | `/api/v1/automation/runs` | `{items}`; latest 30 search runs with state, message, timestamps, mode, checked, matched and queued counts |

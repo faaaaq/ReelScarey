@@ -7,8 +7,8 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 )
 
-// futureOrToday accepts only a complete civil date on or after today's UTC
-// date. It matches the calendar and automation date rule.
+// futureOrToday accepts only a complete civil date on or after today's date in
+// the configured server timezone.
 func futureOrToday(date string) bool {
 	if len(date) != 10 {
 		return false
@@ -17,7 +17,7 @@ func futureOrToday(date string) bool {
 	if err != nil || parsed.Year() < 1800 {
 		return false
 	}
-	today, err := time.Parse("2006-01-02", time.Now().UTC().Format("2006-01-02"))
+	today, err := time.Parse("2006-01-02", time.Now().Format("2006-01-02"))
 	if err != nil {
 		return false
 	}

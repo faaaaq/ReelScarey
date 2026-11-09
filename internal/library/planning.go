@@ -159,7 +159,7 @@ func (s *Store) planning(ctx context.Context, f PlanningFilter, now time.Time, c
 	monthEnd := ""
 	if calendar {
 		if f.Month == "" {
-			f.Month = now.UTC().Format("2006-01")
+			f.Month = now.Format("2006-01")
 		}
 		month, e := time.Parse("2006-01", f.Month)
 		if e != nil || len(f.Month) != 7 || month.Year() < 1 || month.Year() > 9999 {
@@ -167,7 +167,7 @@ func (s *Store) planning(ctx context.Context, f PlanningFilter, now time.Time, c
 		}
 		monthEnd = month.AddDate(0, 1, -1).Format(time.DateOnly)
 	}
-	out := PlanningPage{Items: []PlanningEntry{}, Page: f.Page, Limit: 50, AsOfDate: now.UTC().Format(time.DateOnly), Month: f.Month, Kind: f.Kind, Status: f.Status, Query: f.Query, OnlyMonitored: f.OnlyMonitored}
+	out := PlanningPage{Items: []PlanningEntry{}, Page: f.Page, Limit: 50, AsOfDate: now.Format(time.DateOnly), Month: f.Month, Kind: f.Kind, Status: f.Status, Query: f.Query, OnlyMonitored: f.OnlyMonitored}
 	match := planningText(f.Query)
 	calendarValue := 0
 	if calendar {

@@ -262,7 +262,7 @@ instances against the same config directory.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PUID` / `PGID` | `10001` | UID/GID the app runs as. Set to your host user, for example `1000`. Only private config, backup and staging folders are chowned; media and download ownership is never changed. |
-| `TZ` | container default (UTC) | Timezone for schedules and displayed times, for example `America/Chicago`. |
+| `TZ` | container default (UTC) | Server timezone for calendar days, monitoring/search date comparisons and displayed times, for example `America/Chicago`. |
 | `REELSCAREY_PUBLIC_URL` | empty | Exact browser origin. Required for any host other than loopback. No path, query or credentials. |
 | `REELSCAREY_CONFIG_DIR` | `/config` | SQLite and key directory. The examples use `/config/state`. |
 | `REELSCAREY_MEDIA_DIR` | `/media` | Writable media root. |

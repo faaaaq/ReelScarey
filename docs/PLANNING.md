@@ -25,7 +25,8 @@ Statuses have this precedence:
 2. **Needs attention:** a tracked blocked/failed download reserves this target.
 3. **In progress:** another active queued/submitting/downloading/importing job.
 4. **No date:** no valid full calendar date in saved metadata.
-5. **Upcoming:** the saved date is later than the current UTC day.
+5. **Upcoming:** the saved date is later than the current day in the server's
+   configured timezone.
 6. **Missing:** a saved date is today or earlier, without a registration/active job.
 
 Completed/cancelled jobs do not keep a target in progress. Stopped tracking with
@@ -48,9 +49,10 @@ and TV episodes still need a valid aired date.
 Calendar is a chronological monthly agenda of saved movie release dates and loaded
 episode air dates, including registered items. Previous/next month, the month
 picker and Current month retain other filters. Months are validated as YYYY-MM,
-years 0001–9999, and default to the server's current UTC month. Pagination remains
-explicit so a busy month is not silently truncated. Dates are civil dates displayed
-without shifting the date to the browser's time zone.
+years 0001–9999, and default to the server's current month in its configured
+timezone (`TZ`; UTC when unset). Pagination remains explicit so a busy month is
+not silently truncated. Dates are civil dates displayed without shifting the date
+to the browser's time zone.
 
 A movie has one canonical `release_date` plus optional theatrical, digital and
 physical dates saved from TMDb release metadata. Calendar lists one row per known
@@ -75,7 +77,8 @@ metadata changes can also make the agenda incomplete.
 Dates must have ten-character YYYY-MM-DD form, years 0001–9999, and normalize to
 the same day in SQLite. Impossible dates such as February 30, timestamps and
 unknown values are undated. Scheduled searches use this same date validity rule;
-invalid dates cannot authorize provider work. Comparing today uses UTC consistently
+invalid dates cannot authorize provider work. Comparing today uses the server's
+configured timezone consistently
 with automation. There is no scheduling or monitoring mutation in these pages.
 
 ## API and limits

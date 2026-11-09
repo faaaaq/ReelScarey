@@ -115,12 +115,12 @@ func TestPlanningTitleOrderIgnoresLeadingThe(t *testing.T) {
 	}
 }
 
-func TestCalendarIncludesSharedEpisodesOnceAndUsesUTCDateOnly(t *testing.T) {
+func TestCalendarIncludesSharedEpisodesOnceAndUsesConfiguredLocalDate(t *testing.T) {
 	s, _ := planningFixture(t)
 	ctx := context.Background()
 	local := time.Date(2026, 10, 23, 20, 0, 0, 0, time.FixedZone("test", -7*3600))
 	out, e := s.Calendar(ctx, PlanningFilter{Month: "2026-10", OnlyMonitored: true}, local)
-	if e != nil || out.Month != "2026-10" || out.AsOfDate != "2026-10-24" || out.Total != 10 || out.Counts.Available != 3 || out.Counts.Missing != 3 || out.Counts.Upcoming != 1 {
+	if e != nil || out.Month != "2026-10" || out.AsOfDate != "2026-10-23" || out.Total != 10 || out.Counts.Available != 3 || out.Counts.Missing != 2 || out.Counts.Upcoming != 2 || out.Counts.Downloading != 1 || out.Counts.Attention != 2 {
 		t.Fatal("calendar date/state", out, e)
 	}
 	seen := map[int64]bool{}
@@ -314,7 +314,7 @@ func TestPlanningCarriesSynopsisAndMonitorAllCoversShowsWithoutTouchingSpecials(
 	// Per-show monitor-all turns the show on with only today's or future
 	// regular episodes and the seasons containing them. Past and undated
 	// regular episodes are explicitly unmonitored; specials keep their choices.
-	now := time.Now().UTC()
+	now := time.Now()
 	today := now.Format(time.DateOnly)
 	tomorrow := now.AddDate(0, 0, 1).Format(time.DateOnly)
 	past := now.AddDate(0, 0, -2).Format(time.DateOnly)
