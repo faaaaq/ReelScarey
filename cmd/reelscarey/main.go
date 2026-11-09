@@ -39,7 +39,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.39.1-dev"
+var version = "0.51.0"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
