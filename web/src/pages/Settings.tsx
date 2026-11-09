@@ -30,6 +30,7 @@ import {
 import { TMDbSettings } from "./TMDbSettings";
 import { IntegrationSettings } from "./IntegrationSettings";
 import { ArrBackupImport } from "./ArrBackupImport";
+import { SecuritySettings } from "./SecuritySettings";
 import "./Admin.css";
 
 type Area = { title: string; to: string; description: string };
@@ -52,6 +53,12 @@ const groups: { name: string; items: Area[] }[] = [
         title: "Library Import",
         to: "/import",
         description: "Find existing files and register them in place.",
+      },
+      {
+        title: "Duplicate Review",
+        to: "/duplicates",
+        description:
+          "Inspect files that may be duplicates without changing anything.",
       },
       {
         title: "Music Import",
@@ -117,6 +124,11 @@ const groups: { name: string; items: Area[] }[] = [
         description: "Library name, episode naming and file verification.",
       },
       {
+        title: "Security",
+        to: "/settings/security",
+        description: "Two-factor authentication for administrator sign-in.",
+      },
+      {
         title: "System",
         to: "/system",
         description: "Status, health checks, backups and storage.",
@@ -159,6 +171,7 @@ export function Settings() {
   if (section === "general") return <GeneralSettings />;
   if (section === "media") return <MediaSettings />;
   if (section === "connect") return <ConnectSettings />;
+  if (section === "security") return <SecuritySettings />;
   if (section === "clients") return <ConnectionSettings />;
   if (section === "backup-import") return <ArrBackupImport />;
   return <Navigate to="/settings" replace />;
@@ -192,6 +205,7 @@ function pick(value: LibrarySettings): SettingsUpdate {
     episode_naming,
     register_unverified_video,
     import_mode,
+    nfo_export,
     revision,
   } = value;
   return {
@@ -201,6 +215,7 @@ function pick(value: LibrarySettings): SettingsUpdate {
     episode_naming,
     register_unverified_video,
     import_mode: import_mode ?? "hardlink",
+    nfo_export: nfo_export ?? false,
     revision,
   };
 }
@@ -379,6 +394,20 @@ function GeneralSettings() {
                     <option value="copy">Always copy</option>
                   </select>
                 </FormGroup>
+                <FormGroup
+                  label="Info sidecars"
+                  help="Write optional Jellyfin-compatible .nfo sidecars beside registered media. Existing files are never replaced. After a reorganization, an older sidecar may remain beside the previous path."
+                >
+                  <label className="rs-check">
+                    <input
+                      type="checkbox"
+                      aria-label="Write .nfo sidecars for registered media"
+                      checked={form.nfo_export}
+                      onChange={(e) => update("nfo_export", e.target.checked)}
+                    />
+                    <span>Write .nfo sidecars for registered media</span>
+                  </label>
+                </FormGroup>
               </FieldSet>
               <FieldSet legend="File verification">
                 <FormGroup
@@ -476,6 +505,13 @@ function MediaSettings() {
           <li>
             <Link to="/import">Library Import</Link>
             <p>Match existing files and register them without moving them.</p>
+          </li>
+          <li>
+            <Link to="/duplicates">Duplicate review</Link>
+            <p>
+              Inspect probable duplicates and files whose checks disagree. This
+              review is read-only.
+            </p>
           </li>
           <li>
             <Link to="/metadata-refresh">Metadata</Link>

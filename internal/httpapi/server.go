@@ -70,6 +70,7 @@ type Server struct {
 	youtubeInspector YouTubeInspector
 	backups          *backups.Service
 	metadataRefresh  *automation.MetadataRefresher
+	totp             *auth.TOTPStore
 }
 
 type Dependencies struct {
@@ -91,6 +92,7 @@ type Dependencies struct {
 	Franchises       metadata.FranchiseProvider
 	Backups          *backups.Service
 	MetadataRefresh  *automation.MetadataRefresher
+	TOTP             *auth.TOTPStore
 }
 
 type YouTubeInspector interface {
@@ -168,7 +170,7 @@ type MusicService interface {
 }
 
 func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string, deps Dependencies) http.Handler {
-	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle}
+	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle, totp: deps.TOTP}
 	s.music = deps.Music
 	if s.music == nil {
 		service := music.NewService(db, cfg.MediaDir)
@@ -367,6 +369,10 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/auth/setup", method(http.MethodPost, s.authSetup))
 	mux.HandleFunc("/api/v1/auth/login", method(http.MethodPost, s.authLogin))
 	mux.HandleFunc("/api/v1/auth/logout", method(http.MethodPost, s.authLogout))
+	mux.HandleFunc("/api/v1/auth/totp", method(http.MethodGet, s.totpStatus))
+	mux.HandleFunc("/api/v1/auth/totp/provision", method(http.MethodPost, s.totpProvision))
+	mux.HandleFunc("/api/v1/auth/totp/confirm", method(http.MethodPost, s.totpConfirm))
+	mux.HandleFunc("/api/v1/auth/totp/disable", method(http.MethodPost, s.totpDisable))
 	mux.HandleFunc("/api/v1/request-accounts", s.requestAccounts)
 	mux.HandleFunc("/api/v1/request-accounts/{id}", method(http.MethodPut, s.requestAccountState))
 	mux.HandleFunc("/api/v1/request-accounts/{id}/discord", method(http.MethodPut, s.requestAccountDiscord))
@@ -471,6 +477,10 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/integrations/{name}", s.integrationSettings)
 	mux.HandleFunc("/api/v1/integrations/{name}/test", method(http.MethodPost, s.integrationTest))
 	mux.HandleFunc("/api/v1/releases", method(http.MethodGet, s.searchReleases))
+	mux.HandleFunc("/api/v1/releases/blacklist", method(http.MethodGet, s.releaseBlacklist))
+	mux.HandleFunc("/api/v1/releases/blacklist/{id}", method(http.MethodDelete, s.releaseBlacklistEntry))
+	mux.HandleFunc("/api/v1/duplicates", method(http.MethodGet, s.duplicateReview))
+	mux.HandleFunc("/api/v1/metrics", method(http.MethodGet, s.prometheusMetrics))
 	mux.HandleFunc("/api/v1/library/series/{id}/seasons/{number}/releases", method(http.MethodGet, s.searchTVReleases))
 	mux.HandleFunc("/api/v1/library/series/{id}/manual-torrent", method(http.MethodPost, s.manualSeriesTorrent))
 	mux.HandleFunc("/api/v1/library/movies/{id}/manual-torrent", method(http.MethodPost, s.manualMovieTorrent))

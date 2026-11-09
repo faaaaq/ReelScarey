@@ -25,8 +25,10 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/emby"
 	"github.com/faaaaq/ReelScarey/internal/httpapi"
 	"github.com/faaaaq/ReelScarey/internal/instance"
+	"github.com/faaaaq/ReelScarey/internal/mediaanalysis"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/music"
+	"github.com/faaaaq/ReelScarey/internal/nfoexport"
 	"github.com/faaaaq/ReelScarey/internal/organization"
 	"github.com/faaaaq/ReelScarey/internal/requests"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
@@ -118,14 +120,19 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		return false, err
 	}
 	defer db.Close()
-	authService, err := auth.New(startup, db, cfg.ConfigDir)
-	if err != nil {
-		return false, err
-	}
 	secretStore, err := securestore.New(startup, db, cfg.ConfigDir)
 	if err != nil {
 		return false, err
 	}
+	authService, err := auth.New(startup, db, cfg.ConfigDir)
+	if err != nil {
+		return false, err
+	}
+	totpStore, err := auth.NewTOTPStore(db, secretStore)
+	if err != nil {
+		return false, err
+	}
+	authService.SetTOTP(totpStore)
 	cancel()
 	metadataService := metadata.New(secretStore, metadata.NewTMDb())
 	metadataService.SetDefaultToken(cfg.TMDbToken)
@@ -240,7 +247,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if err != nil {
 		return false, err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Music: musicService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore, Emby: embyService, EmbyMonitor: embyMonitor, VPN: vpnService, Announce: announceService, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Music: musicService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore, TOTP: totpStore, Emby: embyService, EmbyMonitor: embyMonitor, VPN: vpnService, Announce: announceService, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return false, fmt.Errorf("listen: %w", err)
@@ -374,6 +381,28 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			transferService.Run(workerCtx, logger)
 		}
 	}()
+	analysisDone := make(chan struct{})
+	go func() {
+		defer close(analysisDone)
+		if !waitRecovery(workerCtx, cfg.ConfigDir) {
+			return
+		}
+		probe := os.Getenv("REELSCAREY_FFPROBE_PATH")
+		if probe == "" {
+			probe = "ffprobe"
+		}
+		worker := &mediaanalysis.Worker{DB: db, MediaRoot: cfg.MediaDir, Binary: probe}
+		worker.Run(workerCtx, logger)
+	}()
+	defer func() { workerCancel(); <-analysisDone }()
+	nfoDone := make(chan struct{})
+	go func() {
+		defer close(nfoDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			(&nfoexport.Worker{DB: db, MediaRoot: cfg.MediaDir}).Run(workerCtx, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-nfoDone }()
 	go func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			transferService.SuperviseBundled(workerCtx, logger)

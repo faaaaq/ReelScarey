@@ -42,6 +42,14 @@ const Usenet = lazy(() =>
 const Releases = lazy(() =>
   import("./pages/Releases").then((m) => ({ default: m.Releases })),
 );
+const ReleaseBlacklist = lazy(() =>
+  import("./pages/Blacklist").then((m) => ({
+    default: m.ReleaseBlacklist,
+  })),
+);
+const Duplicates = lazy(() =>
+  import("./pages/Duplicates").then((m) => ({ default: m.Duplicates })),
+);
 const Series = lazy(() =>
   import("./pages/Series").then((m) => ({ default: m.Series })),
 );
@@ -379,6 +387,11 @@ function AppShell() {
               <Route path="/music/wanted" element={<MusicWanted />} />
               <Route path="/search" element={<MovieSearch />} />
               <Route path="/releases" element={<Releases />} />
+              <Route
+                path="/releases/blacklist"
+                element={<ReleaseBlacklist />}
+              />
+              <Route path="/duplicates" element={<Duplicates />} />
               <Route path="/activity" element={<DownloadActivity />} />
               <Route path="/torrents" element={<Torrents />} />
               <Route path="/usenet" element={<Usenet />} />

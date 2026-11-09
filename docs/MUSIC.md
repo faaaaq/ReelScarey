@@ -832,3 +832,18 @@ Artist top tracks use Deezer's top list first, then Deezer track search, then
 iTunes search when the earlier providers return no usable tracks. The discovery
 page shows active jobs and any job that needs attention, so normal processing
 needs no user intervention.
+
+## Scan stability on network and FUSE folders
+
+Audio observations now compare file identity, size, nanosecond mtime and the
+sampled/full digest while ignoring a change timestamp that some network and
+FUSE filesystems update when a read refreshes access time. This prevents healthy
+files from being reported as "changed while scanning" or failing organization
+verification after a probe. A full SHA-256 is still computed before any
+organization write, and a real size/mtime/digest change still fails closed.
+
+When Finalize cannot verify a registered file, the workflow now names the file,
+states that nothing was overwritten, and tells the owner to rescan it or run
+Finalize again. Files that were already registered or organized are left in
+place; the remaining matched files can be retried without repeating successful
+work.

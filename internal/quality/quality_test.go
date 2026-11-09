@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"testing"
+	"time"
 )
 
 func TestConservativeIdentityAndProfileRanking(t *testing.T) {
@@ -53,6 +54,61 @@ func TestConservativeIdentityAndProfileRanking(t *testing.T) {
 	}{{"Test.Show.S01E02.1080p", true}, {"Test.Show.2020.S01E02.1080p", true}, {"Test.Show.S01E03.1080p", false}, {"Test.Show.S01E02E03.1080p", false}, {"Test.Show.S01E02-E04.1080p", false}, {"Test.Show.S01.1080p", false}, {"Other.Show.S01E02.1080p", false}, {"Test.Show.S01E02.S02E02.1080p", false}} {
 		if Identify(tc.title, target) != tc.ok {
 			t.Error(tc)
+		}
+	}
+}
+func TestGrabDelayValidationPersistenceAndRevisionConflict(t *testing.T) {
+	ctx := context.Background()
+	db, e := database.Open(ctx, t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	s := New(db)
+	p, e := s.Get(ctx, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if p.GrabDelayMinutes != 0 || p.GrabDelay() != 0 {
+		t.Fatalf("unexpected default grab delay: %+v", p)
+	}
+	p.GrabDelayMinutes = 90
+	saved, e := s.Save(ctx, p)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if saved.GrabDelayMinutes != 90 || saved.Revision != p.Revision+1 {
+		t.Fatalf("save did not return the stored delay: %+v", saved)
+	}
+	got, e := s.Get(ctx, p.ID)
+	if e != nil || got.GrabDelayMinutes != 90 || got.GrabDelay() != 90*time.Minute || got.Revision != saved.Revision {
+		t.Fatal(got, e)
+	}
+	if _, e = s.Save(ctx, p); !errors.Is(e, ErrConflict) {
+		t.Fatal("stale grab-delay update accepted", e)
+	}
+	for _, delay := range []int{-1, 1441} {
+		invalid := got
+		invalid.GrabDelayMinutes = delay
+		if _, e = s.Save(ctx, invalid); e == nil {
+			t.Fatal("invalid grab delay accepted", delay)
+		}
+	}
+	created := got
+	created.ID, created.Name, created.Revision = 0, "Delayed profile", 0
+	created.GrabDelayMinutes = 1440
+	inserted, e := s.Save(ctx, created)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if got, e = s.Get(ctx, inserted.ID); e != nil || got.GrabDelayMinutes != 1440 || got.GrabDelay() != 24*time.Hour {
+		t.Fatal(got, e)
+	}
+	for _, delay := range []int{-1, 1441} {
+		invalid := got
+		invalid.GrabDelayMinutes = delay
+		if Validate(invalid) == nil {
+			t.Fatal("profile outside the grab-delay range accepted", delay)
 		}
 	}
 }

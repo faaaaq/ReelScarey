@@ -416,6 +416,22 @@ func (s *Service) QueueAutomatic(ctx context.Context, releaseID string, guard Qu
 	}
 	return s.queue(ctx, releaseID, guard)
 }
+
+// QueueAutomaticAfter queues an automatic grab and holds its first submission
+// until delay elapses. The row is still visible as queued and every existing
+// policy/blacklist check runs before it is created. A non-positive delay keeps
+// the normal immediate behavior.
+func (s *Service) QueueAutomaticAfter(ctx context.Context, releaseID string, delay time.Duration, guard QueueGuard) (Job, bool, error) {
+	job, created, err := s.QueueAutomatic(ctx, releaseID, guard)
+	if err != nil || !created || delay <= 0 {
+		return job, created, err
+	}
+	if _, err = s.db.ExecContext(ctx, `UPDATE downloads SET next_run=? WHERE id=? AND state='queued'`, time.Now().Add(delay).Unix(), job.ID); err != nil {
+		return Job{}, created, err
+	}
+	job, err = s.Job(ctx, job.ID)
+	return job, created, err
+}
 func (s *Service) QueueReplacement(ctx context.Context, releaseID string, fileID int64) (Job, bool, error) {
 	if fileID < 1 {
 		return Job{}, false, problem("invalid_file", "Choose a registered replacement target.")
@@ -534,6 +550,11 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 		if info, err := TorrentInfo(payload.Torrent); err != nil || info.Private {
 			indexerPublic = 0
 		}
+	}
+	if blocked, e := s.blockedRelease(ctx, protocol, hash, releaseID, v.IndexerName); e != nil {
+		return Job{}, false, e
+	} else if blocked {
+		return Job{}, false, problem("release_blacklisted", "This release is blocked after an earlier failure. Remove it from the release blacklist or choose another release.")
 	}
 	if client, e = s.downloadConfig(ctx, protocol); e != nil {
 		return Job{}, false, e

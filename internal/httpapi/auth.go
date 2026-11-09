@@ -152,10 +152,16 @@ func (s *Server) authSession(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, "auth_status", err)
 		return
 	}
+	totpEnabled := false
+	if s.totp != nil {
+		if status, e := s.totp.Status(r.Context()); e == nil {
+			totpEnabled = status.Enabled
+		}
+	}
 	if c, err := r.Cookie(cookieName); err == nil {
 		session, err := s.auth.Resolve(r.Context(), c.Value)
 		if err == nil {
-			send(w, 200, map[string]any{"setup_required": false, "authenticated": true, "session": session})
+			send(w, 200, map[string]any{"setup_required": false, "authenticated": true, "session": session, "totp_enabled": totpEnabled})
 			return
 		}
 		if !errors.Is(err, auth.ErrUnauthorized) {
@@ -163,7 +169,7 @@ func (s *Server) authSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	send(w, 200, map[string]any{"setup_required": !configured, "authenticated": false})
+	send(w, 200, map[string]any{"setup_required": !configured, "authenticated": false, "totp_enabled": totpEnabled})
 }
 func (s *Server) authAttempt(w http.ResponseWriter, r *http.Request) bool {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -215,11 +221,12 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		TOTPCode string `json:"totp_code"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	session, err := s.auth.Login(r.Context(), body.Username, body.Password)
+	session, err := s.auth.LoginWithTOTP(r.Context(), body.Username, body.Password, body.TOTPCode)
 	if err != nil {
 		s.authError(w, err)
 		return
@@ -231,6 +238,8 @@ func (s *Server) authError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, auth.ErrUnauthorized):
 		fail(w, 401, "invalid_credentials", err.Error())
+	case errors.Is(err, auth.ErrTOTPCode):
+		fail(w, 401, "invalid_totp", err.Error())
 	case errors.Is(err, auth.ErrSetupToken):
 		fail(w, 403, "invalid_setup_token", err.Error())
 	case errors.Is(err, auth.ErrSetupClosed):

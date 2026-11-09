@@ -87,6 +87,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return (
       <AuthForm
         setup={status?.setup_required ?? false}
+        totpEnabled={status?.totp_enabled ?? false}
         onSignedIn={(session) => {
           if (status?.setup_required) navigate("/setup", { replace: true });
           setCSRFToken(session.csrf_token);
@@ -103,9 +104,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
 function AuthForm({
   setup,
+  totpEnabled,
   onSignedIn,
 }: {
   setup: boolean;
+  totpEnabled: boolean;
   onSignedIn: (session: Session) => void;
 }) {
   useEffect(() => {
@@ -138,7 +141,9 @@ function AuthForm({
             password,
             ...(setup
               ? { setup_token: code.trim(), import_mode: importMode }
-              : {}),
+              : totpEnabled
+                ? { totp_code: code.trim() }
+                : {}),
           }),
         },
       );
@@ -148,6 +153,7 @@ function AuthForm({
     } catch (error) {
       setError(messageFor(error));
       setPassword("");
+      if (!setup) setCode("");
     } finally {
       setPending(false);
     }
@@ -236,6 +242,34 @@ function AuthForm({
                 </p>
               )}
             </div>
+            {!setup && totpEnabled && (
+              <div className="rs-auth-field">
+                <label htmlFor="auth-totp">
+                  Authenticator or recovery code
+                </label>
+                <TextField.Root
+                  id="auth-totp"
+                  value={code}
+                  onChange={(e) => {
+                    setCode(e.target.value);
+                    setError("");
+                  }}
+                  required
+                  maxLength={64}
+                  autoComplete="one-time-code"
+                  spellCheck={false}
+                  size="2"
+                >
+                  <TextField.Slot>
+                    <ShieldCheck size={16} />
+                  </TextField.Slot>
+                </TextField.Root>
+                <p className="rs-form-help">
+                  Enter the current six-digit code from your authenticator app,
+                  or one unused recovery code.
+                </p>
+              </div>
+            )}
             {setup && (
               <div className="rs-auth-field">
                 <label htmlFor="auth-import-mode">Import method</label>

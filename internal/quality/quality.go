@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -23,6 +24,9 @@ type Profile struct {
 	RejectedTerms string  `json:"rejected_terms"`
 	Revision      int     `json:"revision"`
 	Scoring       Scoring `json:"scoring"`
+	// GrabDelayMinutes delays an automatic grab after a release was first seen.
+	// Zero means no delay.
+	GrabDelayMinutes int `json:"grab_delay_minutes"`
 }
 
 type Summary struct {
@@ -32,6 +36,13 @@ type Summary struct {
 }
 
 func (p Profile) Summary() Summary { return Summary{ID: p.ID, Name: p.Name, Revision: p.Revision} }
+
+// GrabDelay returns the profile's configured delay before an automatic grab.
+// It is a preference only; callers remain responsible for persisting the first
+// sighting and fencing their own decisions.
+func (p Profile) GrabDelay() time.Duration {
+	return time.Duration(p.GrabDelayMinutes) * time.Minute
+}
 
 type Target struct {
 	MovieVersion        string
@@ -95,6 +106,9 @@ func Validate(p Profile) error {
 	}
 	if !slices.Contains(Languages, p.Language) || p.MinSeeders < 0 || p.MinSeeders > 10000 || p.MaxSizeGiB < 1 || p.MaxSizeGiB > 500 {
 		return fmt.Errorf("Choose a supported language, 0–10000 minimum seeders and a 1–500 GiB size limit.")
+	}
+	if p.GrabDelayMinutes < 0 || p.GrabDelayMinutes > 1440 {
+		return fmt.Errorf("Use a grab delay between 0 and 1440 minutes.")
 	}
 	for _, v := range []string{p.RequiredTerms, p.RejectedTerms} {
 		if len(v) > 200 || strings.ContainsFunc(v, unicode.IsControl) {
@@ -268,7 +282,7 @@ func Evaluate(p Profile, t Target, r Release) Decision {
 	} else {
 		d.Score = 100000 + q*100
 	}
-	scoreEvidence(p.Scoring, r, tokens, &d)
+	scoreEvidence(p.Scoring, r, tokens, int64(p.MaxSizeGiB)<<30, &d)
 	d.Eligible = len(d.Reasons) == 0
 	return d
 }

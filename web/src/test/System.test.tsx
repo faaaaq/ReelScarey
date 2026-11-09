@@ -72,6 +72,11 @@ function setup(path: string, recovery = false, fail = false) {
         uptime_seconds: 3700,
         paths: { config: "/config", media: "/media", downloads: "/downloads" },
       });
+    if (url.endsWith("/api/v1/metrics"))
+      return new Response('reelscarey_queue_depth{queue="downloads"} 2\n', {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
     throw new Error(`Unexpected request ${url}`);
   });
   vi.stubGlobal("fetch", fetch);
@@ -133,5 +138,17 @@ describe("installation and recovery", () => {
     );
     expect(screen.getByRole("button", { name: "Run checks" })).toBeEnabled();
     expect(screen.queryByText("Passed")).not.toBeInTheDocument();
+  });
+  it("loads Prometheus metrics as text only when requested", async () => {
+    const fetch = setup("/system");
+    await screen.findByText("No checks run this session");
+    expect(
+      fetch.mock.calls.some(([url]) => String(url).endsWith("/metrics")),
+    ).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: "Load metrics" }));
+    expect(
+      await screen.findByLabelText("Prometheus metrics"),
+    ).toHaveTextContent('reelscarey_queue_depth{queue="downloads"} 2');
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 });

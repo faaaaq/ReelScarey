@@ -897,3 +897,94 @@ a.scan-metric:hover {
 .file-button {
   align-self: flex-start;
 }
+
+/* Release blacklist ---------------------------------------------------- */
+.blk-title {
+  min-width: 240px;
+  overflow-wrap: anywhere;
+  color: var(--rs-text-strong);
+}
+
+.blk-reason {
+  min-width: 160px;
+  overflow-wrap: anywhere;
+}
+
+.blk-time {
+  white-space: nowrap;
+}
+
+.blk-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* Duplicate review ----------------------------------------------------- */
+.dup-group {
+  margin-bottom: 18px;
+}
+
+.dup-path {
+  min-width: 240px;
+  overflow-wrap: anywhere;
+}
+
+.dup-size,
+.dup-sha {
+  font-family: var(--rs-mono);
+  font-size: 12.5px;
+}
+
+.dup-size {
+  white-space: nowrap;
+}
+
+.dup-sha {
+  max-width: 360px;
+  overflow-wrap: anywhere;
+}
+
+/* Two-factor authentication -------------------------------------------- */
+.sec-secret {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-2);
+  font-family: var(--rs-mono);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+
+.sec-recovery {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-2);
+  font-family: var(--rs-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sec-uri {
+  overflow-wrap: anywhere;
+}
+
+/* System metrics ------------------------------------------------------- */
+.rs-metrics {
+  margin: 0;
+  padding: 12px 14px;
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-2);
+  font-family: var(--rs-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre;
+}

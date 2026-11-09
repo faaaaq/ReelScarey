@@ -375,12 +375,22 @@ export function MusicImport() {
     0,
     fileCount - registeredCount - skippedCount,
   );
+  const scanErrorText = scan?.error?.trim() ?? "";
+  const scanMessageText = scan?.message?.trim() ?? "";
+  const scanMessageDuplicatesError =
+    scanMessageText !== "" && scanMessageText === scanErrorText;
   const scanWarningMessage =
-    scan && scan.message && mentionsAcoustidSkip(scan.message)
+    scan &&
+    scan.message &&
+    !scanMessageDuplicatesError &&
+    mentionsAcoustidSkip(scan.message)
       ? scan.message
       : "";
   const scanCooldownMessage =
-    scan && scan.message && mentionsMusicBrainzCooldown(scan.message)
+    scan &&
+    scan.message &&
+    !scanMessageDuplicatesError &&
+    mentionsMusicBrainzCooldown(scan.message)
       ? scan.message
       : "";
   const scanWarning = Boolean(
@@ -389,7 +399,9 @@ export function MusicImport() {
     scanCooldownMessage,
   );
   const canMatchAll = phase === "ready" && unresolvedCount > 0;
-  const canFinalize = phase === "ready" && matchedCount > 0;
+  const finalizeCount = matchedCount + registeredCount;
+  const canFinalize = phase === "ready" && finalizeCount > 0;
+  const retryingOrganization = matchedCount === 0 && registeredCount > 0;
   const hasAvailableRoots = musicRoots.some((root) => root.available);
 
   useEffect(() => {
@@ -572,7 +584,7 @@ export function MusicImport() {
       );
       setFinalizeOpen(false);
       setWorkflowNotice(
-        "Finalizing matched files started. Registration, tagging and organization progress are shown below while the scan runs.",
+        "Finalize started. Registration, tagging and organization progress are shown below while the scan runs.",
       );
       active.reload();
       scans.reload();
@@ -993,13 +1005,24 @@ export function MusicImport() {
                   Current: {scan.current_path}
                 </p>
               )}
-              {scan.message && !scanWarningMessage && !scanCooldownMessage && (
-                <p className="rs-muted">{scan.message}</p>
-              )}
+              {scan.message &&
+                !scanMessageDuplicatesError &&
+                !scanWarningMessage &&
+                !scanCooldownMessage && (
+                  <p className="rs-muted">{scan.message}</p>
+                )}
             </div>
             {scan.error && (
-              <Alert kind="danger" title="Scan error">
-                {scan.error}
+              <Alert
+                kind="danger"
+                title={phaseActive ? "Workflow error" : "Scan needs attention"}
+              >
+                <p>{scan.error}</p>
+                <p className="rs-muted">
+                  Nothing already registered was changed. Fix the file or folder
+                  named above, then start a new scan or run Finalize again for
+                  the remaining matched files.
+                </p>
               </Alert>
             )}
             {scanWarningMessage && mentionsAcoustidSkip(scanWarningMessage) && (
@@ -1055,7 +1078,9 @@ export function MusicImport() {
                     disabled={pending || workflowBusy}
                     onClick={() => setFinalizeOpen(true)}
                   >
-                    Finalize matched ({matchedCount})
+                    {retryingOrganization
+                      ? `Retry organization (${registeredCount})`
+                      : `Finalize matched (${matchedCount})`}
                   </Button>
                 )}
               </div>
@@ -1437,7 +1462,9 @@ export function MusicImport() {
       <Modal
         open={finalizeOpen}
         onOpenChange={setFinalizeOpen}
-        title="Finalize matched files"
+        title={
+          retryingOrganization ? "Retry organization" : "Finalize matched files"
+        }
         description="Review registration and organization before ReelScarey changes files on disk."
         footer={
           <>
@@ -1453,16 +1480,23 @@ export function MusicImport() {
               disabled={pending || workflowBusy || !canFinalize}
               onClick={() => void finalize()}
             >
-              Finalize matched files ({matchedCount})
+              {retryingOrganization
+                ? `Retry organization (${registeredCount})`
+                : `Finalize matched files (${matchedCount})`}
             </Button>
           </>
         }
       >
         <p>
-          ReelScarey will register the{" "}
-          {countLabel(matchedCount, "matched file")} in this scan at their
-          current paths, then rename, tag and organize them with the existing
-          collection and naming rules.
+          {retryingOrganization
+            ? `ReelScarey will retry organizing the ${countLabel(
+                registeredCount,
+                "registered file",
+              )} that is already in the catalog. Files already organized in place are left unchanged.`
+            : `ReelScarey will register the ${countLabel(
+                matchedCount,
+                "matched file",
+              )} in this scan at their current paths, then rename, tag and organize them with the existing collection and naming rules.`}
         </p>
         <Alert kind="warning">
           This changes the catalog and files on disk. Existing destination files

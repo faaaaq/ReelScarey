@@ -1392,3 +1392,49 @@ absolute SABnzbd limit in bytes per second for the running daemon; `0` removes
 it. Non-zero values must be 1024–2000000000 (SABnzbd reads bare 1–100 as a
 percentage, so ReelScarey rejects that ambiguous range). SABnzbd's own saved
 percentage is not changed and applies again after a restart. Returns 204.
+
+# Release reliability, duplicate review, metrics and account security (0.51)
+
+Administrator GET `/api/v1/releases/blacklist` returns up to 500 blocked release
+identities from the persistent blacklist. DELETE
+`/api/v1/releases/blacklist/{id}` removes one entry. Entries are created after
+terminal workflow failures and expire automatically after seven days; an entry
+with `expires_at: 0` is permanent. Blocked releases are refused when a download
+is queued with `release_blacklisted`. The release key is a normalized torrent
+infohash or SHA-256 NZB identity, never a credential.
+
+Administrator GET `/api/v1/duplicates?limit=100` returns a read-only duplicate
+review. Groups are joined by movie or episode identity; `probable_duplicate`
+requires every file to match on size, SHA-256 and inspected resolution.
+Anything else is `needs_attention` with the first failed check. The endpoint
+never deletes, moves or changes files. The limit is bounded to 500.
+
+Administrator GET `/api/v1/metrics` returns Prometheus text exposition for
+current download and music queue state. It exposes no titles, paths or
+credentials and keeps no in-process counters across restarts.
+
+Administrator GET `/api/v1/auth/totp` returns `{configured, enabled,
+recovery_codes_remaining}`. POST `/api/v1/auth/totp/provision` returns a
+one-time `{secret, otpauth_uri}`; nothing is enabled until POST
+`/api/v1/auth/totp/confirm` with `{code}` succeeds, which returns ten one-time
+recovery codes. POST `/api/v1/auth/totp/disable` requires a current code.
+The secret is encrypted through the existing secure store and recovery codes
+are stored only as hashes. Login accepts `{username,password,totp_code}` when
+`/api/v1/auth/session` reports `totp_enabled: true`; the code may be an
+authenticator code or a single-use recovery code.
+
+Quality profiles now include `grab_delay_minutes` (0-1440). Automatic grabs,
+scheduled searches and release-feed matches remain visible as queued but are
+not submitted until the delay elapses. Manual selections are immediate.
+Soft ranking penalties for unknown source/codec, very low seeders and a size
+above 80% of the profile limit appear in `scoring_reasons` and never make an
+otherwise valid release ineligible.
+
+Settings `nfo_export` enables opt-in Jellyfin-compatible `.nfo` sidecars written
+beside registered media. Existing sidecars are never replaced. Background
+FFprobe analysis records bounded `analysis_state`, `analysis_json` and
+`analysis_at` on `media_files`; it never changes `probe_json` or media bytes.
+Stalled downloading jobs are recorded once in the activity feed after thirty
+minutes without byte progress. SABnzbd/NZBGet completion payload parsers are
+bounded and reconcile terminal state, but no unauthenticated webhook endpoint
+is exposed.

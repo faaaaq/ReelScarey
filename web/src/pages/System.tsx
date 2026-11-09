@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { Badge, Button } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
-import { Archive, CheckCircle2, HardDrive, ShieldCheck } from "lucide-react";
+import {
+  Archive,
+  CheckCircle2,
+  Copy,
+  Download,
+  Gauge,
+  HardDrive,
+  ShieldCheck,
+} from "lucide-react";
 import {
   DescriptionItem,
   DescriptionList,
@@ -277,6 +285,7 @@ export function SystemChecks() {
             </section>
           </>
         )}
+        <MetricsPanel />
         <section className="rs-panel rs-stack">
           <h2>Back up and recover</h2>
           <p>
@@ -296,6 +305,138 @@ export function SystemChecks() {
         </section>
       </PageBody>
     </>
+  );
+}
+
+function MetricsPanel() {
+  const [content, setContent] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/v1/metrics", {
+        credentials: "same-origin",
+        headers: { Accept: "text/plain" },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok)
+        throw new Error(
+          `The server answered metrics with HTTP ${response.status}.`,
+        );
+      setContent(await response.text());
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Could not load metrics from the server.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function copy() {
+    setError("");
+    setNotice("");
+    if (!navigator.clipboard?.writeText) {
+      setError(
+        "This browser cannot copy automatically. Select the text and copy it manually.",
+      );
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(content);
+      setNotice("Metrics copied.");
+    } catch {
+      setError(
+        "This browser cannot copy automatically. Select the text and copy it manually.",
+      );
+    }
+  }
+
+  function download() {
+    setError("");
+    setNotice("");
+    if (!content) return;
+    if (typeof URL.createObjectURL !== "function") {
+      setError(
+        "This browser cannot create a file download. Select the text and save it manually.",
+      );
+      return;
+    }
+    const url = URL.createObjectURL(
+      new Blob([content], { type: "text/plain;charset=utf-8" }),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "reelscarey-metrics.txt";
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setNotice("Metrics downloaded.");
+  }
+
+  return (
+    <FieldSet
+      legend="Metrics"
+      description="Read-only Prometheus text with durable queue counts. No titles, paths or secrets are included. ReelScarey does not draw a graph from this data."
+      actions={
+        content ? (
+          <>
+            <Button
+              size="1"
+              variant="soft"
+              disabled={loading}
+              onClick={() => void load()}
+            >
+              <Gauge size={14} aria-hidden="true" />
+              {loading ? "Loading…" : "Refresh"}
+            </Button>
+            <Button size="1" variant="soft" onClick={() => void copy()}>
+              <Copy size={14} aria-hidden="true" />
+              Copy
+            </Button>
+            <Button size="1" variant="soft" onClick={download}>
+              <Download size={14} aria-hidden="true" />
+              Download
+            </Button>
+          </>
+        ) : (
+          <Button size="1" disabled={loading} onClick={() => void load()}>
+            <Gauge size={14} aria-hidden="true" />
+            {loading ? "Loading…" : "Load metrics"}
+          </Button>
+        )
+      }
+    >
+      {notice && (
+        <p role="status" className="rs-alert is-success">
+          {notice}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="rs-alert is-danger">
+          {error}
+        </p>
+      )}
+      {content && (
+        <pre className="rs-metrics" aria-label="Prometheus metrics">
+          {content}
+        </pre>
+      )}
+      {!content && !error && (
+        <p className="rs-muted">
+          Load the text on demand. Access requires the same administrator
+          session as the rest of this page.
+        </p>
+      )}
+    </FieldSet>
   );
 }
 

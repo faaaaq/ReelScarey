@@ -52,6 +52,7 @@ type Service struct {
 	attempts  map[string]attempt
 	hashing   chan struct{}
 	global    attempt
+	totp      *TOTPStore
 }
 
 func New(ctx context.Context, db *sql.DB, dir string) (*Service, error) {
@@ -185,7 +186,22 @@ func (s *Service) setup(ctx context.Context, username, password, code string, co
 	return session, nil
 }
 
+// SetTOTP enables optional two-factor verification for administrator logins.
+// A nil store keeps the existing password-only behavior.
+func (s *Service) SetTOTP(store *TOTPStore) { s.totp = store }
+
 func (s *Service) Login(ctx context.Context, username, password string) (Session, error) {
+	return s.login(ctx, username, password, "")
+}
+
+// LoginWithTOTP accepts a six-digit authenticator code or a recovery code. The
+// code is only inspected after the administrator password has been verified, so
+// request accounts and wrong passwords keep their existing behavior.
+func (s *Service) LoginWithTOTP(ctx context.Context, username, password, code string) (Session, error) {
+	return s.login(ctx, username, password, code)
+}
+
+func (s *Service) login(ctx context.Context, username, password, code string) (Session, error) {
 	if !s.acquire() {
 		return Session{}, ErrBusy
 	}
@@ -203,6 +219,19 @@ func (s *Service) Login(ctx context.Context, username, password string) (Session
 	}
 	if !verifyPassword(encoded, password) {
 		return Session{}, ErrUnauthorized
+	}
+	if s.totp != nil {
+		status, err := s.totp.Status(ctx)
+		if err != nil {
+			return Session{}, err
+		}
+		if status.Enabled {
+			if err := s.totp.Verify(ctx, code); err != nil {
+				if recoveryErr := s.totp.VerifyRecoveryCode(ctx, code); recoveryErr != nil {
+					return Session{}, ErrTOTPCode
+				}
+			}
+		}
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

@@ -14,6 +14,7 @@ const profile: Profile = {
   language: "any",
   min_seeders: 1,
   max_size_gib: 40,
+  grab_delay_minutes: 0,
   required_terms: "",
   rejected_terms: "",
   revision: 1,

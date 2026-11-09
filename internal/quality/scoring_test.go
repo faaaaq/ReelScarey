@@ -3,9 +3,82 @@ package quality
 import (
 	"context"
 	"github.com/faaaaq/ReelScarey/internal/database"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestSoftPenaltiesStayVisibleDeterministicAndNonBlocking(t *testing.T) {
+	year := 2020
+	seeds := 20
+	target := Target{Title: "Example", Year: &year}
+	p := Profile{Name: "Fixture", Qualities: []int{1080}, Cutoff: 1080, Language: "any", MinSeeders: 0, MaxSizeGiB: 10, Scoring: Scoring{Sources: []string{"webdl"}, Codecs: []string{"h264"}}}
+	base := Release{ID: "base", Title: "Example.2020.1080p.WEB-DL.h264", Size: 1 << 30, Seeders: &seeds, Protocol: "torrent"}
+	one, two := 1, 2
+	zero := 0
+	for _, tc := range []struct {
+		name     string
+		release  Release
+		penalty  []string
+		eligible bool
+	}{
+		{"baseline", base, nil, true},
+		{"unknown source", Release{ID: "s", Title: "Example.2020.1080p.h264", Size: 1 << 30, Seeders: &seeds, Protocol: "torrent"}, []string{"Unknown source: -150"}, true},
+		{"unknown codec", Release{ID: "c", Title: "Example.2020.1080p.WEB-DL", Size: 1 << 30, Seeders: &seeds, Protocol: "torrent"}, []string{"Unknown codec: -75"}, true},
+		{"unknown source and codec", Release{ID: "sc", Title: "Example.2020.1080p", Size: 1 << 30, Seeders: &seeds, Protocol: "torrent"}, []string{"Unknown source: -150", "Unknown codec: -75"}, true},
+		{"no seeders", Release{ID: "0", Title: base.Title, Size: 1 << 30, Seeders: &zero, Protocol: "torrent"}, []string{"No seeders: -200"}, true},
+		{"one seeder", Release{ID: "1", Title: base.Title, Size: 1 << 30, Seeders: &one, Protocol: "torrent"}, []string{"Low seeders: -100 (1)"}, true},
+		{"two seeders", Release{ID: "2", Title: base.Title, Size: 1 << 30, Seeders: &two, Protocol: "torrent"}, []string{"Low seeders: -100 (2)"}, true},
+		{"unlabeled seeders", Release{ID: "nil", Title: base.Title, Size: 1 << 30, Protocol: "usenet"}, nil, true},
+		{"near size limit", Release{ID: "big", Title: base.Title, Size: 9 << 30, Seeders: &seeds, Protocol: "torrent"}, []string{"Near size limit: -50"}, true},
+	} {
+		d := Evaluate(p, target, tc.release)
+		if d.Eligible != tc.eligible {
+			t.Fatalf("%s: penalties changed eligibility: %+v", tc.name, d)
+		}
+		if got := penaltyReasons(d.ScoringReasons); strings.Join(got, "|") != strings.Join(tc.penalty, "|") {
+			t.Fatalf("%s: unexpected visible penalties: %+v (all %+v)", tc.name, got, d.ScoringReasons)
+		}
+		again := Evaluate(p, target, tc.release)
+		if d.Score != again.Score || strings.Join(d.ScoringReasons, "|") != strings.Join(again.ScoringReasons, "|") {
+			t.Fatalf("%s: scoring is not deterministic: %+v %+v", tc.name, d, again)
+		}
+		if len(tc.penalty) > 0 && d.Score >= Evaluate(p, target, base).Score {
+			t.Fatalf("%s: penalized release outranked the preferred baseline: %+v", tc.name, d)
+		}
+	}
+	// No penalty for a known-but-unpreferred label, three or more seeders, or a
+	// size at exactly 80% of the profile limit.
+	for _, release := range []Release{
+		{ID: "known", Title: "Example.2020.1080p.HDTV.x265", Size: 8 << 30, Seeders: &seeds, Protocol: "torrent"},
+		{ID: "three", Title: base.Title, Size: 1 << 30, Seeders: ptrInt(3), Protocol: "torrent"},
+	} {
+		if d := Evaluate(p, target, release); len(penaltyReasons(d.ScoringReasons)) != 0 || !d.Eligible {
+			t.Fatalf("unexpected penalty: %+v", d)
+		}
+	}
+	// Penalties are soft: a preferred release still outranks a penalized one.
+	ranked := Rank(p, target, []Release{base, {ID: "sparse", Title: base.Title, Size: 1 << 30, Seeders: &one, Protocol: "torrent"}})
+	if ranked[0].ID != "base" || ranked[1].ID != "sparse" {
+		t.Fatal(ranked)
+	}
+}
+
+// penaltyReasons filters the visible soft-penalty reasons so the table test
+// stays independent of preference and seeder bonus wording.
+func penaltyReasons(reasons []string) []string {
+	out := []string{}
+	for _, r := range reasons {
+		for _, prefix := range []string{"Unknown source:", "Unknown codec:", "Low seeders:", "No seeders:", "Near size limit:"} {
+			if strings.HasPrefix(r, prefix) {
+				out = append(out, r)
+			}
+		}
+	}
+	return out
+}
+
+func ptrInt(v int) *int { return &v }
 
 func TestSourceCodecBonusesAndRetentionRemainBelowResolutionAndIdentity(t *testing.T) {
 	year := 2020

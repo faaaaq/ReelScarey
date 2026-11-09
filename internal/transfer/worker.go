@@ -18,7 +18,9 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 	go func() { defer close(matchingDone); s.runAutomaticMatching(libraryCtx, logger) }()
 	musicDone := make(chan struct{})
 	go func() { defer close(musicDone); s.RunMusic(libraryCtx, logger) }()
-	defer func() { libraryCancel(); <-libraryDone; <-matchingDone; <-musicDone }()
+	stallDone := make(chan struct{})
+	go func() { defer close(stallDone); s.RunStallWatch(libraryCtx, logger) }()
+	defer func() { libraryCancel(); <-libraryDone; <-matchingDone; <-musicDone; <-stallDone }()
 	if err := s.cleanupCommitted(ctx); err != nil && ctx.Err() == nil {
 		logger.Warn("committed import staging cleanup deferred")
 	}
@@ -97,6 +99,9 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 			err = s.owned(finish, j, `UPDATE downloads SET error_code=?,error_message=?,attempts=?,next_run=?,updated_at=unixepoch()`, p.Code, p.Message, attempts, next)
 		} else {
 			err = s.owned(finish, j, `UPDATE downloads SET state=?,error_code=?,error_message=?,attempts=?,next_run=?,updated_at=unixepoch()`, state, p.Code, p.Message, attempts, next)
+			if state == "failed" {
+				s.blockFailedJob(finish, j, p)
+			}
 		}
 	} else {
 		err = s.owned(finish, j, `UPDATE downloads SET attempts=0,error_code='',error_message='',next_run=unixepoch()+5,updated_at=unixepoch()`)

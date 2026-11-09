@@ -5,6 +5,7 @@ export type Settings = {
   episode_naming?: "standard" | "with-title";
   register_unverified_video: boolean;
   import_mode: "hardlink" | "copy";
+  nfo_export: boolean;
   revision: number;
   updated_at: string;
 };
@@ -749,6 +750,8 @@ export type AuthStatus = {
   setup_required: boolean;
   authenticated: boolean;
   session?: Session;
+  /** True when the administrator must supply an authenticator code to sign in. */
+  totp_enabled?: boolean;
 };
 export type ProviderStatus = {
   configured: boolean;
@@ -845,6 +848,62 @@ export type DownloadPage = {
   total: number;
   limit: number;
 };
+
+/** One terminal release failure that automatic grabbing will skip. */
+export type ReleaseBlacklistEntry = {
+  id: number;
+  protocol: "torrent" | "usenet";
+  release_key: string;
+  indexer: string;
+  title: string;
+  reason: string;
+  /** Unix seconds. `expires_at` of 0 means the entry is permanent. */
+  created_at: number;
+  expires_at: number;
+};
+
+export type DuplicateFile = {
+  id: number;
+  relative_path: string;
+  size_bytes: number;
+  sha256: string;
+  resolution: number;
+};
+
+/** A read-only duplicate review group. */
+export type DuplicateGroup = {
+  kind: "movie" | "episode";
+  media_id: number;
+  episode_id?: number;
+  title: string;
+  episode_title?: string;
+  season?: number;
+  episode?: number;
+  file_count: number;
+  status: "probable_duplicate" | "needs_attention";
+  reason: string;
+  files: DuplicateFile[];
+};
+
+export type DuplicateReport = {
+  groups: DuplicateGroup[];
+  total: number;
+  limit: number;
+  truncated: boolean;
+};
+
+export type TOTPStatus = {
+  configured: boolean;
+  enabled: boolean;
+  recovery_codes_remaining: number;
+};
+
+/** Returned once by provisioning; never store the secret client-side. */
+export type TOTPProvision = {
+  secret: string;
+  otpauth_uri: string;
+};
+
 let csrfToken = "";
 export function setCSRFToken(value: string) {
   csrfToken = value;

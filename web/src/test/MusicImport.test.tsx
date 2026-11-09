@@ -745,9 +745,7 @@ describe("music import", () => {
     await waitFor(() => expect(postCalls(fetch, "/finalize")).toHaveLength(1));
     const call = postCalls(fetch, "/finalize")[0];
     expect(JSON.parse(String(call?.[1]?.body))).toEqual({ reviewed: true });
-    expect(
-      await screen.findByText(/Finalizing matched files started/),
-    ).toBeVisible();
+    expect(await screen.findByText(/Finalize started/)).toBeVisible();
   });
 
   it("reports a failed scan honestly instead of completed", async () => {
@@ -774,7 +772,7 @@ describe("music import", () => {
 
     expect(await screen.findByText(/permission denied/)).toBeVisible();
     expect(screen.getAllByText("Needs attention").length).toBeGreaterThan(0);
-    expect(screen.getByText("Scan error")).toBeVisible();
+    expect(screen.getByText("Scan needs attention")).toBeVisible();
     expect(screen.queryByText("Completed")).toBeNull();
     expect(
       screen.queryByRole("button", { name: /Match all unmatched/ }),

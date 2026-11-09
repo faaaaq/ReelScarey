@@ -13,6 +13,18 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
+- [x] Release reliability pack: persistent release blacklist, visible soft
+  ranking penalties, per-profile automatic grab delay, stalled-download activity
+  detection and bounded SABnzbd/NZBGet completion parsing. Release blacklist
+  entries survive restarts and can be removed by the owner. See
+  [download clients](docs/DOWNLOAD_CLIENTS.md) and [API](docs/API.md).
+
+- [x] Optional library analysis and metadata export: bounded background FFprobe
+  analysis on registered media, opt-in Jellyfin-compatible `.nfo` sidecars that
+  never replace existing files, a read-only duplicate review page and an
+  authenticated Prometheus metrics snapshot. Two-factor administrator login
+  uses RFC 6238 TOTP with encrypted secrets and one-time recovery codes.
+
 - [x] Sonarr/Radarr-style configuration/library database backup manager: live
   snapshots, paused-by-default schedules, count/age retention, ZIP download/upload,
   verified review, pre-restore safety copy, controlled restart and interrupted

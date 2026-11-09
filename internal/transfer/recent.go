@@ -237,6 +237,21 @@ func (s *Service) QueueCandidate(ctx context.Context, token string, mediaID int6
 	return s.queueVersion(ctx, v.ID, guard, 0, version)
 }
 
+// QueueCandidateAfter applies the profile's grab delay to a feed entry. The
+// candidate is still persisted immediately so policy fencing and reservations
+// remain identical; only the first submission is postponed.
+func (s *Service) QueueCandidateAfter(ctx context.Context, token string, mediaID int64, episodeID *int64, version string, delay time.Duration, guard QueueGuard) (Job, bool, error) {
+	job, created, err := s.QueueCandidate(ctx, token, mediaID, episodeID, version, guard)
+	if err != nil || !created || delay <= 0 {
+		return job, created, err
+	}
+	if _, err = s.db.ExecContext(ctx, `UPDATE downloads SET next_run=? WHERE id=? AND state='queued'`, time.Now().Add(delay).Unix(), job.ID); err != nil {
+		return Job{}, created, err
+	}
+	job, err = s.Job(ctx, job.ID)
+	return job, created, err
+}
+
 func (s *Service) tvTargetForRSS(ctx context.Context, seriesID, episodeID int64) (TVTarget, error) {
 	var t TVTarget
 	e := s.db.QueryRowContext(ctx, `SELECT e.id,e.tmdb_id,s.number,e.number,e.title,a.absolute_number FROM episodes e JOIN seasons s ON s.id=e.season_id LEFT JOIN anime_episode_numbers a ON a.episode_id=e.id WHERE e.id=? AND s.series_id=?`, episodeID, seriesID).Scan(&t.EpisodeID, &t.TMDbID, &t.Season, &t.Number, &t.Title, &t.AbsoluteNumber)

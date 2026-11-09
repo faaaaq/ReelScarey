@@ -349,6 +349,39 @@ func TestRecoverScansRequeuesInterruptedWorkflow(t *testing.T) {
 	}
 }
 
+func TestFinalizeRequestKeepsRegisteredCohortForOrganizationRetry(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	service := NewService(db, t.TempDir())
+	if _, err := db.Exec(`INSERT INTO music_scans(id,root,state,phase,created_at,updated_at) VALUES(10,'Music','review','ready',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO music_scan_files(scan_id,relative_path,size_bytes,modified_at,state,finalize_requested,created_at,updated_at)
+		VALUES(10,'Music/registered.flac',10,1,'registered',0,1,1),
+		      (10,'Music/unresolved.flac',10,1,'unresolved',1,1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	scan, err := service.RequestFinalize(ctx, 10, true)
+	if err != nil {
+		t.Fatalf("registered cohort was not accepted: %v", err)
+	}
+	if scan.Request != "finalize" || scan.ProgressTotal != 1 {
+		t.Fatalf("unexpected request %+v", scan)
+	}
+	var registered, unresolved int
+	if err := db.QueryRow(`SELECT SUM(CASE WHEN state='registered' THEN finalize_requested ELSE 0 END),
+		SUM(CASE WHEN state='unresolved' THEN finalize_requested ELSE 0 END) FROM music_scan_files WHERE scan_id=10`).Scan(&registered, &unresolved); err != nil {
+		t.Fatal(err)
+	}
+	if registered != 1 || unresolved != 0 {
+		t.Fatalf("finalize cohort flags registered=%d unresolved=%d", registered, unresolved)
+	}
+}
+
 func TestWorkflowRequestsValidateStateAndConsent(t *testing.T) {
 	ctx := context.Background()
 	db, err := database.Open(ctx, t.TempDir())
@@ -619,7 +652,7 @@ func TestFinalizeWorkflowRegistersAndOrganizesInPlace(t *testing.T) {
 	if scan.State != "completed" || scan.Phase != "completed" || scan.Request != "" || scan.RegisteredCount != 1 {
 		t.Fatalf("finalized scan %+v", scan)
 	}
-	if !strings.Contains(scan.Message, "Registered 1 files") || !strings.Contains(scan.Message, "organized 1 files") {
+	if !strings.Contains(scan.Message, "Finalized 1 matched files") || !strings.Contains(scan.Message, "registered 1 and organized 1") {
 		t.Fatal("finalize message", scan.Message)
 	}
 	var relative, origin string

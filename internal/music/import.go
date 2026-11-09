@@ -584,7 +584,7 @@ func (s *Service) prepareMusicImport(ctx context.Context, media *os.Root, album 
 		return p, err
 	}
 	after, err := filecheck.Capture(ctx, input)
-	if err != nil || before != after {
+	if err != nil || !filecheck.SameContent(after, before) {
 		return p, filecheck.ErrChanged
 	}
 	current, err := filecheck.Open(downloads, source)
@@ -593,7 +593,7 @@ func (s *Service) prepareMusicImport(ctx context.Context, media *os.Root, album 
 	}
 	observed, err := filecheck.Capture(ctx, current)
 	current.Close()
-	if err != nil || observed != before {
+	if err != nil || !filecheck.SameContent(observed, before) {
 		return p, filecheck.ErrChanged
 	}
 	p.Tags, err = s.prober.ProbeAudio(ctx, stagePath)

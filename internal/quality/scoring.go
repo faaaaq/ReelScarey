@@ -42,7 +42,7 @@ func validateScoring(s Scoring) error {
 	}
 	return nil
 }
-func scoreEvidence(s Scoring, r Release, tokens string, d *Decision) {
+func scoreEvidence(s Scoring, r Release, tokens string, sizeLimit int64, d *Decision) {
 	d.ScoringReasons = []string{}
 	has := func(labels ...string) bool {
 		for _, v := range labels {
@@ -111,6 +111,41 @@ func scoreEvidence(s Scoring, r Release, tokens string, d *Decision) {
 		if points > 0 {
 			d.ScoringReasons = append(d.ScoringReasons, fmt.Sprintf("Seeders: +%d", points))
 		}
+	}
+	// Conservative soft penalties. They never make a release ineligible:
+	// blocking reasons live in Decision.Reasons, while these only reorder
+	// eligible candidates and are always visible in ScoringReasons. Values are
+	// static and deterministic, so the same release always ranks identically.
+	// The weights stay well below the resolution/cutoff scores above, and a
+	// release with preferred source and codec labels keeps its bonus instead.
+	if d.Source == "unknown" {
+		// Missing source evidence is weaker than a known, merely unpreferred
+		// source, but it is common enough that it must not block a grab.
+		d.Score -= 150
+		d.ScoringReasons = append(d.ScoringReasons, "Unknown source: -150")
+	}
+	if d.Codec == "unknown" {
+		d.Score -= 75
+		d.ScoringReasons = append(d.ScoringReasons, "Unknown codec: -75")
+	}
+	if r.Protocol != "usenet" && r.Seeders != nil {
+		switch n := *r.Seeders; {
+		case n == 0:
+			// An explicitly reported zero is worse than an unlabeled count,
+			// which stays untouched here and is handled by the minimum-seeder
+			// eligibility rule instead.
+			d.Score -= 200
+			d.ScoringReasons = append(d.ScoringReasons, "No seeders: -200")
+		case n > 0 && n < 3:
+			d.Score -= 100
+			d.ScoringReasons = append(d.ScoringReasons, fmt.Sprintf("Low seeders: -100 (%d)", n))
+		}
+	}
+	// Releases above 80% of the profile limit are eligible but leave little
+	// headroom for size-report variance, so they rank below smaller peers.
+	if sizeLimit > 0 && r.Size > sizeLimit*4/5 {
+		d.Score -= 50
+		d.ScoringReasons = append(d.ScoringReasons, "Near size limit: -50")
 	}
 	if r.Protocol != "usenet" {
 		return

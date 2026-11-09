@@ -560,7 +560,7 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 				if t.MovieVersion != "" {
 					job, created, qe = s.workflow.QueueAutomaticVersion(ctx, best.ID, t.MovieVersion, s.guard(c, t, p))
 				} else {
-					job, created, qe = s.workflow.QueueAutomatic(ctx, best.ID, s.guard(c, t, p))
+					job, created, qe = s.workflow.QueueAutomaticAfter(ctx, best.ID, p.GrabDelay(), s.guard(c, t, p))
 				}
 				if errors.Is(qe, ErrLease) {
 					return "", "", qe
@@ -705,7 +705,7 @@ func (s *Service) processPacks(ctx context.Context, c claim, covered map[int64]b
 		if !ok {
 			continue
 		}
-		job, created, qe := s.workflow.QueueAutomatic(ctx, chosen.ID, s.guardPack(c, group, profile))
+		job, created, qe := s.workflow.QueueAutomaticAfter(ctx, chosen.ID, profile.GrabDelay(), s.guardPack(c, group, profile))
 		if errors.Is(qe, ErrLease) {
 			return qe
 		}

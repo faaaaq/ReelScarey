@@ -1,6 +1,13 @@
 import { useId, useMemo, useState, type FormEvent } from "react";
 import { Button, IconButton, TextField } from "@radix-ui/themes";
-import { ArrowLeft, Download, ListFilter, Search, Upload } from "lucide-react";
+import {
+  ArrowLeft,
+  Ban,
+  Download,
+  ListFilter,
+  Search,
+  Upload,
+} from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   api,
@@ -311,6 +318,11 @@ function ReleaseBrowser() {
           />
         </ToolbarSection>
         <ToolbarSection align="right">
+          <ToolbarButton
+            icon={Ban}
+            label="Blacklist"
+            to="/releases/blacklist"
+          />
           <ToolbarMenu
             icon={ListFilter}
             label="Filter"

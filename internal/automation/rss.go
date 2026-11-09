@@ -624,7 +624,7 @@ func (s *Service) handleRSS(ctx context.Context, c rssClaim, src transfer.Recent
 		}
 		return false, false, nil
 	}
-	job, created, e := s.workflow.QueueCandidate(ctx, item.Token, best.MediaID, best.EpisodeID, best.MovieVersion, s.rssGuard(c, *best, bestProfile))
+	job, created, e := s.workflow.QueueCandidateAfter(ctx, item.Token, best.MediaID, best.EpisodeID, best.MovieVersion, bestProfile.GrabDelay(), s.rssGuard(c, *best, bestProfile))
 	if e != nil {
 		var typed *transfer.Error
 		if errors.As(e, &typed) && typed.Temporary {

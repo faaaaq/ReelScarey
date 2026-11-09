@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
 )
 
 const (
@@ -84,24 +86,31 @@ func (s *Service) RequestFinalize(ctx context.Context, scanID int64, reviewed bo
 	if err != nil {
 		return Scan{}, err
 	}
-	if matched == 0 {
-		return Scan{}, &Error{Code: "music_nothing_to_do", Message: "This scan has no matched files to register. Match the unresolved files first."}
+	registered, err := s.countScanFiles(ctx, scanID, "registered")
+	if err != nil {
+		return Scan{}, err
+	}
+	if matched == 0 && registered == 0 {
+		return Scan{}, &Error{Code: "music_nothing_to_do", Message: "This scan has no matched or registered files to finalize. Match the unresolved files first."}
 	}
 	tx, err := s.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Scan{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `UPDATE music_scan_files SET finalize_requested=0 WHERE scan_id=?`, scanID); err != nil {
+	// Keep registered-but-unorganized rows in the cohort so a failed
+	// organization can be retried without matching or registering again.
+	if _, err := tx.ExecContext(ctx, `UPDATE music_scan_files SET finalize_requested=0 WHERE scan_id=? AND state<>'registered'`, scanID); err != nil {
 		return Scan{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE music_scan_files SET finalize_requested=1 WHERE scan_id=? AND state='matched'`, scanID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE music_scan_files SET finalize_requested=1 WHERE scan_id=? AND state IN ('matched','registered')`, scanID); err != nil {
 		return Scan{}, err
 	}
+	total := matched + registered
 	result, err := tx.ExecContext(ctx, `UPDATE music_scans
 		SET request='finalize',phase='queued',progress_total=?,progress_done=0,current_path='',message=?,error='',requested_at=unixepoch(),work_owner='',work_until=0,updated_at=unixepoch()
 		WHERE id=? AND request='' AND state NOT IN ('scanning','cancelled')`,
-		matched, "Waiting for the finalize worker. It registers the matched files in place, then organizes and tags them.", scanID)
+		total, "Waiting for the finalize worker. It registers the matched files in place, then organizes and tags them.", scanID)
 	if err != nil {
 		return Scan{}, err
 	}
@@ -418,7 +427,7 @@ func (s *Service) handleWorkflowError(ctx context.Context, id int64, owner strin
 		}
 		return s.finishWorkflow(base, id, owner, "review", "ready", "Matching stopped before it could process more files. The remaining files stay unresolved for review.", "")
 	}
-	return s.finishWorkflow(base, id, owner, "failed", "failed", "", err.Error())
+	return s.finishWorkflow(base, id, owner, "failed", "failed", "", workflowFailure(err))
 }
 
 // localTagMatchFiles is the fast path. For each bounded batch it first matches
@@ -715,7 +724,7 @@ func (s *Service) runFinalizeWorkflow(ctx context.Context, scan Scan, owner stri
 		if err != nil {
 			failed++
 			if firstFailure == "" {
-				firstFailure = "Organization preview failed: " + err.Error()
+				firstFailure = organizeFailure("", err)
 			}
 			continue
 		}
@@ -729,7 +738,7 @@ func (s *Service) runFinalizeWorkflow(ctx context.Context, scan Scan, owner stri
 		if err != nil {
 			failed++
 			if firstFailure == "" {
-				firstFailure = "Organization failed: " + err.Error()
+				firstFailure = organizeFailure(plan.Files[0].SourcePath, err)
 			}
 			continue
 		}
@@ -744,7 +753,7 @@ func (s *Service) runFinalizeWorkflow(ctx context.Context, scan Scan, owner stri
 		if outcome.State != "completed" {
 			failed++
 			if firstFailure == "" {
-				firstFailure = firstNonEmpty(outcome.Error, "An organization job did not complete.")
+				firstFailure = organizeFailure(failedEditPath(outcome, plan.Files[0].SourcePath), errors.New(firstNonEmpty(outcome.Error, "An organization job did not complete.")))
 			}
 			continue
 		}
@@ -763,9 +772,12 @@ func (s *Service) runFinalizeWorkflow(ctx context.Context, scan Scan, owner stri
 	if len(fileIDs) > 0 {
 		_ = s.setWorkflowCounts(base, id, owner, "organizing", len(fileIDs), len(fileIDs), "", "Finalizing organization results.")
 	}
-	message := fmt.Sprintf("Registered %d files; organized %d files; %d failed.", registered, organized, failed)
+	message := fmt.Sprintf("Finalized %d matched files; registered %d and organized %d.", len(matchedIDs), registered, organized)
+	if failed > 0 {
+		message += fmt.Sprintf(" %d failed.", failed)
+	}
 	if unresolved > 0 {
-		message += fmt.Sprintf(" %d files remain unresolved for review.", unresolved)
+		message += fmt.Sprintf(" %d files remain unresolved and were not part of this Finalize run.", unresolved)
 	}
 	if failed > 0 || firstFailure != "" {
 		message += " Failed and unmatched files stay available for manual review."
@@ -828,7 +840,9 @@ func (s *Service) matchedScanFileIDs(ctx context.Context, scanID int64) ([]int64
 func (s *Service) registeredMusicFileIDs(ctx context.Context, scanID int64) ([]int64, error) {
 	rows, err := s.store.db.QueryContext(ctx, `SELECT f.id FROM music_files f
 		JOIN music_scan_files s ON s.relative_path=f.relative_path
-		WHERE s.scan_id=? AND s.finalize_requested=1 AND s.state='registered' ORDER BY f.id`, scanID)
+		WHERE s.scan_id=? AND s.finalize_requested=1 AND s.state='registered'
+		  AND NOT EXISTS(SELECT 1 FROM music_edit_files e WHERE e.music_file_id=f.id AND e.state='completed')
+		ORDER BY f.id`, scanID)
 	if err != nil {
 		return nil, err
 	}
@@ -870,6 +884,48 @@ func matchErrorMessage(err error) string {
 		return provider.Message
 	}
 	return err.Error()
+}
+
+// organizeFailure turns verification errors into an actionable message that
+// names the affected file. The generic filecheck text does not explain that
+// nothing was overwritten or what the owner can do next.
+func organizeFailure(path string, err error) string {
+	where := "A registered file"
+	if strings.TrimSpace(path) != "" {
+		where = path
+	}
+	if errors.Is(err, filecheck.ErrChanged) || (err != nil && err.Error() == filecheck.ErrChanged.Error()) {
+		return fmt.Sprintf("%s changed while ReelScarey verified it. Nothing was overwritten. Rescan that file or run Finalize again; files already organized are left in place.", where)
+	}
+	var provider *Error
+	if errors.As(err, &provider) && strings.TrimSpace(provider.Message) != "" {
+		return fmt.Sprintf("Could not organize %s: %s", where, provider.Message)
+	}
+	return fmt.Sprintf("Could not organize %s: %s", where, err.Error())
+}
+
+// workflowFailure keeps ordinary provider or database errors intact while
+// replacing the generic filecheck text with actionable guidance.
+func workflowFailure(err error) string {
+	if errors.Is(err, filecheck.ErrChanged) || (err != nil && err.Error() == filecheck.ErrChanged.Error()) {
+		return organizeFailure("", err)
+	}
+	if err == nil {
+		return "The workflow stopped unexpectedly."
+	}
+	return err.Error()
+}
+
+func failedEditPath(job EditJob, fallback string) string {
+	for _, file := range job.Files {
+		if file.State == "failed" && strings.TrimSpace(file.SourcePath) != "" {
+			return file.SourcePath
+		}
+	}
+	if len(job.Files) > 0 && strings.TrimSpace(job.Files[0].SourcePath) != "" {
+		return job.Files[0].SourcePath
+	}
+	return fallback
 }
 
 func isRateLimited(err error) bool {

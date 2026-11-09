@@ -86,15 +86,30 @@ func Capture(ctx context.Context, f *os.File) (Snapshot, error) {
 	if err != nil {
 		return out, err
 	}
-	id, change, err := stamp(f)
+	id, _, err := stamp(f)
 	if err != nil {
 		return out, err
 	}
-	if !os.SameFile(info, after) || after.Size() != out.Size || after.ModTime().UnixNano() != out.Mtime || id != out.Identity || change != out.Change {
+	// Reading can refresh atime, and some network/FUSE filesystems also bump
+	// ctime when they do. Only reject changes that alter the file's evidence:
+	// identity, size, nanosecond mtime or sampled bytes. Verify still compares
+	// the saved change stamp across separate observations.
+	if !os.SameFile(info, after) || after.Size() != out.Size || after.ModTime().UnixNano() != out.Mtime || id != out.Identity {
 		return out, ErrChanged
 	}
 	return out, nil
 }
+
+// SameContent reports whether two observations describe the same file content.
+// The change timestamp is deliberately ignored: some network and FUSE
+// filesystems update ctime when a read refreshes atime, which would otherwise
+// reject healthy files after every probe. Identity, size, nanosecond mtime and
+// the sampled digest must still match. Callers that need mutation safety still
+// promote registered files to a full SHA-256 before writing.
+func SameContent(a, b Snapshot) bool {
+	return a.Identity == b.Identity && a.Size == b.Size && a.Mtime == b.Mtime && a.Sample == b.Sample
+}
+
 func Verify(ctx context.Context, f *os.File, raw string) error {
 	var expected Snapshot
 	if json.Unmarshal([]byte(raw), &expected) != nil || expected.Identity == "" || len(expected.Sample) != 64 {

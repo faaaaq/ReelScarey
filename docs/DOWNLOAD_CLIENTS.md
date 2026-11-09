@@ -233,3 +233,27 @@ The torrent default can use Transmission; the Usenet default cannot.
 The disposable test image in `scripts/transmission-test.Dockerfile` runs private,
 authenticated Transmission movie and TV flows with generated web-seeded media.
 It is a test tool, not part of the deployed runtime.
+
+## Release reliability (0.51)
+
+A terminal download or import failure blocks that exact release identity for
+seven days. Torrent identity is the normalized infohash; Usenet identity is a
+SHA-256 of the bounded NZB GUID. The same hash from a different indexer is a
+separate entry. The block is checked again when any download is queued, so a
+stale release selection cannot bypass it. The owner can inspect and remove
+entries at `/releases/blacklist`; removal never restarts a failed job
+automatically.
+
+Quality profiles expose a 0-1440 minute grab delay. Automatic searches, feed
+checks and packaged selections create the job immediately but postpone its
+first client submission, which lets later releases appear while keeping the
+policy and reservation fencing unchanged. Manual choices and replacements are
+not delayed.
+
+Active torrent and Usenet jobs whose downloaded byte count has not moved for
+thirty minutes are recorded once in Activity as stalled. New progress clears
+the condition. This is an attention signal only: ReelScarey does not silently
+delete, retry or resubmit a stalled release. Completion payload parsing for
+SABnzbd and NZBGet is bounded and treats warnings as failure, but the
+application does not expose an unauthenticated completion webhook; normal
+queue reconciliation remains authoritative.

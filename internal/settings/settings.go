@@ -26,8 +26,10 @@ type Settings struct {
 	// library when possible or always copied. Publication inside the library
 	// still uses a private no-overwrite hardlink.
 	ImportMode string `json:"import_mode"`
-	Revision   int    `json:"revision"`
-	UpdatedAt  string `json:"updated_at"`
+	// NFOExport writes Jellyfin-compatible .nfo metadata beside imported media.
+	NFOExport bool   `json:"nfo_export"`
+	Revision  int    `json:"revision"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type Update struct {
@@ -39,7 +41,9 @@ type Update struct {
 	RegisterUnverifiedVideo *bool `json:"register_unverified_video,omitempty"`
 	// Pointer so older callers that omit the field keep the saved method.
 	ImportMode *string `json:"import_mode,omitempty"`
-	Revision   int     `json:"revision"`
+	// Pointer so older callers keep the saved NFO preference.
+	NFOExport *bool `json:"nfo_export,omitempty"`
+	Revision  int   `json:"revision"`
 }
 
 type ValidationError struct{ Message string }
@@ -122,7 +126,7 @@ func New(db *sql.DB) *Store { return &Store{db: db} }
 
 func (s *Store) Get(ctx context.Context) (Settings, error) {
 	var out Settings
-	err := s.db.QueryRowContext(ctx, "SELECT library_name, movie_folder, series_folder, episode_naming, register_unverified_video, import_mode, revision, updated_at FROM settings WHERE id = 1").Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.RegisterUnverifiedVideo, &out.ImportMode, &out.Revision, &out.UpdatedAt)
+	err := s.db.QueryRowContext(ctx, "SELECT library_name, movie_folder, series_folder, episode_naming, register_unverified_video, import_mode, nfo_export, revision, updated_at FROM settings WHERE id = 1").Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.RegisterUnverifiedVideo, &out.ImportMode, &out.NFOExport, &out.Revision, &out.UpdatedAt)
 	return out, err
 }
 
@@ -131,7 +135,7 @@ func (s *Store) Update(ctx context.Context, in Update) (Settings, error) {
 		return Settings{}, err
 	}
 	var out Settings
-	err := s.db.QueryRowContext(ctx, `UPDATE settings SET library_name=?,movie_folder=?,series_folder=?,episode_naming=CASE WHEN ?='' THEN episode_naming ELSE ? END,register_unverified_video=COALESCE(?,register_unverified_video),import_mode=COALESCE(?,import_mode),revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND revision=? RETURNING library_name,movie_folder,series_folder,episode_naming,register_unverified_video,import_mode,revision,updated_at`, in.LibraryName, in.MovieFolder, in.SeriesFolder, in.EpisodeNaming, in.EpisodeNaming, in.RegisterUnverifiedVideo, in.ImportMode, in.Revision).Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.RegisterUnverifiedVideo, &out.ImportMode, &out.Revision, &out.UpdatedAt)
+	err := s.db.QueryRowContext(ctx, `UPDATE settings SET library_name=?,movie_folder=?,series_folder=?,episode_naming=CASE WHEN ?='' THEN episode_naming ELSE ? END,register_unverified_video=COALESCE(?,register_unverified_video),import_mode=COALESCE(?,import_mode),nfo_export=COALESCE(?,nfo_export),revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND revision=? RETURNING library_name,movie_folder,series_folder,episode_naming,register_unverified_video,import_mode,nfo_export,revision,updated_at`, in.LibraryName, in.MovieFolder, in.SeriesFolder, in.EpisodeNaming, in.EpisodeNaming, in.RegisterUnverifiedVideo, in.ImportMode, in.NFOExport, in.Revision).Scan(&out.LibraryName, &out.MovieFolder, &out.SeriesFolder, &out.EpisodeNaming, &out.RegisterUnverifiedVideo, &out.ImportMode, &out.NFOExport, &out.Revision, &out.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Settings{}, ErrConflict
 	}

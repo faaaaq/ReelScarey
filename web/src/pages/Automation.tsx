@@ -15,6 +15,8 @@ export type Profile = {
   language: string;
   min_seeders: number;
   max_size_gib: number;
+  /** Automatic grabs wait this long before submission; 0 disables the delay. */
+  grab_delay_minutes: number;
   required_terms: string;
   rejected_terms: string;
   revision: number;
@@ -731,6 +733,7 @@ const blankProfile: Profile = {
   language: "any",
   min_seeders: 1,
   max_size_gib: 40,
+  grab_delay_minutes: 0,
   required_terms: "",
   rejected_terms: "",
   revision: 0,
@@ -794,7 +797,10 @@ function ProfileForm({
   profile: Profile;
   saved: (p: Profile) => void;
 }) {
-  const [form, setForm] = useState(profile);
+  const [form, setForm] = useState<Profile>({
+    ...profile,
+    grab_delay_minutes: profile.grab_delay_minutes ?? 0,
+  });
   const [sourceOrderText, setSourceOrderText] = useState(
     (profile.scoring?.sources ?? []).join(","),
   );
@@ -917,6 +923,19 @@ function ProfileForm({
             />
           </label>
           <label>
+            Grab delay (minutes)
+            <input
+              required
+              type="number"
+              min={0}
+              max={1440}
+              value={form.grab_delay_minutes ?? 0}
+              onChange={(e) =>
+                set("grab_delay_minutes", Number(e.target.value))
+              }
+            />
+          </label>
+          <label>
             Required terms
             <TextField.Root
               maxLength={200}
@@ -1030,6 +1049,11 @@ function ProfileForm({
             />
           </label>
         </div>
+        <p className="rs-form-help">
+          Automatic grabs wait for the grab delay before submission so better
+          releases can appear. Manual release selections are submitted
+          immediately.
+        </p>
         <p className="rs-form-help">
           Torrent seeders dominate within a resolution: among eligible releases,
           the best-seeded one wins when the search runs. Source, codec and

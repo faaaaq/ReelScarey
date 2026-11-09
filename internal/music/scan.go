@@ -1233,7 +1233,7 @@ func (s *Service) observeAudio(ctx context.Context, media *os.Root, name string)
 	after, err := filecheck.Capture(ctx, file)
 	visible, statErr := media.Lstat(name)
 	opened, openErr := file.Stat()
-	if err != nil || statErr != nil || openErr != nil || !os.SameFile(visible, opened) || after != before {
+	if err != nil || statErr != nil || openErr != nil || !os.SameFile(visible, opened) || !filecheck.SameContent(after, before) {
 		return audioObservation{tagJSON: "{}", message: "The audio file changed while scanning."}, nil
 	}
 	tags, err := json.Marshal(out.tags)

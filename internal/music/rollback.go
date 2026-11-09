@@ -20,19 +20,26 @@ func musicDigest(ctx context.Context, root *os.Root, name string) (string, int64
 		return "", 0, err
 	}
 	defer f.Close()
-	before, err := filecheck.Capture(ctx, f)
+	before, err := f.Stat()
 	if err != nil {
 		return "", 0, err
+	}
+	if !before.Mode().IsRegular() || before.Size() <= 0 {
+		return "", 0, filecheck.ErrChanged
 	}
 	sha, err := filecheck.Digest(ctx, f)
 	if err != nil {
 		return "", 0, err
 	}
-	after, err := filecheck.Capture(ctx, f)
-	if err != nil || after != before {
+	// A full SHA already covers the bytes. Requiring a stable identity, size
+	// and nanosecond mtime around the read detects replacement or concurrent
+	// writes without rejecting files whose ctime moves when a read refreshes
+	// atime on some network/FUSE filesystems.
+	after, err := f.Stat()
+	if err != nil || !os.SameFile(before, after) || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
 		return "", 0, filecheck.ErrChanged
 	}
-	return sha, before.Size, nil
+	return sha, after.Size(), nil
 }
 
 func expectMusicDigest(ctx context.Context, root *os.Root, name, expected string) error {

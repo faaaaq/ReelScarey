@@ -196,3 +196,18 @@
     flex-direction: column;
   }
 }
+
+/* Scan notices stay readable and never overlap at narrow widths. */
+.mus-scan-summary,
+.mus-scan-status {
+  min-width: 0;
+}
+
+.mus-scan-summary > *,
+.mus-scan-status > * {
+  min-width: 0;
+}
+
+.mus-scan-status :is(p, span, .rs-alert-content) {
+  overflow-wrap: anywhere;
+}

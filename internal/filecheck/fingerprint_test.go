@@ -15,6 +15,29 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/database"
 )
 
+func TestSameContentIgnoresChangeTimestampButRejectsContentEvidence(t *testing.T) {
+	base := Snapshot{Identity: "1:2", Size: 1024, Mtime: 42, Sample: "abc", Change: "10:1"}
+	accessOnly := base
+	accessOnly.Change = "11:9"
+	if !SameContent(base, accessOnly) {
+		t.Fatal("access-time ctime change rejected healthy content")
+	}
+	for name, mutate := range map[string]func(*Snapshot){
+		"identity": func(s *Snapshot) { s.Identity = "1:3" },
+		"size":     func(s *Snapshot) { s.Size++ },
+		"mtime":    func(s *Snapshot) { s.Mtime++ },
+		"sample":   func(s *Snapshot) { s.Sample = "def" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := base
+			mutate(&changed)
+			if SameContent(base, changed) {
+				t.Fatal("content evidence change accepted")
+			}
+		})
+	}
+}
+
 func TestObservationDetectsChangesAndRejectsMissingEvidence(t *testing.T) {
 	for _, mode := range []string{"sample", "unsampled-restored-time", "replacement", "invalid", "cancelled"} {
 		t.Run(mode, func(t *testing.T) {

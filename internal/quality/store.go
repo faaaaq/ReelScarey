@@ -18,7 +18,7 @@ type Store struct{ db *sql.DB }
 
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
-const columns = `id,name,qualities,cutoff,language,min_seeders,max_size_gib,required_terms,rejected_terms,revision,scoring`
+const columns = `id,name,qualities,cutoff,language,min_seeders,max_size_gib,required_terms,rejected_terms,revision,scoring,grab_delay_minutes`
 
 type scanner interface{ Scan(...any) error }
 
@@ -26,7 +26,7 @@ func scan(row scanner) (Profile, error) {
 	var p Profile
 	var q string
 	var scoring string
-	e := row.Scan(&p.ID, &p.Name, &q, &p.Cutoff, &p.Language, &p.MinSeeders, &p.MaxSizeGiB, &p.RequiredTerms, &p.RejectedTerms, &p.Revision, &scoring)
+	e := row.Scan(&p.ID, &p.Name, &q, &p.Cutoff, &p.Language, &p.MinSeeders, &p.MaxSizeGiB, &p.RequiredTerms, &p.RejectedTerms, &p.Revision, &scoring, &p.GrabDelayMinutes)
 	if e == nil {
 		e = json.Unmarshal([]byte(q), &p.Qualities)
 	}
@@ -92,14 +92,14 @@ func (s *Store) Save(ctx context.Context, p Profile) (Profile, error) {
 		if count >= 20 {
 			return Profile{}, &ValidationError{"At most 20 profiles are supported."}
 		}
-		r, e := tx.ExecContext(ctx, `INSERT INTO quality_profiles(name,qualities,cutoff,language,min_seeders,max_size_gib,required_terms,rejected_terms,scoring) VALUES(?,?,?,?,?,?,?,?,?)`, p.Name, string(q), p.Cutoff, p.Language, p.MinSeeders, p.MaxSizeGiB, p.RequiredTerms, p.RejectedTerms, string(scoring))
+		r, e := tx.ExecContext(ctx, `INSERT INTO quality_profiles(name,qualities,cutoff,language,min_seeders,max_size_gib,required_terms,rejected_terms,scoring,grab_delay_minutes) VALUES(?,?,?,?,?,?,?,?,?,?)`, p.Name, string(q), p.Cutoff, p.Language, p.MinSeeders, p.MaxSizeGiB, p.RequiredTerms, p.RejectedTerms, string(scoring), p.GrabDelayMinutes)
 		if e != nil {
 			return Profile{}, e
 		}
 		p.ID, _ = r.LastInsertId()
 		p.Revision = 1
 	} else {
-		r, e := tx.ExecContext(ctx, `UPDATE quality_profiles SET name=?,qualities=?,cutoff=?,language=?,min_seeders=?,max_size_gib=?,required_terms=?,rejected_terms=?,scoring=?,revision=revision+1 WHERE id=? AND revision=?`, p.Name, string(q), p.Cutoff, p.Language, p.MinSeeders, p.MaxSizeGiB, p.RequiredTerms, p.RejectedTerms, string(scoring), p.ID, p.Revision)
+		r, e := tx.ExecContext(ctx, `UPDATE quality_profiles SET name=?,qualities=?,cutoff=?,language=?,min_seeders=?,max_size_gib=?,required_terms=?,rejected_terms=?,scoring=?,grab_delay_minutes=?,revision=revision+1 WHERE id=? AND revision=?`, p.Name, string(q), p.Cutoff, p.Language, p.MinSeeders, p.MaxSizeGiB, p.RequiredTerms, p.RejectedTerms, string(scoring), p.GrabDelayMinutes, p.ID, p.Revision)
 		if e != nil {
 			return Profile{}, e
 		}
