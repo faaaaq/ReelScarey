@@ -37,10 +37,10 @@ func TestAutomaticDuplicateEpisodeVariantsBecomeExplicitGroup(t *testing.T) {
 	f := setupWorkflow(t)
 	ctx := context.Background()
 	scan := duplicateFixtureScan(t, f,
-		"anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E63 - A x Hard x Master.mkv",
-		"anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E63 - A x Hard x Master.mp4",
-		"anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E64 - Strengthen x And x Threaten.mkv",
-		"anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E64 - Strengthen x And x Threaten.mp4",
+		"Anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E63 - A x Hard x Master.mkv",
+		"Anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E63 - A x Hard x Master.mp4",
+		"Anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E64 - Strengthen x And x Threaten.mkv",
+		"Anime/Hunter x Hunter (2011) [tmdb-46298]/Season 2/Hunter x Hunter - S02E64 - Strengthen x And x Threaten.mp4",
 	)
 	finishAutomatic(t, f, scan.ID)
 
@@ -133,8 +133,8 @@ func TestDuplicateGroupRefusesToSkipVariantsWithAdditionalEpisodes(t *testing.T)
 		},
 	}
 	f.s.SetAutomaticMetadata(provider)
-	existingVideo(t, f, "anime/Hunter x Hunter (2011) [tmdb-46299]/Season 2/Hunter x Hunter - S02E01 - A x Hard x Master.mkv", []byte("owned single episode"))
-	existingVideo(t, f, "anime/Hunter x Hunter (2011) [tmdb-46299]/Season 2/Hunter x Hunter - S02E01-E02 - A x Hard x Master.mkv", []byte("owned two episode"))
+	existingVideo(t, f, "Anime/Hunter x Hunter (2011) [tmdb-46299]/Season 2/Hunter x Hunter - S02E01 - A x Hard x Master.mkv", []byte("owned single episode"))
+	existingVideo(t, f, "Anime/Hunter x Hunter (2011) [tmdb-46299]/Season 2/Hunter x Hunter - S02E01-E02 - A x Hard x Master.mkv", []byte("owned two episode"))
 	scan, err := f.s.StartLibraryScanWithMatching(ctx, "series", "anime", true)
 	if err != nil {
 		t.Fatal(err)

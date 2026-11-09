@@ -321,7 +321,7 @@ func runFFprobe(ctx context.Context, binary string, file *os.File) ([]byte, erro
 			return nil, ErrProbeTimeout
 		}
 		var missing *exec.Error
-		if errors.As(err, &missing) || errors.Is(err, exec.ErrNotFound) {
+		if errors.As(err, &missing) || errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrProbeMissing
 		}
 		return nil, ErrProbeUnreadable
