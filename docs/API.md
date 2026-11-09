@@ -1438,3 +1438,10 @@ Stalled downloading jobs are recorded once in the activity feed after thirty
 minutes without byte progress. SABnzbd/NZBGet completion payload parsers are
 bounded and reconcile terminal state, but no unauthenticated webhook endpoint
 is exposed.
+
+`POST /api/v1/torrents/queue-limits` saves the built-in client's queueing
+settings and applies them to a running client. The body accepts
+`{queueing_enabled,max_active_downloads,max_active_uploads,max_active_torrents,
+revision}`; each limit is 1-100. A stale revision returns
+`revision_conflict`. The same values are returned in the `queue` object from
+`GET /api/v1/torrents` and are persisted across supervised restarts.

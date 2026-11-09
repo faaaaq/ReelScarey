@@ -13,6 +13,10 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
+- [x] Built-in torrent queue limits: queueing on/off, maximum active
+  downloads, uploads and total torrents, editable from the Torrents page and
+  persisted across supervised restarts. Defaults match qBittorrent (3/3/5).
+
 - [x] Release reliability pack: persistent release blacklist, visible soft
   ranking penalties, per-profile automatic grab delay, stalled-download activity
   detection and bounded SABnzbd/NZBGet completion parsing. Release blacklist

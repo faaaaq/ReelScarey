@@ -7,6 +7,7 @@ import {
   formatSeedingMinutes,
   originOf,
   shareActionLabels,
+  type QueueLimits,
   type ShareAction,
   type SharePolicy,
   type SharePolicyRun,
@@ -748,6 +749,139 @@ export function SharePolicyDialog({
           Loading the saved seeding policy…
         </p>
       )}
+    </Modal>
+  );
+}
+
+export function QueueLimitsDialog({
+  open,
+  onOpenChange,
+  initial,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  initial: QueueLimits;
+  onSubmit: (limits: QueueLimits) => Promise<boolean>;
+}) {
+  const formId = useId();
+  const [enabled, setEnabled] = useState(initial.queueing_enabled);
+  const [downloads, setDownloads] = useState(
+    String(initial.max_active_downloads),
+  );
+  const [uploads, setUploads] = useState(String(initial.max_active_uploads));
+  const [torrents, setTorrents] = useState(String(initial.max_active_torrents));
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+  const [lastOpen, setLastOpen] = useState(open);
+  if (open !== lastOpen) {
+    setLastOpen(open);
+    if (open) {
+      setEnabled(initial.queueing_enabled);
+      setDownloads(String(initial.max_active_downloads));
+      setUploads(String(initial.max_active_uploads));
+      setTorrents(String(initial.max_active_torrents));
+      setProblem("");
+    }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const values = [downloads, uploads, torrents].map((value) =>
+      Number(value.trim()),
+    );
+    if (
+      values.some(
+        (value) => !Number.isInteger(value) || value < 1 || value > 100,
+      )
+    ) {
+      setProblem("Choose whole-number limits between 1 and 100.");
+      return;
+    }
+    setBusy(true);
+    const ok = await onSubmit({
+      queueing_enabled: enabled,
+      max_active_downloads: values[0],
+      max_active_uploads: values[1],
+      max_active_torrents: values[2],
+      revision: initial.revision,
+    });
+    setBusy(false);
+    if (ok) onOpenChange(false);
+    else setProblem("The queue limits were not saved.");
+  }
+
+  return (
+    <Modal
+      open={open}
+      onOpenChange={(next) => !busy && onOpenChange(next)}
+      size="small"
+      title="Torrent queue limits"
+      description="Control how many torrents the built-in qBittorrent client keeps active. These values survive client and application restarts."
+      footer={
+        <>
+          <ModalClose>
+            <Button variant="soft" disabled={busy}>
+              Cancel
+            </Button>
+          </ModalClose>
+          <Button type="submit" form={formId} disabled={busy}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <form id={formId} onSubmit={submit} className="tor-dialog-form">
+        <Check
+          label="Enable torrent queueing"
+          checked={enabled}
+          onChange={setEnabled}
+        />
+        <p className="rs-form-help">
+          When queueing is off, every torrent may run at once. The limits below
+          are kept for when queueing is enabled again.
+        </p>
+        <label className="tor-field" htmlFor={`${formId}-downloads`}>
+          <span>Maximum active downloads</span>
+          <input
+            id={`${formId}-downloads`}
+            type="number"
+            min={1}
+            max={100}
+            step={1}
+            inputMode="numeric"
+            value={downloads}
+            onChange={(event) => setDownloads(event.target.value)}
+          />
+        </label>
+        <label className="tor-field" htmlFor={`${formId}-uploads`}>
+          <span>Maximum active uploads</span>
+          <input
+            id={`${formId}-uploads`}
+            type="number"
+            min={1}
+            max={100}
+            step={1}
+            inputMode="numeric"
+            value={uploads}
+            onChange={(event) => setUploads(event.target.value)}
+          />
+        </label>
+        <label className="tor-field" htmlFor={`${formId}-torrents`}>
+          <span>Maximum active torrents overall</span>
+          <input
+            id={`${formId}-torrents`}
+            type="number"
+            min={1}
+            max={100}
+            step={1}
+            inputMode="numeric"
+            value={torrents}
+            onChange={(event) => setTorrents(event.target.value)}
+          />
+        </label>
+        {problem && <Alert kind="danger">{problem}</Alert>}
+      </form>
     </Modal>
   );
 }

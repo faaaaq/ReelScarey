@@ -54,6 +54,7 @@ type torrentManager interface {
 	ToggleSpeedLimitsMode(context.Context, ClientConfig) error
 	SetGlobalLimit(ctx context.Context, c ClientConfig, upload bool, limit int64) error
 	ServerPreferences(context.Context, ClientConfig) (TorrentServer, error)
+	SetServerQueueLimits(context.Context, ClientConfig, TorrentQueueLimits) error
 	Properties(context.Context, ClientConfig, string) (TorrentProperties, error)
 	Trackers(context.Context, ClientConfig, string) ([]TorrentTracker, error)
 	Peers(context.Context, ClientConfig, string) ([]TorrentPeer, error)
@@ -67,17 +68,21 @@ type TorrentOverview struct {
 	Message   string       `json:"message"`
 	Transfer  TransferInfo `json:"transfer"`
 	// Server is null while the built-in client is unavailable.
-	Server *TorrentServer `json:"server"`
-	Items  []Torrent      `json:"items"`
+	Server *TorrentServer     `json:"server"`
+	Queue  TorrentQueueLimits `json:"queue"`
+	Items  []Torrent          `json:"items"`
 }
 
 // TorrentServer is the small, read-only part of the client configuration the
 // page displays. Limits are bytes per second; 0 means unlimited.
 type TorrentServer struct {
-	AltSpeedEnabled bool  `json:"alt_speed_enabled"`
-	QueueingEnabled bool  `json:"queueing_enabled"`
-	AltDLLimit      int64 `json:"alt_dl_limit"`
-	AltUPLimit      int64 `json:"alt_up_limit"`
+	AltSpeedEnabled    bool  `json:"alt_speed_enabled"`
+	QueueingEnabled    bool  `json:"queueing_enabled"`
+	AltDLLimit         int64 `json:"alt_dl_limit"`
+	AltUPLimit         int64 `json:"alt_up_limit"`
+	MaxActiveDownloads int   `json:"max_active_downloads"`
+	MaxActiveUploads   int   `json:"max_active_uploads"`
+	MaxActiveTorrents  int   `json:"max_active_torrents"`
 }
 
 type TorrentProperties struct {
@@ -263,12 +268,16 @@ func (s *Service) Torrents(ctx context.Context) (TorrentOverview, error) {
 	if err != nil {
 		return TorrentOverview{}, err
 	}
+	queue, err := s.TorrentQueueLimits(ctx)
+	if err != nil {
+		return TorrentOverview{}, err
+	}
 	if !present || !enabled {
 		message := "The built-in qBittorrent client is not enabled."
 		if !present {
 			message = "The built-in qBittorrent client is not configured."
 		}
-		return TorrentOverview{Available: false, State: "disabled", Message: message, Items: []Torrent{}}, nil
+		return TorrentOverview{Available: false, State: "disabled", Message: message, Queue: queue, Items: []Torrent{}}, nil
 	}
 	manager, c, err := s.builtinTorrents(ctx)
 	if err != nil {
@@ -297,7 +306,7 @@ func (s *Service) Torrents(ctx context.Context) (TorrentOverview, error) {
 	if info.Connection == "disconnected" {
 		state = "disconnected"
 	}
-	return TorrentOverview{Available: true, State: state, Transfer: info, Server: &server, Items: items}, nil
+	return TorrentOverview{Available: true, State: state, Transfer: info, Server: &server, Queue: queue, Items: items}, nil
 }
 
 func (s *Service) torrentServerPreferences(ctx context.Context, manager torrentManager, c ClientConfig) (TorrentServer, error) {

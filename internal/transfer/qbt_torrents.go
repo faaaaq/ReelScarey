@@ -162,6 +162,9 @@ func (q *QBittorrent) ServerPreferences(ctx context.Context, c ClientConfig) (To
 		Queueing *bool  `json:"queueing_enabled"`
 		AltDL    *int64 `json:"alt_dl_limit"`
 		AltUP    *int64 `json:"alt_up_limit"`
+		MaxDL    *int   `json:"max_active_downloads"`
+		MaxUP    *int   `json:"max_active_uploads"`
+		MaxTotal *int   `json:"max_active_torrents"`
 	}
 	if json.Unmarshal(data, &prefs) != nil || prefs.Queueing == nil || prefs.AltDL == nil || prefs.AltUP == nil {
 		return TorrentServer{}, problem("client_response", "qBittorrent returned invalid preferences.")
@@ -174,7 +177,35 @@ func (q *QBittorrent) ServerPreferences(ctx context.Context, c ClientConfig) (To
 		}
 		return v
 	}
-	return TorrentServer{QueueingEnabled: *prefs.Queueing, AltDLLimit: limit(*prefs.AltDL), AltUPLimit: limit(*prefs.AltUP)}, nil
+	count := func(v *int, fallback int) int {
+		if v == nil || *v < 1 || *v > 100 {
+			return fallback
+		}
+		return *v
+	}
+	return TorrentServer{
+		QueueingEnabled:    *prefs.Queueing,
+		AltDLLimit:         limit(*prefs.AltDL),
+		AltUPLimit:         limit(*prefs.AltUP),
+		MaxActiveDownloads: count(prefs.MaxDL, 3),
+		MaxActiveUploads:   count(prefs.MaxUP, 3),
+		MaxActiveTorrents:  count(prefs.MaxTotal, 5),
+	}, nil
+}
+
+// SetServerQueueLimits updates only the queueing preferences. It never sends
+// credentials, paths or unrelated qBittorrent preferences.
+func (q *QBittorrent) SetServerQueueLimits(ctx context.Context, c ClientConfig, in TorrentQueueLimits) error {
+	payload, err := json.Marshal(map[string]any{
+		"queueing_enabled":     in.QueueingEnabled,
+		"max_active_downloads": in.MaxActiveDownloads,
+		"max_active_uploads":   in.MaxActiveUploads,
+		"max_active_torrents":  in.MaxActiveTorrents,
+	})
+	if err != nil {
+		return err
+	}
+	return q.torrentForm(ctx, c, "app/setPreferences", url.Values{"json": {string(payload)}})
 }
 
 // detail reads one per-torrent detail endpoint and maps a missing torrent.

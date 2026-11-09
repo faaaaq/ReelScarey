@@ -46,6 +46,22 @@ func (s *Server) torrentDetail(w http.ResponseWriter, r *http.Request) {
 	send(w, 200, out)
 }
 
+func (s *Server) torrentQueueLimits(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	var in transfer.TorrentQueueLimits
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	out, err := s.transfer.SetTorrentQueueLimits(r.Context(), in)
+	if err != nil {
+		s.transferError(w, err)
+		return
+	}
+	send(w, 200, out)
+}
+
 func (s *Server) torrentAddMagnet(w http.ResponseWriter, r *http.Request) {
 	if !s.transferReady(w) {
 		return

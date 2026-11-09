@@ -131,6 +131,16 @@ function overview(overrides: Record<string, unknown> = {}) {
       queueing_enabled: true,
       alt_dl_limit: 0,
       alt_up_limit: 0,
+      max_active_downloads: 3,
+      max_active_uploads: 3,
+      max_active_torrents: 5,
+    },
+    queue: {
+      queueing_enabled: true,
+      max_active_downloads: 3,
+      max_active_uploads: 3,
+      max_active_torrents: 5,
+      revision: 1,
     },
     items: [jobTorrent, manualTorrent, otherTorrent],
     ...overrides,
@@ -236,6 +246,8 @@ function mount(payload: unknown, options: { failMagnet?: string } = {}) {
     }
     if (method === "POST" && url === "/api/v1/torrents/share-policy/run")
       return Response.json({ checked: 3, acted: 2 });
+    if (method === "POST" && url === "/api/v1/torrents/queue-limits")
+      return Response.json(body);
     if (method === "GET" && url === "/api/v1/torrents/public-pause")
       return Response.json(pause);
     if (method === "PUT" && url === "/api/v1/torrents/public-pause") {
@@ -650,6 +662,40 @@ describe("Torrents", () => {
     expect(posts(calls, "/api/v1/torrents/speed-limits")[0].body).toEqual({
       alt_enabled: true,
     });
+  });
+
+  it("sets persistent torrent queue limits", async () => {
+    const user = userEvent.setup();
+    const { calls } = mount(overview());
+    await screen.findByText("Fixture.Release.1080p");
+    await user.click(
+      screen.getByRole("button", { name: "Set torrent queue limits" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Torrent queue limits",
+    });
+    await user.click(within(dialog).getByRole("checkbox"));
+    const downloads = within(dialog).getByLabelText("Maximum active downloads");
+    const uploads = within(dialog).getByLabelText("Maximum active uploads");
+    const totals = within(dialog).getByLabelText(
+      "Maximum active torrents overall",
+    );
+    await user.clear(downloads);
+    await user.type(downloads, "7");
+    await user.clear(uploads);
+    await user.type(uploads, "5");
+    await user.clear(totals);
+    await user.type(totals, "9");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(posts(calls, "/api/v1/torrents/queue-limits")[0]?.body).toEqual({
+        queueing_enabled: false,
+        max_active_downloads: 7,
+        max_active_uploads: 5,
+        max_active_torrents: 9,
+        revision: 1,
+      }),
+    );
   });
 
   it("sets the global download limit in bytes per second", async () => {

@@ -401,6 +401,47 @@ func TestTorrentFilePriorityProtectsJobsAndValidatesIndexes(t *testing.T) {
 	}
 }
 
+func TestTorrentQueueLimitsPersistValidateAndApply(t *testing.T) {
+	ctx := context.Background()
+	f := setupWorkflow(t)
+	enableFixtureBuiltin(t, f)
+	current, err := f.s.TorrentQueueLimits(ctx)
+	if err != nil || !current.QueueingEnabled || current.MaxActiveDownloads != 3 || current.MaxActiveUploads != 3 || current.MaxActiveTorrents != 5 {
+		t.Fatalf("unexpected defaults %+v %v", current, err)
+	}
+	next := current
+	next.QueueingEnabled = false
+	next.MaxActiveDownloads, next.MaxActiveUploads, next.MaxActiveTorrents = 7, 5, 9
+	saved, err := f.s.SetTorrentQueueLimits(ctx, next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.QueueingEnabled || saved.MaxActiveDownloads != 7 || saved.MaxActiveUploads != 5 || saved.MaxActiveTorrents != 9 || saved.Revision != current.Revision+1 {
+		t.Fatalf("saved %+v", saved)
+	}
+	read, err := f.s.TorrentQueueLimits(ctx)
+	if err != nil || read != saved {
+		t.Fatalf("reopen %+v %v", read, err)
+	}
+	if f.client.server.MaxActiveUploads != 5 || f.client.server.MaxActiveDownloads != 7 {
+		t.Fatalf("live client not updated: %+v", f.client.server)
+	}
+	stale := saved
+	stale.MaxActiveUploads = 4
+	stale.Revision = current.Revision
+	if _, e := f.s.SetTorrentQueueLimits(ctx, stale); problemCode(e) != "revision_conflict" {
+		t.Fatalf("stale revision accepted: %v", e)
+	}
+	for _, bad := range []int{0, 101} {
+		invalid := saved
+		invalid.Revision = read.Revision
+		invalid.MaxActiveDownloads = bad
+		if _, e := f.s.SetTorrentQueueLimits(ctx, invalid); problemCode(e) != "invalid_selection" {
+			t.Fatalf("invalid limit %d accepted: %v", bad, e)
+		}
+	}
+}
+
 func TestTorrentSpeedLimitsToggleOnlyWhenDifferent(t *testing.T) {
 	ctx := context.Background()
 	f := setupWorkflow(t)

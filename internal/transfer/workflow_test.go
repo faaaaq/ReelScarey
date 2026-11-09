@@ -154,6 +154,13 @@ func (f *fixtureClient) SetGlobalLimit(_ context.Context, _ ClientConfig, upload
 func (f *fixtureClient) ServerPreferences(context.Context, ClientConfig) (TorrentServer, error) {
 	return f.server, nil
 }
+func (f *fixtureClient) SetServerQueueLimits(_ context.Context, _ ClientConfig, in TorrentQueueLimits) error {
+	f.server.QueueingEnabled = in.QueueingEnabled
+	f.server.MaxActiveDownloads = in.MaxActiveDownloads
+	f.server.MaxActiveUploads = in.MaxActiveUploads
+	f.server.MaxActiveTorrents = in.MaxActiveTorrents
+	return nil
+}
 func (f *fixtureClient) Properties(context.Context, ClientConfig, string) (TorrentProperties, error) {
 	return f.properties, nil
 }

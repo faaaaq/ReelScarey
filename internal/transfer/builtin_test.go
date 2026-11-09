@@ -94,7 +94,9 @@ func TestBundledClientIncludedByDefault(t *testing.T) {
 		t.Fatal(status)
 	}
 	conf, e := os.ReadFile(filepath.Join(f.cfg.ConfigDir, "qbittorrent", "qBittorrent", "config", "qBittorrent.conf"))
-	if e != nil || !containsLine(string(conf), "WebUI\\Address=127.0.0.1") || !containsLine(string(conf), "WebUI\\Port=8085") || !containsLine(string(conf), "Session\\Port=6881") {
+	if e != nil || !containsLine(string(conf), "WebUI\\Address=127.0.0.1") || !containsLine(string(conf), "WebUI\\Port=8085") || !containsLine(string(conf), "Session\\Port=6881") ||
+		!containsLine(string(conf), "Queueing\\QueueingEnabled=true") || !containsLine(string(conf), "Queueing\\MaxActiveDownloads=3") ||
+		!containsLine(string(conf), "Queueing\\MaxActiveUploads=3") || !containsLine(string(conf), "Queueing\\MaxActiveTorrents=5") {
 		t.Fatal("generated configuration is missing the supervised settings", string(conf), e)
 	}
 	clients, e := f.s.DownloadClients(ctx)

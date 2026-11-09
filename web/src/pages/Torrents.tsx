@@ -63,6 +63,7 @@ import {
 import {
   AddLinksDialog,
   DeleteDialog,
+  QueueLimitsDialog,
   ShareLimitDialog,
   SharePolicyDialog,
   SpeedLimitDialog,
@@ -83,6 +84,7 @@ import {
   type Filters,
   type Overview,
   type PublicPause,
+  type QueueLimits,
   type SharePolicy,
   type SharePolicyRun,
   type Torrent,
@@ -186,6 +188,7 @@ export function Torrents() {
   const [limitDialog, setLimitDialog] = useState<LimitDialog>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [sharePolicyOpen, setSharePolicyOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
 
@@ -194,6 +197,7 @@ export function Torrents() {
   const transfer = data?.transfer ?? {};
   const server = data?.server ?? null;
   const queueing = server?.queueing_enabled ?? true;
+  const queue = data?.queue;
 
   const visible = useMemo(() => {
     const terms = searchTerms(query);
@@ -306,6 +310,25 @@ export function Torrents() {
     setMessage(null);
     try {
       await postNoContent("/torrents/speed-limits", body);
+      return true;
+    } catch (e) {
+      setMessage({ kind: "danger", text: messageFor(e) });
+      return false;
+    } finally {
+      setBusy(false);
+      reload();
+    }
+  }
+
+  async function setQueueLimits(next: QueueLimits) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api<QueueLimits>("/torrents/queue-limits", {
+        method: "POST",
+        body: JSON.stringify(next),
+      });
+      setMessage({ kind: "success", text: "Torrent queue limits saved." });
       return true;
     } catch (e) {
       setMessage({ kind: "danger", text: messageFor(e) });
@@ -1028,6 +1051,23 @@ export function Torrents() {
         <span className="tor-status-spacer" />
         <button
           type="button"
+          className="tor-status-button"
+          title="Torrent queue limits for the built-in client"
+          aria-label="Set torrent queue limits"
+          disabled={!queue}
+          onClick={() => setQueueOpen(true)}
+        >
+          <Gauge size={16} aria-hidden="true" />
+          <span>
+            {queue
+              ? queue.queueing_enabled
+                ? `${queue.max_active_downloads} down / ${queue.max_active_uploads} up / ${queue.max_active_torrents} total`
+                : "Queue off"
+              : "Queue"}
+          </span>
+        </button>
+        <button
+          type="button"
           className={`tor-status-button ${altOn ? "is-on" : ""}`}
           aria-pressed={altOn}
           aria-label="Alternative speed limits"
@@ -1144,6 +1184,14 @@ export function Torrents() {
           )
         }
       />
+      {queue && (
+        <QueueLimitsDialog
+          open={queueOpen}
+          onOpenChange={setQueueOpen}
+          initial={queue}
+          onSubmit={setQueueLimits}
+        />
+      )}
       <ShareLimitDialog
         open={shareOpen}
         onOpenChange={setShareOpen}

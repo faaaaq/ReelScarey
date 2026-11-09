@@ -327,6 +327,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/automation", s.automationSettings)
 	mux.HandleFunc("/api/v1/torrents", s.torrents)
 	mux.HandleFunc("/api/v1/torrents/actions", method(http.MethodPost, s.torrentBulkAction))
+	mux.HandleFunc("/api/v1/torrents/queue-limits", method(http.MethodPost, s.torrentQueueLimits))
 	mux.HandleFunc("/api/v1/torrents/speed-limits", method(http.MethodPost, s.torrentSpeedLimits))
 	mux.HandleFunc("/api/v1/torrents/share-policy", s.torrentSharePolicy)
 	mux.HandleFunc("/api/v1/torrents/share-policy/run", method(http.MethodPost, s.torrentSharePolicyRun))

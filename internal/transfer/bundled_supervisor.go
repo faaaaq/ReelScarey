@@ -273,6 +273,10 @@ func (s *Service) startBundled(ctx context.Context, c ClientConfig, revision int
 	if e := os.MkdirAll(confDir, 0o700); e != nil {
 		return e
 	}
+	queue, e := s.TorrentQueueLimits(ctx)
+	if e != nil {
+		return e
+	}
 	conf := "[LegalNotice]\nAccepted=true\n[Preferences]\n" +
 		"WebUI\\Address=127.0.0.1\n" +
 		"WebUI\\Port=" + strconv.Itoa(builtinWebPort) + "\n" +
@@ -281,6 +285,10 @@ func (s *Service) startBundled(ctx context.Context, c ClientConfig, revision int
 		"WebUI\\LocalHostAuth=true\n" +
 		"WebUI\\CSRFProtection=true\n" +
 		"WebUI\\HostHeaderValidation=true\n" +
+		"Queueing\\QueueingEnabled=" + strconv.FormatBool(queue.QueueingEnabled) + "\n" +
+		"Queueing\\MaxActiveDownloads=" + strconv.Itoa(queue.MaxActiveDownloads) + "\n" +
+		"Queueing\\MaxActiveUploads=" + strconv.Itoa(queue.MaxActiveUploads) + "\n" +
+		"Queueing\\MaxActiveTorrents=" + strconv.Itoa(queue.MaxActiveTorrents) + "\n" +
 		"[BitTorrent]\n" +
 		"Session\\Port=" + strconv.Itoa(c.PeerPort) + "\n" +
 		"Session\\DefaultSavePath=" + c.DownloadPath + "\n"

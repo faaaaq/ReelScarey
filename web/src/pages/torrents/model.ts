@@ -61,6 +61,17 @@ export type Server = {
   queueing_enabled: boolean;
   alt_dl_limit: number;
   alt_up_limit: number;
+  max_active_downloads: number;
+  max_active_uploads: number;
+  max_active_torrents: number;
+};
+
+export type QueueLimits = {
+  queueing_enabled: boolean;
+  max_active_downloads: number;
+  max_active_uploads: number;
+  max_active_torrents: number;
+  revision: number;
 };
 
 export type Overview = {
@@ -69,6 +80,7 @@ export type Overview = {
   message: string;
   transfer: Partial<Transfer>;
   server?: Server | null;
+  queue?: QueueLimits;
   items: Torrent[];
 };
 

@@ -257,3 +257,19 @@ delete, retry or resubmit a stalled release. Completion payload parsing for
 SABnzbd and NZBGet is bounded and treats warnings as failure, but the
 application does not expose an unauthenticated completion webhook; normal
 queue reconciliation remains authoritative.
+
+## Built-in torrent queue limits (0.51.1)
+
+The built-in qBittorrent client now exposes the same active-torrent limits as
+its native Web UI: queueing on/off, maximum active downloads, maximum active
+uploads and maximum active torrents overall. Values are stored in
+`download_client_preferences` and rewritten into the generated
+`qBittorrent.conf` on every supervised start, so changing a limit does not
+depend on the daemon remembering it.
+
+qBittorrent's defaults are 3 active downloads, 3 active uploads and 5 active
+torrents overall. ReelScarey previously left those defaults untouched, which is
+why a fresh install could appear to allow only three concurrent uploads. Use
+the queue control in the Torrents status bar to change them. Accepted values are
+1-100; turning queueing off lets every torrent run concurrently while keeping
+the saved limits for later.
