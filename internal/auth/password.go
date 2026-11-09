@@ -40,3 +40,16 @@ func verifyPassword(encoded, password string) bool {
 	actual := argon2.IDKey([]byte(password), salt, 2, 19*1024, 1, 32)
 	return subtle.ConstantTimeCompare(actual, expected) == 1
 }
+
+// dummyPasswordWork spends the same Argon2id cost as a real verification so an
+// unknown username cannot be distinguished from a known one by response time.
+var dummyKeySink []byte
+
+func dummyPasswordWork(password string) {
+	if len(password) > 256 {
+		password = password[:256]
+	}
+	var salt [16]byte
+	copy(salt[:], "reelscarey-auth1")
+	dummyKeySink = argon2.IDKey([]byte(password), salt[:], 2, 19*1024, 1, 32)
+}

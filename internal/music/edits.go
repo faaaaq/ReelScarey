@@ -326,6 +326,15 @@ func (s *Service) runEditJob(ctx context.Context, jobID int64) {
 		}
 		_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_edit_files SET state='completed',updated_at=unixepoch() WHERE id=?`, it.id)
 	}
+	// A completed edit whose original copy could not be removed leaves a
+	// duplicate on disk. Keep the job completed so rollback stays available, but
+	// surface the leftover file in the durable job error instead of only on the
+	// file row.
+	var leftovers int
+	if err := s.store.db.QueryRowContext(context.WithoutCancel(ctx), `SELECT COUNT(*) FROM music_edit_files WHERE job_id=? AND state='completed' AND error<>''`, jobID).Scan(&leftovers); err == nil && leftovers > 0 {
+		s.finishEditJob(ctx, jobID, "completed", fmt.Sprintf("%d original file(s) could not be removed; duplicates remain on disk. Review the file list before rolling back.", leftovers))
+		return
+	}
 	s.finishEditJob(ctx, jobID, "completed", "")
 }
 
@@ -491,7 +500,7 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 			return err
 		}
 		if err := os.Remove(source); err != nil {
-			_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_edit_files SET error=? WHERE id=?`, "The original file could not be removed: "+err.Error(), editID)
+			_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_edit_files SET error=? WHERE id=?`, "The original file could not be removed and remains on disk: "+err.Error()+" The edit is completed; roll back to compare the two copies.", editID)
 		}
 	}
 	return nil

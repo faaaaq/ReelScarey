@@ -28,9 +28,14 @@ func (s *Service) restrictReplacementCandidates(ctx context.Context, releases []
 	if len(ids) == 0 || len(ids) > 20 {
 		return nil, problem("invalid_file", "Choose a registered episode file covering at most 20 episodes.")
 	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return nil, e
+	}
+	defer tx.Rollback()
 	for _, release := range releases {
 		var sealed []byte
-		if e = s.db.QueryRowContext(ctx, `SELECT payload FROM release_candidates WHERE id=?`, release.ID).Scan(&sealed); e != nil {
+		if e = tx.QueryRowContext(ctx, `SELECT payload FROM release_candidates WHERE id=?`, release.ID).Scan(&sealed); e != nil {
 			return nil, e
 		}
 		plain, e := s.secrets.Open("release", sealed)
@@ -59,11 +64,11 @@ func (s *Service) restrictReplacementCandidates(ctx context.Context, releases []
 		if e != nil {
 			return nil, e
 		}
-		if _, e = s.db.ExecContext(ctx, `UPDATE release_candidates SET payload=? WHERE id=?`, sealed, c.ID); e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE release_candidates SET payload=? WHERE id=?`, sealed, c.ID); e != nil {
 			return nil, e
 		}
 	}
-	return releases, nil
+	return releases, tx.Commit()
 }
 
 func (s *Service) ensureReplacementMutation(ctx context.Context, job string) error {

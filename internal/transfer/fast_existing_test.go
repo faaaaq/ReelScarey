@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"io"
 	"log/slog"
@@ -11,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -18,10 +21,24 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/organization"
 )
 
+// insufficientSpace reports disk-full errors portably. Windows maps
+// SetEndOfFile failures to ERROR_DISK_FULL rather than ENOSPC, and a full
+// extent cannot be created on filesystems without sparse support.
+func insufficientSpace(err error) bool {
+	if errors.Is(err, syscall.ENOSPC) {
+		return true
+	}
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "not enough space") || strings.Contains(text, "disk full")
+}
+
 func TestLargeExistingRegistrationDoesNotReadWholeVideo(t *testing.T) {
 	f := setupWorkflow(t)
 	name := existingVideo(t, f, "Movies/Test Movie (2026)/obfuscated.mp4", []byte("owned sparse fixture"))
 	if err := os.Truncate(name, 64<<30); err != nil {
+		if insufficientSpace(err) {
+			t.Skipf("the 64 GiB sparse fixture needs more free disk space: %v", err)
+		}
 		t.Fatal(err)
 	}
 	scan, err := f.s.StartLibraryScanWithMatching(context.Background(), "movie", "", true)

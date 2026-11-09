@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -652,6 +653,23 @@ func (s *Service) executeReplacement(ctx context.Context, p *Plan) error {
 			f.Close()
 			if saved != "" && actual == saved {
 				_ = root.Remove(filepath.FromSlash(r.TagStage))
+			}
+		}
+	}
+	// Acquisition subtitles are published under stages 10 and above; they are
+	// recorded in organization_outputs like every other replacement output and
+	// must be cleaned up after publication so hidden .part files do not leak.
+	for n, sub := range r.AcquisitionSubtitles {
+		stage := path.Join(path.Dir(sub.File.Destination), ".reelscarey-organize-"+p.ID+"-"+strconv.Itoa(n+10)+".part")
+		var saved string
+		if e = s.db.QueryRowContext(ctx, `SELECT identity FROM organization_outputs WHERE plan_id=? AND destination=?`, p.ID, sub.File.Destination).Scan(&saved); e != nil {
+			return e
+		}
+		if f, err := root.Open(filepath.FromSlash(stage)); err == nil {
+			actual, _ := identity(f)
+			f.Close()
+			if actual == saved {
+				_ = root.Remove(filepath.FromSlash(stage))
 			}
 		}
 	}

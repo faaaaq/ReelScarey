@@ -147,6 +147,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		return false, err
 	}
 	transferService := transfer.New(db, secretStore, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
+	transferService.SetLogger(logger)
 	transferService.SetAutomaticMetadata(metadataService)
 	transferService.SetMusicImporter(musicService)
 	musicService.SetScheduleRunner(func(ctx context.Context, schedule music.MusicSchedule, _ music.MusicPreferences, albums []music.WantedAlbum) error {

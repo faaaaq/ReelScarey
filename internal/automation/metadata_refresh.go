@@ -230,8 +230,18 @@ func (s *MetadataRefresher) ProcessQueued(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 	if attempts >= 8 {
-		_, _ = s.db.ExecContext(finish, `DELETE FROM metadata_refresh_queue WHERE media_id=? AND requested_at=?`, mediaID, requestedAt)
-		_, _ = s.db.ExecContext(finish, `INSERT INTO metadata_refresh_state(media_id,state,message) VALUES(?,'attention','Automatic metadata refresh failed; saved metadata and files were retained.') ON CONFLICT(media_id) DO UPDATE SET state=excluded.state,message=excluded.message`, mediaID)
+		tx, e := s.db.BeginTx(finish, nil)
+		if e == nil {
+			_, e = tx.ExecContext(finish, `DELETE FROM metadata_refresh_queue WHERE media_id=? AND requested_at=?`, mediaID, requestedAt)
+			if e == nil {
+				_, e = tx.ExecContext(finish, `INSERT INTO metadata_refresh_state(media_id,state,message) VALUES(?,'attention','Automatic metadata refresh failed; saved metadata and files were retained.') ON CONFLICT(media_id) DO UPDATE SET state=excluded.state,message=excluded.message`, mediaID)
+			}
+			if e == nil {
+				e = tx.Commit()
+			} else {
+				_ = tx.Rollback()
+			}
+		}
 	}
 	return true, nil
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/emby"
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
+	"github.com/faaaaq/ReelScarey/internal/metrics"
 	"github.com/faaaaq/ReelScarey/internal/music"
 	"github.com/faaaaq/ReelScarey/internal/operations"
 	"github.com/faaaaq/ReelScarey/internal/organization"
@@ -48,6 +49,8 @@ type Server struct {
 	library          *library.Store
 	version          string
 	started          time.Time
+	metricsRegistry  *metrics.Registry
+	instruments      *metrics.Instruments
 	auth             *auth.Service
 	metadata         *metadata.Service
 	music            MusicService
@@ -172,6 +175,12 @@ type MusicService interface {
 
 func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string, deps Dependencies) http.Handler {
 	s := &Server{db: db, config: cfg, logger: logger, settings: settings.New(db), library: library.New(db), version: version, started: time.Now(), auth: deps.Auth, metadata: deps.Metadata, transfer: deps.Transfer, automation: deps.Automation, subtitle: deps.Subtitle, totp: deps.TOTP}
+	s.metricsRegistry = metrics.NewRegistry()
+	if instruments, err := metrics.NewInstruments(s.metricsRegistry); err != nil {
+		logger.Error("metrics registry unavailable", "error", err)
+	} else {
+		s.instruments = instruments
+	}
 	s.music = deps.Music
 	if s.music == nil {
 		service := music.NewService(db, cfg.MediaDir)
@@ -805,8 +814,25 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			if status == 0 {
 				status = 200
 			}
+			if s.instruments != nil {
+				s.instruments.ObserveHTTPRequest(r.Method, routePattern(r), status)
+			}
 			s.logger.Info("http request", "method", r.Method, "path", r.URL.Path, "status", status, "duration_ms", time.Since(start).Milliseconds())
 		}()
 		next.ServeHTTP(wrapped, r)
 	})
+}
+
+// routePattern returns the ServeMux pattern that matched a request, without its
+// method prefix. Unmatched requests report "unknown" so metric labels stay
+// bounded and no user-controlled path becomes a label value.
+func routePattern(r *http.Request) string {
+	pattern := r.Pattern
+	if space := strings.IndexByte(pattern, ' '); space >= 0 {
+		pattern = pattern[space+1:]
+	}
+	if pattern == "" {
+		return "unknown"
+	}
+	return pattern
 }

@@ -141,7 +141,10 @@ func (s *Store) SetSeriesMonitorMode(ctx context.Context, id int64, mode string)
 			}
 		}
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE series_details SET updated_at=? WHERE media_id=?`, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), id)
+	// Bumping the series revision fences any editor opened before this one-time
+	// choice; otherwise a stale season review could overwrite the child
+	// selections applied here.
+	_, err = tx.ExecContext(ctx, `UPDATE series_details SET revision=revision+1,updated_at=? WHERE media_id=?`, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), id)
 	if err != nil {
 		return err
 	}

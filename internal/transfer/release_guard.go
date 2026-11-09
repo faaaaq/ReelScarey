@@ -59,7 +59,9 @@ func (s *Service) blockFailedJob(ctx context.Context, j Job, problem *Error) {
 	var indexer string
 	_ = s.db.QueryRowContext(ctx, `SELECT indexer_name FROM downloads WHERE id=?`, j.ID).Scan(&indexer)
 	reason := strings.TrimSpace(problem.Code + ": " + problem.Message)
-	_ = s.BlockRelease(ctx, j.Protocol, j.Hash, j.ID, indexer, j.Title, reason, 7*24*time.Hour)
+	if err := s.BlockRelease(ctx, j.Protocol, j.Hash, j.ID, indexer, j.Title, reason, 7*24*time.Hour); err != nil && s.logger != nil {
+		s.logger.Warn("release blacklist write failed", "download", j.ID, "error", err)
+	}
 }
 
 // RunStallWatch records active downloads whose byte progress has not moved for

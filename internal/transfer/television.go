@@ -218,7 +218,7 @@ func refreshTVStatus(ctx context.Context, tx *sql.Tx, id int64) error {
 	_, e := tx.ExecContext(ctx, `UPDATE media_items SET status=CASE WHEN EXISTS(SELECT 1 FROM downloads WHERE movie_id=? AND kind='series' AND state NOT IN ('completed','cancelled')) THEN 'downloading' WHEN EXISTS(SELECT 1 FROM media_files WHERE series_id=?) THEN 'available' ELSE 'missing' END WHERE id=? AND kind='series'`, id, id, id)
 	return e
 }
-func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, sealed []byte, hash string, client ClientConfig, guard QueueGuard, replacementID int64, indexerPublic int) (Job, bool, error) {
+func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, sealed []byte, hash string, client ClientConfig, guard QueueGuard, replacementID int64, indexerPublic int, delay time.Duration) (Job, bool, error) {
 	if len(v.Targets) == 0 || len(v.Targets) > 100 {
 		return Job{}, false, problem("invalid_release", "This TV selection has invalid episode targets. Search again.")
 	}
@@ -232,6 +232,10 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 	}
 	id := ID()
 	now := time.Now().Unix()
+	nextRun := now
+	if delay > 0 {
+		nextRun = now + int64(delay/time.Second)
+	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return Job{}, false, e
@@ -289,7 +293,7 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 		}
 		orderJSON = string(b)
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,kind,indexer_name,protocol,organization_snapshot,anime_search_snapshot,anime_order_snapshot,indexer_public) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,'series',?,?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, path.Join(client.DownloadPath, "ReelScarey", id), now, now, v.IndexerName, v.Protocol, string(namingJSON), animeJSON, orderJSON, indexerPublic); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,next_run,kind,indexer_name,protocol,organization_snapshot,anime_search_snapshot,anime_order_snapshot,indexer_public) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,'series',?,?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, path.Join(client.DownloadPath, "ReelScarey", id), now, now, nextRun, v.IndexerName, v.Protocol, string(namingJSON), animeJSON, orderJSON, indexerPublic); e != nil {
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO download_tv(download_id,series_tmdb_id,series_title,series_year,season_number,series_folder,naming) VALUES(?,?,?,?,?,?,?)`, id, show.TMDbID, show.Title, show.Year, v.Targets[0].Season, prefs.SeriesFolder, prefs.EpisodeNaming); e != nil {

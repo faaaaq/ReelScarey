@@ -163,3 +163,21 @@ func TestSeriesMonitorModesApplyOnePass(t *testing.T) {
 		t.Fatal("invalid mode accepted")
 	}
 }
+
+func TestSeriesMonitorModeBumpsTheSeriesRevision(t *testing.T) {
+	f := newMonitorFixture(t)
+	ctx := context.Background()
+	var before, after int64
+	if e := f.s.db.QueryRowContext(ctx, `SELECT revision FROM series_details WHERE media_id=?`, f.id).Scan(&before); e != nil {
+		t.Fatal(e)
+	}
+	if e := f.s.SetSeriesMonitorMode(ctx, f.id, string(SeriesMonitorMissing)); e != nil {
+		t.Fatal(e)
+	}
+	if e := f.s.db.QueryRowContext(ctx, `SELECT revision FROM series_details WHERE media_id=?`, f.id).Scan(&after); e != nil {
+		t.Fatal(e)
+	}
+	if after <= before {
+		t.Fatalf("one-time monitoring did not fence stale editors: revision %d -> %d", before, after)
+	}
+}

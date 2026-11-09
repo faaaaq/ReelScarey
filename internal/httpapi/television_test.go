@@ -81,24 +81,36 @@ func TestTVProtectedCanonicalCatalogAndMonitoring(t *testing.T) {
 	if out.Code != 200 || !strings.Contains(out.Body.String(), `"in_library":true`) {
 		t.Fatal(out.Code, out.Body)
 	}
-	out = request(handler, "POST", base+"/refresh", `{"revision":1}`, &session, true)
+	// The add-time monitoring mode fences later editors by advancing the series
+	// revision, so read the current revision instead of assuming 1.
+	revisionOf := func() int64 {
+		out := request(handler, "GET", base, "", &session, false)
+		var current library.TVSeries
+		if e := json.Unmarshal(out.Body.Bytes(), &current); e != nil {
+			t.Fatal(out.Body, e)
+		}
+		return current.Revision
+	}
+	rev := revisionOf()
+	out = request(handler, "POST", base+"/refresh", fmt.Sprintf(`{"revision":%d}`, rev), &session, true)
 	if out.Code != 502 {
 		t.Fatal("offline refresh not reported", out.Code)
 	}
 	out = request(handler, "GET", base, "", &session, false)
 	var show library.TVSeries
-	if e = json.Unmarshal(out.Body.Bytes(), &show); e != nil || show.Revision != 1 || len(show.Seasons) != 1 {
+	if e = json.Unmarshal(out.Body.Bytes(), &show); e != nil || show.Revision != rev || len(show.Seasons) != 1 {
 		t.Fatal(out.Body, e)
 	}
-	out = request(handler, "POST", base+"/seasons/1/refresh", `{"revision":1}`, &session, true)
+	out = request(handler, "POST", base+"/seasons/1/refresh", fmt.Sprintf(`{"revision":%d}`, rev), &session, true)
 	if out.Code != 200 {
 		t.Fatal(out.Code, out.Body)
 	}
-	out = request(handler, "PUT", base+"/seasons/1/episodes/1/monitor", `{"revision":2,"monitored":false}`, &session, true)
+	rev = revisionOf()
+	out = request(handler, "PUT", base+"/seasons/1/episodes/1/monitor", fmt.Sprintf(`{"revision":%d,"monitored":false}`, rev), &session, true)
 	if out.Code != 200 {
 		t.Fatal(out.Code, out.Body)
 	}
-	out = request(handler, "PUT", base+"/monitor", `{"revision":2,"monitored":true}`, &session, true)
+	out = request(handler, "PUT", base+"/monitor", fmt.Sprintf(`{"revision":%d,"monitored":true}`, rev), &session, true)
 	if out.Code != 409 {
 		t.Fatal("stale write accepted", out.Code)
 	}

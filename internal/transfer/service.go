@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"path"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 type Service struct {
 	automaticMetadata AutomaticMetadata
 	db                *sql.DB
+	logger            *slog.Logger
 	secrets           *securestore.Store
 	cfg               config.Config
 	client            Client
@@ -64,6 +66,10 @@ func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Clien
 	s.usenet.label = "built-in Usenet client"
 	return s
 }
+
+// SetLogger records the process logger used by best-effort side effects that
+// have no other logging channel.
+func (s *Service) SetLogger(logger *slog.Logger) { s.logger = logger }
 
 // SetTunnelState supplies the VPN policy: whether the built-in client may run
 // and whether it must bind to the tunnel. A nil state means no VPN policy.
@@ -422,15 +428,12 @@ func (s *Service) QueueAutomatic(ctx context.Context, releaseID string, guard Qu
 // policy/blacklist check runs before it is created. A non-positive delay keeps
 // the normal immediate behavior.
 func (s *Service) QueueAutomaticAfter(ctx context.Context, releaseID string, delay time.Duration, guard QueueGuard) (Job, bool, error) {
-	job, created, err := s.QueueAutomatic(ctx, releaseID, guard)
-	if err != nil || !created || delay <= 0 {
-		return job, created, err
+	if guard == nil {
+		return Job{}, false, problem("invalid_release", "Automatic downloads require a current search policy.")
 	}
-	if _, err = s.db.ExecContext(ctx, `UPDATE downloads SET next_run=? WHERE id=? AND state='queued'`, time.Now().Add(delay).Unix(), job.ID); err != nil {
-		return Job{}, created, err
-	}
-	job, err = s.Job(ctx, job.ID)
-	return job, created, err
+	// The delay is written in the same reservation transaction as the queued
+	// row so a worker claim can never slip in before the postponement applies.
+	return s.queueVersion(ctx, releaseID, guard, 0, "", delay)
 }
 func (s *Service) QueueReplacement(ctx context.Context, releaseID string, fileID int64) (Job, bool, error) {
 	if fileID < 1 {
@@ -447,9 +450,9 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard,
 	if replacementID > 0 {
 		version = "replacement"
 	}
-	return s.queueVersion(ctx, releaseID, guard, replacementID, version)
+	return s.queueVersion(ctx, releaseID, guard, replacementID, version, 0)
 }
-func (s *Service) queueVersion(ctx context.Context, releaseID string, guard QueueGuard, replacementID int64, version string) (Job, bool, error) {
+func (s *Service) queueVersion(ctx context.Context, releaseID string, guard QueueGuard, replacementID int64, version string, delay time.Duration) (Job, bool, error) {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
 	if existing, e := s.jobBy(ctx, "d.release_id", releaseID); e == nil {
@@ -588,7 +591,7 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 		if version != "" && version != "replacement" {
 			return Job{}, false, problem("invalid_version", "Movie versions cannot target TV episodes.")
 		}
-		return s.queueTV(ctx, v, releaseID, sealed, hash, client, guard, replacementID, indexerPublic)
+		return s.queueTV(ctx, v, releaseID, sealed, hash, client, guard, replacementID, indexerPublic, delay)
 	}
 	if _, e = s.MovieByID(ctx, v.MovieID); e != nil {
 		return Job{}, false, e
@@ -596,6 +599,10 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 	id := ID()
 	save := path.Join(client.DownloadPath, "ReelScarey", id)
 	now := time.Now().Unix()
+	nextRun := now
+	if delay > 0 {
+		nextRun = now + int64(delay/time.Second)
+	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return Job{}, false, e
@@ -623,7 +630,7 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 	if e != nil {
 		return Job{}, false, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,indexer_name,protocol,organization_snapshot,movie_version,indexer_public) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, v.IndexerName, protocol, string(namingJSON), version, indexerPublic); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,next_run,indexer_name,protocol,organization_snapshot,movie_version,indexer_public) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, nextRun, v.IndexerName, protocol, string(namingJSON), version, indexerPublic); e != nil {
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE downloads SET client_key=?,client_kind=?,client_label=?,client_download_root=?,client_local_folder=? WHERE id=?`, client.profileKey, client.kind, client.label, client.DownloadPath, client.LocalFolder, id); e != nil {

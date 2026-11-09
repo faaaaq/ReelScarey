@@ -500,12 +500,18 @@ func (s *Service) recordRSS(ctx context.Context, c rssClaim, src transfer.Recent
 	if downloadID != "" {
 		download = downloadID
 	}
-	_, e := s.db.ExecContext(ctx, `INSERT INTO rss_results(run_id,indexer_id,indexer_name,media_id,episode_id,target,release_title,outcome,message,download_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, c.ID, src.IndexerID, src.IndexerName, media, episode, target, item.Title, outcome, message, download, s.now().Unix())
-	if e != nil {
-		return e
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
 	}
-	_, e = s.db.ExecContext(ctx, `UPDATE rss_runs SET checked=checked+1,queued=queued+? WHERE id=?`, boolInt(outcome == "queued"), c.ID)
-	return e
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO rss_results(run_id,indexer_id,indexer_name,media_id,episode_id,target,release_title,outcome,message,download_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, c.ID, src.IndexerID, src.IndexerName, media, episode, target, item.Title, outcome, message, download, s.now().Unix()); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE rss_runs SET checked=checked+1,queued=queued+? WHERE id=?`, boolInt(outcome == "queued"), c.ID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Service) rssPass(ctx context.Context, c rssClaim) (checked, queued, failures, attempted int, err error) {

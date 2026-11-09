@@ -31,11 +31,15 @@ func (s *Server) duplicateReview(w http.ResponseWriter, r *http.Request) {
 // intentionally read-only: no counters live in memory across restarts, and the
 // authenticated administrator endpoint exposes no paths, titles or secrets.
 func (s *Server) prometheusMetrics(w http.ResponseWriter, r *http.Request) {
-	registry := metrics.NewRegistry()
-	instruments, err := metrics.NewInstruments(registry)
-	if err != nil {
-		s.internal(w, "metrics_registry", err)
-		return
+	registry := s.metricsRegistry
+	instruments := s.instruments
+	if registry == nil || instruments == nil {
+		registry = metrics.NewRegistry()
+		var err error
+		if instruments, err = metrics.NewInstruments(registry); err != nil {
+			s.internal(w, "metrics_registry", err)
+			return
+		}
 	}
 	rows, err := s.db.QueryContext(r.Context(), `SELECT state,COUNT(*) FROM downloads GROUP BY state`)
 	if err != nil {

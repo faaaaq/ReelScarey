@@ -235,7 +235,12 @@ func (s *Server) arrBackupApply(w http.ResponseWriter, r *http.Request) {
 				// Sonarr's per-season choices are not imported; future-only
 				// monitoring matches the new-title default and avoids pulling
 				// the entire back catalog without an explicit decision.
-				_ = s.library.SetSeriesMonitorMode(context.WithoutCancel(r.Context()), item2.ID, "future")
+				if err := s.library.SetSeriesMonitorMode(context.WithoutCancel(r.Context()), item2.ID, "future"); err != nil {
+					errorsOut = append(errorsOut, map[string]string{
+						"title":   show.Title,
+						"message": "The show was added, but future-only monitoring could not be applied: " + err.Error(),
+					})
+				}
 			}
 		} else {
 			skipped++

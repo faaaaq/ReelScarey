@@ -12,13 +12,13 @@ func (s *Service) QueueMovieVersion(ctx context.Context, releaseID, version stri
 	if version != "hd" && version != "uhd" && version != "additional" {
 		return Job{}, false, problem("invalid_version", "Choose HD, 4K or an additional movie version.")
 	}
-	return s.queueVersion(ctx, releaseID, nil, 0, version)
+	return s.queueVersion(ctx, releaseID, nil, 0, version, 0)
 }
 func (s *Service) QueueAutomaticVersion(ctx context.Context, releaseID, version string, guard QueueGuard) (Job, bool, error) {
 	if guard == nil || (version != "hd" && version != "uhd") {
 		return Job{}, false, problem("invalid_version", "Automatic movie versions require a current version policy.")
 	}
-	return s.queueVersion(ctx, releaseID, guard, 0, version)
+	return s.queueVersion(ctx, releaseID, guard, 0, version, 0)
 }
 
 func (s *Service) checkReplacementSelection(ctx context.Context, job string, fileID int64) error {

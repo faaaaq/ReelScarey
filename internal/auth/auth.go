@@ -96,8 +96,21 @@ func (s *Service) Limit(ip string) bool {
 	if entry.until.IsZero() {
 		entry.until = now.Add(time.Minute)
 	}
-	if entry.count >= 10 || s.global.count >= 60 || (len(s.attempts) >= 2048 && entry.count == 0) {
+	if entry.count >= 10 || s.global.count >= 60 {
 		return false
+	}
+	if entry.count == 0 && len(s.attempts) >= 2048 {
+		// The tracker is full: evict the entry closest to expiry instead of
+		// refusing every new client for the rest of the window. The global
+		// counter still bounds total password work.
+		var oldest string
+		var oldestUntil time.Time
+		for key, candidate := range s.attempts {
+			if oldest == "" || candidate.until.Before(oldestUntil) {
+				oldest, oldestUntil = key, candidate.until
+			}
+		}
+		delete(s.attempts, oldest)
 	}
 	entry.count++
 	s.global.count++

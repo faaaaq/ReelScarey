@@ -165,6 +165,7 @@ func (s *Service) loginRequester(ctx context.Context, username, password string)
 	var stored, encoded string
 	err := s.db.QueryRowContext(ctx, `SELECT id,username,password_hash FROM request_accounts WHERE username=? COLLATE NOCASE AND disabled=0`, username).Scan(&id, &stored, &encoded)
 	if errors.Is(err, sql.ErrNoRows) {
+		dummyPasswordWork(password)
 		return Session{}, ErrUnauthorized
 	}
 	if err != nil {

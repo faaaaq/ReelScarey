@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"os"
@@ -201,5 +202,22 @@ func TestLimiterAndHashWorkBound(t *testing.T) {
 	s.hashing <- struct{}{}
 	if s.acquire() {
 		t.Fatal("password work was not bounded")
+	}
+}
+
+func TestLimiterEvictsAnEntryInsteadOfRefusingNewClientsAtCapacity(t *testing.T) {
+	s, _, _, _ := authFixture(t)
+	// Force the one-minute global window open and fill the per-IP tracker so the
+	// capacity branch is reachable without waiting for real time to pass.
+	s.global.until = time.Now().Add(time.Hour)
+	s.global.count = 0
+	for i := 0; i < 2048; i++ {
+		s.attempts[fmt.Sprintf("ip-%d", i)] = attempt{count: 1, until: time.Now().Add(time.Minute)}
+	}
+	if !s.Limit("fresh-client") {
+		t.Fatal("a new client was refused while the tracker was full")
+	}
+	if _, ok := s.attempts["fresh-client"]; !ok {
+		t.Fatal("the new client was not recorded")
 	}
 }

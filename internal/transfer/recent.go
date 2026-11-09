@@ -197,6 +197,18 @@ func (s *Service) Recent(ctx context.Context) ([]RecentFeed, error) {
 // persists the same encrypted release selection used by the interactive flow so
 // reservations, client submission and imports stay identical.
 func (s *Service) QueueCandidate(ctx context.Context, token string, mediaID int64, episodeID *int64, version string, guard QueueGuard) (Job, bool, error) {
+	return s.queueCandidate(ctx, token, mediaID, episodeID, version, 0, guard)
+}
+
+// QueueCandidateAfter applies the profile's grab delay to a feed entry. The
+// candidate is still persisted immediately so policy fencing and reservations
+// remain identical; only the first submission is postponed, inside the same
+// reservation transaction as the queued row.
+func (s *Service) QueueCandidateAfter(ctx context.Context, token string, mediaID int64, episodeID *int64, version string, delay time.Duration, guard QueueGuard) (Job, bool, error) {
+	return s.queueCandidate(ctx, token, mediaID, episodeID, version, delay, guard)
+}
+
+func (s *Service) queueCandidate(ctx context.Context, token string, mediaID int64, episodeID *int64, version string, delay time.Duration, guard QueueGuard) (Job, bool, error) {
 	if guard == nil {
 		return Job{}, false, problem("invalid_release", "Automatic downloads require a current release-check policy.")
 	}
@@ -234,22 +246,7 @@ func (s *Service) QueueCandidate(ctx context.Context, token string, mediaID int6
 	if _, e = s.db.ExecContext(ctx, `INSERT INTO release_candidates(id,movie_id,title,size_bytes,seeders,peers,published_at,info_url,payload,expires_at,scope) VALUES(?,?,?,?,?,?,?,?,?,?,'rss')`, v.ID, mediaID, v.Title, v.Size, v.Seeders, v.Peers, v.Published, v.InfoURL, sealed, now+1800); e != nil {
 		return Job{}, false, e
 	}
-	return s.queueVersion(ctx, v.ID, guard, 0, version)
-}
-
-// QueueCandidateAfter applies the profile's grab delay to a feed entry. The
-// candidate is still persisted immediately so policy fencing and reservations
-// remain identical; only the first submission is postponed.
-func (s *Service) QueueCandidateAfter(ctx context.Context, token string, mediaID int64, episodeID *int64, version string, delay time.Duration, guard QueueGuard) (Job, bool, error) {
-	job, created, err := s.QueueCandidate(ctx, token, mediaID, episodeID, version, guard)
-	if err != nil || !created || delay <= 0 {
-		return job, created, err
-	}
-	if _, err = s.db.ExecContext(ctx, `UPDATE downloads SET next_run=? WHERE id=? AND state='queued'`, time.Now().Add(delay).Unix(), job.ID); err != nil {
-		return Job{}, created, err
-	}
-	job, err = s.Job(ctx, job.ID)
-	return job, created, err
+	return s.queueVersion(ctx, v.ID, guard, 0, version, delay)
 }
 
 func (s *Service) tvTargetForRSS(ctx context.Context, seriesID, episodeID int64) (TVTarget, error) {

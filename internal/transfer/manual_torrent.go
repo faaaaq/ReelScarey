@@ -75,7 +75,7 @@ func (s *Service) QueueManualTorrent(ctx context.Context, movieID int64, version
 	if e != nil {
 		return Job{}, false, e
 	}
-	return s.queueVersion(ctx, releaseID, nil, 0, version)
+	return s.queueVersion(ctx, releaseID, nil, 0, version, 0)
 }
 
 // QueueManualSeriesTorrent registers an uploaded .torrent file for a series
@@ -123,7 +123,7 @@ func (s *Service) QueueManualSeriesTorrent(ctx context.Context, seriesID int64, 
 	if e != nil {
 		return Job{}, false, e
 	}
-	return s.queueVersion(ctx, releaseID, nil, 0, "")
+	return s.queueVersion(ctx, releaseID, nil, 0, "", 0)
 }
 
 // manualTargets resolves the episodes a manual torrent covers, mirroring the

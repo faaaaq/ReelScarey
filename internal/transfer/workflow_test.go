@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
@@ -513,5 +514,27 @@ func TestPayloadIdentityCheckedBeforeSubmission(t *testing.T) {
 	current, e := f.s.Job(context.Background(), j.ID)
 	if e != nil || current.ErrorCode != "payload_mismatch" || f.client.adds != 0 {
 		t.Fatal("mismatched payload was submitted", current.ErrorCode, e)
+	}
+}
+
+func TestAutomaticGrabDelayIsPersistedWithTheReservation(t *testing.T) {
+	f := setupWorkflow(t)
+	ctx := context.Background()
+	out, e := f.s.Search(ctx, f.movie.ID, "")
+	if e != nil || len(out) != 1 {
+		t.Fatal(out, e)
+	}
+	guard := func(context.Context, *sql.Tx, Candidate) error { return nil }
+	before := time.Now().Unix()
+	job, created, e := f.s.QueueAutomaticAfter(ctx, out[0].ID, 90*time.Second, guard)
+	if e != nil || !created {
+		t.Fatal(job, created, e)
+	}
+	var next int64
+	if e = f.db.QueryRow(`SELECT next_run FROM downloads WHERE id=?`, job.ID).Scan(&next); e != nil {
+		t.Fatal(e)
+	}
+	if next < before+80 {
+		t.Fatalf("grab delay was not written with the queued row: next_run=%d, want at least %d", next, before+80)
 	}
 }
