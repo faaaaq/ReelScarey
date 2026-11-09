@@ -3,6 +3,7 @@ import { Button, TextField } from "@radix-ui/themes";
 import {
   ArrowLeft,
   Disc3,
+  Download,
   ExternalLink,
   FolderInput,
   ListMusic,
@@ -10,6 +11,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Server,
 } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
@@ -33,6 +35,7 @@ import {
   type MusicAlbum,
   type MusicAlbumDetails,
   type MusicAlbumPreferences,
+  type MusicAcquisitionJob,
   type MusicArtist,
   type MusicArtistDetails,
   type MusicArtistPage,
@@ -43,6 +46,8 @@ import {
   type MusicRelease,
   type MusicReleaseSearch,
   type MusicSearchResults,
+  type MusicTopTrack,
+  type MusicTopTrackPage,
 } from "../api";
 import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
@@ -216,6 +221,18 @@ export function Music() {
             label="Library Import"
             title="Scan an existing music folder and register files"
             to="/music/import"
+          />
+          <ToolbarButton
+            icon={Server}
+            label="Server"
+            title="Optional Subsonic-compatible music access"
+            to="/music/server"
+          />
+          <ToolbarButton
+            icon={Search}
+            label="Discover"
+            title="Download from links, browse charts and monitor playlists"
+            to="/music/discover"
           />
           <ToolbarButton
             icon={RefreshCw}
@@ -570,13 +587,96 @@ function ArtistTrackTable({
   );
 }
 
+function topTrackPlayer(track: MusicTopTrack): PlayerTrack | null {
+  if (!track.file_id) return null;
+  return {
+    fileID: track.file_id,
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    coverURL: track.cover_url || undefined,
+    durationMS: track.duration_ms,
+    albumID: track.album_id ?? undefined,
+  };
+}
+
+function TopTrackTable({
+  tracks,
+  onDownload,
+}: {
+  tracks: MusicTopTrack[];
+  onDownload: (track: MusicTopTrack) => void;
+}) {
+  const player = useMusicPlayer();
+  const playable = tracks
+    .map(topTrackPlayer)
+    .filter((track): track is PlayerTrack => track !== null);
+  function play(track: MusicTopTrack) {
+    const item = topTrackPlayer(track);
+    if (item) player.play(item, playable);
+  }
+  return (
+    <Table label="Top tracks">
+      <thead>
+        <tr>
+          <th scope="col" className="is-shrink">
+            #
+          </th>
+          <th scope="col">Title</th>
+          <th scope="col">Album</th>
+          <th scope="col">Duration</th>
+          <th scope="col" className="is-actions">
+            <span className="sr-only">Actions</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {tracks.map((track, index) => (
+          <tr key={`${track.provider_id}-${index}`}>
+            <td>{index + 1}</td>
+            <td>
+              {track.title}{" "}
+              {track.in_library && <Label kind="success">In library</Label>}
+            </td>
+            <td>{track.album || "—"}</td>
+            <td>{formatDuration(track.duration_ms)}</td>
+            <td className="is-actions">
+              {track.file_id ? (
+                <Button
+                  size="1"
+                  variant="ghost"
+                  color="gray"
+                  aria-label={`Play ${track.title}`}
+                  onClick={() => play(track)}
+                >
+                  <Play size={14} aria-hidden="true" />
+                </Button>
+              ) : (
+                <Button
+                  size="1"
+                  variant="soft"
+                  aria-label={`Search and download ${track.title}`}
+                  onClick={() => onDownload(track)}
+                >
+                  <Download size={14} aria-hidden="true" />
+                  Download
+                </Button>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </Table>
+  );
+}
+
 export function MusicArtistPage() {
   const { id } = useParams();
   const details = useResource<MusicArtistDetails>(
     id ? `/library/music/artists/${id}` : null,
   );
-  const topTracks = useResource<MusicArtistTrackPage>(
-    id ? `/library/music/artists/${id}/tracks?limit=15` : null,
+  const topTracks = useResource<MusicTopTrackPage>(
+    id ? `/library/music/artists/${id}/top-tracks?limit=20` : null,
   );
   const [allOpen, setAllOpen] = useState(false);
   const [allPage, setAllPage] = useState(1);
@@ -585,15 +685,91 @@ export function MusicArtistPage() {
       ? `/library/music/artists/${id}/tracks?page=${allPage}&limit=50`
       : null,
   );
+  const libraryTracks = useResource<MusicArtistTrackPage>(
+    id ? `/library/music/artists/${id}/tracks?limit=1` : null,
+  );
+  const [downloadTrack, setDownloadTrack] = useState<MusicTopTrack | null>(
+    null,
+  );
+  const [downloadFormat, setDownloadFormat] = useState("source");
+  const [downloadRoot, setDownloadRoot] = useState("Music");
+  const [downloadPending, setDownloadPending] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
+  const [downloadJobID, setDownloadJobID] = useState<number | null>(null);
+  const downloadJob = useLiveResource<MusicAcquisitionJob>(
+    downloadJobID ? `/library/music/acquisitions/${downloadJobID}` : null,
+    2000,
+  );
   const artist = details.data?.artist;
   const player = useMusicPlayer();
-  const playableTop = (topTracks.data?.items ?? []).flatMap((track) => {
-    const item = artistPlayerTrack(track, artist?.name ?? "");
-    return item ? [item] : [];
-  });
+  const playableTop = (topTracks.data?.items ?? [])
+    .map(topTrackPlayer)
+    .filter((track): track is PlayerTrack => track !== null);
   const allPages = allTracks.data
     ? Math.ceil(allTracks.data.total / allTracks.data.limit)
     : 1;
+
+  function openDownload(track: MusicTopTrack) {
+    setDownloadTrack(track);
+    setDownloadJobID(null);
+    setDownloadError("");
+    setDownloadFormat("source");
+    setDownloadRoot("Music");
+  }
+
+  async function startTopDownload() {
+    if (!downloadTrack || downloadPending) return;
+    setDownloadPending(true);
+    setDownloadError("");
+    try {
+      const job = await api<MusicAcquisitionJob>(
+        "/library/music/acquisitions",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            source_kind: "top_track",
+            title: downloadTrack.title,
+            root: downloadRoot.trim() || "Music",
+            format: downloadFormat,
+            reviewed: true,
+            tracks: [
+              {
+                title: downloadTrack.title,
+                artist: downloadTrack.artist || artist?.name || "",
+                album: downloadTrack.album || downloadTrack.title,
+                album_artist: artist?.name || downloadTrack.artist || "",
+                year: null,
+                track_number: 1,
+                disc_number: 1,
+                duration_ms: downloadTrack.duration_ms,
+                cover_url: downloadTrack.cover_url,
+                source_url: "",
+                search_query: [downloadTrack.artist, downloadTrack.title]
+                  .filter(Boolean)
+                  .join(" "),
+              },
+            ],
+          }),
+        },
+      );
+      setDownloadJobID(job.id);
+      topTracks.reload();
+    } catch (e) {
+      setDownloadError(messageFor(e));
+    } finally {
+      setDownloadPending(false);
+    }
+  }
+
+  const topTrackState = downloadJob.data?.tracks?.[0]?.state || "";
+  const topTrackError = downloadJob.data?.tracks?.[0]?.error || "";
+
+  useEffect(() => {
+    if (downloadJob.data?.state === "completed") {
+      topTracks.reload();
+      libraryTracks.reload();
+    }
+  }, [downloadJob.data?.state]);
   return (
     <>
       <PageToolbar label="Music artist actions">
@@ -636,7 +812,8 @@ export function MusicArtistPage() {
               <div>
                 <h2 id="artist-top-tracks">Top tracks</h2>
                 <p className="rs-muted rs-small">
-                  Tracks with registered files, newest albums first.
+                  Overall {topTracks.data?.source || "provider"} top tracks.
+                  Play ones already in your library, or download the rest.
                 </p>
               </div>
               <div className="mus-section-actions">
@@ -649,35 +826,39 @@ export function MusicArtistPage() {
                     Play top tracks
                   </Button>
                 )}
-                {topTracks.data &&
-                  topTracks.data.total > topTracks.data.items.length && (
-                    <Button
-                      variant="soft"
-                      onClick={() => {
-                        setAllPage(1);
-                        setAllOpen(true);
-                      }}
-                    >
-                      <ListMusic size={15} aria-hidden="true" />
-                      See every track ({topTracks.data.total})
-                    </Button>
-                  )}
+                {libraryTracks.data && libraryTracks.data.total > 0 && (
+                  <Button
+                    variant="soft"
+                    onClick={() => {
+                      setAllPage(1);
+                      setAllOpen(true);
+                    }}
+                  >
+                    <ListMusic size={15} aria-hidden="true" />
+                    All library tracks ({libraryTracks.data.total})
+                  </Button>
+                )}
               </div>
             </div>
-            {topTracks.loading && <p className="rs-muted">Loading tracks…</p>}
+            {topTracks.loading && (
+              <p className="rs-muted">Loading top tracks…</p>
+            )}
             {topTracks.error && <Alert kind="danger">{topTracks.error}</Alert>}
+            {topTracks.data?.message && (
+              <p className="rs-muted">{topTracks.data.message}</p>
+            )}
             {topTracks.data &&
               (topTracks.data.items.length ? (
-                <ArtistTrackTable
+                <TopTrackTable
                   tracks={topTracks.data.items}
-                  label="Top tracks"
-                  artistName={artist?.name ?? ""}
+                  onDownload={openDownload}
                 />
               ) : (
-                <p className="rs-muted">
-                  No tracks with registered files yet. Import or register this
-                  artist's files to see them here.
-                </p>
+                !topTracks.data.message && (
+                  <p className="rs-muted">
+                    No top tracks are available for this artist right now.
+                  </p>
+                )
               ))}
           </section>
         )}
@@ -726,6 +907,99 @@ export function MusicArtistPage() {
               onPage={setAllPage}
             />
           </div>
+        )}
+      </Modal>
+      <Modal
+        open={Boolean(downloadTrack)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDownloadTrack(null);
+            setDownloadJobID(null);
+            setDownloadError("");
+          }
+        }}
+        title="Download top track"
+        description="Search YouTube and import the matched audio through the reviewed music import pipeline."
+        footer={
+          <>
+            <Button
+              variant="soft"
+              color="gray"
+              onClick={() => {
+                setDownloadTrack(null);
+                setDownloadJobID(null);
+                setDownloadError("");
+              }}
+            >
+              Close
+            </Button>
+            <Button
+              disabled={downloadPending || Boolean(downloadJobID)}
+              onClick={() => void startTopDownload()}
+            >
+              <Download size={15} aria-hidden="true" />
+              {downloadPending ? "Starting…" : "Download"}
+            </Button>
+          </>
+        }
+      >
+        {downloadTrack && (
+          <>
+            <p>
+              <strong>{downloadTrack.title}</strong>
+              {downloadTrack.artist ? ` · ${downloadTrack.artist}` : ""}
+              {downloadTrack.album ? ` · ${downloadTrack.album}` : ""}
+            </p>
+            <div className="mus-search">
+              <label>
+                Format{" "}
+                <select
+                  aria-label="Download format"
+                  value={downloadFormat}
+                  onChange={(event) => setDownloadFormat(event.target.value)}
+                  disabled={Boolean(downloadJobID)}
+                >
+                  <option value="source">Best available source</option>
+                  <option value="mp3">MP3</option>
+                  <option value="flac">FLAC</option>
+                  <option value="m4a">M4A</option>
+                  <option value="opus">Opus</option>
+                </select>
+              </label>
+              <TextField.Root
+                aria-label="Destination root"
+                value={downloadRoot}
+                onChange={(event) => setDownloadRoot(event.target.value)}
+                disabled={Boolean(downloadJobID)}
+              />
+            </div>
+            <Alert kind="info" title="Review before downloading">
+              The worker searches YouTube for this track and imports only a
+              close duration match. Nothing replaces an existing library file.
+              This uses the same yt-dlp and FFmpeg tools as the rest of
+              ReelScarey, not a Spotify account.
+            </Alert>
+            {downloadError && <Alert kind="danger">{downloadError}</Alert>}
+            {downloadJob.data && (
+              <Alert
+                kind={
+                  downloadJob.data.state === "completed"
+                    ? "success"
+                    : downloadJob.data.state === "failed"
+                      ? "danger"
+                      : "info"
+                }
+                title={`Acquisition #${downloadJob.data.id}`}
+              >
+                <p>
+                  {downloadJob.data.state}
+                  {topTrackState ? ` · ${topTrackState}` : ""}
+                </p>
+                {downloadJob.data.error && <p>{downloadJob.data.error}</p>}
+                {topTrackError && <p>{topTrackError}</p>}
+              </Alert>
+            )}
+          </>
         )}
       </Modal>
     </>

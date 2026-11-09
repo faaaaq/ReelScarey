@@ -57,8 +57,12 @@ A Music tab catalogs MusicBrainz artists, albums and tracks, scans existing
 files, registers reviewed matches in place, applies reviewed organization and
 tag rewrites with rollback, searches audio releases and imports a completed
 album folder, queues releases through the selected client, reconciles them with
-a leased worker, and runs wanted-album searches on a schedule. See
-[music catalog](docs/MUSIC.md).
+a leased worker, and runs wanted-album searches on a schedule. It also plays
+registered music in an authenticated web player, shows overall Deezer top
+tracks and charts, downloads reviewed tracks from public Spotify/Deezer/YouTube
+links, monitors saved playlists, and has an optional Subsonic-compatible
+endpoint. That endpoint is off by default and uses the same ReelScarey port; do
+not open another port for it. See [music catalog](docs/MUSIC.md).
 
 YouTube source inspection supports explicit video selection from public channels
 and playlists, mapped to existing movies/episodes or named custom collections.
@@ -101,7 +105,9 @@ docker compose logs -f reelscarey
 
 On PowerShell, use `Copy-Item .env.example .env` for the first command.
 Open [ReelScarey](http://localhost:8787). The port is published on loopback only.
-Retrieve your one-time setup code with `docker compose exec reelscarey reelscarey
+The optional Subsonic-compatible music server uses this same address and port;
+it does not add a listener. If you expose ReelScarey through a reverse proxy or
+firewall, expose only this existing port. Retrieve your one-time setup code with `docker compose exec reelscarey reelscarey
 setup-token`, then create the administrator account in the browser. The code is
 also in `/config/setup-token` and is removed after setup. No default password is
 created. Go to Settings, enter your TMDb **API Read Access Token**, and save/test

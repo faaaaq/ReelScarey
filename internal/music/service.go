@@ -25,6 +25,8 @@ type Service struct {
 	acoustid       *AcoustIDClient
 	secrets        *securestore.Store
 	brainz         *musicbrainzStore
+	audio          AudioSource
+	topBaseURL     string
 	scheduleRunner ScheduleRunner
 	fileMu         sync.Mutex
 	scheduleMu     sync.Mutex

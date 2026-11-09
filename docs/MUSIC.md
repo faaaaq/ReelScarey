@@ -728,3 +728,63 @@ installed. These checks use temporary directories and generated or tag-only
 fixtures, never owner media. They do not prove provider behavior, a real
 MusicBrainz library or a full Docker acceptance run; the Docker acceptance
 script was not re-run for this change.
+
+## Music server, link downloads and discovery
+
+### Authenticated web player
+
+The Music library plays registered files through an authenticated streaming
+endpoint with HTTP Range support. The persistent player bar provides queue,
+seek, volume, previous/next and close controls. Playback addresses catalog file
+IDs; stored media paths are never sent to the browser. Album and artist views
+also expose play actions. This uses the existing ReelScarey web port and
+session.
+
+### Optional Subsonic-compatible endpoint
+
+`/rest/*` is an opt-in compatibility layer for existing music clients. It is
+disabled by default and has no listener or port of its own: clients use the
+same ReelScarey host and port. If a reverse proxy or firewall is in use, expose
+the existing ReelScarey address; do not open an additional music port.
+
+The administrator generates a music-server token on **Music -> Server**. The
+Subsonic username can be any label (for example `reelscarey`); the password is
+the generated token, never the administrator account password. The token is
+stored through `securestore` and is covered by the existing `secrets.key`
+backup. Enabling the endpoint does not enable the administrator browser session
+for third-party clients.
+
+Supported subset: ping, license, music folders, artists, indexes, artist,
+album, album list, song, search, random songs, empty playlists, scrobble
+no-op, and stream/download with Range support. Cover-art proxying and write
+operations such as ratings are not implemented. Clients that require
+unsupported actions should be treated as untested.
+
+### Link downloads
+
+**Music -> Discover** accepts public Spotify, Deezer, YouTube and YouTube Music
+links for tracks, albums, playlists and artists, plus free-text search queries.
+Spotify metadata is read from public embed pages; Deezer uses its public API;
+YouTube and YouTube Music use yt-dlp. No Spotify account or API key is used.
+
+A link is previewed before anything is downloaded. Selected tracks become
+durable acquisition jobs. The acquisition worker searches YouTube (or uses a
+direct YouTube video ID), chooses a close duration match, creates tag-derived
+local catalog rows when needed, and hands the downloaded file to the existing
+reviewed import worker. That worker tags and publishes without overwrite.
+
+Single-track and unsupported-source downloads stay local and explicit. The
+worker never replaces an existing registered file. YouTube/Spotify/Deezer terms,
+availability and account restrictions remain external constraints.
+
+### Charts and playlist monitor
+
+Deezer's global chart is shown in **Music -> Discover**. Chart tracks already in
+the library play in the web player; missing tracks offer the same reviewed
+download action as artist top tracks.
+
+Playlist and artist monitoring starts **paused**. When enabled, it re-resolves
+saved public links on the configured interval, queues unseen tracks through the
+same acquisition pipeline, and records each source's last check and error. The
+monitor uses the existing server and port and starts no additional process or
+listener.

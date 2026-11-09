@@ -158,6 +158,26 @@ describe("music", () => {
           ],
         });
       }
+      if (path === "/api/v1/library/music/artists/1/top-tracks") {
+        return Response.json({
+          source: "Deezer",
+          message: "",
+          items: [
+            {
+              provider_id: "deezer-1",
+              title: "Airbag",
+              artist: "Radiohead",
+              album: "OK Computer",
+              cover_url: "",
+              duration_ms: 284000,
+              in_library: false,
+              file_id: null,
+              album_id: null,
+              track_id: null,
+            },
+          ],
+        });
+      }
       if (path === "/api/v1/library/music/artists/1/tracks") {
         return Response.json({
           items: [
@@ -203,8 +223,11 @@ describe("music", () => {
       await screen.findByRole("table", { name: "Top tracks" }),
     ).toBeVisible();
     expect(screen.getByText("Airbag")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Search and download Airbag" }),
+    ).toBeVisible();
     await userEvent.click(
-      screen.getByRole("button", { name: /See every track/ }),
+      screen.getByRole("button", { name: /All library tracks/ }),
     );
     expect(
       await screen.findByRole("table", { name: "All tracks" }),

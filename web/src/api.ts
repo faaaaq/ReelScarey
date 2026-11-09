@@ -143,6 +143,130 @@ export type MusicArtistTrackPage = {
   limit: number;
 };
 
+export type MusicTopTrack = {
+  provider_id: string;
+  title: string;
+  artist: string;
+  album: string;
+  cover_url: string;
+  duration_ms: number;
+  in_library: boolean;
+  file_id: number | null;
+  album_id: number | null;
+  track_id: number | null;
+};
+
+export type MusicTopTrackPage = {
+  source: string;
+  items: MusicTopTrack[];
+  message: string;
+};
+
+export type MusicAcquisitionTrackInput = {
+  title: string;
+  artist: string;
+  album: string;
+  album_artist: string;
+  year?: number | null;
+  track_number: number;
+  disc_number: number;
+  duration_ms: number;
+  cover_url: string;
+  source_url: string;
+  search_query: string;
+};
+
+export type MusicAcquisitionTrack = MusicAcquisitionTrackInput & {
+  id: number;
+  job_id: number;
+  position: number;
+  state: string;
+  error: string;
+  music_file_id: number | null;
+  import_job_id: number | null;
+};
+
+export type MusicAcquisitionJob = {
+  id: number;
+  source_url: string;
+  source_kind: string;
+  title: string;
+  root: string;
+  format: string;
+  state: string;
+  track_count: number;
+  completed_count: number;
+  error: string;
+  created_at: number;
+  updated_at: number;
+  tracks?: MusicAcquisitionTrack[];
+};
+
+export type MusicAcquisitionJobList = {
+  items: MusicAcquisitionJob[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
+export type MusicLinkTrack = {
+  title: string;
+  artist: string;
+  album: string;
+  album_artist: string;
+  year: number | null;
+  track_number: number;
+  disc_number: number;
+  duration_ms: number;
+  cover_url: string;
+  source_url: string;
+  search_query: string;
+};
+
+export type MusicLinkPreview = {
+  source: string;
+  kind: string;
+  title: string;
+  subtitle: string;
+  cover_url: string;
+  tracks: MusicLinkTrack[];
+};
+
+export type MusicMonitorSettings = {
+  enabled: boolean;
+  interval_hours: number;
+  next_run: number;
+  last_run: number;
+  last_error: string;
+  revision: number;
+  updated_at: number;
+};
+
+export type MusicMonitorSource = {
+  id: number;
+  url: string;
+  title: string;
+  kind: string;
+  provider: string;
+  enabled: boolean;
+  last_checked: number;
+  last_error: string;
+  created_at: number;
+  updated_at: number;
+};
+
+export type MusicMonitorSourceList = {
+  items: MusicMonitorSource[];
+};
+
+export type MusicServerStatus = {
+  enabled: boolean;
+  configured: boolean;
+  token_hint: string;
+  revision: number;
+  updated_at: number;
+};
+
 export type MusicAlbumDetails = {
   album: MusicAlbum;
   tracks: MusicTrack[];

@@ -90,6 +90,31 @@
   border-radius: var(--rs-radius);
 }
 
+.mus-server-token {
+  margin: 8px 0;
+}
+
+.mus-server-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.mus-server-details li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.mus-server-details svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--rs-muted);
+}
+
 .mus-scan-summary,
 .mus-scan-actions,
 .mus-acoustid {

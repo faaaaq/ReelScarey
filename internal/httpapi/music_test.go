@@ -37,6 +37,7 @@ type fakeMusic struct {
 	resetBaseURL      bool
 	fingerprintResult music.DiscoverResult
 	audioPath         string
+	serverTokenOK     bool
 }
 
 func (f *fakeMusic) SearchArtists(context.Context, string, int) (music.SearchResults, error) {
@@ -53,6 +54,85 @@ func (f *fakeMusic) Artist(context.Context, int64) (music.ArtistDetails, error) 
 }
 func (f *fakeMusic) ArtistTracks(context.Context, int64, int, int) (music.ArtistTrackPage, error) {
 	return music.ArtistTrackPage{Items: []music.ArtistTrack{}, Page: 1, Total: 0, Limit: 15}, f.err
+}
+func (f *fakeMusic) ArtistTopTracks(context.Context, int64, int) (music.TopTrackPage, error) {
+	return music.TopTrackPage{Source: "Deezer", Items: []music.TopTrack{}}, f.err
+}
+func (f *fakeMusic) ResolveLink(context.Context, string) (music.LinkPreview, error) {
+	return music.LinkPreview{Source: "Spotify", Kind: "track", Title: "Track", Tracks: []music.LinkTrack{{
+		Title: "Track", Artist: "Artist", Album: "Album", AlbumArtist: "Artist",
+		TrackNumber: 1, DiscNumber: 1, DurationMS: 1000, SearchQuery: "Artist Track",
+	}}}, f.err
+}
+func (f *fakeMusic) ChartTracks(context.Context, int) (music.TopTrackPage, error) {
+	return music.TopTrackPage{Source: "Deezer charts", Items: []music.TopTrack{}}, f.err
+}
+func (f *fakeMusic) MonitorSettings(context.Context) (music.MusicMonitorSettings, error) {
+	return music.MusicMonitorSettings{IntervalHours: 24, Revision: 1}, f.err
+}
+func (f *fakeMusic) SaveMonitorSettings(_ context.Context, enabled bool, interval, revision int) (music.MusicMonitorSettings, error) {
+	return music.MusicMonitorSettings{Enabled: enabled, IntervalHours: interval, Revision: revision + 1}, f.err
+}
+func (f *fakeMusic) ListMonitorSources(context.Context) (music.MusicMonitorSourceList, error) {
+	return music.MusicMonitorSourceList{Items: []music.MusicMonitorSource{}}, f.err
+}
+func (f *fakeMusic) AddMonitorSource(_ context.Context, rawURL string) (music.MusicMonitorSource, error) {
+	return music.MusicMonitorSource{ID: 1, URL: rawURL, Title: "Playlist", Enabled: true}, f.err
+}
+func (f *fakeMusic) SetMonitorSourceEnabled(_ context.Context, id int64, enabled bool) (music.MusicMonitorSource, error) {
+	return music.MusicMonitorSource{ID: id, Enabled: enabled}, f.err
+}
+func (f *fakeMusic) DeleteMonitorSource(context.Context, int64) error { return f.err }
+func (f *fakeMusic) TriggerMonitor(context.Context) (music.MusicMonitorSettings, error) {
+	return music.MusicMonitorSettings{IntervalHours: 24, Revision: 1}, f.err
+}
+func (f *fakeMusic) StartAcquisition(_ context.Context, _, _, _, _, _ string, _ []music.AcquisitionTrackInput) (music.AcquisitionJob, error) {
+	return music.AcquisitionJob{ID: 1, State: "queued", TrackCount: 1}, f.err
+}
+func (f *fakeMusic) Acquisition(context.Context, int64) (music.AcquisitionJob, error) {
+	return music.AcquisitionJob{ID: 1, State: "queued", Tracks: []music.AcquisitionTrack{}}, f.err
+}
+func (f *fakeMusic) ListAcquisitions(context.Context, int) (music.AcquisitionJobList, error) {
+	return music.AcquisitionJobList{Items: []music.AcquisitionJob{}, Page: 1, Limit: 20}, f.err
+}
+func (f *fakeMusic) ServerAlbum(context.Context, int64) (music.AlbumDetails, error) {
+	return music.AlbumDetails{Album: music.Album{ID: 1, Title: "Album"}, Tracks: []music.Track{}}, f.err
+}
+func (f *fakeMusic) ServerSong(context.Context, int64) (music.ServerSong, error) {
+	return music.ServerSong{FileID: 1, Title: "Song", Artist: "Artist", Album: "Album"}, f.err
+}
+func (f *fakeMusic) ServerSongs(context.Context, string, int) ([]music.ServerSong, error) {
+	return []music.ServerSong{}, f.err
+}
+func (f *fakeMusic) ServerRandomSongs(context.Context, int) ([]music.ServerSong, error) {
+	return []music.ServerSong{}, f.err
+}
+func (f *fakeMusic) ServerAlbums(context.Context, string, int, int) ([]music.Album, error) {
+	return []music.Album{}, f.err
+}
+func (f *fakeMusic) ServerSearchAlbums(context.Context, string, int) ([]music.Album, error) {
+	return []music.Album{}, f.err
+}
+func (f *fakeMusic) MusicServer(context.Context) (music.MusicServerStatus, error) {
+	return music.MusicServerStatus{Enabled: false, Revision: 1}, f.err
+}
+func (f *fakeMusic) SaveMusicServer(_ context.Context, enabled bool, revision int) (music.MusicServerStatus, error) {
+	return music.MusicServerStatus{Enabled: enabled, Revision: revision + 1}, f.err
+}
+func (f *fakeMusic) GenerateMusicServerToken(context.Context) (string, music.MusicServerStatus, error) {
+	return "test-token", music.MusicServerStatus{Configured: true, Revision: 1}, f.err
+}
+func (f *fakeMusic) DeleteMusicServerToken(context.Context) (music.MusicServerStatus, error) {
+	return music.MusicServerStatus{Configured: false, Revision: 1}, f.err
+}
+func (f *fakeMusic) VerifyMusicServerToken(_ context.Context, _ string, password, token, salt string) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	if !f.serverTokenOK {
+		return false, nil
+	}
+	return password == "test-token" || (token != "" && salt != ""), nil
 }
 func (f *fakeMusic) OpenAudioFile(context.Context, int64) (music.AudioStream, error) {
 	if f.err != nil {
@@ -361,6 +441,89 @@ func TestMusicFileStreamSupportsRange(t *testing.T) {
 	}
 	if out := request(handler, "GET", "/api/v1/library/music/files/nope/stream", "", session, false); out.Code != 400 {
 		t.Fatal("invalid stream id", out.Code)
+	}
+}
+
+func TestSubsonicPingAndStreamUseOptInToken(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(path, []byte("0123456789"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler, _ := musicFixture(t, &fakeMusic{serverTokenOK: true, audioPath: path})
+	request := func(rawURL string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", rawURL, nil)
+		out := httptest.NewRecorder()
+		handler.ServeHTTP(out, r)
+		return out
+	}
+	out := request("/rest/ping.view?u=reelscarey&p=test-token&v=1.16.1&c=test")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `status="ok"`) {
+		t.Fatal("ping", out.Code, out.Body.String())
+	}
+	out = request("/rest/ping.view?u=reelscarey&p=test-token&v=1.16.1&c=test&f=json")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"status":"ok"`) {
+		t.Fatal("json ping", out.Code, out.Body.String())
+	}
+	out = request("/rest/ping.view?u=reelscarey&p=wrong&v=1.16.1&c=test")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `status="failed"`) || !strings.Contains(out.Body.String(), `code="40"`) {
+		t.Fatal("wrong token", out.Code, out.Body.String())
+	}
+	out = request("/rest/getMusicFolders.view?u=reelscarey&p=test-token&v=1.16.1&c=test")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `name="Music"`) {
+		t.Fatal("folders", out.Code, out.Body.String())
+	}
+	out = request("/rest/stream.view?u=reelscarey&p=test-token&v=1.16.1&c=test&id=1")
+	if out.Code != 200 || out.Body.String() != "0123456789" || out.Header().Get("Content-Type") != "audio/mpeg" {
+		t.Fatal("stream", out.Code, out.Header().Get("Content-Type"), out.Body.String())
+	}
+}
+
+func TestMusicServerSettingsRoutes(t *testing.T) {
+	handler, session := musicFixture(t, &fakeMusic{})
+	if out := request(handler, "GET", "/api/v1/library/music/server", "", nil, false); out.Code != 401 {
+		t.Fatal("server status leaked", out.Code)
+	}
+	if out := request(handler, "GET", "/api/v1/library/music/server", "", session, false); out.Code != 200 {
+		t.Fatal("server status", out.Code, out.Body.String())
+	}
+	if out := request(handler, "PUT", "/api/v1/library/music/server", `{"enabled":true,"revision":1}`, session, false); out.Code != 403 {
+		t.Fatal("server toggle without CSRF", out.Code)
+	}
+	if out := request(handler, "PUT", "/api/v1/library/music/server", `{"enabled":true,"revision":1}`, session, true); out.Code != 200 {
+		t.Fatal("server toggle", out.Code, out.Body.String())
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/server/token", `{}`, session, true); out.Code != 201 {
+		t.Fatal("token create", out.Code, out.Body.String())
+	}
+	if out := request(handler, "DELETE", "/api/v1/library/music/server/token", "", session, true); out.Code != 200 {
+		t.Fatal("token delete", out.Code, out.Body.String())
+	}
+}
+
+func TestMusicLinkAndMonitorRoutes(t *testing.T) {
+	handler, session := musicFixture(t, &fakeMusic{})
+	if out := request(handler, "POST", "/api/v1/library/music/links/preview", `{"url":"https://open.spotify.com/track/abc"}`, session, true); out.Code != 200 {
+		t.Fatal("link preview", out.Code, out.Body.String())
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/links", `{"url":"https://open.spotify.com/track/abc","track_indices":[0],"root":"Music","format":"source"}`, session, true); out.Code != 400 {
+		t.Fatal("link without review", out.Code)
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/links", `{"url":"https://open.spotify.com/track/abc","track_indices":[0],"root":"Music","format":"source","reviewed":true}`, session, true); out.Code != 202 {
+		t.Fatal("link acquisition", out.Code, out.Body.String())
+	}
+	for _, path := range []string{"/api/v1/library/music/charts", "/api/v1/library/music/monitor", "/api/v1/library/music/monitor/sources", "/api/v1/library/music/acquisitions"} {
+		if out := request(handler, "GET", path, "", session, false); out.Code != 200 {
+			t.Fatal(path, out.Code, out.Body.String())
+		}
+	}
+	if out := request(handler, "PUT", "/api/v1/library/music/monitor", `{"enabled":false,"interval_hours":24,"revision":1}`, session, true); out.Code != 200 {
+		t.Fatal("monitor settings", out.Code, out.Body.String())
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/monitor/sources", `{"url":"https://open.spotify.com/playlist/abc"}`, session, true); out.Code != 201 {
+		t.Fatal("monitor source", out.Code, out.Body.String())
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/monitor/run", `{}`, session, true); out.Code != 202 {
+		t.Fatal("monitor run", out.Code, out.Body.String())
 	}
 }
 

@@ -214,6 +214,9 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		youtubePath = "yt-dlp"
 	}
 	youtubeInspector, _ := youtube.NewInspector(youtubePath)
+	if youtubeInspector != nil {
+		musicService.SetAudioSource(youtubeAudioSource{inspector: youtubeInspector})
+	}
 	youtubeStaging := os.Getenv("REELSCAREY_YOUTUBE_STAGING_DIR")
 	if youtubeStaging == "" {
 		youtubeStaging = filepath.Join(filepath.Dir(cfg.ConfigDir), "youtube-staging", "work")
@@ -251,6 +254,22 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		}
 	}()
 	defer func() { workerCancel(); <-musicImportsDone }()
+	musicAcquisitionsDone := make(chan struct{})
+	go func() {
+		defer close(musicAcquisitionsDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			musicService.RunAcquisitions(workerCtx, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-musicAcquisitionsDone }()
+	musicMonitorDone := make(chan struct{})
+	go func() {
+		defer close(musicMonitorDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			musicService.RunMonitorLoop(workerCtx, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-musicMonitorDone }()
 	musicScheduleDone := make(chan struct{})
 	go func() {
 		defer close(musicScheduleDone)

@@ -13,16 +13,26 @@ releases to your download client, verifies completed files with FFprobe, and
 imports them into your naming scheme without touching the copies that are still
 seeding.
 
-> **ReelScarey is not a media server.** It does not play, stream or transcode.
-> Point Plex, Jellyfin or Emby at the folders it manages.
+> **ReelScarey is not a general video media server.** It does not play or
+> transcode video. Point Plex, Jellyfin or Emby at the folders it manages. Its
+> Music library can stream registered audio to the built-in web player, and an
+> optional Subsonic-compatible endpoint can serve those same files to music
+> clients.
 
 | | |
 | --- | --- |
 | Image | `faaaaq/reelscarey:latest` |
 | Web UI / API | `8787/tcp` |
+| Optional music server | Same host and `8787/tcp`; no separate port |
 | Platform | `linux/amd64` |
-| Database | SQLite on local disk — no Redis, no external DB |
+| Database | SQLite on local disk - no Redis, no external DB |
 | Runtime | One container; FFmpeg/FFprobe and a supervised qBittorrent included, SABnzbd optional |
+
+The built-in music player uses the existing authenticated ReelScarey web
+session. The Subsonic-compatible music server is **off by default**; enabling it
+does not open another port. If you use a reverse proxy or firewall, expose the
+same address and port you already expose for ReelScarey. Do not publish an
+additional music port.
 
 ---
 

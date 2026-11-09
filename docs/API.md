@@ -80,6 +80,26 @@ with its media type and HTTP Range support; the response never exposes the
 stored path. GET `/api/v1/library/music/albums/{id}`
 returns the album and its tracks; the first read loads tracks from MusicBrainz.
 
+GET `/api/v1/library/music/artists/{id}/top-tracks?limit=20` returns overall
+Deezer top tracks with local library matches. POST
+`/api/v1/library/music/links/preview` accepts `{url}` and returns public
+Spotify/Deezer/YouTube metadata; a non-URL query returns YouTube search
+candidates. POST `/api/v1/library/music/links` accepts
+`{url,track_indices,root,format,reviewed:true}` and queues selected tracks
+without downloading from the request. GET
+`/api/v1/library/music/acquisitions?page=` lists link/chart/top-track jobs and
+GET `/acquisitions/{id}` returns one. GET
+`/api/v1/library/music/charts?limit=` returns Deezer chart tracks. GET/PUT
+`/api/v1/library/music/monitor` manages the paused-by-default monitor schedule;
+GET/POST `/monitor/sources` and PUT/DELETE `/monitor/sources/{id}` manage
+saved playlist/artist links; POST `/monitor/run` requests one bounded run.
+
+GET/PUT `/api/v1/library/music/server` reads or changes the opt-in
+Subsonic-compatible endpoint. POST/DELETE `/server/token` creates or removes the
+client token; the token is returned only on creation. The optional `/rest/*`
+endpoint uses that token on the same ReelScarey port; it is disabled by default
+and never opens another listener.
+
 GET/POST `/api/v1/library/music/scans` lists scans or starts one with
 `{roots:[...],full?}`. A legacy `{root}` is still accepted for one contained
 folder, but the UI and configured-root path send `roots`. Scans report their root

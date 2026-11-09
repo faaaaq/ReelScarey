@@ -20,10 +20,16 @@ func (s *Server) musicError(w http.ResponseWriter, err error) {
 			status = http.StatusBadRequest
 		case "music_invalid_url", "music_invalid_musicbrainz_url":
 			status = http.StatusBadRequest
-		case "music_not_found":
+		case "music_not_found", "music_file_missing":
 			status = http.StatusNotFound
-		case "music_file_missing":
-			status = http.StatusNotFound
+		case "music_server_unavailable":
+			status = http.StatusConflict
+		case "music_acquisition_unavailable":
+			status = http.StatusConflict
+		case "music_link_invalid", "music_link_unsupported", "music_link_empty":
+			status = http.StatusBadRequest
+		case "music_monitor_kind":
+			status = http.StatusBadRequest
 		case "music_rate_limited", "music_acoustid_rate_limited":
 			status = http.StatusTooManyRequests
 		case "music_acoustid_not_configured", "music_fingerprint_unavailable", "music_musicbrainz_unavailable":
@@ -182,6 +188,302 @@ func (s *Server) musicArtistTracks(w http.ResponseWriter, r *http.Request) {
 	send(w, 200, tracks)
 }
 
+func (s *Server) musicArtistTopTracks(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	limit := 20
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 50 {
+			fail(w, 400, "invalid_music", "Choose a top-track limit between 1 and 50.")
+			return
+		}
+		limit = value
+	}
+	tracks, err := s.music.ArtistTopTracks(r.Context(), id, limit)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, tracks)
+}
+
+func (s *Server) musicAcquisitions(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		page, valid := pageNumber(r, 100000)
+		if !valid {
+			fail(w, 400, "invalid_music", "Choose a valid acquisition page.")
+			return
+		}
+		jobs, err := s.music.ListAcquisitions(r.Context(), page)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, jobs)
+	case http.MethodPost:
+		var body struct {
+			SourceURL  string                        `json:"source_url"`
+			SourceKind string                        `json:"source_kind"`
+			Title      string                        `json:"title"`
+			Root       string                        `json:"root"`
+			Format     string                        `json:"format"`
+			Tracks     []music.AcquisitionTrackInput `json:"tracks"`
+			Reviewed   bool                          `json:"reviewed"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		if !body.Reviewed {
+			fail(w, 400, "review_required", "Review the selected tracks before starting the download.")
+			return
+		}
+		job, err := s.music.StartAcquisition(r.Context(), body.SourceURL, body.SourceKind, body.Title, body.Root, body.Format, body.Tracks)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 202, job)
+	default:
+		w.Header().Set("Allow", "GET, POST")
+		fail(w, 405, "method_not_allowed", "Use GET or POST.")
+	}
+}
+
+func (s *Server) musicAcquisition(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	job, err := s.music.Acquisition(r.Context(), id)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, job)
+}
+
+func (s *Server) musicLinkPreview(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	var body struct {
+		URL string `json:"url"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	preview, err := s.music.ResolveLink(r.Context(), body.URL)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, preview)
+}
+
+func (s *Server) musicLinkAcquire(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	var body struct {
+		URL          string `json:"url"`
+		TrackIndices []int  `json:"track_indices"`
+		Root         string `json:"root"`
+		Format       string `json:"format"`
+		Reviewed     bool   `json:"reviewed"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !body.Reviewed {
+		fail(w, 400, "review_required", "Review the selected tracks before starting the download.")
+		return
+	}
+	preview, err := s.music.ResolveLink(r.Context(), body.URL)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	if len(body.TrackIndices) == 0 || len(body.TrackIndices) > 100 {
+		fail(w, 400, "invalid_music", "Select between 1 and 100 tracks.")
+		return
+	}
+	seen := map[int]bool{}
+	tracks := make([]music.AcquisitionTrackInput, 0, len(body.TrackIndices))
+	for _, index := range body.TrackIndices {
+		if index < 0 || index >= len(preview.Tracks) || seen[index] {
+			fail(w, 400, "invalid_music", "A selected track is not part of this link.")
+			return
+		}
+		seen[index] = true
+		track := preview.Tracks[index]
+		tracks = append(tracks, music.AcquisitionTrackInput{
+			Title: track.Title, Artist: track.Artist, Album: track.Album, AlbumArtist: track.AlbumArtist,
+			Year: track.Year, TrackNumber: track.TrackNumber, DiscNumber: track.DiscNumber,
+			DurationMS: track.DurationMS, CoverURL: track.CoverURL, SourceURL: track.SourceURL, SearchQuery: track.SearchQuery,
+		})
+	}
+	job, err := s.music.StartAcquisition(r.Context(), body.URL, "link", preview.Title, body.Root, body.Format, tracks)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 202, job)
+}
+
+func (s *Server) musicCharts(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	limit := 20
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 50 {
+			fail(w, 400, "invalid_music", "Choose a chart limit between 1 and 50.")
+			return
+		}
+		limit = value
+	}
+	tracks, err := s.music.ChartTracks(r.Context(), limit)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, tracks)
+}
+
+func (s *Server) musicMonitor(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		settings, err := s.music.MonitorSettings(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, settings)
+	case http.MethodPut:
+		var body struct {
+			Enabled       bool `json:"enabled"`
+			IntervalHours int  `json:"interval_hours"`
+			Revision      int  `json:"revision"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		settings, err := s.music.SaveMonitorSettings(r.Context(), body.Enabled, body.IntervalHours, body.Revision)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, settings)
+	default:
+		w.Header().Set("Allow", "GET, PUT")
+		fail(w, 405, "method_not_allowed", "Use GET or PUT.")
+	}
+}
+
+func (s *Server) musicMonitorSources(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		sources, err := s.music.ListMonitorSources(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, sources)
+	case http.MethodPost:
+		var body struct {
+			URL string `json:"url"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		source, err := s.music.AddMonitorSource(r.Context(), body.URL)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 201, source)
+	default:
+		w.Header().Set("Allow", "GET, POST")
+		fail(w, 405, "method_not_allowed", "Use GET or POST.")
+	}
+}
+
+func (s *Server) musicMonitorSource(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	switch r.Method {
+	case http.MethodPut:
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		source, err := s.music.SetMonitorSourceEnabled(r.Context(), id, body.Enabled)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, source)
+	case http.MethodDelete:
+		if err := s.music.DeleteMonitorSource(r.Context(), id); err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, map[string]bool{"deleted": true})
+	default:
+		w.Header().Set("Allow", "PUT, DELETE")
+		fail(w, 405, "method_not_allowed", "Use PUT or DELETE.")
+	}
+}
+
+func (s *Server) musicMonitorRun(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	settings, err := s.music.TriggerMonitor(r.Context())
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 202, settings)
+}
+
 // musicFileStream serves one registered audio file with Range support so the
 // browser player can seek without downloading the whole track. The URL carries
 // only the catalog file ID; the stored relative path is never exposed.
@@ -205,6 +507,65 @@ func (s *Server) musicFileStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	http.ServeContent(w, r, stream.Name, stream.ModTime, stream.File)
+}
+
+func (s *Server) musicServer(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		status, err := s.music.MusicServer(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, status)
+	case http.MethodPut:
+		var body struct {
+			Enabled  bool `json:"enabled"`
+			Revision int  `json:"revision"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		status, err := s.music.SaveMusicServer(r.Context(), body.Enabled, body.Revision)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, status)
+	default:
+		w.Header().Set("Allow", "GET, PUT")
+		fail(w, 405, "method_not_allowed", "Use GET or PUT.")
+	}
+}
+
+func (s *Server) musicServerToken(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	switch r.Method {
+	case http.MethodPost:
+		token, status, err := s.music.GenerateMusicServerToken(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 201, map[string]any{"token": token, "server": status})
+	case http.MethodDelete:
+		status, err := s.music.DeleteMusicServerToken(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, status)
+	default:
+		w.Header().Set("Allow", "POST, DELETE")
+		fail(w, 405, "method_not_allowed", "Use POST or DELETE.")
+	}
 }
 
 func (s *Server) musicAlbum(w http.ResponseWriter, r *http.Request) {

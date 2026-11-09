@@ -103,8 +103,32 @@ type MusicService interface {
 	ListArtists(context.Context, string, int) (music.ArtistPage, error)
 	Artist(context.Context, int64) (music.ArtistDetails, error)
 	ArtistTracks(context.Context, int64, int, int) (music.ArtistTrackPage, error)
+	ArtistTopTracks(context.Context, int64, int) (music.TopTrackPage, error)
+	ChartTracks(context.Context, int) (music.TopTrackPage, error)
+	ResolveLink(context.Context, string) (music.LinkPreview, error)
+	StartAcquisition(context.Context, string, string, string, string, string, []music.AcquisitionTrackInput) (music.AcquisitionJob, error)
+	Acquisition(context.Context, int64) (music.AcquisitionJob, error)
+	ListAcquisitions(context.Context, int) (music.AcquisitionJobList, error)
+	MonitorSettings(context.Context) (music.MusicMonitorSettings, error)
+	SaveMonitorSettings(context.Context, bool, int, int) (music.MusicMonitorSettings, error)
+	ListMonitorSources(context.Context) (music.MusicMonitorSourceList, error)
+	AddMonitorSource(context.Context, string) (music.MusicMonitorSource, error)
+	SetMonitorSourceEnabled(context.Context, int64, bool) (music.MusicMonitorSource, error)
+	DeleteMonitorSource(context.Context, int64) error
+	TriggerMonitor(context.Context) (music.MusicMonitorSettings, error)
 	OpenAudioFile(context.Context, int64) (music.AudioStream, error)
 	Album(context.Context, int64) (music.AlbumDetails, error)
+	ServerAlbum(context.Context, int64) (music.AlbumDetails, error)
+	ServerSong(context.Context, int64) (music.ServerSong, error)
+	ServerSongs(context.Context, string, int) ([]music.ServerSong, error)
+	ServerRandomSongs(context.Context, int) ([]music.ServerSong, error)
+	ServerAlbums(context.Context, string, int, int) ([]music.Album, error)
+	ServerSearchAlbums(context.Context, string, int) ([]music.Album, error)
+	MusicServer(context.Context) (music.MusicServerStatus, error)
+	SaveMusicServer(context.Context, bool, int) (music.MusicServerStatus, error)
+	GenerateMusicServerToken(context.Context) (string, music.MusicServerStatus, error)
+	DeleteMusicServerToken(context.Context) (music.MusicServerStatus, error)
+	VerifyMusicServerToken(context.Context, string, string, string, string) (bool, error)
 	StartScan(context.Context, string) (music.Scan, error)
 	StartScanRoots(context.Context, []string) (music.Scan, error)
 	StartScanRootsFull(context.Context, []string, bool) (music.Scan, error)
@@ -369,7 +393,20 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/artists", s.musicArtists)
 	mux.HandleFunc("/api/v1/library/music/artists/{id}", method(http.MethodGet, s.musicArtist))
 	mux.HandleFunc("/api/v1/library/music/artists/{id}/tracks", method(http.MethodGet, s.musicArtistTracks))
+	mux.HandleFunc("/api/v1/library/music/artists/{id}/top-tracks", method(http.MethodGet, s.musicArtistTopTracks))
+	mux.HandleFunc("/api/v1/library/music/acquisitions", s.musicAcquisitions)
+	mux.HandleFunc("/api/v1/library/music/acquisitions/{id}", method(http.MethodGet, s.musicAcquisition))
+	mux.HandleFunc("/api/v1/library/music/links/preview", method(http.MethodPost, s.musicLinkPreview))
+	mux.HandleFunc("/api/v1/library/music/links", method(http.MethodPost, s.musicLinkAcquire))
+	mux.HandleFunc("/api/v1/library/music/charts", method(http.MethodGet, s.musicCharts))
+	mux.HandleFunc("/api/v1/library/music/monitor", s.musicMonitor)
+	mux.HandleFunc("/api/v1/library/music/monitor/sources", s.musicMonitorSources)
+	mux.HandleFunc("/api/v1/library/music/monitor/sources/{id}", s.musicMonitorSource)
+	mux.HandleFunc("/api/v1/library/music/monitor/run", method(http.MethodPost, s.musicMonitorRun))
 	mux.HandleFunc("/api/v1/library/music/albums/{id}", method(http.MethodGet, s.musicAlbum))
+	mux.HandleFunc("/api/v1/library/music/server", s.musicServer)
+	mux.HandleFunc("/api/v1/library/music/server/token", s.musicServerToken)
+	mux.HandleFunc("/rest/", s.subsonic)
 	mux.HandleFunc("/api/v1/library/music/scans", s.musicScans)
 	mux.HandleFunc("/api/v1/library/music/acoustid", s.musicAcoustID)
 	mux.HandleFunc("/api/v1/library/music/musicbrainz", s.musicMusicBrainz)
@@ -649,6 +686,8 @@ func frontend(assets fs.FS) http.HandlerFunc {
 	routes["/usenet"] = true
 	routes["/music"] = true
 	routes["/music/import"] = true
+	routes["/music/server"] = true
+	routes["/music/discover"] = true
 	routes["/music/organize"] = true
 	routes["/music/wanted"] = true
 	serveIndex := func(w http.ResponseWriter, r *http.Request, status int) {
