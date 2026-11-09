@@ -57,6 +57,11 @@ imports the completed folder, and runs wanted-album searches on a schedule.
     and repeated whitespace are folded for comparison. A leading English "The"
     and the `Various`/`Various Artists` compilation aliases are comparison-only;
     the stored catalog name always comes from MusicBrainz.
+- Match selected unresolved files by audio fingerprint through AcoustID. It is
+  a separate reviewed action that requires a saved application API key and
+  fpcalc (Chromaprint) on the server. It adds only matched artists and albums,
+  loads their tracks and re-matches the selected files; missing or ambiguous
+  matches stay unresolved.
 - Register matched files in place. Registration verifies the file size and
   modification time and records `music_files`; it never moves a file.
 - Search configured indexers with the audio category, parse release names and
@@ -159,9 +164,27 @@ one reviewed scan.
   matched files, added artists/albums, unresolved files, deferred files and
   unresolved files remaining in the scan. Select the remaining files and run it
   again to continue.
-- A scan is a reviewed job: start it, poll its state, discover catalog entries
-  or register selected matched files with `reviewed: true`. Restart marks an
-  interrupted scan failed.
+- Audio fingerprint matching is a second, separate action for selected
+  unresolved files. Select them and choose **Match by audio fingerprint**. It
+  requires explicit review, a saved AcoustID application API key and fpcalc
+  (Chromaprint) on the server; the button stays disabled when either is
+  missing. Fingerprinting computes Chromaprint evidence for the selected files,
+  looks it up through AcoustID, adds only the matched artist and album, loads
+  the album tracks and re-matches those files. Audio with no confident match,
+  an ambiguous result or a provider warning stays unresolved; nothing is moved,
+  tagged or registered. The response reports `fingerprinted` files,
+  `provider_calls`, matched files, added artists/albums, unresolved files,
+  deferred files, unresolved files remaining in the scan and warnings.
+- The AcoustID status panel reports whether an application key is configured,
+  whether fpcalc is available and the server's message. **Configure AcoustID**
+  saves the key through the encrypted secure store, links to
+  https://acoustid.org/new-application and can remove the saved key. The API key
+  is never returned to the browser or displayed by the page. Missing keys,
+  missing fpcalc, rejected keys, rate limits, ambiguous matches and no-match
+  results produce an actionable warning instead of a success message.
+- A scan is a reviewed job: start it, poll its state, discover catalog entries,
+  fingerprint unresolved files or register selected matched files with
+  `reviewed: true`. Restart marks an interrupted scan failed.
 
 ## Organization and tagging
 
@@ -192,6 +215,10 @@ one reviewed scan.
   not use title similarity as identity and does not add a complete artist
   discography. The discography fallback compares exact normalized titles and
   stores only the one match.
+- Audio fingerprint matching is not a replacement for tag discovery and does
+  not identify tracks without a usable AcoustID result. It needs the AcoustID
+  application key and fpcalc; the page disables the action when either is
+  missing and never displays the saved key.
 - A compilation whose album-artist tag is missing is not guessed: per-track
   artist searches can fail, and the file stays unresolved until the album
   artist or a release-group ID is tagged. Featured-credit fallback applies only
@@ -224,6 +251,8 @@ one reviewed scan.
 | GET | `/api/v1/library/music/scans/{id}?page=` | Scan state and 100 files per page |
 | POST | `/api/v1/library/music/scans/{id}/register` | `{file_ids,reviewed:true}` |
 | POST | `/api/v1/library/music/scans/{id}/discover` | `{file_ids,reviewed:true}` or `{all:true,reviewed:true}`; bounded catalog discovery |
+| POST | `/api/v1/library/music/scans/{id}/fingerprint` | `{file_ids,reviewed:true}` or `{all:true,reviewed:true}`; reviewed Chromaprint/AcoustID matching |
+| GET/PUT/DELETE | `/api/v1/library/music/acoustid` | Status; PUT `{api_key}` saves or replaces the encrypted key, DELETE removes it. The key is never returned |
 | POST | `/api/v1/library/music/scans/{id}/cancel` | `{}` |
 | POST | `/api/v1/library/music/scans/{id}/skip` | `{file_id}` |
 | GET | `/api/v1/library/music/files?page=` | Registered files |
@@ -251,7 +280,10 @@ one reviewed scan.
 | GET | `/api/v1/library/music/upgrades` | Albums below their effective preference |
 
 The discovery response reports `selected`, `matched`, `artists_added`,
-`albums_added`, `unresolved`, `remaining`, `deferred` and `warnings`.
+`albums_added`, `unresolved`, `remaining`, `deferred` and `warnings`. The
+fingerprint response adds `fingerprinted` and `provider_calls` to the same
+shape. AcoustID status reports `configured`, `updated_at`,
+`fingerprint_available` and `message`; it never includes the saved key.
 All routes are administrator-only. Mutations require CSRF and same-origin
 validation. Request accounts cannot read or write the music catalog.
 
@@ -305,7 +337,9 @@ upgrade replacement and richer multi-profile assignment.
   discovery and edit routes, error mapping, SPA routes.
 - `internal/database/music_upgrade_test.go` — additive catalog migration.
 - `web/src/test/Music.test.tsx`, `MusicImport.test.tsx`,
-  `MusicOrganize.test.tsx` — catalog, import, discovery and organize pages.
+  `MusicOrganize.test.tsx` — catalog, import, tag discovery, AcoustID status,
+  key save/remove without echoing the key, disabled fingerprint controls and
+  honest fingerprint result/error summaries, and organize pages.
 - `scripts/music-container-smoke.sh` — disposable Docker acceptance: add an
   artist, load an album, generate a tagged FLAC, scan, register, preview/apply
   organization and tags, verify the MusicBrainz tag and retained backup, roll
@@ -319,4 +353,6 @@ and the `MusicImport` Vitest suite. The 0.46 discovery hardening added the
 normalization, tagged-MBID, bounded-page, discography-fallback, compilation and
 track-evidence cases above. It was not run against the live acceptance server or
 a real MusicBrainz library; provider behavior is covered by local fake
-MusicBrainz responses.
+MusicBrainz responses. The AcoustID status, key save/remove and fingerprint
+result UI were validated with fake API responses in the `MusicImport` suite; no
+real AcoustID account, fpcalc run or audio file was used.

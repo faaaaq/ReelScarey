@@ -227,6 +227,19 @@ export type MusicDiscoverResult = {
   warnings: string[];
 };
 
+export type AcoustIDStatus = {
+  configured: boolean;
+  updated_at: string;
+  fingerprint_available: boolean;
+  message: string;
+};
+
+/** Fingerprint matching extends discovery with Chromaprint evidence counts. */
+export type MusicFingerprintResult = MusicDiscoverResult & {
+  fingerprinted: number;
+  provider_calls: number;
+};
+
 export type MusicFile = {
   id: number;
   artist_id: number;
