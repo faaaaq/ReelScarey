@@ -921,3 +921,34 @@ search-on-add using the saved automatic-search mode. Indexer failures are per
 source; temporary client failures retry on the next check. Automation shows the saved interval, last pass, and the
 newest grab/rejection rows. See [AUTOMATION.md](docs/AUTOMATION.md).
 
+
+## Post-0.40 feature record (docs-backed)
+
+The sections above stop at 0.40; the application is now 0.51.x. These
+capabilities are implemented and documented in `docs/`:
+
+- Named qBittorrent, SABnzbd, NZBGet and Transmission clients, per-protocol
+  defaults, a supervised built-in torrent and Usenet client, torrent queue
+  limits and stalled-download detection. See [DOWNLOAD_CLIENTS.md](docs/DOWNLOAD_CLIENTS.md)
+  and [TORRENTS.md](docs/TORRENTS.md).
+- Persistent release blacklist, soft ranking penalties, per-profile grab delay
+  and bounded completion parsing. See [DOWNLOAD_CLIENTS.md](docs/DOWNLOAD_CLIENTS.md).
+- Configuration/catalog backup manager with schedules, ZIP download/upload,
+  verified restore and interrupted-restore rollback. See [BACKUPS.md](docs/BACKUPS.md).
+- Optional Jellyfin-compatible NFO export, bounded FFprobe analysis, read-only
+  duplicate review, authenticated Prometheus metrics and RFC 6238 TOTP with
+  recovery codes. See [OPERATIONS.md](docs/OPERATIONS.md).
+- Music catalog, scanning, reviewed registration and organization, tag rewrites
+  with rollback, audio release search/import, wanted albums, Deezer charts,
+  public Spotify/Deezer/YouTube track downloads, monitored playlists and an
+  optional Subsonic-compatible endpoint. See [MUSIC.md](docs/MUSIC.md).
+- Request accounts, approvals, public/private TMDb and Trakt lists, MDBList
+  IMDb synchronization, one-time IMDb CSV import, encrypted per-user Discord
+  webhooks and a signed companion bot. See [REQUESTS.md](docs/REQUESTS.md).
+- Emby on-demand snapshots and opt-in observed playback recording. See
+  [EMBY.md](docs/EMBY.md).
+- Reviewed physical moves, hardlink/copy import choice, whole-folder moves with
+  extras and cross-filesystem recovery. See [STORAGE.md](docs/STORAGE.md).
+
+Owner-service acceptance items remain open as listed in
+[MILESTONES.md](MILESTONES.md) and [docs/REMAINING.md](docs/REMAINING.md).

@@ -26,6 +26,7 @@ jobs:
     # so they no longer queue behind a long checks/acceptance run on
     # REELSCAREY_RUNNER.
     runs-on: ${{ vars.REELSCAREY_PUBLISH_RUNNER || vars.REELSCAREY_RUNNER || 'reelscarey-ci' }}
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository
@@ -67,13 +68,12 @@ jobs:
           load: true
           platforms: linux/amd64
           tags: reelscarey:release-test
-          # The application checks run the full Go suite natively (including
-          # the race suite in acceptance). The published artifact is verified
-          # below, so the emulated image build does not repeat `go test`/`go
-          # vet`; a plain local `docker build` still runs them by default.
+          # A branch push publishes only after the image stage runs the full Go
+          # suite itself, so a failing `go test` cannot ship `latest`. Release
+          # tags skip the repeat because they are cut after the checks pass.
           build-args: |
             VERSION=${{ steps.version.outputs.value }}
-            RUN_GO_TESTS=0
+            RUN_GO_TESTS=${{ startsWith(github.ref, 'refs/tags/v') && '0' || '1' }}
           provenance: false
           sbom: false
           cache-from: type=gha,scope=reelscarey-publish
@@ -99,7 +99,7 @@ jobs:
           tags: ${{ steps.tags.outputs.value }}
           build-args: |
             VERSION=${{ steps.version.outputs.value }}
-            RUN_GO_TESTS=0
+            RUN_GO_TESTS=${{ startsWith(github.ref, 'refs/tags/v') && '0' || '1' }}
           cache-from: type=gha,scope=reelscarey-publish
           cache-to: type=gha,mode=max,scope=reelscarey-publish,ignore-error=true
           provenance: mode=max

@@ -417,3 +417,11 @@ See [announce feeds](docs/ANNOUNCE.md).
 - [x] Automation UI shows the saved interval, status, last pass and newest grabs.
 - [ ] Owner-service acceptance against real Torznab/Newznab/direct sources and a
   real download client.
+
+## Post-0.40 milestone record
+
+The versioned sections above end at 0.40. Implemented 0.41-0.51 scope is recorded
+by feature area in [ROADMAP.md](ROADMAP.md#post-040-feature-record-docs-backed)
+with links to the owning documents. It does not claim owner-service acceptance or
+external review; those remain open in the sections above and in
+[docs/REMAINING.md](docs/REMAINING.md).

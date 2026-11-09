@@ -32,8 +32,12 @@ type AnimeOrderEntry struct {
 	Label        string `json:"label"`
 }
 type AnimeOrderSettings struct {
-	Provider          string            `json:"provider"`
-	MediaID           int64             `json:"media_id"`
+	Provider string `json:"provider"`
+	MediaID  int64  `json:"media_id"`
+	// Revision is anime_orders.revision (the release-order record), while
+	// NumberingRevision is series_details.revision (canonical episode numbering).
+	// The JSON names follow the client contract; do not swap them without a
+	// coordinated API and UI change.
 	Revision          int               `json:"revision"`
 	CategoryRevision  int               `json:"category_revision"`
 	NumberingRevision int64             `json:"numbering_revision"`

@@ -1,4 +1,11 @@
 .git
+.github
+docs
+.opencode
+.entire
+.ruff_cache
+node_modules
+**/*.md
 .env
 .tools
 bin

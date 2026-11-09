@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -526,15 +527,14 @@ func sortedKeys(groups map[string][]subsonicArtist) []string {
 	for key := range groups {
 		keys = append(keys, key)
 	}
-	for i := 1; i < len(keys); i++ {
-		for j := i; j > 0; j-- {
-			left, right := keys[j-1], keys[j]
-			if left == "#" || (right != "#" && left > right) {
-				keys[j-1], keys[j] = keys[j], keys[j-1]
-			} else {
-				break
-			}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i] == "#" {
+			return false
 		}
-	}
+		if keys[j] == "#" {
+			return true
+		}
+		return keys[i] < keys[j]
+	})
 	return keys
 }

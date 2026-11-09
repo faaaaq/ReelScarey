@@ -156,6 +156,19 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - internal/instance owns OS config locks; internal/maintenance owns verified
   offline backups and new-folder restores; internal/operations owns explicit
   local checks, setup guidance and authenticated recovery review.
+- Additional packages, each a narrow consumer-owned boundary:
+  internal/announce records reviewed IRC announce feeds and bounded event history;
+  internal/backups owns live ZIP snapshots, schedules, retention and the restore
+  journal; internal/discordbot verifies signed interactions and links accounts;
+  internal/duplicates is a read-only duplicate review; internal/emby stores an
+  encrypted connection and observed playback snapshots; internal/filecheck
+  provides bounded sample fingerprints; internal/mediaanalysis runs explicit
+  FFprobe analysis; internal/metrics renders the bounded Prometheus snapshot;
+  internal/music owns the MusicBrainz/Deezer catalog, local scans, tag edits and
+  Subsonic access; internal/nfo and internal/nfoexport generate (never parse) NFO
+  sidecars; internal/releaseguard owns the persistent release blacklist;
+  internal/storage browses explicitly mounted roots read-only; internal/vpn
+  supervises the optional tunnel and kill switch.
 - web contains React, TypeScript, Vite, Tailwind, and Radix Themes. Use maintained
   accessible components. Go serves the built web/dist directory via embed.
 - Do not import HTTP handlers into domain packages or create separate daemons.
