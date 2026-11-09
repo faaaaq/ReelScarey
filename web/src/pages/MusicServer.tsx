@@ -215,8 +215,8 @@ export function MusicServer() {
               <p className="rs-muted">
                 Supported actions: ping, license, music folders, artists,
                 indexes, artist, album, album list, song, search, random songs,
-                playlists (empty), scrobble no-op, and stream/download with
-                Range support. Cover-art proxying and write operations such as
+                cover art, playlists (empty), scrobble no-op, and
+                stream/download with Range support. Write operations such as
                 ratings are not implemented yet.
               </p>
               <p className="rs-muted rs-small">

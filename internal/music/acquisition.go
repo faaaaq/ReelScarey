@@ -419,6 +419,9 @@ func (s *Service) ensureAcquiredTrack(ctx context.Context, track AcquisitionTrac
 		}
 		_, albumID, trackID, err := catalog.matchTagCreate(ctx, file)
 		if err == nil {
+			if cover := strings.TrimSpace(track.CoverURL); cover != "" {
+				_, _ = s.store.db.ExecContext(ctx, `UPDATE music_albums SET cover_url=?,updated_at=unixepoch() WHERE id=? AND cover_url=''`, cover, albumID)
+			}
 			return albumID, trackID, nil
 		}
 		lastErr = err

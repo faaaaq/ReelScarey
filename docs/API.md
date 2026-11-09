@@ -79,6 +79,10 @@ defaults to 15 and is capped at 100. GET
 with its media type and HTTP Range support; the response never exposes the
 stored path. GET `/api/v1/library/music/albums/{id}`
 returns the album and its tracks; the first read loads tracks from MusicBrainz.
+GET `/api/v1/library/music/artists/{id}/image` and
+`/api/v1/library/music/albums/{id}/cover` serve downloaded, cached artwork from
+fixed providers; missing artwork returns 404 so the UI can fall back. The cache
+is refreshed after 30 days and never exposes provider URLs to the browser.
 
 GET `/api/v1/library/music/artists/{id}/top-tracks?limit=20` returns overall
 Deezer top tracks with local library matches. POST

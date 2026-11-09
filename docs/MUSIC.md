@@ -755,10 +755,10 @@ backup. Enabling the endpoint does not enable the administrator browser session
 for third-party clients.
 
 Supported subset: ping, license, music folders, artists, indexes, artist,
-album, album list, song, search, random songs, empty playlists, scrobble
-no-op, and stream/download with Range support. Cover-art proxying and write
-operations such as ratings are not implemented. Clients that require
-unsupported actions should be treated as untested.
+album, album list, song, search, random songs, cover art, empty playlists,
+scrobble no-op, and stream/download with Range support. Write operations such
+as ratings are not implemented. Clients that require unsupported actions should
+be treated as untested.
 
 ### Link downloads
 
@@ -788,3 +788,23 @@ saved public links on the configured interval, queues unseen tracks through the
 same acquisition pipeline, and records each source's last check and error. The
 monitor uses the existing server and port and starts no additional process or
 listener.
+
+### Artist images and album covers
+
+Artwork is downloaded and cached by the server rather than hotlinked by every
+browser request. The cache lives under `artwork/` in the configuration
+directory and is refreshed after 30 days; a failed refresh keeps the last good
+image.
+
+- Artist images are resolved from Deezer's public artist search using an exact
+  normalized artist-name match, then cached.
+- Album covers use the saved Cover Art Archive/provider URL first. If a local or
+  imported album has no cover URL, an exact Deezer album search supplies one;
+  MusicBrainz release groups fall back to the Cover Art Archive.
+- Only fixed provider image hosts are accepted. Downloads are bounded, HTTPS
+  only, redirect checked, and limited to JPEG, PNG or WebP.
+- The UI reads `/api/v1/library/music/artists/{id}/image` and
+  `/api/v1/library/music/albums/{id}/cover`, so the authenticated same-origin
+  image endpoints work without adding external hosts to the browser CSP.
+- The Subsonic-compatible `getCoverArt` action serves the same cached album
+  cover.

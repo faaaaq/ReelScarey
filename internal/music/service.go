@@ -27,12 +27,17 @@ type Service struct {
 	brainz         *musicbrainzStore
 	audio          AudioSource
 	topBaseURL     string
+	artworkDir     string
+	artworkMu      sync.Mutex
+	artworkLocks   map[string]*sync.Mutex
 	scheduleRunner ScheduleRunner
 	fileMu         sync.Mutex
 	scheduleMu     sync.Mutex
 }
 
 func (s *Service) SetDownloadsDir(dir string) { s.downloadsDir = dir }
+
+func (s *Service) SetArtworkDir(dir string) { s.artworkDir = dir }
 
 func NewService(db *sql.DB, mediaDir string) *Service {
 	brainz := &musicbrainzStore{db: db}

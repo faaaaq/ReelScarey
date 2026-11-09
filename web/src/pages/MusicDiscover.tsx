@@ -36,6 +36,7 @@ import {
 import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
 import { useMusicPlayer, type PlayerTrack } from "../musicPlayer";
+import { albumCoverURL } from "../musicArtwork";
 import "./Music.css";
 
 function formatDuration(ms: number) {
@@ -51,7 +52,7 @@ function trackPlayer(track: MusicTopTrack): PlayerTrack | null {
     title: track.title,
     artist: track.artist,
     album: track.album,
-    coverURL: track.cover_url || undefined,
+    coverURL: albumCoverURL(track.album_id) || track.cover_url || undefined,
     durationMS: track.duration_ms,
     albumID: track.album_id ?? undefined,
   };

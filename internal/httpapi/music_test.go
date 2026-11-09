@@ -37,6 +37,7 @@ type fakeMusic struct {
 	resetBaseURL      bool
 	fingerprintResult music.DiscoverResult
 	audioPath         string
+	artworkPath       string
 	serverTokenOK     bool
 }
 
@@ -148,6 +149,30 @@ func (f *fakeMusic) OpenAudioFile(context.Context, int64) (music.AudioStream, er
 		return music.AudioStream{}, err
 	}
 	return music.AudioStream{File: file, Name: filepath.Base(f.audioPath), ContentType: "audio/mpeg", Size: info.Size(), ModTime: info.ModTime()}, nil
+}
+
+func (f *fakeMusic) ArtistImage(context.Context, int64) (music.Artwork, error) {
+	return fakeArtwork(f.artworkPath, f.err)
+}
+
+func (f *fakeMusic) AlbumImage(context.Context, int64) (music.Artwork, error) {
+	return fakeArtwork(f.artworkPath, f.err)
+}
+
+func fakeArtwork(path string, err error) (music.Artwork, error) {
+	if err != nil {
+		return music.Artwork{}, err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return music.Artwork{}, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return music.Artwork{}, err
+	}
+	return music.Artwork{File: file, Name: filepath.Base(path), ContentType: "image/jpeg", ModTime: info.ModTime()}, nil
 }
 func (f *fakeMusic) Album(context.Context, int64) (music.AlbumDetails, error) {
 	return music.AlbumDetails{Album: music.Album{ID: 1, Title: "Album"}, Tracks: []music.Track{}}, f.err
@@ -524,6 +549,23 @@ func TestMusicLinkAndMonitorRoutes(t *testing.T) {
 	}
 	if out := request(handler, "POST", "/api/v1/library/music/monitor/run", `{}`, session, true); out.Code != 202 {
 		t.Fatal("monitor run", out.Code, out.Body.String())
+	}
+}
+
+func TestMusicArtworkRoutes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cover.jpg")
+	if err := os.WriteFile(path, []byte("image-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler, session := musicFixture(t, &fakeMusic{artworkPath: path})
+	for _, endpoint := range []string{"/api/v1/library/music/artists/1/image", "/api/v1/library/music/albums/1/cover"} {
+		if out := request(handler, "GET", endpoint, "", nil, false); out.Code != 401 {
+			t.Fatal("artwork leaked", endpoint, out.Code)
+		}
+		out := request(handler, "GET", endpoint, "", session, false)
+		if out.Code != 200 || out.Body.String() != "image-bytes" || out.Header().Get("Content-Type") != "image/jpeg" {
+			t.Fatal("artwork", endpoint, out.Code, out.Header().Get("Content-Type"), out.Body.String())
+		}
 	}
 }
 

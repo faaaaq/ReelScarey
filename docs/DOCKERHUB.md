@@ -255,6 +255,7 @@ Use HTTPS at the proxy so session cookies are marked Secure.
 | --- | --- |
 | `/config` | Parent for private state; keep this on local disk |
 | `/config/state` | Database, administrator account, sessions, `secrets.key`, setup token |
+| `/config/artwork` | Downloaded artist images and album covers; safe to clear |
 | `/config/backups` | Managed backup archives and restore safety copies |
 | `/config/youtube-staging/work` | Reviewed YouTube acquisition staging |
 | `/media` | Media root, writable for reviewed imports |

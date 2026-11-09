@@ -210,6 +210,8 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 		s.subsonicRandomSongs(w, r)
 	case "stream", "download":
 		s.subsonicStream(w, r)
+	case "getcoverart":
+		s.subsonicCoverArt(w, r)
 	case "scrobble", "star", "unstar", "setrating":
 		writeSubsonic(w, r, subsonicResponseFor(s.version))
 	case "getplaylists":
@@ -476,6 +478,24 @@ func (s *Server) subsonicStream(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", "inline")
 	}
 	http.ServeContent(w, r, stream.Name, stream.ModTime, stream.File)
+}
+
+func (s *Server) subsonicCoverArt(w http.ResponseWriter, r *http.Request) {
+	id, ok := subsonicID(r)
+	if !ok {
+		writeSubsonic(w, r, subsonicFailure(s.version, 0, "A valid cover ID is required."))
+		return
+	}
+	art, err := s.music.AlbumImage(r.Context(), id)
+	if err != nil {
+		writeSubsonic(w, r, subsonicFailure(s.version, 70, "Cover art not found."))
+		return
+	}
+	defer art.File.Close()
+	w.Header().Set("Content-Type", art.ContentType)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(w, r, art.Name, art.ModTime, art.File)
 }
 
 func subsonicCount(r *http.Request, key string, fallback, maximum int) int {

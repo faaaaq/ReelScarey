@@ -20,7 +20,7 @@ func (s *Server) musicError(w http.ResponseWriter, err error) {
 			status = http.StatusBadRequest
 		case "music_invalid_url", "music_invalid_musicbrainz_url":
 			status = http.StatusBadRequest
-		case "music_not_found", "music_file_missing":
+		case "music_not_found", "music_file_missing", "music_artwork_missing":
 			status = http.StatusNotFound
 		case "music_server_unavailable":
 			status = http.StatusConflict
@@ -583,6 +583,48 @@ func (s *Server) musicAlbum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, details)
+}
+
+func (s *Server) musicArtistImage(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	art, err := s.music.ArtistImage(r.Context(), id)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	defer art.File.Close()
+	w.Header().Set("Content-Type", art.ContentType)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(w, r, art.Name, art.ModTime, art.File)
+}
+
+func (s *Server) musicAlbumCover(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	art, err := s.music.AlbumImage(r.Context(), id)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	defer art.File.Close()
+	w.Header().Set("Content-Type", art.ContentType)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(w, r, art.Name, art.ModTime, art.File)
 }
 
 func (s *Server) musicScans(w http.ResponseWriter, r *http.Request) {

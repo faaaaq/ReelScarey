@@ -52,6 +52,7 @@ import {
 import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
 import { useMusicPlayer, type PlayerTrack } from "../musicPlayer";
+import { albumCoverURL, artistImageURL } from "../musicArtwork";
 import "./Library.css";
 import "./Music.css";
 
@@ -77,6 +78,7 @@ function ArtistTile({ artist }: { artist: MusicArtist }) {
   const initial = artist.name.trim().charAt(0).toUpperCase() || "?";
   const label =
     artist.status === "available" ? "In library" : "No registered files";
+  const imageURL = artistImageURL(artist.id) || artist.image_url;
   return (
     <li className="lib-card">
       <Link
@@ -84,10 +86,10 @@ function ArtistTile({ artist }: { artist: MusicArtist }) {
         to={`/music/artists/${artist.id}`}
         aria-label={`Open ${artist.name}`}
       >
-        {artist.image_url && !failed ? (
+        {imageURL && !failed ? (
           <img
             className="mus-tile-img"
-            src={artist.image_url}
+            src={imageURL}
             alt=""
             loading="lazy"
             referrerPolicy="no-referrer"
@@ -448,6 +450,7 @@ function AlbumTile({ album }: { album: MusicAlbum }) {
     [album.primary_type, ...(album.secondary_types ?? [])]
       .filter(Boolean)
       .join(" · ") || "Release";
+  const coverURL = albumCoverURL(album.id) || album.cover_url;
   return (
     <li className="lib-card">
       <Link
@@ -455,10 +458,10 @@ function AlbumTile({ album }: { album: MusicAlbum }) {
         to={`/music/albums/${album.id}`}
         aria-label={`Open ${album.title}`}
       >
-        {album.cover_url && !failed ? (
+        {coverURL && !failed ? (
           <img
             className="mus-tile-img"
-            src={album.cover_url}
+            src={coverURL}
             alt=""
             loading="lazy"
             referrerPolicy="no-referrer"
@@ -505,7 +508,7 @@ function artistPlayerTrack(
     title: track.title,
     artist: artistName,
     album: track.album_title,
-    coverURL: track.cover_url || undefined,
+    coverURL: albumCoverURL(track.album_id) || track.cover_url || undefined,
     durationMS: track.duration_ms,
     albumID: track.album_id,
   };
@@ -787,7 +790,20 @@ export function MusicArtistPage() {
                 undefined
               : undefined
           }
-        />
+        >
+          {artist?.id ? (
+            <img
+              className="mus-heading-cover"
+              src={artistImageURL(artist.id)}
+              alt=""
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
+              }}
+            />
+          ) : null}
+        </PageHeading>
         <RequestState
           loading={details.loading}
           error={details.error}
@@ -1026,6 +1042,7 @@ export function MusicAlbumPage() {
   const album = details.data?.album;
   const tracks = details.data?.tracks ?? [];
   const multiDisc = new Set(tracks.map((track) => track.disc)).size > 1;
+  const albumCover = album ? albumCoverURL(album.id) || album.cover_url : "";
   const player = useMusicPlayer();
   const playableTracks: PlayerTrack[] =
     album?.id === undefined
@@ -1038,7 +1055,8 @@ export function MusicAlbumPage() {
                   title: track.title,
                   artist: album.artist_name ?? "",
                   album: album.title,
-                  coverURL: album.cover_url || undefined,
+                  coverURL:
+                    albumCoverURL(album.id) || album.cover_url || undefined,
                   durationMS: track.duration_ms,
                   albumID: album.id,
                 },
@@ -1256,10 +1274,10 @@ export function MusicAlbumPage() {
                   ? "In library"
                   : "No registered files"}
               </Label>
-              {album.cover_url && (
+              {albumCover && (
                 <img
                   className="mus-heading-cover"
-                  src={album.cover_url}
+                  src={albumCover}
                   alt=""
                   loading="lazy"
                   referrerPolicy="no-referrer"
