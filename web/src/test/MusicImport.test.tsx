@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
@@ -9,6 +9,13 @@ const scan = {
   id: 1,
   root: "Music",
   state: "review",
+  full_scan: false,
+  phase: "ready",
+  progress_total: 2,
+  progress_done: 2,
+  current_path: "",
+  message: "",
+  skipped_count: 0,
   file_count: 2,
   matched_count: 1,
   unresolved_count: 1,
@@ -81,8 +88,60 @@ const acoustidReady = {
   message: "AcoustID is ready and fpcalc is available.",
 };
 
+const rootsConfig = {
+  revision: 1,
+  media_root: "/media",
+  libraries: [
+    {
+      key: "music",
+      name: "Music",
+      kind: "music",
+      configured: false,
+      roots: [
+        { path: "Music", available: true, default: true },
+        { path: "Music Archive", available: true, default: false },
+      ],
+    },
+  ],
+};
+
+const noRootsConfig = {
+  ...rootsConfig,
+  libraries: [{ ...rootsConfig.libraries[0], roots: [] }],
+};
+
+function scanList(items: (typeof scan)[]) {
+  return Response.json({
+    items,
+    page: 1,
+    total: items.length,
+    limit: 20,
+  });
+}
+
+function scanPage(value: typeof scan, items = [matched, unresolved]) {
+  return Response.json({
+    scan: value,
+    items,
+    page: 1,
+    total: items.length,
+    limit: 100,
+  });
+}
+
+function postCalls(fetch: ReturnType<typeof mockFetch>, suffix: string) {
+  return fetch.mock.calls.filter(
+    ([url, options]) =>
+      new URL(url, "http://local").pathname.endsWith(suffix) &&
+      options?.method === "POST",
+  );
+}
+
 function mockFetch(
-  handler: (path: string, options?: RequestInit) => Response | undefined,
+  handler: (
+    path: string,
+    options?: RequestInit,
+  ) => Response | Promise<Response> | undefined,
 ) {
   const fetch = vi.fn(async (url: string, options?: RequestInit) => {
     const path = new URL(url, "http://local").pathname;
@@ -374,7 +433,344 @@ describe("music import", () => {
     );
     expect(JSON.parse(String(call?.[1]?.body))).toEqual({
       roots: ["Music", "Music Archive"],
+      full: false,
     });
+  });
+
+  it("makes Add media folder the primary action when no root is configured", async () => {
+    mockFetch((path, options) => {
+      if (path === "/api/v1/library/roots") {
+        return Response.json(noRootsConfig);
+      }
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return scanList([]);
+      }
+      return undefined;
+    });
+
+    mount();
+
+    const empty = (await screen.findByText("No scans yet")).closest("section");
+    expect(empty).not.toBeNull();
+    expect(
+      within(empty as HTMLElement).getByRole("link", {
+        name: "Add media folder",
+      }),
+    ).toHaveAttribute("href", "/settings/media");
+    expect(
+      within(empty as HTMLElement).getByText(
+        /Settings → Media Management → Library roots/,
+      ),
+    ).toBeVisible();
+  });
+
+  it("sends the full rescan flag from the scan dialog", async () => {
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/roots") {
+        return Response.json(rootsConfig);
+      }
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return scanList([]);
+      }
+      if (
+        path === "/api/v1/library/music/scans" &&
+        options?.method === "POST"
+      ) {
+        return Response.json({ ...scan, full_scan: true }, { status: 202 });
+      }
+      if (path === "/api/v1/library/music/scans/1" && !options?.method) {
+        return scanPage({ ...scan, full_scan: true }, []);
+      }
+      return undefined;
+    });
+
+    mount();
+
+    expect(await screen.findByText("No scans yet")).toBeVisible();
+    await userEvent.click(
+      screen.getAllByRole("button", { name: "Scan folder" })[0],
+    );
+    const full = await screen.findByLabelText("Full rescan");
+    expect(full).not.toBeChecked();
+    await userEvent.click(full);
+    expect(full).toBeChecked();
+    expect(screen.getByText(/never scanned again or duplicated/)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Start scan" }));
+
+    await waitFor(() =>
+      expect(postCalls(fetch, "/library/music/scans")).toHaveLength(1),
+    );
+    const call = postCalls(fetch, "/library/music/scans")[0];
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+      roots: ["Music", "Music Archive"],
+      full: true,
+    });
+  });
+
+  it("shows live scan progress, phase and current path", async () => {
+    let activeScan = {
+      ...scan,
+      state: "scanning",
+      phase: "matching",
+      file_count: 12,
+      matched_count: 3,
+      unresolved_count: 7,
+      progress_total: 10,
+      progress_done: 4,
+      current_path: "Music/Artist/Album/02 - Song.flac",
+      skipped_count: 2,
+      message: "Matching album tags.",
+    };
+    mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return scanList([activeScan]);
+      }
+      if (path === "/api/v1/library/music/scans/1" && !options?.method) {
+        return scanPage(activeScan);
+      }
+      return undefined;
+    });
+
+    mount();
+
+    expect(
+      await screen.findByRole("table", { name: "Scanned music files" }),
+    ).toBeVisible();
+    const bar = await screen.findByRole("progressbar", {
+      name: "Matching MusicBrainz progress",
+    });
+    expect(bar).toHaveAttribute("aria-valuenow", "40");
+    expect(screen.getByText("4 of 10 files")).toBeVisible();
+    expect(screen.getByText("Matching album tags.")).toBeVisible();
+    expect(
+      screen.getByText(/Current: Music\/Artist\/Album\/02 - Song.flac/),
+    ).toBeVisible();
+    expect(screen.getByText("2 skipped files")).toBeVisible();
+
+    activeScan = {
+      ...activeScan,
+      phase: "fingerprinting",
+      progress_done: 7,
+      current_path: "Music/Artist/Album/03 - Song.flac",
+    };
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    const updated = await screen.findByRole("progressbar", {
+      name: "Fingerprinting with AcoustID progress",
+    });
+    expect(updated).toHaveAttribute("aria-valuenow", "70");
+    expect(screen.getByText("7 of 10 files")).toBeVisible();
+    expect(
+      screen.getByText(/Current: Music\/Artist\/Album\/03 - Song.flac/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("table", { name: "Scanned music files" }),
+    ).toBeVisible();
+  });
+
+  it("shows an indeterminate discovery bar with the discovered count", async () => {
+    const scanning = {
+      ...scan,
+      state: "scanning",
+      phase: "scanning",
+      file_count: 5,
+      matched_count: 0,
+      unresolved_count: 0,
+      progress_total: 0,
+      progress_done: 0,
+      current_path: "Music/New Folder",
+    };
+    mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return scanList([scanning]);
+      }
+      if (path === "/api/v1/library/music/scans/1" && !options?.method) {
+        return scanPage(scanning, []);
+      }
+      return undefined;
+    });
+
+    mount();
+
+    const bar = await screen.findByRole("progressbar", {
+      name: "Scanning files progress",
+    });
+    expect(bar).toHaveAttribute("aria-busy", "true");
+    expect(bar).not.toHaveAttribute("aria-valuenow");
+    expect(
+      screen.getByText(/Discovering files… 5 files found so far/),
+    ).toBeVisible();
+    expect(screen.getByText(/Current: Music\/New Folder/)).toBeVisible();
+  });
+
+  it("requires consent before matching all unmatched files", async () => {
+    let resolveMatch: ((response: Response) => void) | null = null;
+    const pendingMatch = new Promise<Response>((resolve) => {
+      resolveMatch = resolve;
+    });
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return scanList([scan]);
+      }
+      if (path === "/api/v1/library/music/scans/1" && !options?.method) {
+        return scanPage(scan);
+      }
+      if (
+        path === "/api/v1/library/music/scans/1/match-all" &&
+        options?.method === "POST"
+      ) {
+        return pendingMatch;
+      }
+      return undefined;
+    });
+
+    mount();
+
+    expect(
+      await screen.findByRole("table", { name: "Scanned music files" }),
+    ).toBeVisible();
+    const trigger = screen.getByRole("button", {
+      name: /Match all unmatched \(1\)/,
+    });
+    expect(trigger).toBeEnabled();
+    await userEvent.click(trigger);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/may add artists and albums to the catalog/),
+    ).toBeVisible();
+    expect(postCalls(fetch, "/match-all")).toHaveLength(0);
+
+    const confirm = within(dialog).getByRole("button", {
+      name: "Match all (1)",
+    });
+    await userEvent.click(confirm);
+    await waitFor(() => expect(confirm).toBeDisabled());
+
+    await waitFor(() => expect(postCalls(fetch, "/match-all")).toHaveLength(1));
+    const call = postCalls(fetch, "/match-all")[0];
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ reviewed: true });
+
+    resolveMatch!(Response.json({ ...scan, phase: "queued" }, { status: 202 }));
+    expect(
+      await screen.findByText(/Matching all unmatched files started/),
+    ).toBeVisible();
+  });
+
+  it("finalizes matched files only after consent", async () => {
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return scanList([scan]);
+      }
+      if (path === "/api/v1/library/music/scans/1" && !options?.method) {
+        return scanPage(scan);
+      }
+      if (
+        path === "/api/v1/library/music/scans/1/finalize" &&
+        options?.method === "POST"
+      ) {
+        return Response.json({ ...scan, phase: "organizing" }, { status: 202 });
+      }
+      return undefined;
+    });
+
+    mount();
+
+    expect(
+      await screen.findByRole("table", { name: "Scanned music files" }),
+    ).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: /Finalize matched \(1\)/ }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/register the 1 matched file in this scan/),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByText(/never overwritten, and registered files/),
+    ).toBeVisible();
+    expect(postCalls(fetch, "/finalize")).toHaveLength(0);
+
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Finalize matched files (1)",
+      }),
+    );
+    await waitFor(() => expect(postCalls(fetch, "/finalize")).toHaveLength(1));
+    const call = postCalls(fetch, "/finalize")[0];
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ reviewed: true });
+    expect(
+      await screen.findByText(/Finalizing matched files started/),
+    ).toBeVisible();
+  });
+
+  it("reports a failed scan honestly instead of completed", async () => {
+    const failed = {
+      ...scan,
+      state: "failed",
+      phase: "failed",
+      progress_total: 5,
+      progress_done: 2,
+      error: "The scan worker stopped: permission denied.",
+      message: "",
+    };
+    mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return scanList([failed]);
+      }
+      if (path === "/api/v1/library/music/scans/1" && !options?.method) {
+        return scanPage(failed);
+      }
+      return undefined;
+    });
+
+    mount();
+
+    expect(await screen.findByText(/permission denied/)).toBeVisible();
+    expect(screen.getAllByText("Needs attention").length).toBeGreaterThan(0);
+    expect(screen.getByText("Scan error")).toBeVisible();
+    expect(screen.queryByText("Completed")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Match all unmatched/ }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Finalize matched/ }),
+    ).toBeNull();
+  });
+
+  it("warns when match-all skipped AcoustID fingerprinting", async () => {
+    const warned = {
+      ...scan,
+      phase: "ready",
+      unresolved_count: 1,
+      skipped_count: 1,
+      message:
+        "AcoustID fingerprinting was skipped because no application key is configured.",
+    };
+    mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return scanList([warned]);
+      }
+      if (path === "/api/v1/library/music/scans/1" && !options?.method) {
+        return scanPage(warned, [matched, unresolved]);
+      }
+      return undefined;
+    });
+
+    mount();
+
+    expect(
+      await screen.findByText("AcoustID fingerprinting was skipped"),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(/skipped because no application key/).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("1 warning")).toBeVisible();
+    expect(screen.queryByText("Completed")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /Match all unmatched/ }),
+    ).toBeEnabled();
   });
 
   it("prompts for an AcoustID key, saves it once and never echoes it", async () => {

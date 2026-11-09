@@ -133,11 +133,31 @@ export type MusicAlbumDetails = {
   tracks: MusicTrack[];
 };
 
+/** Workflow phase of a reviewed music scan. */
+export type MusicScanPhase =
+  | "queued"
+  | "scanning"
+  | "matching"
+  | "fingerprinting"
+  | "ready"
+  | "organizing"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
 export type MusicScan = {
   id: number;
   root: string;
   roots?: string[];
   state: "scanning" | "review" | "completed" | "failed" | "cancelled";
+  /** Extended workflow fields; older servers omit them. */
+  full_scan?: boolean;
+  phase?: MusicScanPhase;
+  progress_total?: number;
+  progress_done?: number;
+  current_path?: string;
+  message?: string;
+  skipped_count?: number;
   file_count: number;
   matched_count: number;
   unresolved_count: number;

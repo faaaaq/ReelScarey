@@ -12,6 +12,7 @@ import {
   Modal,
   PageBody,
   PageToolbar,
+  ProgressBar,
   Table,
   ToolbarButton,
   ToolbarSection,
@@ -28,6 +29,7 @@ import {
   type MusicScan,
   type MusicScanList,
   type MusicScanPage,
+  type MusicScanPhase,
 } from "../api";
 import { useLiveResource } from "../useLiveResource";
 import { useResource } from "../useResource";
@@ -35,6 +37,89 @@ import "./Music.css";
 
 function countLabel(count: number, singular: string) {
   return `${count} ${singular}${count === 1 ? "" : "s"}`;
+}
+
+const activePhases: ReadonlySet<MusicScanPhase> = new Set([
+  "queued",
+  "scanning",
+  "matching",
+  "fingerprinting",
+  "organizing",
+]);
+
+const phaseLabels: Record<MusicScanPhase, string> = {
+  queued: "Queued",
+  scanning: "Scanning files",
+  matching: "Matching MusicBrainz",
+  fingerprinting: "Fingerprinting with AcoustID",
+  ready: "Ready",
+  organizing: "Organizing files",
+  completed: "Completed",
+  failed: "Needs attention",
+  cancelled: "Cancelled",
+};
+
+/** Older servers only report `state`; map it onto the workflow phases. */
+function scanPhase(scan: MusicScan): MusicScanPhase {
+  if (scan.phase) return scan.phase;
+  switch (scan.state) {
+    case "scanning":
+      return "scanning";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return "ready";
+  }
+}
+
+function isActivePhase(phase: MusicScanPhase) {
+  return activePhases.has(phase);
+}
+
+function phaseDetail(phase: MusicScanPhase) {
+  switch (phase) {
+    case "queued":
+      return "Waiting for the scan worker to start.";
+    case "scanning":
+      return "Reading tags, durations and hashes from the selected folders.";
+    case "matching":
+      return "Matching tagged files to MusicBrainz releases already in the catalog.";
+    case "fingerprinting":
+      return "Identifying files whose tags were not enough with Chromaprint and AcoustID.";
+    case "ready":
+      return "Review the files below, or run the automatic actions.";
+    case "organizing":
+      return "Registering matched files in place, then renaming, tagging and organizing them.";
+    case "completed":
+      return "The workflow finished. Registered files stay in place and are available in the library.";
+    case "failed":
+      return "The workflow stopped with an error. Review the message and retry the step.";
+    case "cancelled":
+      return "The workflow was cancelled. Files already registered are unchanged.";
+  }
+}
+
+/** Detects a scan message that says AcoustID matching was skipped. */
+function mentionsAcoustidSkip(message: string) {
+  const text = message.toLowerCase();
+  const skipped =
+    text.includes("skip") ||
+    text.includes("unavailable") ||
+    text.includes("not configured") ||
+    text.includes("no application key") ||
+    text.includes("disabled");
+  return (text.includes("acoustid") || text.includes("fingerprint")) && skipped;
+}
+
+function phaseKind(phase: MusicScanPhase) {
+  if (phase === "failed") return "danger" as const;
+  if (phase === "completed" || phase === "ready") return "success" as const;
+  if (phase === "fingerprinting") return "purple" as const;
+  return "primary" as const;
 }
 
 function discoverySummary(result: MusicDiscoverResult) {
@@ -160,15 +245,20 @@ export function MusicImport() {
   const [page, setPage] = useState(1);
   const active = useLiveResource<MusicScanPage>(
     scanID ? `/library/music/scans/${scanID}?page=${page}` : null,
-    3000,
+    2500,
   );
   const [open, setOpen] = useState(false);
   const [roots, setRoots] = useState<string[]>([]);
+  const [fullScan, setFullScan] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
   const [pending, setPending] = useState(false);
+  const [workflowBusy, setWorkflowBusy] = useState(false);
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [discoverResult, setDiscoverResult] =
     useState<MusicDiscoverResult | null>(null);
+  const [matchAllOpen, setMatchAllOpen] = useState(false);
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [workflowNotice, setWorkflowNotice] = useState("");
   const [acoustidOpen, setAcoustidOpen] = useState(false);
   const [acoustidKey, setAcoustidKey] = useState("");
   const [acoustidPending, setAcoustidPending] = useState(false);
@@ -204,6 +294,34 @@ export function MusicImport() {
         : !acoustid.data.fingerprint_available
           ? "fpcalc (Chromaprint) is not available on the server, so audio cannot be fingerprinted."
           : "";
+  const scan = active.data?.scan;
+  const phase = scan ? scanPhase(scan) : "ready";
+  const phaseActive = isActivePhase(phase);
+  const progressTotal = Math.max(0, scan?.progress_total ?? 0);
+  const progressDone = Math.min(
+    Math.max(0, scan?.progress_done ?? 0),
+    progressTotal,
+  );
+  const skippedCount = Math.max(0, scan?.skipped_count ?? 0);
+  const unresolvedCount = Math.max(0, scan?.unresolved_count ?? 0);
+  const matchedCount = Math.max(0, scan?.matched_count ?? 0);
+  const registeredCount = Math.max(0, scan?.registered_count ?? 0);
+  const fileCount = Math.max(0, scan?.file_count ?? 0);
+  const remainingCount = Math.max(
+    0,
+    fileCount - registeredCount - skippedCount,
+  );
+  const scanWarningMessage =
+    scan && scan.message && mentionsAcoustidSkip(scan.message)
+      ? scan.message
+      : "";
+  const scanWarning = Boolean(
+    scan?.error ||
+    (scanWarningMessage && mentionsAcoustidSkip(scanWarningMessage)),
+  );
+  const canMatchAll = phase === "ready" && unresolvedCount > 0;
+  const canFinalize = phase === "ready" && matchedCount > 0;
+  const hasAvailableRoots = musicRoots.some((root) => root.available);
 
   useEffect(() => {
     if (scanID === null && scans.data?.items.length) {
@@ -221,10 +339,26 @@ export function MusicImport() {
     setSelected([]);
     setDiscoverOpen(false);
     setDiscoverResult(null);
+    setMatchAllOpen(false);
+    setFinalizeOpen(false);
+    setWorkflowNotice("");
+    setWorkflowBusy(false);
     setFingerprintOpen(false);
     setFingerprintResult(null);
     setFingerprintError("");
   }, [scanID, page]);
+
+  // Keep one-click actions disabled until the accepted workflow leaves `ready`
+  // (or a short grace period passes if the polled scan never shows the phase).
+  useEffect(() => {
+    if (!workflowBusy) return;
+    if (phase !== "ready") {
+      setWorkflowBusy(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setWorkflowBusy(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [workflowBusy, phase, active.updatedAt]);
 
   async function startScan(e: FormEvent) {
     e.preventDefault();
@@ -234,9 +368,10 @@ export function MusicImport() {
     try {
       const scan = await api<MusicScan>("/library/music/scans", {
         method: "POST",
-        body: JSON.stringify({ roots }),
+        body: JSON.stringify({ roots, full: fullScan }),
       });
       setOpen(false);
+      setFullScan(false);
       setScanID(scan.id);
       setPage(1);
       scans.reload();
@@ -269,6 +404,62 @@ export function MusicImport() {
       active.reload();
       scans.reload();
     } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function matchAll() {
+    if (!active.data || pending || workflowBusy || !canMatchAll) return;
+    setPending(true);
+    setWorkflowBusy(true);
+    setError("");
+    try {
+      await api<MusicScan>(
+        `/library/music/scans/${active.data.scan.id}/match-all`,
+        {
+          method: "POST",
+          body: JSON.stringify({ reviewed: true }),
+          signal: AbortSignal.timeout(30000),
+        },
+      );
+      setMatchAllOpen(false);
+      setWorkflowNotice(
+        "Matching all unmatched files started. MusicBrainz matching, AcoustID fingerprinting and current work are shown below while the scan runs.",
+      );
+      active.reload();
+      scans.reload();
+    } catch (e) {
+      setWorkflowBusy(false);
+      setError(messageFor(e));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function finalize() {
+    if (!active.data || pending || workflowBusy || !canFinalize) return;
+    setPending(true);
+    setWorkflowBusy(true);
+    setError("");
+    try {
+      await api<MusicScan>(
+        `/library/music/scans/${active.data.scan.id}/finalize`,
+        {
+          method: "POST",
+          body: JSON.stringify({ reviewed: true }),
+          signal: AbortSignal.timeout(30000),
+        },
+      );
+      setFinalizeOpen(false);
+      setWorkflowNotice(
+        "Finalizing matched files started. Registration, tagging and organization progress are shown below while the scan runs.",
+      );
+      active.reload();
+      scans.reload();
+    } catch (e) {
+      setWorkflowBusy(false);
       setError(messageFor(e));
     } finally {
       setPending(false);
@@ -438,7 +629,7 @@ export function MusicImport() {
       <PageBody className="mus-body">
         <PageHeading
           title="Music import"
-          description="Read tags from a music folder, match them to catalog albums and register files in place. Files are never moved."
+          description="Scan music folders, match files to the catalog with MusicBrainz tags and AcoustID fingerprints, then register and organize matched files with explicit review. Scan reads files in place."
         />
         {acoustid.loading && !acoustid.data && (
           <Alert kind="info" title="AcoustID fingerprint matching">
@@ -490,16 +681,16 @@ export function MusicImport() {
             </div>
           </Alert>
         )}
-        <Alert kind="info" title="Scan, then fill catalog gaps">
-          Scan the configured roots first. Select unresolved files and use{" "}
-          <strong>Discover missing catalog</strong> to search MusicBrainz using
-          tagged MusicBrainz IDs first. Without those IDs it requires one exact
-          normalized artist name and album title. Files with ambiguous or
-          missing evidence stay unresolved and are never guessed. When tags are
-          unusable, select unresolved files and use{" "}
-          <strong>Match by audio fingerprint</strong> if an AcoustID key and
-          fpcalc are available. Roots are relative to the media root and names
-          are case-sensitive.
+        <Alert kind="info" title="Scan, match, then finalize">
+          Start a scan of the configured roots. When it is ready, use{" "}
+          <strong>Match all unmatched</strong> to match every remaining file
+          with MusicBrainz tags and, when needed, AcoustID fingerprinting. Then
+          use <strong>Finalize matched files</strong> to register them in place
+          and rename, tag and organize them with the existing no-overwrite
+          safety. Use the manual actions for individual files when automatic
+          matching is not appropriate. Files that cannot be proven stay
+          unresolved; nothing is guessed. Roots are relative to the media root
+          and names are case-sensitive.
         </Alert>
         {musicRoots.length > 0 && (
           <Alert kind="info" title="Configured music roots">
@@ -509,13 +700,16 @@ export function MusicImport() {
                   `${root.path}${root.available ? "" : " (unavailable)"}`,
               )
               .join(" · ")}{" "}
-            <Link to="/settings">Manage library roots</Link>
+            <Link to="/settings/media">Manage library roots</Link>
           </Alert>
         )}
         {rootsResource.data && musicRoots.length === 0 && (
           <Alert kind="warning" title="No music root is available">
             Add an existing music folder below the media root in{" "}
-            <Link to="/settings">Library roots</Link> before scanning.
+            <Link to="/settings/media">
+              Settings → Media Management → Library roots
+            </Link>{" "}
+            before scanning.
           </Alert>
         )}
         <RequestState
@@ -527,9 +721,19 @@ export function MusicImport() {
           <EmptyState
             icon={FolderSearch}
             title="No scans yet"
-            actions={<Button onClick={() => setOpen(true)}>Scan folder</Button>}
+            actions={
+              hasAvailableRoots ? (
+                <Button onClick={() => setOpen(true)}>Scan folder</Button>
+              ) : (
+                <Button asChild>
+                  <Link to="/settings/media">Add media folder</Link>
+                </Button>
+              )
+            }
           >
-            Choose a music folder below the media root.
+            {hasAvailableRoots
+              ? "Choose a music folder below the media root."
+              : "Add a music folder in Settings → Media Management → Library roots first."}
           </EmptyState>
         )}
         {scans.data && scans.data.items.length > 0 && (
@@ -550,7 +754,12 @@ export function MusicImport() {
               <tbody>
                 {scans.data.items.map((scan) => (
                   <tr key={scan.id}>
-                    <td>{scan.root}</td>
+                    <td>
+                      {scan.root}
+                      {scan.full_scan && (
+                        <span className="rs-muted"> · full rescan</span>
+                      )}
+                    </td>
                     <td>
                       <Label
                         kind={
@@ -561,7 +770,7 @@ export function MusicImport() {
                               : "info"
                         }
                       >
-                        {scan.state}
+                        {phaseLabels[scanPhase(scan)]}
                       </Label>
                     </td>
                     <td>{scan.file_count}</td>
@@ -586,11 +795,11 @@ export function MusicImport() {
           </FieldSet>
         )}
         {error && <Alert kind="danger">{error}</Alert>}
-        {active.data?.scan && (
+        {active.data?.scan && scan && (
           <FieldSet
-            legend={`Scan #${active.data.scan.id} · ${active.data.scan.root}`}
+            legend={`Scan #${scan.id} · ${scan.root}${scan.full_scan ? " · full rescan" : ""}`}
             actions={
-              active.data.scan.state === "scanning" ? (
+              phaseActive ? (
                 <Button
                   size="1"
                   variant="soft"
@@ -598,24 +807,130 @@ export function MusicImport() {
                   disabled={pending}
                   onClick={() => void cancel()}
                 >
-                  Cancel scan
+                  {phase === "scanning" ? "Cancel scan" : "Cancel workflow"}
                 </Button>
               ) : undefined
             }
           >
             <div className="mus-scan-summary">
               <Label
-                kind={active.data.scan.state === "failed" ? "danger" : "info"}
+                kind={
+                  scan.error
+                    ? "danger"
+                    : scanWarning
+                      ? "warning"
+                      : phaseKind(phase)
+                }
               >
-                {active.data.scan.state}
+                {phaseLabels[phase]}
               </Label>
-              <span>{active.data.scan.file_count} files</span>
-              <span>{active.data.scan.matched_count} matched</span>
-              <span>{active.data.scan.unresolved_count} unresolved</span>
-              <span>{active.data.scan.registered_count} registered</span>
+              <span>{countLabel(fileCount, "file")}</span>
+              <span>{countLabel(matchedCount, "matched file")}</span>
+              <span>{countLabel(unresolvedCount, "unresolved file")}</span>
+              <span>{countLabel(registeredCount, "registered file")}</span>
+              <span>{countLabel(skippedCount, "skipped file")}</span>
+              <span>{countLabel(remainingCount, "remaining file")}</span>
+              {scanWarning && (
+                <Label kind={scan.error ? "danger" : "warning"}>
+                  {scan.error ? "1 error" : "1 warning"}
+                </Label>
+              )}
             </div>
-            {active.data.scan.error && (
-              <Alert kind="danger">{active.data.scan.error}</Alert>
+            <div className="mus-scan-status">
+              <p className="mus-scan-phase">
+                <strong>{phaseLabels[phase]}</strong>{" "}
+                <span className="rs-muted">{phaseDetail(phase)}</span>
+              </p>
+              {(phaseActive || progressTotal > 0) && (
+                <ProgressBar
+                  label={`${phaseLabels[phase]} progress`}
+                  value={progressTotal > 0 ? progressDone / progressTotal : 0}
+                  indeterminate={phaseActive && progressTotal === 0}
+                  kind={phaseKind(phase)}
+                  text={
+                    progressTotal > 0
+                      ? `${progressDone} of ${progressTotal} files`
+                      : undefined
+                  }
+                />
+              )}
+              {phaseActive && (
+                <p className="rs-muted" role="status" aria-live="polite">
+                  {progressTotal > 0
+                    ? `${progressDone} of ${progressTotal} files processed${
+                        skippedCount > 0
+                          ? ` · ${countLabel(skippedCount, "file")} skipped`
+                          : ""
+                      }`
+                    : phase === "queued"
+                      ? "Waiting for the scan worker to start."
+                      : `Discovering files… ${countLabel(fileCount, "file")} found so far.`}
+                </p>
+              )}
+              {scan.current_path && (
+                <p className="mus-path rs-muted">
+                  Current: {scan.current_path}
+                </p>
+              )}
+              {scan.message && !scanWarningMessage && (
+                <p className="rs-muted">{scan.message}</p>
+              )}
+            </div>
+            {scan.error && (
+              <Alert kind="danger" title="Scan error">
+                {scan.error}
+              </Alert>
+            )}
+            {scanWarningMessage && mentionsAcoustidSkip(scanWarningMessage) && (
+              <Alert kind="warning" title="AcoustID fingerprinting was skipped">
+                {scanWarningMessage}
+              </Alert>
+            )}
+            {!phaseActive && skippedCount > 0 && (
+              <Alert
+                kind="info"
+                title={`${countLabel(skippedCount, "file")} skipped`}
+              >
+                Files already matched or registered by earlier scans are
+                skipped. Run a full rescan to re-examine
+                matched-but-unregistered files; registered files are never
+                duplicated.
+              </Alert>
+            )}
+            {phase === "ready" && unresolvedCount > 0 && (
+              <Alert
+                kind="warning"
+                title={`${countLabel(unresolvedCount, "file")} still unresolved`}
+              >
+                {matchedCount > 0
+                  ? "Finalize matched files now, then retry automatic or manual matching for the rest."
+                  : "Run Match all unmatched, or select files for Discover missing catalog or Match by audio fingerprint."}
+              </Alert>
+            )}
+            {workflowNotice && (
+              <Alert kind="info" title="Workflow started">
+                {workflowNotice}
+              </Alert>
+            )}
+            {(canMatchAll || canFinalize) && (
+              <div className="mus-scan-actions mus-scan-primary">
+                {canMatchAll && (
+                  <Button
+                    disabled={pending || workflowBusy}
+                    onClick={() => setMatchAllOpen(true)}
+                  >
+                    Match all unmatched ({unresolvedCount})
+                  </Button>
+                )}
+                {canFinalize && (
+                  <Button
+                    disabled={pending || workflowBusy}
+                    onClick={() => setFinalizeOpen(true)}
+                  >
+                    Finalize matched ({matchedCount})
+                  </Button>
+                )}
+              </div>
             )}
             {fingerprintResult && (
               <Alert
@@ -659,9 +974,6 @@ export function MusicImport() {
                   </span>
                 ))}
               </Alert>
-            )}
-            {active.data.scan.state === "scanning" && (
-              <Alert kind="info">Scanning the folder…</Alert>
             )}
             {(active.data.items ?? []).length > 0 && (
               <Table label="Scanned music files">
@@ -752,6 +1064,10 @@ export function MusicImport() {
                 </tbody>
               </Table>
             )}
+            <p className="rs-form-help mus-manual-help">
+              Manual actions apply only to the files you select. Leave the page
+              or run an automatic action to work on the whole scan.
+            </p>
             <div className="mus-scan-actions">
               <Button
                 disabled={pending || selectedMatched.length === 0}
@@ -822,14 +1138,20 @@ export function MusicImport() {
         open={open}
         onOpenChange={setOpen}
         title="Scan music folders"
-        description="Choose configured folders below the media root. Files are read in place and never moved."
+        description="Choose configured folders below the media root. Scanning reads files in place; finalizing a ready scan later registers and organizes matched files."
         footer={
           <Button variant="soft" color="gray" onClick={() => setOpen(false)}>
             Close
           </Button>
         }
       >
-        <form onSubmit={(e) => void startScan(e)} className="mus-search">
+        {musicRoots.length === 0 && (
+          <Alert kind="warning" title="No music root is configured">
+            Add a music folder in Settings → Media Management → Library roots
+            before starting a scan.
+          </Alert>
+        )}
+        <form onSubmit={(e) => void startScan(e)} className="mus-scan-form">
           <fieldset className="mus-scan-roots">
             {musicRoots.map((root) => (
               <label className="rs-check" key={root.path}>
@@ -855,13 +1177,133 @@ export function MusicImport() {
               </label>
             ))}
           </fieldset>
-          <Button type="submit" disabled={pending || roots.length === 0}>
-            Start scan
-          </Button>
+          <label className="rs-check mus-scan-full">
+            <input
+              type="checkbox"
+              aria-label="Full rescan"
+              checked={fullScan}
+              disabled={pending}
+              onChange={(event) => setFullScan(event.target.checked)}
+            />
+            <span>
+              <strong>Full rescan</strong>
+              <small>
+                Normal scans skip files already matched or registered in
+                previous scans. A full rescan re-examines
+                matched-but-unregistered files; registered files are never
+                scanned again or duplicated.
+              </small>
+            </span>
+          </label>
+          <FormActions>
+            <Button type="submit" disabled={pending || roots.length === 0}>
+              Start scan
+            </Button>
+            <Button
+              asChild
+              variant={musicRoots.length === 0 ? "solid" : "soft"}
+            >
+              <Link to="/settings/media">Add media folder</Link>
+            </Button>
+          </FormActions>
         </form>
         <p className="rs-form-help">
           Relative to the media root. Folder names are case-sensitive. Add or
-          remove roots in <Link to="/settings">Library roots</Link>.
+          remove roots in{" "}
+          <Link to="/settings/media">
+            Settings → Media Management → Library roots
+          </Link>
+          .
+        </p>
+        {error && <Alert kind="danger">{error}</Alert>}
+      </Modal>
+      <Modal
+        open={matchAllOpen}
+        onOpenChange={setMatchAllOpen}
+        title="Match all unmatched files"
+        description="Review this automatic MusicBrainz and AcoustID step before it runs."
+        footer={
+          <>
+            <Button
+              variant="soft"
+              color="gray"
+              disabled={pending}
+              onClick={() => setMatchAllOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={pending || workflowBusy || !canMatchAll}
+              onClick={() => void matchAll()}
+            >
+              Match all ({unresolvedCount})
+            </Button>
+          </>
+        }
+      >
+        <p>
+          ReelScarey will match the{" "}
+          {countLabel(unresolvedCount, "unresolved file")} in this scan. It uses
+          the file tags and MusicBrainz first and, when tags are not enough, an
+          AcoustID Chromaprint fingerprint.
+        </p>
+        <Alert kind="warning">
+          This may add artists and albums to the catalog. It does not move, tag
+          or register files, and audio is never uploaded. Files it cannot prove
+          stay unresolved.
+        </Alert>
+        {!acoustidReady && (
+          <Alert kind="warning" title="AcoustID fingerprinting may be skipped">
+            {fingerprintBlockedReason} Tag-based MusicBrainz matching still
+            runs; any skipped fingerprinting is reported on the scan.
+          </Alert>
+        )}
+        <p className="rs-form-help">
+          The scan continues in the background and reports MusicBrainz matching,
+          AcoustID fingerprinting, current work and skipped files. Matching
+          never changes a file.
+        </p>
+        {error && <Alert kind="danger">{error}</Alert>}
+      </Modal>
+      <Modal
+        open={finalizeOpen}
+        onOpenChange={setFinalizeOpen}
+        title="Finalize matched files"
+        description="Review registration and organization before ReelScarey changes files on disk."
+        footer={
+          <>
+            <Button
+              variant="soft"
+              color="gray"
+              disabled={pending}
+              onClick={() => setFinalizeOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={pending || workflowBusy || !canFinalize}
+              onClick={() => void finalize()}
+            >
+              Finalize matched files ({matchedCount})
+            </Button>
+          </>
+        }
+      >
+        <p>
+          ReelScarey will register the{" "}
+          {countLabel(matchedCount, "matched file")} in this scan at their
+          current paths, then rename, tag and organize them with the existing
+          collection and naming rules.
+        </p>
+        <Alert kind="warning">
+          This changes the catalog and files on disk. Existing destination files
+          are never overwritten, and registered files are not duplicated.
+          Anything that cannot be published safely stays for review.
+        </Alert>
+        <p className="rs-form-help">
+          The scan continues in the background and shows organizing progress,
+          current work and skipped files. Use Organize to review completed edits
+          or roll them back.
         </p>
         {error && <Alert kind="danger">{error}</Alert>}
       </Modal>
