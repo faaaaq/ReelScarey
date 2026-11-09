@@ -267,8 +267,12 @@ export function MusicImport() {
   );
   const [scanID, setScanID] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+  const [fileFilter, setFileFilter] = useState("all");
+  const [filterInitialized, setFilterInitialized] = useState(false);
   const active = useLiveResource<MusicScanPage>(
-    scanID ? `/library/music/scans/${scanID}?page=${page}` : null,
+    scanID
+      ? `/library/music/scans/${scanID}?page=${page}&state=${fileFilter}`
+      : null,
     2500,
   );
   const [open, setOpen] = useState(false);
@@ -337,6 +341,24 @@ export function MusicImport() {
   const matchedCount = Math.max(0, scan?.matched_count ?? 0);
   const registeredCount = Math.max(0, scan?.registered_count ?? 0);
   const fileCount = Math.max(0, scan?.file_count ?? 0);
+
+  useEffect(() => {
+    setFilterInitialized(false);
+    setFileFilter("all");
+  }, [scanID]);
+  useEffect(() => {
+    if (
+      !filterInitialized &&
+      scan &&
+      (scan.registered_count ?? 0) > 1000 &&
+      (scan.unresolved_count ?? 0) > 0
+    ) {
+      setFileFilter("unresolved");
+      setPage(1);
+      setFilterInitialized(true);
+    }
+  }, [scan, filterInitialized]);
+
   const progressTotal = Math.max(
     Math.max(0, scan?.progress_total ?? 0),
     phase === "organizing" ? matchedCount + registeredCount : 0,
@@ -393,7 +415,7 @@ export function MusicImport() {
     setFingerprintOpen(false);
     setFingerprintResult(null);
     setFingerprintError("");
-  }, [scanID, page]);
+  }, [scanID, page, fileFilter]);
 
   // Keep one-click actions disabled until the accepted workflow leaves `ready`
   // (or a short grace period passes if the polled scan never shows the phase).
@@ -1081,8 +1103,45 @@ export function MusicImport() {
                 ))}
               </Alert>
             )}
-            {(active.data.items ?? []).length > 0 && (
-              <Table label="Scanned music files">
+            <div
+              className="mus-scan-summary"
+              role="group"
+              aria-label="Scanned file filter"
+            >
+              <label>
+                Show{" "}
+                <select
+                  aria-label="Scanned file filter"
+                  value={fileFilter}
+                  onChange={(event) => {
+                    setFileFilter(event.target.value);
+                    setFilterInitialized(true);
+                    setPage(1);
+                  }}
+                >
+                  <option value="unresolved">
+                    Unresolved ({unresolvedCount})
+                  </option>
+                  <option value="matched">Matched ({matchedCount})</option>
+                  <option value="registered">
+                    Registered ({registeredCount})
+                  </option>
+                  <option value="skipped">Skipped ({skippedCount})</option>
+                  <option value="all">All scanned files ({fileCount})</option>
+                </select>
+              </label>
+              <span className="rs-muted rs-small">
+                The list shows only the selected review state.
+              </span>
+            </div>
+            {(active.data.items ?? []).length > 0 ? (
+              <Table
+                label={
+                  fileFilter === "all"
+                    ? "Scanned music files"
+                    : `Scanned music files (${fileFilter})`
+                }
+              >
                 <thead>
                   <tr>
                     <th scope="col">
@@ -1169,6 +1228,10 @@ export function MusicImport() {
                   ))}
                 </tbody>
               </Table>
+            ) : (
+              <p className="rs-muted">
+                No {fileFilter === "all" ? "" : fileFilter} files on this page.
+              </p>
             )}
             <p className="rs-form-help mus-manual-help">
               Manual actions apply only to the files you select. Leave the page

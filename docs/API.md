@@ -85,7 +85,17 @@ fixed providers; missing artwork returns 404 so the UI can fall back. The cache
 is refreshed after 30 days and never exposes provider URLs to the browser.
 
 GET `/api/v1/library/music/artists/{id}/top-tracks?limit=20` returns overall
-Deezer top tracks with local library matches. POST
+Deezer top tracks with local library matches, falling back to Deezer track
+search and iTunes search when the artist's top list is empty. GET
+`/api/v1/library/music/artists/{id}/discography?limit=` returns the full public
+Deezer album list with local album matches. GET `/api/v1/library/music/albums`
+and `/api/v1/library/music/tracks` power the unified Albums and Tracks views;
+both accept `page`, `query` and an optional `limit`.
+POST `/api/v1/library/music/albums/{id}/acquire` queues every missing catalog
+track for one album. POST
+`/api/v1/library/music/provider-albums/{id}/acquire` resolves a Deezer album
+and queues its tracks. Both accept `{root,format,reviewed:true}` and run in the
+durable acquisition worker. POST
 `/api/v1/library/music/links/preview` accepts `{url}` and returns public
 Spotify/Deezer/YouTube metadata; a non-URL query returns YouTube search
 candidates. POST `/api/v1/library/music/links` accepts
@@ -114,7 +124,9 @@ repeated work. Neither path duplicates `music_files` rows for one relative path.
 GET `/scans/{id}?page=` returns its state and files, plus `full_scan`, `phase`,
 `progress_total`, `progress_done`, `current_path`, `message`, `skipped_count`,
 `request`, `requested_at` and `work_until`. The scan list reports the same
-fields. POST `/scans/{id}/match-all` accepts `{reviewed:true}` and returns `202`
+fields. GET `/scans/{id}?page=&state=` returns one page of scan files and
+accepts `state=all|matched|unresolved|registered|skipped`; the import UI uses
+`unresolved` for large scans. POST `/scans/{id}/match-all` accepts `{reviewed:true}` and returns `202`
 with the queued scan (`request:"match"`); the durable worker first matches the
 saved catalog and the files' own tags, creates tag-derived local catalog rows
 when those tags are complete (no MusicBrainz or AcoustID request), then
@@ -123,11 +135,13 @@ then runs MusicBrainz discovery for files without a complete local tag identity.
 The final message reports local, fingerprint and provider match counts. It never
 registers, moves or tags media. POST
 `/scans/{id}/finalize` accepts `{reviewed:true}` and returns `202` with
-`request:"finalize"`; the worker registers the matched files in place and then
-applies each reviewed edit plan sequentially, waiting for every edit job. A
-partial failure leaves the scan in `review` with `phase:"ready"` and an explicit
-count; unmatched files stay for manual review. Both requests are rejected (409)
-while the scan is running or another request already owns it. POST
+`request:"finalize"`; the worker registers the reviewed matched cohort in place
+and applies each reviewed edit plan sequentially, waiting for every edit job.
+Files registered by earlier scans are never re-organized by a later finalize.
+The cohort survives a restart. A partial failure leaves the scan in `review`
+with `phase:"ready"` and an explicit count; unmatched files stay for manual
+review. Both requests are rejected (409) while the scan is running or another
+request already owns it. POST
 `/scans/{id}/register` accepts `{file_ids,reviewed:true}`; POST `/discover`
 accepts `{file_ids,reviewed:true}` or `{all:true,reviewed:true}` and performs a
 bounded, reviewed MusicBrainz catalog discovery for unresolved files. It uses a

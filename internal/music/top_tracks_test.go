@@ -11,6 +11,25 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/database"
 )
 
+func TestDeezerArtistMatchPrefersExactCaseAndPopularity(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search/artist" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":1,"name":"Abba","nb_fan":80},
+			{"id":2,"name":"ABBA","nb_fan":3207007},
+			{"id":3,"name":"Abba","nb_fan":349}
+		]}`))
+	}))
+	defer provider.Close()
+	id, err := deezerArtistID(context.Background(), provider.URL, "ABBA")
+	if err != nil || id != 2 {
+		t.Fatal("artist match", id, err)
+	}
+}
+
 func TestArtistTopTracksUsesProviderOverallTracksAndMarksLibraryMatches(t *testing.T) {
 	ctx := context.Background()
 	db, err := database.Open(ctx, t.TempDir())

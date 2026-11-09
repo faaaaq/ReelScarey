@@ -114,7 +114,7 @@ const Timeline = lazy(() =>
   import("./pages/Timeline").then((m) => ({ default: m.Timeline })),
 );
 const Music = lazy(() =>
-  import("./pages/Music").then((m) => ({ default: m.Music })),
+  import("./pages/MusicLibrary").then((m) => ({ default: m.MusicLibrary })),
 );
 const MusicArtist = lazy(() =>
   import("./pages/Music").then((m) => ({ default: m.MusicArtistPage })),

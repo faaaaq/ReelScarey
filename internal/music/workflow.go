@@ -87,7 +87,18 @@ func (s *Service) RequestFinalize(ctx context.Context, scanID int64, reviewed bo
 	if matched == 0 {
 		return Scan{}, &Error{Code: "music_nothing_to_do", Message: "This scan has no matched files to register. Match the unresolved files first."}
 	}
-	result, err := s.store.db.ExecContext(ctx, `UPDATE music_scans
+	tx, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Scan{}, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE music_scan_files SET finalize_requested=0 WHERE scan_id=?`, scanID); err != nil {
+		return Scan{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE music_scan_files SET finalize_requested=1 WHERE scan_id=? AND state='matched'`, scanID); err != nil {
+		return Scan{}, err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE music_scans
 		SET request='finalize',phase='queued',progress_total=?,progress_done=0,current_path='',message=?,error='',requested_at=unixepoch(),work_owner='',work_until=0,updated_at=unixepoch()
 		WHERE id=? AND request='' AND state NOT IN ('scanning','cancelled')`,
 		matched, "Waiting for the finalize worker. It registers the matched files in place, then organizes and tags them.", scanID)
@@ -96,6 +107,9 @@ func (s *Service) RequestFinalize(ctx context.Context, scanID int64, reviewed bo
 	}
 	if n, err := result.RowsAffected(); err != nil || n != 1 {
 		return Scan{}, &Error{Code: "music_scan_state", Message: "This scan already has a pending or running workflow."}
+	}
+	if err := tx.Commit(); err != nil {
+		return Scan{}, err
 	}
 	return s.Scan(ctx, scanID)
 }
@@ -795,7 +809,7 @@ func (s *Service) countScanFiles(ctx context.Context, scanID int64, state string
 }
 
 func (s *Service) matchedScanFileIDs(ctx context.Context, scanID int64) ([]int64, error) {
-	rows, err := s.store.db.QueryContext(ctx, `SELECT id FROM music_scan_files WHERE scan_id=? AND state='matched' ORDER BY relative_path,id`, scanID)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT id FROM music_scan_files WHERE scan_id=? AND finalize_requested=1 AND state='matched' ORDER BY relative_path,id`, scanID)
 	if err != nil {
 		return nil, err
 	}
@@ -814,7 +828,7 @@ func (s *Service) matchedScanFileIDs(ctx context.Context, scanID int64) ([]int64
 func (s *Service) registeredMusicFileIDs(ctx context.Context, scanID int64) ([]int64, error) {
 	rows, err := s.store.db.QueryContext(ctx, `SELECT f.id FROM music_files f
 		JOIN music_scan_files s ON s.relative_path=f.relative_path
-		WHERE s.scan_id=? AND s.state='registered' ORDER BY f.id`, scanID)
+		WHERE s.scan_id=? AND s.finalize_requested=1 AND s.state='registered' ORDER BY f.id`, scanID)
 	if err != nil {
 		return nil, err
 	}

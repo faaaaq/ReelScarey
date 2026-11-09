@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { Music, MusicAlbumPage, MusicArtistPage } from "../pages/Music";
+import { MusicAlbumPage, MusicArtistPage } from "../pages/Music";
+import { MusicLibrary } from "../pages/MusicLibrary";
 import { MusicPlayerProvider } from "../musicPlayer";
 
 function mockFetch(
@@ -21,6 +22,99 @@ function mockFetch(
 }
 
 describe("music", () => {
+  it("renders the unified music library views", async () => {
+    mockFetch((path) => {
+      if (path === "/api/v1/library/music/albums") {
+        return Response.json({
+          items: [
+            {
+              id: 2,
+              artist_id: 1,
+              artist_name: "Radiohead",
+              title: "OK Computer",
+              year: 1997,
+              primary_type: "Album",
+              secondary_types: [],
+              track_count: 12,
+              status: "available",
+              cover_url: "",
+            },
+          ],
+          page: 1,
+          total: 1,
+          limit: 48,
+        });
+      }
+      if (path === "/api/v1/library/music/artists") {
+        return Response.json({
+          items: [
+            {
+              id: 1,
+              name: "Radiohead",
+              type: "Group",
+              country: "GB",
+              status: "available",
+              monitored: true,
+              album_count: 1,
+            },
+          ],
+          page: 1,
+          total: 1,
+          limit: 48,
+        });
+      }
+      if (path === "/api/v1/library/music/tracks") {
+        return Response.json({
+          items: [
+            {
+              id: 3,
+              album_id: 2,
+              artist_name: "Radiohead",
+              disc: 1,
+              number: 1,
+              title: "Airbag",
+              duration_ms: 284000,
+              album_title: "OK Computer",
+              album_year: 1997,
+              cover_url: "",
+              file_id: 9,
+            },
+          ],
+          page: 1,
+          total: 1,
+          limit: 100,
+        });
+      }
+      if (path === "/api/v1/library/music/acquisitions") {
+        return Response.json({ items: [], page: 1, total: 0, limit: 20 });
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MusicPlayerProvider>
+          <MemoryRouter initialEntries={["/music"]}>
+            <MusicLibrary />
+          </MemoryRouter>
+        </MusicPlayerProvider>
+      </Theme>,
+    );
+
+    expect(
+      (await screen.findAllByRole("link", { name: "OK Computer" }))[0],
+    ).toHaveAttribute("href", "/music/albums/2");
+    await userEvent.click(screen.getByRole("button", { name: "Tracks" }));
+    expect(
+      await screen.findByRole("table", { name: "Music tracks" }),
+    ).toBeVisible();
+    expect(screen.getByText("Airbag")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Artists" }));
+    expect(
+      await screen.findByRole("link", { name: "Open Radiohead" }),
+    ).toHaveAttribute("href", "/music/artists/1");
+  });
+
   it("adds an artist from MusicBrainz search", async () => {
     const fetch = mockFetch((path, options) => {
       if (path === "/api/v1/library/music/artists" && !options?.method) {
@@ -59,8 +153,8 @@ describe("music", () => {
     render(
       <Theme>
         <MusicPlayerProvider>
-          <MemoryRouter initialEntries={["/music"]}>
-            <Music />
+          <MemoryRouter initialEntries={["/music?view=artists"]}>
+            <MusicLibrary />
           </MemoryRouter>
         </MusicPlayerProvider>
       </Theme>,
@@ -118,8 +212,8 @@ describe("music", () => {
     render(
       <Theme>
         <MusicPlayerProvider>
-          <MemoryRouter initialEntries={["/music"]}>
-            <Music />
+          <MemoryRouter initialEntries={["/music?view=artists"]}>
+            <MusicLibrary />
           </MemoryRouter>
         </MusicPlayerProvider>
       </Theme>,
@@ -154,6 +248,25 @@ describe("music", () => {
               track_count: 12,
               status: "missing",
               cover_url: "",
+            },
+          ],
+        });
+      }
+      if (path === "/api/v1/library/music/artists/1/discography") {
+        return Response.json({
+          source: "Deezer",
+          message: "",
+          items: [
+            {
+              provider_id: "deezer-album-1",
+              title: "OK Computer",
+              artist: "Radiohead",
+              year: 1997,
+              cover_url: "",
+              track_count: 12,
+              in_library: false,
+              album_id: 2,
+              status: "Album",
             },
           ],
         });

@@ -131,6 +131,7 @@ export type MusicArtistDetails = {
 };
 
 export type MusicArtistTrack = MusicTrack & {
+  artist_name?: string;
   album_title: string;
   album_year: number | null;
   cover_url: string;
@@ -141,6 +142,31 @@ export type MusicArtistTrackPage = {
   page: number;
   total: number;
   limit: number;
+};
+
+export type MusicAlbumPage = {
+  items: MusicAlbum[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
+export type MusicDiscographyAlbum = {
+  provider_id: string;
+  title: string;
+  artist: string;
+  year: number | null;
+  cover_url: string;
+  track_count: number;
+  in_library: boolean;
+  album_id: number | null;
+  status: string;
+};
+
+export type MusicDiscographyPage = {
+  source: string;
+  items: MusicDiscographyAlbum[];
+  message: string;
 };
 
 export type MusicTopTrack = {

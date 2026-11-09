@@ -176,13 +176,13 @@ func (s *Store) ArtistTracks(ctx context.Context, artistID int64, page, limit in
 		return ArtistTrackPage{}, ErrInvalidInput
 	}
 	out := ArtistTrackPage{Items: []ArtistTrack{}, Page: page, Limit: limit}
-	const registered = ` FROM music_tracks t JOIN music_albums a ON a.id=t.album_id
+	const registered = ` FROM music_tracks t JOIN music_albums a ON a.id=t.album_id JOIN music_artists ar ON ar.id=a.artist_id
 		WHERE a.artist_id=? AND EXISTS(SELECT 1 FROM music_files f WHERE f.track_id=t.id)`
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*)`+registered, artistID).Scan(&out.Total); err != nil {
 		return ArtistTrackPage{}, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT t.id,t.album_id,t.musicbrainz_id,t.recording_id,t.disc,t.number,t.title,t.duration_ms,
-		(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id),a.title,a.year,a.cover_url`+
+		(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id),ar.name,a.title,a.year,a.cover_url`+
 		registered+` ORDER BY a.year IS NULL, a.year DESC, a.title COLLATE NOCASE, t.disc, t.number, t.id LIMIT ? OFFSET ?`,
 		artistID, limit, (page-1)*limit)
 	if err != nil {
@@ -193,7 +193,84 @@ func (s *Store) ArtistTracks(ctx context.Context, artistID int64, page, limit in
 		var track ArtistTrack
 		var fileID sql.NullInt64
 		if err := rows.Scan(&track.ID, &track.AlbumID, &track.MusicBrainzID, &track.RecordingID, &track.Disc, &track.Number, &track.Title, &track.DurationMS,
-			&fileID, &track.AlbumTitle, &track.AlbumYear, &track.CoverURL); err != nil {
+			&fileID, &track.ArtistName, &track.AlbumTitle, &track.AlbumYear, &track.CoverURL); err != nil {
+			return ArtistTrackPage{}, err
+		}
+		if fileID.Valid {
+			value := fileID.Int64
+			track.FileID = &value
+		}
+		out.Items = append(out.Items, track)
+	}
+	return out, rows.Err()
+}
+
+// ListAlbums returns the saved catalog albums, including ones with no
+// registered files. The Music library uses this to look like the movie library
+// while still showing what is missing.
+func (s *Store) ListAlbums(ctx context.Context, query string, page, limit int) (AlbumPage, error) {
+	if page < 1 || page > 100000 || limit < 1 || limit > 200 {
+		return AlbumPage{}, ErrInvalidInput
+	}
+	query = strings.TrimSpace(query)
+	where := ""
+	args := []any{}
+	if query != "" {
+		where = ` WHERE a.title LIKE ? ESCAPE '\' OR ar.name LIKE ? ESCAPE '\'`
+		args = append(args, likePattern(query), likePattern(query))
+	}
+	out := AlbumPage{Items: []Album{}, Page: page, Limit: limit}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_albums a JOIN music_artists ar ON ar.id=a.artist_id`+where, args...).Scan(&out.Total); err != nil {
+		return AlbumPage{}, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+albumColumns+`,(SELECT COUNT(*) FROM music_tracks t WHERE t.album_id=a.id)
+		FROM music_albums a JOIN music_artists ar ON ar.id=a.artist_id`+where+`
+		ORDER BY a.title COLLATE NOCASE, ar.name COLLATE NOCASE, a.id LIMIT ? OFFSET ?`, append(args, limit, (page-1)*limit)...)
+	if err != nil {
+		return AlbumPage{}, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		album, err := scanAlbum(rows)
+		if err != nil {
+			return AlbumPage{}, err
+		}
+		out.Items = append(out.Items, album)
+	}
+	return out, rows.Err()
+}
+
+// ListTracks returns every registered track with album and artist context. It
+// is the Tracks view of the unified Music library.
+func (s *Store) ListTracks(ctx context.Context, query string, page, limit int) (ArtistTrackPage, error) {
+	if page < 1 || page > 100000 || limit < 1 || limit > 200 {
+		return ArtistTrackPage{}, ErrInvalidInput
+	}
+	query = strings.TrimSpace(query)
+	where := ` WHERE EXISTS(SELECT 1 FROM music_files f0 WHERE f0.track_id=t.id)`
+	args := []any{}
+	if query != "" {
+		where += ` AND (t.title LIKE ? ESCAPE '\' OR a.title LIKE ? ESCAPE '\' OR ar.name LIKE ? ESCAPE '\')`
+		args = append(args, likePattern(query), likePattern(query), likePattern(query))
+	}
+	from := ` FROM music_tracks t JOIN music_albums a ON a.id=t.album_id JOIN music_artists ar ON ar.id=a.artist_id`
+	out := ArtistTrackPage{Items: []ArtistTrack{}, Page: page, Limit: limit}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*)`+from+where, args...).Scan(&out.Total); err != nil {
+		return ArtistTrackPage{}, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT t.id,t.album_id,t.musicbrainz_id,t.recording_id,t.disc,t.number,t.title,t.duration_ms,
+		(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id),ar.name,a.title,a.year,a.cover_url`+from+where+`
+		ORDER BY ar.name COLLATE NOCASE, a.year IS NULL, a.year, a.title COLLATE NOCASE, t.disc, t.number, t.id LIMIT ? OFFSET ?`,
+		append(args, limit, (page-1)*limit)...)
+	if err != nil {
+		return ArtistTrackPage{}, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var track ArtistTrack
+		var fileID sql.NullInt64
+		if err := rows.Scan(&track.ID, &track.AlbumID, &track.MusicBrainzID, &track.RecordingID, &track.Disc, &track.Number, &track.Title, &track.DurationMS,
+			&fileID, &track.ArtistName, &track.AlbumTitle, &track.AlbumYear, &track.CoverURL); err != nil {
 			return ArtistTrackPage{}, err
 		}
 		if fileID.Valid {

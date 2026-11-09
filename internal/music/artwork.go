@@ -310,7 +310,7 @@ func allowedArtworkHost(host string) bool {
 		"e-cdns-images.dzcdn.net", "cdn-images.dzcdn.net":
 		return true
 	}
-	return strings.HasSuffix(host, ".archive.org")
+	return strings.HasSuffix(host, ".archive.org") || strings.HasSuffix(host, ".mzstatic.com")
 }
 
 var artworkHTTP = &http.Client{

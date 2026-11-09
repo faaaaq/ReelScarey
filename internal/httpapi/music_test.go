@@ -56,8 +56,23 @@ func (f *fakeMusic) Artist(context.Context, int64) (music.ArtistDetails, error) 
 func (f *fakeMusic) ArtistTracks(context.Context, int64, int, int) (music.ArtistTrackPage, error) {
 	return music.ArtistTrackPage{Items: []music.ArtistTrack{}, Page: 1, Total: 0, Limit: 15}, f.err
 }
+func (f *fakeMusic) ListAlbums(context.Context, string, int, int) (music.AlbumPage, error) {
+	return music.AlbumPage{Items: []music.Album{}, Page: 1, Limit: 48}, f.err
+}
+func (f *fakeMusic) ListTracks(context.Context, string, int, int) (music.ArtistTrackPage, error) {
+	return music.ArtistTrackPage{Items: []music.ArtistTrack{}, Page: 1, Limit: 100}, f.err
+}
 func (f *fakeMusic) ArtistTopTracks(context.Context, int64, int) (music.TopTrackPage, error) {
 	return music.TopTrackPage{Source: "Deezer", Items: []music.TopTrack{}}, f.err
+}
+func (f *fakeMusic) ArtistDiscography(context.Context, int64, int) (music.DiscographyPage, error) {
+	return music.DiscographyPage{Source: "Deezer", Items: []music.DiscographyAlbum{}}, f.err
+}
+func (f *fakeMusic) StartAlbumAcquisition(_ context.Context, _ int64, _, _ string) (music.AcquisitionJob, error) {
+	return music.AcquisitionJob{ID: 1, State: "queued", TrackCount: 1}, f.err
+}
+func (f *fakeMusic) StartProviderAlbumAcquisition(_ context.Context, _, _, _ string) (music.AcquisitionJob, error) {
+	return music.AcquisitionJob{ID: 1, State: "queued", TrackCount: 1}, f.err
 }
 func (f *fakeMusic) ResolveLink(context.Context, string) (music.LinkPreview, error) {
 	return music.LinkPreview{Source: "Spotify", Kind: "track", Title: "Track", Tracks: []music.LinkTrack{{
@@ -200,6 +215,9 @@ func (f *fakeMusic) Scan(context.Context, int64) (music.Scan, error) {
 	return music.Scan{ID: 1, State: "review"}, f.err
 }
 func (f *fakeMusic) ScanPage(context.Context, int64, int) (music.ScanPage, error) {
+	return music.ScanPage{Scan: music.Scan{ID: 1, State: "review"}, Items: []music.ScanFile{}, Page: 1, Limit: 100}, f.err
+}
+func (f *fakeMusic) ScanPageFiltered(context.Context, int64, int, string) (music.ScanPage, error) {
 	return music.ScanPage{Scan: music.Scan{ID: 1, State: "review"}, Items: []music.ScanFile{}, Page: 1, Limit: 100}, f.err
 }
 func (f *fakeMusic) RegisterScan(context.Context, int64, []int64) (int, error) {

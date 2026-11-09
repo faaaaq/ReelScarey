@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import {
   ArrowLeft,
@@ -8,12 +8,9 @@ import {
   FolderInput,
   ListMusic,
   Play,
-  Plus,
-  RefreshCw,
   Search,
-  Server,
 } from "lucide-react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
   Alert,
   EmptyState,
@@ -28,7 +25,6 @@ import {
 } from "../ui";
 import { PageHeading, RequestState } from "../components";
 import { Pagination } from "../movieComponents";
-import { groupID, groupedByLetter, sortLetters } from "../libraryGroups";
 import {
   api,
   messageFor,
@@ -38,14 +34,14 @@ import {
   type MusicAcquisitionJob,
   type MusicArtist,
   type MusicArtistDetails,
-  type MusicArtistPage,
   type MusicArtistTrack,
   type MusicArtistTrackPage,
+  type MusicDiscographyAlbum,
+  type MusicDiscographyPage,
   type MusicImportJob,
   type MusicJob,
   type MusicRelease,
   type MusicReleaseSearch,
-  type MusicSearchResults,
   type MusicTopTrack,
   type MusicTopTrackPage,
 } from "../api";
@@ -53,6 +49,7 @@ import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
 import { useMusicPlayer, type PlayerTrack } from "../musicPlayer";
 import { albumCoverURL, artistImageURL } from "../musicArtwork";
+import { AlbumDownloadModal, type AlbumDownloadTarget } from "../musicDownload";
 import "./Library.css";
 import "./Music.css";
 
@@ -62,18 +59,12 @@ function formatDuration(ms: number) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-function ArtistType({ artist }: { artist: MusicArtist }) {
-  return (
-    <>{[artist.type, artist.country].filter(Boolean).join(" · ") || "—"}</>
-  );
-}
-
 function statusKind(status: string, monitored: boolean) {
   if (status === "available") return "success";
   return monitored ? "danger" : "disabled";
 }
 
-function ArtistTile({ artist }: { artist: MusicArtist }) {
+export function ArtistTile({ artist }: { artist: MusicArtist }) {
   const [failed, setFailed] = useState(false);
   const initial = artist.name.trim().charAt(0).toUpperCase() || "?";
   const label =
@@ -132,317 +123,15 @@ function ArtistTile({ artist }: { artist: MusicArtist }) {
   );
 }
 
-export function Music() {
-  const [params, setParams] = useSearchParams();
-  const pageValue = params.get("page") ?? "";
-  const page = /^[1-9][0-9]*$/.test(pageValue) ? Number(pageValue) : 1;
-  const query = params.get("query") ?? "";
-  const [input, setInput] = useState(query);
-  const artistsParams = new URLSearchParams({ page: String(page) });
-  if (query) artistsParams.set("query", query);
-  const artists = useResource<MusicArtistPage>(
-    `/library/music/artists?${artistsParams.toString()}`,
-  );
-  const [open, setOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [results, setResults] = useState<MusicArtist[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => setInput(query), [query]);
-
-  function change(key: string, value: string) {
-    const next = new URLSearchParams(params);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    if (key !== "page") next.delete("page");
-    setParams(next);
-  }
-
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    change("query", input.trim());
-  }
-
-  async function search(e: FormEvent) {
-    e.preventDefault();
-    if (searching || !searchQuery.trim()) return;
-    setSearching(true);
-    setError("");
-    try {
-      const data = await api<MusicSearchResults>(
-        `/metadata/music/artists?query=${encodeURIComponent(searchQuery.trim())}&page=1`,
-      );
-      setResults(data.items);
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setSearching(false);
-    }
-  }
-
-  async function add(musicbrainzID: string) {
-    if (pending) return;
-    setPending(true);
-    setError("");
-    try {
-      await api("/library/music/artists", {
-        method: "POST",
-        body: JSON.stringify({ musicbrainz_id: musicbrainzID }),
-      });
-      setOpen(false);
-      setSearchQuery("");
-      setResults([]);
-      artists.reload();
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setPending(false);
-    }
-  }
-
-  const data = artists.data;
-  const items = data?.items ?? [];
-  const groups = groupedByLetter(items, (artist) => artist.name);
-  const letters = sortLetters(groups.map(([letter]) => letter));
-  const ready = !artists.loading && !artists.error && !!data;
-  const pages = data ? Math.ceil(data.total / data.limit) : 1;
-
-  return (
-    <>
-      <PageToolbar label="Music actions">
-        <ToolbarSection>
-          <ToolbarButton
-            icon={Plus}
-            label="Add artist"
-            onClick={() => setOpen(true)}
-          />
-          <ToolbarButton
-            icon={FolderInput}
-            label="Library Import"
-            title="Scan an existing music folder and register files"
-            to="/music/import"
-          />
-          <ToolbarButton
-            icon={Server}
-            label="Server"
-            title="Optional Subsonic-compatible music access"
-            to="/music/server"
-          />
-          <ToolbarButton
-            icon={Search}
-            label="Discover"
-            title="Download from links, browse charts and monitor playlists"
-            to="/music/discover"
-          />
-          <ToolbarButton
-            icon={RefreshCw}
-            label="Refresh"
-            spinning={artists.loading}
-            onClick={artists.reload}
-          />
-        </ToolbarSection>
-      </PageToolbar>
-      <PageBody className="lib-body">
-        <div className="lib-head">
-          <h1 className="lib-title">Music</h1>
-          <form onSubmit={submit} className="lib-search" role="search">
-            <TextField.Root
-              aria-label="Filter saved artists"
-              placeholder="Filter by artist"
-              maxLength={200}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-            >
-              <TextField.Slot>
-                <Search size={15} aria-hidden="true" />
-              </TextField.Slot>
-            </TextField.Root>
-            <Button
-              type="submit"
-              variant="soft"
-              aria-label="Apply artist filter"
-            >
-              Apply
-            </Button>
-          </form>
-        </div>
-
-        {ready && letters.length > 1 && (
-          <nav className="lib-az" aria-label="Jump to artist letter">
-            {letters.map((letter) => (
-              <button
-                key={letter}
-                type="button"
-                aria-label={`Jump to ${letter === "#" ? "other artists" : letter}`}
-                onClick={() =>
-                  document
-                    .getElementById(groupID(letter))
-                    ?.scrollIntoView({ block: "start" })
-                }
-              >
-                {letter}
-              </button>
-            ))}
-          </nav>
-        )}
-
-        <RequestState
-          loading={artists.loading}
-          error={artists.error}
-          retry={artists.reload}
-        />
-        {ready &&
-          (items.length ? (
-            <ul className="lib-grid" aria-label="Music artists">
-              {groups.map(([letter, rows]) => (
-                <Fragment key={letter}>
-                  <li className="lib-group-row">
-                    <h2 className="lib-group-heading" id={groupID(letter)}>
-                      {letter}
-                    </h2>
-                  </li>
-                  {rows.map((artist) => (
-                    <ArtistTile key={artist.id} artist={artist} />
-                  ))}
-                </Fragment>
-              ))}
-            </ul>
-          ) : query ? (
-            <EmptyState
-              icon={Search}
-              title="No matching artists"
-              actions={
-                <Button onClick={() => setParams({})}>
-                  Clear artist filter
-                </Button>
-              }
-            >
-              Try a different artist name or clear the filter.
-            </EmptyState>
-          ) : (
-            <EmptyState
-              icon={Disc3}
-              title="No artists yet"
-              actions={
-                <>
-                  <Button asChild>
-                    <Link to="/music/import">Import existing music</Link>
-                  </Button>
-                  <Button variant="soft" onClick={() => setOpen(true)}>
-                    Add artist
-                  </Button>
-                </>
-              }
-            >
-              Scan an existing music folder, or search MusicBrainz and add an
-              artist to the catalog.
-            </EmptyState>
-          ))}
-
-        {!artists.error && (
-          <footer className="lib-footer">
-            <p role="status" className="lib-totals">
-              {ready && data
-                ? `${data.total} matching ${
-                    data.total === 1 ? "artist" : "artists"
-                  }${
-                    items.length
-                      ? ` · showing ${(page - 1) * data.limit + 1}–${
-                          (page - 1) * data.limit + items.length
-                        }`
-                      : ""
-                  }`
-                : ""}
-            </p>
-            {ready && data && (
-              <Pagination
-                page={data.page}
-                pages={pages}
-                onPage={(p) => change("page", String(p))}
-              />
-            )}
-          </footer>
-        )}
-      </PageBody>
-      <Modal
-        open={open}
-        onOpenChange={setOpen}
-        title="Add artist"
-        description="Search MusicBrainz for an artist."
-        size="large"
-        footer={
-          <Button variant="soft" color="gray" onClick={() => setOpen(false)}>
-            Close
-          </Button>
-        }
-      >
-        <form onSubmit={(e) => void search(e)} className="mus-search">
-          <TextField.Root
-            aria-label="Artist name"
-            placeholder="Search MusicBrainz"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            maxLength={200}
-          />
-          <Button type="submit" disabled={searching || !searchQuery.trim()}>
-            <Search size={15} aria-hidden="true" /> Search
-          </Button>
-        </form>
-        {error && <Alert kind="danger">{error}</Alert>}
-        {results.length > 0 && (
-          <Table label="MusicBrainz search results">
-            <thead>
-              <tr>
-                <th scope="col">Artist</th>
-                <th scope="col">Type</th>
-                <th scope="col" className="is-actions">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((artist) => (
-                <tr key={artist.musicbrainz_id}>
-                  <td>
-                    {artist.name}
-                    {artist.disambiguation && (
-                      <span className="rs-muted">
-                        {" "}
-                        · {artist.disambiguation}
-                      </span>
-                    )}
-                    {artist.in_library && (
-                      <>
-                        {" "}
-                        <Label kind="success">In catalog</Label>
-                      </>
-                    )}
-                  </td>
-                  <td>
-                    <ArtistType artist={artist} />
-                  </td>
-                  <td className="is-actions">
-                    <Button
-                      size="1"
-                      disabled={pending || artist.in_library}
-                      onClick={() => void add(artist.musicbrainz_id)}
-                    >
-                      {artist.in_library ? "Added" : "Add"}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </Modal>
-    </>
-  );
-}
-
-function AlbumTile({ album }: { album: MusicAlbum }) {
+export function AlbumTile({
+  album,
+  onDownload,
+  showArtist = false,
+}: {
+  album: MusicAlbum;
+  onDownload?: (album: MusicAlbum) => void;
+  showArtist?: boolean;
+}) {
   const [failed, setFailed] = useState(false);
   const label =
     album.status === "available" ? "In library" : "No registered files";
@@ -484,6 +173,7 @@ function AlbumTile({ album }: { album: MusicAlbum }) {
           </h2>
         </div>
         <div className="lib-card-meta">
+          {showArtist && album.artist_name && <span>{album.artist_name}</span>}
           <span>{album.year ?? "Year unknown"}</span>
           <span>
             {album.track_count
@@ -492,9 +182,91 @@ function AlbumTile({ album }: { album: MusicAlbum }) {
           </span>
         </div>
         <span className="lib-profile">{type}</span>
+        {onDownload && album.status !== "available" && (
+          <Button
+            size="1"
+            variant="soft"
+            className="mus-card-download"
+            onClick={() => onDownload(album)}
+          >
+            <Download size={14} aria-hidden="true" />
+            Download
+          </Button>
+        )}
         <span className="sr-only">{label}</span>
       </div>
     </li>
+  );
+}
+
+export function LibraryTrackTable({ tracks }: { tracks: MusicArtistTrack[] }) {
+  const player = useMusicPlayer();
+  const playable = tracks
+    .map((track) => artistPlayerTrack(track, track.artist_name ?? ""))
+    .filter((track): track is PlayerTrack => track !== null);
+  return (
+    <Table label="Music tracks">
+      <thead>
+        <tr>
+          <th scope="col" className="is-shrink">
+            #
+          </th>
+          <th scope="col">Title</th>
+          <th scope="col">Artist</th>
+          <th scope="col">Album</th>
+          <th scope="col">Duration</th>
+          <th scope="col" className="is-actions">
+            <span className="sr-only">Play</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {tracks.map((track) => {
+          const fileID = track.file_id;
+          return (
+            <tr
+              key={
+                track.id ??
+                `${track.album_id}-${track.disc}-${track.number}-${track.title}`
+              }
+            >
+              <td>
+                {track.disc > 1
+                  ? `${track.disc}.${track.number}`
+                  : track.number}
+              </td>
+              <td>{track.title}</td>
+              <td>{track.artist_name || "—"}</td>
+              <td>
+                <Link to={`/music/albums/${track.album_id}`}>
+                  {track.album_title}
+                </Link>
+              </td>
+              <td>{formatDuration(track.duration_ms)}</td>
+              <td className="is-actions">
+                {fileID ? (
+                  <Button
+                    size="1"
+                    variant="ghost"
+                    color="gray"
+                    aria-label={`Play ${track.title}`}
+                    onClick={() => {
+                      const item = artistPlayerTrack(
+                        track,
+                        track.artist_name ?? "",
+                      );
+                      if (item) player.play(item, playable);
+                    }}
+                  >
+                    <Play size={14} aria-hidden="true" />
+                  </Button>
+                ) : null}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </Table>
   );
 }
 
@@ -606,9 +378,13 @@ function topTrackPlayer(track: MusicTopTrack): PlayerTrack | null {
 function TopTrackTable({
   tracks,
   onDownload,
+  selected,
+  onToggle,
 }: {
   tracks: MusicTopTrack[];
   onDownload: (track: MusicTopTrack) => void;
+  selected: string[];
+  onToggle: (providerID: string, checked: boolean) => void;
 }) {
   const player = useMusicPlayer();
   const playable = tracks
@@ -623,6 +399,9 @@ function TopTrackTable({
       <thead>
         <tr>
           <th scope="col" className="is-shrink">
+            <span className="sr-only">Select</span>
+          </th>
+          <th scope="col" className="is-shrink">
             #
           </th>
           <th scope="col">Title</th>
@@ -636,6 +415,18 @@ function TopTrackTable({
       <tbody>
         {tracks.map((track, index) => (
           <tr key={`${track.provider_id}-${index}`}>
+            <td>
+              {!track.in_library && (
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${track.title}`}
+                  checked={selected.includes(track.provider_id)}
+                  onChange={(event) =>
+                    onToggle(track.provider_id, event.target.checked)
+                  }
+                />
+              )}
+            </td>
             <td>{index + 1}</td>
             <td>
               {track.title}{" "}
@@ -673,6 +464,73 @@ function TopTrackTable({
   );
 }
 
+function DiscographyTile({
+  album,
+  onDownload,
+}: {
+  album: MusicDiscographyAlbum;
+  onDownload: (album: MusicDiscographyAlbum) => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  const coverURL = albumCoverURL(album.album_id) || album.cover_url;
+  const title = album.album_id ? (
+    <Link to={`/music/albums/${album.album_id}`}>{album.title}</Link>
+  ) : (
+    album.title
+  );
+  return (
+    <li className="lib-card">
+      <div className="lib-card-art mus-card-art">
+        {coverURL && !failed ? (
+          <img
+            className="mus-tile-img"
+            src={coverURL}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={() => setFailed(true)}
+          />
+        ) : (
+          <span className="mus-tile-fallback" aria-hidden="true">
+            <Disc3 size={34} strokeWidth={1} />
+          </span>
+        )}
+      </div>
+      <span
+        className={`lib-status-bar is-${album.in_library ? "success" : "danger"}`}
+        title={album.in_library ? "In library" : "Missing"}
+      />
+      <div className="lib-card-info">
+        <div className="lib-card-line">
+          <h2 className="lib-card-title">{title}</h2>
+        </div>
+        <div className="lib-card-meta">
+          <span>{album.year ?? "Year unknown"}</span>
+          <span>
+            {album.track_count
+              ? `${album.track_count} ${album.track_count === 1 ? "track" : "tracks"}`
+              : album.status || "Album"}
+          </span>
+        </div>
+        <span className="lib-profile">
+          {album.in_library ? "In library" : "Not in library"}
+        </span>
+        {!album.in_library && (
+          <Button
+            size="1"
+            variant="soft"
+            className="mus-card-download"
+            onClick={() => onDownload(album)}
+          >
+            <Download size={14} aria-hidden="true" />
+            Download album
+          </Button>
+        )}
+      </div>
+    </li>
+  );
+}
+
 export function MusicArtistPage() {
   const { id } = useParams();
   const details = useResource<MusicArtistDetails>(
@@ -681,6 +539,12 @@ export function MusicArtistPage() {
   const topTracks = useResource<MusicTopTrackPage>(
     id ? `/library/music/artists/${id}/top-tracks?limit=20` : null,
   );
+  const discography = useResource<MusicDiscographyPage>(
+    id ? `/library/music/artists/${id}/discography?limit=100` : null,
+  );
+  const [selectedTopTracks, setSelectedTopTracks] = useState<string[]>([]);
+  const [albumDownload, setAlbumDownload] =
+    useState<AlbumDownloadTarget | null>(null);
   const [allOpen, setAllOpen] = useState(false);
   const [allPage, setAllPage] = useState(1);
   const allTracks = useResource<MusicArtistTrackPage>(
@@ -699,8 +563,13 @@ export function MusicArtistPage() {
   const [downloadPending, setDownloadPending] = useState(false);
   const [downloadError, setDownloadError] = useState("");
   const [downloadJobID, setDownloadJobID] = useState<number | null>(null);
+  const [batchJobID, setBatchJobID] = useState<number | null>(null);
   const downloadJob = useLiveResource<MusicAcquisitionJob>(
     downloadJobID ? `/library/music/acquisitions/${downloadJobID}` : null,
+    2000,
+  );
+  const batchJob = useLiveResource<MusicAcquisitionJob>(
+    batchJobID ? `/library/music/acquisitions/${batchJobID}` : null,
     2000,
   );
   const artist = details.data?.artist;
@@ -708,6 +577,12 @@ export function MusicArtistPage() {
   const playableTop = (topTracks.data?.items ?? [])
     .map(topTrackPlayer)
     .filter((track): track is PlayerTrack => track !== null);
+  const missingTop = (topTracks.data?.items ?? []).filter(
+    (track) => !track.in_library,
+  );
+  const selectedTop = missingTop.filter((track) =>
+    selectedTopTracks.includes(track.provider_id),
+  );
   const allPages = allTracks.data
     ? Math.ceil(allTracks.data.total / allTracks.data.limit)
     : 1;
@@ -764,15 +639,68 @@ export function MusicArtistPage() {
     }
   }
 
+  async function startTopBatch() {
+    if (selectedTop.length === 0 || downloadPending) return;
+    setDownloadPending(true);
+    setDownloadError("");
+    try {
+      const job = await api<MusicAcquisitionJob>(
+        "/library/music/acquisitions",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            source_kind: "top_tracks",
+            title: `${artist?.name ?? "Artist"} top tracks`,
+            root: "Music",
+            format: "source",
+            reviewed: true,
+            tracks: selectedTop.map((track) => ({
+              title: track.title,
+              artist: track.artist || artist?.name || "",
+              album: track.album || track.title,
+              album_artist: artist?.name || track.artist || "",
+              year: null,
+              track_number: 1,
+              disc_number: 1,
+              duration_ms: track.duration_ms,
+              cover_url: track.cover_url,
+              source_url: "",
+              search_query: [track.artist, track.title]
+                .filter(Boolean)
+                .join(" "),
+            })),
+          }),
+        },
+      );
+      setBatchJobID(job.id);
+      setSelectedTopTracks([]);
+      topTracks.reload();
+    } catch (e) {
+      setDownloadError(messageFor(e));
+    } finally {
+      setDownloadPending(false);
+    }
+  }
+
+  function toggleTopTrack(providerID: string, checked: boolean) {
+    setSelectedTopTracks((current) =>
+      checked
+        ? [...new Set([...current, providerID])]
+        : current.filter((value) => value !== providerID),
+    );
+  }
   const topTrackState = downloadJob.data?.tracks?.[0]?.state || "";
   const topTrackError = downloadJob.data?.tracks?.[0]?.error || "";
 
   useEffect(() => {
-    if (downloadJob.data?.state === "completed") {
+    if (
+      downloadJob.data?.state === "completed" ||
+      batchJob.data?.state === "completed"
+    ) {
       topTracks.reload();
       libraryTracks.reload();
     }
-  }, [downloadJob.data?.state]);
+  }, [downloadJob.data?.state, batchJob.data?.state]);
   return (
     <>
       <PageToolbar label="Music artist actions">
@@ -809,18 +737,72 @@ export function MusicArtistPage() {
           error={details.error}
           retry={details.reload}
         />
-        {details.data &&
-          (details.data.albums.length === 0 ? (
+        {discography.error && (
+          <Alert kind="warning" title="Full discography unavailable">
+            {discography.error} Showing saved catalog albums instead.
+          </Alert>
+        )}
+        {discography.data?.message && (
+          <p className="rs-muted">{discography.data.message}</p>
+        )}
+        {discography.data ? (
+          discography.data.items.length ? (
+            <>
+              <div className="mus-section-head">
+                <div>
+                  <h2>Albums</h2>
+                  <p className="rs-muted rs-small">
+                    Full {discography.data.source} discography. Albums already
+                    in the library open normally; missing albums can be
+                    downloaded.
+                  </p>
+                </div>
+              </div>
+              <ul className="lib-grid" aria-label="Music albums">
+                {discography.data.items.map((album) => (
+                  <DiscographyTile
+                    key={album.provider_id}
+                    album={album}
+                    onDownload={(item) =>
+                      setAlbumDownload({
+                        albumID: item.album_id,
+                        providerID: item.provider_id,
+                        title: item.title,
+                        artist: item.artist || artist?.name,
+                      })
+                    }
+                  />
+                ))}
+              </ul>
+            </>
+          ) : (
+            <EmptyState icon={Disc3} title="No albums">
+              Deezer has no albums for this artist.
+            </EmptyState>
+          )
+        ) : details.data ? (
+          details.data.albums.length === 0 ? (
             <EmptyState icon={Disc3} title="No albums">
               MusicBrainz has no release groups for this artist.
             </EmptyState>
           ) : (
             <ul className="lib-grid" aria-label="Music albums">
               {details.data.albums.map((album) => (
-                <AlbumTile key={album.id} album={album} />
+                <AlbumTile
+                  key={album.id}
+                  album={album}
+                  onDownload={(item) =>
+                    setAlbumDownload({
+                      albumID: item.id,
+                      title: item.title,
+                      artist: item.artist_name,
+                    })
+                  }
+                />
               ))}
             </ul>
-          ))}
+          )
+        ) : null}
 
         {details.data && (
           <section className="mus-section" aria-labelledby="artist-top-tracks">
@@ -840,6 +822,31 @@ export function MusicArtistPage() {
                   >
                     <Play size={15} aria-hidden="true" />
                     Play top tracks
+                  </Button>
+                )}
+                {missingTop.length > 0 && (
+                  <Button
+                    variant="soft"
+                    onClick={() =>
+                      setSelectedTopTracks(
+                        selectedTopTracks.length === missingTop.length
+                          ? []
+                          : missingTop.map((track) => track.provider_id),
+                      )
+                    }
+                  >
+                    {selectedTopTracks.length === missingTop.length
+                      ? "Clear selection"
+                      : `Select missing (${missingTop.length})`}
+                  </Button>
+                )}
+                {selectedTop.length > 0 && (
+                  <Button
+                    disabled={downloadPending}
+                    onClick={() => void startTopBatch()}
+                  >
+                    <Download size={15} aria-hidden="true" />
+                    Download selected ({selectedTop.length})
                   </Button>
                 )}
                 {libraryTracks.data && libraryTracks.data.total > 0 && (
@@ -868,6 +875,8 @@ export function MusicArtistPage() {
                 <TopTrackTable
                   tracks={topTracks.data.items}
                   onDownload={openDownload}
+                  selected={selectedTopTracks}
+                  onToggle={toggleTopTrack}
                 />
               ) : (
                 !topTracks.data.message && (
@@ -876,6 +885,25 @@ export function MusicArtistPage() {
                   </p>
                 )
               ))}
+            {downloadError && !downloadTrack && (
+              <Alert kind="danger">{downloadError}</Alert>
+            )}
+            {batchJob.data && (
+              <Alert
+                kind={
+                  batchJob.data.state === "completed"
+                    ? "success"
+                    : batchJob.data.state === "failed"
+                      ? "danger"
+                      : "info"
+                }
+                title={`Batch acquisition #${batchJob.data.id}`}
+              >
+                {batchJob.data.state} · {batchJob.data.completed_count}/
+                {batchJob.data.track_count} completed
+                {batchJob.data.error ? ` · ${batchJob.data.error}` : ""}
+              </Alert>
+            )}
           </section>
         )}
       </PageBody>
@@ -1018,6 +1046,14 @@ export function MusicArtistPage() {
           </>
         )}
       </Modal>
+      <AlbumDownloadModal
+        target={albumDownload}
+        onClose={() => setAlbumDownload(null)}
+        onStarted={() => {
+          discography.reload();
+          libraryTracks.reload();
+        }}
+      />
     </>
   );
 }
@@ -1095,6 +1131,9 @@ export function MusicAlbumPage() {
   const [minBitrate, setMinBitrate] = useState("0");
   const [formats, setFormats] = useState("");
   const [prefsPending, setPrefsPending] = useState(false);
+  const [albumDownload, setAlbumDownload] =
+    useState<AlbumDownloadTarget | null>(null);
+  const hasMissingTracks = tracks.some((track) => !track.file_id);
 
   useEffect(() => {
     if (!albumPrefs.data?.preferences) return;
@@ -1234,6 +1273,19 @@ export function MusicAlbumPage() {
             onClick={() =>
               playableTracks.length > 0 &&
               player.play(playableTracks[0], playableTracks)
+            }
+          />
+          <ToolbarButton
+            icon={Download}
+            label="Download album"
+            disabled={!album?.id || !hasMissingTracks}
+            onClick={() =>
+              album?.id &&
+              setAlbumDownload({
+                albumID: album.id,
+                title: album.title,
+                artist: album.artist_name,
+              })
             }
           />
           <ToolbarButton
@@ -1595,6 +1647,11 @@ export function MusicAlbumPage() {
         </form>
         {error && <Alert kind="danger">{error}</Alert>}
       </Modal>
+      <AlbumDownloadModal
+        target={albumDownload}
+        onClose={() => setAlbumDownload(null)}
+        onStarted={() => details.reload()}
+      />
     </>
   );
 }

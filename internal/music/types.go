@@ -89,6 +89,7 @@ type Track struct {
 // read per album.
 type ArtistTrack struct {
 	Track
+	ArtistName string `json:"artist_name,omitempty"`
 	AlbumTitle string `json:"album_title"`
 	AlbumYear  *int   `json:"album_year"`
 	CoverURL   string `json:"cover_url"`
@@ -146,6 +147,13 @@ type MusicFilePage struct {
 type AlbumDetails struct {
 	Album  Album   `json:"album"`
 	Tracks []Track `json:"tracks"`
+}
+
+type AlbumPage struct {
+	Items []Album `json:"items"`
+	Page  int     `json:"page"`
+	Total int     `json:"total"`
+	Limit int     `json:"limit"`
 }
 
 func coverURL(releaseGroupMBID string) string {

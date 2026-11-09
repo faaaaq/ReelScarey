@@ -227,6 +227,65 @@ func TestScanReconsidersUnresolvedFilesAndChangedFiles(t *testing.T) {
 	}
 }
 
+func TestFinalizeCohortExcludesPreviouslyRegisteredFiles(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := NewStore(db)
+	year := 2020
+	saved, err := store.SaveArtist(ctx,
+		Artist{MusicBrainzID: testMBID, Name: "Artist", Monitored: true, Status: "available"},
+		[]Album{{MusicBrainzID: testRGID, Title: "Album", Year: &year, Monitored: true, Status: "available"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	albums, _ := store.Albums(ctx, saved.ID)
+	if err := store.SaveTracks(ctx, albums[0].ID, []Track{
+		{Disc: 1, Number: 1, Title: "Old", DurationMS: 1000},
+		{Disc: 1, Number: 2, Title: "Reviewed", DurationMS: 1000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tracks, _ := store.Tracks(ctx, albums[0].ID)
+	if _, err := db.Exec(`INSERT INTO music_scans(id,root,state,phase,created_at,updated_at) VALUES(1,'Music','review','ready',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{"Music/Artist/Album/01 Old.flac", "Music/Artist/Album/02 Reviewed.flac"}
+	for index, relative := range paths {
+		if _, err := db.Exec(`INSERT INTO music_scan_files(scan_id,relative_path,size_bytes,modified_at,format,state,finalize_requested,created_at,updated_at)
+			VALUES(1,?,100,1,'flac','registered',?,1,1)`, relative, index == 1); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO music_files(artist_id,album_id,track_id,root,relative_path,size_bytes,format,imported_at,origin)
+			VALUES(?,?,?,'Music',?,100,'flac',1,'existing')`, saved.ID, albums[0].ID, tracks[index].ID, relative); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO music_scan_files(scan_id,relative_path,size_bytes,modified_at,format,state,finalize_requested,created_at,updated_at)
+		VALUES(1,'Music/Artist/Album/03 Matched.flac',100,1,'flac','matched',1,1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(db, t.TempDir())
+	fileIDs, err := service.registeredMusicFileIDs(ctx, 1)
+	if err != nil || len(fileIDs) != 1 {
+		t.Fatalf("registered cohort %v %v", fileIDs, err)
+	}
+	var reviewedFileID int64
+	if err := db.QueryRow(`SELECT id FROM music_files WHERE relative_path=?`, paths[1]).Scan(&reviewedFileID); err != nil {
+		t.Fatal(err)
+	}
+	if fileIDs[0] != reviewedFileID {
+		t.Fatalf("old registered file entered the finalize cohort: %v", fileIDs)
+	}
+	matched, err := service.matchedScanFileIDs(ctx, 1)
+	if err != nil || len(matched) != 1 {
+		t.Fatalf("matched cohort %v %v", matched, err)
+	}
+}
+
 func TestRecoverScansRequeuesInterruptedWorkflow(t *testing.T) {
 	ctx := context.Background()
 	db, err := database.Open(ctx, t.TempDir())
@@ -260,7 +319,7 @@ func TestRecoverScansRequeuesInterruptedWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if finalize.Request != "finalize" || finalize.Phase != "organizing" || finalize.ProgressTotal != 4 || finalize.ProgressDone != 0 {
+	if finalize.Request != "finalize" || finalize.Phase != "organizing" || finalize.ProgressTotal != 1 || finalize.ProgressDone != 0 {
 		t.Fatalf("recovered finalize progress %+v", finalize)
 	}
 	var state, phase, owner string

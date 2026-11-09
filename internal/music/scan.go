@@ -1104,7 +1104,18 @@ func (s *Service) Scan(ctx context.Context, id int64) (Scan, error) {
 }
 
 func (s *Service) ScanPage(ctx context.Context, id int64, page int) (ScanPage, error) {
+	return s.ScanPageFiltered(ctx, id, page, "")
+}
+
+// ScanPageFiltered lists one page of a scan's files, optionally restricted to
+// one review state. The import page uses "unresolved" so a large registered
+// library does not bury the files that still need attention.
+func (s *Service) ScanPageFiltered(ctx context.Context, id int64, page int, state string) (ScanPage, error) {
 	if page < 1 || page > 100000 {
+		return ScanPage{}, ErrInvalidInput
+	}
+	state = strings.TrimSpace(state)
+	if state != "" && state != "all" && state != "matched" && state != "unresolved" && state != "registered" && state != "skipped" {
 		return ScanPage{}, ErrInvalidInput
 	}
 	scan, err := s.Scan(ctx, id)
@@ -1112,11 +1123,18 @@ func (s *Service) ScanPage(ctx context.Context, id int64, page int) (ScanPage, e
 		return ScanPage{}, err
 	}
 	const limit = 100
+	where := "scan_id=?"
+	args := []any{id}
+	if state != "" && state != "all" {
+		where += " AND state=?"
+		args = append(args, state)
+	}
 	out := ScanPage{Scan: scan, Items: []ScanFile{}, Page: page, Limit: limit}
-	if err := s.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_scan_files WHERE scan_id=?`, id).Scan(&out.Total); err != nil {
+	if err := s.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_scan_files WHERE `+where, args...).Scan(&out.Total); err != nil {
 		return ScanPage{}, err
 	}
-	rows, err := s.store.db.QueryContext(ctx, `SELECT `+scanFileColumns+` FROM music_scan_files WHERE scan_id=? ORDER BY relative_path LIMIT ? OFFSET ?`, id, limit, (page-1)*limit)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT `+scanFileColumns+` FROM music_scan_files WHERE `+where+` ORDER BY relative_path LIMIT ? OFFSET ?`,
+		append(args, limit, (page-1)*limit)...)
 	if err != nil {
 		return ScanPage{}, err
 	}

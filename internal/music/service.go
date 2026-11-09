@@ -76,7 +76,7 @@ func (s *Service) SetFingerprinter(fingerprinter Fingerprinter) {
 func (s *Service) RecoverScans(ctx context.Context) error {
 	_, err := s.store.db.ExecContext(ctx, `UPDATE music_scans SET state='failed', phase='failed', error='The scan was interrupted by a restart.', updated_at=unixepoch() WHERE state='scanning';
 		UPDATE music_scans SET phase=CASE WHEN request='finalize' THEN 'organizing' WHEN request='match' THEN 'matching' ELSE phase END,
-			progress_total=CASE WHEN request='finalize' THEN MAX(matched_count,registered_count,1) WHEN request='match' THEN MAX(unresolved_count,1) ELSE MAX(progress_total,1) END,
+			progress_total=CASE WHEN request='finalize' THEN MAX((SELECT COUNT(*) FROM music_scan_files f WHERE f.scan_id=music_scans.id AND f.finalize_requested=1),matched_count,1) WHEN request='match' THEN MAX(unresolved_count,1) ELSE MAX(progress_total,1) END,
 			progress_done=0,
 			message='The workflow was interrupted by a restart and will resume from the saved state.',
 			work_owner='', work_until=0, current_path='', updated_at=unixepoch() WHERE request<>'' AND state IN ('review','completed','failed');
@@ -132,6 +132,14 @@ func (s *Service) AddArtist(ctx context.Context, mbid string, monitored bool) (A
 
 func (s *Service) ListArtists(ctx context.Context, query string, page int) (ArtistPage, error) {
 	return s.store.ListArtists(ctx, query, page)
+}
+
+func (s *Service) ListAlbums(ctx context.Context, query string, page, limit int) (AlbumPage, error) {
+	return s.store.ListAlbums(ctx, query, page, limit)
+}
+
+func (s *Service) ListTracks(ctx context.Context, query string, page, limit int) (ArtistTrackPage, error) {
+	return s.store.ListTracks(ctx, query, page, limit)
 }
 
 func (s *Service) ListFiles(ctx context.Context, page int) (MusicFilePage, error) {

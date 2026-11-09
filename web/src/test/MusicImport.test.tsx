@@ -519,6 +519,39 @@ describe("music import", () => {
     });
   });
 
+  it("auto-filters a large scan to unresolved files", async () => {
+    const large = {
+      ...scan,
+      registered_count: 12000,
+      unresolved_count: 1,
+      file_count: 12002,
+    };
+    mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/scans" && !options?.method) {
+        return scanList([large]);
+      }
+      if (path === "/api/v1/library/music/scans/1" && !options?.method) {
+        return scanPage(large, [unresolved]);
+      }
+      return undefined;
+    });
+
+    mount();
+
+    await screen.findByText(/Scan #1/);
+    const filter = (await screen.findByRole("combobox", {
+      name: "Scanned file filter",
+    })) as HTMLSelectElement;
+    await waitFor(() => expect(filter.value).toBe("unresolved"));
+    expect(
+      screen.getByRole("table", { name: "Scanned music files (unresolved)" }),
+    ).toBeVisible();
+    expect(screen.getByText("Music/Unknown/02 - Other.mp3")).toBeVisible();
+    expect(
+      screen.queryByText("Music/Artist/Album/01 - Song.flac"),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows live scan progress, phase and current path", async () => {
     let activeScan = {
       ...scan,

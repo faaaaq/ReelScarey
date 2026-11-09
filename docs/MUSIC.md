@@ -808,3 +808,27 @@ image.
   image endpoints work without adding external hosts to the browser CSP.
 - The Subsonic-compatible `getCoverArt` action serves the same cached album
   cover.
+
+### Finalize cohort and large-scan review
+
+A finalize request now records the exact matched files that were reviewed. The
+durable worker registers and organizes only that cohort; files registered by
+earlier scans are never re-organized just because a new finalize request runs.
+The cohort survives restart, so a resumed finalize continues with the reviewed
+files instead of walking the whole registered library.
+
+The import page has a scan-file filter for Unresolved, Matched, Registered,
+Skipped or All. A very large scan opens on Unresolved automatically, while
+small scans keep the All view. The filter is a server-side query, so it does
+not page through thousands of unrelated files. The API uses
+`GET /api/v1/library/music/scans/{id}?page=&state=`.
+
+### Unified music library and batch downloads
+
+The Music index is one library page with Albums, Artists and Tracks views, matching the Movies/TV/Anime tile layout. The Albums view is the default and includes saved albums with no registered files; Tracks lists only registered tracks. Search, A-Z grouping and pagination stay on the same page.
+
+Album tiles and the album page can queue an automatic album download. Missing tracks are matched, downloaded and imported by the durable worker; existing files are skipped and never replaced. The artist page lists the full Deezer discography even when an album is not in the local catalog, and each missing album can be downloaded. Artist top tracks can be selected in bulk and queued as one acquisition job.
+Artist top tracks use Deezer's top list first, then Deezer track search, then
+iTunes search when the earlier providers return no usable tracks. The discovery
+page shows active jobs and any job that needs attention, so normal processing
+needs no user intervention.

@@ -107,6 +107,72 @@ type AcquisitionJobList struct {
 
 func (s *Service) SetAudioSource(source AudioSource) { s.audio = source }
 
+// StartAlbumAcquisition queues every catalog track in one album that has no
+// registered file. It is used by the unified library and the album page.
+func (s *Service) StartAlbumAcquisition(ctx context.Context, albumID int64, root, format string) (AcquisitionJob, error) {
+	if albumID < 1 {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	album, err := s.store.Album(ctx, albumID)
+	if err != nil {
+		return AcquisitionJob{}, err
+	}
+	tracks, err := s.store.Tracks(ctx, albumID)
+	if err != nil {
+		return AcquisitionJob{}, err
+	}
+	inputs := []AcquisitionTrackInput{}
+	for _, track := range tracks {
+		if track.FileID != nil || len(inputs) >= 100 {
+			continue
+		}
+		inputs = append(inputs, AcquisitionTrackInput{
+			Title: track.Title, Artist: album.ArtistName, Album: album.Title, AlbumArtist: album.ArtistName,
+			Year: album.Year, TrackNumber: track.Number, DiscNumber: track.Disc,
+			DurationMS: track.DurationMS, CoverURL: album.CoverURL,
+			SearchQuery: strings.TrimSpace(album.ArtistName + " " + track.Title),
+		})
+	}
+	if len(inputs) == 0 {
+		return AcquisitionJob{}, &Error{Code: "music_nothing_to_do", Message: "Every catalog track in this album already has a registered file."}
+	}
+	return s.StartAcquisition(ctx, "", "album", album.Title, root, format, inputs)
+}
+
+// StartProviderAlbumAcquisition resolves a public Deezer album link and queues
+// all of its tracks. It is used for albums shown in the full discography that
+// are not yet in the local catalog.
+func (s *Service) StartProviderAlbumAcquisition(ctx context.Context, providerID, root, format string) (AcquisitionJob, error) {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" || len(providerID) > 32 {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	for _, value := range providerID {
+		if value < '0' || value > '9' {
+			return AcquisitionJob{}, ErrInvalidInput
+		}
+	}
+	preview, err := s.ResolveLink(ctx, "https://www.deezer.com/album/"+providerID)
+	if err != nil {
+		return AcquisitionJob{}, err
+	}
+	inputs := make([]AcquisitionTrackInput, 0, len(preview.Tracks))
+	for _, track := range preview.Tracks {
+		if len(inputs) >= 100 {
+			break
+		}
+		inputs = append(inputs, AcquisitionTrackInput{
+			Title: track.Title, Artist: track.Artist, Album: track.Album, AlbumArtist: track.AlbumArtist,
+			Year: track.Year, TrackNumber: track.TrackNumber, DiscNumber: track.DiscNumber,
+			DurationMS: track.DurationMS, CoverURL: track.CoverURL, SourceURL: track.SourceURL, SearchQuery: track.SearchQuery,
+		})
+	}
+	if len(inputs) == 0 {
+		return AcquisitionJob{}, &Error{Code: "music_link_empty", Message: "Deezer returned no tracks for this album."}
+	}
+	return s.StartAcquisition(ctx, "https://www.deezer.com/album/"+providerID, "deezer_album", preview.Title, root, format, inputs)
+}
+
 func validAcquisitionFormat(format string) bool {
 	switch strings.ToLower(strings.TrimSpace(format)) {
 	case "", "source", "mp3", "flac", "m4a", "opus":

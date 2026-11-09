@@ -188,6 +188,141 @@ func (s *Server) musicArtistTracks(w http.ResponseWriter, r *http.Request) {
 	send(w, 200, tracks)
 }
 
+func (s *Server) musicAlbums(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	page, valid := pageNumber(r, 100000)
+	if !valid {
+		fail(w, 400, "invalid_music", "Choose a valid album page.")
+		return
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("query"))
+	if !music.ValidListQuery(query, page) {
+		fail(w, 400, "invalid_music", "Enter at most 200 characters and a valid page.")
+		return
+	}
+	limit := queryLimit(r, 48, 200)
+	albums, err := s.music.ListAlbums(r.Context(), query, page, limit)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, albums)
+}
+
+func (s *Server) musicTracks(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	page, valid := pageNumber(r, 100000)
+	if !valid {
+		fail(w, 400, "invalid_music", "Choose a valid track page.")
+		return
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("query"))
+	if !music.ValidListQuery(query, page) {
+		fail(w, 400, "invalid_music", "Enter at most 200 characters and a valid page.")
+		return
+	}
+	limit := queryLimit(r, 100, 200)
+	tracks, err := s.music.ListTracks(r.Context(), query, page, limit)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, tracks)
+}
+
+func queryLimit(r *http.Request, fallback, maximum int) int {
+	value, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	if err != nil || value < 1 {
+		return fallback
+	}
+	if value > maximum {
+		return maximum
+	}
+	return value
+}
+
+func (s *Server) musicArtistDiscography(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	limit := queryLimit(r, 100, 100)
+	albums, err := s.music.ArtistDiscography(r.Context(), id, limit)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, albums)
+}
+
+func (s *Server) musicAlbumAcquire(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Root     string `json:"root"`
+		Format   string `json:"format"`
+		Reviewed bool   `json:"reviewed"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !body.Reviewed {
+		fail(w, 400, "review_required", "Review the album before starting the download.")
+		return
+	}
+	job, err := s.music.StartAlbumAcquisition(r.Context(), id, body.Root, body.Format)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 202, job)
+}
+
+func (s *Server) musicProviderAlbumAcquire(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Root     string `json:"root"`
+		Format   string `json:"format"`
+		Reviewed bool   `json:"reviewed"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !body.Reviewed {
+		fail(w, 400, "review_required", "Review the album before starting the download.")
+		return
+	}
+	job, err := s.music.StartProviderAlbumAcquisition(r.Context(), strconv.FormatInt(id, 10), body.Root, body.Format)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 202, job)
+}
+
 func (s *Server) musicArtistTopTracks(w http.ResponseWriter, r *http.Request) {
 	if s.music == nil {
 		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
@@ -713,7 +848,7 @@ func (s *Server) musicScan(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid_music", "Choose a valid page.")
 		return
 	}
-	out, err := s.music.ScanPage(r.Context(), id, page)
+	out, err := s.music.ScanPageFiltered(r.Context(), id, page, r.URL.Query().Get("state"))
 	if err != nil {
 		s.musicError(w, err)
 		return

@@ -21,6 +21,11 @@
   overflow: hidden;
 }
 
+.mus-card-download {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
 .mus-tile-img {
   display: block;
   width: 100%;
