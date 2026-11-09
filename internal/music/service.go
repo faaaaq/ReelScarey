@@ -75,7 +75,11 @@ func (s *Service) SetFingerprinter(fingerprinter Fingerprinter) {
 // reported as completed.
 func (s *Service) RecoverScans(ctx context.Context) error {
 	_, err := s.store.db.ExecContext(ctx, `UPDATE music_scans SET state='failed', phase='failed', error='The scan was interrupted by a restart.', updated_at=unixepoch() WHERE state='scanning';
-		UPDATE music_scans SET phase='queued', message='The workflow was interrupted by a restart and will resume.', work_owner='', work_until=0, current_path='', updated_at=unixepoch() WHERE request<>'' AND state IN ('review','completed','failed');
+		UPDATE music_scans SET phase=CASE WHEN request='finalize' THEN 'organizing' WHEN request='match' THEN 'matching' ELSE phase END,
+			progress_total=CASE WHEN request='finalize' THEN MAX(matched_count,registered_count,1) WHEN request='match' THEN MAX(unresolved_count,1) ELSE MAX(progress_total,1) END,
+			progress_done=0,
+			message='The workflow was interrupted by a restart and will resume from the saved state.',
+			work_owner='', work_until=0, current_path='', updated_at=unixepoch() WHERE request<>'' AND state IN ('review','completed','failed');
 		UPDATE music_scans SET work_owner='', work_until=0 WHERE request='';
 		UPDATE music_edit_jobs SET state='failed',error='The edit was interrupted. Inspect the source, output and retained files before retrying.',updated_at=unixepoch() WHERE state='running'`)
 	return err

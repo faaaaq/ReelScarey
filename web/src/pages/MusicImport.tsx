@@ -332,16 +332,23 @@ export function MusicImport() {
   const scan = active.data?.scan;
   const phase = scan ? scanPhase(scan) : "ready";
   const phaseActive = isActivePhase(phase);
-  const progressTotal = Math.max(0, scan?.progress_total ?? 0);
-  const progressDone = Math.min(
-    Math.max(0, scan?.progress_done ?? 0),
-    progressTotal,
-  );
   const skippedCount = Math.max(0, scan?.skipped_count ?? 0);
   const unresolvedCount = Math.max(0, scan?.unresolved_count ?? 0);
   const matchedCount = Math.max(0, scan?.matched_count ?? 0);
   const registeredCount = Math.max(0, scan?.registered_count ?? 0);
   const fileCount = Math.max(0, scan?.file_count ?? 0);
+  const progressTotal = Math.max(
+    Math.max(0, scan?.progress_total ?? 0),
+    phase === "organizing" ? matchedCount + registeredCount : 0,
+    phase === "matching" || phase === "fingerprinting" ? unresolvedCount : 0,
+    phase === "queued"
+      ? Math.max(matchedCount, registeredCount, unresolvedCount)
+      : 0,
+  );
+  const progressDone = Math.min(
+    Math.max(0, scan?.progress_done ?? 0),
+    progressTotal,
+  );
   const remainingCount = Math.max(
     0,
     fileCount - registeredCount - skippedCount,
@@ -889,7 +896,7 @@ export function MusicImport() {
         {error && <Alert kind="danger">{error}</Alert>}
         {active.data?.scan && scan && (
           <FieldSet
-            legend={`Scan #${scan.id} · ${scan.root}${scan.full_scan ? " · full rescan" : ""}`}
+            legend={`Scan #${scan.id} · ${scan.root}${scan.full_scan ? " · full rescan" : ""}${scan.request === "finalize" ? " · finalize" : scan.request === "match" ? " · matching" : ""}`}
             actions={
               phaseActive ? (
                 <Button

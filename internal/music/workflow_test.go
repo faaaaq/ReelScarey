@@ -235,11 +235,15 @@ func TestRecoverScansRequeuesInterruptedWorkflow(t *testing.T) {
 	}
 	defer db.Close()
 	service := NewService(db, t.TempDir())
-	if _, err := db.Exec(`INSERT INTO music_scans(id,root,state,phase,request,work_owner,work_until,message,created_at,updated_at)
-		VALUES(1,'Music','review','matching','match','stale-owner',9999999999,'Matching.',1,1)`); err != nil {
+	if _, err := db.Exec(`INSERT INTO music_scans(id,root,state,phase,request,work_owner,work_until,message,matched_count,registered_count,unresolved_count,created_at,updated_at)
+		VALUES(1,'Music','review','matching','match','stale-owner',9999999999,'Matching.',2,1,3,1,1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO music_scans(id,root,state,phase,created_at,updated_at) VALUES(2,'Music','scanning','scanning',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO music_scans(id,root,state,phase,request,progress_total,matched_count,registered_count,created_at,updated_at)
+		VALUES(3,'Music','review','organizing','finalize',0,0,4,1,1)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.RecoverScans(ctx); err != nil {
@@ -249,14 +253,21 @@ func TestRecoverScansRequeuesInterruptedWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scan.Request != "match" || scan.Phase != "queued" || scan.WorkUntil != 0 || !strings.Contains(scan.Message, "interrupted by a restart") {
+	if scan.Request != "match" || scan.Phase != "matching" || scan.WorkUntil != 0 || scan.ProgressTotal != 3 || scan.ProgressDone != 0 || !strings.Contains(scan.Message, "interrupted by a restart") {
 		t.Fatalf("recovered request %+v", scan)
+	}
+	finalize, err := service.Scan(ctx, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finalize.Request != "finalize" || finalize.Phase != "organizing" || finalize.ProgressTotal != 4 || finalize.ProgressDone != 0 {
+		t.Fatalf("recovered finalize progress %+v", finalize)
 	}
 	var state, phase, owner string
 	if err := db.QueryRow(`SELECT state,phase,work_owner FROM music_scans WHERE id=1`).Scan(&state, &phase, &owner); err != nil {
 		t.Fatal(err)
 	}
-	if state != "review" || phase != "queued" || owner != "" {
+	if state != "review" || phase != "matching" || owner != "" {
 		t.Fatalf("recovered row %s %s %s", state, phase, owner)
 	}
 	interrupted, err := service.Scan(ctx, 2)
@@ -271,8 +282,11 @@ func TestRecoverScansRequeuesInterruptedWorkflow(t *testing.T) {
 	if err != nil || !ok || claimed.ID != 1 || owner == "" {
 		t.Fatalf("claim %+v %v %v", claimed, ok, err)
 	}
-	if _, _, again, err := service.claimWorkflow(ctx); err != nil || again {
-		t.Fatalf("second claim of one scan succeeded: %v %v", again, err)
+	if _, _, again, err := service.claimWorkflow(ctx); err != nil || !again {
+		t.Fatalf("second claim did not pick the second recovered scan: %v %v", again, err)
+	}
+	if _, _, third, err := service.claimWorkflow(ctx); err != nil || third {
+		t.Fatalf("third claim of two scans succeeded: %v %v", third, err)
 	}
 }
 

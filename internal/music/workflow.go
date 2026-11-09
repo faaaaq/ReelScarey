@@ -491,6 +491,11 @@ func (s *Service) discoverAllFiles(ctx context.Context, scanID int64, owner stri
 	warnings := []string{}
 	matched := 0
 	cursor := ""
+	total, err := s.unresolvedCount(ctx, scanID)
+	if err != nil {
+		return matched, warnings, err
+	}
+	processed := 0
 	for {
 		if err := s.renewWorkflow(ctx, scanID, owner); err != nil {
 			return matched, warnings, err
@@ -514,6 +519,7 @@ func (s *Service) discoverAllFiles(ctx context.Context, scanID int64, owner stri
 				// A complete tag identity was already handled locally. It is
 				// left for manual review if the tags conflicted; provider
 				// discovery must not create a second catalog album for it.
+				processed++
 				continue
 			}
 			candidates = append(candidates, file)
@@ -521,7 +527,8 @@ func (s *Service) discoverAllFiles(ctx context.Context, scanID int64, owner stri
 		if len(candidates) > 0 {
 			result, stopped, err := s.runDiscovery(ctx, scanID, candidates, discoveryRun{
 				onFile: func(file ScanFile) {
-					_ = s.progressWorkflow(ctx, scanID, owner, "matching", file.RelativePath, "Discovering MusicBrainz catalog entries.")
+					processed++
+					_ = s.setWorkflowCounts(ctx, scanID, owner, "matching", total, processed, file.RelativePath, "Discovering MusicBrainz catalog entries.")
 				},
 			})
 			if err != nil {
@@ -541,6 +548,11 @@ func (s *Service) fingerprintAllFiles(ctx context.Context, scanID int64, owner, 
 	warnings := []string{}
 	matched := 0
 	cursor := ""
+	total, err := s.unresolvedCount(ctx, scanID)
+	if err != nil {
+		return matched, warnings, err
+	}
+	processed := 0
 	for {
 		if err := s.renewWorkflow(ctx, scanID, owner); err != nil {
 			return matched, warnings, err
@@ -561,7 +573,8 @@ func (s *Service) fingerprintAllFiles(ctx context.Context, scanID int64, owner, 
 		result, err := s.runFingerprint(ctx, scanID, files, key, fingerprintRun{
 			catalog: catalog,
 			onFile: func(file ScanFile) {
-				_ = s.progressWorkflow(ctx, scanID, owner, "fingerprinting", file.RelativePath, "Fingerprinting and looking up AcoustID matches.")
+				processed++
+				_ = s.setWorkflowCounts(ctx, scanID, owner, "fingerprinting", total, processed, file.RelativePath, "Fingerprinting and looking up AcoustID matches.")
 			},
 		})
 		matched += result.Matched
@@ -657,6 +670,14 @@ func (s *Service) runFinalizeWorkflow(ctx context.Context, scan Scan, owner stri
 	if err != nil {
 		return err
 	}
+	if len(fileIDs) > 0 {
+		if err := s.setWorkflowCounts(base, id, owner, "organizing", len(fileIDs), 0, "", "Organizing and tagging registered files."); err != nil {
+			if errors.Is(err, errWorkLeaseLost) {
+				return nil
+			}
+			return err
+		}
+	}
 	organized := 0
 	for index, fileID := range fileIDs {
 		if cancelled, err := s.workflowCancelled(base, id); err != nil {
@@ -665,6 +686,12 @@ func (s *Service) runFinalizeWorkflow(ctx context.Context, scan Scan, owner stri
 			return nil
 		}
 		if err := s.renewWorkflow(base, id, owner); err != nil {
+			if errors.Is(err, errWorkLeaseLost) {
+				return nil
+			}
+			return err
+		}
+		if err := s.setWorkflowCounts(base, id, owner, "organizing", len(fileIDs), index, "", fmt.Sprintf("Organizing and tagging file %d of %d.", index+1, len(fileIDs))); err != nil {
 			if errors.Is(err, errWorkLeaseLost) {
 				return nil
 			}
@@ -680,8 +707,10 @@ func (s *Service) runFinalizeWorkflow(ctx context.Context, scan Scan, owner stri
 		}
 		if len(plan.Files) == 0 {
 			organized++
+			_ = s.setWorkflowCounts(base, id, owner, "organizing", len(fileIDs), index+1, "", fmt.Sprintf("Organizing and tagging file %d of %d.", index+1, len(fileIDs)))
 			continue
 		}
+		_ = s.setWorkflowCounts(base, id, owner, "organizing", len(fileIDs), index, plan.Files[0].SourcePath, fmt.Sprintf("Organizing and tagging file %d of %d.", index+1, len(fileIDs)))
 		job, err := s.ApplyEdits(base, []int64{plan.Files[0].MusicFileID}, plan.PlanHash, true)
 		if err != nil {
 			failed++
@@ -716,6 +745,9 @@ func (s *Service) runFinalizeWorkflow(ctx context.Context, scan Scan, owner stri
 	unresolved, err := s.unresolvedCount(base, id)
 	if err != nil {
 		return err
+	}
+	if len(fileIDs) > 0 {
+		_ = s.setWorkflowCounts(base, id, owner, "organizing", len(fileIDs), len(fileIDs), "", "Finalizing organization results.")
 	}
 	message := fmt.Sprintf("Registered %d files; organized %d files; %d failed.", registered, organized, failed)
 	if unresolved > 0 {

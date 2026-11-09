@@ -301,6 +301,7 @@ export type MusicScan = {
   matched_count: number;
   unresolved_count: number;
   registered_count: number;
+  request?: "match" | "finalize" | "";
   error: string;
   created_at: number;
   updated_at: number;
