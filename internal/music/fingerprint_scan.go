@@ -78,12 +78,16 @@ type fingerprintRun struct {
 	maxAlbums       int
 	workBudget      time.Duration
 	providerTimeout time.Duration
+	catalog         *localCatalog
 	onFile          func(file ScanFile)
 }
 
 func (s *Service) runFingerprint(ctx context.Context, scanID int64, files []ScanFile, key string, run fingerprintRun) (DiscoverResult, error) {
 	result := DiscoverResult{Selected: len(files), Warnings: []string{}}
 	dbCtx := context.WithoutCancel(ctx)
+	if run.catalog == nil {
+		run.catalog = newLocalCatalog(s)
+	}
 	cache := &discoveryCache{
 		artists:        map[string]Artist{},
 		pendingArtists: map[string]Artist{},
@@ -158,6 +162,35 @@ func (s *Service) runFingerprint(ctx context.Context, scanID int64, files []Scan
 			}
 			continue
 		}
+		// When the file's own tags are complete, the AcoustID release-group and
+		// recording IDs are enough to build the catalog entry locally. No
+		// MusicBrainz request is needed for metadata or a track list.
+		if tagIdentityFor(file).canCreate() {
+			artistID, albumID, trackID, localErr := run.catalog.matchTagCreateWithIDs(dbCtx, file, match.ReleaseGroupID, match.RecordingID)
+			if localErr == nil {
+				if err := s.updateScanFileState(dbCtx, file.ID, "matched", artistID, albumID, trackID, ""); err != nil {
+					return result, err
+				}
+				result.Matched++
+				if run.onFile != nil {
+					run.onFile(file)
+				}
+				continue
+			}
+			var provider *Error
+			if !errors.As(localErr, &provider) {
+				return result, localErr
+			}
+			// Complete tags that conflict with a saved album stay for review
+			// instead of letting provider discovery create a second album.
+			if saveErr := s.updateScanFileState(dbCtx, file.ID, "unresolved", artistID, albumID, 0, matchErrorMessage(localErr)); saveErr != nil {
+				return result, saveErr
+			}
+			if run.onFile != nil {
+				run.onFile(file)
+			}
+			continue
+		}
 		resolved, known := groups[match.ReleaseGroupID]
 		if !known {
 			if run.maxAlbums > 0 && len(groups) >= run.maxAlbums {
@@ -185,7 +218,7 @@ func (s *Service) runFingerprint(ctx context.Context, scanID int64, files []Scan
 			resolved = fingerprintGroup{artistID: artistID, albumID: albumID}
 			groups[match.ReleaseGroupID] = resolved
 		}
-		trackID, err := s.matchTrackByRecording(dbCtx, file, resolved.albumID, match.RecordingID)
+		trackID, err := s.matchTrackByRecording(dbCtx, file, resolved.albumID, match.RecordingID, match.RecordingTitle)
 		if err != nil {
 			message := fingerprintTrackMessage(err)
 			if saveErr := s.updateScanFileState(dbCtx, file.ID, "unresolved", resolved.artistID, resolved.albumID, 0, message); saveErr != nil {
@@ -216,9 +249,10 @@ func (s *Service) runFingerprint(ctx context.Context, scanID int64, files []Scan
 	return result, fatalErr
 }
 
-// matchTrackByRecording prefers the AcoustID recording ID, then falls back to
-// the existing tag/track evidence in matchAlbumTrack. It never guesses.
-func (s *Service) matchTrackByRecording(ctx context.Context, file ScanFile, albumID int64, recordingID string) (int64, error) {
+// matchTrackByRecording prefers the AcoustID recording ID, then an exact
+// AcoustID recording title when the file itself has no title, then the
+// existing tag/track evidence in matchAlbumTrack. It never guesses.
+func (s *Service) matchTrackByRecording(ctx context.Context, file ScanFile, albumID int64, recordingID, recordingTitle string) (int64, error) {
 	if err := s.ensureAlbumTracks(ctx, albumID); err != nil {
 		return 0, &Error{Code: "music_album_tracks_unavailable", Message: "The album matched but its MusicBrainz track list could not be loaded. Try again later."}
 	}
@@ -235,6 +269,11 @@ func (s *Service) matchTrackByRecording(ctx context.Context, file ScanFile, albu
 				return track.ID, nil
 			}
 		}
+	}
+	if strings.TrimSpace(file.Title) == "" && strings.TrimSpace(recordingTitle) != "" {
+		// A tag-derived album can be matched by the AcoustID recording title
+		// even when the file has no title tag of its own.
+		file.Title = recordingTitle
 	}
 	return matchAlbumTrack(file, tracks)
 }

@@ -447,7 +447,7 @@ func TestMatchWorkflowStopsSafelyWhenMusicBrainzIsCoolingDown(t *testing.T) {
 	}
 	unresolvedID := insertDiscoveryFile(t, db, scanID, discoveryFile{
 		path: "Music/Unknown/track.flac", artist: "Unknown Artist", albumArtist: "Unknown Artist",
-		album: "Unknown Album", title: "Unknown", track: intPtr(1), disc: intPtr(1),
+		album: "Unknown Album", title: "Unknown", disc: intPtr(1),
 	})
 	if _, err := service.RequestMatchAll(ctx, scanID, true); err != nil {
 		t.Fatal(err)

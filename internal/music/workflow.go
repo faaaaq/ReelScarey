@@ -56,7 +56,7 @@ func (s *Service) RequestMatchAll(ctx context.Context, scanID int64, reviewed bo
 	result, err := s.store.db.ExecContext(ctx, `UPDATE music_scans
 		SET request='match',phase='queued',progress_total=?,progress_done=0,current_path='',message=?,error='',requested_at=unixepoch(),work_owner='',work_until=0,updated_at=unixepoch()
 		WHERE id=? AND request='' AND state NOT IN ('scanning','cancelled')`,
-		unresolved, "Waiting for the matching worker. It matches tags and MusicBrainz catalog entries, then tries audio fingerprints.", scanID)
+		unresolved, "Waiting for the matching worker. It matches saved catalog entries and the files' own tags first, then uses audio fingerprints and MusicBrainz only for the rest.", scanID)
 	if err != nil {
 		return Scan{}, err
 	}
@@ -289,27 +289,28 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 	if err != nil {
 		return err
 	}
-	if err := s.startWorkflowPhase(base, id, owner, "matching", total, "Matching files against MusicBrainz tags and the saved catalog."); err != nil {
+	if err := s.startWorkflowPhase(base, id, owner, "matching", total, "Matching saved catalog entries and the files' own tags first."); err != nil {
 		if errors.Is(err, errWorkLeaseLost) {
 			return nil
 		}
 		return err
 	}
-	matched, warnings, err := s.matchAllFiles(ctx, id, owner)
+	catalog := newLocalCatalog(s)
+	localMatched, warnings, err := s.localTagMatchFiles(ctx, id, owner, catalog)
 	if err != nil {
 		if isRateLimited(err) {
 			warnings = append(warnings, matchErrorMessage(err))
 			unresolved, countErr := s.unresolvedCount(base, id)
 			if countErr != nil {
-				return s.handleWorkflowError(ctx, id, owner, countErr, matched)
+				return s.handleWorkflowError(ctx, id, owner, countErr, localMatched)
 			}
-			message := fmt.Sprintf("Matched %d files before MusicBrainz paused matching. %d files remain unresolved for review. %s", matched, unresolved, dedupeWarnings(warnings))
+			message := fmt.Sprintf("Matched %d files before MusicBrainz paused matching. %d files remain unresolved for review. %s", localMatched, unresolved, dedupeWarnings(warnings))
 			return s.finishWorkflow(base, id, owner, "review", "ready", strings.TrimSpace(message), "")
 		}
-		return s.handleWorkflowError(ctx, id, owner, err, matched)
+		return s.handleWorkflowError(ctx, id, owner, err, localMatched)
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return s.handleWorkflowError(ctx, id, owner, ctxErr, matched)
+		return s.handleWorkflowError(ctx, id, owner, ctxErr, localMatched)
 	}
 	if cancelled, err := s.workflowCancelled(base, id); err != nil {
 		return err
@@ -322,36 +323,30 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 		return err
 	}
 	if unresolved > 0 {
-		if s.client != nil {
-			if cooldown := s.client.cooldownError(ctx); cooldown != nil {
-				warnings = append(warnings, matchErrorMessage(cooldown))
-			} else {
-				key, warning := s.fingerprintAvailability(ctx)
-				if warning != "" {
-					warnings = append(warnings, warning)
+		key, warning := s.fingerprintAvailability(ctx)
+		if warning != "" {
+			warnings = append(warnings, warning)
+		} else {
+			if err := s.startWorkflowPhase(base, id, owner, "fingerprinting", unresolved, "Fingerprinting the remaining unresolved files through AcoustID."); err != nil {
+				if errors.Is(err, errWorkLeaseLost) {
+					return nil
+				}
+				return err
+			}
+			var matchedNow int
+			var fpWarnings []string
+			matchedNow, fpWarnings, err = s.fingerprintAllFiles(ctx, id, owner, key, catalog)
+			fingerprinted += matchedNow
+			warnings = append(warnings, fpWarnings...)
+			if err != nil {
+				// A provider/rate-limit error is a warning: matched rows are
+				// preserved and the rest stay unresolved for review. A lease,
+				// context or database error still uses the normal handling.
+				var provider *Error
+				if errors.As(err, &provider) {
+					warnings = append(warnings, matchErrorMessage(err))
 				} else {
-					if err := s.startWorkflowPhase(base, id, owner, "fingerprinting", unresolved, "Fingerprinting the remaining unresolved files through AcoustID."); err != nil {
-						if errors.Is(err, errWorkLeaseLost) {
-							return nil
-						}
-						return err
-					}
-					var matchedNow int
-					var fpWarnings []string
-					matchedNow, fpWarnings, err = s.fingerprintAllFiles(ctx, id, owner, key)
-					fingerprinted += matchedNow
-					warnings = append(warnings, fpWarnings...)
-					if err != nil {
-						// A provider/rate-limit error is a warning: matched rows are
-						// preserved and the rest stay unresolved for review. A lease,
-						// context or database error still uses the normal handling.
-						var provider *Error
-						if errors.As(err, &provider) {
-							warnings = append(warnings, matchErrorMessage(err))
-						} else {
-							return s.handleWorkflowError(ctx, id, owner, err, matched+fingerprinted)
-						}
-					}
+					return s.handleWorkflowError(ctx, id, owner, err, localMatched+fingerprinted)
 				}
 			}
 		}
@@ -360,7 +355,35 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 	if err != nil {
 		return err
 	}
-	message := fmt.Sprintf("Matched %d files; matched %d more by audio fingerprint. %d files remain unresolved for review.", matched, fingerprinted, unresolved)
+	// MusicBrainz discovery is the last step and only sees files whose tags
+	// were not complete enough for a local identity. A well-tagged library
+	// therefore never waits on the provider.
+	discovered := 0
+	if unresolved > 0 {
+		if err := s.startWorkflowPhase(base, id, owner, "matching", unresolved, "Discovering MusicBrainz catalog entries for the remaining files."); err != nil {
+			if errors.Is(err, errWorkLeaseLost) {
+				return nil
+			}
+			return err
+		}
+		var discoverWarnings []string
+		discovered, discoverWarnings, err = s.discoverAllFiles(ctx, id, owner)
+		warnings = append(warnings, discoverWarnings...)
+		if err != nil {
+			var provider *Error
+			if errors.As(err, &provider) {
+				warnings = append(warnings, matchErrorMessage(err))
+			} else {
+				return s.handleWorkflowError(ctx, id, owner, err, localMatched+fingerprinted+discovered)
+			}
+		}
+	}
+	unresolved, err = s.unresolvedCount(base, id)
+	if err != nil {
+		return err
+	}
+	message := fmt.Sprintf("Matched %d files from the saved catalog and their own tags without MusicBrainz or AcoustID calls; matched %d more by audio fingerprint; discovered %d through MusicBrainz. %d files remain unresolved for review.",
+		localMatched, fingerprinted, discovered, unresolved)
 	if warningText := dedupeWarnings(warnings); warningText != "" {
 		message += " " + warningText
 	}
@@ -384,7 +407,10 @@ func (s *Service) handleWorkflowError(ctx context.Context, id int64, owner strin
 	return s.finishWorkflow(base, id, owner, "failed", "failed", "", err.Error())
 }
 
-func (s *Service) matchAllFiles(ctx context.Context, scanID int64, owner string) (int, []string, error) {
+// localTagMatchFiles is the fast path. For each bounded batch it first matches
+// saved catalog rows, then creates the artist/album/track rows the files' own
+// tags prove. Neither step calls MusicBrainz or AcoustID.
+func (s *Service) localTagMatchFiles(ctx context.Context, scanID int64, owner string, catalog *localCatalog) (int, []string, error) {
 	warnings := []string{}
 	matched := 0
 	cursor := ""
@@ -407,9 +433,11 @@ func (s *Service) matchAllFiles(ctx context.Context, scanID int64, owner string)
 		next := files[len(files)-1].RelativePath
 		remaining := make([]ScanFile, 0, len(files))
 		for _, file := range files {
-			artistID, albumID, trackID, matchErr := s.matchFile(ctx, file)
+			artistID, albumID, trackID, ok, matchErr := catalog.findExisting(ctx, file)
 			if matchErr != nil {
-				file.Error = matchErrorMessage(matchErr)
+				return matched, warnings, matchErr
+			}
+			if !ok {
 				remaining = append(remaining, file)
 				if isRateLimited(matchErr) {
 					warnings = append(warnings, matchErrorMessage(matchErr))
@@ -421,14 +449,79 @@ func (s *Service) matchAllFiles(ctx context.Context, scanID int64, owner string)
 				return matched, warnings, err
 			}
 			matched++
-			if err := s.progressWorkflow(ctx, scanID, owner, "matching", file.RelativePath, "Matching catalog entries and tags."); err != nil {
+			if err := s.progressWorkflow(ctx, scanID, owner, "matching", file.RelativePath, "Matching saved catalog entries."); err != nil {
 				return matched, warnings, err
 			}
 		}
-		if len(remaining) > 0 {
-			result, stopped, err := s.runDiscovery(ctx, scanID, remaining, discoveryRun{
+		for _, file := range remaining {
+			ev := tagIdentityFor(file)
+			if !ev.canCreate() {
+				// The file stays unresolved for the fingerprint and provider
+				// fallbacks; it has no complete local tag identity.
+				continue
+			}
+			artistID, albumID, trackID, matchErr := catalog.matchIdentity(ctx, file, ev)
+			if matchErr != nil {
+				var tagged *Error
+				if !errors.As(matchErr, &tagged) {
+					return matched, warnings, matchErr
+				}
+				if err := s.updateScanFileState(ctx, file.ID, "unresolved", artistID, albumID, 0, matchErrorMessage(matchErr)); err != nil {
+					return matched, warnings, err
+				}
+				continue
+			}
+			if err := s.updateScanFileState(ctx, file.ID, "matched", artistID, albumID, trackID, ""); err != nil {
+				return matched, warnings, err
+			}
+			matched++
+			if err := s.progressWorkflow(ctx, scanID, owner, "matching", file.RelativePath, "Creating catalog entries from tags."); err != nil {
+				return matched, warnings, err
+			}
+		}
+		cursor = next
+	}
+}
+
+// discoverAllFiles is the last-resort provider step. It only runs for files
+// whose tags were not complete enough for a local identity, so a well-tagged
+// library never reaches it. Files are processed in bounded batches and each
+// provider result is saved as it completes.
+func (s *Service) discoverAllFiles(ctx context.Context, scanID int64, owner string) (int, []string, error) {
+	warnings := []string{}
+	matched := 0
+	cursor := ""
+	for {
+		if err := s.renewWorkflow(ctx, scanID, owner); err != nil {
+			return matched, warnings, err
+		}
+		files, err := s.unresolvedScanFilesAfter(ctx, scanID, cursor, workflowFileBatch)
+		if err != nil {
+			return matched, warnings, err
+		}
+		if len(files) == 0 {
+			return matched, warnings, nil
+		}
+		if cancelled, err := s.workflowCancelled(ctx, scanID); err != nil {
+			return matched, warnings, err
+		} else if cancelled {
+			return matched, warnings, nil
+		}
+		next := files[len(files)-1].RelativePath
+		candidates := make([]ScanFile, 0, len(files))
+		for _, file := range files {
+			if tagIdentityFor(file).canCreate() {
+				// A complete tag identity was already handled locally. It is
+				// left for manual review if the tags conflicted; provider
+				// discovery must not create a second catalog album for it.
+				continue
+			}
+			candidates = append(candidates, file)
+		}
+		if len(candidates) > 0 {
+			result, stopped, err := s.runDiscovery(ctx, scanID, candidates, discoveryRun{
 				onFile: func(file ScanFile) {
-					_ = s.progressWorkflow(ctx, scanID, owner, "matching", file.RelativePath, "Matching MusicBrainz catalog entries and tags.")
+					_ = s.progressWorkflow(ctx, scanID, owner, "matching", file.RelativePath, "Discovering MusicBrainz catalog entries.")
 				},
 			})
 			if err != nil {
@@ -444,7 +537,7 @@ func (s *Service) matchAllFiles(ctx context.Context, scanID int64, owner string)
 	}
 }
 
-func (s *Service) fingerprintAllFiles(ctx context.Context, scanID int64, owner, key string) (int, []string, error) {
+func (s *Service) fingerprintAllFiles(ctx context.Context, scanID int64, owner, key string, catalog *localCatalog) (int, []string, error) {
 	warnings := []string{}
 	matched := 0
 	cursor := ""
@@ -466,6 +559,7 @@ func (s *Service) fingerprintAllFiles(ctx context.Context, scanID int64, owner, 
 		}
 		next := files[len(files)-1].RelativePath
 		result, err := s.runFingerprint(ctx, scanID, files, key, fingerprintRun{
+			catalog: catalog,
 			onFile: func(file ScanFile) {
 				_ = s.progressWorkflow(ctx, scanID, owner, "fingerprinting", file.RelativePath, "Fingerprinting and looking up AcoustID matches.")
 			},

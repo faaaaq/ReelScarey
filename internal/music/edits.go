@@ -152,19 +152,21 @@ func (s *Service) loadEditFiles(ctx context.Context, fileIDs []int64) ([]EditFil
 		}
 		destination := path.Join(root, safeName(artistName), safeName(albumTitle), prefix+" "+safeName(trackTitle.String)+ext)
 		tags := EditTags{
-			Artist:                    artistName,
-			AlbumArtist:               artistName,
-			Album:                     albumTitle,
-			Title:                     trackTitle.String,
-			Track:                     int(number.Int64),
-			TrackTotal:                int(trackTotal.Int64),
-			Disc:                      discN,
-			DiscTotal:                 int(discTotal.Int64),
-			Year:                      int(year.Int64),
-			MusicBrainzArtistID:       artistMBID,
-			MusicBrainzReleaseGroupID: albumMBID,
-			MusicBrainzTrackID:        trackMBID.String,
-			MusicBrainzRecordingID:    recordingID.String,
+			Artist:      artistName,
+			AlbumArtist: artistName,
+			Album:       albumTitle,
+			Title:       trackTitle.String,
+			Track:       int(number.Int64),
+			TrackTotal:  int(trackTotal.Int64),
+			Disc:        discN,
+			DiscTotal:   int(discTotal.Int64),
+			Year:        int(year.Int64),
+			// Local tag identities are catalog keys, not MusicBrainz IDs.
+			// Only genuine values may be written back to a file's tags.
+			MusicBrainzArtistID:       genuineMBID(artistMBID),
+			MusicBrainzReleaseGroupID: genuineMBID(albumMBID),
+			MusicBrainzTrackID:        genuineMBID(trackMBID.String),
+			MusicBrainzRecordingID:    genuineMBID(recordingID.String),
 		}
 		retag := needsRetag(tagJSON, tags)
 		move := destination != relative

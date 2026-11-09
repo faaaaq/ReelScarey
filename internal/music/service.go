@@ -150,6 +150,10 @@ func (s *Service) Album(ctx context.Context, id int64) (AlbumDetails, error) {
 		return AlbumDetails{}, err
 	}
 	if len(tracks) == 0 {
+		if IsLocalMusicID(album.MusicBrainzID) {
+			// A tag-derived album has no provider identity to load from.
+			return AlbumDetails{Album: album, Tracks: []Track{}}, nil
+		}
 		tracks, err = s.loadTracks(ctx, album)
 		if err != nil {
 			return AlbumDetails{}, err

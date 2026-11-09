@@ -586,6 +586,16 @@ func (s *Service) saveDiscoveredAlbum(ctx context.Context, artistMBID string, al
 	if created {
 		cache.addedArtists++
 	}
+	// A local album with the same tagged title is the same tag-derived
+	// identity. Reuse it instead of adding a second album for the same tags.
+	if localAlbumID, ok, err := s.findLocalAlbumByTitle(ctx, artist.ID, album.Title); err != nil {
+		return 0, 0, err
+	} else if ok {
+		if err := s.ensureAlbumTracks(ctx, localAlbumID); err != nil {
+			return artist.ID, localAlbumID, albumTracksUnavailableError(album.Title, err)
+		}
+		return artist.ID, localAlbumID, nil
+	}
 	albumID, added, err := s.store.SaveAlbum(ctx, artist.ID, album)
 	if err != nil {
 		return 0, 0, err
@@ -613,6 +623,13 @@ func (s *Service) discoverArtist(ctx context.Context, mbid string, cache *discov
 		return artist, false, nil
 	}
 	if artist, ok := cache.pendingArtists[key]; ok {
+		if local, ok, err := s.findLocalArtistByName(ctx, artist.Name); err != nil {
+			return Artist{}, false, err
+		} else if ok {
+			delete(cache.pendingArtists, key)
+			cache.artists[key] = local
+			return local, false, nil
+		}
 		saved, err := s.store.SaveArtist(ctx, artist, nil)
 		if err != nil {
 			return Artist{}, false, err
@@ -633,12 +650,76 @@ func (s *Service) discoverArtist(ctx context.Context, mbid string, cache *discov
 	if err != nil {
 		return Artist{}, false, err
 	}
+	if local, ok, err := s.findLocalArtistByName(ctx, artist.Name); err != nil {
+		return Artist{}, false, err
+	} else if ok {
+		cache.artists[key] = local
+		return local, false, nil
+	}
 	saved, err := s.store.SaveArtist(ctx, artist, nil)
 	if err != nil {
 		return Artist{}, false, err
 	}
 	cache.artists[key] = saved
 	return saved, true, nil
+}
+
+// findLocalArtistByName reuses one tag-derived artist with the same normalized
+// name instead of adding a second artist row for the same tags. It never
+// replaces a canonical MusicBrainz artist.
+func (s *Service) findLocalArtistByName(ctx context.Context, name string) (Artist, bool, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Artist{}, false, nil
+	}
+	rows, err := s.store.db.QueryContext(ctx, `SELECT id,name FROM music_artists WHERE musicbrainz_id LIKE 'local-%' ORDER BY id`)
+	if err != nil {
+		return Artist{}, false, err
+	}
+	defer rows.Close()
+	matched := int64(0)
+	for rows.Next() {
+		var id int64
+		var stored string
+		if err := rows.Scan(&id, &stored); err != nil {
+			return Artist{}, false, err
+		}
+		if !artistNamesEqual(stored, name) {
+			continue
+		}
+		if matched != 0 && matched != id {
+			return Artist{}, false, nil
+		}
+		matched = id
+	}
+	if err := rows.Err(); err != nil {
+		return Artist{}, false, err
+	}
+	if matched == 0 {
+		return Artist{}, false, nil
+	}
+	artist, err := s.store.Artist(ctx, matched)
+	if err != nil {
+		return Artist{}, false, err
+	}
+	return artist, true, nil
+}
+
+// findLocalAlbumByTitle returns one saved tag-derived album with the exact
+// normalized title under the artist. A canonical album is left alone.
+func (s *Service) findLocalAlbumByTitle(ctx context.Context, artistID int64, title string) (int64, bool, error) {
+	albumID, ok, err := s.findAlbumIDByTitle(ctx, artistID, title)
+	if err != nil || !ok {
+		return 0, false, err
+	}
+	album, err := s.store.Album(ctx, albumID)
+	if err != nil {
+		return 0, false, err
+	}
+	if !IsLocalMusicID(album.MusicBrainzID) {
+		return 0, false, nil
+	}
+	return albumID, true, nil
 }
 
 func (c *discoveryCache) addWarning(message string) {
@@ -661,6 +742,13 @@ func (s *Service) ensureAlbumTracks(ctx context.Context, albumID int64) error {
 	}
 	if tracks > 0 {
 		return nil
+	}
+	var albumMBID string
+	if err := s.store.db.QueryRowContext(ctx, `SELECT musicbrainz_id FROM music_albums WHERE id=?`, albumID).Scan(&albumMBID); err != nil {
+		return err
+	}
+	if IsLocalMusicID(albumMBID) {
+		return &Error{Code: "music_local_tracks_missing", Message: "The tag-derived album has no saved tracks. Rescan and match the file again."}
 	}
 	_, err := s.Album(ctx, albumID)
 	return err

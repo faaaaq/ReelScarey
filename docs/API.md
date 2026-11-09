@@ -86,9 +86,13 @@ GET `/scans/{id}?page=` returns its state and files, plus `full_scan`, `phase`,
 `progress_total`, `progress_done`, `current_path`, `message`, `skipped_count`,
 `request`, `requested_at` and `work_until`. The scan list reports the same
 fields. POST `/scans/{id}/match-all` accepts `{reviewed:true}` and returns `202`
-with the queued scan (`request:"match"`); the durable worker first matches
-catalog tags/MusicBrainz, then fingerprints still-unresolved files through
-AcoustID when configured. It never registers, moves or tags media. POST
+with the queued scan (`request:"match"`); the durable worker first matches the
+saved catalog and the files' own tags, creates tag-derived local catalog rows
+when those tags are complete (no MusicBrainz or AcoustID request), then
+fingerprints still-unresolved files through AcoustID when configured, and only
+then runs MusicBrainz discovery for files without a complete local tag identity.
+The final message reports local, fingerprint and provider match counts. It never
+registers, moves or tags media. POST
 `/scans/{id}/finalize` accepts `{reviewed:true}` and returns `202` with
 `request:"finalize"`; the worker registers the matched files in place and then
 applies each reviewed edit plan sequentially, waiting for every edit job. A

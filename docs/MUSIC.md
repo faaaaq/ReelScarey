@@ -40,7 +40,8 @@ completed folder, and runs wanted-album searches on a schedule.
   - SHA-256 evidence (up to 512 MiB per file);
   - matching against the local catalog by MusicBrainz release-group ID or by
     album title plus artist name;
-  - review of matched and unresolved files.
+  - review of matched and unresolved files. A well-tagged file can then be
+    matched locally by **Match All** without a MusicBrainz or AcoustID call.
 - Resume an interrupted import: a normal rescan skips unchanged registered files
   and carries matched-but-unregistered files forward without repeated work,
   while a full rescan re-examines every eligible file. Match All and Finalize
@@ -48,8 +49,10 @@ completed folder, and runs wanted-album searches on a schedule.
 - Discover missing catalog entries for selected unresolved files through an
   explicit reviewed action. It uses a tagged release-group ID, a tagged album
   artist/artist MBID, or one exact normalized artist name and album title,
-  creates only the matching artist/album, loads the album tracks and re-matches
-  those files. Ambiguous or missing evidence stays unresolved.
+  creates only the matching artist/album, loads the album tracks when the
+  catalog has none and re-matches those files. If a tag-derived local artist or
+  album with the same normalized name/title already exists, discovery reuses it
+  instead of adding a duplicate. Ambiguous or missing evidence stays unresolved.
   - Exact-name searches are bounded to five pages of 25 results so a common
     artist name is not lost behind the first page.
   - If a release-group search is incomplete or misses an exact title, discovery
@@ -62,7 +65,8 @@ completed folder, and runs wanted-album searches on a schedule.
   - Common Unicode equivalents, accents, typographic quotes/dashes, punctuation
     and repeated whitespace are folded for comparison. A leading English "The"
     and the `Various`/`Various Artists` compilation aliases are comparison-only;
-    the stored catalog name always comes from MusicBrainz.
+    a provider-created catalog row stores the MusicBrainz name, while a local row
+    keeps the tagged name.
 - Match selected unresolved files by audio fingerprint through AcoustID. It is
   a separate reviewed action that requires a saved application API key and
   fpcalc (Chromaprint) on the server. A request runs
@@ -299,6 +303,63 @@ one reviewed scan.
   failed; a queued Match All/Finalize request is re-queued and resumed by the
   durable worker after a restart.
 
+## Tag-first local catalog
+
+The local catalog is the first matching source, not a fallback. **Match All**
+uses a reviewed tag-first path so a large, well-tagged library does not wait on
+MusicBrainz or AcoustID:
+
+1. match the file against the saved catalog, including local rows from earlier
+   scans;
+2. if that fails and the tags contain album artist/artist, album, title and a
+   track number, create or reuse the catalog artist, album and track from those
+   tags;
+3. fingerprint and look up still-unresolved files through AcoustID, using the
+   returned release-group and recording IDs together with the tags when the tags
+   are complete enough for a local row; and
+4. only then run MusicBrainz discovery for files whose tags were not complete
+   enough for a local identity.
+
+A complete local identity needs a non-empty album artist (or artist), album and
+title plus a positive track number. A missing disc tag defaults to disc 1 for a
+new row; an existing multi-disc album is matched by its saved disc/number, then
+title. Case, punctuation, spacing, Unicode equivalents and a leading English
+article are folded for identity, so different files that only differ in those
+ways reuse one artist, album and track. Two different titles at the same
+disc/number are never renumbered or overwritten: the first saved position wins,
+and an ambiguous later file stays unresolved for review.
+
+Identifiers are deterministic and prefixed:
+
+- `local-artist:<hash>` when no genuine MusicBrainz artist ID is tagged;
+- `local-album:<hash>` when no genuine MusicBrainz release-group ID is tagged;
+- `local-track:<hash>` when no genuine MusicBrainz track ID is tagged.
+
+A tagged genuine MusicBrainz artist, release-group, track or recording ID is
+stored directly and no MusicBrainz request is made to validate it. A file with
+only a recording ID gets a local track identifier plus the genuine recording ID.
+If a later file proves a genuine artist, release-group, track or recording ID
+for an existing local row, the row keeps its catalog ID, tracks and file
+references and only the local identity key is upgraded when no other row already
+uses that MusicBrainz ID. Local identifiers are catalog keys only: they are never
+written into `music_artistid`, `musicbrainz_*` or any other MusicBrainz tag
+field. Edit plans filter them out and write only values that are still valid
+MusicBrainz IDs.
+
+This identity is **tag-derived, not canonical MusicBrainz identity**. It records
+what the files say, including a tag-provided release-group ID, but it does not
+prove a release group, track list or ordering. A later reviewed MusicBrainz add
+or discovery can enrich the catalog; nothing here invents canonical ordering or
+replaces an existing canonical row with a local one. Provider discovery that
+names the same normalized artist and album reuses the local rows instead of
+adding a duplicate. New local artists and albums have `status: missing` until
+the existing registration path records a file, which marks them `available`.
+
+Cover art, overviews and other provider metadata are not required for a local
+row. Finalize uses the tagged artist, album and title for folder/file names and
+for a tag rewrite; a row without provider metadata still registers and
+organizes.
+
 ## Resumable import workflow
 
 The import screen drives a resumable pipeline: add a media root, scan with live
@@ -339,15 +400,22 @@ one durable background worker; the browser's HTTP request never owns the work.
   reading or tagging it again.
 - **Match All.** `POST /scans/{id}/match-all {reviewed:true}` records the
   owner's consent and returns `202` with `request:"match"` and
-  `phase:"queued"`. The worker then runs `matching` (local catalog matching,
-  then MusicBrainz tag discovery for every unresolved file) and
-  `fingerprinting` (AcoustID for files still unresolved, when a key and fpcalc
-  are available). It processes bounded batches, renews its database lease and
+  `phase:"queued"`. The worker then runs `matching`: first the saved catalog,
+  then local catalog creation from complete tags for the rest. Files still
+  unresolved run `fingerprinting` (AcoustID, when a key and fpcalc are
+  available); AcoustID results with complete tags create local rows from the
+  returned release-group/recording IDs, and files without complete tags keep the
+  existing provider-assisted fingerprint path. Finally a `matching` discovery
+  step runs MusicBrainz only for files whose tags were not complete enough for a
+  local identity. It processes bounded batches, renews its database lease and
   saves progress after each batch. Provider, rate-limit and transient errors
   keep the matched rows, leave the rest unresolved and end in `ready` with a
-  warning; a missing AcoustID key or fpcalc adds a warning and continues. Match
-  All never registers, moves, renames or tags a file. `reviewed:true` is consent
-  to create catalog entries only.
+  warning; a missing AcoustID key or fpcalc adds an explicit warning and
+  MusicBrainz discovery still runs. The final message reports how many files
+  matched from the saved catalog/tags, how many matched by audio fingerprint and
+  how many were discovered through MusicBrainz. Match All never registers,
+  moves, renames or tags a file. `reviewed:true` is consent to create catalog
+  entries only.
 - **Finalize.** `POST /scans/{id}/finalize {reviewed:true}` returns `202` with
   `request:"finalize"`. The `organizing` phase registers the matched files in
   place through the existing verification path, finds the registered file IDs,
@@ -395,6 +463,10 @@ one durable background worker; the browser's HTTP request never owns the work.
   a tagged release-group ID or one exact normalized album title can disambiguate
   multiple release groups. Low scores, unresolved multiple groups and missing
   release groups require better tags or manual review instead of a guess.
+  When a file has complete tags, the AcoustID release-group and recording IDs
+  are applied to a local row instead of fetching album metadata and a track list
+  from MusicBrainz. A complete local identity that conflicts with a saved album
+  stays for review rather than creating a second album through discovery.
 - Fingerprint work through the manual `/fingerprint` endpoint is bounded to 20
   files and 10 album groups per request. Select the remaining unresolved files
   and run the action again to continue. **Match All** is not limited to one
@@ -429,6 +501,13 @@ one durable background worker; the browser's HTTP request never owns the work.
   not use title similarity as identity and does not add a complete artist
   discography. The discography fallback compares exact normalized titles and
   stores only the one match.
+- A local catalog row is tag-derived identity, not canonical MusicBrainz
+  identity. A tagged release-group ID is stored without validating it, and a
+  local track list or ordering is not proof of the canonical release. A tagged
+  ID that MusicBrainz does not know stays a local row until a reviewed add or
+  discovery replaces or enriches it. The matching pass does not verify local
+  rows with the provider, does not rewrite a canonical MBID row as a local row,
+  and does not merge two different titles that occupy the same disc/number.
 - Audio fingerprint matching is not a replacement for tag discovery and does
   not identify tracks without a usable AcoustID result. It needs the AcoustID
   application key and fpcalc; the page disables the action when either is
@@ -464,7 +543,7 @@ one durable background worker; the browser's HTTP request never owns the work.
 | GET | `/api/v1/library/music/albums/{id}` | Album and tracks; first read loads tracks |
 | GET/POST | `/api/v1/library/music/scans` | List scans or start `{roots:[...],full?}` (legacy `{root}` accepted); 202 |
 | GET | `/api/v1/library/music/scans/{id}?page=` | Scan state, phase, progress and 100 files per page |
-| POST | `/api/v1/library/music/scans/{id}/match-all` | `{reviewed:true}`; queues durable tag/MusicBrainz then AcoustID matching; 202 |
+| POST | `/api/v1/library/music/scans/{id}/match-all` | `{reviewed:true}`; queues durable saved-catalog/tag matching, then AcoustID, then MusicBrainz discovery; 202 |
 | POST | `/api/v1/library/music/scans/{id}/finalize` | `{reviewed:true}`; queues registration then sequential organization/tagging; 202 |
 | POST | `/api/v1/library/music/scans/{id}/register` | `{file_ids,reviewed:true}` |
 | POST | `/api/v1/library/music/scans/{id}/discover` | `{file_ids,reviewed:true}` or `{all:true,reviewed:true}`; bounded catalog discovery |
@@ -573,6 +652,16 @@ upgrade replacement and richer multi-profile assignment.
   cooldown stop with preserved matched rows, finalize
   registration plus sequential edit organization, and partial failure that stays
   in review.
+- `internal/music/local_catalog_test.go` - a 1,200-file generated well-tagged
+  library matched with a provider that fails if called (zero MusicBrainz,
+  AcoustID and fingerprint calls; measured in the test log), tagged
+  MusicBrainz IDs used without a provider, later genuine IDs enriching a local
+  row without a duplicate, multi-disc/missing-disc and
+  case/punctuation normalization, duplicate-position retention, rerun
+  idempotence with no duplicate catalog rows, mixed local/AcoustID/MusicBrainz
+  fallback, AcoustID provider discovery reusing a local album instead of
+  duplicating it, tag-only finalize registration and rename, and a real FFmpeg
+  retag proving only genuine MBIDs are written.
 - `internal/music/discovery_test.go` — release-group ID creation, tagged artist
   MBID use, later artist-search pages, discography fallback (including a later
   browse page), missing disc tags, multi-disc titles, compilation album-artist
@@ -620,3 +709,14 @@ AcoustID account or owner media; the service is free for non-commercial use but
 its availability is not guaranteed. The Docker runtime installs
 `libchromaprint-tools`; `scripts/music-container-smoke.sh` checks
 `fpcalc -version` in the disposable container.
+
+The tag-first fast path was validated locally with generated tag rows, a fake
+MusicBrainz server that fails on any request and a fake AcoustID/fingerprint
+pair. `TestMatchAllWellTaggedLibraryUsesNoProviders` matched 1,200 generated
+well-tagged files in about 1.7 seconds on the development machine with zero
+MusicBrainz, AcoustID and fingerprint calls. The retag case used a generated
+FLAC and the local FFmpeg/FFprobe tools; it is skipped when those tools are not
+installed. These checks use temporary directories and generated or tag-only
+fixtures, never owner media. They do not prove provider behavior, a real
+MusicBrainz library or a full Docker acceptance run; the Docker acceptance
+script was not re-run for this change.
