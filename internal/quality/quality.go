@@ -128,6 +128,12 @@ func Normalize(s string) string {
 
 var extraEpisode = regexp.MustCompile(`(?i)^[^a-z0-9]*(?:e[0-9]{1,3}|[0-9]{1,3})(?:[^a-z0-9]|$)`)
 
+// bracketPrefix matches bracketed group tags at the start of a title segment.
+// The automatic matching pipeline strips provider IDs from filenames, but
+// Identify is also called independently for search and feed evaluation where
+// release titles may contain [Group], [TGx], or similar tracker metadata.
+var bracketPrefix = regexp.MustCompile(`\[[^\]]*\]`)
+
 func identifyStandard(title string, t Target) bool {
 	n := Normalize(title)
 	base := Normalize(t.Title)
@@ -145,7 +151,13 @@ func identifyStandard(title string, t Target) bool {
 	if !ok || s != t.Season || e != t.Episode {
 		return false
 	}
-	prefix := Normalize(title[:start])
+	// Strip bracketed group/content tags from the title prefix before
+	// normalizing. Release names commonly start with "[Group]" or "[TGx]"
+	// before the actual show name; removing them lets the base title match
+	// without incorrectly accepting broader substrings.
+	rawPrefix := title[:start]
+	cleanPrefix := bracketPrefix.ReplaceAllString(rawPrefix, " ")
+	prefix := Normalize(cleanPrefix)
 	return prefix == base || (t.Year != nil && prefix == base+" "+strconv.Itoa(*t.Year))
 }
 func identityLabels(title string, t Target) (string, bool) {
