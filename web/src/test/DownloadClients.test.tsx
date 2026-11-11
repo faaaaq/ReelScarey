@@ -198,7 +198,9 @@ it("supervises the built-in client and disables it with explicit review", async 
     name: "Turn off the built-in qBittorrent client?",
   });
   expect(
-    within(dialog).getByText(/torrent default is cleared and its downloads stay/),
+    within(dialog).getByText(
+      /torrent default is cleared and its downloads stay/,
+    ),
   ).toBeVisible();
   await userEvent.click(
     within(dialog).getByRole("button", { name: "Confirm" }),
