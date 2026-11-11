@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -283,4 +284,154 @@ func TestIRCTLSCertificateHandling(t *testing.T) {
 			t.Fatal("client did not stop")
 		}
 	})
+}
+
+const ircTestAnnounce = `[Movies/XviD] The Movie 2010 DVDRip XviD-GROUP FREELEECH - http://www.iptorrents.com/details.php?id=000000 - 7.63 GB`
+
+// ircTestListener accepts a single plaintext connection and hands it to serve.
+func ircTestListener(t *testing.T, serve func(net.Conn)) string {
+	t.Helper()
+	listener, e := net.Listen("tcp", "127.0.0.1:0")
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		conn, e := listener.Accept()
+		if e != nil {
+			return
+		}
+		defer conn.Close()
+		serve(conn)
+	}()
+	return listener.Addr().String()
+}
+
+func plainIPTDefinition(t *testing.T) Definition {
+	t.Helper()
+	defs, e := Definitions()
+	if e != nil {
+		t.Fatal(e)
+	}
+	def := defs["iptorrents"]
+	def.TLS = false
+	return def
+}
+
+// A server such as IPTorrents' answers a JOIN sent before its welcome with 451
+// and drops it. The client must wait for 001, or it stays connected forever
+// without ever seeing an announce.
+func TestIRCClientWaitsForWelcomeBeforeJoining(t *testing.T) {
+	def := plainIPTDefinition(t)
+	var mu sync.Mutex
+	earlyJoin := false
+	addr := ircTestListener(t, func(conn net.Conn) {
+		welcomed := false
+		reader := bufio.NewScanner(conn)
+		for reader.Scan() {
+			text := reader.Text()
+			switch {
+			case strings.HasPrefix(text, "USER "):
+				// The delayed welcome gives a client that joins too early every
+				// opportunity to do so.
+				time.Sleep(250 * time.Millisecond)
+				welcomed = true
+				_, _ = conn.Write([]byte(":server 001 tester :welcome\r\n"))
+			case strings.HasPrefix(text, "JOIN "):
+				if !welcomed {
+					mu.Lock()
+					earlyJoin = true
+					mu.Unlock()
+					_, _ = conn.Write([]byte(":server 451 tester :You have not registered\r\n"))
+					continue
+				}
+				_, _ = conn.Write([]byte(":server 366 tester #ipt.announce :End of NAMES\r\n"))
+				_, _ = conn.Write([]byte(":Announcer!x@y PRIVMSG #ipt.announce :" + ircTestAnnounce + "\r\n"))
+			}
+		}
+	})
+	client := &ircClient{def: def, settings: SourceSettings{Nick: "tester"}, addr: addr}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	received := make(chan string, 1)
+	go func() {
+		_ = client.Run(ctx, func(message string) {
+			select {
+			case received <- message:
+			default:
+			}
+		})
+	}()
+	select {
+	case message := <-received:
+		if !strings.Contains(message, "The Movie 2010") {
+			t.Fatal(message)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no announce followed the channel join")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if earlyJoin {
+		t.Fatal("JOIN was sent before the server welcome")
+	}
+}
+
+func TestIRCClientReportsJoinRefusal(t *testing.T) {
+	def := plainIPTDefinition(t)
+	addr := ircTestListener(t, func(conn net.Conn) {
+		reader := bufio.NewScanner(conn)
+		for reader.Scan() {
+			text := reader.Text()
+			if strings.HasPrefix(text, "USER ") {
+				_, _ = conn.Write([]byte(":server 001 tester :welcome\r\n"))
+			}
+			if strings.HasPrefix(text, "JOIN ") {
+				_, _ = conn.Write([]byte(":server 477 tester #ipt.announce :You need to be identified with services\r\n"))
+			}
+		}
+	})
+	client := &ircClient{def: def, settings: SourceSettings{Nick: "tester"}, addr: addr}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	e := client.Run(ctx, func(string) {})
+	if e == nil || !strings.Contains(e.Error(), "refused #ipt.announce") {
+		t.Fatalf("a refused join must be reported, got %v", e)
+	}
+}
+
+func TestIRCClientReportsServerError(t *testing.T) {
+	def := plainIPTDefinition(t)
+	addr := ircTestListener(t, func(conn net.Conn) {
+		reader := bufio.NewScanner(conn)
+		for reader.Scan() {
+			if strings.HasPrefix(reader.Text(), "USER ") {
+				_, _ = conn.Write([]byte("ERROR :Closing Link: tester[192.0.2.1] (Throttled: Reconnecting too fast)\r\n"))
+			}
+		}
+	})
+	client := &ircClient{def: def, settings: SourceSettings{Nick: "tester"}, addr: addr}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	e := client.Run(ctx, func(string) {})
+	if e == nil || !strings.Contains(e.Error(), "Throttled") {
+		t.Fatalf("a server ERROR must be reported, got %v", e)
+	}
+}
+
+func TestIRCClientRegistrationTimeout(t *testing.T) {
+	def := plainIPTDefinition(t)
+	addr := ircTestListener(t, func(conn net.Conn) {
+		// Never send a welcome: the client has to give up on its own.
+		reader := bufio.NewScanner(conn)
+		for reader.Scan() {
+		}
+	})
+	client := &ircClient{def: def, settings: SourceSettings{Nick: "tester"}, addr: addr, registerTimeout: 150 * time.Millisecond}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	e := client.Run(ctx, func(string) {})
+	if e == nil || !strings.Contains(e.Error(), "did not complete registration") {
+		t.Fatalf("a missing welcome must be reported, got %v", e)
+	}
 }

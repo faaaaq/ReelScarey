@@ -459,7 +459,7 @@ func (s *Service) runSource(ctx context.Context, id string, def Definition, sett
 	}
 	backoff := 2 * time.Second
 	for ctx.Err() == nil {
-		client := &ircClient{def: def, settings: settings}
+		client := &ircClient{def: def, settings: settings, logger: s.logger}
 		e := client.Run(ctx, func(line string) {
 			if parsed, ok := def.Parse(line); ok {
 				if err := s.Record(ctx, id, def.ID, parsed, line); err != nil {

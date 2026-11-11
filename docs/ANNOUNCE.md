@@ -59,6 +59,28 @@ and the first release appears in **Recent announces**. To confirm IPTorrents is
 live, wait for one announce (the channel is busy, so this is usually under a
 minute) or open **Edit** to re-check the saved values.
 
+### Connected but no announces
+
+The reader waits for the tracker's welcome (`001`) before identifying to
+NickServ and joining the channel. Joining earlier is silently discarded by some
+servers (IPTorrents answers `451 You have not registered`), which used to leave
+a source looking connected while capturing nothing.
+
+Failures are now reported instead of hidden:
+
+- A refused join (`477`, `473`, `475` and similar) becomes the source error, for
+  example `irc server refused #ipt.announce: ... You need to be identified with
+  services`. Fix the account/password or nick rather than waiting.
+- A server `ERROR` line is returned as-is, so throttling shows up as
+  `Throttled: Reconnecting too fast`. Leave the source alone until the tracker
+  lifts the throttle; reconnects back off exponentially up to five minutes.
+- A server that never completes registration fails after 90 seconds instead of
+  hanging.
+
+A successful join logs `announce source joined the IRC channel`. If that line is
+present and no error is shown, the source is simply waiting for the next
+announce.
+
 ### TLS certificate errors
 
 Every source connects with TLS and verifies the tracker's certificate against

@@ -5,9 +5,12 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,8 +21,12 @@ type ircClient struct {
 	def      Definition
 	settings SourceSettings
 	addr     string
-	writeMu  sync.Mutex
-	conn     net.Conn
+	logger   *slog.Logger
+	// registerTimeout bounds how long the server may take to send its welcome.
+	// It is a field so tests can shorten it; zero means 90 seconds.
+	registerTimeout time.Duration
+	writeMu         sync.Mutex
+	conn            net.Conn
 }
 
 func (c *ircClient) address() string {
@@ -89,32 +96,26 @@ func (c *ircClient) Run(ctx context.Context, onLine func(string)) error {
 	if e = c.write("USER " + nick + " 0 * :ReelScarey announce reader"); e != nil {
 		return e
 	}
-	if c.settings.Password != "" {
-		identify := "IDENTIFY " + c.settings.Password
-		if c.settings.Account != "" {
-			identify = "IDENTIFY " + c.settings.Account + " " + c.settings.Password
-		}
-		if e = c.write("PRIVMSG NickServ :" + identify); e != nil {
-			return e
-		}
-		if e = sleep(ctx, 2*time.Second); e != nil {
-			return e
-		}
+	// Registration must finish before JOIN. Trackers such as IPTorrents answer
+	// an early JOIN with 451 and drop it, which would otherwise leave the reader
+	// connected, answering PINGs, but silently receiving no announces at all.
+	registered := make(chan struct{})
+	var registerOnce sync.Once
+	var registrationExpired atomic.Bool
+	timeout := c.registerTimeout
+	if timeout <= 0 {
+		timeout = 90 * time.Second
 	}
-	if c.settings.Invite != "" {
-		fields := strings.SplitN(strings.TrimSpace(c.settings.Invite), " ", 2)
-		if len(fields) == 2 {
-			if e = c.write("PRIVMSG " + fields[0] + " :" + fields[1]); e != nil {
-				return e
-			}
-			if e = sleep(ctx, 2*time.Second); e != nil {
-				return e
-			}
+	timer := time.AfterFunc(timeout, func() {
+		select {
+		case <-registered:
+			return
+		default:
 		}
-	}
-	if e = c.write("JOIN " + c.def.Channel); e != nil {
-		return e
-	}
+		registrationExpired.Store(true)
+		_ = conn.Close()
+	})
+	defer timer.Stop()
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 4096), 8192)
 	for scanner.Scan() {
@@ -128,14 +129,107 @@ func (c *ircClient) Run(ctx context.Context, onLine func(string)) error {
 			}
 			continue
 		}
+		// A server ERROR (throttling, a banned nick, a closed link) ends the
+		// connection; returning its text puts the reason in the source status.
+		if strings.HasPrefix(line, "ERROR") {
+			return fmt.Errorf("irc server closed the connection: %s", strings.TrimSpace(strings.TrimPrefix(line, "ERROR")))
+		}
+		if code, rest, ok := serverNumeric(line); ok {
+			switch {
+			case code == 1:
+				var post error
+				registerOnce.Do(func() {
+					close(registered)
+					post = c.postRegistration(ctx)
+				})
+				if post != nil {
+					return post
+				}
+			case code == 366 && strings.Contains(strings.ToLower(rest), strings.ToLower(c.def.Channel)):
+				if c.logger != nil {
+					c.logger.Info("announce source joined the IRC channel", "tracker", c.def.ID, "channel", c.def.Channel)
+				}
+			case code >= 400 && code <= 599:
+				if e := c.numericError(code, rest); e != nil {
+					return e
+				}
+			}
+			continue
+		}
 		if message, ok := channelMessage(line, c.def.Channel); ok {
 			onLine(message)
 		}
+	}
+	if registrationExpired.Load() {
+		return fmt.Errorf("irc server did not complete registration within %s", timeout)
 	}
 	if e = scanner.Err(); e != nil {
 		return e
 	}
 	return fmt.Errorf("irc connection closed")
+}
+
+// postRegistration runs once the server has sent its welcome (001): NickServ
+// identify, the optional invite command and finally the channel join.
+func (c *ircClient) postRegistration(ctx context.Context) error {
+	if c.settings.Password != "" {
+		identify := "IDENTIFY " + c.settings.Password
+		if c.settings.Account != "" {
+			identify = "IDENTIFY " + c.settings.Account + " " + c.settings.Password
+		}
+		if e := c.write("PRIVMSG NickServ :" + identify); e != nil {
+			return e
+		}
+		if e := sleep(ctx, 2*time.Second); e != nil {
+			return e
+		}
+	}
+	if c.settings.Invite != "" {
+		fields := strings.SplitN(strings.TrimSpace(c.settings.Invite), " ", 2)
+		if len(fields) == 2 {
+			if e := c.write("PRIVMSG " + fields[0] + " :" + fields[1]); e != nil {
+				return e
+			}
+			if e := sleep(ctx, 2*time.Second); e != nil {
+				return e
+			}
+		}
+	}
+	return c.write("JOIN " + c.def.Channel)
+}
+
+// serverNumeric splits ":server 001 nick :welcome" into its numeric reply code
+// and the remaining parameters.
+func serverNumeric(line string) (int, string, bool) {
+	if !strings.HasPrefix(line, ":") {
+		return 0, "", false
+	}
+	fields := strings.SplitN(line, " ", 3)
+	if len(fields) < 2 || len(fields[1]) != 3 {
+		return 0, "", false
+	}
+	code, e := strconv.Atoi(fields[1])
+	if e != nil {
+		return 0, "", false
+	}
+	rest := ""
+	if len(fields) == 3 {
+		rest = fields[2]
+	}
+	return code, rest, true
+}
+
+// numericError turns a failed registration or a refused channel join into a
+// visible source error instead of a connection that stays up but never
+// announces anything.
+func (c *ircClient) numericError(code int, rest string) error {
+	if code == 451 {
+		return fmt.Errorf("irc server rejected a command before registration completed: %s", rest)
+	}
+	if strings.Contains(strings.ToLower(rest), strings.ToLower(c.def.Channel)) {
+		return fmt.Errorf("irc server refused %s: %s", c.def.Channel, rest)
+	}
+	return nil
 }
 
 // channelMessage extracts the text of a PRIVMSG for the configured channel.

@@ -2803,3 +2803,30 @@ valid: current time 2026-11-11T01:18:30-06:00 is after 2026-01-24T23:05:21Z`.
 - No owner credentials (passkey or NickServ password) were used or written during
   the local checks; the tracker was only probed with throwaway nicks until it
   began throttling.
+
+## Announce feeds: join only after IRC registration (2026-11-11)
+
+Live IPTorrents acceptance on the production instance showed the 0.53.3 TLS fix
+was necessary but not sufficient: with skip verify enabled the source connected,
+stayed up and captured nothing.
+
+- Read-only socket inspection (`ss -tni` inside the container) showed the
+  connection ESTABLISHED to 51.75.76.181:6697 with `bytes_received` growing only
+  by PING/PONG exchanges. A single throwaway-nick `openssl s_client` probe then
+  showed the server answering an early JOIN with `451 You have not registered`
+  and later closing with `Registration Timeout`. The client had been sending
+  JOIN before the server welcome, so the join was dropped and never retried.
+- `internal/announce/irc.go` now waits for `001` before NickServ identify, the
+  invite command and JOIN; a 90-second registration deadline (a field, shortened
+  in tests) closes a connection whose server never welcomes; server `ERROR`
+  lines and channel-related 4xx/5xx numerics become the source error instead of
+  silence; a successful join logs `announce source joined the IRC channel`.
+- New tests: `TestIRCClientWaitsForWelcomeBeforeJoining` (deliberately delayed
+  welcome, 451 for any early JOIN), `TestIRCClientReportsJoinRefusal` (477),
+  `TestIRCClientReportsServerError` (throttle text) and
+  `TestIRCClientRegistrationTimeout`. Existing announce and TLS tests still pass.
+- `docs/ANNOUNCE.md` gains a "Connected but no announces" section. Version
+  bumped to 0.53.4.
+- The only live IRC connections made for this diagnosis were the application's
+  own source and one throwaway-nick probe; no owner credentials were used or
+  written.
