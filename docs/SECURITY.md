@@ -29,6 +29,14 @@ records and therefore need independent encryption/access controls. Provider
 credentials are write-only through APIs; signed provider URLs/raw bodies must
 not appear in logs or returned error messages. Password reset revokes sessions.
 
+Scoped API keys are stored only as SHA-256 digests with a short display prefix.
+They reach only the Sonarr/Radarr/Prowlarr compatibility prefixes, not the
+administrator API, and request-account sessions are rejected there. API keys are
+revocable, optionally expiring and shown once. Notification and media-server
+secrets use the same secure store. A notification whose network result is
+ambiguous is marked uncertain and is never retried automatically, because a
+retry could duplicate a message the provider already accepted.
+
 External requests have time/body limits and redirects are refused. Subtitle
 download URLs have a narrow HTTPS host allowlist. File publication uses rooted
 filesystem operations, containment/identity checks, verified private staging,

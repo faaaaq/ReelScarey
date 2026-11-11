@@ -78,17 +78,19 @@ func remoteRoot(s string) (string, error) {
 }
 
 type IndexerConfig struct {
-	ID            string `json:"id,omitempty"`
-	Name          string `json:"name,omitempty"`
-	Kind          string `json:"kind,omitempty"`
-	Cookie        string `json:"cookie,omitempty"`
-	UserAgent     string `json:"user_agent,omitempty"`
-	FeedURL       string `json:"feed_url,omitempty"`
-	FreeleechOnly bool   `json:"freeleech_only,omitempty"`
-	Category      string `json:"category,omitempty"`
-	URL           string `json:"url"`
-	APIKey        string `json:"api_key"`
-	Generation    string `json:"generation"`
+	ID            string            `json:"id,omitempty"`
+	Name          string            `json:"name,omitempty"`
+	Kind          string            `json:"kind,omitempty"`
+	Cookie        string            `json:"cookie,omitempty"`
+	UserAgent     string            `json:"user_agent,omitempty"`
+	FeedURL       string            `json:"feed_url,omitempty"`
+	FreeleechOnly bool              `json:"freeleech_only,omitempty"`
+	Category      string            `json:"category,omitempty"`
+	URL           string            `json:"url"`
+	APIKey        string            `json:"api_key"`
+	Definition    string            `json:"definition,omitempty"`
+	Settings      map[string]string `json:"settings,omitempty"`
+	Generation    string            `json:"generation"`
 }
 type ClientConfig struct {
 	LocalFolder  string `json:"local_folder,omitempty"`

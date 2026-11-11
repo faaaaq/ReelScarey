@@ -1,5 +1,62 @@
 # REST API — media catalog, downloads, imports, automation and operations
 
+## Quality, diagnostics and artwork additions
+
+Administrator GET/POST `/api/v1/subtitles/language-profiles` and
+PUT/DELETE `/api/v1/subtitles/language-profiles/{id}` manage ordered subtitle
+tracks. GET/PUT `/api/v1/subtitles/language-defaults` manages Movies/TV/Anime
+defaults. PUT/DELETE `/api/v1/library/items/{id}/language-profile` assigns or
+removes a title override. The worker overlays the selected profile's tracks on
+the global preferences; audio languages are stored but release selection still
+uses the quality profile language.
+
+GET `/api/v1/quality-profiles` and PUT `/api/v1/quality-profiles/{id}` accept
+`scoring.custom_formats`, an array of
+`{name,patterns,weight,required,excluded}` objects. Patterns are case-insensitive
+regular expressions. `required` and `excluded` can block a release; other
+weights only reorder eligible releases. At most 20 formats and 20 patterns per
+format are accepted; invalid expressions and profiles fail validation.
+
+`GET /api/v1/library/profile-defaults` returns `{items,profiles}`;
+PUT replaces the Movies, TV and Anime defaults with `{items:[{library_key,
+profile_id,revision}]}`. A null `profile_id` keeps the search schedule default.
+New titles inherit the matching default; existing titles and explicit per-title
+profiles are unchanged.
+
+`GET /api/v1/metadata/movies/{id}/watch?region=US` returns region-scoped TMDb
+provider suggestions. `GET /api/v1/diagnostics` is a read-only aggregation of
+failed downloads, blacklist entries, failed events, indexer errors and
+unfinished automation runs. `GET /api/v1/storage/insights` reports registered
+file counts/sizes, duplicate groups, unresolved scan files and analyzed files
+below their assigned cutoff. Neither page scans disk or changes state.
+
+The optional `settings.artwork_export` preference writes a missing `poster.jpg`
+beside registered movies from TMDb artwork. Existing images are never replaced;
+TV episode artwork is not written.
+
+Indexers with `kind: "cardigann"` accept a bounded `definition` YAML string and
+the tracker homepage URL. The adapter supports a conservative Cardigann subset:
+HTML/CSS search rows, common field filters, cookie/user-agent sessions and
+torrent or magnet links. Definitions are never returned by the list endpoint,
+redirects are refused, and non-torrent definitions are not claimed as working.
+
+## Integration surface (schema 81–87)
+
+Administrator GET/POST `/api/v1/api-keys` and DELETE `/api/v1/api-keys/{id}`
+manage scoped compatibility keys. The token is returned once; only its digest is
+stored. `/sonarr`, `/radarr`, `/prowlarr` and `/api/v3` accept `X-Api-Key`,
+`?apikey=` or a Bearer token. Compatibility reads and the four allowed `POST
+/command` names are documented in [integrations](INTEGRATIONS.md). Unsupported
+operations return an explicit 404/501; the layer never invents history.
+
+Administrator `/api/v1/notifications` manages durable notification channels
+(`email`, `ntfy`, `gotify`, `pushover`, `telegram`, `discord`, `webhook`).
+`/api/v1/notifications/{id}/test` sends synchronously; `/outbox` lists deliveries
+and `/outbox/{id}/retry` explicitly retries an uncertain or failed one.
+Administrator `/api/v1/jellyfin` and `/api/v1/plex` manage encrypted read-only
+media-server connections with `/activity`, `/refresh` and (Plex) `/sections`.
+See [integration limits](INTEGRATIONS.md). These routes require an administrator
+session; API keys do not reach them.
 
 Torrent detail accepts `?section=general|content|trackers|peers|http` to load
 only the requested data. Omitting the section returns the full detail response.

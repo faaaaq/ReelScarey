@@ -23,6 +23,7 @@ type IndexerStatus struct {
 	HasCookie     bool   `json:"has_cookie"`
 	HasFeed       bool   `json:"has_feed"`
 	HasKey        bool   `json:"has_api_key"`
+	HasDefinition bool   `json:"has_definition"`
 	Legacy        bool   `json:"legacy"`
 	LastTest      int64  `json:"last_test_at"`
 	LastSearch    int64  `json:"last_search_at"`
@@ -30,16 +31,18 @@ type IndexerStatus struct {
 	LastCount     int    `json:"last_result_count"`
 }
 type ManagedIndexerUpdate struct {
-	Name          string  `json:"name"`
-	Kind          string  `json:"kind"`
-	URL           string  `json:"url"`
-	Enabled       bool    `json:"enabled"`
-	Revision      int     `json:"revision"`
-	UserAgent     string  `json:"user_agent"`
-	FreeleechOnly bool    `json:"freeleech_only"`
-	Cookie        *string `json:"cookie"`
-	APIKey        *string `json:"api_key"`
-	FeedURL       *string `json:"feed_url"`
+	Name          string            `json:"name"`
+	Kind          string            `json:"kind"`
+	URL           string            `json:"url"`
+	Enabled       bool              `json:"enabled"`
+	Revision      int               `json:"revision"`
+	UserAgent     string            `json:"user_agent"`
+	FreeleechOnly bool              `json:"freeleech_only"`
+	Cookie        *string           `json:"cookie"`
+	APIKey        *string           `json:"api_key"`
+	FeedURL       *string           `json:"feed_url"`
+	Definition    string            `json:"definition"`
+	Settings      map[string]string `json:"settings,omitempty"`
 }
 type indexerRecord struct {
 	IndexerStatus
@@ -77,6 +80,7 @@ func (s *Service) managedIndexer(ctx context.Context, id string) (indexerRecord,
 	out.HasCookie = out.config.Cookie != ""
 	out.HasFeed = out.config.FeedURL != ""
 	out.HasKey = out.config.APIKey != ""
+	out.HasDefinition = strings.TrimSpace(out.config.Definition) != ""
 	return out, nil
 }
 func (s *Service) Indexers(ctx context.Context) ([]IndexerStatus, error) {
@@ -164,8 +168,31 @@ func (s *Service) SaveIndexer(ctx context.Context, id string, in ManagedIndexerU
 	c.Generation = ID()
 	c.UserAgent = in.UserAgent
 	c.FreeleechOnly = in.FreeleechOnly
-	if c.Kind != "torznab" && c.Kind != "newznab" && c.Kind != "iptorrents" && c.Kind != "xspeeds" && c.Kind != "rss" && c.Kind != "nyaa" {
+	c.Definition = strings.TrimSpace(in.Definition)
+	c.Settings = map[string]string{}
+	for key, value := range in.Settings {
+		key = strings.TrimSpace(key)
+		if key == "" || len(key) > 64 || len(value) > 2048 || strings.ContainsAny(key+value, "\x00\r\n") {
+			return IndexerStatus{}, problem("invalid_settings", "Cardigann settings must use bounded keys and values.")
+		}
+		c.Settings[key] = strings.TrimSpace(value)
+	}
+	if c.Kind != "torznab" && c.Kind != "newznab" && c.Kind != "iptorrents" && c.Kind != "xspeeds" && c.Kind != "rss" && c.Kind != "nyaa" && c.Kind != "cardigann" {
 		return IndexerStatus{}, problem("invalid_settings", "Choose a supported indexer type.")
+	}
+	if c.Kind == "cardigann" {
+		if c.Definition == "" || len(c.Definition) > 200_000 {
+			return IndexerStatus{}, problem("invalid_settings", "Paste a Cardigann YAML definition of at most 200 KB.")
+		}
+		adapter, ok := s.adapters["cardigann"].(*Cardigann)
+		if !ok {
+			return IndexerStatus{}, problem("invalid_settings", "The Cardigann adapter is unavailable.")
+		}
+		if _, err := adapter.definition(c); err != nil {
+			return IndexerStatus{}, err
+		}
+	} else if c.Definition != "" || len(c.Settings) > 0 {
+		return IndexerStatus{}, problem("invalid_settings", "Cardigann definitions are only valid for the Cardigann indexer type.")
 	}
 	changed := old.URL != "" && old.URL != c.URL
 	if changed && ((c.Cookie != "" && in.Cookie == nil) || (c.APIKey != "" && in.APIKey == nil) || (c.FeedURL != "" && in.FeedURL == nil)) {
@@ -208,7 +235,7 @@ func (s *Service) SaveIndexer(ctx context.Context, id string, in ManagedIndexerU
 			return IndexerStatus{}, problem("invalid_settings", "The private feed must belong to the configured website origin.")
 		}
 	}
-	if ((c.Kind != "torznab" && c.Kind != "newznab") && c.APIKey != "") || (c.Kind != "rss" && c.FeedURL != "") || ((c.Kind == "torznab" || c.Kind == "newznab") && (c.Cookie != "" || c.FreeleechOnly || c.UserAgent != "")) {
+	if ((c.Kind != "torznab" && c.Kind != "newznab" && c.Kind != "cardigann") && c.APIKey != "") || (c.Kind != "rss" && c.FeedURL != "") || ((c.Kind == "torznab" || c.Kind == "newznab") && (c.Cookie != "" || c.FreeleechOnly || c.UserAgent != "")) {
 		return IndexerStatus{}, problem("invalid_settings", "Only enter credentials supported by the selected indexer type.")
 	}
 	if a := s.adapter(c); a == nil {

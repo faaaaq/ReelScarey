@@ -26,12 +26,15 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/discordbot"
 	"github.com/faaaaq/ReelScarey/internal/emby"
+	"github.com/faaaaq/ReelScarey/internal/jellyfin"
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/metrics"
 	"github.com/faaaaq/ReelScarey/internal/music"
+	"github.com/faaaaq/ReelScarey/internal/notify"
 	"github.com/faaaaq/ReelScarey/internal/operations"
 	"github.com/faaaaq/ReelScarey/internal/organization"
+	"github.com/faaaaq/ReelScarey/internal/plex"
 	"github.com/faaaaq/ReelScarey/internal/requests"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"github.com/faaaaq/ReelScarey/internal/settings"
@@ -65,6 +68,9 @@ type Server struct {
 	bot              *discordbot.Service
 	emby             *emby.Service
 	embyMonitor      *emby.Monitor
+	jellyfin         *jellyfin.Service
+	plex             *plex.Service
+	notify           *notify.Store
 	vpn              *vpn.Service
 	announce         *announce.Service
 	franchises       metadata.FranchiseProvider
@@ -88,8 +94,11 @@ type Dependencies struct {
 	KitsuProvider    metadata.AnimeProvider
 	YouTubeInspector YouTubeInspector
 	Secrets          *securestore.Store
+	Notify           *notify.Store
 	Emby             *emby.Service
 	EmbyMonitor      *emby.Monitor
+	Jellyfin         *jellyfin.Service
+	Plex             *plex.Service
 	VPN              *vpn.Service
 	Announce         *announce.Service
 	Bot              *discordbot.Service
@@ -208,6 +217,10 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	s.organization = organization.New(db, cfg)
 	s.requests = requests.New(db)
 	if deps.Secrets != nil {
+		s.notify = deps.Notify
+		if s.notify == nil {
+			s.notify = notify.New(db, deps.Secrets)
+		}
 		s.emby = deps.Emby
 		if s.emby == nil {
 			s.emby = emby.New(deps.Secrets)
@@ -215,6 +228,14 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 		s.embyMonitor = deps.EmbyMonitor
 		if s.embyMonitor == nil {
 			s.embyMonitor = emby.NewMonitor(db, s.emby)
+		}
+		s.jellyfin = deps.Jellyfin
+		if s.jellyfin == nil {
+			s.jellyfin = jellyfin.New(deps.Secrets)
+		}
+		s.plex = deps.Plex
+		if s.plex == nil {
+			s.plex = plex.New(deps.Secrets)
 		}
 		s.discord = requests.NewDiscord(db, deps.Secrets)
 		s.requestLists = requests.NewLists(db, deps.Secrets)
@@ -231,9 +252,11 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/healthz", method(http.MethodGet, s.health))
 	mux.HandleFunc("/readyz", method(http.MethodGet, s.ready))
 	mux.HandleFunc("/api/v1/system", method(http.MethodGet, s.system))
+	mux.HandleFunc("/api/v1/diagnostics", method(http.MethodGet, s.diagnostics))
 	mux.HandleFunc("/api/v1/setup", method(http.MethodGet, s.setupGuide))
 	mux.HandleFunc("/api/v1/system/checks", s.installationChecks)
 	mux.HandleFunc("/api/v1/system/storage", method(http.MethodGet, s.storageBrowser))
+	mux.HandleFunc("/api/v1/storage/insights", method(http.MethodGet, s.storageInsightsHandler))
 	mux.HandleFunc("/api/v1/download-clients", s.downloadClients)
 	mux.HandleFunc("/api/v1/download-clients/defaults", method(http.MethodPut, s.downloadClientDefaults))
 	mux.HandleFunc("/api/v1/download-clients/builtin", s.downloadClientBuiltin)
@@ -267,6 +290,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/refresh", method(http.MethodPost, s.refreshLibrary))
 	mux.HandleFunc("/api/v1/library/monitoring/preview", method(http.MethodPost, s.reviewMonitoring))
 	mux.HandleFunc("/api/v1/library/monitoring", method(http.MethodPut, s.applyMonitoring))
+	mux.HandleFunc("/api/v1/library/profile-defaults", s.libraryProfileDefaults)
 	mux.HandleFunc("/api/v1/library/profiles/preview", method(http.MethodPost, s.reviewProfiles))
 	mux.HandleFunc("/api/v1/library/profiles", method(http.MethodPut, s.applyProfiles))
 	mux.HandleFunc("/api/v1/library/imports", s.existingCollection)
@@ -305,10 +329,22 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/indexers/{id}/test", method(http.MethodPost, s.indexerTest))
 	mux.HandleFunc("/api/v1/indexers/{id}/enabled", method(http.MethodPut, s.indexerEnabled))
 	mux.HandleFunc("/api/v1/settings", s.handleSettings)
+	mux.HandleFunc("/api/v1/notifications", s.notifications)
+	mux.HandleFunc("/api/v1/notifications/outbox", method(http.MethodGet, s.notificationOutbox))
+	mux.HandleFunc("/api/v1/notifications/outbox/{id}/retry", method(http.MethodPost, s.notificationRetry))
+	mux.HandleFunc("/api/v1/notifications/{id}", s.notification)
+	mux.HandleFunc("/api/v1/notifications/{id}/test", method(http.MethodPost, s.notificationTest))
 	mux.HandleFunc("/api/v1/emby", s.embySettings)
 	mux.HandleFunc("/api/v1/emby/activity", method(http.MethodGet, s.embyActivity))
 	mux.HandleFunc("/api/v1/emby/monitor", s.embyMonitorSettings)
 	mux.HandleFunc("/api/v1/emby/history", method(http.MethodGet, s.embyHistory))
+	mux.HandleFunc("/api/v1/jellyfin", s.jellyfinSettings)
+	mux.HandleFunc("/api/v1/jellyfin/activity", method(http.MethodGet, s.jellyfinActivity))
+	mux.HandleFunc("/api/v1/jellyfin/refresh", method(http.MethodPost, s.jellyfinRefresh))
+	mux.HandleFunc("/api/v1/plex", s.plexSettings)
+	mux.HandleFunc("/api/v1/plex/activity", method(http.MethodGet, s.plexActivity))
+	mux.HandleFunc("/api/v1/plex/refresh", method(http.MethodPost, s.plexRefresh))
+	mux.HandleFunc("/api/v1/plex/sections", method(http.MethodGet, s.plexSections))
 	mux.HandleFunc("/api/v1/organization", s.organizationSettings)
 	mux.HandleFunc("/api/v1/organization/files", method(http.MethodGet, s.organizationFiles))
 	mux.HandleFunc("/api/v1/organization/files/{id}/health", method(http.MethodPost, s.organizationFileHealth))
@@ -328,6 +364,10 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/items/{id}/related", s.relatedTitles)
 	mux.HandleFunc("/api/v1/library/items/{id}/franchise", method(http.MethodGet, s.franchiseTitles))
 	mux.HandleFunc("/api/v1/subtitles/preferences", s.subtitlePreferences)
+	mux.HandleFunc("/api/v1/subtitles/language-profiles", s.languageProfiles)
+	mux.HandleFunc("/api/v1/subtitles/language-profiles/{id}", s.languageProfile)
+	mux.HandleFunc("/api/v1/subtitles/language-defaults", s.languageDefaults)
+	mux.HandleFunc("/api/v1/library/items/{id}/language-profile", s.mediaLanguageProfile)
 	mux.HandleFunc("/api/v1/providers/opensubtitles", s.subtitleProvider)
 	mux.HandleFunc("/api/v1/providers/opensubtitles/test", method(http.MethodPost, s.subtitleProviderTest))
 	mux.HandleFunc("/api/v1/subtitles/files", method(http.MethodGet, s.subtitleFiles))
@@ -376,6 +416,19 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/series/{id}/youtube-sources/{source}", s.seriesYouTubeSource)
 	mux.HandleFunc("/api/v1/quality-profiles", s.qualityProfiles)
 	mux.HandleFunc("/api/v1/quality-profiles/{id}", method(http.MethodPut, s.qualityProfileUpdate))
+	mux.HandleFunc("/api/v1/api-keys", s.apiKeys)
+	mux.HandleFunc("/api/v1/api-keys/{id}", method(http.MethodDelete, s.apiKey))
+	// Sonarr v3, Radarr v3 and Prowlarr v1 compatibility. These routes use
+	// scoped API keys and are handled by compatSecurity before the browser
+	// session checks below.
+	mux.HandleFunc("/api/v3", s.arrCompat)
+	mux.HandleFunc("/api/v3/", s.arrCompat)
+	mux.HandleFunc("/sonarr", s.arrCompat)
+	mux.HandleFunc("/sonarr/", s.arrCompat)
+	mux.HandleFunc("/radarr", s.arrCompat)
+	mux.HandleFunc("/radarr/", s.arrCompat)
+	mux.HandleFunc("/prowlarr", s.arrCompat)
+	mux.HandleFunc("/prowlarr/", s.arrCompat)
 	mux.HandleFunc("/api/v1/auth/session", method(http.MethodGet, s.authSession))
 	mux.HandleFunc("/api/v1/auth/setup", method(http.MethodPost, s.authSetup))
 	mux.HandleFunc("/api/v1/auth/login", method(http.MethodPost, s.authLogin))
@@ -407,6 +460,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/providers/tmdb/test", method(http.MethodPost, s.tmdbTest))
 	mux.HandleFunc("/api/v1/metadata/movies", method(http.MethodGet, s.searchMovies))
 	mux.HandleFunc("/api/v1/metadata/movies/{id}", method(http.MethodGet, s.movieDetails))
+	mux.HandleFunc("/api/v1/metadata/movies/{id}/watch", method(http.MethodGet, s.watchProviders))
 	mux.HandleFunc("/api/v1/metadata/people/{id}/credits", method(http.MethodGet, s.personCredits))
 	mux.HandleFunc("/api/v1/library/movies", method(http.MethodPost, s.addMovie))
 	mux.HandleFunc("/api/v1/library/movies/{id}", method(http.MethodGet, s.catalogMovie))
@@ -726,6 +780,12 @@ func frontend(assets fs.FS) http.HandlerFunc {
 	routes["/music/discover"] = true
 	routes["/music/organize"] = true
 	routes["/music/wanted"] = true
+	routes["/notifications"] = true
+	routes["/api-keys"] = true
+	routes["/media-servers"] = true
+	routes["/diagnostics"] = true
+	routes["/storage/insights"] = true
+	routes["/language-profiles"] = true
 	serveIndex := func(w http.ResponseWriter, r *http.Request, status int) {
 		body, err := fs.ReadFile(assets, "index.html")
 		if err != nil {

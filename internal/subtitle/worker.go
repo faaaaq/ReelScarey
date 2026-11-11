@@ -129,6 +129,7 @@ func (s *Service) process(ctx context.Context, j Job, p Preferences) (string, st
 	if e != nil {
 		return "", "", e
 	}
+	p = s.preferencesFor(ctx, m, p)
 	o, e := s.openMedia(ctx, m)
 	if e != nil {
 		return "", "", e

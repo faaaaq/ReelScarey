@@ -6,6 +6,7 @@ export type Settings = {
   register_unverified_video: boolean;
   import_mode: "hardlink" | "copy";
   nfo_export: boolean;
+  artwork_export: boolean;
   revision: number;
   updated_at: string;
 };
@@ -28,6 +29,15 @@ export type Dashboard = {
   settings_updated_at: string;
 };
 export type ProfileSummary = { id: number; name: string; revision: number };
+export type LibraryDefault = {
+  library_key: "movies" | "tv" | "anime";
+  profile_id: number | null;
+  revision: number;
+};
+export type LibraryProfileDefaults = {
+  items: LibraryDefault[];
+  profiles: ProfileSummary[];
+};
 export type CatalogProfileContext = {
   default_profile: ProfileSummary;
   profiles: ProfileSummary[];
@@ -902,6 +912,200 @@ export type TOTPStatus = {
 export type TOTPProvision = {
   secret: string;
   otpauth_uri: string;
+};
+
+export type APIKey = {
+  id: number;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  created_at: number;
+  last_used_at: number;
+  expires_at: number;
+  revoked_at: number;
+};
+
+export type APIKeyCreated = APIKey & { token: string };
+
+export type APIKeyList = {
+  items: APIKey[];
+  scopes: string[];
+};
+
+export type NotificationKind =
+  "email" | "ntfy" | "gotify" | "pushover" | "telegram" | "discord" | "webhook";
+
+export type NotificationChannel = {
+  id: number;
+  name: string;
+  kind: NotificationKind;
+  enabled: boolean;
+  config: Record<string, string>;
+  events: string[];
+  has_secret: boolean;
+  revision: number;
+  created_at: number;
+  updated_at: number;
+};
+
+export type NotificationChannelInput = {
+  name: string;
+  kind: NotificationKind;
+  enabled: boolean;
+  config: Record<string, string>;
+  events: string[];
+  secret?: string;
+  revision: number;
+};
+
+export type NotificationChannelList = {
+  items: NotificationChannel[];
+  events: string[];
+  kinds: NotificationKind[];
+};
+
+export type StorageInsightFile = {
+  id: number;
+  title: string;
+  kind: string;
+  relative_path: string;
+  size_bytes: number;
+  quality: number;
+  cutoff: number;
+  has_analysis: boolean;
+};
+
+export type StorageInsights = {
+  summary: {
+    registered_files: number;
+    registered_bytes: number;
+    duplicate_groups: number;
+    below_cutoff: number;
+    unresolved: number;
+    largest_returned: number;
+  };
+  below_cutoff: StorageInsightFile[];
+  largest: StorageInsightFile[];
+  unresolved: number;
+};
+
+export type Diagnostics = {
+  downloads: {
+    id: string;
+    title: string;
+    media: string;
+    state: string;
+    error_code: string;
+    error: string;
+    updated_at: number;
+  }[];
+  blacklist: {
+    id: number;
+    indexer: string;
+    title: string;
+    reason: string;
+    created_at: number;
+  }[];
+  events: {
+    id: number;
+    occurred_at: number;
+    kind: string;
+    title: string;
+    state: string;
+  }[];
+  indexers: {
+    id: string;
+    name: string;
+    last_error: string;
+    last_test_at: number;
+  }[];
+  automation_runs: {
+    id: string;
+    state: string;
+    message: string;
+    started_at: number;
+    finished_at: number;
+  }[];
+  counts: {
+    downloads: number;
+    blacklist: number;
+    events: number;
+    indexers: number;
+    automation_runs: number;
+  };
+};
+
+export type SubtitleTrack = {
+  language: string;
+  variant: string;
+};
+
+export type LanguageProfile = {
+  id: number;
+  name: string;
+  tracks: SubtitleTrack[];
+  audio_languages: string[];
+  revision: number;
+};
+
+export type LanguageDefault = {
+  library_key: "movies" | "tv" | "anime";
+  profile_id: number | null;
+  revision: number;
+};
+
+export type WatchOffer = {
+  name: string;
+  logo_url: string;
+};
+
+export type WatchProviders = {
+  region: string;
+  providers: {
+    link: string;
+    flatrate: WatchOffer[];
+    rent: WatchOffer[];
+    buy: WatchOffer[];
+    free: WatchOffer[];
+  };
+};
+
+export type MediaServerStatus = {
+  url: string;
+  configured: boolean;
+  section_id?: string;
+};
+
+export type MediaServerActivity = {
+  title: string;
+  series: string;
+  kind: string;
+  season: number | null;
+  episode: number | null;
+  last_played: string;
+  play_count: number;
+  played: boolean;
+  progress: number;
+};
+
+export type MediaServerActivityResult = {
+  items: MediaServerActivity[];
+  truncated: boolean;
+  checked_at: string;
+};
+
+export type NotificationOutboxItem = {
+  id: number;
+  channel_id: number;
+  event: string;
+  title: string;
+  body: string;
+  state: "pending" | "sending" | "sent" | "failed" | "uncertain" | "cancelled";
+  attempts: number;
+  next_attempt: number;
+  last_error: string;
+  created_at: number;
+  updated_at: number;
 };
 
 let csrfToken = "";

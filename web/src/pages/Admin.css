@@ -988,3 +988,23 @@ a.scan-metric:hover {
   line-height: 1.5;
   white-space: pre;
 }
+
+/* Storage insights --------------------------------------------------- */
+.storage-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.storage-insight-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-2);
+}
+.storage-insight-grid strong {
+  font-size: 18px;
+}

@@ -206,6 +206,7 @@ function pick(value: LibrarySettings): SettingsUpdate {
     register_unverified_video,
     import_mode,
     nfo_export,
+    artwork_export,
     revision,
   } = value;
   return {
@@ -216,6 +217,7 @@ function pick(value: LibrarySettings): SettingsUpdate {
     register_unverified_video,
     import_mode: import_mode ?? "hardlink",
     nfo_export: nfo_export ?? false,
+    artwork_export: artwork_export ?? false,
     revision,
   };
 }
@@ -406,6 +408,22 @@ function GeneralSettings() {
                       onChange={(e) => update("nfo_export", e.target.checked)}
                     />
                     <span>Write .nfo sidecars for registered media</span>
+                  </label>
+                </FormGroup>
+                <FormGroup
+                  label="Poster sidecars"
+                  help="Write a missing poster.jpg beside registered movies from TMDb artwork. Existing images are never replaced; TV episode artwork is not written."
+                >
+                  <label className="rs-check">
+                    <input
+                      type="checkbox"
+                      aria-label="Write poster.jpg for registered movies"
+                      checked={form.artwork_export}
+                      onChange={(e) =>
+                        update("artwork_export", e.target.checked)
+                      }
+                    />
+                    <span>Write movie poster.jpg sidecars</span>
                   </label>
                 </FormGroup>
               </FieldSet>

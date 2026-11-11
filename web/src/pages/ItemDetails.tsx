@@ -30,6 +30,7 @@ import {
 } from "./details/ItemSearch";
 import { AutomaticFranchise } from "./AutomaticFranchise";
 import { MovieVersions } from "./MovieVersions";
+import { WatchProviders } from "./WatchProviders";
 import {
   CreditsSection,
   DetailFact,
@@ -213,6 +214,7 @@ function MovieView({ id }: { id: number }) {
                         savedTitle={data.item.title}
                       />
                       {data.item.kind === "movie" && <MovieVersions id={id} />}
+                      {data.item.kind === "movie" && <WatchProviders id={id} />}
                       <HistorySection details={details} />
                       <Pagination
                         page={details.page}

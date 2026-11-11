@@ -56,6 +56,7 @@ func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Clien
 	s := &Service{db: db, secrets: secrets, cfg: cfg, client: client, indexer: indexer, shareHandledSet: map[string]bool{}, recent: map[string]recentOffer{}}
 	s.adapters = map[string]Indexer{"iptorrents": NewDirect("iptorrents"), "xspeeds": NewDirect("xspeeds"), "nyaa": NewDirect("nyaa"), "rss": NewDirect("rss")}
 	s.adapters["newznab"] = NewNewznab()
+	s.adapters["cardigann"] = NewCardigann()
 	s.sab = NewSABnzbd()
 	s.nzbget = NewNZBGet()
 	s.transmission = NewTransmission()

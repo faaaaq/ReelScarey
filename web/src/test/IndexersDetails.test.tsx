@@ -77,6 +77,7 @@ const source: Indexer = {
   has_cookie: true,
   has_feed: false,
   has_api_key: false,
+  has_definition: false,
   legacy: false,
   last_test_at: 1,
   last_search_at: 0,

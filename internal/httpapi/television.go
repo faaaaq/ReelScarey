@@ -138,6 +138,13 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 			item.Monitored = monitored
 		}
 	}
+	if created {
+		key := "tv"
+		if item.Category == "anime" {
+			key = "anime"
+		}
+		s.applyLibraryDefaultProfile(r.Context(), item.ID, key)
+	}
 	if created && item.Monitored && s.automation != nil {
 		// The show-level focus searches every loaded, missing monitored episode
 		// using the saved automatic-search mode.

@@ -13,6 +13,29 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
+- [x] Integration surface: scoped API keys with one-time tokens and revocation,
+  Sonarr v3/Radarr v3/Prowlarr v1-compatible read endpoints plus a small
+  allowlisted command set, durable multi-provider notifications with an
+  uncertainty-aware outbox, and encrypted Jellyfin/Plex activity and refresh
+  connections. See [integrations](docs/INTEGRATIONS.md). The compatibility layer
+  is an explicit subset and never fabricates history or files.
+
+- [x] Quality and library additions: profile-local regex custom formats with
+  required/excluded rules and visible scoring reasons, per-library quality
+  profile defaults for new Movies/TV/Anime titles, TMDb region watch-provider
+  suggestions, a read-only diagnostics page, read-only storage insights and an
+  opt-in movie poster sidecar. See [API](docs/API.md).
+
+- [x] Language profiles: named ordered subtitle tracks, up to three optional
+  audio languages, Movies/TV/Anime library defaults and explicit per-title
+  overrides. Profiles overlay the global subtitle preferences; audio choices are
+  stored for display and do not yet change release selection. See
+  [subtitles](docs/SUBTITLES.md).
+
+- [x] Cardigann-compatible indexer definitions: bounded YAML search rows,
+  common filters, cookie/user-agent sessions and torrent/magnet downloads with
+  host confinement and redirect refusal. See [integrations](docs/INTEGRATIONS.md).
+
 - [x] Built-in torrent queue limits: queueing on/off, maximum active
   downloads, uploads and total torrents, editable from the Torrents page and
   persisted across supervised restarts. Defaults match qBittorrent (3/3/5).

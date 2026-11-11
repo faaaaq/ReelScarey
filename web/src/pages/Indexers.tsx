@@ -35,6 +35,7 @@ export type Indexer = {
   has_cookie: boolean;
   has_feed: boolean;
   has_api_key: boolean;
+  has_definition: boolean;
   legacy: boolean;
   last_test_at: number;
   last_search_at: number;
@@ -111,6 +112,12 @@ const kinds = [
     name: "Private torrent RSS",
     url: "",
     help: "Read and filter the entries currently in a torrent feed. This does not search the tracker's complete archive.",
+  },
+  {
+    id: "cardigann",
+    name: "Cardigann definition",
+    url: "",
+    help: "Paste a Cardigann YAML definition and its homepage URL. ReelScarey implements a conservative subset of HTML search, field filters, cookie sessions and torrent/magnet downloads.",
   },
 ];
 
@@ -423,6 +430,7 @@ function IndexerForm({
   const [cookie, setCookie] = useState("");
   const [key, setKey] = useState("");
   const [feed, setFeed] = useState("");
+  const [definition, setDefinition] = useState("");
   const [free, setFree] = useState(initial?.freeleech_only ?? false);
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [busy, setBusy] = useState(false);
@@ -431,6 +439,7 @@ function IndexerForm({
   const [clearKey, setClearKey] = useState(false);
   const privateSite = kind === "iptorrents" || kind === "xspeeds";
   const apiIndexer = kind === "torznab" || kind === "newznab";
+  const cookieSite = privateSite || kind === "rss" || kind === "cardigann";
   function changeKind(value: string) {
     const selected = kinds.find((k) => k.id === value)!;
     setPresetID("");
@@ -441,6 +450,7 @@ function IndexerForm({
     setCookie("");
     setKey("");
     setFeed("");
+    setDefinition("");
     setFree(false);
     setClearCookie(false);
     setClearKey(false);
@@ -471,20 +481,21 @@ function IndexerForm({
           url: url.trim(),
           enabled,
           revision: initial?.revision ?? 0,
-          user_agent: privateSite || kind === "rss" ? cleanedAgent : "",
+          user_agent: cookieSite ? cleanedAgent : "",
           freeleech_only: privateSite && free,
-          cookie:
-            privateSite || kind === "rss"
-              ? clearCookie
-                ? ""
-                : cleanedCookie || undefined
-              : undefined,
-          api_key: apiIndexer
-            ? clearKey
+          cookie: cookieSite
+            ? clearCookie
               ? ""
-              : key.trim() || undefined
+              : cleanedCookie || undefined
             : undefined,
+          api_key:
+            apiIndexer || kind === "cardigann"
+              ? clearKey
+                ? ""
+                : key.trim() || undefined
+              : undefined,
           feed_url: kind === "rss" ? feed.trim() || undefined : undefined,
+          definition: kind === "cardigann" ? definition.trim() : undefined,
         }),
       });
       setCookie("");
@@ -542,6 +553,26 @@ function IndexerForm({
       </label>
       <p className="rs-form-help">{kinds.find((k) => k.id === kind)?.help}</p>
       <IndexerHelp kind={kind} />
+      {kind === "cardigann" && (
+        <label>
+          Cardigann definition (YAML)
+          <textarea
+            aria-label="Cardigann YAML definition"
+            className="rs-code-input"
+            rows={12}
+            value={definition}
+            onChange={(e) => setDefinition(e.target.value)}
+            disabled={busy}
+            spellCheck={false}
+            placeholder="id: example&#10;name: Example&#10;search:&#10;  path: /search&#10;  rows:&#10;    selector: tr.release&#10;  fields:&#10;    title: {selector: a.title}&#10;    download: {selector: a.download, attribute: href}"
+          />
+          <span className="rs-muted rs-small">
+            Existing indexers cannot reveal a saved definition. Paste it again
+            when editing. Supported: HTML search rows, common filters, cookie
+            headers and torrent/magnet links.
+          </span>
+        </label>
+      )}
       <label>
         Name
         <TextField.Root
@@ -620,7 +651,7 @@ function IndexerForm({
           </p>
         </>
       )}
-      {(privateSite || kind === "rss") && (
+      {cookieSite && (
         <>
           <label>
             Session cookie (value only){!privateSite && " — optional"}
@@ -644,7 +675,7 @@ function IndexerForm({
             <code>document.cookie</code>; session cookies are HttpOnly. Labels
             and line breaks are removed automatically. Keep it out of chat.
           </p>
-          {kind === "rss" && initial?.has_cookie && (
+          {(kind === "rss" || kind === "cardigann") && initial?.has_cookie && (
             <label>
               <input
                 type="checkbox"

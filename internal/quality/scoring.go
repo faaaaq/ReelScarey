@@ -2,18 +2,31 @@ package quality
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 	"unicode"
 )
 
+// CustomFormat is an ordered, profile-local set of case-insensitive regular
+// expressions. Required and excluded formats can make a release ineligible;
+// other formats only reorder eligible releases.
+type CustomFormat struct {
+	Name     string   `json:"name"`
+	Patterns []string `json:"patterns"`
+	Weight   int      `json:"weight"`
+	Required bool     `json:"required"`
+	Excluded bool     `json:"excluded"`
+}
+
 type Scoring struct {
-	Sources             []string `json:"sources"`
-	Codecs              []string `json:"codecs"`
-	PreferredTerms      string   `json:"preferred_terms"`
-	MaxUsenetAgeDays    int      `json:"max_usenet_age_days"`
-	MinUsenetAgeMinutes int      `json:"min_usenet_age_minutes"`
+	Sources             []string       `json:"sources"`
+	Codecs              []string       `json:"codecs"`
+	PreferredTerms      string         `json:"preferred_terms"`
+	MaxUsenetAgeDays    int            `json:"max_usenet_age_days"`
+	MinUsenetAgeMinutes int            `json:"min_usenet_age_minutes"`
+	CustomFormats       []CustomFormat `json:"custom_formats,omitempty"`
 }
 
 var Sources = []string{"remux", "bluray", "webdl", "webrip", "hdtv", "dvd"}
@@ -38,6 +51,44 @@ func validateScoring(s Scoring) error {
 	for _, term := range strings.Split(s.PreferredTerms, ",") {
 		if strings.TrimSpace(term) != "" && Normalize(term) == "" {
 			return fmt.Errorf("Preferred terms must contain letters or numbers.")
+		}
+	}
+	if err := validateCustomFormats(s.CustomFormats); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateCustomFormats(formats []CustomFormat) error {
+	if len(formats) > 20 {
+		return fmt.Errorf("Use at most 20 custom formats per profile.")
+	}
+	seen := map[string]bool{}
+	for _, format := range formats {
+		name := strings.TrimSpace(format.Name)
+		if name == "" || len(name) > 80 || strings.ContainsFunc(name, unicode.IsControl) {
+			return fmt.Errorf("Custom format names must contain 1–80 characters without control characters.")
+		}
+		if seen[strings.ToLower(name)] {
+			return fmt.Errorf("Custom format names must be unique within a profile.")
+		}
+		seen[strings.ToLower(name)] = true
+		if format.Required && format.Excluded {
+			return fmt.Errorf("A custom format cannot be both required and excluded.")
+		}
+		if format.Weight < -500 || format.Weight > 500 {
+			return fmt.Errorf("Custom format weights must be between -500 and 500.")
+		}
+		if len(format.Patterns) == 0 || len(format.Patterns) > 20 {
+			return fmt.Errorf("Each custom format needs 1–20 patterns.")
+		}
+		for _, pattern := range format.Patterns {
+			if strings.TrimSpace(pattern) == "" || len(pattern) > 200 || strings.ContainsFunc(pattern, unicode.IsControl) {
+				return fmt.Errorf("Custom format patterns must contain 1–200 characters without control characters.")
+			}
+			if _, err := regexp.Compile("(?i)" + pattern); err != nil {
+				return fmt.Errorf("Custom format %q contains an invalid regular expression.", name)
+			}
 		}
 	}
 	return nil
@@ -100,6 +151,34 @@ func scoreEvidence(s Scoring, r Release, tokens string, sizeLimit int64, d *Deci
 			d.ScoringReasons = append(d.ScoringReasons, "Preferred term: "+term)
 		}
 		seen[term] = true
+	}
+	customHaystack := tokens + "\n" + r.Title
+	for _, format := range s.CustomFormats {
+		matched := false
+		for _, pattern := range format.Patterns {
+			re, err := regexp.Compile("(?i)" + pattern)
+			if err == nil && re.MatchString(customHaystack) {
+				matched = true
+				break
+			}
+		}
+		switch {
+		case format.Required && !matched:
+			d.Reasons = append(d.Reasons, "Required custom format not matched: "+format.Name)
+			continue
+		case format.Excluded && matched:
+			d.Reasons = append(d.Reasons, "Excluded custom format matched: "+format.Name)
+			continue
+		}
+		if matched {
+			if format.Weight != 0 {
+				d.Score += format.Weight
+				d.ScoringReasons = append(d.ScoringReasons, fmt.Sprintf("Custom format %s: %+d", format.Name, format.Weight))
+			}
+			if format.Required {
+				d.ScoringReasons = append(d.ScoringReasons, "Required custom format: "+format.Name)
+			}
+		}
 	}
 	// Torrent seeders dominate the preference bonuses within one resolution:
 	// among eligible releases the best-seeded one wins at scan time. The

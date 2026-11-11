@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/announce"
+	"github.com/faaaaq/ReelScarey/internal/artworkexport"
 	"github.com/faaaaq/ReelScarey/internal/auth"
 	"github.com/faaaaq/ReelScarey/internal/automation"
 	"github.com/faaaaq/ReelScarey/internal/backups"
@@ -25,11 +26,14 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/emby"
 	"github.com/faaaaq/ReelScarey/internal/httpapi"
 	"github.com/faaaaq/ReelScarey/internal/instance"
+	"github.com/faaaaq/ReelScarey/internal/jellyfin"
 	"github.com/faaaaq/ReelScarey/internal/mediaanalysis"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/music"
 	"github.com/faaaaq/ReelScarey/internal/nfoexport"
+	"github.com/faaaaq/ReelScarey/internal/notify"
 	"github.com/faaaaq/ReelScarey/internal/organization"
+	"github.com/faaaaq/ReelScarey/internal/plex"
 	"github.com/faaaaq/ReelScarey/internal/requests"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"github.com/faaaaq/ReelScarey/internal/subtitle"
@@ -216,8 +220,11 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		return string(data), err
 	})
 	botService := discordbot.New(db, secretStore, metadataService, transferService)
+	notifyService := notify.New(db, secretStore)
 	embyService := emby.New(secretStore)
 	embyMonitor := emby.NewMonitor(db, embyService)
+	jellyfinService := jellyfin.New(secretStore)
+	plexService := plex.New(secretStore)
 	youtubePath := os.Getenv("REELSCAREY_YTDLP_PATH")
 	if youtubePath == "" {
 		youtubePath = "yt-dlp"
@@ -248,12 +255,21 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if err != nil {
 		return false, err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Music: musicService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore, TOTP: totpStore, Emby: embyService, EmbyMonitor: embyMonitor, VPN: vpnService, Announce: announceService, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Music: musicService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore, Notify: notifyService, TOTP: totpStore, Emby: embyService, EmbyMonitor: embyMonitor, Jellyfin: jellyfinService, Plex: plexService, VPN: vpnService, Announce: announceService, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return false, fmt.Errorf("listen: %w", err)
 	}
 	workerCtx, workerCancel := context.WithCancel(ctx)
+
+	notifyDone := make(chan struct{})
+	go func() {
+		defer close(notifyDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			notifyService.Run(workerCtx, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-notifyDone }()
 
 	musicImportsDone := make(chan struct{})
 	go func() {
@@ -404,6 +420,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		}
 	}()
 	defer func() { workerCancel(); <-nfoDone }()
+	artworkDone := make(chan struct{})
+	go func() {
+		defer close(artworkDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			(&artworkexport.Worker{DB: db, MediaRoot: cfg.MediaDir}).Run(workerCtx, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-artworkDone }()
 	bundledDone := make(chan struct{})
 	go func() {
 		defer close(bundledDone)

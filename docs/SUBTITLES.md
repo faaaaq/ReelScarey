@@ -5,6 +5,22 @@ and qBittorrent are not needed to configure or use subtitles. Subtitle activity
 appears for media registered by completed ReelScarey movie/TV imports. This
 milestone does not scan arbitrary existing library folders.
 
+## Language profiles (schema 87)
+
+Open **Settings → Language profiles** to save ordered subtitle tracks. Each
+profile is a name plus 1–9 `language:variant` tracks (`full`, `signs`, or
+`forced`) and up to three optional audio languages. A profile is selected in
+this order: an explicit per-title profile, a Movies/TV Shows/Anime library
+default, then the global subtitle preferences.
+
+The subtitle worker resolves the profile when it claims a file and replaces the
+global tracks for that pass. A missing profile or library assignment falls back
+to the global preferences; existing sidecars are never replaced. Audio languages
+are stored and shown but release selection still uses the quality profile
+language. Administrator routes are `/api/v1/subtitles/language-profiles`,
+`/language-profiles/{id}` and `/api/v1/subtitles/language-defaults`; a title
+override is PUT/DELETE `/api/v1/library/items/{id}/language-profile`.
+
 ## Connection and preferences
 
 Enter your OpenSubtitles.com username, password, application API key and its

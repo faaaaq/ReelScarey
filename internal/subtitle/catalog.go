@@ -15,6 +15,7 @@ import (
 type media struct {
 	ID int64
 	Target
+	Category         string
 	Path, SHA, Probe string
 	Imported         int64
 }
@@ -23,7 +24,7 @@ func (s *Service) media(ctx context.Context, id int64) (media, error) {
 	var m media
 	// Existing filenames are not verified original-release evidence. Automatic
 	// matching for these files therefore requires provider hash evidence.
-	e := s.db.QueryRowContext(ctx, `SELECT f.id,m.id,m.kind,m.tmdb_id,m.title,m.year,COALESCE(d.title,''),f.relative_path,f.size_bytes,f.sha256,f.probe_json,f.imported_at FROM media_files f JOIN media_items m ON m.id=COALESCE(f.movie_id,f.series_id) LEFT JOIN downloads d ON d.id=f.download_id WHERE f.id=?`, id).Scan(&m.ID, &m.MediaID, &m.Kind, &m.TMDbID, &m.Title, &m.Year, &m.Release, &m.Path, &m.Size, &m.SHA, &m.Probe, &m.Imported)
+	e := s.db.QueryRowContext(ctx, `SELECT f.id,m.id,m.kind,m.tmdb_id,m.title,m.year,m.category,COALESCE(d.title,''),f.relative_path,f.size_bytes,f.sha256,f.probe_json,f.imported_at FROM media_files f JOIN media_items m ON m.id=COALESCE(f.movie_id,f.series_id) LEFT JOIN downloads d ON d.id=f.download_id WHERE f.id=?`, id).Scan(&m.ID, &m.MediaID, &m.Kind, &m.TMDbID, &m.Title, &m.Year, &m.Category, &m.Release, &m.Path, &m.Size, &m.SHA, &m.Probe, &m.Imported)
 	if e != nil {
 		return m, e
 	}

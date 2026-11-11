@@ -1,10 +1,16 @@
 import { PageBody } from "../ui";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
-import { api, messageFor } from "../api";
+import {
+  api,
+  messageFor,
+  type LibraryDefault,
+  type LibraryProfileDefaults,
+} from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useLiveResource } from "../useLiveResource";
+import { useResource } from "../useResource";
 import "./Admin.css";
 
 export type Profile = {
@@ -26,7 +32,16 @@ export type Profile = {
     preferred_terms: string;
     max_usenet_age_days: number;
     min_usenet_age_minutes: number;
+    /** Profile-local regex rules. Required/excluded rules can block a release. */
+    custom_formats?: CustomFormat[];
   };
+};
+export type CustomFormat = {
+  name: string;
+  patterns: string[];
+  weight: number;
+  required: boolean;
+  excluded: boolean;
 };
 export type Schedule = {
   enabled: boolean;
@@ -159,6 +174,7 @@ export function Automation() {
           <ReleaseDetection />
           <RunHistory />
           <Profiles profiles={profiles.data.items} reload={profiles.reload} />
+          <LibraryDefaults profiles={profiles.data.items} />
           <p className="rs-muted rs-small">
             Per-title quality profiles live with the library: choose{" "}
             <Link to="/movies">Movies</Link>, <Link to="/series">TV Shows</Link>{" "}
@@ -738,6 +754,97 @@ const blankProfile: Profile = {
   rejected_terms: "",
   revision: 0,
 };
+const libraryLabels: Record<LibraryDefault["library_key"], string> = {
+  movies: "Movies",
+  tv: "TV Shows",
+  anime: "Anime",
+};
+
+function LibraryDefaults({ profiles }: { profiles: Profile[] }) {
+  const resource = useResource<LibraryProfileDefaults>(
+    "/library/profile-defaults",
+  );
+  const [items, setItems] = useState<LibraryDefault[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  useEffect(() => {
+    if (resource.data) setItems(resource.data.items);
+  }, [resource.data]);
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setSuccess(false);
+    try {
+      const out = await api<{ items: LibraryDefault[] }>(
+        "/library/profile-defaults",
+        { method: "PUT", body: JSON.stringify({ items }) },
+      );
+      setItems(out.items);
+      setSuccess(true);
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="rs-panel automation-panel">
+      <div className="rs-panel-header">
+        <h2>Library profile defaults</h2>
+      </div>
+      <p className="rs-muted">
+        New titles inherit these profiles. A title without an explicit profile
+        keeps using the search schedule default. Existing titles are unchanged.
+      </p>
+      {error && <p role="alert">{error}</p>}
+      {success && <p role="status">Library defaults saved.</p>}
+      <form onSubmit={save}>
+        <fieldset
+          disabled={busy || resource.loading}
+          className="automation-form-grid"
+        >
+          {items.map((item) => (
+            <label key={item.library_key}>
+              {libraryLabels[item.library_key]}
+              <select
+                value={item.profile_id ?? ""}
+                onChange={(event) =>
+                  setItems((current) =>
+                    current.map((candidate) =>
+                      candidate.library_key === item.library_key
+                        ? {
+                            ...candidate,
+                            profile_id: event.target.value
+                              ? Number(event.target.value)
+                              : null,
+                          }
+                        : candidate,
+                    ),
+                  )
+                }
+              >
+                <option value="">Use search schedule default</option>
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </fieldset>
+        <div className="automation-actions">
+          <Button type="submit" disabled={busy || items.length === 0}>
+            Save library defaults
+          </Button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 function Profiles({
   profiles,
   reload,
@@ -807,6 +914,9 @@ function ProfileForm({
   const [codecOrderText, setCodecOrderText] = useState(
     (profile.scoring?.codecs ?? []).join(","),
   );
+  const [customFormatsText, setCustomFormatsText] = useState(
+    JSON.stringify(profile.scoring?.custom_formats ?? [], null, 2),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -818,10 +928,35 @@ function ProfileForm({
     e.preventDefault();
     setBusy(true);
     setError("");
+    let customFormats: CustomFormat[] = [];
+    try {
+      const parsed: unknown = JSON.parse(customFormatsText || "[]");
+      if (!Array.isArray(parsed)) throw new Error("not an array");
+      customFormats = parsed as CustomFormat[];
+    } catch {
+      setBusy(false);
+      setError(
+        "Custom formats must be a JSON array of {name, patterns, weight, required, excluded} objects.",
+      );
+      return;
+    }
+    const body: Profile = {
+      ...form,
+      scoring: {
+        ...(form.scoring ?? {
+          sources: [],
+          codecs: [],
+          preferred_terms: "",
+          max_usenet_age_days: 0,
+          min_usenet_age_minutes: 0,
+        }),
+        custom_formats: customFormats,
+      },
+    };
     try {
       const p = await api<Profile>(
         form.id ? `/quality-profiles/${form.id}` : "/quality-profiles",
-        { method: form.id ? "PUT" : "POST", body: JSON.stringify(form) },
+        { method: form.id ? "PUT" : "POST", body: JSON.stringify(body) },
       );
       setForm(p);
       setSuccess(true);
@@ -1009,6 +1144,24 @@ function ProfileForm({
                 })
               }
             />
+          </label>
+          <label>
+            Custom formats (JSON)
+            <textarea
+              rows={6}
+              className="rs-code-input"
+              value={customFormatsText}
+              onChange={(e) => {
+                setCustomFormatsText(e.target.value);
+                setSuccess(false);
+              }}
+              placeholder={`[\n  {"name":"Proper","patterns":["\\\\bproper\\\\b"],"weight":75,"required":false,"excluded":false}\n]`}
+            />
+            <span className="rs-muted rs-small">
+              Patterns are case-insensitive regular expressions. Required and
+              excluded formats can block a release; other weights only reorder
+              eligible releases.
+            </span>
           </label>
           <label>
             Usenet retention (days; 0 disables)

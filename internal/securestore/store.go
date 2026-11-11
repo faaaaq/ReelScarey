@@ -82,6 +82,7 @@ func Validate(ctx context.Context, db *sql.DB, dir string) error {
 		{"request_lists", `SELECT 'request-list:' || id,ciphertext FROM request_lists WHERE ciphertext IS NOT NULL`},
 		{"discord_bot_config", `SELECT 'discord-bot',ciphertext FROM discord_bot_config`},
 		{"discord_bot_jobs", `SELECT 'discord-job:' || id,ciphertext FROM discord_bot_jobs`},
+		{"notification_channels", `SELECT 'notification:' || id,secret_ciphertext FROM notification_channels WHERE secret_ciphertext IS NOT NULL`},
 	} {
 		var exists int
 		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, item.table).Scan(&exists); err != nil {

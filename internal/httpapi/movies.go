@@ -168,6 +168,9 @@ func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, "movie_add", err)
 		return
 	}
+	if created {
+		s.applyLibraryDefaultProfile(r.Context(), item.ID, "movies")
+	}
 	if created && item.Monitored && s.automation != nil {
 		// Sonarr/Radarr-style search on add: the focused pipeline follows the
 		// saved automatic-search mode, while the feed check keeps watching for

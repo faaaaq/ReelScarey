@@ -29,6 +29,10 @@ func (s *Server) security(next http.Handler) http.Handler {
 			fail(w, 403, "invalid_host", "Open ReelScarey using localhost or its configured public URL.")
 			return
 		}
+		if compatPath(r.URL.Path) {
+			s.compatSecurity(next, w, r)
+			return
+		}
 		if !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api" {
 			next.ServeHTTP(w, r)
 			return
@@ -80,6 +84,65 @@ func (s *Server) security(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, session)))
 	})
+}
+
+// compatPath reports the Sonarr/Radarr/Prowlarr compatibility prefixes. These
+// routes use scoped API keys instead of browser sessions.
+func compatPath(path string) bool {
+	for _, prefix := range []string{"/api/v3", "/sonarr", "/radarr", "/prowlarr"} {
+		if path == prefix || strings.HasPrefix(path, prefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// compatSecurity accepts a scoped API key, or an administrator session for
+// manual inspection. It never accepts a request-account session.
+func (s *Server) compatSecurity(next http.Handler, w http.ResponseWriter, r *http.Request) {
+	mutation := r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS"
+	if s.backups != nil && s.backups.Restoring() && mutation {
+		w.Header().Set("Retry-After", "5")
+		fail(w, 503, "restore_restarting", "A reviewed restore is restarting ReelScarey. Wait a moment, then retry.")
+		return
+	}
+	token := strings.TrimSpace(r.Header.Get("X-Api-Key"))
+	if token == "" {
+		token = strings.TrimSpace(r.URL.Query().Get("apikey"))
+	}
+	if token == "" {
+		if header := r.Header.Get("Authorization"); strings.HasPrefix(header, "Bearer ") {
+			token = strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+		}
+	}
+	if token != "" {
+		key, err := s.auth.ResolveAPIKey(r.Context(), token)
+		if errors.Is(err, auth.ErrUnauthorized) {
+			fail(w, 401, "invalid_api_key", "Provide a valid ReelScarey API key.")
+			return
+		}
+		if err != nil {
+			s.internal(w, "api_key_lookup", err)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(auth.WithAPIKey(r.Context(), key)))
+		return
+	}
+	// A local administrator session may inspect compatibility output without
+	// minting a key. Mutations still require CSRF, exactly like the main API.
+	cookie, err := r.Cookie(cookieName)
+	if err == nil {
+		session, resolveErr := s.auth.Resolve(r.Context(), cookie.Value)
+		if resolveErr == nil && session.Role == "admin" {
+			if mutation && subtle.ConstantTimeCompare([]byte(session.CSRFToken), []byte(r.Header.Get("X-CSRF-Token"))) != 1 {
+				fail(w, 403, "csrf_required", "Reload the application before trying again.")
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, session)))
+			return
+		}
+	}
+	fail(w, 401, "authentication_required", "Provide an X-Api-Key header (or ?apikey=) with a scoped ReelScarey API key.")
 }
 
 func (s *Server) allowedHost(host string) bool {

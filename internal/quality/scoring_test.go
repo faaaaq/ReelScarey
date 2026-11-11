@@ -66,6 +66,54 @@ func TestSoftPenaltiesStayVisibleDeterministicAndNonBlocking(t *testing.T) {
 
 // penaltyReasons filters the visible soft-penalty reasons so the table test
 // stays independent of preference and seeder bonus wording.
+func TestCustomFormatsCanRankRequireAndExclude(t *testing.T) {
+	year := 2020
+	seeds := 20
+	target := Target{Title: "Example", Year: &year}
+	p := Profile{
+		Name: "Fixture", Qualities: []int{1080}, Cutoff: 1080, Language: "any",
+		MinSeeders: 0, MaxSizeGiB: 10,
+		Scoring: Scoring{
+			CustomFormats: []CustomFormat{
+				{Name: "Proper", Patterns: []string{`\bproper\b`}, Weight: 75},
+				{Name: "No cam", Patterns: []string{`\bcam\b`}, Excluded: true},
+				{Name: "Required group", Patterns: []string{`-GROUP`}, Required: true},
+			},
+		},
+	}
+	if err := Validate(p); err != nil {
+		t.Fatal(err)
+	}
+	base := Release{ID: "base", Title: "Example.2020.1080p.WEB-DL.h264-GROUP", Size: 1 << 30, Seeders: &seeds, Protocol: "torrent"}
+	proper := Release{ID: "proper", Title: "Example.2020.1080p.WEB-DL.h264-GROUP.PROPER", Size: 1 << 30, Seeders: &seeds, Protocol: "torrent"}
+	d := Evaluate(p, target, base)
+	if !d.Eligible || !strings.Contains(strings.Join(d.ScoringReasons, "|"), "Required group") {
+		t.Fatalf("required format not applied: %+v", d)
+	}
+	if Evaluate(p, target, proper).Score <= d.Score {
+		t.Fatal("preferred custom format did not raise the score")
+	}
+	cam := Release{ID: "cam", Title: "Example.2020.1080p.CAM.h264-GROUP", Size: 1 << 30, Seeders: &seeds, Protocol: "torrent"}
+	if Evaluate(p, target, cam).Eligible {
+		t.Fatal("excluded custom format remained eligible")
+	}
+	missing := Release{ID: "missing", Title: "Example.2020.1080p.WEB-DL.h264", Size: 1 << 30, Seeders: &seeds, Protocol: "torrent"}
+	if Evaluate(p, target, missing).Eligible {
+		t.Fatal("required custom format was not enforced")
+	}
+	for _, bad := range [][]CustomFormat{
+		{{Name: "bad", Patterns: []string{"("}}},
+		{{Name: "both", Patterns: []string{"x"}, Required: true, Excluded: true}},
+		{{Name: "weight", Patterns: []string{"x"}, Weight: 501}},
+		{{Name: "bad", Patterns: []string{"x"}}, {Name: "BAD", Patterns: []string{"y"}}},
+	} {
+		p.Scoring.CustomFormats = bad
+		if err := Validate(p); err == nil {
+			t.Fatalf("invalid custom format accepted: %#v", bad)
+		}
+	}
+}
+
 func penaltyReasons(reasons []string) []string {
 	out := []string{}
 	for _, r := range reasons {

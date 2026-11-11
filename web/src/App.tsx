@@ -65,11 +65,19 @@ const Setup = lazy(() =>
 const SystemChecks = lazy(() =>
   import("./pages/System").then((m) => ({ default: m.SystemChecks })),
 );
+const Diagnostics = lazy(() =>
+  import("./pages/Diagnostics").then((m) => ({ default: m.Diagnostics })),
+);
 const Backups = lazy(() =>
   import("./pages/Backups").then((m) => ({ default: m.Backups })),
 );
 const Storage = lazy(() =>
   import("./pages/Storage").then((m) => ({ default: m.Storage })),
+);
+const StorageInsights = lazy(() =>
+  import("./pages/StorageInsights").then((m) => ({
+    default: m.StorageInsights,
+  })),
 );
 const DownloadClients = lazy(() =>
   import("./pages/DownloadClients").then((m) => ({
@@ -79,6 +87,20 @@ const DownloadClients = lazy(() =>
 const MetadataRefresh = lazy(() =>
   import("./pages/MetadataRefresh").then((m) => ({
     default: m.MetadataRefresh,
+  })),
+);
+const Notifications = lazy(() =>
+  import("./pages/Notifications").then((m) => ({ default: m.Notifications })),
+);
+const APIKeys = lazy(() =>
+  import("./pages/APIKeys").then((m) => ({ default: m.APIKeys })),
+);
+const MediaServers = lazy(() =>
+  import("./pages/MediaServers").then((m) => ({ default: m.MediaServers })),
+);
+const LanguageProfiles = lazy(() =>
+  import("./pages/LanguageProfiles").then((m) => ({
+    default: m.LanguageProfiles,
   })),
 );
 const YouTubeSubscriptions = lazy(() =>
@@ -372,10 +394,16 @@ function AppShell() {
               <Route path="/movies/:id" element={<ItemDetails />} />
               <Route path="/setup" element={<Setup />} />
               <Route path="/system" element={<SystemChecks />} />
+              <Route path="/diagnostics" element={<Diagnostics />} />
               <Route path="/backups" element={<Backups />} />
               <Route path="/storage" element={<Storage />} />
+              <Route path="/storage/insights" element={<StorageInsights />} />
               <Route path="/download-clients" element={<DownloadClients />} />
               <Route path="/metadata-refresh" element={<MetadataRefresh />} />
+              <Route path="/notifications" element={<Notifications />} />
+              <Route path="/api-keys" element={<APIKeys />} />
+              <Route path="/media-servers" element={<MediaServers />} />
+              <Route path="/language-profiles" element={<LanguageProfiles />} />
               <Route path="/series/:id" element={<Series />} />
               <Route path="/music" element={<Music />} />
               <Route path="/music/artists/:id" element={<MusicArtist />} />
