@@ -52,6 +52,24 @@ func TestDefinitionsParseRealAnnounceSamples(t *testing.T) {
 	}
 }
 
+func TestDefinitionParseStripsIRCFormatting(t *testing.T) {
+	defs, e := Definitions()
+	if e != nil {
+		t.Fatal(e)
+	}
+	line := "\x02\x0304,08[Movies/XviD]\x0f The Movie 2010 \x1dDVDRip\x1d XviD-GROUP \x02FREELEECH\x02 - http://www.iptorrents.com/details.php?id=000000 - 7.63 GB"
+	parsed, ok := defs["iptorrents"].Parse(line)
+	if !ok {
+		t.Fatal("formatted announce was not parsed")
+	}
+	if parsed.ReleaseName != "The Movie 2010 DVDRip XviD-GROUP" || parsed.Freeleech != "FREELEECH" || parsed.TorrentID != "000000" {
+		t.Fatal(parsed)
+	}
+	if got := stripIRCFormatting("\x04ff0000,ffffffred\x04 and \x11mono\x11"); got != "red and mono" {
+		t.Fatalf("hex colors and monospace were not removed: %q", got)
+	}
+}
+
 func TestDefinitionsIgnoreChatter(t *testing.T) {
 	defs, e := Definitions()
 	if e != nil {

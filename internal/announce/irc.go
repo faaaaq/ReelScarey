@@ -251,6 +251,57 @@ func channelMessage(line, channel string) (string, bool) {
 	return rest[split+2:], true
 }
 
+// stripIRCFormatting removes mIRC/IRC formatting without altering the text
+// between those markers. In particular, color digits belong to the marker and
+// must not become part of a release name or category.
+func stripIRCFormatting(message string) string {
+	if !strings.ContainsAny(message, "\x02\x03\x04\x0f\x11\x16\x1d\x1e\x1f") {
+		return message
+	}
+	var out strings.Builder
+	out.Grow(len(message))
+	for i := 0; i < len(message); {
+		switch message[i] {
+		case 0x02, 0x0f, 0x11, 0x16, 0x1d, 0x1e, 0x1f:
+			i++
+		case 0x03: // mIRC foreground and optional background color.
+			i++
+			i = consumeColorDigits(message, i, 2, false)
+			if i < len(message) && message[i] == ',' {
+				if end := consumeColorDigits(message, i+1, 2, false); end > i+1 {
+					i = end
+				}
+			}
+		case 0x04: // IRC hex foreground and optional background color.
+			i++
+			i = consumeColorDigits(message, i, 6, true)
+			if i < len(message) && message[i] == ',' {
+				if end := consumeColorDigits(message, i+1, 6, true); end > i+1 {
+					i = end
+				}
+			}
+		default:
+			out.WriteByte(message[i])
+			i++
+		}
+	}
+	return out.String()
+}
+
+func consumeColorDigits(message string, start, maximum int, hex bool) int {
+	end := start
+	for end < len(message) && end-start < maximum {
+		c := message[end]
+		if c < '0' || c > '9' {
+			if !hex || (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+				break
+			}
+		}
+		end++
+	}
+	return end
+}
+
 func sleep(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
 	defer timer.Stop()

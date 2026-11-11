@@ -77,9 +77,10 @@ Failures are now reported instead of hidden:
 - A server that never completes registration fails after 90 seconds instead of
   hanging.
 
-A successful join logs `announce source joined the IRC channel`. If that line is
-present and no error is shown, the source is simply waiting for the next
-announce.
+A successful join logs `announce source joined the IRC channel`. Tracker color,
+bold and other IRC formatting markers are removed before matching, while the
+original announce is retained as evidence. If that line is present and no error
+is shown, the source is simply waiting for the next matching announce.
 
 ### TLS certificate errors
 

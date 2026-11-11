@@ -109,7 +109,10 @@ func (d Definition) Parse(line string) (Parsed, bool) {
 	if d.re == nil {
 		return Parsed{}, false
 	}
-	match := d.re.FindStringSubmatch(line)
+	// Tracker bots commonly use mIRC colors, bold and reset markers. Match the
+	// human-readable text, while callers retain the original announce for
+	// evidence and deduplication.
+	match := d.re.FindStringSubmatch(stripIRCFormatting(line))
 	if match == nil {
 		return Parsed{}, false
 	}

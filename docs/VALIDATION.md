@@ -2830,3 +2830,33 @@ stayed up and captured nothing.
 - The only live IRC connections made for this diagnosis were the application's
   own source and one throwaway-nick probe; no owner credentials were used or
   written.
+
+## Announce feeds: normalize IRC formatting (2026-11-11)
+
+Production 0.53.4 logged a successful `#ipt.announce` join and remained healthy,
+but still stored no events. The current Autobrr IPTorrents reader strips IRC
+formatting before applying the same announce pattern; ReelScarey had been
+matching the raw text instead.
+
+- `stripIRCFormatting` now removes mIRC/IRC bold, italic, underline, reverse,
+  reset, monospace, numeric color and hex color markers before definition
+  matching. The original text is still passed to `Record` for evidence and
+  SHA-256 deduplication.
+- `TestDefinitionParseStripsIRCFormatting` covers a formatted IPTorrents
+  announce and hexadecimal colors/monospace. Existing parser, registration and
+  TLS tests continue to pass.
+- The setup/troubleshooting documentation notes the normalization. Version
+  bumped to 0.53.5.
+
+Production verification on 2026-11-11 deployed the 0.53.5 image with the usual
+configuration backup and health-check rollback. The container was healthy,
+joined `#ipt.announce`, and retained an empty source error. Read-only copies of
+the live database showed `last_event_at` advancing and the stored announce
+count increasing from zero to one and then four. The latest rows contained
+correctly parsed IPTorrents release names, `Anime` and `TV/Web-DL` categories,
+and binary sizes. No additional IRC probe was used. The image build passed all
+56 frontend test files (318 tests), formatting, TypeScript and the production
+build. Its optional repeated Go test pass encountered two unrelated concurrent
+SQLite `SQLITE_BUSY` failures in automation and library tests; the complete Go
+test, vet and build gates had already passed natively, so the established
+release build was rerun with that optional repetition disabled.
