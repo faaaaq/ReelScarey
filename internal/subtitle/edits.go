@@ -219,16 +219,25 @@ func (s *Service) ReviewEdit(ctx context.Context, fileID int64, in EditRequest) 
 	raw, _ := json.Marshal(snap)
 	folder := path.Dir(snap.Path)
 	v := SubtitleEdit{ID: id, FileID: fileID, Track: in.Track, Action: in.Action, OldSHA: snap.SHA, NewSHA: contentSHA(body), Size: len(body), Cues: cues, Offset: in.Offset, Destination: snap.Path, Previous: path.Join(".reelscarey-subtitle-history", id+".previous"), State: "review", Phase: "planned", Message: message, Expires: s.now().Unix() + 1800, Created: s.now().Unix(), stage: path.Join(folder, ".reelscarey-subedit-"+id+".part"), snapshot: string(raw), content: body}
-	_, _ = s.db.ExecContext(ctx, `DELETE FROM subtitle_edits WHERE state='review' AND (expires_at<? OR (media_file_id=? AND language=? AND variant=?))`, s.now().Unix(), fileID, in.Language, in.Variant)
+	tx, txErr := s.db.BeginTx(ctx, nil)
+	if txErr != nil {
+		return v, txErr
+	}
+	defer tx.Rollback()
+	if _, txErr = tx.ExecContext(ctx, `DELETE FROM subtitle_edits WHERE state='review' AND (expires_at<? OR (media_file_id=? AND language=? AND variant=?))`, s.now().Unix(), fileID, in.Language, in.Variant); txErr != nil {
+		return v, txErr
+	}
 	var reviews int
-	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM subtitle_edits WHERE state='review'`).Scan(&reviews); e != nil {
-		return v, e
+	if txErr = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM subtitle_edits WHERE state='review'`).Scan(&reviews); txErr != nil {
+		return v, txErr
 	}
 	if reviews >= 20 {
 		return v, problem("subtitle_busy", "Finish or let existing subtitle reviews expire before creating more.")
 	}
-	_, e = s.db.ExecContext(ctx, `INSERT INTO subtitle_edits(id,media_file_id,language,variant,action,snapshot,content,old_sha,new_sha,size_bytes,cues,offset_ms,destination,stage_path,previous_path,expires_at,created_at,message) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, v.ID, v.FileID, v.Language, v.Variant, v.Action, v.snapshot, body, v.OldSHA, v.NewSHA, v.Size, v.Cues, v.Offset, v.Destination, v.stage, v.Previous, v.Expires, v.Created, v.Message)
-	return v, e
+	if _, txErr = tx.ExecContext(ctx, `INSERT INTO subtitle_edits(id,media_file_id,language,variant,action,snapshot,content,old_sha,new_sha,size_bytes,cues,offset_ms,destination,stage_path,previous_path,expires_at,created_at,message) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, v.ID, v.FileID, v.Language, v.Variant, v.Action, v.snapshot, body, v.OldSHA, v.NewSHA, v.Size, v.Cues, v.Offset, v.Destination, v.stage, v.Previous, v.Expires, v.Created, v.Message); txErr != nil {
+		return v, txErr
+	}
+	return v, tx.Commit()
 }
 func (s *Service) Edits(ctx context.Context, fileID int64) ([]SubtitleEdit, error) {
 	rows, e := s.db.QueryContext(ctx, `SELECT `+editColumns+` FROM subtitle_edits WHERE media_file_id=? AND (state<>'review' OR expires_at>=?) ORDER BY created_at DESC,id DESC LIMIT 30`, fileID, s.now().Unix())
