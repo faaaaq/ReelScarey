@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/andybalholm/cascadia"
@@ -90,6 +91,33 @@ type Cardigann struct {
 	HTTP *http.Client
 }
 
+var (
+	cardigannSelectorCache sync.Map
+	cardigannRegexCache    sync.Map
+)
+
+func cardigannSelector(selector string) (cascadia.Sel, error) {
+	if cached, ok := cardigannSelectorCache.Load(selector); ok {
+		return cached.(cascadia.Sel), nil
+	}
+	parsed, err := cascadia.Parse(selector)
+	if err == nil {
+		cardigannSelectorCache.Store(selector, parsed)
+	}
+	return parsed, err
+}
+
+func cardigannRegexp(pattern string) (*regexp.Regexp, error) {
+	if cached, ok := cardigannRegexCache.Load(pattern); ok {
+		return cached.(*regexp.Regexp), nil
+	}
+	compiled, err := regexp.Compile(pattern)
+	if err == nil {
+		cardigannRegexCache.Store(pattern, compiled)
+	}
+	return compiled, err
+}
+
 func NewCardigann() *Cardigann { return &Cardigann{HTTP: newHTTP()} }
 
 func (c *Cardigann) definition(config IndexerConfig) (cardigannDefinition, error) {
@@ -100,11 +128,16 @@ func (c *Cardigann) definition(config IndexerConfig) (cardigannDefinition, error
 	if len(config.Definition) > 200_000 {
 		return def, problem("invalid_settings", "The Cardigann definition is too large.")
 	}
-	if err := yaml.Unmarshal([]byte(config.Definition), &def); err != nil {
-		return def, problem("invalid_settings", "The Cardigann definition is not valid YAML.")
+	decoder := yaml.NewDecoder(bytes.NewReader([]byte(config.Definition)))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&def); err != nil {
+		return def, problem("invalid_settings", "The Cardigann definition is not valid YAML or contains unsupported fields.")
 	}
 	if strings.TrimSpace(def.Name) == "" || strings.TrimSpace(def.ID) == "" {
 		return def, problem("invalid_settings", "The Cardigann definition needs an id and name.")
+	}
+	if def.Login != nil {
+		return def, problem("invalid_settings", "Cardigann login blocks are not supported. Enter the tracker session cookie instead.")
 	}
 	if strings.TrimSpace(def.Search.Rows.Selector) == "" || len(def.Search.Fields) == 0 {
 		return def, problem("invalid_settings", "The Cardigann definition needs search rows and fields.")
@@ -167,7 +200,7 @@ func (c *Cardigann) Search(ctx context.Context, config IndexerConfig, query stri
 	if err != nil {
 		return nil, problem("indexer_response", "The Cardigann indexer returned malformed HTML.")
 	}
-	rows, err := cascadia.Parse(def.Search.Rows.Selector)
+	rows, err := cardigannSelector(def.Search.Rows.Selector)
 	if err != nil {
 		return nil, problem("invalid_settings", "The search rows selector is invalid.")
 	}
@@ -236,7 +269,7 @@ func cardigannTarget(base *url.URL, def cardigannDefinition, config IndexerConfi
 	if pathText != "" {
 		if strings.HasPrefix(pathText, "http://") || strings.HasPrefix(pathText, "https://") {
 			parsed, err := url.Parse(pathText)
-			if err != nil || parsed.Hostname() == "" || parsed.Hostname() != base.Hostname() {
+			if err != nil || parsed.Host == "" || !strings.EqualFold(parsed.Host, base.Host) || parsed.User != nil {
 				return nil, problem("invalid_settings", "The Cardigann search path must stay on the configured host.")
 			}
 			target = *parsed
@@ -254,7 +287,7 @@ func cardigannTarget(base *url.URL, def cardigannDefinition, config IndexerConfi
 			}
 		}
 	}
-	if target.Hostname() != base.Hostname() {
+	if !strings.EqualFold(target.Host, base.Host) || target.User != nil {
 		return nil, problem("invalid_settings", "The Cardigann search path must stay on the configured host.")
 	}
 	values := target.Query()
@@ -270,6 +303,9 @@ func replaceCardigann(value string, def cardigannDefinition, config IndexerConfi
 	settings := map[string]string{}
 	for _, setting := range def.Settings {
 		settings[setting.Name] = fmt.Sprint(setting.Default)
+	}
+	for name, value := range config.Settings {
+		settings[name] = value
 	}
 	value = strings.ReplaceAll(value, "{{ .Keywords }}", url.QueryEscape(query))
 	value = strings.ReplaceAll(value, "{{.Keywords}}", url.QueryEscape(query))
@@ -304,7 +340,7 @@ func cardigannValue(row *xhtml.Node, field cardigannField, config IndexerConfig)
 	if field.Selector == "" && field.Attribute == "" {
 		return field.Default, field.Default != ""
 	}
-	selector, err := cascadia.Parse(field.Selector)
+	selector, err := cardigannSelector(field.Selector)
 	if err != nil {
 		return field.Default, false
 	}
@@ -331,8 +367,11 @@ func cardigannValue(row *xhtml.Node, field cardigannField, config IndexerConfig)
 
 func textContent(node *xhtml.Node) string {
 	var b strings.Builder
-	var walk func(*xhtml.Node)
-	walk = func(n *xhtml.Node) {
+	var walk func(*xhtml.Node, int)
+	walk = func(n *xhtml.Node, depth int) {
+		if depth > 200 {
+			return
+		}
 		if n.Type == xhtml.TextNode {
 			b.WriteString(n.Data)
 			b.WriteByte(' ')
@@ -342,10 +381,10 @@ func textContent(node *xhtml.Node) string {
 			return
 		}
 		for child := n.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
+			walk(child, depth+1)
 		}
 	}
-	walk(node)
+	walk(node, 0)
 	return strings.Join(strings.Fields(b.String()), " ")
 }
 
@@ -385,7 +424,7 @@ func applyCardigannFilter(value string, filter cardigannFilter) string {
 	case "regexp", "re_replace":
 		parts := splitArgs(args)
 		if len(parts) >= 2 {
-			if re, err := regexp.Compile(parts[0]); err == nil {
+			if re, err := cardigannRegexp(parts[0]); err == nil {
 				return re.ReplaceAllString(value, parts[1])
 			}
 		}
@@ -456,11 +495,11 @@ func safeCardigannURL(raw string, base *url.URL) string {
 		return raw
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil {
+	if err != nil || parsed.User != nil {
 		return ""
 	}
 	resolved := base.ResolveReference(parsed)
-	if resolved.Hostname() != base.Hostname() || (resolved.Scheme != "http" && resolved.Scheme != "https") {
+	if !strings.EqualFold(resolved.Host, base.Host) || (resolved.Scheme != "http" && resolved.Scheme != "https") {
 		return ""
 	}
 	return resolved.String()
@@ -474,7 +513,10 @@ func cardigannCandidateID(parts ...string) string {
 func (c *Cardigann) Fetch(ctx context.Context, config IndexerConfig, candidate Candidate) (Payload, string, error) {
 	if strings.HasPrefix(strings.ToLower(candidate.Magnet), "magnet:") {
 		hash, err := MagnetHash(candidate.Magnet)
-		return Payload{Magnet: candidate.Magnet}, hash, err
+		if err != nil {
+			return Payload{}, "", err
+		}
+		return Payload{Magnet: candidate.Magnet}, hash, nil
 	}
 	if candidate.URL == "" {
 		return Payload{}, "", problem("invalid_release", "This Cardigann release has no download link.")

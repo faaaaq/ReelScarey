@@ -5,9 +5,23 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 )
+
+var customFormatRegexCache sync.Map
+
+func customFormatRegexp(pattern string) (*regexp.Regexp, error) {
+	if cached, ok := customFormatRegexCache.Load(pattern); ok {
+		return cached.(*regexp.Regexp), nil
+	}
+	compiled, err := regexp.Compile("(?i)" + pattern)
+	if err == nil {
+		customFormatRegexCache.Store(pattern, compiled)
+	}
+	return compiled, err
+}
 
 // CustomFormat is an ordered, profile-local set of case-insensitive regular
 // expressions. Required and excluded formats can make a release ineligible;
@@ -156,7 +170,7 @@ func scoreEvidence(s Scoring, r Release, tokens string, sizeLimit int64, d *Deci
 	for _, format := range s.CustomFormats {
 		matched := false
 		for _, pattern := range format.Patterns {
-			re, err := regexp.Compile("(?i)" + pattern)
+			re, err := customFormatRegexp(pattern)
 			if err == nil && re.MatchString(customHaystack) {
 				matched = true
 				break

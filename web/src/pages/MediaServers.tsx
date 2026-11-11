@@ -81,6 +81,7 @@ function JellyfinPanel() {
   }, [status.data]);
 
   async function save() {
+    if (busy) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -100,6 +101,7 @@ function JellyfinPanel() {
   }
 
   async function loadActivity() {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -118,6 +120,7 @@ function JellyfinPanel() {
   }
 
   async function refresh() {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -131,6 +134,7 @@ function JellyfinPanel() {
   }
 
   async function remove() {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -181,7 +185,9 @@ function JellyfinPanel() {
       <FormActions>
         <Button
           type="button"
-          disabled={busy || !url.trim()}
+          disabled={
+            busy || !url.trim() || (!status.data?.configured && !key.trim())
+          }
           onClick={() => void save()}
         >
           Save
@@ -238,6 +244,7 @@ function PlexPanel() {
   }, [status.data]);
 
   async function save() {
+    if (busy) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -261,6 +268,7 @@ function PlexPanel() {
   }
 
   async function loadActivity() {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -279,6 +287,7 @@ function PlexPanel() {
   }
 
   async function refresh() {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -292,6 +301,7 @@ function PlexPanel() {
   }
 
   async function loadSections() {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -308,6 +318,7 @@ function PlexPanel() {
   }
 
   async function remove() {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -371,7 +382,9 @@ function PlexPanel() {
       <FormActions>
         <Button
           type="button"
-          disabled={busy || !url.trim()}
+          disabled={
+            busy || !url.trim() || (!status.data?.configured && !token.trim())
+          }
           onClick={() => void save()}
         >
           Save

@@ -57,14 +57,24 @@ func (s *Service) effectivePreferences(ctx context.Context, id int64) (Preferenc
 	var tracks string
 	e = s.db.QueryRowContext(ctx, `SELECT enabled,tracks,hearing_impaired,match_policy FROM subtitle_overrides WHERE media_id=?`, id).Scan(&p.Enabled, &tracks, &p.HearingImpaired, &p.MatchPolicy)
 	if errors.Is(e, sql.ErrNoRows) {
-		return p, nil
+		var m media
+		if err := s.db.QueryRowContext(ctx, `SELECT id,kind,category FROM media_items WHERE id=?`, id).Scan(&m.MediaID, &m.Kind, &m.Category); err != nil {
+			return p, err
+		}
+		return s.preferencesFor(ctx, m, p), nil
 	}
 	if e != nil {
 		return p, e
 	}
 	p.Enabled = p.Enabled && global
-	e = json.Unmarshal([]byte(tracks), &p.Tracks)
-	return p, e
+	if e = json.Unmarshal([]byte(tracks), &p.Tracks); e != nil {
+		return p, e
+	}
+	var m media
+	if e = s.db.QueryRowContext(ctx, `SELECT id,kind,category FROM media_items WHERE id=?`, id).Scan(&m.MediaID, &m.Kind, &m.Category); e != nil {
+		return p, e
+	}
+	return s.preferencesFor(ctx, m, p), nil
 }
 func (s *Service) filePreferences(ctx context.Context, fileID int64) (Preferences, error) {
 	var mediaID int64

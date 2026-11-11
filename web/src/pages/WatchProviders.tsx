@@ -7,9 +7,9 @@ import { Panel } from "../ui";
 function Offer({ offer }: { offer: WatchOffer }) {
   return (
     <Badge variant="soft" size="2">
-      {offer.logo_url ? (
+      {safeImageURL(offer.logo_url) ? (
         <img
-          src={offer.logo_url}
+          src={safeImageURL(offer.logo_url)}
           alt=""
           width={18}
           height={18}
@@ -42,11 +42,42 @@ function Group({ title, offers }: { title: string; offers: WatchOffer[] }) {
  * Region-scoped TMDb availability. It is a suggestion, not a guarantee that a
  * provider still carries the title or that playback is licensed in the region.
  */
+function safeImageURL(value: string) {
+  return /^https:\/\/image\.tmdb\.org\/t\/p\/w92\/[A-Za-z0-9_-]+\.(jpg|png|webp)$/.test(
+    value,
+  )
+    ? value
+    : "";
+}
+
+function safeProviderLink(value: string) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" &&
+      (parsed.hostname === "www.themoviedb.org" ||
+        parsed.hostname === "themoviedb.org")
+      ? value
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 export function WatchProviders({ id }: { id: number }) {
   const resource = useResource<WatchProvidersData>(
     `/metadata/movies/${id}/watch?region=US`,
   );
   const data = resource.data;
+  if (resource.error) {
+    return (
+      <Panel title="Where to watch">
+        <p className="rs-muted">
+          Watch-provider information is unavailable for this title. TMDb may be
+          unconfigured, rate-limited or temporarily unreachable.
+        </p>
+      </Panel>
+    );
+  }
   if (!data) return null;
   const { flatrate, rent, buy, free, link } = data.providers;
   if (!flatrate.length && !rent.length && !buy.length && !free.length) {
@@ -62,8 +93,12 @@ export function WatchProviders({ id }: { id: number }) {
       <Group title="Free" offers={free} />
       <Group title="Rent" offers={rent} />
       <Group title="Buy" offers={buy} />
-      {link ? (
-        <ThemeLink href={link} target="_blank" rel="noreferrer">
+      {safeProviderLink(link) ? (
+        <ThemeLink
+          href={safeProviderLink(link)}
+          target="_blank"
+          rel="noreferrer"
+        >
           <ExternalLink size={14} aria-hidden="true" /> Open on TMDb
         </ThemeLink>
       ) : null}

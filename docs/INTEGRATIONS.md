@@ -73,9 +73,10 @@ message. HTTP `429` and `5xx` responses retry with bounded backoff; `4xx` is
 terminal. SMTP results that may have reached the server are also uncertain.
 
 Provider secrets are encrypted with the instance key and are never returned by
-list or test responses. URLs must be HTTP/HTTPS without embedded credentials or
-fragments; Discord webhooks are restricted to Discord hosts. Response bodies are
-drained with a small bound and never logged.
+list or test responses. Discord webhook URLs are stored in the encrypted secret
+column rather than `config_json`. URLs must be HTTP/HTTPS without embedded
+credentials or fragments; Discord webhooks are restricted to Discord hosts.
+Response bodies are drained with a small bound and never logged.
 
 ## Cardigann definitions
 
@@ -88,10 +89,10 @@ download links. The search path must stay on the configured host; redirects are
 not followed and download URLs are never fetched from arbitrary hosts.
 
 Definitions are untrusted configuration. Existing definitions are not returned by
-the indexer list; re-paste a definition when editing. Form-login definitions
-require the session cookie to be entered explicitly. Cardigann indexers are
-torrent-only in this implementation; NZB definitions are not represented as
-working.
+the indexer list; re-paste a definition when editing. Definitions containing a
+`login:` block are rejected; enter the tracker session cookie explicitly.
+Cardigann indexers are torrent-only in this implementation; NZB definitions are
+not represented as working.
 
 ## Jellyfin and Plex
 

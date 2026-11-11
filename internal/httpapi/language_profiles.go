@@ -63,7 +63,7 @@ func (s *Server) languageProfile(w http.ResponseWriter, r *http.Request) {
 		}
 		send(w, 200, out)
 	case http.MethodDelete:
-		if !decodeJSON(w, r, &struct{}{}) {
+		if !decodeOptionalJSON(w, r, &struct{}{}) {
 			return
 		}
 		if err := s.subtitle.DeleteLanguageProfile(r.Context(), id); err != nil {
@@ -136,7 +136,7 @@ func (s *Server) mediaLanguageProfile(w http.ResponseWriter, r *http.Request) {
 		}
 		send(w, 200, map[string]bool{"saved": true})
 	case http.MethodDelete:
-		if !decodeJSON(w, r, &struct{}{}) {
+		if !decodeOptionalJSON(w, r, &struct{}{}) {
 			return
 		}
 		if err := s.subtitle.SetMediaLanguageProfile(r.Context(), mediaID, nil); err != nil {

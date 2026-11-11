@@ -40,12 +40,22 @@ func TestAPIKeyScopesCompatAndRevocation(t *testing.T) {
 		t.Fatalf("sonarr status: %d %s", rec.Code, rec.Body)
 	}
 
-	radarr := httptest.NewRequest(http.MethodGet, "/radarr/api/v3/movie", nil)
-	radarr.Header.Set("X-Api-Key", created.Token)
+	for _, path := range []string{"/radarr/api/v3/movie", "/sonarr/api/v3/movie"} {
+		radarr := httptest.NewRequest(http.MethodGet, path, nil)
+		radarr.Header.Set("X-Api-Key", created.Token)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, radarr)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("wrong scope accepted for %s: %d %s", path, rec.Code, rec.Body)
+		}
+	}
+	command := httptest.NewRequest(http.MethodPost, "/api/v3/command", strings.NewReader(`{"name":"MovieSearch","movieId":1}`))
+	command.Header.Set("X-Api-Key", created.Token)
+	command.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, radarr)
+	handler.ServeHTTP(rec, command)
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("wrong scope accepted: %d %s", rec.Code, rec.Body)
+		t.Fatalf("cross-scope command accepted: %d %s", rec.Code, rec.Body)
 	}
 
 	anonymous := httptest.NewRequest(http.MethodGet, "/sonarr/api/v3/system/status", nil)

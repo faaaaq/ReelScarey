@@ -431,6 +431,7 @@ function IndexerForm({
   const [key, setKey] = useState("");
   const [feed, setFeed] = useState("");
   const [definition, setDefinition] = useState("");
+  const [settings, setSettings] = useState("");
   const [free, setFree] = useState(initial?.freeleech_only ?? false);
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [busy, setBusy] = useState(false);
@@ -451,6 +452,7 @@ function IndexerForm({
     setKey("");
     setFeed("");
     setDefinition("");
+    setSettings("");
     setFree(false);
     setClearCookie(false);
     setClearKey(false);
@@ -472,6 +474,27 @@ function IndexerForm({
     setError("");
     const cleanedCookie = cleanHeader(cookie);
     const cleanedAgent = cleanHeader(agent);
+    let parsedSettings: Record<string, string> | undefined;
+    if (kind === "cardigann" && settings.trim()) {
+      try {
+        const parsed: unknown = JSON.parse(settings);
+        if (
+          !parsed ||
+          typeof parsed !== "object" ||
+          Array.isArray(parsed) ||
+          Object.values(parsed).some((value) => typeof value !== "string")
+        ) {
+          throw new Error("settings");
+        }
+        parsedSettings = parsed as Record<string, string>;
+      } catch {
+        setBusy(false);
+        setError(
+          'Cardigann settings must be a flat JSON object with string values, such as {"username":"owner"}.',
+        );
+        return;
+      }
+    }
     try {
       await api(initial ? `/indexers/${initial.id}` : "/indexers", {
         method: initial ? "PUT" : "POST",
@@ -496,6 +519,7 @@ function IndexerForm({
               : undefined,
           feed_url: kind === "rss" ? feed.trim() || undefined : undefined,
           definition: kind === "cardigann" ? definition.trim() : undefined,
+          settings: kind === "cardigann" ? parsedSettings : undefined,
         }),
       });
       setCookie("");
@@ -571,6 +595,23 @@ function IndexerForm({
             when editing. Supported: HTML search rows, common filters, cookie
             headers and torrent/magnet links.
           </span>
+          <div>
+            Cardigann settings (JSON, optional)
+            <textarea
+              aria-label="Cardigann settings JSON"
+              className="rs-code-input"
+              rows={4}
+              value={settings}
+              onChange={(e) => setSettings(e.target.value)}
+              disabled={busy}
+              spellCheck={false}
+              placeholder='{"username":"owner"}'
+            />
+            <span className="rs-muted rs-small">
+              Per-connection values for definition settings. They are encrypted
+              with the indexer configuration and never returned by the API.
+            </span>
+          </div>
         </label>
       )}
       <label>

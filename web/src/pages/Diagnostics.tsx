@@ -47,7 +47,7 @@ export function Diagnostics() {
                     <th>State</th>
                     <th>Error</th>
                     <th>Updated</th>
-                    <th />
+                    <th aria-label="Actions" />
                   </tr>
                 </thead>
                 <tbody>

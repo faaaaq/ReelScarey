@@ -41,7 +41,7 @@ func (s *Store) send(ctx context.Context, ch Channel, secret, event, title, body
 	case "telegram":
 		return s.sendTelegram(ctx, ch, secret, title, body)
 	case "discord":
-		return s.sendDiscord(ctx, ch, title, body)
+		return s.sendDiscord(ctx, ch, secret, title, body)
 	case "webhook":
 		return s.sendWebhook(ctx, ch, secret, event, title, body)
 	default:
@@ -54,7 +54,7 @@ func (s *Store) sendNtfy(ctx context.Context, ch Channel, secret, title, body st
 	if err != nil {
 		return &sendError{message: "The ntfy URL is invalid."}
 	}
-	headers := map[string]string{"Title": title, "Tags": "reelscarey", "Priority": "default"}
+	headers := map[string]string{"Title": sanitizeHeader(title), "Tags": "reelscarey", "Priority": "default"}
 	if secret != "" {
 		headers["Authorization"] = "Bearer " + secret
 	}
@@ -66,8 +66,8 @@ func (s *Store) sendGotify(ctx context.Context, ch Channel, secret, title, body 
 	if err != nil {
 		return &sendError{message: "The Gotify URL is invalid."}
 	}
-	endpoint := strings.TrimRight(u.String(), "/") + "/message?token=" + url.QueryEscape(secret)
-	return s.postJSON(ctx, endpoint, nil, map[string]any{"title": title, "message": body, "priority": 5})
+	endpoint := strings.TrimRight(u.String(), "/") + "/message"
+	return s.postJSON(ctx, endpoint, map[string]string{"X-Gotify-Token": secret}, map[string]any{"title": title, "message": body, "priority": 5})
 }
 
 func (s *Store) sendPushover(ctx context.Context, ch Channel, secret, title, body string) error {
@@ -88,8 +88,11 @@ func (s *Store) sendTelegram(ctx context.Context, ch Channel, secret, title, bod
 	})
 }
 
-func (s *Store) sendDiscord(ctx context.Context, ch Channel, title, body string) error {
-	return s.postJSON(ctx, ch.Config["url"], nil, map[string]any{
+func (s *Store) sendDiscord(ctx context.Context, ch Channel, secret, title, body string) error {
+	if secret == "" || !isDiscordHost(secret) {
+		return &sendError{message: "The Discord webhook is missing or invalid."}
+	}
+	return s.postJSON(ctx, secret, nil, map[string]any{
 		"content": title + "\n" + body, "allowed_mentions": map[string]any{"parse": []string{}},
 	})
 }
@@ -163,7 +166,8 @@ func (s *Store) sendEmail(ch Channel, secret, title, body string) error {
 	if port == "" {
 		port = "587"
 	}
-	if _, err := strconv.Atoi(port); err != nil {
+	portNumber, err := strconv.Atoi(port)
+	if err != nil || portNumber < 1 || portNumber > 65535 {
 		return &sendError{message: "The SMTP port is invalid."}
 	}
 	from, err := mail.ParseAddress(ch.Config["from"])
@@ -184,46 +188,50 @@ func (s *Store) sendEmail(ch Channel, secret, title, body string) error {
 	}
 	message := "From: " + from.String() + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + sanitizeHeader(title) + "\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + body + "\r\n"
 	addr := net.JoinHostPort(host, port)
-	if ch.Config["use_tls"] == "true" {
-		return s.sendMailTLS(addr, host, auth, from.Address, to, []byte(message))
+	implicitTLS := ch.Config["use_tls"] == "true"
+	var conn net.Conn
+	if implicitTLS {
+		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: 15 * time.Second}, "tcp", addr, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+	} else {
+		conn, err = net.DialTimeout("tcp", addr, 15*time.Second)
 	}
-	if err := smtp.SendMail(addr, auth, from.Address, to, []byte(message)); err != nil {
-		return &sendError{message: "The email could not be delivered.", uncertain: true}
-	}
-	return nil
-}
-
-func (s *Store) sendMailTLS(addr, host string, auth smtp.Auth, from string, to []string, message []byte) error {
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 15 * time.Second}, "tcp", addr, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
 	if err != nil {
-		return &sendError{message: "The SMTP server could not be reached."}
+		return &sendError{message: "The SMTP server could not be reached.", retry: true}
 	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(90 * time.Second))
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
-		_ = conn.Close()
-		return &sendError{message: "The SMTP greeting failed."}
+		return &sendError{message: "The SMTP greeting failed.", retry: true}
 	}
 	defer client.Close()
-	if auth != nil {
-		if err := client.Auth(auth); err != nil {
-			return &sendError{message: "The SMTP server rejected the credentials."}
+	if !implicitTLS {
+		if ok, _ := client.Extension("STARTTLS"); ok {
+			if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
+				return &sendError{message: "The SMTP server refused STARTTLS.", retry: true}
+			}
 		}
 	}
-	if err := client.Mail(from); err != nil {
-		return &sendError{message: "The SMTP server rejected the sender."}
+	if auth != nil {
+		if err := client.Auth(auth); err != nil {
+			return &sendError{message: "The SMTP server rejected the credentials.", retry: true}
+		}
+	}
+	if err := client.Mail(from.Address); err != nil {
+		return &sendError{message: "The SMTP server rejected the sender.", retry: true}
 	}
 	for _, address := range to {
 		if err := client.Rcpt(address); err != nil {
-			return &sendError{message: "The SMTP server rejected a recipient."}
+			return &sendError{message: "The SMTP server rejected a recipient.", retry: true}
 		}
 	}
 	writer, err := client.Data()
 	if err != nil {
-		return &sendError{message: "The SMTP server rejected the message."}
+		return &sendError{message: "The SMTP server rejected the message.", retry: true}
 	}
-	if _, err := writer.Write(message); err != nil {
+	if _, err := writer.Write([]byte(message)); err != nil {
 		_ = writer.Close()
-		return &sendError{message: "The message could not be written.", uncertain: true}
+		return &sendError{message: "The message could not be written; delivery is uncertain.", uncertain: true}
 	}
 	if err := writer.Close(); err != nil {
 		return &sendError{message: "The SMTP result is uncertain.", uncertain: true}
@@ -234,8 +242,5 @@ func (s *Store) sendMailTLS(addr, host string, auth smtp.Auth, from string, to [
 func sanitizeHeader(value string) string {
 	value = strings.ReplaceAll(value, "\r", " ")
 	value = strings.ReplaceAll(value, "\n", " ")
-	if len(value) > 180 {
-		value = value[:180]
-	}
-	return value
+	return truncateUTF8(value, 180)
 }

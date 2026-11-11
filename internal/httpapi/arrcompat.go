@@ -3,6 +3,8 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -76,6 +78,24 @@ func (s *Server) arrCompat(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// decodeCompatCommand is deliberately more permissive than the first-party API:
+// Sonarr/Radarr send additional fields and plural ID arrays. Unknown fields are
+// ignored while the body stays bounded and a single JSON object is required.
+func decodeCompatCommand(w http.ResponseWriter, r *http.Request, out any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(out); err != nil {
+		invalidJSON(w, err)
+		return false
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		invalidJSON(w, err)
+		return false
+	}
+	return true
+}
+
 func compatAPIVersion(flavour string) string {
 	if flavour == "prowlarr" {
 		return "1.0.0"
@@ -114,21 +134,25 @@ func compatRoute(path string) (flavour, rest string, ok bool) {
 	return "", "", false
 }
 
+// compatScope derives the required scope from the resource first. The route
+// prefix never upgrades a key's scope: a Sonarr key cannot read a movie simply
+// because the request was sent to the /sonarr prefix. Shared endpoints keep
+// their prefix scope when one exists, or accept any compat scope at /api/v3.
 func compatScope(flavour, rest string) string {
-	switch flavour {
-	case "sonarr":
-		return "compat-sonarr"
-	case "radarr":
-		return "compat-radarr"
-	case "prowlarr":
-		return "compat-prowlarr"
-	}
 	switch {
 	case strings.HasPrefix(rest, "/movie"):
 		return "compat-radarr"
 	case strings.HasPrefix(rest, "/series"), strings.HasPrefix(rest, "/episode"):
 		return "compat-sonarr"
 	case strings.HasPrefix(rest, "/indexer"):
+		return "compat-prowlarr"
+	}
+	switch flavour {
+	case "sonarr":
+		return "compat-sonarr"
+	case "radarr":
+		return "compat-radarr"
+	case "prowlarr":
 		return "compat-prowlarr"
 	}
 	return ""
@@ -231,7 +255,7 @@ func (s *Server) compatMovies(ctx context.Context, w http.ResponseWriter) {
 		COALESCE((SELECT COUNT(*) FROM media_files f WHERE f.movie_id=m.id),0),
 		COALESCE((SELECT SUM(f.size_bytes) FROM media_files f WHERE f.movie_id=m.id),0),
 		COALESCE((SELECT profile_id FROM item_automation a WHERE a.media_id=m.id),0)
-		FROM media_items m WHERE m.kind='movie' ORDER BY m.id`)
+		FROM media_items m WHERE m.kind='movie' ORDER BY m.id LIMIT 1000`)
 	if err != nil {
 		s.internal(w, "compat_movies", err)
 		return
@@ -325,7 +349,7 @@ type compatSeason struct {
 func (s *Server) compatSeries(ctx context.Context, w http.ResponseWriter) {
 	rows, err := s.db.QueryContext(ctx, `SELECT m.id,m.tmdb_id,m.title,m.year,m.monitored,m.status,m.poster_path,m.created_at,sd.series_status,
 		COALESCE((SELECT profile_id FROM item_automation a WHERE a.media_id=m.id),0)
-		FROM media_items m JOIN series_details sd ON sd.media_id=m.id WHERE m.kind='series' ORDER BY m.id`)
+		FROM media_items m JOIN series_details sd ON sd.media_id=m.id WHERE m.kind='series' ORDER BY m.id LIMIT 1000`)
 	if err != nil {
 		s.internal(w, "compat_series", err)
 		return
@@ -426,7 +450,7 @@ func (s *Server) compatEpisodes(ctx context.Context, w http.ResponseWriter, r *h
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT e.id,e.tmdb_id,e.number,e.title,e.overview,e.air_date,e.runtime_minutes,e.monitored,s.id,s.number,
 		COALESCE((SELECT COUNT(*) FROM episode_files ef WHERE ef.episode_id=e.id),0)
-		FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE s.series_id=? ORDER BY s.number,e.number`, seriesID)
+		FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE s.series_id=? ORDER BY s.number,e.number LIMIT 1000`, seriesID)
 	if err != nil {
 		s.internal(w, "compat_episodes", err)
 		return
@@ -623,15 +647,36 @@ func (s *Server) compatIndexers(ctx context.Context, w http.ResponseWriter) {
 
 func (s *Server) compatCommand(ctx context.Context, w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name      string `json:"name"`
-		MovieID   int64  `json:"movieId"`
-		SeriesID  int64  `json:"seriesId"`
-		EpisodeID int64  `json:"episodeId"`
+		Name       string  `json:"name"`
+		MovieID    int64   `json:"movieId"`
+		MovieIDs   []int64 `json:"movieIds"`
+		SeriesID   int64   `json:"seriesId"`
+		EpisodeID  int64   `json:"episodeId"`
+		EpisodeIDs []int64 `json:"episodeIds"`
 	}
-	if !decodeJSON(w, r, &body) {
+	if !decodeCompatCommand(w, r, &body) {
 		return
 	}
+	if body.MovieID < 1 && len(body.MovieIDs) > 0 {
+		body.MovieID = body.MovieIDs[0]
+	}
+	if body.EpisodeID < 1 && len(body.EpisodeIDs) > 0 {
+		body.EpisodeID = body.EpisodeIDs[0]
+	}
 	name := strings.ToLower(strings.TrimSpace(body.Name))
+	// Commands act on a specific media kind, so an API key must hold the scope
+	// for that kind even when it reached the route through a different prefix.
+	commandScope := ""
+	switch name {
+	case "moviesearch", "movierefresh", "refreshmovie":
+		commandScope = "compat-radarr"
+	case "episodesearch", "refreshseries", "seriesrefresh":
+		commandScope = "compat-sonarr"
+	}
+	if key, ok := auth.APIKeyFrom(r.Context()); ok && commandScope != "" && !key.HasScope(commandScope) {
+		fail(w, 403, "insufficient_scope", "This API key does not have the "+commandScope+" scope.")
+		return
+	}
 	if s.automation == nil {
 		fail(w, 503, "automation_unavailable", "Automation is not available.")
 		return

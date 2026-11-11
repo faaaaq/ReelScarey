@@ -16,6 +16,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/announce"
@@ -81,6 +82,8 @@ type Server struct {
 	backups          *backups.Service
 	metadataRefresh  *automation.MetadataRefresher
 	totp             *auth.TOTPStore
+	compatMu         sync.Mutex
+	compatAttempts   map[string]compatAttempt
 }
 
 type Dependencies struct {
@@ -786,6 +789,8 @@ func frontend(assets fs.FS) http.HandlerFunc {
 	routes["/diagnostics"] = true
 	routes["/storage/insights"] = true
 	routes["/language-profiles"] = true
+	routes["/duplicates"] = true
+	routes["/releases/blacklist"] = true
 	serveIndex := func(w http.ResponseWriter, r *http.Request, status int) {
 		body, err := fs.ReadFile(assets, "index.html")
 		if err != nil {
@@ -810,7 +815,7 @@ func frontend(assets fs.FS) http.HandlerFunc {
 		movieID, movieErr := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/movies/"), 10, 64)
 		musicArtistID, musicArtistErr := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/music/artists/"), 10, 64)
 		musicAlbumID, musicAlbumErr := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/music/albums/"), 10, 64)
-		if routes[r.URL.Path] || (strings.HasPrefix(r.URL.Path, "/series/") && seriesErr == nil && seriesID > 0) || (strings.HasPrefix(r.URL.Path, "/movies/") && movieErr == nil && movieID > 0) || (strings.HasPrefix(r.URL.Path, "/music/artists/") && musicArtistErr == nil && musicArtistID > 0) || (strings.HasPrefix(r.URL.Path, "/music/albums/") && musicAlbumErr == nil && musicAlbumID > 0) {
+		if routes[r.URL.Path] || strings.HasPrefix(r.URL.Path, "/settings/") || (strings.HasPrefix(r.URL.Path, "/series/") && seriesErr == nil && seriesID > 0) || (strings.HasPrefix(r.URL.Path, "/movies/") && movieErr == nil && movieID > 0) || (strings.HasPrefix(r.URL.Path, "/music/artists/") && musicArtistErr == nil && musicArtistID > 0) || (strings.HasPrefix(r.URL.Path, "/music/albums/") && musicAlbumErr == nil && musicAlbumID > 0) {
 			serveIndex(w, r, http.StatusOK)
 			return
 		}

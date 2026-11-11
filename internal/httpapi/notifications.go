@@ -61,7 +61,7 @@ func (s *Server) notification(w http.ResponseWriter, r *http.Request) {
 		}
 		send(w, 200, out)
 	case http.MethodDelete:
-		if !decodeJSON(w, r, &struct{}{}) {
+		if !decodeOptionalJSON(w, r, &struct{}{}) {
 			return
 		}
 		if err := s.notify.Delete(r.Context(), id); err != nil {

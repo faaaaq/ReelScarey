@@ -199,8 +199,12 @@ function ScheduleForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  useEffect(() => {
+    setForm(schedule);
+  }, [schedule.revision]);
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError("");
     setSuccess("");
@@ -226,6 +230,7 @@ function ScheduleForm({
     }
   }
   async function run() {
+    if (busy) return;
     setBusy(true);
     setError("");
     setSuccess("");
@@ -505,6 +510,7 @@ function RSSForm({
   const [success, setSuccess] = useState("");
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError("");
     setSuccess("");
@@ -527,6 +533,7 @@ function RSSForm({
     }
   }
   async function run() {
+    if (busy) return;
     setBusy(true);
     setError("");
     setSuccess("");
@@ -773,6 +780,7 @@ function LibraryDefaults({ profiles }: { profiles: Profile[] }) {
   }, [resource.data]);
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError("");
     setSuccess(false);
@@ -926,6 +934,7 @@ function ProfileForm({
   }
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError("");
     let customFormats: CustomFormat[] = [];
@@ -1149,6 +1158,7 @@ function ProfileForm({
             Custom formats (JSON)
             <textarea
               rows={6}
+              aria-label="Custom formats JSON"
               className="rs-code-input"
               value={customFormatsText}
               onChange={(e) => {

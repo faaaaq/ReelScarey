@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/mail"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -78,13 +80,62 @@ type Store struct {
 }
 
 func New(db *sql.DB, secrets *securestore.Store) *Store {
-	return &Store{db: db, secrets: secrets, client: &http.Client{
+	store := &Store{db: db, secrets: secrets, client: &http.Client{
 		Timeout:   15 * time.Second,
 		Transport: &http.Transport{Proxy: nil},
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return errors.New("notification redirects are disabled")
 		},
 	}}
+	// Discord webhook URLs are bearer-capable secrets. Older rows kept them in
+	// config_json; move them into the encrypted column before the API can list
+	// them again.
+	_ = store.migrateLegacy(context.Background())
+	return store
+}
+
+// migrateLegacy seals a plaintext Discord URL left by an earlier schema and
+// removes it from config_json. It is idempotent and safe to call on every start.
+func (s *Store) migrateLegacy(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT id,config_json FROM notification_channels WHERE kind='discord' AND secret_ciphertext IS NULL`)
+	if err != nil {
+		return err
+	}
+	type legacy struct {
+		id  int64
+		url string
+	}
+	items := []legacy{}
+	for rows.Next() {
+		var id int64
+		var raw string
+		if err := rows.Scan(&id, &raw); err != nil {
+			rows.Close()
+			return err
+		}
+		var config map[string]string
+		if json.Unmarshal([]byte(raw), &config) == nil {
+			if url := strings.TrimSpace(config["url"]); url != "" {
+				items = append(items, legacy{id: id, url: url})
+			}
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, item := range items {
+		if _, err := safeURL(item.url, false); err != nil || !isDiscordHost(item.url) {
+			continue
+		}
+		sealed, err := s.secrets.Seal(fmt.Sprintf("notification:%d", item.id), []byte(item.url))
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, `UPDATE notification_channels SET secret_ciphertext=?,config_json='{}',updated_at=? WHERE id=?`, sealed, time.Now().Unix(), item.id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) List(ctx context.Context) ([]Channel, error) {
@@ -109,6 +160,9 @@ func (s *Store) List(ctx context.Context) ([]Channel, error) {
 		if ch.Config == nil {
 			ch.Config = map[string]string{}
 		}
+		if ch.Kind == "discord" {
+			delete(ch.Config, "url")
+		}
 		if ch.Events == nil {
 			ch.Events = []string{}
 		}
@@ -128,6 +182,21 @@ func (s *Store) Save(ctx context.Context, id int64, in ChannelInput) (Channel, e
 	events, err := normalizeEvents(in.Events)
 	if err != nil {
 		return Channel{}, err
+	}
+	if in.Kind == "discord" {
+		if raw, ok := in.Config["url"]; ok {
+			raw = strings.TrimSpace(raw)
+			if raw != "" {
+				if _, err := safeURL(raw, false); err != nil || !isDiscordHost(raw) {
+					return Channel{}, ErrConfig
+				}
+				in.Secret = raw
+			}
+			delete(in.Config, "url")
+		}
+		if id == 0 && in.Secret == "" {
+			return Channel{}, ErrConfig
+		}
 	}
 	config, err := validateConfig(in.Kind, in.Config)
 	if err != nil {
@@ -459,7 +528,20 @@ func validateConfig(kind string, in map[string]string) (map[string]string, error
 	}
 	switch kind {
 	case "email":
-		if out["host"] == "" || out["from"] == "" || out["to"] == "" {
+		host := strings.TrimSpace(out["host"])
+		if host == "" || strings.ContainsAny(host, " \t\r\n/") || out["from"] == "" || out["to"] == "" {
+			return nil, ErrConfig
+		}
+		if port := strings.TrimSpace(out["port"]); port != "" {
+			number, err := strconv.Atoi(port)
+			if err != nil || number < 1 || number > 65535 {
+				return nil, ErrConfig
+			}
+		}
+		if _, err := mail.ParseAddress(out["from"]); err != nil {
+			return nil, ErrConfig
+		}
+		if recipients, err := mail.ParseAddressList(out["to"]); err != nil || len(recipients) == 0 {
 			return nil, ErrConfig
 		}
 	case "ntfy":
@@ -479,8 +561,10 @@ func validateConfig(kind string, in map[string]string) (map[string]string, error
 			return nil, ErrConfig
 		}
 	case "discord":
-		if _, err := safeURL(out["url"], false); err != nil || !isDiscordHost(out["url"]) {
-			return nil, ErrConfig
+		if out["url"] != "" {
+			if _, err := safeURL(out["url"], false); err != nil || !isDiscordHost(out["url"]) {
+				return nil, ErrConfig
+			}
 		}
 	}
 	return out, nil
@@ -516,14 +600,22 @@ func contains(list []string, value string) bool {
 	return false
 }
 
-func truncate(value string, max int) string {
+func truncate(value string, max int) string { return truncateUTF8(value, max) }
+
+func truncateUTF8(value string, max int) string {
 	if len(value) <= max {
 		return value
+	}
+	for max > 0 && !utf8.ValidString(value[:max]) {
+		max--
 	}
 	return value[:max]
 }
 
 func (s *Store) Run(ctx context.Context, logger *slog.Logger) {
+	if err := s.migrateLegacy(ctx); err != nil && ctx.Err() == nil {
+		logger.Error("notification secret migration failed", "error", err)
+	}
 	_, _ = s.db.ExecContext(ctx, `UPDATE notification_outbox SET state='uncertain',updated_at=? WHERE state='sending'`, time.Now().Unix())
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -571,7 +663,18 @@ func (s *Store) ProcessOne(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	ch, err := s.get(ctx, item.ChannelID)
-	if err != nil || !ch.Enabled {
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			_ = s.finish(ctx, item.ID, "cancelled", 0, "")
+			return true, nil
+		}
+		// A transient database/read failure must not permanently cancel the
+		// delivery. Put it back with a short retry instead.
+		next := time.Now().Add(time.Minute).Unix()
+		_ = s.finish(ctx, item.ID, "pending", next, "The notification channel could not be read; retrying.")
+		return true, err
+	}
+	if !ch.Enabled {
 		_ = s.finish(ctx, item.ID, "cancelled", 0, "")
 		return true, nil
 	}

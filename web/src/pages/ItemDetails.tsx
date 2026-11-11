@@ -214,7 +214,9 @@ function MovieView({ id }: { id: number }) {
                         savedTitle={data.item.title}
                       />
                       {data.item.kind === "movie" && <MovieVersions id={id} />}
-                      {data.item.kind === "movie" && <WatchProviders id={id} />}
+                      {data.item.kind === "movie" && (
+                        <WatchProviders id={data.item.tmdb_id} />
+                      )}
                       <HistorySection details={details} />
                       <Pagination
                         page={details.page}

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"sort"
@@ -57,8 +58,9 @@ func (s *Server) storageInsightsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	profileRows.Close()
 	var scheduleDefault int64
-	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(default_profile_id,0) FROM search_schedule WHERE id=1`).Scan(&scheduleDefault); err != nil {
-		scheduleDefault = 0
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(default_profile_id,0) FROM search_schedule WHERE id=1`).Scan(&scheduleDefault); err != nil && err != sql.ErrNoRows {
+		s.internal(w, "storage_insights_schedule", err)
+		return
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT f.id,f.relative_path,f.size_bytes,f.analysis_json,
 		COALESCE(f.movie_id,f.series_id),m.title,m.kind,
@@ -101,23 +103,13 @@ func (s *Server) storageInsightsHandler(w http.ResponseWriter, r *http.Request) 
 		if item.HasAnalysis && cutoff > 0 && item.Quality > 0 && item.Quality < cutoff {
 			out.BelowCutoff = append(out.BelowCutoff, item)
 		}
-		out.Largest = append(out.Largest, item)
+		out.Largest = keepLargest(out.Largest, item, 10)
 	}
 	if err := rows.Err(); err != nil {
 		s.internal(w, "storage_insights", err)
 		return
 	}
 	rows.Close()
-	// Keep the response bounded and deterministic.
-	sort.SliceStable(out.Largest, func(i, j int) bool {
-		if out.Largest[i].Size != out.Largest[j].Size {
-			return out.Largest[i].Size > out.Largest[j].Size
-		}
-		return out.Largest[i].ID < out.Largest[j].ID
-	})
-	if len(out.Largest) > 10 {
-		out.Largest = out.Largest[:10]
-	}
 	if len(out.BelowCutoff) > 100 {
 		out.BelowCutoff = out.BelowCutoff[:100]
 	}
@@ -133,4 +125,23 @@ func (s *Server) storageInsightsHandler(w http.ResponseWriter, r *http.Request) 
 		"unresolved": unresolved, "largest_returned": len(out.Largest),
 	}
 	send(w, 200, out)
+}
+
+// keepLargest keeps only the requested number of largest files while scanning,
+// so a large library does not materialize every row in memory.
+func keepLargest(items []storageInsightFile, item storageInsightFile, limit int) []storageInsightFile {
+	if len(items) < limit {
+		items = append(items, item)
+	} else if item.Size <= items[len(items)-1].Size {
+		return items
+	} else {
+		items[len(items)-1] = item
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Size != items[j].Size {
+			return items[i].Size > items[j].Size
+		}
+		return items[i].ID < items[j].ID
+	})
+	return items
 }

@@ -93,25 +93,50 @@ func (s *Service) CreateAPIKey(ctx context.Context, in APIKeyInput) (CreatedAPIK
 	if in.ExpiresAt < 0 || (in.ExpiresAt > 0 && in.ExpiresAt <= now) {
 		return CreatedAPIKey{}, ErrAPIKeyExpiry
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return CreatedAPIKey{}, err
+	}
+	defer tx.Rollback()
+	var duplicate int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_keys WHERE name=? COLLATE NOCASE`, in.Name).Scan(&duplicate); err != nil {
+		return CreatedAPIKey{}, err
+	}
+	if duplicate > 0 {
+		return CreatedAPIKey{}, ErrAPIKeyName
+	}
 	var count int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_keys WHERE revoked_at=0`).Scan(&count); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM api_keys WHERE revoked_at=0`).Scan(&count); err != nil {
 		return CreatedAPIKey{}, err
 	}
 	if count >= 20 {
 		return CreatedAPIKey{}, ErrAPIKeyLimit
 	}
-	token := "rs_" + base64.RawURLEncoding.EncodeToString(randomBytes(32))
 	encoded, err := json.Marshal(scopes)
 	if err != nil {
 		return CreatedAPIKey{}, err
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT INTO api_keys(name,prefix,token_hash,scopes,created_at,expires_at) VALUES(?,?,?,?,?,?)`,
-		in.Name, token[:12], digest(token), string(encoded), now, in.ExpiresAt)
-	if err != nil {
-		return CreatedAPIKey{}, err
+	var token string
+	var id int64
+	for attempt := 0; attempt < 3; attempt++ {
+		token = "rs_" + base64.RawURLEncoding.EncodeToString(randomBytes(32))
+		result, execErr := tx.ExecContext(ctx, `INSERT INTO api_keys(name,prefix,token_hash,scopes,created_at,expires_at) VALUES(?,?,?,?,?,?)`,
+			in.Name, token[:12], digest(token), string(encoded), now, in.ExpiresAt)
+		if execErr == nil {
+			id, err = result.LastInsertId()
+			if err != nil {
+				return CreatedAPIKey{}, err
+			}
+			break
+		}
+		if !strings.Contains(execErr.Error(), "UNIQUE") {
+			return CreatedAPIKey{}, execErr
+		}
 	}
-	id, err := result.LastInsertId()
-	if err != nil {
+	if id == 0 {
+		return CreatedAPIKey{}, ErrAPIKeyLimit
+	}
+	if err := tx.Commit(); err != nil {
 		return CreatedAPIKey{}, err
 	}
 	return CreatedAPIKey{APIKey: APIKey{ID: id, Name: in.Name, Prefix: token[:12], Scopes: scopes, CreatedAt: now, ExpiresAt: in.ExpiresAt}, Token: token}, nil

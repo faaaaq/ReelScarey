@@ -191,6 +191,7 @@ export function Notifications() {
   }
 
   async function retry(item: NotificationOutboxItem) {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {

@@ -99,6 +99,34 @@ func compatPath(path string) bool {
 
 // compatSecurity accepts a scoped API key, or an administrator session for
 // manual inspection. It never accepts a request-account session.
+type compatAttempt struct {
+	count int
+	until time.Time
+}
+
+func (s *Server) compatLimited(ip string) bool {
+	s.compatMu.Lock()
+	defer s.compatMu.Unlock()
+	now := time.Now()
+	if s.compatAttempts == nil {
+		s.compatAttempts = map[string]compatAttempt{}
+	}
+	attempt := s.compatAttempts[ip]
+	if now.After(attempt.until) {
+		attempt = compatAttempt{until: now.Add(time.Minute)}
+	}
+	attempt.count++
+	s.compatAttempts[ip] = attempt
+	if len(s.compatAttempts) > 2048 {
+		for key, value := range s.compatAttempts {
+			if now.After(value.until) {
+				delete(s.compatAttempts, key)
+			}
+		}
+	}
+	return attempt.count <= 60
+}
+
 func (s *Server) compatSecurity(next http.Handler, w http.ResponseWriter, r *http.Request) {
 	mutation := r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS"
 	if s.backups != nil && s.backups.Restoring() && mutation {
@@ -118,7 +146,16 @@ func (s *Server) compatSecurity(next http.Handler, w http.ResponseWriter, r *htt
 	if token != "" {
 		key, err := s.auth.ResolveAPIKey(r.Context(), token)
 		if errors.Is(err, auth.ErrUnauthorized) {
-			fail(w, 401, "invalid_api_key", "Provide a valid ReelScarey API key.")
+			ip, _, splitErr := net.SplitHostPort(r.RemoteAddr)
+			if splitErr != nil {
+				ip = r.RemoteAddr
+			}
+			if !s.compatLimited(ip) {
+				w.Header().Set("Retry-After", "60")
+				fail(w, 429, "api_key_rate_limited", "Too many invalid API-key attempts. Wait a minute and try again.")
+				return
+			}
+			fail(w, 401, "invalid_api_key", "Provide a valid ReelScarey API key in the X-Api-Key header.")
 			return
 		}
 		if err != nil {
@@ -142,7 +179,7 @@ func (s *Server) compatSecurity(next http.Handler, w http.ResponseWriter, r *htt
 			return
 		}
 	}
-	fail(w, 401, "authentication_required", "Provide an X-Api-Key header (or ?apikey=) with a scoped ReelScarey API key.")
+	fail(w, 401, "authentication_required", "Provide a scoped ReelScarey API key in the X-Api-Key header.")
 }
 
 func (s *Server) allowedHost(host string) bool {
@@ -176,6 +213,15 @@ func (s *Server) cookie(w http.ResponseWriter, r *http.Request, token string, ex
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, out any) bool {
 	return decodeJSONLimit(w, r, out, 16<<10)
+}
+
+// decodeOptionalJSON accepts a body-less DELETE while keeping the normal
+// content-type and unknown-field checks when a body is present.
+func decodeOptionalJSON(w http.ResponseWriter, r *http.Request, out any) bool {
+	if r.Body == nil || r.ContentLength == 0 {
+		return true
+	}
+	return decodeJSON(w, r, out)
 }
 
 func decodeJSONLimit(w http.ResponseWriter, r *http.Request, out any, limit int64) bool {

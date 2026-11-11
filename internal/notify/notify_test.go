@@ -86,6 +86,17 @@ func TestNotificationOutboxPublishesAndDelivers(t *testing.T) {
 	if !channel.HasSecret {
 		t.Fatal("saved channel did not report its secret")
 	}
+	discord, err := store.Save(ctx, 0, ChannelInput{
+		Name: "discord", Kind: "discord", Enabled: true,
+		Config: map[string]string{"url": "https://discord.com/api/webhooks/123456789012345678/" + strings.Repeat("a", 60)},
+		Events: []string{"download.failed"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discord.HasSecret || discord.Config["url"] != "" {
+		t.Fatalf("discord webhook was not stored as a secret: %#v", discord)
+	}
 	if _, err := db.Exec(`INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'download','job-1','A Movie','completed')`); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +116,7 @@ func TestNotificationOutboxPublishesAndDelivers(t *testing.T) {
 		t.Fatalf("outbox: %#v %v", items, err)
 	}
 	listed, err := store.List(ctx)
-	if err != nil || len(listed) != 1 || !listed[0].HasSecret {
+	if err != nil || len(listed) != 2 || !listed[0].HasSecret {
 		t.Fatalf("list: %#v %v", listed, err)
 	}
 	if _, err := db.Exec(`INSERT INTO notification_outbox(channel_id,event,title,body,state,created_at,updated_at) VALUES(?,?,?,?,'uncertain',unixepoch(),unixepoch())`, channel.ID, "download.completed", "Retry me", "body"); err != nil {

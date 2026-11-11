@@ -40,6 +40,7 @@ type Worker struct {
 
 	mu        sync.Mutex
 	attempted map[int64]struct{}
+	failures  map[int64]int
 	cursor    int64
 	client    *http.Client
 }
@@ -80,7 +81,6 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	if w == nil || w.DB == nil || strings.TrimSpace(w.MediaRoot) == "" {
 		return false, ErrConfig
 	}
-	defer organization.ReadMedia()()
 	enabled, err := w.enabled(ctx)
 	if err != nil {
 		return false, err
@@ -93,15 +93,7 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		return false, ErrMediaRoot
 	}
 	defer root.Close()
-	if w.client == nil {
-		w.client = &http.Client{
-			Timeout:   20 * time.Second,
-			Transport: &http.Transport{Proxy: nil},
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return errors.New("artwork redirects are disabled")
-			},
-		}
-	}
+	client := w.httpClient()
 	for checked := 0; checked < maxPerPass; checked++ {
 		item, ok, err := w.nextCandidate(ctx)
 		if err != nil {
@@ -114,26 +106,41 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 			continue
 		}
 		posterRelative := path.Join(path.Dir(item.relative), "poster.jpg")
-		if _, err := root.Stat(posterRelative); err == nil {
-			w.markAttempted(item.fileID)
-			continue
-		} else if !errors.Is(err, os.ErrNotExist) {
-			w.markAttempted(item.fileID)
+		unlock := organization.ReadMedia()
+		info, statErr := root.Stat(posterRelative)
+		if statErr == nil {
+			if info.Size() == 0 {
+				// A previous failed write left a partial file. Remove it so a
+				// later pass can publish a complete poster.
+				_ = root.Remove(posterRelative)
+			} else {
+				unlock()
+				w.markAttempted(item.fileID)
+				continue
+			}
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			unlock()
+			if w.recordFailure(item.fileID) {
+				w.markAttempted(item.fileID)
+			} else {
+				w.retryLater(item.fileID)
+			}
 			continue
 		}
-		data, err := w.download(ctx, item.poster)
+		unlock()
+		data, err := w.download(ctx, item.poster, client)
 		if err != nil {
-			// Retry a transient provider failure on the next pass instead of
-			// permanently skipping this file.
-			w.mu.Lock()
-			if item.fileID > 0 {
-				w.cursor = item.fileID - 1
+			if w.recordFailure(item.fileID) {
+				w.markAttempted(item.fileID)
+			} else {
+				w.retryLater(item.fileID)
 			}
-			w.mu.Unlock()
 			return true, err
 		}
+		unlock = organization.ReadMedia()
 		file, err := root.OpenFile(posterRelative, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if err != nil {
+			unlock()
 			w.markAttempted(item.fileID)
 			if errors.Is(err, os.ErrExist) {
 				continue
@@ -144,16 +151,55 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		closeErr := file.Close()
 		if writeErr != nil || closeErr != nil {
 			_ = root.Remove(posterRelative)
+			unlock()
 			w.markAttempted(item.fileID)
 			return true, fmt.Errorf("write poster sidecar: %w", errors.Join(writeErr, closeErr))
 		}
+		unlock()
 		w.markAttempted(item.fileID)
 		return true, nil
 	}
 	return false, nil
 }
 
-func (w *Worker) download(ctx context.Context, posterPath string) ([]byte, error) {
+func (w *Worker) httpClient() *http.Client {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.client == nil {
+		w.client = &http.Client{
+			Timeout:   20 * time.Second,
+			Transport: &http.Transport{Proxy: nil},
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return errors.New("artwork redirects are disabled")
+			},
+		}
+	}
+	return w.client
+}
+
+func (w *Worker) recordFailure(id int64) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.failures == nil {
+		w.failures = map[int64]int{}
+	}
+	w.failures[id]++
+	if w.failures[id] >= 3 {
+		delete(w.failures, id)
+		return true
+	}
+	return false
+}
+
+func (w *Worker) retryLater(id int64) {
+	w.mu.Lock()
+	if id > 0 {
+		w.cursor = id - 1
+	}
+	w.mu.Unlock()
+}
+
+func (w *Worker) download(ctx context.Context, posterPath string, client *http.Client) ([]byte, error) {
 	url := metadata.PosterURL(posterPath)
 	if url == "" {
 		return nil, errors.New("the saved poster path is unsafe")
@@ -162,7 +208,7 @@ func (w *Worker) download(ctx context.Context, posterPath string) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
-	response, err := w.client.Do(req)
+	response, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -226,13 +272,15 @@ func (w *Worker) alreadyAttempted(id int64) bool {
 func (w *Worker) markAttempted(id int64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.attempted == nil {
+	if w.attempted == nil || len(w.attempted) >= 10000 {
 		w.attempted = map[int64]struct{}{}
 	}
 	w.attempted[id] = struct{}{}
 }
 
-// Ensure the media root is a directory without following an external link.
+// ValidateRoot checks that the configured media root is a directory. The
+// directory itself may be a mount symlink; all file access still goes through
+// os.Root, which confines paths beneath the resolved directory.
 func ValidateRoot(mediaRoot string) bool {
 	info, err := os.Stat(filepath.Clean(mediaRoot))
 	return err == nil && info.IsDir()

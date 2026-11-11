@@ -36,7 +36,7 @@ func (s *Server) jellyfinSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		send(w, 200, map[string]bool{"saved": true})
 	case http.MethodDelete:
-		if !decodeJSON(w, r, &struct{}{}) {
+		if !decodeOptionalJSON(w, r, &struct{}{}) {
 			return
 		}
 		if err := s.jellyfin.Delete(r.Context()); err != nil {
@@ -103,7 +103,7 @@ func (s *Server) plexSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		send(w, 200, map[string]bool{"saved": true})
 	case http.MethodDelete:
-		if !decodeJSON(w, r, &struct{}{}) {
+		if !decodeOptionalJSON(w, r, &struct{}{}) {
 			return
 		}
 		if err := s.plex.Delete(r.Context()); err != nil {

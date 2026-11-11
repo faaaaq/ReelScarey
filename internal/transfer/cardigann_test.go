@@ -84,4 +84,10 @@ func TestCardigannRejectsInvalidDefinitionAndForeignDownload(t *testing.T) {
 	if _, err := indexer.Search(context.Background(), IndexerConfig{URL: "https://example.com", Kind: "cardigann", Definition: definition}, "x"); err == nil {
 		t.Fatal("foreign search host accepted")
 	}
+	if _, err := indexer.Search(context.Background(), IndexerConfig{URL: "https://example.com", Kind: "cardigann", Definition: strings.Replace(cardigannFixture, "search:", "login:\n  path: /login\nsearch:", 1)}, "x"); err == nil {
+		t.Fatal("unsupported login definition accepted")
+	}
+	if _, err := indexer.Search(context.Background(), IndexerConfig{URL: "https://example.com", Kind: "cardigann", Definition: strings.Replace(cardigannFixture, "  rows:", "  unknown_field: true\n  rows:", 1)}, "x"); err == nil {
+		t.Fatal("unknown YAML field accepted")
+	}
 }
