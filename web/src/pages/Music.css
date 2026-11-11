@@ -211,3 +211,39 @@
 .mus-scan-status :is(p, span, .rs-alert-content) {
   overflow-wrap: anywhere;
 }
+
+/* Live album acquisition progress: shared by the download popup and the
+   artist, album and library pages so a queued download stays trackable. */
+
+.mus-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 820px;
+  margin: 4px 0 0;
+}
+
+.mus-progress-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.mus-progress-status {
+  margin: 0;
+  color: var(--rs-text-strong);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.mus-progress-failed {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.mus-progress .rs-progress {
+  margin: 2px 0;
+}

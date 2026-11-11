@@ -15,6 +15,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import {
   Alert,
   EmptyState,
+  FieldSet,
   Label,
   Modal,
   PageBody,
@@ -29,6 +30,7 @@ import { groupID, groupedByLetter, sortLetters } from "../libraryGroups";
 import {
   api,
   messageFor,
+  type MusicAcquisitionJob,
   type MusicAcquisitionJobList,
   type MusicAlbumPage,
   type MusicArtist,
@@ -38,7 +40,11 @@ import {
 } from "../api";
 import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
-import { AlbumDownloadModal, type AlbumDownloadTarget } from "../musicDownload";
+import {
+  AcquisitionProgress,
+  AlbumDownloadModal,
+  type AlbumDownloadTarget,
+} from "../musicDownload";
 import { AlbumTile, ArtistTile, LibraryTrackTable } from "./Music";
 import "./Library.css";
 import "./Music.css";
@@ -91,6 +97,11 @@ export function MusicLibrary() {
   const downloads = useLiveResource<MusicAcquisitionJobList>(
     "/library/music/acquisitions?page=1",
     5000,
+  );
+  const [albumJobID, setAlbumJobID] = useState<number | null>(null);
+  const albumJob = useLiveResource<MusicAcquisitionJob>(
+    albumJobID ? `/library/music/acquisitions/${albumJobID}` : null,
+    2000,
   );
 
   useEffect(() => setInput(query), [query]);
@@ -288,6 +299,27 @@ export function MusicLibrary() {
             {attentionJobs.length === 1 ? "job has" : "jobs have"} an issue.{" "}
             <Link to="/music/discover">Review the queue</Link>.
           </Alert>
+        )}
+
+        {albumJob.data && (
+          <FieldSet
+            legend={`Album download · ${albumJob.data.title}`}
+            actions={
+              <Button
+                variant="soft"
+                color="gray"
+                size="1"
+                onClick={() => setAlbumJobID(null)}
+              >
+                Hide
+              </Button>
+            }
+          >
+            <AcquisitionProgress
+              job={albumJob.data}
+              label="Album download progress"
+            />
+          </FieldSet>
         )}
 
         {view !== "tracks" && ready && letters.length > 1 && (
@@ -543,6 +575,7 @@ export function MusicLibrary() {
       <AlbumDownloadModal
         target={download}
         onClose={() => setDownload(null)}
+        onJob={(job) => setAlbumJobID(job.id)}
         onStarted={() => downloads.reload()}
       />
     </>

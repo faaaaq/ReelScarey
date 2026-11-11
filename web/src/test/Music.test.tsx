@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -532,6 +532,173 @@ describe("music", () => {
     );
     expect(
       await screen.findByText("Music/Radiohead/OK Computer/01 Airbag.flac"),
+    ).toBeVisible();
+  });
+
+  it("shows album download progress in the popup and on the page", async () => {
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/albums/2" && !options?.method) {
+        return Response.json({
+          album: {
+            id: 2,
+            artist_id: 1,
+            artist_name: "Radiohead",
+            title: "OK Computer",
+            year: 1997,
+            primary_type: "Album",
+            track_count: 2,
+            status: "missing",
+          },
+          tracks: [
+            { disc: 1, number: 1, title: "Airbag", duration_ms: 284000 },
+            {
+              disc: 1,
+              number: 2,
+              title: "Paranoid Android",
+              duration_ms: 383000,
+            },
+          ],
+        });
+      }
+      if (
+        path === "/api/v1/library/music/albums/2/acquire" &&
+        options?.method === "POST"
+      ) {
+        return Response.json(
+          {
+            id: 77,
+            source_url: "",
+            source_kind: "album",
+            title: "OK Computer",
+            root: "Music",
+            format: "source",
+            state: "queued",
+            track_count: 2,
+            completed_count: 0,
+            error: "",
+            created_at: 1,
+            updated_at: 1,
+          },
+          { status: 202 },
+        );
+      }
+      if (
+        path === "/api/v1/library/music/acquisitions/77" &&
+        !options?.method
+      ) {
+        return Response.json({
+          id: 77,
+          source_url: "",
+          source_kind: "album",
+          title: "OK Computer",
+          root: "Music",
+          format: "source",
+          state: "running",
+          track_count: 2,
+          completed_count: 1,
+          error: "",
+          created_at: 1,
+          updated_at: 2,
+          tracks: [
+            {
+              id: 1,
+              job_id: 77,
+              position: 0,
+              title: "Airbag",
+              artist: "Radiohead",
+              album: "OK Computer",
+              album_artist: "Radiohead",
+              year: 1997,
+              track_number: 1,
+              disc_number: 1,
+              duration_ms: 284000,
+              cover_url: "",
+              source_url: "",
+              search_query: "Radiohead Airbag",
+              state: "completed",
+              error: "",
+              music_file_id: 5,
+              import_job_id: null,
+            },
+            {
+              id: 2,
+              job_id: 77,
+              position: 1,
+              title: "Paranoid Android",
+              artist: "Radiohead",
+              album: "OK Computer",
+              album_artist: "Radiohead",
+              year: 1997,
+              track_number: 2,
+              disc_number: 1,
+              duration_ms: 383000,
+              cover_url: "",
+              source_url: "",
+              search_query: "Radiohead Paranoid Android",
+              state: "downloading",
+              error: "",
+              music_file_id: null,
+              import_job_id: null,
+            },
+          ],
+        });
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MusicPlayerProvider>
+          <MemoryRouter initialEntries={["/music/albums/2"]}>
+            <Routes>
+              <Route path="/music/albums/:id" element={<MusicAlbumPage />} />
+            </Routes>
+          </MemoryRouter>
+        </MusicPlayerProvider>
+      </Theme>,
+    );
+
+    expect(
+      await screen.findByRole("table", { name: "Music tracks" }),
+    ).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Download album" }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Download album" }),
+    );
+    expect(
+      fetch.mock.calls.some(
+        ([url, options]) =>
+          new URL(url, "http://local").pathname ===
+            "/api/v1/library/music/albums/2/acquire" &&
+          options?.method === "POST",
+      ),
+    ).toBe(true);
+
+    // The popup confirms the match and shows live progress.
+    expect(await within(dialog).findByText("Matching queued")).toBeVisible();
+    expect(within(dialog).getByText("1/2 tracks completed")).toBeVisible();
+    expect(
+      within(dialog).getByText(/Downloading 2 of 2 . Paranoid Android/),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByRole("progressbar", {
+        name: "Album download progress",
+      }),
+    ).toHaveAttribute("aria-valuenow", "50");
+
+    // Closing the popup keeps the progress on the page.
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(
+      screen.getByRole("heading", { name: /Album download/ }),
+    ).toBeVisible();
+    expect(screen.getByText("1/2 tracks completed")).toBeVisible();
+    expect(
+      screen.getByText(/Downloading 2 of 2 . Paranoid Android/),
     ).toBeVisible();
   });
 });

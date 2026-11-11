@@ -49,7 +49,11 @@ import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
 import { useMusicPlayer, type PlayerTrack } from "../musicPlayer";
 import { albumCoverURL, artistImageURL } from "../musicArtwork";
-import { AlbumDownloadModal, type AlbumDownloadTarget } from "../musicDownload";
+import {
+  AcquisitionProgress,
+  AlbumDownloadModal,
+  type AlbumDownloadTarget,
+} from "../musicDownload";
 import "./Library.css";
 import "./Music.css";
 
@@ -572,6 +576,11 @@ export function MusicArtistPage() {
     batchJobID ? `/library/music/acquisitions/${batchJobID}` : null,
     2000,
   );
+  const [albumJobID, setAlbumJobID] = useState<number | null>(null);
+  const albumJob = useLiveResource<MusicAcquisitionJob>(
+    albumJobID ? `/library/music/acquisitions/${albumJobID}` : null,
+    2000,
+  );
   const artist = details.data?.artist;
   const player = useMusicPlayer();
   const playableTop = (topTracks.data?.items ?? [])
@@ -701,6 +710,12 @@ export function MusicArtistPage() {
       libraryTracks.reload();
     }
   }, [downloadJob.data?.state, batchJob.data?.state]);
+  useEffect(() => {
+    if (albumJob.data?.state === "completed") {
+      discography.reload();
+      libraryTracks.reload();
+    }
+  }, [albumJob.data?.state]);
   return (
     <>
       <PageToolbar label="Music artist actions">
@@ -737,6 +752,26 @@ export function MusicArtistPage() {
           error={details.error}
           retry={details.reload}
         />
+        {albumJob.data && (
+          <FieldSet
+            legend={`Album download · ${albumJob.data.title}`}
+            actions={
+              <Button
+                variant="soft"
+                color="gray"
+                size="1"
+                onClick={() => setAlbumJobID(null)}
+              >
+                Hide
+              </Button>
+            }
+          >
+            <AcquisitionProgress
+              job={albumJob.data}
+              label="Album download progress"
+            />
+          </FieldSet>
+        )}
         {discography.error && (
           <Alert kind="warning" title="Full discography unavailable">
             {discography.error} Showing saved catalog albums instead.
@@ -1049,6 +1084,7 @@ export function MusicArtistPage() {
       <AlbumDownloadModal
         target={albumDownload}
         onClose={() => setAlbumDownload(null)}
+        onJob={(job) => setAlbumJobID(job.id)}
         onStarted={() => {
           discography.reload();
           libraryTracks.reload();
@@ -1124,6 +1160,11 @@ export function MusicAlbumPage() {
     downloadJobID ? `/library/music/downloads/${downloadJobID}` : null,
     3000,
   );
+  const [albumJobID, setAlbumJobID] = useState<number | null>(null);
+  const albumJob = useLiveResource<MusicAcquisitionJob>(
+    albumJobID ? `/library/music/acquisitions/${albumJobID}` : null,
+    2000,
+  );
   const albumPrefs = useResource<MusicAlbumPreferences>(
     id ? `/library/music/albums/${id}/preferences` : null,
   );
@@ -1141,6 +1182,10 @@ export function MusicAlbumPage() {
     setMinBitrate(String(albumPrefs.data.preferences.min_bitrate));
     setFormats(albumPrefs.data.preferences.preferred_formats.join(","));
   }, [albumPrefs.data]);
+
+  useEffect(() => {
+    if (albumJob.data?.state === "completed") details.reload();
+  }, [albumJob.data?.state]);
 
   async function searchReleases(e: FormEvent) {
     e.preventDefault();
@@ -1346,6 +1391,26 @@ export function MusicAlbumPage() {
           error={details.error}
           retry={details.reload}
         />
+        {albumJob.data && (
+          <FieldSet
+            legend={`Album download · ${albumJob.data.title}`}
+            actions={
+              <Button
+                variant="soft"
+                color="gray"
+                size="1"
+                onClick={() => setAlbumJobID(null)}
+              >
+                Hide
+              </Button>
+            }
+          >
+            <AcquisitionProgress
+              job={albumJob.data}
+              label="Album download progress"
+            />
+          </FieldSet>
+        )}
         {details.data && (
           <Table label="Music tracks">
             <thead>
@@ -1650,6 +1715,7 @@ export function MusicAlbumPage() {
       <AlbumDownloadModal
         target={albumDownload}
         onClose={() => setAlbumDownload(null)}
+        onJob={(job) => setAlbumJobID(job.id)}
         onStarted={() => details.reload()}
       />
     </>
