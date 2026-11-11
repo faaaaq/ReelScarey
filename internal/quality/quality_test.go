@@ -51,7 +51,7 @@ func TestConservativeIdentityAndProfileRanking(t *testing.T) {
 	for _, tc := range []struct {
 		title string
 		ok    bool
-	}{{"Test.Show.S01E02.1080p", true}, {"Test.Show.2020.S01E02.1080p", true}, {"Test.Show.S01E03.1080p", false}, {"Test.Show.S01E02E03.1080p", false}, {"Test.Show.S01E02-E04.1080p", false}, {"Test.Show.S01.1080p", false}, {"Other.Show.S01E02.1080p", false}, {"Test.Show.S01E02.S02E02.1080p", false}} {
+	}{{"Test.Show.S01E02.1080p", true}, {"Test.Show.2020.S01E02.1080p", true}, {"Test.Show.S01E03.1080p", false}, {"Test.Show.S01E02E03.1080p", false}, {"Test.Show.S01E02-E04.1080p", false}, {"Test.Show.S01.1080p", false}, {"Other.Show.S01E02.1080p", false}, {"Test.Show.S01E02.S02E02.1080p", false}, {"Presenter Test Show S01E02.1080p", true}, {"Presenter Other.Show.S01E02.1080p", false}, {"TestShow.S01E02.1080p", false}, {"Jimmy Carrs Test Show S01E02 Mates Rates 1080p AMZN WEB-DL DDP2 0 H 264-RAWR", true}} {
 		if Identify(tc.title, target) != tc.ok {
 			t.Error(tc)
 		}

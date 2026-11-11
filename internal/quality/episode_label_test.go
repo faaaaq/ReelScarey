@@ -18,9 +18,18 @@ func TestExpandedTVLabelsRemainExactSingleEpisodeEvidence(t *testing.T) {
 			t.Fatal(title, d)
 		}
 	}
-	for _, title := range []string{"Other Fixture Show 1x02 1080p", "Fixture Show 1x03 1080p", "Fixture Show 11x02 1080p", "Fixture Show 1x02-03 1080p", "Fixture Show 1x02x03 1080p", "Fixture Show Season 1 Episode 2 Episode 3 1080p", "Fixture Show S1 E02 S1 E03 1080p", "Fixture Show 1x02 Complete 1080p", "Fixture Show Season 1 Episode 2-4 1080p", "Fixture Show AS01E02 1080p"} {
+	for _, title := range []string{"Fixture Show Other 1x02 1080p", "Fixture Show 1x03 1080p", "Fixture Show 11x02 1080p", "Fixture Show 1x02-03 1080p", "Fixture Show 1x02x03 1080p", "Fixture Show Season 1 Episode 2 Episode 3 1080p", "Fixture Show S1 E02 S1 E03 1080p", "Fixture Show 1x02 Complete 1080p", "Fixture Show Season 1 Episode 2-4 1080p", "Fixture Show AS01E02 1080p"} {
 		if Evaluate(p, target, Release{Title: title, Size: 1 << 30, Seeders: &seeders}).Eligible {
 			t.Fatal("ambiguous identity accepted", title)
+		}
+	}
+	// Owner decision: trackers often prepend a presenter or host name before
+	// the canonical show title (e.g. "Jimmy Carrs Am I The Asshole S02E02").
+	// The canonical title must still close the prefix as a whole word, so a
+	// run-together or reversed prefix stays rejected.
+	for _, title := range []string{"Other Fixture Show 1x02 1080p", "Jimmy Carrs Fixture Show S01E02 1080p"} {
+		if d := Evaluate(p, target, Release{Title: title, Size: 1 << 30, Seeders: &seeders}); !d.Eligible {
+			t.Fatal("presenter prefix rejected", title, d.Reasons)
 		}
 	}
 }

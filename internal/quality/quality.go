@@ -158,7 +158,15 @@ func identifyStandard(title string, t Target) bool {
 	rawPrefix := title[:start]
 	cleanPrefix := bracketPrefix.ReplaceAllString(rawPrefix, " ")
 	prefix := Normalize(cleanPrefix)
-	return prefix == base || (t.Year != nil && prefix == base+" "+strconv.Itoa(*t.Year))
+	if prefix == base || (t.Year != nil && prefix == base+" "+strconv.Itoa(*t.Year)) {
+		return true
+	}
+	// Some releases prepend a presenter or narrator name before the show
+	// title (e.g. "Jimmy Carrs Am I The Asshole S02E02"). Accept the match
+	// when the base title is a whole-word suffix of the normalized prefix;
+	// the episode label supplies the identity evidence, and the leading
+	// space keeps run-together prefixes from matching a short title.
+	return strings.HasSuffix(prefix, " "+base)
 }
 func identityLabels(title string, t Target) (string, bool) {
 	if t.Pack && t.TV {

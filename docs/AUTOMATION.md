@@ -51,8 +51,12 @@ server is saved. A disabled or unconfigured client still produces
 
 Movie matches require the canonical normalized title immediately followed by its
 year. TV matches require the canonical show title (optionally its year) and one
-exact SxxEyy token. Pack/range/ambiguous names are excluded from automatic
-selection; manual episode/season searching and mapping remain available.
+exact SxxEyy token; a single presenter or host name may lead the release title as
+long as the canonical show title closes the episode prefix as a whole word (for
+example "Jimmy Carrs Am I The Asshole S02E02" for "Am I the Asshole?"), so
+run-together or reversed prefixes stay rejected. Pack/range/ambiguous names are
+excluded from automatic selection; manual episode/season searching and mapping
+remain available.
 Resolution must be explicitly labeled. Camera recordings, screeners, samples,
 trailers, conflicting labels, unknown/nonpositive size and unknown seed counts
 are rejected, even with a zero seed minimum. Required language must appear in
