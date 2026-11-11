@@ -160,7 +160,6 @@ it("retains blank secrets, restricts protocol defaults and protects bound client
   );
 });
 it("supervises the built-in client and disables it with explicit review", async () => {
-  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
   const builtin = {
     present: true,
     enabled: true,
@@ -195,6 +194,15 @@ it("supervises the built-in client and disables it with explicit review", async 
   expect(screen.getByText(/Included and on by default/)).toBeInTheDocument();
   expect(screen.getByText(/2 active jobs use this client/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Turn off" }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Turn off the built-in qBittorrent client?",
+  });
+  expect(
+    within(dialog).getByText(/torrent default is cleared and its downloads stay/),
+  ).toBeVisible();
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: "Confirm" }),
+  );
   await waitFor(() =>
     expect(
       requests.mock.calls.some(
@@ -203,7 +211,6 @@ it("supervises the built-in client and disables it with explicit review", async 
       ),
     ).toBe(true),
   );
-  expect(confirm).toHaveBeenCalled();
 });
 it("uploads a Mullvad config and connects with the parsed values", async () => {
   const config = `[Interface]
@@ -317,7 +324,6 @@ it("toggles the VPN kill switch without reconnecting the tunnel", async () => {
 });
 
 it("sets up the built-in client from scratch without routing jobs", async () => {
-  vi.spyOn(window, "confirm").mockReturnValue(true);
   const requests = vi.fn(async (url: string, o?: RequestInit) => {
     if (url.endsWith("/download-clients/builtin")) {
       if (o?.method === "PUT") {
@@ -359,6 +365,12 @@ it("sets up the built-in client from scratch without routing jobs", async () => 
   ).toBeInTheDocument();
   await userEvent.click(
     screen.getByRole("button", { name: "Set up built-in client" }),
+  );
+  const dialog = await screen.findByRole("dialog", {
+    name: "Set up the built-in qBittorrent client?",
+  });
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: "Confirm" }),
   );
   await waitFor(() =>
     expect(

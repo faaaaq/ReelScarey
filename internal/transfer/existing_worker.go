@@ -19,6 +19,19 @@ import (
 	"unicode/utf8"
 )
 
+// nocaseFold mirrors SQLite's NOCASE collation (ASCII A-Z only) so the
+// registered-path map agrees with the media_files relative_path comparisons
+// used during discovery. Go's strings.ToLower would over-fold non-ASCII text.
+func nocaseFold(s string) string {
+	lower := []byte(s)
+	for i, c := range lower {
+		if c >= 'A' && c <= 'Z' {
+			lower[i] = c + ('a' - 'A')
+		}
+	}
+	return string(lower)
+}
+
 func registeredMessageFor(unverified bool) string {
 	if unverified {
 		return "Added without video verification: ffprobe could not inspect this video. It may be incomplete or unplayable."
@@ -184,6 +197,8 @@ func (s *Service) discoverDirectory(ctx context.Context, id, owner string) error
 			return e
 		}
 		entries, readErr := handle.ReadDir(128)
+		candidateRels := []string{}
+		candidateInfos := []os.FileInfo{}
 		for _, entry := range entries {
 			examined++
 			if examined > maxDirectoryEntries {
@@ -218,14 +233,42 @@ func (s *Service) discoverDirectory(ctx context.Context, id, owner string) error
 				skipped++
 				continue
 			}
-			var known int
-			if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_files WHERE relative_path=? COLLATE NOCASE`, rel).Scan(&known); e != nil {
+			candidateRels = append(candidateRels, rel)
+			candidateInfos = append(candidateInfos, info)
+		}
+		registered := map[string]bool{}
+		if len(candidateRels) > 0 {
+			places := make([]string, len(candidateRels))
+			args := make([]any, len(candidateRels))
+			for i, rel := range candidateRels {
+				places[i] = "?"
+				args[i] = rel
+			}
+			sql := `SELECT relative_path FROM media_files WHERE relative_path COLLATE NOCASE IN (` + strings.Join(places, ",") + `)`
+			rows, e := s.db.QueryContext(ctx, sql, args...)
+			if e != nil {
 				return e
 			}
-			if known > 0 {
+			for rows.Next() {
+				var knownPath string
+				if e = rows.Scan(&knownPath); e != nil {
+					rows.Close()
+					return e
+				}
+				registered[nocaseFold(knownPath)] = true
+			}
+			if e = rows.Err(); e != nil {
+				rows.Close()
+				return e
+			}
+			rows.Close()
+		}
+		for i, rel := range candidateRels {
+			if registered[nocaseFold(rel)] {
 				skipped++
 				continue
 			}
+			info := candidateInfos[i]
 			opened, e := openExistingFile(root, filepath.FromSlash(rel))
 			if e != nil {
 				return problem("storage_unavailable", "A video could not be inspected during discovery. Previous results remain available.")

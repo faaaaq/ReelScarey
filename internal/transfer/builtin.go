@@ -78,7 +78,7 @@ func (s *Service) bundledRow(ctx context.Context) (present, enabled bool, revisi
 // qbittorrent-nox: a fresh or upgraded installation downloads with it without
 // extra setup. An owner who disabled the client is never re-enabled, and
 // deployments without the binary are left alone. It never holds the
-// configuration lock: UpdateBundled holds it across its waits, and the
+// configuration lock: UpdateBundled no longer holds it across waits, and the
 // supervision loop must stay free to reconcile while those run. A concurrent
 // creator is detected afterwards and left alone. The daemon itself is started
 // by the ordinary supervision loop.
@@ -140,45 +140,54 @@ func (s *Service) BundledStatus(ctx context.Context) (BundledStatus, error) {
 // is marked enabled; a failure leaves the row disabled with the error visible
 // in the status. The supervisor owns every process transition.
 func (s *Service) UpdateBundled(ctx context.Context, in BundledUpdate) (BundledStatus, error) {
-	s.configMu.Lock()
-	defer s.configMu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+	s.configMu.Lock()
 	present, enabled, revision, e := s.bundledRow(ctx)
 	if e != nil {
+		s.configMu.Unlock()
 		return BundledStatus{}, e
 	}
 	if present && in.Revision != revision {
+		s.configMu.Unlock()
 		return BundledStatus{}, clientChanged()
 	}
 	if !present && in.Revision != 0 {
+		s.configMu.Unlock()
 		return BundledStatus{}, clientChanged()
 	}
 	if !present {
 		if in.Enabled == nil || !*in.Enabled {
+			s.configMu.Unlock()
 			return BundledStatus{}, problem("invalid_selection", "Enable the built-in client to create its configuration.")
 		}
 		if in.PeerPort != nil {
+			s.configMu.Unlock()
 			return BundledStatus{}, problem("invalid_selection", "Save the built-in client once before changing its peer port.")
 		}
 		if _, e = s.createBundled(ctx); e != nil {
+			s.configMu.Unlock()
 			return BundledStatus{}, e
 		}
 	} else if in.Enabled != nil && *in.Enabled != enabled {
 		if *in.Enabled {
 			if e = s.setBundledEnabled(ctx, true); e != nil {
+				s.configMu.Unlock()
 				return BundledStatus{}, e
 			}
 		} else if e = s.disableBundled(ctx); e != nil {
+			s.configMu.Unlock()
 			return BundledStatus{}, e
 		}
 	}
 	if in.PeerPort != nil {
 		if e = s.setBundledPeerPort(ctx, *in.PeerPort); e != nil {
+			s.configMu.Unlock()
 			return BundledStatus{}, e
 		}
 	}
 	generation := s.bundled.generation()
+	s.configMu.Unlock()
 	s.bundled.poke()
 	if in.Enabled == nil || *in.Enabled {
 		if !s.tunnelReady() {

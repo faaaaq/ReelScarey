@@ -235,15 +235,15 @@ type ClientUpdate struct {
 }
 
 func (s *Service) ConfigureIndexer(ctx context.Context, in IndexerUpdate) error {
-	s.configMu.Lock()
-	defer s.configMu.Unlock()
 	u, e := endpoint(in.URL)
 	if e != nil {
 		return e
 	}
+	s.configMu.Lock()
 	old, oldErr := s.indexerConfig(ctx)
 	var missing *Error
 	if oldErr != nil && !(errors.As(oldErr, &missing) && missing.Code == "indexer_not_configured") {
+		s.configMu.Unlock()
 		return oldErr
 	}
 	key := old.APIKey
@@ -251,24 +251,29 @@ func (s *Service) ConfigureIndexer(ctx context.Context, in IndexerUpdate) error 
 		key = *in.APIKey
 	}
 	if len(key) > 2048 || strings.ContainsAny(key, "\r\n\x00") {
+		s.configMu.Unlock()
 		return problem("invalid_settings", "Enter a valid indexer API key.")
 	}
 	if old.URL != "" && old.URL != u.String() && in.APIKey == nil {
+		s.configMu.Unlock()
 		return problem("invalid_settings", "Re-enter the API key when changing the indexer URL.")
 	}
 	c := IndexerConfig{URL: u.String(), APIKey: key, Generation: ID()}
+	s.configMu.Unlock()
 	if e = s.indexer.Test(ctx, c); e != nil {
 		return e
 	}
+	s.configMu.Lock()
 	b, e := json.Marshal(c)
 	if e != nil {
+		s.configMu.Unlock()
 		return e
 	}
-	return s.secrets.SetNamed(ctx, "torznab", b)
+	e = s.secrets.SetNamed(ctx, "torznab", b)
+	s.configMu.Unlock()
+	return e
 }
 func (s *Service) ConfigureClient(ctx context.Context, in ClientUpdate) error {
-	s.configMu.Lock()
-	defer s.configMu.Unlock()
 	u, e := endpoint(in.URL)
 	if e != nil {
 		return e
@@ -277,9 +282,11 @@ func (s *Service) ConfigureClient(ctx context.Context, in ClientUpdate) error {
 	if e != nil {
 		return e
 	}
+	s.configMu.Lock()
 	old, oldErr := s.clientConfig(ctx)
 	var missing *Error
 	if oldErr != nil && !(errors.As(oldErr, &missing) && missing.Code == "client_not_configured") {
+		s.configMu.Unlock()
 		return oldErr
 	}
 	password := old.Password
@@ -287,29 +294,38 @@ func (s *Service) ConfigureClient(ctx context.Context, in ClientUpdate) error {
 		password = *in.Password
 	}
 	if !textOK(in.Username, 200) || !textOK(password, 2048) {
+		s.configMu.Unlock()
 		return problem("invalid_settings", "Enter your qBittorrent Web UI username and password.")
 	}
 	if old.URL != "" && (old.URL != u.String() || old.Username != in.Username) && in.Password == nil {
+		s.configMu.Unlock()
 		return problem("invalid_settings", "Re-enter the password when changing the qBittorrent URL or username.")
 	}
 	if old.URL != "" && (old.URL != u.String() || old.DownloadPath != remote) {
 		var active int
 		if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE protocol='torrent' AND client_key='' AND state NOT IN ('completed','cancelled')`).Scan(&active); e != nil {
+			s.configMu.Unlock()
 			return e
 		}
 		if active > 0 {
+			s.configMu.Unlock()
 			return problem("active_downloads", "Finish or stop tracking active downloads before changing the client URL or download root.")
 		}
 	}
 	c := ClientConfig{URL: u.String(), Username: in.Username, Password: password, DownloadPath: remote}
+	s.configMu.Unlock()
 	if _, e = s.client.Test(ctx, c); e != nil {
 		return e
 	}
+	s.configMu.Lock()
 	b, e := json.Marshal(c)
 	if e != nil {
+		s.configMu.Unlock()
 		return e
 	}
-	return s.secrets.SetNamed(ctx, "qbittorrent", b)
+	e = s.secrets.SetNamed(ctx, "qbittorrent", b)
+	s.configMu.Unlock()
+	return e
 }
 func (s *Service) Test(ctx context.Context, name string) error {
 	if name == "sabnzbd" {
@@ -454,8 +470,7 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard,
 	return s.queueVersion(ctx, releaseID, guard, replacementID, version, 0)
 }
 func (s *Service) queueVersion(ctx context.Context, releaseID string, guard QueueGuard, replacementID int64, version string, delay time.Duration) (Job, bool, error) {
-	s.configMu.Lock()
-	defer s.configMu.Unlock()
+	// ---- No lock: read candidate, check expiry ----
 	if existing, e := s.jobBy(ctx, "d.release_id", releaseID); e == nil {
 		if existing.Kind == "series" && version != "" && version != "replacement" {
 			return Job{}, false, problem("invalid_version", "Movie versions cannot target TV episodes.")
@@ -517,11 +532,15 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 			indexerPublic = 1
 		}
 	} else {
+		// ---- Brief lock: read indexer + check generation + read client ----
+		s.configMu.Lock()
 		indexer, e := s.candidateIndexer(ctx, v)
 		if e != nil {
+			s.configMu.Unlock()
 			return Job{}, false, e
 		}
 		if v.Generation != indexer.Generation {
+			s.configMu.Unlock()
 			return Job{}, false, problem("release_expired", "The indexer settings changed. Search again before downloading.")
 		}
 		protocol = "torrent"
@@ -534,13 +553,17 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 			indexerPublic = 1
 		}
 		if v.Protocol != "" && v.Protocol != protocol {
+			s.configMu.Unlock()
 			return Job{}, false, problem("invalid_release", "The release protocol does not match its indexer. Search again.")
 		}
 		v.Protocol = protocol
 		client, e = s.downloadConfig(ctx, protocol)
 		if e != nil {
+			s.configMu.Unlock()
 			return Job{}, false, e
 		}
+		s.configMu.Unlock()
+		// ---- No lock: fetch metainfo ----
 		adapter := s.adapter(indexer)
 		if adapter == nil {
 			return Job{}, false, problem("release_expired", "The source adapter is unavailable. Search again.")
@@ -555,6 +578,9 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 			indexerPublic = 0
 		}
 	}
+	// ---- Lock: reservation ----
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
 	if blocked, e := s.blockedRelease(ctx, protocol, hash, releaseID, v.IndexerName); e != nil {
 		return Job{}, false, e
 	} else if blocked {

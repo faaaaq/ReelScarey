@@ -159,10 +159,6 @@ describe("TV catalog and monitoring", () => {
   });
 
   it("applies monitoring to selected seasons after confirmation", async () => {
-    vi.stubGlobal(
-      "confirm",
-      vi.fn(() => true),
-    );
     const fetch = setup((url, options) => {
       if (url.endsWith("/library/series/7")) return Response.json(show);
       if (url.endsWith("/seasons/monitor") && options?.method === "PUT")
@@ -174,6 +170,12 @@ describe("TV catalog and monitoring", () => {
     );
     await userEvent.click(
       screen.getByRole("button", { name: "Unmonitor selected seasons (1)" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Stop monitoring 1 selected seasons?",
+    });
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Confirm" }),
     );
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -201,10 +203,6 @@ describe("TV catalog and monitoring", () => {
         },
       ],
     };
-    vi.stubGlobal(
-      "confirm",
-      vi.fn(() => true),
-    );
     const fetch = setup((url, options) => {
       if (url.endsWith("/library/series/7")) return Response.json(current);
       if (url.endsWith("/seasons/1"))
@@ -249,6 +247,12 @@ describe("TV catalog and monitoring", () => {
     await userEvent.click(episode);
     await userEvent.click(
       screen.getByRole("button", { name: "Unmonitor selected (1)" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Stop monitoring 1 selected episodes?",
+    });
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Confirm" }),
     );
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(

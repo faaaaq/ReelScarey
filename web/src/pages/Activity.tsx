@@ -174,7 +174,7 @@ export function Activity() {
     else next.delete(key);
     setParams(next);
   }
-  const focusValid = !!focus && /^[a-f0-9]{32}$/.test(focus);
+  const focusValid = !!focus;
   const items = data?.items ?? [];
   const visible = items.filter((job) => matchesFilter(job, filter));
   const attention = items.filter(needsAttention).length;

@@ -187,6 +187,42 @@ func TestNamedClientsKeepExistingJobBindingsAndEncryptedCredentials(t *testing.T
 		t.Fatal("credentials failed reopen verification", e)
 	}
 }
+
+// A download_clients row without a matching integration config (legacy or an
+// interrupted save) must still list: the empty sealed blob yields empty
+// connection fields instead of failing the whole settings page, and a
+// configured row keeps decrypting its stored connection.
+func TestDownloadClientsListToleratesRowsWithoutCredentialConfig(t *testing.T) {
+	ctx := context.Background()
+	f := setupWorkflow(t)
+	a := namedTorrent(t, f, "Configured client", "https://client-a.invalid", "client-a")
+	orphanID := strings.Repeat("f", 32)
+	if _, e := f.db.Exec(`INSERT INTO download_clients(id,name,kind,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?)`, orphanID, "Legacy row", "sabnzbd", 0, 1, 1); e != nil {
+		t.Fatal(e)
+	}
+	profiles, e := f.s.DownloadClients(ctx)
+	if e != nil {
+		t.Fatal("list failed on a client without a config", e)
+	}
+	seen := map[string]DownloadClient{}
+	for _, c := range profiles {
+		seen[c.ID] = c
+	}
+	legacy, ok := seen[orphanID]
+	if !ok {
+		t.Fatal("legacy row missing from the list", profiles)
+	}
+	if legacy.URL != "" || legacy.Username != "" || legacy.DownloadPath != "" || legacy.LocalFolder != "" {
+		t.Fatal("legacy row fabricated connection fields", legacy)
+	}
+	configured, ok := seen[a.ID]
+	if !ok {
+		t.Fatal("configured row missing from the list", profiles)
+	}
+	if configured.URL != a.URL || configured.Username != "fixture" || configured.DownloadPath != "/remote" || configured.LocalFolder != "client-a" {
+		t.Fatal("configured row did not decrypt its stored connection", configured)
+	}
+}
 func TestClientQueueFenceRejectsChangedDefaultOrCredentials(t *testing.T) {
 	ctx := context.Background()
 	f := setupWorkflow(t)

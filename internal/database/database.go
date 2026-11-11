@@ -50,8 +50,8 @@ func Open(ctx context.Context, dir string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(2)
 	if err := db.PingContext(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("connect to database: %w", err)
@@ -145,4 +145,14 @@ func Version(ctx context.Context, db *sql.DB) (int, error) {
 	var version int
 	err := db.QueryRowContext(ctx, "SELECT COALESCE(MAX(version), 0) FROM schema_migrations").Scan(&version)
 	return version, err
+}
+
+// Ping checks database liveness without blocking behind a busy shared
+// connection. The caller must have configured the pool with ≥2 connections
+// (SetMaxOpenConns) so a dedicated pool slot is available even when the main
+// connection is mid-transaction. This prevents the /readyz healthcheck (2s
+// budget) from 503-ing the Docker healthcheck during long catalog snapshots.
+func Ping(ctx context.Context, db *sql.DB) error {
+	var ready int
+	return db.QueryRowContext(ctx, `SELECT 1`).Scan(&ready)
 }

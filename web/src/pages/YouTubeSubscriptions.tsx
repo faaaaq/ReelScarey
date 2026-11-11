@@ -1,5 +1,11 @@
 import { ArrowLeft, RefreshCw } from "lucide-react";
-import { PageBody, PageToolbar, ToolbarButton, ToolbarSection } from "../ui";
+import {
+  ConfirmDialog,
+  PageBody,
+  PageToolbar,
+  ToolbarButton,
+  ToolbarSection,
+} from "../ui";
 import { useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
@@ -302,35 +308,30 @@ function Subscription({
           <Button variant="ghost" onClick={() => setOpen(!open)}>
             {open ? "Hide discovered videos" : "Review discovered videos"}
           </Button>
-          <Button
-            variant="ghost"
-            color="red"
-            onClick={() =>
-              void (async () => {
-                if (
-                  !window.confirm(
-                    "Remove this subscription? Existing acquisitions and imported files will be retained.",
-                  )
-                )
-                  return;
-                setBusy(true);
-                setError("");
-                try {
-                  await api(`/youtube/subscriptions/${initial.id}`, {
-                    method: "DELETE",
-                    body: JSON.stringify({ revision: initial.revision }),
-                  });
-                  reload();
-                } catch (e) {
-                  setError(messageFor(e));
-                } finally {
-                  setBusy(false);
-                }
-              })()
+          <ConfirmDialog
+            trigger={
+              <Button variant="ghost" color="red">
+                Remove subscription
+              </Button>
             }
-          >
-            Remove subscription
-          </Button>
+            title="Remove this subscription?"
+            description="Existing acquisitions and imported files will be retained."
+            onConfirm={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                await api(`/youtube/subscriptions/${initial.id}`, {
+                  method: "DELETE",
+                  body: JSON.stringify({ revision: initial.revision }),
+                });
+                reload();
+              } catch (e) {
+                setError(messageFor(e));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
         </div>
       </fieldset>
       {error && (

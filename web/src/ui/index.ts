@@ -5,3 +5,4 @@ export * from "./Table";
 export * from "./format";
 export * from "./notices";
 export * from "./WorkInProgress";
+export * from "./ConfirmDialog";

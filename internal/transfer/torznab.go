@@ -3,7 +3,6 @@ package transfer
 import (
 	"context"
 	"encoding/xml"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -64,13 +63,6 @@ type feed struct {
 	} `xml:"channel>item"`
 }
 
-func bounded(r io.Reader, max int64) ([]byte, error) {
-	body, err := io.ReadAll(io.LimitReader(r, max+1))
-	if err != nil || int64(len(body)) > max {
-		return nil, problem("invalid_response", "The service returned an unreadable or oversized response.")
-	}
-	return body, nil
-}
 func (t *Torznab) get(ctx context.Context, c IndexerConfig, target *url.URL, max int64) ([]byte, error) {
 	base, err := endpoint(c.URL)
 	if err != nil {

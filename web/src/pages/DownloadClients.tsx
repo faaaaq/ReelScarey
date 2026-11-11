@@ -5,6 +5,7 @@ import {
   AddCard,
   Card,
   CardGrid,
+  ConfirmDialog,
   FieldSet,
   Label,
   Modal,
@@ -568,50 +569,34 @@ function BuiltinCard({ reload }: { reload: () => void }) {
                   Change peer port
                 </Button>
                 {enabled ? (
-                  <Button
-                    variant="soft"
-                    disabled={busy}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          "Turn off the built-in qBittorrent client? Its torrent default is cleared and its downloads stay in the download folder for retry.",
-                        )
-                      )
-                        void update({ enabled: false });
-                    }}
-                  >
-                    Turn off
-                  </Button>
+                  <ConfirmDialog
+                    trigger={
+                      <Button variant="soft" disabled={busy}>
+                        Turn off
+                      </Button>
+                    }
+                    title="Turn off the built-in qBittorrent client?"
+                    description="Its torrent default is cleared and its downloads stay in the download folder for retry."
+                    onConfirm={() => void update({ enabled: false })}
+                  />
                 ) : (
-                  <Button
-                    disabled={busy}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          "Turn on the built-in qBittorrent client? The app starts its daemon inside this container and downloads use it again.",
-                        )
-                      )
-                        void update({ enabled: true });
-                    }}
-                  >
-                    Turn on
-                  </Button>
+                  <ConfirmDialog
+                    trigger={<Button disabled={busy}>Turn on</Button>}
+                    title="Turn on the built-in qBittorrent client?"
+                    description="The app starts its daemon inside this container and downloads use it again."
+                    onConfirm={() => void update({ enabled: true })}
+                  />
                 )}
               </>
             ) : (
-              <Button
-                disabled={busy}
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "Set up the built-in qBittorrent client? The app creates its connection, starts the daemon inside this container and tests it.",
-                    )
-                  )
-                    void update({ enabled: true });
-                }}
-              >
-                Set up built-in client
-              </Button>
+              <ConfirmDialog
+                trigger={
+                  <Button disabled={busy}>Set up built-in client</Button>
+                }
+                title="Set up the built-in qBittorrent client?"
+                description="The app creates its connection, starts the daemon inside this container and tests it."
+                onConfirm={() => void update({ enabled: true })}
+              />
             )}
           </fieldset>
           {error && (
@@ -753,13 +738,6 @@ function ClientForm({
   }
   async function action(remove = false) {
     if (!client) return;
-    if (
-      remove &&
-      !window.confirm(
-        `Remove ${client.name} and its saved credentials? Its completed job history stays in Activity.`,
-      )
-    )
-      return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -906,15 +884,21 @@ function ClientForm({
             <Button type="button" variant="soft" onClick={() => void action()}>
               Test saved connection
             </Button>
-            <Button
-              type="button"
-              variant="soft"
-              color="red"
-              disabled={isDefault || client.active_jobs > 0}
-              onClick={() => void action(true)}
-            >
-              Remove client
-            </Button>
+            <ConfirmDialog
+              trigger={
+                <Button
+                  type="button"
+                  variant="soft"
+                  color="red"
+                  disabled={isDefault || client.active_jobs > 0}
+                >
+                  Remove client
+                </Button>
+              }
+              title={`Remove ${client.name}?`}
+              description="Remove the client and its saved credentials? Its completed job history stays in Activity."
+              onConfirm={() => void action(true)}
+            />
             <p className="rs-form-help">
               Existing jobs continue tracking their saved client while new
               downloads are paused. Address/folder changes are blocked while

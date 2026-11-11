@@ -21,6 +21,7 @@ import { RequestState } from "../components";
 import { Pagination } from "../movieComponents";
 import {
   Alert,
+  ConfirmDialog,
   Label,
   PageBody,
   PageToolbar,
@@ -149,13 +150,11 @@ function SeriesView({ initial }: { initial: TVSeries }) {
       setPending(false);
     }
   };
-  async function removeFile(episodeID: number, code: string, filePath: string) {
-    if (
-      !window.confirm(
-        `Delete ${code} from disk and remove it from the library?\n\n${filePath}\n\nThis permanently deletes the media file and cannot be undone. The download folder and seeding sources are never touched.`,
-      )
-    )
-      return;
+  async function removeFile(
+    episodeID: number,
+    _code: string,
+    _filePath: string,
+  ) {
     setPending(true);
     setError("");
     try {
@@ -192,21 +191,13 @@ function SeriesView({ initial }: { initial: TVSeries }) {
     }
   }
   function batchMonitor(monitored: boolean) {
-    const count = selectedSeasons.length;
-    if (
-      window.confirm(
-        monitored
-          ? `Monitor ${count} selected seasons?`
-          : `Stop monitoring ${count} selected seasons?`,
-      )
-    )
-      void update(
-        "/seasons/monitor",
-        "PUT",
-        monitored,
-        undefined,
-        selectedSeasons,
-      );
+    void update(
+      "/seasons/monitor",
+      "PUT",
+      monitored,
+      undefined,
+      selectedSeasons,
+    );
   }
   const seasons = [...show.seasons].sort(seasonOrder);
   const loaded = show.seasons.filter((season) => season.loaded_at);
@@ -433,30 +424,42 @@ function SeriesView({ initial }: { initial: TVSeries }) {
                         >
                           Clear season selection
                         </Button>
-                        <Button
-                          size="1"
-                          variant="soft"
-                          disabled={
-                            pending ||
-                            !show.monitored ||
-                            !selectedSeasons.length
+                        <ConfirmDialog
+                          trigger={
+                            <Button
+                              size="1"
+                              variant="soft"
+                              disabled={
+                                pending ||
+                                !show.monitored ||
+                                !selectedSeasons.length
+                              }
+                            >
+                              Monitor selected seasons ({selectedSeasons.length}
+                              )
+                            </Button>
                           }
-                          onClick={() => batchMonitor(true)}
-                        >
-                          Monitor selected seasons ({selectedSeasons.length})
-                        </Button>
-                        <Button
-                          size="1"
-                          variant="soft"
-                          disabled={
-                            pending ||
-                            !show.monitored ||
-                            !selectedSeasons.length
+                          title={`Monitor ${selectedSeasons.length} selected seasons?`}
+                          onConfirm={() => batchMonitor(true)}
+                        />
+                        <ConfirmDialog
+                          trigger={
+                            <Button
+                              size="1"
+                              variant="soft"
+                              disabled={
+                                pending ||
+                                !show.monitored ||
+                                !selectedSeasons.length
+                              }
+                            >
+                              Unmonitor selected seasons (
+                              {selectedSeasons.length})
+                            </Button>
                           }
-                          onClick={() => batchMonitor(false)}
-                        >
-                          Unmonitor selected seasons ({selectedSeasons.length})
-                        </Button>
+                          title={`Stop monitoring ${selectedSeasons.length} selected seasons?`}
+                          onConfirm={() => batchMonitor(false)}
+                        />
                         <span className="rs-muted rs-small">
                           Up to 100 seasons. Episode choices are kept.
                         </span>
@@ -721,20 +724,12 @@ function SeasonEpisodes({
   }, [attempt, reloadEpisodes]);
   const locked = pending || !show.monitored || !season.monitored;
   function batch(monitored: boolean) {
-    const count = selectedEpisodes.length;
-    if (
-      window.confirm(
-        monitored
-          ? `Monitor ${count} selected episodes?`
-          : `Stop monitoring ${count} selected episodes?`,
-      )
-    )
-      void update(
-        `/seasons/${season.number}/episodes/monitor`,
-        "PUT",
-        monitored,
-        selectedEpisodes,
-      );
+    void update(
+      `/seasons/${season.number}/episodes/monitor`,
+      "PUT",
+      monitored,
+      selectedEpisodes,
+    );
   }
   if (!resource.data)
     return (
@@ -784,22 +779,32 @@ function SeasonEpisodes({
             >
               Clear selection
             </Button>
-            <Button
-              size="1"
-              variant="soft"
-              disabled={locked || !selectedEpisodes.length}
-              onClick={() => batch(true)}
-            >
-              Monitor selected ({selectedEpisodes.length})
-            </Button>
-            <Button
-              size="1"
-              variant="soft"
-              disabled={locked || !selectedEpisodes.length}
-              onClick={() => batch(false)}
-            >
-              Unmonitor selected ({selectedEpisodes.length})
-            </Button>
+            <ConfirmDialog
+              trigger={
+                <Button
+                  size="1"
+                  variant="soft"
+                  disabled={locked || !selectedEpisodes.length}
+                >
+                  Monitor selected ({selectedEpisodes.length})
+                </Button>
+              }
+              title={`Monitor ${selectedEpisodes.length} selected episodes?`}
+              onConfirm={() => batch(true)}
+            />
+            <ConfirmDialog
+              trigger={
+                <Button
+                  size="1"
+                  variant="soft"
+                  disabled={locked || !selectedEpisodes.length}
+                >
+                  Unmonitor selected ({selectedEpisodes.length})
+                </Button>
+              }
+              title={`Stop monitoring ${selectedEpisodes.length} selected episodes?`}
+              onConfirm={() => batch(false)}
+            />
           </>
         )}
       </div>
@@ -953,23 +958,31 @@ function SeasonEpisodes({
                               to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}&purpose=${e.file_id}`}
                               label={`Replace the file for ${episodeCode(season.number, e.number)} ${e.title}`}
                             />
-                            <button
-                              type="button"
-                              className="det-icon-link"
-                              aria-label={`Delete ${episodeCode(season.number, e.number)} ${e.title} from disk and the library`}
-                              title="Delete this episode's file from disk and remove it from the library."
-                              disabled={pending || onRemoveFile === undefined}
-                              onClick={() =>
-                                onRemoveFile &&
-                                onRemoveFile(
-                                  e.id,
-                                  episodeCode(season.number, e.number),
-                                  e.file_path ?? "",
-                                )
+                            <ConfirmDialog
+                              trigger={
+                                <button
+                                  type="button"
+                                  className="det-icon-link"
+                                  aria-label={`Delete ${episodeCode(season.number, e.number)} ${e.title} from disk and the library`}
+                                  title="Delete this episode's file from disk and remove it from the library."
+                                  disabled={
+                                    pending || onRemoveFile === undefined
+                                  }
+                                >
+                                  <FileX size={16} aria-hidden="true" />
+                                </button>
                               }
-                            >
-                              <FileX size={16} aria-hidden="true" />
-                            </button>
+                              title={`Delete ${episodeCode(season.number, e.number)}?`}
+                              description={`${e.file_path ?? ""}\n\nThis permanently deletes the media file and cannot be undone. The download folder and seeding sources are never touched.`}
+                              onConfirm={() => {
+                                onRemoveFile &&
+                                  onRemoveFile(
+                                    e.id,
+                                    episodeCode(season.number, e.number),
+                                    e.file_path ?? "",
+                                  );
+                              }}
+                            />
                           </>
                         )}
                       </span>

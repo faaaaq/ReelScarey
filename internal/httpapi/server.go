@@ -604,7 +604,10 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	if err := s.db.PingContext(ctx); err != nil {
+	// Use database.Ping which draws from the pool's second connection so a
+	// long catalog or duplicates snapshot on the main connection cannot 503
+	// the Docker healthcheck. The pool is configured with SetMaxOpenConns(2).
+	if err := database.Ping(ctx, s.db); err != nil {
 		fail(w, 503, "database_unavailable", "The database is not ready.")
 		return
 	}

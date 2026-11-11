@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
 import { RequestState } from "../components";
+import { ConfirmDialog } from "../ui";
 import { useResource } from "../useResource";
 import "./Admin.css";
 
@@ -413,17 +414,15 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
                 Check now
               </Button>
               {!source.enabled && (
-                <Button
-                  size="1"
-                  variant="soft"
-                  disabled={!!busy}
-                  onClick={() => {
-                    if (
-                      !window.confirm(
-                        "Queue matching videos from the initial baseline? Enable the source to keep checking automatically.",
-                      )
-                    )
-                      return;
+                <ConfirmDialog
+                  trigger={
+                    <Button size="1" variant="soft" disabled={!!busy}>
+                      Fill missing
+                    </Button>
+                  }
+                  title="Queue matching videos from the initial baseline?"
+                  description="Enable the source to keep checking automatically."
+                  onConfirm={() =>
                     void run(
                       `backfill-${source.id}`,
                       () =>
@@ -438,19 +437,18 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
                           },
                         ),
                       "Match request queued.",
-                    );
-                  }}
-                >
-                  Fill missing
-                </Button>
+                    )
+                  }
+                />
               )}
-              <Button
-                size="1"
-                variant="soft"
-                color="red"
-                disabled={!!busy}
-                onClick={() => {
-                  if (!window.confirm("Remove this YouTube source?")) return;
+              <ConfirmDialog
+                trigger={
+                  <Button size="1" variant="soft" color="red" disabled={!!busy}>
+                    Remove
+                  </Button>
+                }
+                title="Remove this YouTube source?"
+                onConfirm={() =>
                   void run(
                     `remove-${source.id}`,
                     () =>
@@ -459,11 +457,9 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
                         { method: "DELETE" },
                       ),
                     "Source removed.",
-                  );
-                }}
-              >
-                Remove
-              </Button>
+                  )
+                }
+              />
             </div>
             {(source.entries?.length ?? 0) > 0 && (
               <details>

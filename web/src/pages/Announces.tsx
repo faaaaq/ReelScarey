@@ -3,6 +3,7 @@ import { Button } from "@radix-ui/themes";
 import { Plus, Radio, RefreshCw } from "lucide-react";
 import {
   Alert,
+  ConfirmDialog,
   EmptyState,
   FieldSet,
   Label,
@@ -214,29 +215,6 @@ export function Announces() {
       setBusy(false);
     }
   }
-  async function remove(source: Source) {
-    if (
-      !window.confirm(
-        `Remove ${source.name} and its captured announce history? The IRC password is deleted.`,
-      )
-    )
-      return;
-    setBusy(true);
-    setError("");
-    try {
-      await api(`/announce-sources/${source.id}`, {
-        method: "DELETE",
-        body: JSON.stringify({ revision: source.revision }),
-      });
-      if (editing?.id === source.id) reset();
-      sources.reload();
-      events.reload();
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
     <>
       <PageToolbar>
@@ -346,15 +324,39 @@ export function Announces() {
                         >
                           Edit
                         </Button>
-                        <Button
-                          size="1"
-                          variant="soft"
-                          color="red"
-                          disabled={busy}
-                          onClick={() => void remove(source)}
-                        >
-                          Remove
-                        </Button>
+                        <ConfirmDialog
+                          trigger={
+                            <Button
+                              size="1"
+                              variant="soft"
+                              color="red"
+                              disabled={busy}
+                            >
+                              Remove
+                            </Button>
+                          }
+                          title={`Remove ${source.name}?`}
+                          description="Remove the source and its captured announce history? The IRC password is deleted."
+                          onConfirm={async () => {
+                            setBusy(true);
+                            setError("");
+                            try {
+                              await api(`/announce-sources/${source.id}`, {
+                                method: "DELETE",
+                                body: JSON.stringify({
+                                  revision: source.revision,
+                                }),
+                              });
+                              if (editing?.id === source.id) reset();
+                              sources.reload();
+                              events.reload();
+                            } catch (e) {
+                              setError(messageFor(e));
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                        />
                       </span>
                     </td>
                   </tr>

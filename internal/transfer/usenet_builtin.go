@@ -285,8 +285,6 @@ func (s *Service) NewsServer(ctx context.Context) (NewsServerStatus, error) {
 func (s *Service) SaveNewsServer(ctx context.Context, in NewsServerUpdate) (UsenetBundledStatus, error) {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
 	in, e := normalizeNewsServer(in)
 	if e != nil {
 		return UsenetBundledStatus{}, e
@@ -408,21 +406,24 @@ func (s *Service) saveBuiltinUsenetConfig(ctx context.Context, c ClientConfig, p
 // requires a saved provider, starts the daemon and waits for its API before the
 // row is marked enabled. A failure leaves the honest failed status visible.
 func (s *Service) UpdateBundledUsenet(ctx context.Context, in UsenetBundledUpdate) (UsenetBundledStatus, error) {
-	s.configMu.Lock()
-	defer s.configMu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+	s.configMu.Lock()
 	present, enabled, revision, e := s.bundledUsenetRow(ctx)
 	if e != nil {
+		s.configMu.Unlock()
 		return UsenetBundledStatus{}, e
 	}
 	if present && in.Revision != revision {
+		s.configMu.Unlock()
 		return UsenetBundledStatus{}, clientChanged()
 	}
 	if !present && in.Revision != 0 {
+		s.configMu.Unlock()
 		return UsenetBundledStatus{}, clientChanged()
 	}
 	if !present {
+		s.configMu.Unlock()
 		return UsenetBundledStatus{}, problem("client_not_configured", "Save a news server before turning on the built-in Usenet client.")
 	}
 	target := enabled
@@ -433,19 +434,24 @@ func (s *Service) UpdateBundledUsenet(ctx context.Context, in UsenetBundledUpdat
 		if target {
 			c, e := s.managedClientConfig(ctx, builtinUsenetClientID)
 			if e != nil {
+				s.configMu.Unlock()
 				return UsenetBundledStatus{}, e
 			}
 			if !newsConfigured(c) {
+				s.configMu.Unlock()
 				return UsenetBundledStatus{}, problem("client_not_configured", "Save a news server before turning on the built-in Usenet client.")
 			}
 			if e = s.setBundledUsenetEnabled(ctx, true); e != nil {
+				s.configMu.Unlock()
 				return UsenetBundledStatus{}, e
 			}
 		} else if e = s.disableBundledUsenet(ctx); e != nil {
+			s.configMu.Unlock()
 			return UsenetBundledStatus{}, e
 		}
 	}
 	generation := s.usenet.generation()
+	s.configMu.Unlock()
 	s.usenet.poke()
 	if target {
 		c, e := s.managedClientConfig(ctx, builtinUsenetClientID)

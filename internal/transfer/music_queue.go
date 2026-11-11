@@ -144,17 +144,7 @@ func (s *Service) QueueMusicGuarded(ctx context.Context, albumID int64, releaseI
 		return MusicJob{}, problem("invalid_music_album", "Choose an album already in your music library.")
 	}
 
-	s.configMu.Lock()
-	defer s.configMu.Unlock()
-
-	// Refuse a second active download for the album before contacting a
-	// client, so a duplicate selection cannot submit the payload twice.
-	if active, e := s.activeMusicForAlbum(ctx, albumID); e != nil {
-		return MusicJob{}, e
-	} else if active {
-		return MusicJob{}, problem("duplicate_music_download", "This album already has an active music download. Finish or cancel it before choosing another release.")
-	}
-
+	// ---- Read candidate + decrypt (no lock) ----
 	key := fmt.Sprintf("%d:%s", albumID, releaseID)
 	var sealed []byte
 	var expires int64
@@ -180,11 +170,15 @@ func (s *Service) QueueMusicGuarded(ctx context.Context, albumID int64, releaseI
 		return MusicJob{}, problem("invalid_release", "The encrypted music release selection does not match its record. Search again.")
 	}
 
+	// ---- Lock: read indexer + check generation + read client + check active ----
+	s.configMu.Lock()
 	indexer, e := s.candidateIndexer(ctx, v)
 	if e != nil {
+		s.configMu.Unlock()
 		return MusicJob{}, e
 	}
 	if v.Generation != indexer.Generation {
+		s.configMu.Unlock()
 		return MusicJob{}, problem("release_expired", "The indexer settings changed. Search again before downloading.")
 	}
 	protocol := "torrent"
@@ -192,12 +186,24 @@ func (s *Service) QueueMusicGuarded(ctx context.Context, albumID int64, releaseI
 		protocol = "usenet"
 	}
 	if v.Protocol != "" && v.Protocol != protocol {
+		s.configMu.Unlock()
 		return MusicJob{}, problem("invalid_release", "The music release protocol does not match its indexer. Search again.")
 	}
 	client, e := s.downloadConfig(ctx, protocol)
 	if e != nil {
+		s.configMu.Unlock()
 		return MusicJob{}, e
 	}
+	if active, e := s.activeMusicForAlbum(ctx, albumID); e != nil {
+		s.configMu.Unlock()
+		return MusicJob{}, e
+	} else if active {
+		s.configMu.Unlock()
+		return MusicJob{}, problem("duplicate_music_download", "This album already has an active music download. Finish or cancel it before choosing another release.")
+	}
+	s.configMu.Unlock()
+
+	// ---- No lock: fetch + validate payload ----
 	adapter := s.adapter(indexer)
 	if adapter == nil {
 		return MusicJob{}, problem("release_expired", "The source adapter is unavailable. Search again.")
@@ -210,6 +216,8 @@ func (s *Service) QueueMusicGuarded(ctx context.Context, albumID int64, releaseI
 		return MusicJob{}, e
 	}
 
+	// ---- Lock: write reservation ----
+	s.configMu.Lock()
 	id := ID()
 	save := path.Join(client.DownloadPath, "ReelScarey", id)
 	tag := "reelscarey-" + id
@@ -221,11 +229,13 @@ func (s *Service) QueueMusicGuarded(ctx context.Context, albumID int64, releaseI
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
+		s.configMu.Unlock()
 		return MusicJob{}, e
 	}
 	defer tx.Rollback()
 	if guard != nil {
 		if e = guard(ctx, tx); e != nil {
+			s.configMu.Unlock()
 			return MusicJob{}, e
 		}
 	}
@@ -233,20 +243,27 @@ func (s *Service) QueueMusicGuarded(ctx context.Context, albumID int64, releaseI
 	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM music_downloads
 		WHERE state NOT IN ('completed','cancelled') AND (album_id=? OR (info_hash=? COLLATE NOCASE AND protocol=? AND client_key=?)))`,
 		albumID, hash, protocol, client.profileKey).Scan(&occupied); e != nil {
+		s.configMu.Unlock()
 		return MusicJob{}, e
 	}
 	if occupied {
+		s.configMu.Unlock()
 		return MusicJob{}, problem("duplicate_music_download", "A music download already tracks this album or release. Resolve or stop tracking it before submitting again.")
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO music_downloads(id,album_id,release_id,title,info_hash,protocol,client_key,client_kind,client_label,client_download_root,client_local_folder,save_path,root,indexer_name,state,next_run,created_at,updated_at,indexer_public,client_url,submission_attempted)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'submitting',?,?,?,?,?,0)`,
 		id, albumID, releaseID, v.Title, hash, protocol, client.profileKey, client.kind, client.label,
 		client.DownloadPath, client.LocalFolder, save, root, v.IndexerName, now+60, now, now, indexerPublic, client.URL); e != nil {
+		s.configMu.Unlock()
 		return MusicJob{}, e
 	}
 	if e = tx.Commit(); e != nil {
+		s.configMu.Unlock()
 		return MusicJob{}, e
 	}
+	s.configMu.Unlock()
+
+	// ---- No lock: submit to client ----
 	submit, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	var remoteID string
@@ -261,8 +278,8 @@ func (s *Service) QueueMusicGuarded(ctx context.Context, albumID int64, releaseI
 	} else {
 		e = s.torrentClient(client).Add(submit, client, tag, save, payload)
 	}
-	// Persist the result even if the request that initiated submission ended.
-	// If this write fails, the existing reservation is still reconciled.
+
+	// ---- Lock: persist result ----
 	finish, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer stop()
 	state, message := "downloading", ""
@@ -277,11 +294,15 @@ func (s *Service) QueueMusicGuarded(ctx context.Context, albumID int64, releaseI
 			message = "The download client rejected the music submission. Fix the client, then retry tracking; retrying submits it again."
 		}
 	}
+	s.configMu.Lock()
 	if _, e = s.db.ExecContext(finish, `UPDATE music_downloads SET state=?,error=?,remote_id=?,submission_attempted=?,next_run=unixepoch(),updated_at=unixepoch()
 		WHERE id=? AND state='submitting'`, state, message, remoteID, attempted, id); e != nil {
+		s.configMu.Unlock()
 		return MusicJob{}, e
 	}
-	return s.MusicJob(finish, id)
+	result, e := s.MusicJob(finish, id)
+	s.configMu.Unlock()
+	return result, e
 }
 
 func validateMusicPayload(protocol string, payload Payload, hash string) error {

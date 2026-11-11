@@ -68,32 +68,39 @@ func (s *Service) ClientDefaults(ctx context.Context) (ClientDefaults, error) {
 	return defaultsTx(ctx, s.db)
 }
 func (s *Service) DownloadClients(ctx context.Context) ([]DownloadClient, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT c.id,c.name,c.kind,c.enabled,c.builtin,c.revision,(SELECT COUNT(*) FROM downloads d WHERE d.client_key=c.id AND d.state<>'completed') FROM download_clients c ORDER BY c.name COLLATE NOCASE,c.id LIMIT 32`)
+	rows, e := s.db.QueryContext(ctx, `SELECT c.id,c.name,c.kind,c.enabled,c.builtin,c.revision,(SELECT COUNT(*) FROM downloads d WHERE d.client_key=c.id AND d.state<>'completed'),i.ciphertext FROM download_clients c LEFT JOIN integration_configs i ON i.name='download-client:'||c.id ORDER BY c.name COLLATE NOCASE,c.id LIMIT 32`)
 	if e != nil {
 		return nil, e
 	}
 	out := []DownloadClient{}
 	for rows.Next() {
 		var c DownloadClient
-		if e = rows.Scan(&c.ID, &c.Name, &c.Kind, &c.Enabled, &c.Builtin, &c.Revision, &c.ActiveJobs); e != nil {
+		var sealed []byte
+		if e = rows.Scan(&c.ID, &c.Name, &c.Kind, &c.Enabled, &c.Builtin, &c.Revision, &c.ActiveJobs, &sealed); e != nil {
 			rows.Close()
 			return nil, e
+		}
+		if len(sealed) > 0 {
+			plain, pe := s.secrets.Open("config:"+clientSecretName(c.ID), sealed)
+			if pe != nil {
+				rows.Close()
+				return nil, pe
+			}
+			var cfg ClientConfig
+			if pe = json.Unmarshal(plain, &cfg); pe != nil {
+				rows.Close()
+				return nil, pe
+			}
+			c.URL = cfg.URL
+			c.Username = cfg.Username
+			c.DownloadPath = cfg.DownloadPath
+			c.LocalFolder = cfg.LocalFolder
 		}
 		out = append(out, c)
 	}
 	e = errors.Join(rows.Err(), rows.Close())
 	if e != nil {
 		return nil, e
-	}
-	for n := range out {
-		c, e := s.managedClientConfig(ctx, out[n].ID)
-		if e != nil {
-			return nil, e
-		}
-		out[n].URL = c.URL
-		out[n].Username = c.Username
-		out[n].DownloadPath = c.DownloadPath
-		out[n].LocalFolder = c.LocalFolder
 	}
 	return out, nil
 }

@@ -1,4 +1,4 @@
-import { PageBody } from "../ui";
+import { ConfirmDialog, PageBody } from "../ui";
 import { useEffect, useRef, useState } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { Link, useSearchParams } from "react-router-dom";
@@ -613,13 +613,7 @@ function Reorganize({ config }: { config: Config }) {
     }
   }
   async function recoverReplacement(saved: Plan) {
-    if (
-      pending ||
-      !window.confirm(
-        "Restore the retained original? The app will only restore it if its registered path is empty.",
-      )
-    )
-      return;
+    if (pending) return;
     setPending("recover");
     setError("");
     try {
@@ -1289,13 +1283,16 @@ function Reorganize({ config }: { config: Config }) {
                 p.replacement &&
                 !p.replacement.recovering &&
                 (p.phase === "archived" || p.phase === "removed") && (
-                  <Button
-                    variant="soft"
-                    disabled={!!pending || running}
-                    onClick={() => void recoverReplacement(p)}
-                  >
-                    Restore original after interruption
-                  </Button>
+                  <ConfirmDialog
+                    trigger={
+                      <Button variant="soft" disabled={!!pending || running}>
+                        Restore original after interruption
+                      </Button>
+                    }
+                    title="Restore the retained original?"
+                    description="The app will only restore it if its registered path is empty."
+                    onConfirm={() => void recoverReplacement(p)}
+                  />
                 )}
               {p.state === "failed" && p.phase !== "failed_safe" && (
                 <Button

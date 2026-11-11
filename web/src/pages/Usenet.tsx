@@ -22,6 +22,7 @@ import { RequestState } from "../components";
 import {
   Alert,
   Check,
+  ConfirmDialog,
   EmptyState,
   FieldSet,
   FormActions,
@@ -603,35 +604,35 @@ export function Usenet() {
               </p>
               <FormActions>
                 {status.enabled ? (
-                  <Button
-                    variant="soft"
-                    color="red"
-                    disabled={busy || status.active_jobs > 0}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          "Turn off the bundled SABnzbd client? Its Usenet default is cleared and its process stops. Existing jobs keep their binding.",
-                        )
-                      )
-                        void setEnabled(false);
-                    }}
-                  >
-                    Turn off client
-                  </Button>
+                  <ConfirmDialog
+                    trigger={
+                      <Button
+                        variant="soft"
+                        color="red"
+                        disabled={busy || status.active_jobs > 0}
+                      >
+                        Turn off client
+                      </Button>
+                    }
+                    title="Turn off the bundled SABnzbd client?"
+                    description="Its Usenet default is cleared and its process stops. Existing jobs keep their binding."
+                    onConfirm={() => void setEnabled(false)}
+                  />
                 ) : (
-                  <Button
-                    disabled={busy || !status.configured || !status.installed}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          "Turn on the bundled SABnzbd client? The app starts a private daemon and waits for its API. It does not make itself the Usenet default.",
-                        )
-                      )
-                        void setEnabled(true);
-                    }}
-                  >
-                    Turn on client
-                  </Button>
+                  <ConfirmDialog
+                    trigger={
+                      <Button
+                        disabled={
+                          busy || !status.configured || !status.installed
+                        }
+                      >
+                        Turn on client
+                      </Button>
+                    }
+                    title="Turn on the bundled SABnzbd client?"
+                    description="The app starts a private daemon and waits for its API. It does not make itself the Usenet default."
+                    onConfirm={() => void setEnabled(true)}
+                  />
                 )}
                 <Button variant="soft" asChild>
                   <Link to="/download-clients">Choose Usenet default</Link>
