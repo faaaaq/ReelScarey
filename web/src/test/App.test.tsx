@@ -185,6 +185,7 @@ describe("foundation UI", () => {
       series_folder: "TV Shows",
       import_mode: "hardlink",
       nfo_export: false,
+      artwork_export: false,
       revision: 1,
     });
     expect(screen.getByRole("button", { name: "Save Changes" })).toBeDisabled();
