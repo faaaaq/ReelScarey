@@ -40,11 +40,6 @@ type Page struct {
 	Limit int     `json:"limit"`
 }
 
-func Overlap(a, b string) bool {
-	r, e := filepath.Rel(a, b)
-	return e == nil && (r == "." || filepath.IsLocal(r))
-}
-
 // Open refuses every symlink component, including the selected leaf. os.Root
 // confines subsequent opens if a directory is concurrently renamed.
 func Open(root *os.Root, relative string) (*os.File, error) {

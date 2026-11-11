@@ -135,7 +135,7 @@ func rootPlanRead(dir string) (RootMigration, error) {
 		return p, e
 	}
 	defer root.Close()
-	f, e := regular(root, rootPlanName, maxRootPlan)
+	f, e := storage.Regular(root, rootPlanName, maxRootPlan)
 	if e != nil {
 		return p, e
 	}
@@ -180,7 +180,7 @@ func saveRootPlan(cfg config.Config, p RootMigration) error {
 	}
 	defer root.Close()
 	name := ".root-plan-" + randomRootID()
-	if e = writeJSON(root, name, p); e != nil {
+	if e = storage.WriteJSON(root, name, p); e != nil {
 		return e
 	}
 	if info, e := root.Lstat(rootPlanName); e == nil && !info.Mode().IsRegular() {
@@ -191,7 +191,7 @@ func saveRootPlan(cfg config.Config, p RootMigration) error {
 	if e = root.Rename(name, rootPlanName); e != nil {
 		return e
 	}
-	return syncFolder(root)
+	return storage.SyncDir(root)
 }
 func lockRootMigration(cfg config.Config, continuing bool) (func(), error) {
 	lock, e := instance.Acquire(cfg.ConfigDir)
@@ -412,7 +412,7 @@ func PlanMediaRoot(ctx context.Context, cfg config.Config, destination string) (
 }
 func migrationReceipt(p RootMigration) string { return ".reelscarey-root-" + p.ID + ".json" }
 func checkReceipt(root *os.Root, p RootMigration) error {
-	f, e := regular(root, migrationReceipt(p), 1024)
+	f, e := storage.Regular(root, migrationReceipt(p), 1024)
 	if e != nil {
 		return ErrRootMigration
 	}
@@ -433,7 +433,7 @@ func createReceipt(root *os.Root, p RootMigration) error {
 	if e != nil {
 		return e
 	}
-	return syncFolder(root)
+	return storage.SyncDir(root)
 }
 func verifyRootTree(ctx context.Context, root *os.Root, p RootMigration, source bool) error {
 	skip := ""
@@ -486,7 +486,7 @@ func ownMigrationMarker(cfg config.Config, p RootMigration, create bool) error {
 		return e
 	}
 	defer root.Close()
-	f, e := regular(root, rootCopyMarker, 1024)
+	f, e := storage.Regular(root, rootCopyMarker, 1024)
 	if errors.Is(e, os.ErrNotExist) && create {
 		f, e = root.OpenFile(rootCopyMarker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if e != nil {
@@ -497,7 +497,7 @@ func ownMigrationMarker(cfg config.Config, p RootMigration, create bool) error {
 		if e != nil {
 			return e
 		}
-		return syncFolder(root)
+		return storage.SyncDir(root)
 	}
 	if e != nil {
 		return e
@@ -604,7 +604,7 @@ func CopyMediaRoot(ctx context.Context, cfg config.Config, digest, version strin
 		if e != nil {
 			return p, e
 		}
-		if e = syncFolder(parent); e != nil {
+		if e = storage.SyncDir(parent); e != nil {
 			return p, e
 		}
 	} else if e != nil {
@@ -694,7 +694,7 @@ func CopyMediaRoot(ctx context.Context, cfg config.Config, digest, version strin
 	if e = target.Chmod(".", os.FileMode(p.RootMode)); e != nil {
 		return p, e
 	}
-	if e = syncFolder(target); e != nil {
+	if e = storage.SyncDir(target); e != nil {
 		return p, e
 	}
 	if e = publishRootFolder(parent, stage, base); e != nil {
@@ -795,7 +795,7 @@ func ActivateMediaRoot(ctx context.Context, cfg config.Config, digest string) (R
 		}
 	}
 	if info, e := configRoot.Lstat("recovery-mode"); errors.Is(e, os.ErrNotExist) {
-		if e = writeJSON(configRoot, "recovery-mode", map[string]int{"format": 1}); e != nil {
+		if e = storage.WriteJSON(configRoot, "recovery-mode", map[string]int{"format": 1}); e != nil {
 			return p, e
 		}
 	} else if e != nil || !info.Mode().IsRegular() {
@@ -815,7 +815,7 @@ func ActivateMediaRoot(ctx context.Context, cfg config.Config, digest string) (R
 	} else if !errors.Is(e, os.ErrNotExist) {
 		return p, e
 	}
-	return p, syncFolder(configRoot)
+	return p, storage.SyncDir(configRoot)
 }
 func CancelMediaRoot(ctx context.Context, cfg config.Config, digest string) (RootMigration, error) {
 	var p RootMigration
@@ -863,7 +863,7 @@ func CancelMediaRoot(ctx context.Context, cfg config.Config, digest string) (Roo
 	if e = saveRootPlan(cfg, p); e != nil {
 		return p, e
 	}
-	return p, syncFolder(configRoot)
+	return p, storage.SyncDir(configRoot)
 }
 
 func prepareRootChecksums(ctx context.Context, cfg config.Config, root *os.Root) error {
@@ -897,3 +897,4 @@ func prepareRootChecksums(ctx context.Context, cfg config.Config, root *os.Root)
 	}
 	return nil
 }
+

@@ -6,7 +6,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/maintenance"
+	"github.com/faaaaq/ReelScarey/internal/storage"
 )
 
 const MaxArchive = int64(512 << 20)
@@ -38,21 +38,7 @@ type Archive struct {
 	Manifest maintenance.Manifest `json:"manifest"`
 }
 
-func id() string { return hex.EncodeToString(randomBytes()) }
-func randomBytes() []byte {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		panic(err)
-	}
-	return b
-}
-
-func sameTree(a, b string) bool {
-	r, e := filepath.Rel(a, b)
-	return e == nil && (r == "." || filepath.IsLocal(r))
-}
-
-func storage(cfg config.Config) (string, error) {
+func backupDir(cfg config.Config) (string, error) {
 	p := cfg.BackupsDir
 	if p == "" {
 		p = filepath.Join(filepath.Dir(cfg.ConfigDir), "backups")
@@ -84,7 +70,7 @@ func storage(cfg config.Config) (string, error) {
 		if resolved, e := filepath.EvalSymlinks(other); e == nil {
 			other = resolved
 		}
-		if sameTree(p, other) || sameTree(other, p) {
+		if storage.Overlap(p, other) || storage.Overlap(other, p) {
 			return "", errors.New("backup storage must be separate from configuration, media, downloads and staging")
 		}
 	}
@@ -94,25 +80,7 @@ func storage(cfg config.Config) (string, error) {
 	return p, nil
 }
 
-func regular(root *os.Root, name string, limit int64) (*os.File, error) {
-	before, e := root.Lstat(name)
-	if e != nil {
-		return nil, e
-	}
-	if !before.Mode().IsRegular() || before.Size() > limit {
-		return nil, errors.New("unsupported backup file")
-	}
-	f, e := root.Open(name)
-	if e != nil {
-		return nil, e
-	}
-	after, e := f.Stat()
-	if e != nil || !os.SameFile(before, after) {
-		f.Close()
-		return nil, errors.New("backup changed during access")
-	}
-	return f, nil
-}
+
 
 func persist(root *os.Root, name string, v any) error {
 	f, e := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
@@ -129,7 +97,7 @@ func persist(root *os.Root, name string, v any) error {
 // Readers must see a complete record or no record. Publishing the final name
 // before encoding allowed a concurrent backup-list refresh to see partial JSON.
 func publishRecord(root *os.Root, name string, v any) error {
-	tmp := ".record-" + id()
+	tmp := ".record-" + storage.NewID()
 	defer root.Remove(tmp)
 	if e := persist(root, tmp, v); e != nil {
 		return e
@@ -147,7 +115,7 @@ func (s *Service) record(archiveID string) (Archive, error) {
 		return a, e
 	}
 	defer root.Close()
-	f, e := regular(root, archiveID+".json", 32768)
+	f, e := storage.Regular(root, archiveID+".json", 32768)
 	if e != nil {
 		return a, e
 	}
@@ -224,7 +192,7 @@ func (s *Service) Open(archiveID string) (*os.File, Archive, error) {
 		return nil, a, e
 	}
 	defer root.Close()
-	f, e := regular(root, archiveID+".zip", MaxArchive)
+	f, e := storage.Regular(root, archiveID+".zip", MaxArchive)
 	if e != nil {
 		return nil, a, e
 	}
@@ -369,7 +337,7 @@ func (s *Service) publish(ctx context.Context, filename, kind string, m maintena
 		return a, e
 	}
 	defer root.Close()
-	f, e := regular(root, filepath.Base(filename), MaxArchive)
+	f, e := storage.Regular(root, filepath.Base(filename), MaxArchive)
 	if e != nil {
 		return a, e
 	}
@@ -385,7 +353,7 @@ func (s *Service) publish(ctx context.Context, filename, kind string, m maintena
 		return a, e
 	}
 	now := time.Now()
-	a = Archive{ID: id(), Kind: kind, Created: now.Unix(), Order: now.UnixNano(), Size: info.Size(), SHA: hex.EncodeToString(h.Sum(nil)), Manifest: m}
+	a = Archive{ID: storage.NewID(), Kind: kind, Created: now.Unix(), Order: now.UnixNano(), Size: info.Size(), SHA: hex.EncodeToString(h.Sum(nil)), Manifest: m}
 	if e = ctx.Err(); e != nil {
 		return a, e
 	}
@@ -396,7 +364,7 @@ func (s *Service) publish(ctx context.Context, filename, kind string, m maintena
 	if e = publishRecord(root, a.ID+".json", a); e != nil {
 		return a, e
 	}
-	if e = syncDir(root); e != nil {
+	if e = storage.SyncDir(root); e != nil {
 		return a, e
 	}
 	return a, nil
@@ -413,7 +381,7 @@ func (s *Service) create(ctx context.Context, kind string) (Archive, error) {
 	if e != nil {
 		return a, e
 	}
-	filename := filepath.Join(s.dir, ".archive-"+id())
+	filename := filepath.Join(s.dir, ".archive-"+storage.NewID())
 	out, e := os.OpenFile(filename, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if e != nil {
 		return a, e
@@ -512,7 +480,7 @@ func (s *Service) delete(archiveID string) error {
 	if e = root.Remove(archiveID + ".json"); e != nil {
 		return e
 	}
-	return syncDir(root)
+	return storage.SyncDir(root)
 }
 func (s *Service) Delete(archiveID string) error {
 	if !s.op.TryLock() {
@@ -553,3 +521,4 @@ func (s *Service) retain(ctx context.Context) error {
 	}
 	return nil
 }
+

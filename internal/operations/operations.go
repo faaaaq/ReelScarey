@@ -19,6 +19,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/instance"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
+	"github.com/faaaaq/ReelScarey/internal/storage"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
 )
 
@@ -171,7 +172,7 @@ func (s *Service) Run(ctx context.Context) (Report, error) {
 	}
 	for i := range canonical {
 		for j := i + 1; j < len(canonical); j++ {
-			if canonical[i] != "" && canonical[j] != "" && (overlap(canonical[i], canonical[j]) || overlap(canonical[j], canonical[i])) {
+			if canonical[i] != "" && canonical[j] != "" && (storage.Overlap(canonical[i], canonical[j]) || storage.Overlap(canonical[j], canonical[i])) {
 				separated = false
 			}
 		}
@@ -237,10 +238,6 @@ func (s *Service) Run(ctx context.Context) (Report, error) {
 	s.last = &out
 	s.lastMu.Unlock()
 	return out, nil
-}
-func overlap(a, b string) bool {
-	r, e := filepath.Rel(a, b)
-	return e == nil && (r == "." || filepath.IsLocal(r))
 }
 func probeFolder(ctx context.Context, dir string, write bool) (hardlinks bool, err error) {
 	root, e := os.OpenRoot(dir)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/instance"
+	"github.com/faaaaq/ReelScarey/internal/storage"
 )
 
 var ErrBusy = errors.New("another backup operation is running")
@@ -52,7 +53,7 @@ type Status struct {
 }
 
 func New(ctx context.Context, db *sql.DB, cfg config.Config, version string, restart func()) (*Service, error) {
-	dir, e := storage(cfg)
+	dir, e := backupDir(cfg)
 	if e != nil {
 		return nil, e
 	}
@@ -74,7 +75,7 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	list, e := s.List()
 	message := ""
 	if root, e := os.OpenRoot(s.cfg.ConfigDir); e == nil {
-		if f, e := regular(root, "restore-result.json", 1024); e == nil {
+		if f, e := storage.Regular(root, "restore-result.json", 1024); e == nil {
 			b, e := io.ReadAll(io.LimitReader(f, 1025))
 			f.Close()
 			var r struct {
@@ -167,3 +168,4 @@ func (s *Service) tick(ctx context.Context) {
 		_ = s.start(ctx, "scheduled")
 	}
 }
+

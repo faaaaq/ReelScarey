@@ -362,7 +362,7 @@ func TestManualWorkerCompletesAndReportsInterruptedJob(t *testing.T) {
 func TestStorageRefusesOverlapAndSymlinkWithoutWritingLibrary(t *testing.T) {
 	s, _, cfg := fixture(t)
 	cfg.BackupsDir = filepath.Join(cfg.MediaDir, "new-child", "backups")
-	if _, e := storage(cfg); e == nil {
+	if _, e := backupDir(cfg); e == nil {
 		t.Fatal("overlap accepted")
 	}
 	if _, e := os.Stat(cfg.MediaDir); !os.IsNotExist(e) {
@@ -373,7 +373,7 @@ func TestStorageRefusesOverlapAndSymlinkWithoutWritingLibrary(t *testing.T) {
 		t.Skip(e)
 	}
 	cfg.BackupsDir = link
-	if _, e := storage(cfg); e == nil {
+	if _, e := backupDir(cfg); e == nil {
 		t.Fatal("symlink storage accepted")
 	}
 }

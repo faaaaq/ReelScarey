@@ -10,13 +10,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 
 	"github.com/faaaaq/ReelScarey/internal/config"
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/maintenance"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
+	"github.com/faaaaq/ReelScarey/internal/storage"
 )
 
 type Review struct {
@@ -77,20 +77,8 @@ func jsonDecode(b []byte, v any) error {
 	}
 	return nil
 }
-func syncDir(root *os.Root) error {
-	f, e := root.Open(".")
-	if e != nil {
-		return e
-	}
-	defer f.Close()
-	e = f.Sync()
-	if runtime.GOOS == "windows" {
-		return nil
-	}
-	return e
-}
 func replaceJSON(root *os.Root, name string, v any) error {
-	tmp := ".journal-" + id()
+	tmp := ".journal-" + storage.NewID()
 	if e := persist(root, tmp, v); e != nil {
 		return e
 	}
@@ -98,10 +86,10 @@ func replaceJSON(root *os.Root, name string, v any) error {
 	if e := root.Rename(tmp, name); e != nil {
 		return e
 	}
-	return syncDir(root)
+	return storage.SyncDir(root)
 }
 func measureFile(root *os.Root, name string) (maintenance.File, error) {
-	f, e := regular(root, name, MaxArchive)
+	f, e := storage.Regular(root, name, MaxArchive)
 	if e != nil {
 		return maintenance.File{}, e
 	}
@@ -135,7 +123,7 @@ func (s *Service) PrepareRestore(ctx context.Context, archiveID, digest, confirm
 	if digest != a.SHA {
 		return ErrChanged
 	}
-	request := pendingRestore{Format: 1, ID: id(), Phase: "prepared", Files: []maintenance.File{}}
+	request := pendingRestore{Format: 1, ID: storage.NewID(), Phase: "prepared", Files: []maintenance.File{}}
 	ready := filepath.Join(s.dir, ".restore-ready-"+request.ID)
 	defer func() {
 		if !queued {
@@ -182,7 +170,7 @@ func (s *Service) PrepareRestore(ctx context.Context, archiveID, digest, confirm
 	if e = persist(active, ".restore-request.json", request); e != nil {
 		return e
 	}
-	if e = syncDir(active); e != nil {
+	if e = storage.SyncDir(active); e != nil {
 		return e
 	}
 	s.restoring.Store(true)
@@ -225,12 +213,12 @@ func cleanupRestoreDir(parent *os.Root, name string) {
 	}
 	dir.Close()
 	_ = parent.Remove(name)
-	_ = syncDir(parent)
+	_ = storage.SyncDir(parent)
 }
 
 func readPending(root *os.Root) (pendingRestore, error) {
 	var p pendingRestore
-	f, e := regular(root, ".restore-request.json", 8192)
+	f, e := storage.Regular(root, ".restore-request.json", 8192)
 	if e != nil {
 		return p, e
 	}
@@ -298,7 +286,7 @@ func rollback(root *os.Root, p pendingRestore) error {
 			}
 		}
 	}
-	return syncDir(root)
+	return storage.SyncDir(root)
 }
 
 // ApplyPending runs only after HTTP requests, workers and SQLite have closed,
@@ -327,11 +315,11 @@ func ApplyPending(ctx context.Context, cfg config.Config, version string) error 
 		if e := root.Remove(".restore-request.json"); e != nil {
 			return e
 		}
-		if e := syncDir(root); e != nil {
+		if e := storage.SyncDir(root); e != nil {
 			return e
 		}
 		cleanupRestoreDir(root, ".restore-previous-"+p.ID)
-		if dir, e := storage(cfg); e == nil {
+		if dir, e := backupDir(cfg); e == nil {
 			if parent, e := os.OpenRoot(dir); e == nil {
 				cleanupRestoreDir(parent, ".restore-ready-"+p.ID)
 				parent.Close()
@@ -348,7 +336,7 @@ func ApplyPending(ctx context.Context, cfg config.Config, version string) error 
 		}
 		return finish("An interrupted restore was rolled back. The previous configuration and library database were recovered.")
 	}
-	dir, e := storage(cfg)
+	dir, e := backupDir(cfg)
 	if e != nil {
 		return e
 	}
@@ -395,16 +383,16 @@ func ApplyPending(ctx context.Context, cfg config.Config, version string) error 
 		if e != nil {
 			return e
 		}
-		e = syncDir(prior)
+		e = storage.SyncDir(prior)
 		prior.Close()
 		if e != nil {
 			return e
 		}
-		if e = syncDir(root); e != nil {
+		if e = storage.SyncDir(root); e != nil {
 			return e
 		}
 		for _, want := range p.Files {
-			in, e := regular(ready, want.Name, MaxArchive)
+			in, e := storage.Regular(ready, want.Name, MaxArchive)
 			if e != nil {
 				return e
 			}
@@ -435,7 +423,7 @@ func ApplyPending(ctx context.Context, cfg config.Config, version string) error 
 		if e != nil {
 			return e
 		}
-		if e = syncDir(root); e != nil {
+		if e = storage.SyncDir(root); e != nil {
 			return e
 		}
 		p.Phase = "committed"
@@ -449,3 +437,4 @@ func ApplyPending(ctx context.Context, cfg config.Config, version string) error 
 	}
 	return finish("Restore completed. Sign in with the restored administrator account and review System checks before resuming work.")
 }
+

@@ -12,7 +12,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -21,6 +20,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/instance"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
+	"github.com/faaaaq/ReelScarey/internal/storage"
 )
 
 const maxDatabase = int64(32 << 30)
@@ -40,10 +40,6 @@ type Manifest struct {
 	Files   []File `json:"files"`
 }
 
-func overlap(a, b string) bool {
-	r, e := filepath.Rel(a, b)
-	return e == nil && (r == "." || filepath.IsLocal(r))
-}
 func newDestination(cfg config.Config, name string, restore bool) (string, error) {
 	dest, e := filepath.Abs(name)
 	if e != nil {
@@ -73,7 +69,7 @@ func newDestination(cfg config.Config, name string, restore bool) (string, error
 				continue
 			}
 		}
-		if overlap(p, dest) || overlap(dest, p) {
+		if storage.Overlap(p, dest) || storage.Overlap(dest, p) {
 			return "", errors.New("backup and restore destinations must be separate from current config, media and downloads")
 		}
 	}
@@ -99,31 +95,12 @@ func cleanupStage(stage string) {
 	}
 	_ = os.RemoveAll(absolute)
 }
-func regular(root *os.Root, name string, max int64) (*os.File, error) {
-	before, e := root.Lstat(name)
-	if e != nil {
-		return nil, e
-	}
-	if !before.Mode().IsRegular() || before.Size() > max {
-		return nil, errors.New("backup file must be a supported regular file")
-	}
-	f, e := root.Open(name)
-	if e != nil {
-		return nil, e
-	}
-	info, e := f.Stat()
-	if e != nil || !os.SameFile(before, info) {
-		f.Close()
-		return nil, errors.New("backup file changed during inspection")
-	}
-	return f, nil
-}
 func measure(ctx context.Context, root *os.Root, name string) (File, error) {
 	limit := maxDatabase
 	if name != "reelscarey.db" {
 		limit = 1024
 	}
-	f, e := regular(root, name, limit)
+	f, e := storage.Regular(root, name, limit)
 	if e != nil {
 		return File{}, e
 	}
@@ -156,7 +133,7 @@ func (r *contextReader) Read(b []byte) (int, error) {
 	return r.r.Read(b)
 }
 func copyFile(ctx context.Context, source, dest *os.Root, want File) error {
-	f, e := regular(source, want.Name, maxDatabase)
+	f, e := storage.Regular(source, want.Name, maxDatabase)
 	if e != nil {
 		return e
 	}
@@ -181,29 +158,6 @@ func copyFile(ctx context.Context, source, dest *os.Root, want File) error {
 		return errors.New("backup checksum verification failed")
 	}
 	return nil
-}
-func syncFolder(root *os.Root) error {
-	f, e := root.Open(".")
-	if e != nil {
-		return e
-	}
-	defer f.Close()
-	e = f.Sync()
-	if runtime.GOOS == "windows" {
-		return nil
-	}
-	return e
-}
-func writeJSON(root *os.Root, name string, v any) error {
-	f, e := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if e != nil {
-		return e
-	}
-	e = json.NewEncoder(f).Encode(v)
-	if e == nil {
-		e = f.Sync()
-	}
-	return errors.Join(e, f.Close())
 }
 func validateDB(ctx context.Context, dir string) (int, error) {
 	db, e := database.OpenExisting(ctx, filepath.Join(dir, "reelscarey.db"), true)
@@ -266,7 +220,7 @@ func BackupOwned(ctx context.Context, cfg config.Config, destination, version st
 		return empty, e
 	}
 	defer target.Close()
-	sourceDB, e := regular(source, "reelscarey.db", maxDatabase)
+	sourceDB, e := storage.Regular(source, "reelscarey.db", maxDatabase)
 	if e != nil {
 		return empty, e
 	}
@@ -316,7 +270,7 @@ func BackupOwned(ctx context.Context, cfg config.Config, destination, version st
 		return empty, e
 	}
 	defer output.Close()
-	if e = writeJSON(output, ".backup-in-progress", map[string]int{"format": 1}); e != nil {
+	if e = storage.WriteJSON(output, ".backup-in-progress", map[string]int{"format": 1}); e != nil {
 		return empty, e
 	}
 	for _, file := range manifest.Files {
@@ -324,16 +278,16 @@ func BackupOwned(ctx context.Context, cfg config.Config, destination, version st
 			return empty, e
 		}
 	}
-	if e = writeJSON(output, "backup-manifest.json", manifest); e != nil {
+	if e = storage.WriteJSON(output, "backup-manifest.json", manifest); e != nil {
 		return empty, e
 	}
-	if e = syncFolder(output); e != nil {
+	if e = storage.SyncDir(output); e != nil {
 		return empty, e
 	}
 	if e = output.Remove(".backup-in-progress"); e != nil {
 		return empty, e
 	}
-	if e = syncFolder(output); e != nil {
+	if e = storage.SyncDir(output); e != nil {
 		return empty, e
 	}
 	return manifest, nil
@@ -341,7 +295,7 @@ func BackupOwned(ctx context.Context, cfg config.Config, destination, version st
 
 func ReadManifest(root *os.Root) (Manifest, error) {
 	var m Manifest
-	f, e := regular(root, "backup-manifest.json", 32768)
+	f, e := storage.Regular(root, "backup-manifest.json", 32768)
 	if e != nil {
 		return m, e
 	}
@@ -431,7 +385,7 @@ func Restore(ctx context.Context, cfg config.Config, backup, destination string)
 	if e != nil {
 		return m, e
 	}
-	if overlap(sourcePath, dest) || overlap(dest, sourcePath) {
+	if storage.Overlap(sourcePath, dest) || storage.Overlap(dest, sourcePath) {
 		return m, errors.New("restore destination must be separate from its backup")
 	}
 	stage, e := stageFor(dest)
@@ -476,7 +430,7 @@ func Restore(ctx context.Context, cfg config.Config, backup, destination string)
 		return m, e
 	}
 	defer output.Close()
-	if e = writeJSON(output, ".restore-in-progress", map[string]int{"format": 1}); e != nil {
+	if e = storage.WriteJSON(output, ".restore-in-progress", map[string]int{"format": 1}); e != nil {
 		return m, e
 	}
 	for _, file := range m.Files {
@@ -484,7 +438,7 @@ func Restore(ctx context.Context, cfg config.Config, backup, destination string)
 			return m, e
 		}
 	}
-	if e = writeJSON(output, "recovery-mode", map[string]int{"format": 1}); e != nil {
+	if e = storage.WriteJSON(output, "recovery-mode", map[string]int{"format": 1}); e != nil {
 		return m, e
 	}
 	if e = pauseRestored(ctx, dest); e != nil {
@@ -493,13 +447,13 @@ func Restore(ctx context.Context, cfg config.Config, backup, destination string)
 	if _, e = validateDB(ctx, dest); e != nil {
 		return m, fmt.Errorf("restore is incomplete: %w", e)
 	}
-	if e = syncFolder(output); e != nil {
+	if e = storage.SyncDir(output); e != nil {
 		return m, e
 	}
 	if e = output.Remove(".restore-in-progress"); e != nil {
 		return m, e
 	}
-	if e = syncFolder(output); e != nil {
+	if e = storage.SyncDir(output); e != nil {
 		return m, e
 	}
 	return m, nil
@@ -548,3 +502,4 @@ func pauseRestored(ctx context.Context, dir string) error {
 	}
 	return nil
 }
+
