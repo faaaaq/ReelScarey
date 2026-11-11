@@ -28,6 +28,12 @@ type SourceSettings struct {
 	// cookie). It is stored encrypted and is not used until automatic grabbing
 	// is enabled.
 	Key string `json:"key,omitempty"`
+	// SkipTLSVerify connects to a tracker whose IRC server presents an expired
+	// or otherwise untrusted certificate. The link stays encrypted but the
+	// certificate is not checked, so a NickServ password could be read by a man
+	// in the middle. It is off by default and should only be used for a tracker
+	// the operator trusts.
+	SkipTLSVerify bool `json:"skip_tls_verify,omitempty"`
 }
 
 type Source struct {
@@ -52,6 +58,7 @@ type SourceStatus struct {
 	HasKey         bool   `json:"has_key"`
 	KeyLabel       string `json:"key_label"`
 	RequireAccount bool   `json:"require_account"`
+	SkipTLSVerify  bool   `json:"skip_tls_verify"`
 }
 
 type SourceUpdate struct {
@@ -64,6 +71,9 @@ type SourceUpdate struct {
 	Password string `json:"password"`
 	Invite   string `json:"invite"`
 	Key      string `json:"key"`
+	// SkipTLSVerify is a pointer so a request that omits it (for example the
+	// pause/resume toggle) keeps the saved value instead of clearing it.
+	SkipTLSVerify *bool `json:"skip_tls_verify,omitempty"`
 }
 
 type Event struct {
@@ -184,6 +194,7 @@ func (s *Service) Sources(ctx context.Context) ([]SourceStatus, error) {
 			st.HasKey = settings.Key != ""
 			st.Nick = settings.Nick
 			st.Account = settings.Account
+			st.SkipTLSVerify = settings.SkipTLSVerify
 		}
 		out = append(out, st)
 	}
@@ -250,6 +261,9 @@ func (s *Service) SaveSource(ctx context.Context, id string, in SourceUpdate) (S
 	}
 	if in.Key != "" {
 		settings.Key = in.Key
+	}
+	if in.SkipTLSVerify != nil {
+		settings.SkipTLSVerify = *in.SkipTLSVerify
 	}
 	if in.Enabled && def.RequireAccount && (settings.Account == "" || settings.Password == "") {
 		return SourceStatus{}, problem("invalid_settings", "This tracker requires a NickServ account and password before it can be enabled.")
@@ -440,6 +454,9 @@ func (s *Service) reconcile(ctx context.Context) {
 
 func (s *Service) runSource(ctx context.Context, id string, def Definition, settings SourceSettings) {
 	s.setError(ctx, id, "")
+	if def.TLS && settings.SkipTLSVerify {
+		s.logger.Warn("announce source is not verifying the IRC TLS certificate", "tracker", def.ID)
+	}
 	backoff := 2 * time.Second
 	for ctx.Err() == nil {
 		client := &ircClient{def: def, settings: settings}

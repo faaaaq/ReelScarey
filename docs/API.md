@@ -1209,9 +1209,12 @@ See [behavior, recovery and limits](MOVIE_VERSIONS.md).
   tracker, name, enabled, revision, nick, server, port, TLS, channel,
   `has_password`, `has_key`, `key_label`, `last_error` and `last_event_at`;
   passwords and keys are never returned.
-- `POST /api/v1/announce-sources` with `{tracker,name,nick,account,password,invite,key,enabled}`
+- `POST /api/v1/announce-sources` with `{tracker,name,nick,account,password,invite,key,enabled,skip_tls_verify}`
   creates a source. `PUT /api/v1/announce-sources/{id}` requires the current
-  `revision`; a blank password, invite or key retains the saved value. The key
+  `revision`; a blank password, invite or key retains the saved value and
+  omitting `skip_tls_verify` keeps the saved value. `skip_tls_verify` (default
+  false) connects to a tracker whose IRC certificate is expired or untrusted;
+  the link stays encrypted but the server is not authenticated. The key
   is the tracker download credential (IPTorrents passkey, TorrentLeech/BeyondHD
   RSS key, FileList/AnimeBytes passkey, MyAnonamouse session cookie) and is used
   only by automatic grabbing when that step is enabled.
@@ -1221,8 +1224,10 @@ See [behavior, recovery and limits](MOVIE_VERSIONS.md).
   tracker, release name, category, size, freeleech, torrent ID, tracker info
   URL and receive time. Raw IRC lines are not stored.
 - Supported definitions: IPTorrents, TorrentLeech, FileList, BeyondHD,
-  AnimeBytes and MyAnonamouse. The source starts paused unless `enabled` is
-  true; automatic grabbing is not available in this version. See
+  AnimeBytes and MyAnonamouse. IPTorrents needs no NickServ account and no
+  invite command — only a unique nick (and optionally its details-page
+  passkey). The source starts paused unless `enabled` is true; automatic
+  grabbing is not available in this version. See
   [announce feeds](ANNOUNCE.md).
 
 ## Torrents page API

@@ -21,17 +21,84 @@ by parser tests using their published sample lines.
 
 ## Setup
 
-Open **Announce feeds**, choose a tracker and enter:
+Open **Announce feeds** and choose **Add Source**. The dialog shows a
+**How to get the IRC values** panel with the same steps. Server, port, TLS and
+channel are fixed from the tracker definition and cannot be edited.
 
-- **Source name** — any label.
-- **IRC nick** — the bot nick.
-- **NickServ account/password** — when the tracker requires it.
-- **Invite command** — optional; for BeyondHD/AnimeBytes paste the command from
-  the tracker's IRC page (for example `Millie announce YOURKEY`).
+### IPTorrents walkthrough
 
-Server, port, TLS and channel are fixed from the tracker definition. Enable the
-source to connect. The badge says **Enabled**, not "connected"; any connection
-error appears under the source.
+IPTorrents only needs a bot nick. There is **no NickServ account requirement and
+no invite command**, so the fields in step 5 stay blank.
+
+1. **Tracker**: `IPTorrents`.
+2. **Source name**: any label, for example `IPTorrents`.
+3. **IRC nick**: a bot nick that is unique to ReelScarey. It must differ from
+   the nick any other IRC client or announce tool (for example Autobrr) is
+   connected with — two clients on the same nick disconnect each other. A
+   grouped nick such as `yourname|reelscarey` is easiest to keep free.
+4. **NickServ account** and **NickServ password**: leave both **blank**.
+   IPTorrents does not require authentication to read `#ipt.announce`. If you do
+   register and group the nick (recommended so nobody else can take it), fill
+   both so the client sends `IDENTIFY account password`.
+5. **Passkey**: paste the passkey from your IPTorrents **details page**. It is
+   encrypted, never returned by the API and unused until automatic grabbing is
+   enabled, so it can be left blank for capture-only. It lives in the field
+   labelled by the tracker definition (here **Passkey**).
+6. **Invite command**: leave **blank**.
+7. **Skip TLS certificate verification**: leave this **off** first. Only turn it
+   on if saving the source shows a connection error such as `tls: failed to
+   verify certificate: x509: certificate has expired or is not yet valid`.
+   IPTorrents' IRC server has served an expired certificate; the option lets the
+   reader connect anyway. It keeps the link encrypted but stops checking the
+   server's identity, so use it only for a tracker you trust.
+8. Tick **Connect this source now**, then **Add source**.
+
+The row then shows **Enabled**. That means the worker has a running source, not
+that the socket is proven connected; a connection error appears under the source
+and the first release appears in **Recent announces**. To confirm IPTorrents is
+live, wait for one announce (the channel is busy, so this is usually under a
+minute) or open **Edit** to re-check the saved values.
+
+### TLS certificate errors
+
+Every source connects with TLS and verifies the tracker's certificate against
+the system trust store. If the tracker presents an expired or otherwise
+untrusted certificate the source reports a `failed to verify certificate`
+error and captures nothing.
+
+For a tracker you trust, tick **Skip TLS certificate verification** when adding
+or editing the source. The connection stays encrypted, but the server is no
+longer authenticated, so a man in the middle could read anything sent on it —
+which is why the field defaults to off and a source that uses it logs a warning
+at startup. Prefer leaving it off whenever you can; if the tracker later renews
+its certificate, turn the option back off.
+
+### Other trackers
+
+- **NickServ account/password** — fill both when the tracker definition marks
+  the account as required (BeyondHD, MyAnonamouse). The password is your
+  tracker IRC account password and is sent only to NickServ over TLS; it is
+  stored encrypted.
+- **Invite command** — paste the command from the tracker's IRC page when the
+  tracker uses one (BeyondHD/AnimeBytes), for example
+  `Millie announce YOURKEY`. The nick/tracker key inside it is sent verbatim.
+
+## Replacing another announce tool (Autobrr)
+
+The IRC capture here covers what an announce tool such as Autobrr does for
+trackers in the table above: it joins the announce channel and records every
+release. To switch over:
+
+1. Give ReelScarey its own bot nick (step 3 above) **or** disconnect the other
+   tool's client before enabling the ReelScarey source. Never run both on the
+   same nick — they will fight and disconnect each other.
+2. Add and enable the source, then confirm releases appear in
+   **Recent announces**.
+3. When you are satisfied, stop the other tool so only ReelScarey holds the
+   nick.
+
+Search and automatic grabbing are still separate (see **Limits**): the announce
+feed records releases for review, it does not download them.
 
 ## Security and bounds
 
@@ -42,6 +109,10 @@ error appears under the source.
 - History keeps 30 days and at most 5000 events.
 - TLS with system roots, NickServ `IDENTIFY`, PING/PONG, reconnect with
   exponential backoff. SASL is not implemented.
+- A per-source **Skip TLS certificate verification** option can connect to a
+  tracker whose certificate is expired or untrusted (for example IPTorrents).
+  It defaults to off, keeps the link encrypted but not authenticated, and logs
+  a startup warning while it is enabled.
 
 ## API
 
@@ -49,7 +120,7 @@ error appears under the source.
 - `POST /api/v1/announce-sources` — create and test-free save; the source
   starts paused unless `enabled` is true.
 - `PUT /api/v1/announce-sources/{id}` — revision-checked save; blank password
-  retains the saved one.
+  retains the saved one, and omitting `skip_tls_verify` keeps the saved value.
 - `DELETE /api/v1/announce-sources/{id}` — `{revision}`; deletes the encrypted
   password and captured events.
 - `GET /api/v1/announces?page=1` — newest 50 parsed events.

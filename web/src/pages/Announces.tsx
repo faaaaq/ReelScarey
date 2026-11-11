@@ -48,6 +48,7 @@ type Source = {
   has_key: boolean;
   key_label: string;
   require_account: boolean;
+  skip_tls_verify: boolean;
 };
 type Event = {
   id: number;
@@ -72,6 +73,7 @@ type Form = {
   invite: string;
   key: string;
   enabled: boolean;
+  skip_tls_verify: boolean;
 };
 
 const emptyForm: Form = {
@@ -83,6 +85,7 @@ const emptyForm: Form = {
   invite: "",
   key: "",
   enabled: false,
+  skip_tls_verify: false,
 };
 
 function bytes(value: number) {
@@ -136,6 +139,7 @@ export function Announces() {
       invite: "",
       key: "",
       enabled: source.enabled,
+      skip_tls_verify: source.skip_tls_verify,
     });
     setNotice("");
     setError("");
@@ -163,6 +167,7 @@ export function Announces() {
         invite: form.invite,
         ...(form.key ? { key: form.key } : {}),
         enabled: form.enabled,
+        skip_tls_verify: form.skip_tls_verify,
         revision: editing?.revision ?? 0,
       };
       if (editing) {
@@ -430,35 +435,81 @@ export function Announces() {
           >
             <details className="indexer-help">
               <summary>How to get the IRC values</summary>
-              <ol>
-                <li>
-                  Register a bot nick on the tracker’s IRC network and group it
-                  with your account when the tracker requires that. Do not use
-                  your main nick, and use a nick different from any other IRC
-                  client or announce tool you run — two clients with the same
-                  nick will disconnect each other.
-                </li>
-                <li>
-                  <strong>NickServ password:</strong> your tracker account
-                  password. It is sent only to NickServ over TLS.
-                </li>
-                <li>
-                  <strong>NickServ account:</strong> leave blank when the
-                  network accepts <code>IDENTIFY password</code>; fill it when
-                  it requires <code>IDENTIFY account password</code>.
-                </li>
-                <li>
-                  <strong>Invite command:</strong> open the tracker’s IRC page
-                  and paste the full command (for example{" "}
-                  <code>Millie announce YOURKEY</code>). BeyondHD and AnimeBytes
-                  usually require this; the others normally do not.
-                </li>
-                <li>
-                  The server, port, TLS and channel come from the tracker
-                  definition and are fixed. Enable the source; connection errors
-                  appear under it.
-                </li>
-              </ol>
+              {form.tracker === "iptorrents" ? (
+                <ol>
+                  <li>
+                    <strong>IRC nick:</strong> a bot nick unique to ReelScarey.
+                    It must differ from the nick any other IRC client or
+                    announce tool (for example Autobrr) is connected with — two
+                    clients on the same nick disconnect each other. A grouped
+                    nick such as <code>yourname|reelscarey</code> is easiest to
+                    keep free.
+                  </li>
+                  <li>
+                    <strong>NickServ account/password:</strong> leave both{" "}
+                    <strong>blank</strong>. IPTorrents does not require
+                    authentication to read <code>#ipt.announce</code>. If you
+                    register and group the nick (recommended), fill both so the
+                    client sends <code>IDENTIFY account password</code>.
+                  </li>
+                  <li>
+                    <strong>Passkey:</strong> copy the passkey from your
+                    IPTorrents details page. It is encrypted and only used once
+                    automatic grabbing is enabled, so you can leave it blank to
+                    capture announces only.
+                  </li>
+                  <li>
+                    <strong>Invite command:</strong> leave blank — IPTorrents
+                    does not use one.
+                  </li>
+                  <li>
+                    Server, port, TLS and channel come from the tracker
+                    definition and are fixed. Enable the source; connection
+                    errors appear under it and the first release shows up in
+                    Recent announces.
+                  </li>
+                  <li>
+                    <strong>TLS certificate:</strong> IPTorrents&rsquo; IRC
+                    server sometimes serves an expired or otherwise untrusted
+                    certificate. If connecting fails with a{" "}
+                    <code>failed to verify certificate</code> error, tick{" "}
+                    <strong>Skip TLS certificate verification</strong> below.
+                    The link stays encrypted, but the server&rsquo;s identity is
+                    not checked.
+                  </li>
+                </ol>
+              ) : (
+                <ol>
+                  <li>
+                    <strong>IRC nick:</strong> a bot nick unique to ReelScarey.
+                    It must differ from any other IRC client or announce tool
+                    you run — two clients on the same nick disconnect each
+                    other.
+                  </li>
+                  <li>
+                    <strong>NickServ account/password:</strong> fill both when
+                    the tracker requires a registered account. The password is
+                    sent only to NickServ over TLS; leave the account blank when
+                    the network accepts <code>IDENTIFY password</code>.
+                  </li>
+                  <li>
+                    <strong>Tracker key:</strong> paste the credential named on
+                    the field (RSS key, passkey or session cookie). It is
+                    encrypted and unused until automatic grabbing is enabled.
+                  </li>
+                  <li>
+                    <strong>Invite command:</strong> open the tracker’s IRC page
+                    and paste the full command (for example{" "}
+                    <code>Millie announce YOURKEY</code>). BeyondHD and
+                    AnimeBytes usually require this; the others normally do not.
+                  </li>
+                  <li>
+                    Server, port, TLS and channel come from the tracker
+                    definition and are fixed. Enable the source; connection
+                    errors appear under it.
+                  </li>
+                </ol>
+              )}
             </details>
 
             {error && <Alert kind="danger">{error}</Alert>}
@@ -569,6 +620,24 @@ export function Announces() {
                 <p className="rs-form-help">
                   New sources start paused. A paused source keeps its
                   credentials without opening an IRC connection.
+                </p>
+                <label className="rs-check">
+                  <input
+                    type="checkbox"
+                    checked={form.skip_tls_verify}
+                    onChange={(e) =>
+                      setForm({ ...form, skip_tls_verify: e.target.checked })
+                    }
+                  />
+                  Skip TLS certificate verification
+                </label>
+                <p className="rs-form-help">
+                  Leave this off unless the tracker&rsquo;s IRC server presents
+                  an expired or otherwise untrusted certificate and the
+                  connection fails to verify (for example IPTorrents). The link
+                  stays encrypted, but the server&rsquo;s identity is not
+                  proven, so only enable it for a tracker you trust. Never use
+                  it with a NickServ password if you can avoid it.
                 </p>
                 {def && (
                   <p className="rs-form-help">

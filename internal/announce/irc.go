@@ -51,7 +51,14 @@ func (c *ircClient) Run(ctx context.Context, onLine func(string)) error {
 		if h, _, err := net.SplitHostPort(c.address()); err == nil {
 			host = h
 		}
-		conn, e = tls.DialWithDialer(dialer, "tcp", c.address(), &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+		tlsConfig := &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}
+		// A source may opt out of certificate checking for a tracker whose IRC
+		// server presents an expired or otherwise untrusted certificate. The
+		// link stays encrypted, but the identity of the server is not proven.
+		if c.settings.SkipTLSVerify {
+			tlsConfig.InsecureSkipVerify = true
+		}
+		conn, e = tls.DialWithDialer(dialer, "tcp", c.address(), tlsConfig)
 	} else {
 		conn, e = dialer.DialContext(ctx, "tcp", c.address())
 	}

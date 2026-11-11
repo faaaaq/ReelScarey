@@ -27,6 +27,7 @@ it("lists announce sources and captured releases", async () => {
               account: "",
               has_password: true,
               require_account: false,
+              skip_tls_verify: false,
             },
           ],
           definitions: [
@@ -84,4 +85,7 @@ it("lists announce sources and captured releases", async () => {
   expect(
     within(dialog).getByRole("button", { name: "Add source" }),
   ).toBeVisible();
+  expect(
+    within(dialog).getByLabelText("Skip TLS certificate verification"),
+  ).not.toBeChecked();
 });

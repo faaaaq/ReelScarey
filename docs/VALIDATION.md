@@ -2763,3 +2763,43 @@ Run locally on Windows (development tools only; Docker remains the target):
   music container smoke script checks `fpcalc -version`. This was validated with
   generated/fake media only: no owner media, real AcoustID account or live
   provider request was used.
+
+## Announce feeds: per-source TLS certificate verification (2026-11-11)
+
+A live IPTorrents announce source failed on the production instance with
+`tls: failed to verify certificate: x509: certificate has expired or is not yet
+valid: current time 2026-11-11T01:18:30-06:00 is after 2026-01-24T23:05:21Z`.
+
+- Root cause confirmed against the tracker, not the clock: `irc.iptorrents.com`
+  (port 6697) serves a Let's Encrypt R12 certificate valid from 2025-10-26 to
+  2026-01-24, while the host and the `reelscarey` container both report
+  2026-11-11 UTC. A strict `openssl s_client -verify_return_error` check returns
+  `verify error:num=10:certificate has expired`. Port 6667 is open but plaintext
+  and triggered the tracker's "Reconnecting too fast" throttle, so only 6697 is a
+  usable endpoint.
+- Added a per-source **Skip TLS certificate verification** option
+  (`SourceSettings.SkipTLSVerify`, `SourceStatus.SkipTLSVerify`,
+  `SourceUpdate.SkipTLSVerify *bool`). It defaults to off, maps to
+  `tls.Config.InsecureSkipVerify`, and logs a startup warning while enabled. The
+  pointer field means the pause/resume toggle, which omits it, keeps the saved
+  value instead of clearing it.
+- The option lives inside the encrypted settings blob, so no schema migration was
+  needed.
+- `internal/announce/irc_test.go` adds `TestSourceSkipTLSVerifyPersists` (save,
+  unrelated update keeps it, explicit false clears it) and
+  `TestIRCTLSCertificateHandling`, which starts a self-signed TLS IRC stand-in
+  (`tlsTestServer`) and proves an untrusted certificate is rejected by default
+  and read through when skip verify is on.
+- `internal/announce/service.go` and `internal/announce/irc.go` carry the setting
+  through CRUD and the TLS dial. The UI adds the checkbox with warning help text
+  and an IPTorrents certificate note; `docs/ANNOUNCE.md` (walkthrough step, new
+  "TLS certificate errors" section, security bullet) and `docs/API.md` document
+  it for other users. Version bumped to 0.53.3 across `web/package.json`,
+  `web/package-lock.json`, the `Dockerfile` `ARG VERSION` and
+  `cmd/reelscarey/main.go` (which had drifted to 0.53.1).
+- Gates: frontend `format`/`format:check`/`check`/`test` (56 files, 318 tests) and
+  `build` passed; backend `gofmt -l` clean, `go test ./...` passed, `go vet ./...`
+  clean, `go build ./cmd/reelscarey` succeeded.
+- No owner credentials (passkey or NickServ password) were used or written during
+  the local checks; the tracker was only probed with throwaway nicks until it
+  began throttling.
