@@ -124,6 +124,13 @@ func (d *Direct) Search(ctx context.Context, c IndexerConfig, query string) ([]C
 	if ok && time.Since(cached.at) < time.Minute {
 		return append([]Candidate(nil), cached.items...), nil
 	}
+	providerQuery := query
+	if query != "" {
+		providerQuery = trackerQuery(query)
+		if providerQuery == "" {
+			return nil, problem("invalid_search", "Enter a release search with letters or numbers.")
+		}
+	}
 	base, e := endpoint(c.URL)
 	if e != nil {
 		return nil, e
@@ -136,8 +143,8 @@ func (d *Direct) Search(ctx context.Context, c IndexerConfig, query string) ([]C
 	case "iptorrents":
 		target.Path = "/t"
 		q := url.Values{"qf": {"ti"}, "o": {"seeders"}}
-		if query != "" {
-			q.Set("q", query)
+		if providerQuery != "" {
+			q.Set("q", providerQuery)
 		}
 		if c.Category == "5000" {
 			q.Set("73", "")
@@ -152,15 +159,15 @@ func (d *Direct) Search(ctx context.Context, c IndexerConfig, query string) ([]C
 		target.Path = "/browse.php"
 		method = http.MethodPost
 		form = url.Values{"do": {"search"}, "category": {"0"}, "include_dead_torrents": {"yes"}, "sort": {"seeders"}, "order": {"desc"}}
-		if query != "" {
-			form.Set("keywords", query)
+		if providerQuery != "" {
+			form.Set("keywords", providerQuery)
 			form.Set("search_type", "t_name")
 		}
 		if c.FreeleechOnly {
 			form.Set("sort", "free")
 		}
 	case "nyaa":
-		target.RawQuery = url.Values{"page": {"rss"}, "q": {query}, "c": {"0_0"}, "f": {"0"}}.Encode()
+		target.RawQuery = url.Values{"page": {"rss"}, "q": {providerQuery}, "c": {"0_0"}, "f": {"0"}}.Encode()
 	case "rss":
 		p, e := validPrivateURL(c.FeedURL)
 		if e != nil {
@@ -201,9 +208,7 @@ func (d *Direct) Search(ctx context.Context, c IndexerConfig, query string) ([]C
 	return items, nil
 }
 func matchesWords(title, query string) bool {
-	normalize := func(s string) string {
-		return strings.ToLower(nonWordRunRE.ReplaceAllString(s, " "))
-	}
+	normalize := normalizeSearchText
 	words := strings.Fields(normalize(title))
 	lookup := map[string]bool{}
 	for _, w := range words {

@@ -58,7 +58,28 @@ var (
 	driveRootRE  = regexp.MustCompile(`^[A-Za-z]:/`)
 	driveOnlyRE  = regexp.MustCompile(`^[A-Za-z]:/?$`)
 	nonWordRunRE = regexp.MustCompile(`[^\pL\pN]+`)
+	queryBreakRE = regexp.MustCompile(`[?#]+`)
+	apostropheRE = strings.NewReplacer("'", "", "\u2019", "", "\u2018", "")
 )
+
+// normalizeSearchText lowercases and reduces a title to the letter/number
+// tokens used for result matching. Apostrophes are dropped rather than spaced
+// so "Carr's" matches releases written "Carrs".
+func normalizeSearchText(s string) string {
+	s = apostropheRE.Replace(s)
+	return strings.ToLower(strings.TrimSpace(nonWordRunRE.ReplaceAllString(s, " ")))
+}
+
+// trackerQuery removes only characters that break tracker search forms. A
+// question mark (or fragment marker) in a show title such as "Am I the
+// Asshole?" otherwise produces zero results even though matching releases
+// exist. Meaningful search characters such as "&" are preserved, and the
+// original query is still used for result matching.
+func trackerQuery(query string) string {
+	query = apostropheRE.Replace(query)
+	query = queryBreakRE.ReplaceAllString(query, " ")
+	return strings.Join(strings.Fields(query), " ")
+}
 
 func remoteRoot(s string) (string, error) {
 	s = strings.ReplaceAll(strings.TrimSpace(s), "\\", "/")

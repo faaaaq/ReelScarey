@@ -200,7 +200,13 @@ func (t *Torznab) Search(ctx context.Context, c IndexerConfig, query string) ([]
 		return nil, err
 	}
 	q := u.Query()
-	q.Set("q", query)
+	providerQuery := trackerQuery(query)
+	if query != "" && providerQuery == "" {
+		return nil, problem("invalid_search", "Enter a release search with letters or numbers.")
+	}
+	if providerQuery != "" {
+		q.Set("q", providerQuery)
+	}
 	category := c.Category
 	if category == "" {
 		category = "2000"

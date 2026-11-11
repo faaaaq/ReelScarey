@@ -197,3 +197,34 @@ func (d publicDiagnosticTransport) RoundTrip(r *http.Request) (*http.Response, e
 	}
 	return out, e
 }
+
+func TestDirectSearchStripsTitlePunctuationForTrackerQueries(t *testing.T) {
+	var got string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Query().Get("q")
+		fmt.Fprint(w, trackerPage("iptorrents", ""))
+	}))
+	defer server.Close()
+	d := NewDirect("iptorrents")
+	d.HTTP = server.Client()
+	c := IndexerConfig{URL: server.URL, Cookie: "session=fixture-only", UserAgent: "Fixture browser", Category: "5000", Generation: "punctuation"}
+	items, e := d.Search(context.Background(), c, "Test Movie 2026?")
+	if e != nil || len(items) != 1 {
+		t.Fatalf("a punctuated title returned no releases: %v %v", items, e)
+	}
+	if got != "Test Movie 2026" {
+		t.Fatalf("tracker received %q; punctuation should be stripped", got)
+	}
+}
+
+func TestNormalizeSearchTextMatchesPunctuatedTitles(t *testing.T) {
+	for _, tc := range []struct{ query, want string }{
+		{"Am I the Asshole? S02E02", "am i the asshole s02e02"},
+		{"Jimmy Carr's Show", "jimmy carrs show"},
+		{"Spider-Man: No Way Home", "spider man no way home"},
+	} {
+		if got := normalizeSearchText(tc.query); got != tc.want {
+			t.Fatalf("normalize(%q) = %q, want %q", tc.query, got, tc.want)
+		}
+	}
+}
