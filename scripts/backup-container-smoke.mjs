@@ -6,7 +6,9 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { createServer } from 'node:http'
 
 assert.equal(process.env.REELSCAREY_BACKUP_SMOKE, '1', 'Explicit disposable-test opt-in is required')
-const base = 'http://127.0.0.1:18787'
+// REELSCAREY_SMOKE_BASE lets a harness reuse this check inside a container
+// network namespace where the app listens on its internal port.
+const base = process.env.REELSCAREY_SMOKE_BASE || 'http://127.0.0.1:18787'
 const hasVersionFiles = process.env.REELSCAREY_BACKUP_VERSIONS === '1'
 let cookie = '', csrf = ''
 async function request(path, options = {}) {

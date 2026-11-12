@@ -9,15 +9,15 @@ build, Node, Go, Redis or external database is required on the server.
 
 ## Install
 
-Save `compose.server.yaml` and `server.env.example` from the same release into a
-new folder, for example `~/reelscarey-live`. Then:
+Save `compose.yaml` and `compose.env.example` from the same release into a new
+folder, for example `~/reelscarey-live`. Then:
 
 ```sh
-cp server.env.example server.env
-sudo install -d -o 10001 -g 10001 -m 0750 /srv/reelscarey-test/media /srv/reelscarey-test/downloads
+cp compose.env.example live.env
+sudo install -d -o 10001 -g 10001 -m 0750 /srv/reelscarey-test/config /srv/reelscarey-test/media /srv/reelscarey-test/downloads
 ```
 
-Edit `server.env`: replace the example IP with your server's LAN IP in both
+Edit `live.env`: replace the example IP with your server's LAN IP in both
 `REELSCAREY_BIND_IP` and `REELSCAREY_PUBLIC_URL`. The public URL is the exact URL
 used in your browser, including the port. Use the release's immutable `sha-...`
 tag or digest for `REELSCAREY_IMAGE` so later pushes cannot change this test.
@@ -29,18 +29,18 @@ pull access. Enter credentials directly into Docker; do not send tokens in chat.
 ```sh
 docker login
 # Run all following commands from the same installation folder.
-docker compose --env-file server.env -f compose.server.yaml config --quiet
-docker compose --env-file server.env -f compose.server.yaml pull
-docker compose --env-file server.env -f compose.server.yaml up -d
-docker compose --env-file server.env -f compose.server.yaml ps
-docker compose --env-file server.env -f compose.server.yaml exec reelscarey reelscarey doctor
-docker compose --env-file server.env -f compose.server.yaml exec reelscarey reelscarey setup-token
+docker compose --env-file live.env -f compose.yaml config --quiet
+docker compose --env-file live.env -f compose.yaml pull
+docker compose --env-file live.env -f compose.yaml up -d
+docker compose --env-file live.env -f compose.yaml ps
+docker compose --env-file live.env -f compose.yaml exec reelscarey reelscarey doctor
+docker compose --env-file live.env -f compose.yaml exec reelscarey reelscarey setup-token
 ```
 
 Open the configured browser URL and create your administrator account using the
 one-time setup code. There is no default password. The code disappears after
 setup. The healthcheck may show `starting` for the first 30 seconds. Use
-`docker compose --env-file server.env -f compose.server.yaml logs --tail 100`
+`docker compose --env-file live.env -f compose.yaml logs --tail 100`
 if startup fails.
 
 The port binds to the selected LAN interface. Keep it on your private network;
@@ -53,7 +53,7 @@ use HTTPS through your existing reverse proxy for remote browser access and set
 | --- | --- | --- |
 | `/config` | Named volume | Database, administrator and encryption key |
 | `/media` | Your test media folder, writable | Registered library and sidecars |
-| `/downloads` | Your download folder, read-only | Completed client downloads |
+| `/downloads` | Your download folder, writable inside ReelScarey's own `builtin` folders | Completed client downloads |
 | `/youtube-staging` | Named volume | Acquired YouTube files awaiting review |
 | `/backups` | Named volume | Backup ZIPs and restore safety copies |
 

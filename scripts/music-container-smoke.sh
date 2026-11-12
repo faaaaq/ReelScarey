@@ -21,13 +21,9 @@ docker run -d --name "$name" \
   -p "127.0.0.1:$port:8787" \
   -e PUID="$uid" -e PGID="$gid" \
   -e REELSCAREY_LISTEN_ADDR=0.0.0.0:8787 \
-  -e REELSCAREY_CONFIG_DIR=/config/state \
-  -e REELSCAREY_MEDIA_DIR=/data \
-  -e REELSCAREY_DOWNLOADS_DIR=/downloads \
-  -e REELSCAREY_BACKUPS_DIR=/backups \
   -e REELSCAREY_PUBLIC_URL="$base" \
   -v "$fixture/config:/config" \
-  -v "$fixture/media:/data" \
+  -v "$fixture/media:/media" \
   -v "$fixture/downloads:/downloads" \
   "$image" >/dev/null
 
@@ -74,11 +70,11 @@ album=$(retry_api api "$base/api/v1/library/music/albums/$album_id")
 track_title=$(printf '%s' "$album" | jq -r '.tracks[] | select(.number==1) | .title' | head -1)
 test -n "$track_title"
 
-docker exec -u "$uid:$gid" "$name" mkdir -p "/data/Music/Radiohead/OK Computer"
+docker exec -u "$uid:$gid" "$name" mkdir -p "/media/Music/Radiohead/OK Computer"
 docker exec -u "$uid:$gid" "$name" ffmpeg -v error -f lavfi -i "sine=frequency=440:duration=1" -c:a flac \
   -metadata artist=Radiohead -metadata album="OK Computer" \
   -metadata title="$track_title" -metadata track=1 -metadata disc=1 \
-  -y "/data/Music/Radiohead/OK Computer/01 - $track_title.flac"
+  -y "/media/Music/Radiohead/OK Computer/01 - $track_title.flac"
 
 scan=$(api -X POST "$base/api/v1/library/music/scans" --data '{"root":"Music"}')
 scan_id=$(printf '%s' "$scan" | jq -r .id)
@@ -114,13 +110,13 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 test "$(api "$base/api/v1/library/music/edits/$job_id" | jq -r .state)" = completed
-docker exec -u "$uid:$gid" "$name" sh -c "ffprobe -v error -show_entries format_tags=musicbrainz_artistid -of default=nw=1 '/data/$dest_path' | grep -q '$artist_mbid'"
-docker exec -u "$uid:$gid" "$name" test -f "/data/$source_path.reelscarey-backup"
+docker exec -u "$uid:$gid" "$name" sh -c "ffprobe -v error -show_entries format_tags=musicbrainz_artistid -of default=nw=1 '/media/$dest_path' | grep -q '$artist_mbid'"
+docker exec -u "$uid:$gid" "$name" test -f "/media/$source_path.reelscarey-backup"
 
 api -X POST "$base/api/v1/library/music/edits/$job_id/rollback" --data '{"reviewed":true}' >/dev/null
-docker exec -u "$uid:$gid" "$name" test -f "/data/$source_path"
-docker exec -u "$uid:$gid" "$name" test ! -f "/data/$dest_path"
-docker exec -u "$uid:$gid" "$name" test ! -f "/data/$source_path.reelscarey-backup"
+docker exec -u "$uid:$gid" "$name" test -f "/media/$source_path"
+docker exec -u "$uid:$gid" "$name" test ! -f "/media/$dest_path"
+docker exec -u "$uid:$gid" "$name" test ! -f "/media/$source_path.reelscarey-backup"
 
 # Reviewed completed-folder import: generate one FLAC per catalog track.
 printf '%s' "$album" | jq -r '.tracks[] | "\(.disc)|\(.number)|\(.title)"' > "$fixture/tracks.txt"
@@ -147,6 +143,6 @@ import_job=$(api "$base/api/v1/library/music/imports/$import_id")
 test "$(printf '%s' "$import_job" | jq -r .state)" = completed
 test "$(printf '%s' "$import_job" | jq -r .imported_count)" -eq "$track_count"
 first_title=$(printf '%s' "$album" | jq -r '.tracks[] | select(.number==1) | .title' | head -1)
-docker exec -u "$uid:$gid" "$name" test -f "/data/Music/Radiohead/OK Computer/01 $first_title.flac"
+docker exec -u "$uid:$gid" "$name" test -f "/media/Music/Radiohead/OK Computer/01 $first_title.flac"
 docker exec -u "$uid:$gid" "$name" test -f "/downloads/Album/1-1.flac"
 echo "Music catalog, scan, registration, organization, tag write, rollback and folder import passed."

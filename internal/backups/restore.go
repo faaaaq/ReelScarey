@@ -437,4 +437,3 @@ func ApplyPending(ctx context.Context, cfg config.Config, version string) error 
 	}
 	return finish("Restore completed. Sign in with the restored administrator account and review System checks before resuming work.")
 }
-

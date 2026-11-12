@@ -897,4 +897,3 @@ func prepareRootChecksums(ctx context.Context, cfg config.Config, root *os.Root)
 	}
 	return nil
 }
-

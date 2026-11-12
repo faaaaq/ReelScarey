@@ -27,8 +27,8 @@ the peer port.
 - Existing jobs never change their client: they keep the client and folder
   mapping they were bound to, including after a default change.
 - The daemon writes only inside `downloads/builtin` under the download mount.
-  On a hardened installation the download mount is read-only by default; set
-  `DOWNLOADS_READ_ONLY=false` in `server.env` and prepare the folder with
+  The shipped `compose.yaml` mounts that folder writable for this reason; if you
+  made it read-only with `:ro`, remove that suffix and prepare the folder with
   `install -d -o <uid> -g <gid> "$DOWNLOADS_PATH/builtin"` (the container user
   is `10001:10001` in the shipped compose file). Disabling the client refuses
   while jobs are active.
@@ -72,8 +72,8 @@ connections remain fully supported and are not affected by it.
   `downloads/builtin-usenet/incomplete`; completed output is
   `downloads/builtin-usenet/ReelScarey/reelscarey-<job>`. The generated category
   is `reelscarey`, folder `ReelScarey`, no script, and folder renaming stays on.
-  On a hardened installation set `DOWNLOADS_READ_ONLY=false` and prepare
-  `downloads/builtin-usenet` with
+  On an installation whose download mount is read-only, remove the `:ro` suffix
+  and prepare `downloads/builtin-usenet` with
   `install -d -o <uid> -g <gid> "$DOWNLOADS_PATH/builtin-usenet"`.
 - **News server settings.** Host, port, TLS flag, username, password and 1–64
   connections are encrypted through securestore. The API never returns the

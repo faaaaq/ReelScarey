@@ -168,4 +168,3 @@ func (s *Service) tick(ctx context.Context) {
 		_ = s.start(ctx, "scheduled")
 	}
 }
-

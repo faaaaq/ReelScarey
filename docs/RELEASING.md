@@ -39,7 +39,7 @@ The Ubuntu x86-64 live-testing release builds a local candidate and runs backup,
 existing-workflow and storage-recovery acceptance before publishing. After login,
 it pushes the image, pulls the exact registry digest and verifies its source label
 and backup/restore behavior. Existing repository visibility and credentials stay
-unchanged. Use [LIVE_TESTING.md](LIVE_TESTING.md) and compose.server.yaml to install.
+unchanged. Use [LIVE_TESTING.md](LIVE_TESTING.md) and compose.yaml to install.
 
 The storage acceptance mounts a named-volume subdirectory through Docker's
 [documented volume-subpath option](https://docs.docker.com/engine/storage/volumes/#mount-a-volume-subdirectory),

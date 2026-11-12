@@ -82,8 +82,7 @@ jobs:
       - name: Verify release startup, backup restore and storage recovery
         run: |
           bash scripts/container-init-smoke.sh reelscarey:release-test
-          bash scripts/simple-compose-smoke.sh reelscarey:release-test
-          bash scripts/server-compose-smoke.sh reelscarey:release-test
+          bash scripts/compose-smoke.sh reelscarey:release-test
           bash scripts/backup-container-smoke.sh reelscarey:release-test
           bash scripts/seven-feature-container-smoke.sh reelscarey:release-test
           bash scripts/automatic-library-container-smoke.sh reelscarey:release-test

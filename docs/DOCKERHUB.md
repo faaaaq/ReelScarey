@@ -148,14 +148,14 @@ additional music port.
 
 ### Example `compose.yaml`
 
-Save this as `compose.yaml`, change the host paths, `PUID`/`PGID`, timezone and
-public URL, then start it.
+The release ships one `compose.yaml`; copy it and [`.env.example`](../.env.example)
+(renamed to `.env`), set the three host folders and `REELSCAREY_PUBLIC_URL`, then
+start it. The same file is shown here in full.
 
 ```yaml
 services:
   reelscarey:
     image: faaaaq/reelscarey:latest
-    pull_policy: always
     container_name: reelscarey
     restart: unless-stopped
     init: true
@@ -169,28 +169,39 @@ services:
       # no trailing slash. Change this before exposing the app to your LAN.
       REELSCAREY_PUBLIC_URL: http://192.168.1.20:8787
 
-      # Everything private lives under /config: database, account, secrets.key,
-      # setup token, backups and YouTube staging.
-      REELSCAREY_CONFIG_DIR: /config/state
-      REELSCAREY_MEDIA_DIR: /media
-      REELSCAREY_DOWNLOADS_DIR: /downloads
-
       # Optional shared TMDb Read Access Token. New installs work immediately
       # with this default; each owner can replace it in Settings. Leave empty
       # to require a token in Settings. Never commit a real token.
-      REELSCAREY_TMDB_TOKEN: ""
-    ports:
+      REELSCAREY_TMDB_TOKEN: ""    ports:
       - "8787:8787"
     volumes:
       - /srv/reelscarey/config:/config
       - /srv/reelscarey/media:/media
-      # Read-only keeps torrent/usenet sources safe from accidental edits.
-      - /srv/reelscarey/downloads:/downloads:ro
-      # Separate mounts (and the read-only download root) force verified
-      # copies. For hardlink imports, use one writable parent instead:
-      #   - /srv/reelscarey/data:/data
-      # and set REELSCAREY_MEDIA_DIR=/data/media plus
-      # REELSCAREY_DOWNLOADS_DIR=/data/downloads above.
+      - /srv/reelscarey/downloads:/downloads
+      - backups:/backups
+      - youtube_staging:/youtube-staging
+
+volumes:
+  backups:
+  youtube_staging:
+```
+
+Mounts are the whole mapping: `/config` (database and key), `/media` (library,
+writable) and `/downloads` (completed downloads, writable only inside
+ReelScarey's own `builtin` folders; add `:ro` if you use only an external
+download client). No path variable is needed. `backups` and `youtube_staging` are
+private volumes the image creates for you.
+
+Separate mounts copy rather than hardlink; add `:ro` to `/downloads` to guarantee
+seeding sources are untouched. For hardlink imports, replace the two data mounts
+with one writable parent:
+
+```yaml
+    environment:
+      REELSCAREY_MEDIA_DIR: /data/media
+      REELSCAREY_DOWNLOADS_DIR: /data/downloads
+    volumes:
+      - /srv/reelscarey/data:/data
 ```
 
 ### Start and create the administrator
@@ -204,7 +215,7 @@ Open the URL from `REELSCAREY_PUBLIC_URL`, paste the one-time setup code and
 create the administrator. The form also asks whether to prefer hardlinks or
 always copy completed downloads; the choice is available later under
 **Settings → General → File imports**. The code is also stored at
-`/config/state/setup-token` and is removed after setup. **No default password
+`/config/setup-token` and is removed after setup. **No default password
 exists.**
 
 ### Shared TMDb token
@@ -253,44 +264,41 @@ Use HTTPS at the proxy so session cookies are marked Secure.
 
 | Container path | Purpose |
 | --- | --- |
-| `/config` | Parent for private state; keep this on local disk |
-| `/config/state` | Database, administrator account, sessions, `secrets.key`, setup token |
-| `/config/artwork` | Downloaded artist images and album covers; safe to clear |
-| `/config/backups` | Managed backup archives and restore safety copies |
-| `/config/youtube-staging/work` | Reviewed YouTube acquisition staging |
+| `/config` | Database, administrator account, sessions, `secrets.key`, setup token, artwork |
+| `/backups` | Managed backup archives and restore safety copies |
+| `/youtube-staging` | Reviewed YouTube acquisition staging |
 | `/media` | Media root, writable for reviewed imports |
-| `/downloads` | Completed downloads; mount read-only unless a built-in client must write |
-| `/backups` | Alternative separate backup volume for hardened layouts |
-| `/youtube-staging` | Alternative separate staging volume for hardened layouts |
+| `/downloads` | Completed downloads; writable only inside ReelScarey's own `builtin` folders |
 
-Keep the Compose project name and volume mappings stable. Never run two
-instances against the same config directory.
+The config, backup and staging folders must stay separate from each other and
+from media and downloads. Keep the Compose project name and volume mappings
+stable. Never run two instances against the same config directory.
 
 ---
 
 ## Environment variables
+
+Mounts, not variables, define the layout. Every path variable below is an
+override for installations that cannot use the default container path.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PUID` / `PGID` | `10001` | UID/GID the app runs as. Set to your host user, for example `1000`. Only private config, backup and staging folders are chowned; media and download ownership is never changed. |
 | `TZ` | container default (UTC) | Server timezone for calendar days, monitoring/search date comparisons and displayed times, for example `America/Chicago`. |
 | `REELSCAREY_PUBLIC_URL` | empty | Exact browser origin. Required for any host other than loopback. No path, query or credentials. |
-| `REELSCAREY_CONFIG_DIR` | `/config` | SQLite and key directory. The examples use `/config/state`. |
-| `REELSCAREY_MEDIA_DIR` | `/media` | Writable media root. |
-| `REELSCAREY_DOWNLOADS_DIR` | `/downloads` | Completed download root. |
-| `REELSCAREY_BACKUPS_DIR` | sibling `backups` | Private snapshots. With `/config/state` this is `/config/backups`. |
-| `REELSCAREY_YOUTUBE_STAGING_DIR` | sibling `youtube-staging/work` | YouTube review staging. |
 | `REELSCAREY_LISTEN_ADDR` | `0.0.0.0:8787` in the image | HTTP bind address. |
 | `REELSCAREY_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |
 | `REELSCAREY_BROWSE_ROOTS` | empty | JSON map of up to eight explicit read-only browse roots. |
 | `REELSCAREY_KEEP_NET_ADMIN` | unset | Keep `NET_ADMIN` for the optional Mullvad kill switch; also requires `cap_add: [NET_ADMIN]`. |
+| `REELSCAREY_CONFIG_DIR` | `/config` | Override only: where the database and key live. |
+| `REELSCAREY_MEDIA_DIR` | `/media` | Override only: the library root. |
+| `REELSCAREY_DOWNLOADS_DIR` | `/downloads` | Override only: the download client's completed folder. |
+| `REELSCAREY_BACKUPS_DIR` | `/backups` | Override only: managed snapshots. |
+| `REELSCAREY_YOUTUBE_STAGING_DIR` | `/youtube-staging/work` | Override only: YouTube review staging. |
 
 Notes:
 
 - `REELSCAREY_YTDLP_PATH` is configured inside the image. Do not override it.
-- `DOWNLOADS_READ_ONLY` is **not** read by the application. It is a variable
-  used by the repository's `compose.server.yaml` to toggle the read-only bind
-  mount.
 
 ---
 
@@ -307,11 +315,10 @@ supported.
   owner-supplied.
 
 Both write into dedicated folders under the download root. The quick-start
-example mounts `/downloads` read-only, which is the safe default for imports
-but blocks the built-in clients from downloading. To use them, create a
-dedicated folder owned by `PUID:PGID` and make the download mount writable; the
-built-in clients keep their own dedicated subfolders. Imports still read only
-completed files and never delete seeding sources.
+example mounts `/downloads` writable so the built-in clients work; they keep
+their own dedicated subfolders and never modify an existing download. Imports
+still read only completed files and never delete seeding sources. Using only an
+external download client? Add `:ro` to that mount to make the folder read-only.
 
 ### Optional: Mullvad WireGuard
 
@@ -411,7 +418,7 @@ container after changing it.
 
 **I lost the setup code**
 Run `docker compose exec reelscarey reelscarey setup-token` before the
-administrator account exists. It is also at `/config/state/setup-token` until
+administrator account exists. It is also at `/config/setup-token` until
 setup completes. After setup, use `reset-password` instead.
 
 **Permission denied when reading or importing media**
@@ -419,8 +426,8 @@ Set `PUID`/`PGID` to the owner of your library. ReelScarey never changes media
 or download ownership. Fix ownership on the host, then retry.
 
 **The built-in client cannot write**
-The download mount is read-only. Use a dedicated writable folder for the
-built-in client, or remove `:ro` from the mount.
+The download mount is read-only. Remove `:ro` from the `/downloads` mount, or
+point the built-in client's folder at a writable subfolder.
 
 **Credentials stopped working after a restore**
 Restore `secrets.key` together with the database. A database without its

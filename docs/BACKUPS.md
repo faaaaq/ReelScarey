@@ -16,10 +16,9 @@ The app never copies media, subtitles, downloads, container configuration or
 environment variables. Back those up separately. Catalog restore cannot undo
 filesystem changes made after the snapshot.
 
-The original Compose layout mounts a private volume at `/backups`. The simple
-Compose layout stores archives at `/config/backups`, beside `/config/state` in
-the same persistent host mount. `REELSCAREY_BACKUPS_DIR` can override the default
-sibling `backups` directory. PUID/PGID select the app account; explicit non-root
+There is one Compose layout: a private `backups` volume mounted at `/backups`,
+separate from `/config`, `/media` and `/downloads`. `REELSCAREY_BACKUPS_DIR` can
+override that default path (then mount a folder there instead). PUID/PGID select the app account; explicit non-root
 installations require writable, pre-owned mounts. The parent must exist; links
 and overlap with state/media/downloads/staging are refused. Never use
 `docker compose down -v` when preserving named volumes.

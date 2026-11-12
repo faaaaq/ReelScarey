@@ -80,17 +80,15 @@ for seeding; replacements require explicit review and retain the previous video.
 
 ## Install with Docker Compose
 
-Use [compose.simple.yaml](compose.simple.yaml) as your compose.yaml. Set your
-folder mappings and browser URL, then run `docker compose up -d`. It supports
-PUID, PGID, TZ and an existing reverse-proxy network without a separate env file.
-See [installation and upgrades](docs/INSTALL.md) for the setup code, library folder
-selection and existing-installation compatibility.
+Copy [compose.yaml](compose.yaml) and [.env.example](.env.example) (renamed to
+`.env`) into an empty folder, point `MEDIA_PATH` and `DOWNLOADS_PATH` at your
+host folders, set `REELSCAREY_PUBLIC_URL`, then run `docker compose up -d`.
 
-## Isolated live-testing installation
-
-For an Ubuntu x86-64 server, use [the live-testing installation guide](docs/LIVE_TESTING.md)
-and [compose.server.yaml](compose.server.yaml). It pulls the published Docker Hub
-image and keeps configuration, staging and backups in persistent volumes.
+That is the whole configuration: **three folders and one URL**. There is one
+Compose file for both the published image and a local source build, and no path
+variable has to be set. See [installation and upgrades](docs/INSTALL.md) for the
+setup code, library folder selection and existing-installation compatibility,
+and [live testing](docs/LIVE_TESTING.md) for a disposable server installation.
 
 ## Run with Docker
 
@@ -142,22 +140,31 @@ identity plus a file-hash or exact original-release match; uncertain timing need
 review. No existing file is replaced. This feature works independently of Torznab.
 See [subtitle setup and safety limits](docs/SUBTITLES.md).
 
-The named `reelscarey_config` volume persists the database under `/config`.
-The private `reelscarey_backups` volume stores managed snapshots under `/backups`.
-Change `MEDIA_PATH` and `DOWNLOADS_PATH` in `.env` for your host folders; they map
-to `/media` (writable for imports) and `/downloads` (read-only to preserve torrent
-sources). The host download folder must contain the same files as qBittorrent's
-configured download root. The sample mounts are separate and `/downloads` is
-read-only, so imports use a verified staged copy. Hardlink imports require one
-writable mounted filesystem shared by both roots: mount a single parent such as
+### The three folders
+
+| Host setting | Container path | What it is |
+| --- | --- | --- |
+| `CONFIG_PATH` | `/config` | Database, account, encrypted credentials and encryption key. Private and writable. |
+| `MEDIA_PATH` | `/media` | Your library. Writable so imports can publish files. |
+| `DOWNLOADS_PATH` | `/downloads` | The download client's completed folder. Writable, but ReelScarey writes only inside its own `builtin`/`builtin-usenet` folders. |
+
+Two private Docker volumes are created automatically and need no host path:
+`backups` (`/backups`, managed snapshots) and `youtube_staging`
+(`/youtube-staging`, reviewed YouTube acquisition staging).
+
+The host download folder must contain the same files as qBittorrent's configured
+download root. The mount is writable because the bundled built-in torrent and
+Usenet clients write their own folders there; existing downloads are never
+modified, and imports use a verified staged copy. If you use only an external
+download client, add `:ro` to the `/downloads` line to make the folder
+read-only. Hardlink imports require one writable mounted
+filesystem shared by both roots: mount a single parent such as
 `${DATA_PATH}:/data` and set `REELSCAREY_MEDIA_DIR=/data/media` and
 `REELSCAREY_DOWNLOADS_DIR=/data/downloads`. The first-run setup asks whether to
 prefer hardlinks or always copy, and **Settings → General → File imports** can
 change it later. Symbolic-link imports are not supported because removing a
-seeding source would break the library file. This source-build Compose runs
-as UID/GID 10001; if you replace the config volume with a bind mount, give that
-user read/write access. `docker compose down` keeps the database; adding `-v`
-deletes the named volume and its data.
+seeding source would break the library file. `docker compose down` keeps the
+database; adding `-v` deletes the volumes and their data.
 
 ## Windows Docker host
 
@@ -198,20 +205,38 @@ qBittorrent's downloads locally before importing.
 
 ## Configuration
 
+**No path variable has to be set.** The three mounts above fix the container
+paths, and everything else is stored in the database during first-run setup.
+Mount your library at `/media` and your download client's completed folder at
+`/downloads` and ReelScarey works out the rest.
+
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `REELSCAREY_LISTEN_ADDR` | `127.0.0.1:8787` | HTTP bind address |
-| `REELSCAREY_CONFIG_DIR` | `./data/config` | SQLite directory (created if absent) |
-| `REELSCAREY_MEDIA_DIR` | `/media` | Media root |
-| `REELSCAREY_DOWNLOADS_DIR` | `/downloads` | Download root |
-| `REELSCAREY_BACKUPS_DIR` | sibling `backups` beside config; `/backups` in Docker | Separate private snapshot directory; parent must exist |
-| `REELSCAREY_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 | `REELSCAREY_PUBLIC_URL` | empty | Explicit browser origin for another hostname or HTTPS reverse proxy |
+| `REELSCAREY_LISTEN_ADDR` | `127.0.0.1:8787` | HTTP bind address |
+| `PUID` / `PGID` | `10001` | Linux account that owns the library and the private folders |
+| `TZ` | `UTC` | Timezone for calendar dates and scheduled times |
+| `REELSCAREY_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 | `REELSCAREY_TMDB_TOKEN` | empty | TMDb Read Access Token seeded at startup; normally saved in Settings instead |
 | `REELSCAREY_BROWSE_ROOTS` | empty | JSON object of up to eight named absolute folders shown read-only in Storage |
-| `REELSCAREY_YOUTUBE_STAGING_DIR` | `/youtube-staging` in Docker | Private staging folder for YouTube downloads |
 | `REELSCAREY_KEEP_NET_ADMIN` | `0` | Keep `NET_ADMIN` after startup for the optional VPN kill switch |
 | `REELSCAREY_FPCALC_PATH` | `fpcalc` from `PATH` | Chromaprint audio-fingerprint executable |
+
+### Changing the container paths
+
+Only for installations that cannot mount a folder where ReelScarey expects it
+(a remote qBittorrent that reports a Windows path, a library that has to stay at
+`/data`, and so on). Set the matching variable *and* mount the folder there.
+`REELSCAREY_DOWNLOADS_DIR` means "the folder where the download client puts
+completed files", read for import - not a ReelScarey download destination.
+
+| Variable | Default | Folder |
+| --- | --- | --- |
+| `REELSCAREY_CONFIG_DIR` | `/config` | Database and encryption key |
+| `REELSCAREY_MEDIA_DIR` | `/media` | Library |
+| `REELSCAREY_DOWNLOADS_DIR` | `/downloads` | Download client's completed folder (where a client finishes files, never where ReelScarey stores anything of its own) |
+| `REELSCAREY_BACKUPS_DIR` | `/backups` | Managed snapshots |
+| `REELSCAREY_YOUTUBE_STAGING_DIR` | `/youtube-staging/work` | Reviewed YouTube staging |
 
 Only loopback Host names are accepted by default. For remote use, terminate TLS
 at a reverse proxy, forward the original Host, and set `REELSCAREY_PUBLIC_URL`
@@ -219,11 +244,12 @@ to the exact browser origin (for example `https://media.example.com`). Cookies
 then use Secure. Arbitrary forwarded headers are not trusted. Authentication is
 implemented; a full production security review remains on the roadmap.
 
-Relative paths resolve against the working directory. Docker explicitly sets
-the paths to `/config`, `/media`, `/downloads`, and `/backups`. UI preferences are stored
-in SQLite and survive process restarts. Folder preferences control the next
-import's destination; saving a preference does not create or scan folders.
-Structured JSON logs go to standard output.
+Relative paths resolve against the working directory. Keep the config, backup and
+staging folders separate from each other and from the media and download folders;
+the container refuses to start otherwise. UI preferences are stored in SQLite and
+survive process restarts. Folder preferences control the next import's
+destination; saving a preference does not create or scan folders. Structured JSON
+logs go to standard output.
 
 ## Checks
 

@@ -80,8 +80,6 @@ func backupDir(cfg config.Config) (string, error) {
 	return p, nil
 }
 
-
-
 func persist(root *os.Root, name string, v any) error {
 	f, e := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if e != nil {
@@ -521,4 +519,3 @@ func (s *Service) retain(ctx context.Context) error {
 	}
 	return nil
 }
-

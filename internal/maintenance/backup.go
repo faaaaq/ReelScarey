@@ -502,4 +502,3 @@ func pauseRestored(ctx context.Context, dir string) error {
 	}
 	return nil
 }
-

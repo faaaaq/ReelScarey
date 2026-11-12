@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import http from 'node:http'
-const base = 'http://127.0.0.1:18787/api/v1'
+// REELSCAREY_SMOKE_BASE lets a harness reuse this check inside a container
+// network namespace where the app listens on its internal port.
+const base = (process.env.REELSCAREY_SMOKE_BASE || 'http://127.0.0.1:18787') + '/api/v1'
 const origin = 'https://reelscarey.example.test'
 const headers = { Host: 'reelscarey.example.test', Origin: origin, 'Content-Type': 'application/json' }
 const body = JSON.stringify({ username: 'backup-fixture-admin', password: 'disposable-backup-password' })

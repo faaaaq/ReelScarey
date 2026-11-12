@@ -1,53 +1,78 @@
+# ReelScarey - one service, three folders.
+#
+# Point these three mounts at your host folders and ReelScarey needs nothing
+# else configured:
+#
+#   ./config     -> /config     database + encryption key        (private, writable)
+#   ./media      -> /media      your library                     (writable for imports)
+#   ./downloads  -> /downloads  download client's finished files (writable only
+#                               inside ReelScarey's own builtin folders)
+#
+# Using only an external download client? Add `:ro` to the /downloads line to
+# make the whole folder read-only and guarantee seeding sources are untouched.
+#
+# Backups and YouTube review staging live in private Docker volumes below.
+# The container paths are fixed; you never set a path in the environment unless
+# your library or download folder must appear at a different path inside the
+# container (see "Changing the container paths" in README.md).
+#
+# Before starting, set REELSCAREY_PUBLIC_URL to the exact address you open in a
+# browser, then run:  docker compose up -d
 services:
   reelscarey:
-    build:
-      context: .
-      args:
-        VERSION: ${REELSCAREY_VERSION:-0.52.1-dev}
-    image: reelscarey:local
-    user: '10001:10001'
+    image: ${REELSCAREY_IMAGE:-faaaaq/reelscarey:latest}
+    # Developers can build this checkout instead of pulling the image:
+    #   docker build -t reelscarey:local . && REELSCAREY_IMAGE=reelscarey:local docker compose up -d
+    # (Separate step: `up -d` only ever uses an image that already exists.)
+    container_name: ${REELSCAREY_CONTAINER_NAME:-reelscarey}
     restart: unless-stopped
     init: true
     stop_grace_period: 60s
     pids_limit: 256
     ports:
-      - "127.0.0.1:${REELSCAREY_PORT:-8787}:8787"
+      - "${REELSCAREY_BIND_IP:-127.0.0.1}:${REELSCAREY_PORT:-8787}:8787"
+      # Optional inbound peer port for the built-in qBittorrent client. Choose a
+      # free host port and uncomment both entries; outbound torrents work
+      # without this.
+      # - "${REELSCAREY_BIND_IP:-127.0.0.1}:${REELSCAREY_QBT_PORT:-6881}:6881/tcp"
+      # - "${REELSCAREY_BIND_IP:-127.0.0.1}:${REELSCAREY_QBT_PORT:-6881}:6881/udp"
     environment:
-      REELSCAREY_LISTEN_ADDR: 0.0.0.0:8787
-      REELSCAREY_CONFIG_DIR: /config
-      # These two mounts are separate and /downloads is read-only, so imports
-      # use a verified copy. For hardlink imports, mount ONE writable parent
-      # (for example ${DATA_PATH:-./data}:/data) and set these roots to
-      # /data/media and /data/downloads. The first-run setup asks whether to
-      # prefer hardlinks or always copy; Settings -> General can change it.
-      REELSCAREY_MEDIA_DIR: /media
-      REELSCAREY_DOWNLOADS_DIR: /downloads
-      REELSCAREY_BACKUPS_DIR: /backups
-      REELSCAREY_YOUTUBE_STAGING_DIR: /youtube-staging/work
-      REELSCAREY_LOG_LEVEL: ${REELSCAREY_LOG_LEVEL:-info}
-      TZ: ${TZ:-UTC}
-      REELSCAREY_BROWSE_ROOTS: ${REELSCAREY_BROWSE_ROOTS:-}
+      # The only required setting: the exact browser address (no trailing path).
       REELSCAREY_PUBLIC_URL: ${REELSCAREY_PUBLIC_URL:-}
+      REELSCAREY_LOG_LEVEL: ${REELSCAREY_LOG_LEVEL:-info}
+      # Linux account that owns the library and the private folders below.
+      PUID: ${PUID:-10001}
+      PGID: ${PGID:-10001}
+      TZ: ${TZ:-UTC}
+      # Optional VPN support for the built-in torrent client: uncomment
+      # cap_add NET_ADMIN below and set REELSCAREY_KEEP_NET_ADMIN=1. The tunnel
+      # carries only torrent traffic the client binds to it.
+      # REELSCAREY_KEEP_NET_ADMIN: "1"
+      # Optional extra read-only folders for the file browser (JSON object).
+      # REELSCAREY_BROWSE_ROOTS: '{"youtube":"/youtube"}'
     volumes:
-      - reelscarey_config:/config
-      # Separate read-write/read-only mounts disable the download-to-library
-      # hardlink path because it requires one writable mounted filesystem.
-      # Keep this safe default, or replace both entries with a single parent:
-      #   - ${DATA_PATH:-./data}:/data
-      # and use /data/media and /data/downloads above.
-      - ${MEDIA_PATH:-./media}:/media:rw
-      - ${DOWNLOADS_PATH:-./downloads}:/downloads:ro
-      - reelscarey_youtube_staging:/youtube-staging
-      - reelscarey_backups:/backups
+      - ${MEDIA_PATH:-./media}:/media
+      - ${DOWNLOADS_PATH:-./downloads}:/downloads
+      - ${CONFIG_PATH:-./config}:/config
+      - backups:/backups
+      - youtube_staging:/youtube-staging
+      # Hardlink imports need ONE writable filesystem containing both folders.
+      # Keep the separate mounts above for verified copies, or replace them
+      # with a single parent and read "Hardlink imports" in README.md.
+      # - ${DATA_PATH:-./data}:/data
+      # Optional extra library or music roots (any number, read-only or not).
+      # - /mnt/movies:/media/movies
+      # - /mnt/tv:/media/tvshows
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # cap_add:
+    #   - NET_ADMIN
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
 
 volumes:
-  reelscarey_config:
-  reelscarey_youtube_staging:
-  reelscarey_backups:
+  backups:
+  youtube_staging:
