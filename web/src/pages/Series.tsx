@@ -60,7 +60,6 @@ import {
   DetailTabs,
   FilesSection,
   HistorySection,
-  IconLink,
   MetadataError,
   MonitorToggle,
   ProviderLinks,
@@ -111,6 +110,8 @@ type ReleaseSearchScope = {
   seasonTitle: string;
   episode?: number;
   episodeTitle?: string;
+  /** Registered file the chosen release replaces after a reviewed import. */
+  fileID?: number;
 };
 
 function SeriesView({ initial }: { initial: TVSeries }) {
@@ -610,6 +611,7 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           seasonTitle={releaseSearch.seasonTitle}
           episode={releaseSearch.episode}
           episodeTitle={releaseSearch.episodeTitle}
+          fileID={releaseSearch.fileID}
         />
       )}
     </>
@@ -1005,68 +1007,63 @@ function SeasonEpisodes({
                         className="rs-row"
                         style={{ justifyContent: "flex-end" }}
                       >
-                        {!e.available && (
-                          <>
-                            <button
-                              type="button"
-                              className="det-icon-link"
-                              aria-label={`Automatic search for ${episodeCode(season.number, e.number)} ${e.title}`}
-                              title="Automatic search now: download mode queues the best match, search-only mode saves results for review"
-                              disabled={searchPending}
-                              onClick={() => onEpisodeSearch(e.id)}
-                            >
-                              <SearchCheck size={16} aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              className="det-icon-link"
-                              aria-label={`Search releases for ${episodeCode(season.number, e.number)} ${e.title}`}
-                              title="Search releases for this episode now"
-                              onClick={() =>
-                                onOpenReleaseSearch({
-                                  season: season.number,
-                                  seasonTitle: season.title,
-                                  episode: e.number,
-                                  episodeTitle: e.title,
-                                })
-                              }
-                            >
-                              <Search size={16} aria-hidden="true" />
-                            </button>
-                          </>
-                        )}
+                        <button
+                          type="button"
+                          className="det-icon-link"
+                          aria-label={`Automatic search for ${episodeCode(season.number, e.number)} ${e.title}`}
+                          title="Automatic search now: download mode queues the best match or reports an available upgrade, search-only mode saves results for review"
+                          disabled={searchPending}
+                          onClick={() => onEpisodeSearch(e.id)}
+                        >
+                          <SearchCheck size={16} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className="det-icon-link"
+                          aria-label={`Search releases for ${episodeCode(season.number, e.number)} ${e.title}`}
+                          title={
+                            e.available
+                              ? "Search releases to replace this episode's file"
+                              : "Search releases for this episode now"
+                          }
+                          onClick={() =>
+                            onOpenReleaseSearch({
+                              season: season.number,
+                              seasonTitle: season.title,
+                              episode: e.number,
+                              episodeTitle: e.title,
+                              ...(e.available && e.file_id
+                                ? { fileID: e.file_id }
+                                : {}),
+                            })
+                          }
+                        >
+                          <Search size={16} aria-hidden="true" />
+                        </button>
                         {e.available && e.file_id && (
-                          <>
-                            <IconLink
-                              to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}&purpose=${e.file_id}`}
-                              label={`Replace the file for ${episodeCode(season.number, e.number)} ${e.title}`}
-                            />
-                            <ConfirmDialog
-                              trigger={
-                                <button
-                                  type="button"
-                                  className="det-icon-link"
-                                  aria-label={`Delete ${episodeCode(season.number, e.number)} ${e.title} from disk and the library`}
-                                  title="Delete this episode's file from disk and remove it from the library."
-                                  disabled={
-                                    pending || onRemoveFile === undefined
-                                  }
-                                >
-                                  <FileX size={16} aria-hidden="true" />
-                                </button>
-                              }
-                              title={`Delete ${episodeCode(season.number, e.number)}?`}
-                              description={`${e.file_path ?? ""}\n\nThis permanently deletes the media file and cannot be undone. The download folder and seeding sources are never touched.`}
-                              onConfirm={() => {
-                                onRemoveFile &&
-                                  onRemoveFile(
-                                    e.id,
-                                    episodeCode(season.number, e.number),
-                                    e.file_path ?? "",
-                                  );
-                              }}
-                            />
-                          </>
+                          <ConfirmDialog
+                            trigger={
+                              <button
+                                type="button"
+                                className="det-icon-link"
+                                aria-label={`Delete ${episodeCode(season.number, e.number)} ${e.title} from disk and the library`}
+                                title="Delete this episode's file from disk and remove it from the library."
+                                disabled={pending || onRemoveFile === undefined}
+                              >
+                                <FileX size={16} aria-hidden="true" />
+                              </button>
+                            }
+                            title={`Delete ${episodeCode(season.number, e.number)}?`}
+                            description={`${e.file_path ?? ""}\n\nThis permanently deletes the media file and cannot be undone. The download folder and seeding sources are never touched.`}
+                            onConfirm={() => {
+                              onRemoveFile &&
+                                onRemoveFile(
+                                  e.id,
+                                  episodeCode(season.number, e.number),
+                                  e.file_path ?? "",
+                                );
+                            }}
+                          />
                         )}
                       </span>
                     </td>

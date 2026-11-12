@@ -44,6 +44,7 @@ export function ReleaseSearchModal({
   seasonTitle,
   episode,
   episodeTitle,
+  fileID,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -53,6 +54,8 @@ export function ReleaseSearchModal({
   seasonTitle: string;
   episode?: number;
   episodeTitle?: string;
+  /** Registered file the chosen release will replace after review. */
+  fileID?: number;
 }) {
   const indexer = useResource<IntegrationStatus>("/indexers/status");
   const client = useResource<IntegrationStatus>("/integrations/qbittorrent");
@@ -101,7 +104,7 @@ export function ReleaseSearchModal({
     setItems(undefined);
     try {
       const out = await api<{ items: Release[]; warnings?: string[] }>(
-        `/library/series/${seriesID}/seasons/${season}/releases?${episode ? `episode=${episode}&` : ""}query=${encodeURIComponent(input.trim() || suggested)}`,
+        `/library/series/${seriesID}/seasons/${season}/releases?${fileID ? `replacement_file_id=${fileID}&` : ""}${episode ? `episode=${episode}&` : ""}query=${encodeURIComponent(input.trim() || suggested)}`,
       );
       setItems(out.items);
       setWarnings(out.warnings ?? []);
@@ -128,7 +131,10 @@ export function ReleaseSearchModal({
     try {
       await api("/downloads", {
         method: "POST",
-        body: JSON.stringify({ release_id: id }),
+        body: JSON.stringify({
+          release_id: id,
+          ...(fileID ? { replacement_file_id: fileID } : {}),
+        }),
       });
       setDownloaded(true);
     } catch (e) {
@@ -190,7 +196,9 @@ export function ReleaseSearchModal({
             </Button>
           </div>
           <p className="rs-muted rs-small">
-            Existing library files are never replaced.
+            {fileID
+              ? "The chosen release replaces this episode's registered file after a reviewed import."
+              : "Existing library files are never replaced."}
           </p>
         </form>
       )}

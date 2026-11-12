@@ -53,6 +53,80 @@ func TestRemoveEpisodeFileDeletesMediaCopyAndRegistration(t *testing.T) {
 	}
 }
 
+// A replacement that finished or was cancelled keeps its tracking row for
+// retry binding, but it must not block the episode's reviewed deletion. Only
+// a replacement whose owning job is still active holds the file.
+func TestRemoveEpisodeFileIgnoresFinishedReplacements(t *testing.T) {
+	f, series, episode, full := removalFixture(t, false)
+	if _, e := f.db.Exec(`INSERT INTO release_candidates(id,movie_id,title,size_bytes,published_at,payload,expires_at) VALUES('r1',9,'Old release',1,'2026-01-01T00:00:00Z',x'00',0),('r2',9,'Live replacement',1,'2026-01-01T00:00:00Z',x'00',0)`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.db.Exec(`INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,kind) VALUES('done',9,'r1','Old release','hash',X'01','https://unused.invalid','/unused','completed',1,1,'series'),('active',9,'r2','Live replacement','hash2',X'02','https://unused.invalid','/unused','blocked',1,1,'series')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.db.Exec(`UPDATE downloads SET error_code='replacement_review' WHERE id='active'`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.db.Exec(`INSERT INTO acquisition_replacements(source_kind,job_id,media_file_id,target_sha) VALUES('download','done',900,X'01'),('download','active',900,X'02')`); e != nil {
+		t.Fatal(e)
+	}
+	// The still-active replacement blocks the deletion.
+	if e := f.s.RemoveEpisodeFile(context.Background(), series, 1, episode, true); problemCode(e) != "replacement_pending" {
+		t.Fatal("an active replacement did not block the deletion", e)
+	}
+	if _, e := os.Stat(full); e != nil {
+		t.Fatal("the blocked file was touched", e)
+	}
+	// Cancel the active job: the row stays for retry binding, but the file is
+	// no longer held.
+	if _, e := f.db.Exec(`UPDATE downloads SET state='cancelled',error_code='' WHERE id='active'`); e != nil {
+		t.Fatal(e)
+	}
+	if e := f.s.RemoveEpisodeFile(context.Background(), series, 1, episode, true); e != nil {
+		t.Fatal("a cancelled replacement still blocked the deletion", e)
+	}
+	if _, e := os.Stat(full); !os.IsNotExist(e) {
+		t.Fatal("the media copy was not deleted", e)
+	}
+	// The file is gone, so its replacement bindings are dead and must not
+	// keep a dangling foreign key to the deleted registration.
+	var rows int
+	if e := f.db.QueryRow(`SELECT COUNT(*) FROM acquisition_replacements WHERE media_file_id=900`).Scan(&rows); e != nil || rows != 0 {
+		t.Fatal("dead replacement bindings were not removed with the file", rows, e)
+	}
+}
+
+// A youtube replacement behaves the same way: an awaiting-review job holds
+// the file, a finished one does not.
+func TestRemoveEpisodeFileIgnoresFinishedYoutubeReplacements(t *testing.T) {
+	f, series, episode, full := removalFixture(t, false)
+	if _, e := f.db.Exec(`INSERT INTO youtube_reviews(id,video_id,video_title,channel,target_kind,media_id,target_snapshot,expires_at,consumed_at) VALUES('r','abcdefghijk','Video','','movie',9,'{}',0,0),('r2','lmnopqrstuv','Video 2','','movie',9,'{}',0,0)`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.db.Exec(`INSERT INTO youtube_jobs(id,review_id,video_id,video_title,channel,target_kind,media_id,target_snapshot,state,created_at,updated_at) VALUES('ydone','r','abcdefghijk','Video','','movie',9,'{}','completed',1,1),('yactive','r2','lmnopqrstuv','Video 2','','movie',9,'{}','awaiting_review',1,1)`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.db.Exec(`INSERT INTO acquisition_replacements(source_kind,job_id,media_file_id,target_sha) VALUES('youtube','ydone',900,X'01'),('youtube','yactive',900,X'02')`); e != nil {
+		t.Fatal(e)
+	}
+	if e := f.s.RemoveEpisodeFile(context.Background(), series, 1, episode, true); problemCode(e) != "replacement_pending" {
+		t.Fatal("an active youtube replacement did not block the deletion", e)
+	}
+	if _, e := f.db.Exec(`UPDATE youtube_jobs SET state='cancelled' WHERE id='yactive'`); e != nil {
+		t.Fatal(e)
+	}
+	if e := f.s.RemoveEpisodeFile(context.Background(), series, 1, episode, true); e != nil {
+		t.Fatal("a cancelled youtube replacement still blocked the deletion", e)
+	}
+	if _, e := os.Stat(full); !os.IsNotExist(e) {
+		t.Fatal("the media copy was not deleted", e)
+	}
+	var tracked int
+	if e := f.db.QueryRow(`SELECT COUNT(*) FROM acquisition_replacements WHERE media_file_id=?`, 900).Scan(&tracked); e != nil || tracked != 0 {
+		t.Fatal("dead youtube replacement bindings were not removed with the file", tracked, e)
+	}
+}
+
 func TestRemoveEpisodeFileKeepsSharedFilesAndSeedingSources(t *testing.T) {
 	f, series, episode, full := removalFixture(t, true)
 	if e := f.s.RemoveEpisodeFile(context.Background(), series, 1, episode, true); problemCode(e) != "shared_file" {

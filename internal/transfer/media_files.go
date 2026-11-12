@@ -56,7 +56,15 @@ func (s *Service) RemoveEpisodeFile(ctx context.Context, seriesID, revision, epi
 		return problem("shared_file", fmt.Sprintf("This file also serves %d other episodes. Remove those episodes from the library first.", shared-1))
 	}
 	var replacements int
-	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM acquisition_replacements WHERE media_file_id=?`, fileID).Scan(&replacements); e != nil {
+	// Only a replacement whose owning job is still active depends on this
+	// file. Finished and cancelled acquisitions keep their tracking row for
+	// retry binding, but they no longer hold the file hostage.
+	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM acquisition_replacements ar
+		WHERE ar.media_file_id=? AND (
+			(ar.source_kind='download' AND EXISTS(SELECT 1 FROM downloads d WHERE d.id=ar.job_id AND d.state NOT IN ('completed','cancelled')))
+			OR
+			(ar.source_kind='youtube' AND EXISTS(SELECT 1 FROM youtube_jobs y WHERE y.id=ar.job_id AND y.state NOT IN ('completed','cancelled','failed')))
+		)`, fileID).Scan(&replacements); e != nil {
 		return e
 	}
 	if deleteFile && replacements > 0 {
@@ -83,6 +91,12 @@ func (s *Service) RemoveEpisodeFile(ctx context.Context, seriesID, revision, epi
 			}
 		}
 		if _, e = tx.ExecContext(ctx, `DELETE FROM youtube_files WHERE media_file_id=?`, fileID); e != nil {
+			return e
+		}
+		// Tracking rows for finished or cancelled replacements bind their job
+		// to this file; the file is being removed, so the binding is dead.
+		// Active replacements never reach this point (blocked above).
+		if _, e = tx.ExecContext(ctx, `DELETE FROM acquisition_replacements WHERE media_file_id=?`, fileID); e != nil {
 			return e
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE library_scan_files SET media_file_id=NULL WHERE media_file_id=?`, fileID); e != nil {
