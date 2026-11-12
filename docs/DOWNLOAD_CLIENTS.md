@@ -137,12 +137,14 @@ and encrypted credentials after fetching release contents.
 
 ## Folder mapping
 
-The client's completed folder is its own absolute path, for example `/completed`.
-The optional local subfolder maps that root inside ReelScarey's download mount.
-For example, with a download mount at `/downloads`, `server-a` maps the client's
-`/completed/ReelScarey/...` to `/downloads/server-a/ReelScarey/...`. Mount that
-completed tree read-only into the application container. Blank uses the mount
-root. Relative traversal, symlink escapes and foreign job folders are refused.
+**Folder in the download client** is the absolute path as that client sees it,
+for example `/completed`. **Folder in ReelScarey** shows where the same files
+must be mounted for import. For example, if ReelScarey sees the shared folder
+at `/downloads/server-a`, enter `server-a` as its optional subfolder. The client
+can report `/completed/ReelScarey/...` and ReelScarey reads
+`/downloads/server-a/ReelScarey/...`. Blank uses ReelScarey's download mount.
+Mount the completed tree read-only into the application container. Relative
+traversal, symlink escapes and foreign job folders are refused.
 Changing an address or mapping is blocked while unfinished jobs depend on it.
 Stopped jobs retain their binding for retry. Credential rotation and display-name
 changes preserve the queued identity and folder snapshots.
@@ -155,8 +157,12 @@ from the external client.
 
 ## Usenet setup
 
-SABnzbd requires category `reelscarey`, relative folder `ReelScarey`, no script
-and no sorting. Use its full API key. NZBGet uses its username/password and the
+In external SABnzbd, go to **Config → Categories** and save a category named
+`reelscarey`, set **Folder/Path** to `ReelScarey` and **Script** to **None**.
+Leave this category out of Sorting. Use the full API key. The bundled SABnzbd
+sets up its own category from the **Usenet** page.
+
+NZBGet uses its username/password and the
 [official JSON-RPC API](https://nzbget.com/documentation/api/); the server address
 may include its proxy base path or end in `/jsonrpc`. Configure category
 `reelscarey` with destination `<completed root>/ReelScarey`. Use a dedicated
@@ -174,10 +180,12 @@ Open **Settings → Download clients → Add client**, choose **SABnzbd** or
   and appended when called.
 - **SABnzbd API key:** the full API key, not the NZB-only key.
 - **NZBGet username/password:** a dedicated account with API access.
-- **Completed folder:** the client's absolute completed root, for example
-  `/downloads` or `/completed`.
-- **Local subfolder:** optional relative path under ReelScarey's download mount
-  when that completed tree is mounted elsewhere.
+- **Folder in SABnzbd:** leave blank to detect the completed folder on save.
+  If detection is unavailable, enter the absolute path from SABnzbd's
+  **Config → Folders**.
+- **Folder in NZBGet:** enter its absolute completed folder.
+- **ReelScarey subfolder:** optional relative folder inside ReelScarey's
+  download mount. The form shows the resulting ReelScarey path.
 
 Saving tests the connection and stores credentials encrypted; the new client
 starts paused. Enable it explicitly, then choose it under **Usenet default**.

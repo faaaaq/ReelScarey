@@ -1068,7 +1068,9 @@ Credentials are never returned. Save/test have bounded connection timeouts.
 - `POST /api/v1/download-clients` tests and creates a paused connection. Supply
   name, kind (`qbittorrent`, `transmission`, `sabnzbd`, `nzbget`), URL, completed download_path,
   optional local_folder, username/password or SABnzbd api_key. Creation revision
-  is zero and enabled must be false.
+  is zero and enabled must be false. A blank `download_path` for SABnzbd reads
+  and saves its reported absolute completed folder. Other named clients need
+  an explicit absolute path.
 - `PUT /api/v1/download-clients/{id}` tests and saves with the current revision;
   kind is immutable. Omitted secrets retain saved values. Changing URL/username
   requires entering the secret again. Enabling is explicit; default clients

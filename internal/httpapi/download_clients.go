@@ -42,9 +42,9 @@ func (s *Server) saveDownloadClient(w http.ResponseWriter, r *http.Request, key 
 		return
 	}
 	in.ID = key
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
 	defer cancel()
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(35 * time.Second))
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(45 * time.Second))
 	out, e := s.transfer.SaveDownloadClient(ctx, in)
 	if e != nil {
 		s.transferError(w, e)

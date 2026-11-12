@@ -5,11 +5,73 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+type sabFolderTransport func(*http.Request) (*http.Response, error)
+
+func (f sabFolderTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+func TestNamedSABnzbdDetectsAndSavesCompletedFolder(t *testing.T) {
+	ctx := context.Background()
+	f := setupWorkflow(t)
+	path := "/sab/downloads/complete"
+	hasCategory := true
+	detections := 0
+	key := "fixture-sab-key"
+	f.s.sab.HTTP = &http.Client{Transport: sabFolderTransport(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api" || r.URL.Query().Get("apikey") != key {
+			t.Fatalf("unexpected SABnzbd request: %s %s", r.Method, r.URL.Path)
+		}
+		body := ""
+		switch r.URL.Query().Get("mode") {
+		case "version":
+			body = `{"version":"5.1.3"}`
+		case "get_cats":
+			body = `{"categories":[]}`
+			if hasCategory {
+				body = `{"categories":["reelscarey"]}`
+			}
+		case "status":
+			detections++
+			if r.URL.Query().Get("skip_dashboard") != "1" {
+				t.Fatal("folder discovery requested the SABnzbd dashboard")
+			}
+			body = fmt.Sprintf(`{"status":{"completedir":%q}}`, path)
+		default:
+			t.Fatal("unexpected SABnzbd API mode")
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	in := DownloadClientUpdate{Name: "SAB folder discovery", Kind: "sabnzbd", URL: "http://sab.invalid", APIKey: &key, LocalFolder: "nas"}
+	out, err := f.s.SaveDownloadClient(ctx, in)
+	if err != nil || out.DownloadPath != path || out.LocalFolder != "nas" || out.Enabled || detections != 1 {
+		t.Fatal(out, err, detections)
+	}
+	saved, err := f.s.managedClientConfig(ctx, out.ID)
+	if err != nil || saved.DownloadPath != path || saved.LocalFolder != "nas" {
+		t.Fatal("detected mapping was not saved", err)
+	}
+	in.Name, in.DownloadPath = "Manual SAB folder", "/custom/complete"
+	if out, err := f.s.SaveDownloadClient(ctx, in); err != nil || out.DownloadPath != in.DownloadPath || detections != 1 {
+		t.Fatal("manual mapping was not preserved", out, err, detections)
+	}
+	in.Name, in.DownloadPath = "Missing SAB folder", ""
+	path = "Downloads/complete"
+	if _, err := f.s.SaveDownloadClient(ctx, in); err == nil || !strings.Contains(err.Error(), "Config → Folders") {
+		t.Fatal("relative detected path did not prompt for a manual path", err)
+	}
+	hasCategory = false
+	if _, err := f.s.SaveDownloadClient(ctx, in); err == nil || !strings.Contains(err.Error(), "Config → Categories") || detections != 2 {
+		t.Fatal("missing category did not stop before folder detection", err, detections)
+	}
+}
 
 func namedTorrent(t *testing.T, f *workflowFixture, name, url, local string) DownloadClient {
 	t.Helper()

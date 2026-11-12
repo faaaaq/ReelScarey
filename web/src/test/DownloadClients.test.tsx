@@ -67,14 +67,10 @@ it("creates a tested paused client and sends its explicit folder mapping", async
   );
   await user.type(screen.getByLabelText("Username"), "fixture");
   await user.type(screen.getByLabelText("Password"), "fixture-password");
-  await user.type(
-    screen.getByLabelText("Client's completed download folder"),
-    "/completed",
-  );
-  await user.type(
-    screen.getByLabelText("Local subfolder inside /downloads"),
-    "server-a",
-  );
+  await user.type(screen.getByLabelText("Folder in NZBGet"), "/completed");
+  await user.click(screen.getByText(/Use a subfolder of ReelScarey/));
+  await user.type(screen.getByLabelText("ReelScarey subfolder"), "server-a");
+  expect(screen.getByText("/downloads/server-a")).toBeVisible();
   await user.click(
     screen.getByRole("button", { name: "Test and save client" }),
   );
@@ -90,6 +86,53 @@ it("creates a tested paused client and sends its explicit folder mapping", async
     revision: 0,
     local_folder: "server-a",
     password: "fixture-password",
+  });
+});
+it("offers SABnzbd folder detection and shows category setup before saving", async () => {
+  const mount = "/data/sabnzbd/downloads/complete";
+  const requests = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (options?.method === "POST") {
+      return Response.json(
+        { error: { message: "SABnzbd did not report a reelscarey category." } },
+        { status: 400 },
+      );
+    }
+    return Response.json({
+      items: [],
+      defaults: { torrent: "", usenet: "", revision: 1 },
+      downloads_root: mount,
+    });
+  });
+  vi.stubGlobal("fetch", requests);
+  renderPage();
+  const user = userEvent.setup();
+  await user.click(
+    await screen.findByRole("button", { name: "Add download client" }),
+  );
+  await user.type(screen.getByLabelText("Client name"), "My SABnzbd");
+  await user.selectOptions(screen.getByLabelText("Client type"), "sabnzbd");
+  await user.type(
+    screen.getByLabelText("Server address"),
+    "http://sabnzbd:8080",
+  );
+  await user.type(screen.getByLabelText("API key"), "fixture-key");
+  expect(screen.getByLabelText("Folder in SABnzbd")).toHaveValue("");
+  expect(screen.getByText("Config → Categories")).toBeVisible();
+  expect(screen.getByText(mount)).toBeVisible();
+  await user.click(
+    screen.getByRole("button", { name: "Test and save client" }),
+  );
+  expect(
+    await screen.findByText("SABnzbd did not report a reelscarey category."),
+  ).toBeVisible();
+  const request = requests.mock.calls.find(
+    ([, options]) => options?.method === "POST",
+  );
+  expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({
+    kind: "sabnzbd",
+    download_path: "",
+    local_folder: "",
+    enabled: false,
   });
 });
 it("retains blank secrets, restricts protocol defaults and protects bound clients", async () => {
