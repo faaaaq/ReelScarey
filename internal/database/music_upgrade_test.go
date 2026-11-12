@@ -73,7 +73,13 @@ func TestMusicUpgradeIsAdditive(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO integration_configs(name,ciphertext) VALUES('musicbrainz',x'00')`); err != nil {
 		t.Fatal("musicbrainz integration name rejected", err)
 	}
-	if _, err = db.Exec(`DELETE FROM integration_configs WHERE name IN ('acoustid','musicbrainz')`); err != nil {
+	// The opt-in music server stores its bearer token in the encrypted
+	// integration store; its name must be permitted by the allowlist or
+	// generating a token fails the table CHECK constraint.
+	if _, err = db.Exec(`INSERT INTO integration_configs(name,ciphertext) VALUES('music-server-token',x'00')`); err != nil {
+		t.Fatal("music-server-token integration name rejected", err)
+	}
+	if _, err = db.Exec(`DELETE FROM integration_configs WHERE name IN ('acoustid','musicbrainz','music-server-token')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(`INSERT INTO music_artists(musicbrainz_id,name,monitored,status,created_at,updated_at) VALUES('a74b1b7f-71a5-4011-9441-d0b5e4122711','Artist',1,'missing',1,1)`); err != nil {

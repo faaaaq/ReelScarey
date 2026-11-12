@@ -45,6 +45,12 @@ func Open(ctx context.Context, dir string) (*sql.DB, error) {
 	for _, pragma := range []string{"foreign_keys(1)", "busy_timeout(5000)", "journal_mode(WAL)"} {
 		query.Add("_pragma", pragma)
 	}
+	// Acquire the write lock before a transaction's first read. Deferred WAL
+	// transactions can otherwise pass a revision check and then fail with
+	// SQLITE_BUSY_SNAPSHOT when a concurrent commit invalidates their snapshot.
+	// BEGIN IMMEDIATE uses busy_timeout while waiting and gives every fenced
+	// read-modify-write transaction a current, serializable snapshot.
+	query.Set("_txlock", "immediate")
 	u.RawQuery = query.Encode()
 	db, err := sql.Open("sqlite", u.String())
 	if err != nil {
