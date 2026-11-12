@@ -7,7 +7,10 @@ from pathlib import Path
 uid, gid = map(int, sys.argv[1:])
 config = Path(os.environ.get("REELSCAREY_CONFIG_DIR") or "/config")
 backups = Path(os.environ.get("REELSCAREY_BACKUPS_DIR") or config.parent / "backups")
-staging = Path(os.environ.get("REELSCAREY_YOUTUBE_STAGING_DIR") or config.parent / "youtube-staging" / "work")
+# The whole staging volume is private app storage; the app creates its "work"
+# subfolder inside it. Prepare the volume root so the volume is owned by the
+# requested identity, not merely the subfolder.
+staging = Path(os.environ.get("REELSCAREY_YOUTUBE_STAGING_DIR") or config.parent / "youtube-staging")
 private = [config, backups, staging]
 media = Path(os.environ.get("REELSCAREY_MEDIA_DIR") or "/media")
 downloads = Path(os.environ.get("REELSCAREY_DOWNLOADS_DIR") or "/downloads")

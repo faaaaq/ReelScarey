@@ -64,9 +64,13 @@ services:
       # - /mnt/movies:/media/movies
       # - /mnt/tv:/media/tvshows
     security_opt:
+      # Prevents any process from gaining privileges it did not already have.
       - no-new-privileges:true
-    cap_drop:
-      - ALL
+    # NOTE: do NOT add `cap_drop: [ALL]`. Startup briefly runs as root to chown
+    # the three folders to PUID/PGID and then drops to that account; removing
+    # root's own capabilities makes that ownership fix fail and the container
+    # exits (chmod/chown "Operation not permitted"). no-new-privileges plus a
+    # read-only root filesystem below is the intended hardening.
     # cap_add:
     #   - NET_ADMIN
     read_only: true
