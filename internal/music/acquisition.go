@@ -404,6 +404,9 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 		if query == "" {
 			query = strings.TrimSpace(track.Artist + " " + track.Title)
 		}
+		// The query may carry album context, but the track title is always the
+		// authoritative name to match: audio belonging to a different track or
+		// album is never accepted on duration or album-name evidence alone.
 		candidates, err := s.audio.SearchAudio(ctx, query, 10)
 		if err != nil {
 			return &Error{Code: "music_acquisition_search", Message: "YouTube search failed for this track."}
@@ -440,22 +443,78 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 	return nil
 }
 
-// audioCandidateMatchesTitle reports whether a YouTube result title plausibly
-// belongs to the requested track. Titles are compared with the catalog
-// normalization, so "S.A.D." and "sad" agree while an unrelated song such as
-// "DEPENDS" is rejected instead of being chosen on duration alone. A blank
+// audioCandidateMatchesTitle reports whether a YouTube result title belongs to
+// the requested track. Parenthetical and bracketed decorations such as
+// "(Official Audio)" or "(from DEPENDS)" are stripped from both titles first,
+// so the requested track must be named by the candidate's main title. The
+// comparison is punctuation-insensitive ("S.A.D." and "SAD" agree) but aligned
+// on token boundaries, so a substring such as "sad" inside "SADDEST" or the
+// unrelated song "DEPENDS" is rejected even when the duration matches. A blank
 // requested title cannot be checked and is accepted so callers without a title
 // keep the previous duration-only behavior.
 func audioCandidateMatchesTitle(candidateTitle, title string) bool {
-	want := compactMatchName(title)
+	want := compactMatchName(stripTitleDecorations(title))
+	if want == "" {
+		want = compactMatchName(title)
+	}
 	if want == "" {
 		return true
 	}
-	got := compactMatchName(candidateTitle)
-	if got == "" {
+	tokens := strings.Fields(normalizeMatchName(stripTitleDecorations(candidateTitle)))
+	if len(tokens) == 0 {
+		tokens = strings.Fields(normalizeMatchName(candidateTitle))
+	}
+	if len(tokens) == 0 {
 		return false
 	}
-	return strings.Contains(got, want)
+	// The requested title may be embedded in a longer YouTube title; accept it
+	// only when its normalized letters line up with complete candidate tokens
+	// ("XG - S.A.D. (Official Audio)"), never inside a larger word ("SADDEST",
+	// "DEPENDS").
+	for i := range tokens {
+		var joined strings.Builder
+		for j := i; j < len(tokens); j++ {
+			joined.WriteString(tokens[j])
+			if joined.Len() > len(want) {
+				break
+			}
+			if joined.String() == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// stripTitleDecorations removes parenthetical and bracketed suffixes that
+// video titles use for video/audio/album context. The requested track must be
+// named by the remaining main title, so an album name inside a decoration
+// ("S.A.D. (from DEPENDS)") can never satisfy a different track request.
+func stripTitleDecorations(title string) string {
+	var out strings.Builder
+	out.Grow(len(title))
+	round, square := 0, 0
+	for _, r := range title {
+		switch r {
+		case '(':
+			round++
+		case ')':
+			if round > 0 {
+				round--
+			}
+		case '[':
+			square++
+		case ']':
+			if square > 0 {
+				square--
+			}
+		default:
+			if round == 0 && square == 0 {
+				out.WriteRune(r)
+			}
+		}
+	}
+	return out.String()
 }
 
 // chooseAudioCandidate picks the closest-duration YouTube result that also

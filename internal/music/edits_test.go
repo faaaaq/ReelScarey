@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -222,5 +223,166 @@ func waitForEditJob(t *testing.T, ctx context.Context, service *Service, id int6
 			t.Fatal("edit job timed out", job)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestApplyMoveDeduplicatesIdenticalDestination(t *testing.T) {
+	ctx := context.Background()
+	service, db, media := editFixture(t)
+	sourceRel := "Music/Artist/Album/Song.flac"
+	source := filepath.Join(media, filepath.FromSlash(sourceRel))
+	if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("fixture"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	insertMusicFile(t, db, 1, 3, sourceRel, matchingTags())
+	plan, err := service.PreviewEdits(ctx, []int64{1})
+	if err != nil || len(plan.Files) != 1 || plan.Files[0].Action != "move" {
+		t.Fatal("preview", plan, err)
+	}
+	destination := filepath.Join(media, filepath.FromSlash(plan.Files[0].DestinationPath))
+	// A previous organize already left identical content at the destination.
+	if err := os.WriteFile(destination, []byte("fixture"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	job, err := service.ApplyEdits(ctx, []int64{1}, plan.PlanHash, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job = waitForEditJob(t, ctx, service, job.ID)
+	if job.State != "completed" {
+		t.Fatal("job", job)
+	}
+	if got, err := os.ReadFile(destination); err != nil || string(got) != "fixture" {
+		t.Fatal("destination content", got, err)
+	}
+	if _, err := os.Stat(source); !os.IsNotExist(err) {
+		t.Fatal("duplicate source was not removed", err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(destination), "01 Song (2).flac")); !os.IsNotExist(err) {
+		t.Fatal("identical destination was versioned aside", err)
+	}
+	var relative string
+	if err := db.QueryRow(`SELECT relative_path FROM music_files WHERE id=1`).Scan(&relative); err != nil || relative != plan.Files[0].DestinationPath {
+		t.Fatal("catalog path", relative, err)
+	}
+	// Rolling back restores the original registration and removes the shared
+	// destination copy.
+	if _, err := service.RollbackEdits(ctx, job.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(source); err != nil || string(got) != "fixture" {
+		t.Fatal("rollback did not restore the source", got, err)
+	}
+	if _, err := os.Stat(destination); !os.IsNotExist(err) {
+		t.Fatal("rollback left the destination", err)
+	}
+	if err := db.QueryRow(`SELECT relative_path FROM music_files WHERE id=1`).Scan(&relative); err != nil || relative != sourceRel {
+		t.Fatal("rollback path", relative, err)
+	}
+}
+
+func TestApplyMoveVersionsAsideDifferingDestination(t *testing.T) {
+	ctx := context.Background()
+	service, db, media := editFixture(t)
+	sourceRel := "Music/Artist/Album/Song.flac"
+	source := filepath.Join(media, filepath.FromSlash(sourceRel))
+	if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("fixture"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	insertMusicFile(t, db, 1, 3, sourceRel, matchingTags())
+	plan, err := service.PreviewEdits(ctx, []int64{1})
+	if err != nil || len(plan.Files) != 1 || plan.Files[0].Action != "move" {
+		t.Fatal("preview", plan, err)
+	}
+	destination := filepath.Join(media, filepath.FromSlash(plan.Files[0].DestinationPath))
+	// A different file already occupies the destination. The incoming file
+	// supersedes it and the previous content is preserved beside it.
+	if err := os.WriteFile(destination, []byte("occupied"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	job, err := service.ApplyEdits(ctx, []int64{1}, plan.PlanHash, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job = waitForEditJob(t, ctx, service, job.ID)
+	if job.State != "completed" {
+		t.Fatal("job", job)
+	}
+	if got, err := os.ReadFile(destination); err != nil || string(got) != "fixture" {
+		t.Fatal("destination was not replaced", got, err)
+	}
+	aside := filepath.Join(filepath.Dir(destination), "01 Song (2).flac")
+	if got, err := os.ReadFile(aside); err != nil || string(got) != "occupied" {
+		t.Fatal("previous destination content was not set aside", got, err)
+	}
+	if _, err := os.Stat(source); !os.IsNotExist(err) {
+		t.Fatal("source was not moved", err)
+	}
+	var relative, journal string
+	if err := db.QueryRow(`SELECT relative_path FROM music_files WHERE id=1`).Scan(&relative); err != nil || relative != plan.Files[0].DestinationPath {
+		t.Fatal("catalog path", relative, err)
+	}
+	if err := db.QueryRow(`SELECT stage_path FROM music_edit_files WHERE job_id=?`, job.ID).Scan(&journal); err != nil || journal != aside {
+		t.Fatal("set-aside rename was not journaled", journal, err)
+	}
+	// Rolling back restores the move while the set-aside copy of the previous
+	// destination content stays on disk.
+	if _, err := service.RollbackEdits(ctx, job.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(source); err != nil || string(got) != "fixture" {
+		t.Fatal("rollback did not restore the source", got, err)
+	}
+	if _, err := os.Stat(destination); !os.IsNotExist(err) {
+		t.Fatal("rollback left the destination", err)
+	}
+	if got, err := os.ReadFile(aside); err != nil || string(got) != "occupied" {
+		t.Fatal("rollback lost the set-aside copy", got, err)
+	}
+	if err := db.QueryRow(`SELECT relative_path FROM music_files WHERE id=1`).Scan(&relative); err != nil || relative != sourceRel {
+		t.Fatal("rollback path", relative, err)
+	}
+}
+
+func TestApplyMoveRejectsNonFileDestination(t *testing.T) {
+	ctx := context.Background()
+	service, db, media := editFixture(t)
+	sourceRel := "Music/Artist/Album/Song.flac"
+	source := filepath.Join(media, filepath.FromSlash(sourceRel))
+	if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("fixture"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	insertMusicFile(t, db, 1, 3, sourceRel, matchingTags())
+	plan, err := service.PreviewEdits(ctx, []int64{1})
+	if err != nil || len(plan.Files) != 1 {
+		t.Fatal("preview", plan, err)
+	}
+	destination := filepath.Join(media, filepath.FromSlash(plan.Files[0].DestinationPath))
+	// A directory at the destination cannot be set aside as a file.
+	if err := os.MkdirAll(destination, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	job, err := service.ApplyEdits(ctx, []int64{1}, plan.PlanHash, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job = waitForEditJob(t, ctx, service, job.ID)
+	if job.State != "failed" || !strings.Contains(job.Error, "destination") {
+		t.Fatal("job", job)
+	}
+	if info, err := os.Stat(destination); err != nil || !info.IsDir() {
+		t.Fatal("destination directory was touched", err)
+	}
+	if _, err := os.Stat(source); err != nil {
+		t.Fatal("source was modified by the failed edit", err)
 	}
 }

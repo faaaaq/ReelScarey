@@ -434,11 +434,9 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 	if err := s.store.db.QueryRowContext(ctx, `SELECT root FROM music_files WHERE id=? AND relative_path=?`, musicFileID, sourceRel).Scan(&originalRoot); err != nil {
 		return err
 	}
-	if dest != source {
-		if _, err := os.Stat(dest); err == nil {
-			return &Error{Code: "music_destination_exists", Message: "A file already exists at the destination. Nothing was overwritten."}
-		}
-	}
+	// A conflicting destination is resolved after staging (see placeMusicStage):
+	// identical content is deduplicated, differing content is set aside under a
+	// versioned sibling name instead of failing the whole edit.
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
@@ -523,15 +521,26 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		}
 		os.Remove(stage)
 	} else {
-		if err := os.Link(stage, dest); err != nil {
-			if err := copyFileExclusive(ctx, stage, dest); err != nil {
-				os.Remove(stage)
-				if backup != "" {
-					os.Remove(backup)
-				}
-				return err
-			}
+		deduped, aside, err := placeMusicStage(ctx, media, destRel, stageRel, editedSHA)
+		if aside != "" {
+			// The previous occupant of the destination was renamed aside to
+			// preserve its content. Record the retained sibling in stage_path:
+			// the staged file is removed below and rollback never reads
+			// stage_path, so the column is the least invasive durable journal
+			// of the set-aside rename without a schema change.
+			_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_edit_files SET stage_path=? WHERE id=?`, filepath.Join(s.mediaDir, filepath.FromSlash(aside)), editID)
 		}
+		if err != nil {
+			os.Remove(stage)
+			if backup != "" {
+				os.Remove(backup)
+			}
+			return err
+		}
+		// A deduplicated destination (identical content) needs no placement:
+		// keep the existing file, drop the staged duplicate, and let the shared
+		// source removal below deduplicate the original.
+		_ = deduped
 		os.Remove(stage)
 	}
 	tx, err := s.store.db.BeginTx(ctx, nil)
@@ -690,6 +699,109 @@ func copyFileExclusive(ctx context.Context, source, destination string) error {
 		return err
 	}
 	return nil
+}
+
+// occupiedDestinationError reports a destination that cannot be resolved
+// automatically, such as a directory or an unreadable file.
+func occupiedDestinationError() error {
+	return &Error{Code: "music_destination_exists", Message: "A file already exists at the destination and its content could not be safely set aside. Nothing was overwritten."}
+}
+
+// nextVersionedMusicName returns the first free "name (N).ext" sibling of name
+// in its own directory, starting at " (2)". This mirrors how acquisition
+// places a new song beside an occupied track number instead of conflating
+// the two.
+func nextVersionedMusicName(root *os.Root, name string) (string, error) {
+	name = filepath.ToSlash(name)
+	dir, base := path.Split(name)
+	ext := path.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	for n := 2; n <= 999; n++ {
+		candidate := dir + fmt.Sprintf("%s (%d)%s", stem, n, ext)
+		if _, err := root.Lstat(candidate); errors.Is(err, os.ErrNotExist) {
+			return candidate, nil
+		} else if err != nil {
+			return "", err
+		}
+	}
+	return "", &Error{Code: "music_destination_exists", Message: "No free versioned name is available beside the occupied destination. Nothing was overwritten."}
+}
+
+// setAsideOccupiedMusicDestination preserves the current content of an
+// occupied destination by renaming it to the first free versioned sibling,
+// letting the incoming file supersede it without losing anything.
+func setAsideOccupiedMusicDestination(root *os.Root, destRel string) (string, error) {
+	aside, err := nextVersionedMusicName(root, destRel)
+	if err != nil {
+		return "", err
+	}
+	if err := root.Rename(destRel, aside); err != nil {
+		return "", err
+	}
+	return aside, nil
+}
+
+// linkMusicStage publishes staged content at destRel exclusively: hardlink
+// first, exclusive copy as a fallback. Never overwrites an existing path.
+func linkMusicStage(ctx context.Context, root *os.Root, destRel, stageRel string) error {
+	if err := root.Link(stageRel, destRel); err == nil {
+		return nil
+	}
+	return copyMusicStage(ctx, root, stageRel, destRel)
+}
+
+// reconcileMusicDestination prepares an occupied destination before staging is
+// finalized: differing content is renamed aside, identical content is left in
+// place to be deduplicated at publish time. A missing destination is a no-op.
+func reconcileMusicDestination(ctx context.Context, root *os.Root, destRel, stagedSHA string) error {
+	info, err := root.Lstat(destRel)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return occupiedDestinationError()
+	}
+	destSHA, _, err := musicDigest(ctx, root, destRel)
+	if err != nil {
+		return occupiedDestinationError()
+	}
+	if destSHA == stagedSHA {
+		return nil
+	}
+	_, err = setAsideOccupiedMusicDestination(root, destRel)
+	return err
+}
+
+// placeMusicStage publishes staged content at destRel, resolving conflicts:
+// a destination holding identical content is a duplicate and nothing is
+// linked; differing content is renamed aside first. It reports whether the
+// destination already held identical content and the sibling path when an
+// existing file was renamed aside.
+func placeMusicStage(ctx context.Context, root *os.Root, destRel, stageRel, stagedSHA string) (deduped bool, aside string, err error) {
+	info, err := root.Lstat(destRel)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, "", linkMusicStage(ctx, root, destRel, stageRel)
+	}
+	if err != nil {
+		return false, "", err
+	}
+	if !info.Mode().IsRegular() {
+		return false, "", occupiedDestinationError()
+	}
+	destSHA, _, err := musicDigest(ctx, root, destRel)
+	if err != nil {
+		return false, "", occupiedDestinationError()
+	}
+	if destSHA == stagedSHA {
+		return true, "", nil
+	}
+	if aside, err = setAsideOccupiedMusicDestination(root, destRel); err != nil {
+		return false, "", err
+	}
+	return false, aside, linkMusicStage(ctx, root, destRel, stageRel)
 }
 
 func (s *Service) EditJob(ctx context.Context, id int64) (EditJob, error) {

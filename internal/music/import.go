@@ -494,11 +494,11 @@ func (s *Service) importFile(ctx context.Context, media *os.Root, album importAl
 		return errors.New("The staged music file changed. Inspect it before retrying.")
 	}
 	if !sameMusicFile(media, p.Stage, p.Destination) {
-		if err := media.Link(p.Stage, p.Destination); err != nil {
-			return &Error{Code: "music_destination_exists", Message: "The music output could not be published without overwriting an existing path. The source and staged copy were retained."}
+		if _, _, err := placeMusicStage(ctx, media, p.Destination, p.Stage, p.SHA); err != nil {
+			return err
 		}
 	}
-	if !sameMusicFile(media, p.Stage, p.Destination) {
+	if err := expectMusicDigest(ctx, media, p.Destination, p.SHA); err != nil {
 		return filecheck.ErrChanged
 	}
 	tagJSON, err := json.Marshal(p.Tags)
@@ -524,9 +524,10 @@ func (s *Service) importFile(ctx context.Context, media *os.Root, album importAl
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	if sameMusicFile(media, p.Stage, p.Destination) {
-		_ = media.Remove(p.Stage)
-	}
+	// The destination content is verified by digest above, so the staged copy
+	// is no longer needed whether it was hardlinked in, copied, or the
+	// destination already held identical content.
+	_ = media.Remove(p.Stage)
 	return nil
 }
 
@@ -552,9 +553,6 @@ func (s *Service) prepareMusicImport(ctx context.Context, media *os.Root, album 
 		prefix = fmt.Sprintf("%d-%02d", track.Disc, track.Number)
 	}
 	p.Destination = path.Join(folder, safeName(album.ArtistName), safeName(album.AlbumTitle), prefix+" "+safeName(track.Title)+ext)
-	if _, err := media.Lstat(p.Destination); !errors.Is(err, os.ErrNotExist) {
-		return p, &Error{Code: "music_destination_exists", Message: "A file already exists at the destination. Nothing was overwritten."}
-	}
 	dir := path.Dir(p.Destination)
 	if err := media.MkdirAll(dir, 0o755); err != nil {
 		return p, err
@@ -605,6 +603,12 @@ func (s *Service) prepareMusicImport(ctx context.Context, media *os.Root, album 
 	}
 	p.SHA, p.Size, err = musicDigest(ctx, media, p.Stage)
 	if err != nil {
+		return p, err
+	}
+	// A conflicting destination is resolved here, once the staged content is
+	// final: differing content is renamed aside under a versioned sibling,
+	// identical content is left for deduplication at publish time.
+	if err := reconcileMusicDestination(ctx, media, p.Destination, p.SHA); err != nil {
 		return p, err
 	}
 	staged, err := media.OpenFile(p.Stage, os.O_RDWR, 0)

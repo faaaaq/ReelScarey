@@ -162,6 +162,94 @@ func TestImportResumesPublishedFileAndKeepsDownloadIdentity(t *testing.T) {
 	}
 }
 
+func TestImportDeduplicatesIdenticalDestination(t *testing.T) {
+	ctx := context.Background()
+	service, media, downloads := importFixture(t)
+	source := filepath.Join(downloads, "Album")
+	generateFLAC(t, filepath.Join(source, "01.flac"), "Song", 1)
+	generateFLAC(t, filepath.Join(source, "02.flac"), "Other", 2)
+	// Import once to publish the destination files.
+	job, err := service.StartImport(ctx, 2, "Album", "Music")
+	if err != nil {
+		t.Fatal(err)
+	}
+	job = waitForImport(t, ctx, service, job.ID)
+	if job.State != "completed" || job.ImportedCount != 2 {
+		t.Fatal("first import job", job)
+	}
+	// Reset the catalog registrations and re-import the same folder. The
+	// destinations already exist with identical content (writeTags is
+	// bitexact), so the re-import must succeed without versioning anything
+	// aside and without duplicating the downloads.
+	if _, err := service.store.db.Exec(`DELETE FROM music_files WHERE album_id=2`); err != nil {
+		t.Fatal(err)
+	}
+	job, err = service.StartImport(ctx, 2, "Album", "Music")
+	if err != nil {
+		t.Fatal(err)
+	}
+	job = waitForImport(t, ctx, service, job.ID)
+	if job.State != "completed" || job.ImportedCount != 2 {
+		t.Fatal("conflicting import job", job)
+	}
+	albumDir := filepath.Join(media, "Music", "Artist", "Album")
+	for _, name := range []string{"01 Song.flac", "02 Other.flac"} {
+		if _, err := os.Stat(filepath.Join(albumDir, name)); err != nil {
+			t.Fatal("imported file missing", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(albumDir, "01 Song (2).flac")); !os.IsNotExist(err) {
+		t.Fatal("identical destination was versioned aside", err)
+	}
+	if _, err := os.Stat(filepath.Join(source, "01.flac")); err != nil {
+		t.Fatal("download source was modified", err)
+	}
+	var count int
+	if err := service.store.db.QueryRow(`SELECT COUNT(*) FROM music_files WHERE album_id=2`).Scan(&count); err != nil || count != 2 {
+		t.Fatal("registered files", count, err)
+	}
+}
+
+func TestImportVersionsAsideDifferingDestination(t *testing.T) {
+	ctx := context.Background()
+	service, media, downloads := importFixture(t)
+	source := filepath.Join(downloads, "Album")
+	generateFLAC(t, filepath.Join(source, "01.flac"), "Song", 1)
+	generateFLAC(t, filepath.Join(source, "02.flac"), "Other", 2)
+	// A different file already occupies the first track's destination. The
+	// import supersedes it and preserves the previous content beside it.
+	albumDir := filepath.Join(media, "Music", "Artist", "Album")
+	if err := os.MkdirAll(albumDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(albumDir, "01 Song.flac"), []byte("occupied"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	job, err := service.StartImport(ctx, 2, "Album", "Music")
+	if err != nil {
+		t.Fatal(err)
+	}
+	job = waitForImport(t, ctx, service, job.ID)
+	if job.State != "completed" || job.ImportedCount != 2 {
+		t.Fatal("conflicting import job", job)
+	}
+	destination := filepath.Join(albumDir, "01 Song.flac")
+	info, err := os.Stat(destination)
+	if err != nil || info.Size() == int64(len("occupied")) {
+		t.Fatal("destination was not replaced", info, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(albumDir, "01 Song (2).flac")); err != nil || string(got) != "occupied" {
+		t.Fatal("previous destination content was not set aside", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(source, "01.flac")); err != nil {
+		t.Fatal("download source was modified", err)
+	}
+	var count int
+	if err := service.store.db.QueryRow(`SELECT COUNT(*) FROM music_files WHERE album_id=2`).Scan(&count); err != nil || count != 2 {
+		t.Fatal("registered files", count, err)
+	}
+}
+
 func waitForImport(t *testing.T, ctx context.Context, service *Service, id int64) ImportJob {
 	t.Helper()
 	if _, err := service.ProcessImport(ctx); err != nil {

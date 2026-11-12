@@ -54,6 +54,78 @@ func TestChooseAudioCandidateRequiresTitleMatch(t *testing.T) {
 	}
 }
 
+func TestAudioCandidateMatchesTitleTokenBoundaries(t *testing.T) {
+	cases := []struct {
+		candidateTitle string
+		title          string
+		want           bool
+	}{
+		// The S.A.D. / DEPENDS conflation must stay impossible in both
+		// directions regardless of duration evidence.
+		{"XG - DEPENDS (Official Music Video)", "S.A.D.", false},
+		{"Tech N9ne - DEPENDS", "S.A.D.", false},
+		{"XG - DEPENDS", "SAD", false},
+		{"XG - S.A.D.", "DEPENDS", false},
+		{"XG - S.A.D. (from DEPENDS)", "DEPENDS", false},
+		// Punctuation-only differences are the same title.
+		{"SAD", "S.A.D.", true},
+		{"XG - S.A.D. (Official Audio)", "S.A.D.", true},
+		{"XG - S.A.D", "S.A.D.", true},
+		{"DEPENDS", "DEPENDS", true},
+		// The requested title must land on token boundaries, never inside a
+		// larger word.
+		{"XG - SADDEST (Lyric Video)", "S.A.D.", false},
+		{"XG - SADLY (Official Video)", "SAD", false},
+		{"XG - MASSACRE", "SAD", false},
+		// Blank sides keep the documented behavior.
+		{"", "S.A.D.", false},
+		{"Any Song", "", true},
+	}
+	for _, c := range cases {
+		if got := audioCandidateMatchesTitle(c.candidateTitle, c.title); got != c.want {
+			t.Errorf("audioCandidateMatchesTitle(%q, %q) = %v, want %v", c.candidateTitle, c.title, got, c.want)
+		}
+	}
+}
+
+func TestChooseAudioCandidatePrefersTrackTitleOverExactDuration(t *testing.T) {
+	// A wrong-title candidate whose duration matches exactly must lose to a
+	// correct-title candidate with a farther duration.
+	candidates := []AudioCandidate{
+		{ID: "dependswik", Title: "Tech N9ne - DEPENDS (Official Music Video)", DurationSeconds: 202},
+		{ID: "sadwikwxyz", Title: "Tech N9ne - S.A.D. (Official Audio)", DurationSeconds: 195},
+	}
+	chosen := chooseAudioCandidate(candidates, 202000, "S.A.D.")
+	if chosen == nil || chosen.ID != "sadwikwxyz" {
+		t.Fatal("expected the correctly titled S.A.D. candidate", chosen)
+	}
+	// A result set that only offers S.A.D. must never satisfy a DEPENDS
+	// request, and vice versa.
+	if chosen := chooseAudioCandidate(candidates[1:], 202000, "DEPENDS"); chosen != nil {
+		t.Fatal("expected no candidate for the DEPENDS request", chosen)
+	}
+	if chosen := chooseAudioCandidate([]AudioCandidate{{ID: "dependswik", Title: "Tech N9ne - DEPENDS", DurationSeconds: 202}}, 202000, "S.A.D."); chosen != nil {
+		t.Fatal("expected no candidate for the S.A.D. request", chosen)
+	}
+}
+
+func TestChooseAudioCandidateDurationTieBreak(t *testing.T) {
+	// When several candidates pass the title check the closest duration wins.
+	candidates := []AudioCandidate{
+		{ID: "far", Title: "XG - S.A.D. (Live)", DurationSeconds: 185},
+		{ID: "near", Title: "XG - S.A.D. (Official Audio)", DurationSeconds: 195},
+		{ID: "exact", Title: "XG - S.A.D. (MV)", DurationSeconds: 202},
+	}
+	chosen := chooseAudioCandidate(candidates, 202000, "S.A.D.")
+	if chosen == nil || chosen.ID != "exact" {
+		t.Fatal("expected the closest-duration S.A.D. candidate", chosen)
+	}
+	chosen = chooseAudioCandidate(candidates[:2], 202000, "S.A.D.")
+	if chosen == nil || chosen.ID != "near" {
+		t.Fatal("expected the closest-duration candidate without the exact match", chosen)
+	}
+}
+
 // titleAudioSource returns one candidate named after the requested track so the
 // acquisition can match a title-based YouTube result.
 type titleAudioSource struct {

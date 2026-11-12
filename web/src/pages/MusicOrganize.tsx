@@ -1,6 +1,13 @@
-import { useState } from "react";
-import { Button } from "@radix-ui/themes";
-import { FolderCog, RefreshCw, Undo2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Button, TextField } from "@radix-ui/themes";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FolderCog,
+  RefreshCw,
+  Search,
+  Undo2,
+} from "lucide-react";
 import {
   Alert,
   EmptyState,
@@ -32,11 +39,55 @@ function jobKind(state: string) {
   return "info" as const;
 }
 
+/** Optional catalog corrections sent with the preview and apply requests. */
+type EditOverrideInput = {
+  artist: string;
+  album: string;
+  albumID: string;
+  year: string;
+};
+
+const emptyOverrides: EditOverrideInput = {
+  artist: "",
+  album: "",
+  albumID: "",
+  year: "",
+};
+
+/**
+ * Turns the raw override inputs into the JSON fields the backend understands:
+ * artist, album, album_id and year. Blank or invalid values are omitted so an
+ * untouched field keeps the catalog value.
+ */
+function editOverrideFields(overrides: EditOverrideInput) {
+  const fields: Record<string, string | number> = {};
+  const artist = overrides.artist.trim();
+  const album = overrides.album.trim();
+  const year = Number.parseInt(overrides.year, 10);
+  const albumID = Number.parseInt(overrides.albumID, 10);
+  if (artist !== "") fields.artist = artist;
+  if (album !== "") fields.album = album;
+  if (Number.isInteger(year) && year > 0) fields.year = year;
+  if (Number.isInteger(albumID) && albumID > 0) fields.album_id = albumID;
+  return fields;
+}
+
+/** True when the overrides only correct values, without re-selecting files. */
+function hasAlbumSelection(overrides: EditOverrideInput) {
+  return "album_id" in editOverrideFields(overrides);
+}
+
 export function MusicOrganize() {
-  const files = useResource<MusicFilePage>("/library/music/files");
+  const [page, setPage] = useState(1);
+  const files = useResource<MusicFilePage>(`/library/music/files?page=${page}`);
   const jobs = useLiveResource<MusicEditJobList>("/library/music/edits", 5000);
   const [selected, setSelected] = useState<number[]>([]);
+  const [filter, setFilter] = useState("");
+  const [overrides, setOverrides] = useState<EditOverrideInput>(emptyOverrides);
   const [plan, setPlan] = useState<MusicEditPlan | null>(null);
+  const [planBody, setPlanBody] = useState<Record<string, unknown> | null>(
+    null,
+  );
   const [jobID, setJobID] = useState<number | null>(null);
   const job = useLiveResource<MusicEditJob>(
     jobID ? `/library/music/edits/${jobID}` : null,
@@ -45,16 +96,53 @@ export function MusicOrganize() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
+  const items = files.data?.items ?? [];
+  const visibleFiles = useMemo(() => {
+    const query = filter.trim().toLowerCase();
+    if (query === "") return items;
+    return items.filter((file) =>
+      `${file.artist_name} ${file.album_title} ${file.track_title} ${file.relative_path}`
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [items, filter]);
+  const pageCount = files.data
+    ? Math.max(1, Math.ceil(files.data.total / files.data.limit))
+    : 1;
+
+  // Drop out-of-range pages when the catalog shrinks between reloads.
+  useEffect(() => {
+    if (files.data && page > pageCount) setPage(pageCount);
+  }, [files.data, page, pageCount]);
+
+  function toggle(id: number, checked: boolean) {
+    setSelected((current) =>
+      checked ? [...current, id] : current.filter((value) => value !== id),
+    );
+  }
+
+  function selectAllVisible() {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const file of visibleFiles) next.add(file.id);
+      return [...next];
+    });
+  }
+
   async function preview() {
-    if (pending || selected.length === 0) return;
+    if (pending) return;
+    const albumSelected = hasAlbumSelection(overrides);
+    if (selected.length === 0 && !albumSelected) return;
+    const body = { file_ids: selected, ...editOverrideFields(overrides) };
     setPending(true);
     setError("");
     try {
       const result = await api<MusicEditPlan>("/library/music/edits/preview", {
         method: "POST",
-        body: JSON.stringify({ file_ids: selected }),
+        body: JSON.stringify(body),
       });
       setPlan(result);
+      setPlanBody(body);
     } catch (e) {
       setError(messageFor(e));
     } finally {
@@ -63,20 +151,21 @@ export function MusicOrganize() {
   }
 
   async function apply() {
-    if (!plan || pending) return;
+    if (!plan || !planBody || pending) return;
     setPending(true);
     setError("");
     try {
       const result = await api<MusicEditJob>("/library/music/edits/apply", {
         method: "POST",
         body: JSON.stringify({
-          file_ids: plan.files.map((file) => file.music_file_id),
+          ...planBody,
           plan_hash: plan.plan_hash,
           reviewed: true,
         }),
       });
       setJobID(result.id);
       setPlan(null);
+      setPlanBody(null);
       setSelected([]);
       files.reload();
       jobs.reload();
@@ -113,7 +202,10 @@ export function MusicOrganize() {
           <ToolbarButton
             icon={FolderCog}
             label="Preview"
-            disabled={pending || selected.length === 0}
+            disabled={
+              pending ||
+              (selected.length === 0 && !hasAlbumSelection(overrides))
+            }
             onClick={() => void preview()}
           />
           <ToolbarButton
@@ -137,64 +229,164 @@ export function MusicOrganize() {
           overwriting an existing destination. A completed job can be rolled
           back from this page.
         </Alert>
+        <FieldSet
+          legend="Correct metadata"
+          description="Optional corrections applied to the selected files before the plan is built. Leave a field empty to keep the catalog value. An album ID previews every registered file of that album instead of the selection."
+        >
+          <div className="mus-overrides">
+            <TextField.Root
+              aria-label="Corrected artist"
+              placeholder="Corrected artist"
+              maxLength={200}
+              value={overrides.artist}
+              onChange={(e) =>
+                setOverrides({ ...overrides, artist: e.target.value })
+              }
+            />
+            <TextField.Root
+              aria-label="Corrected album"
+              placeholder="Corrected album"
+              maxLength={200}
+              value={overrides.album}
+              onChange={(e) =>
+                setOverrides({ ...overrides, album: e.target.value })
+              }
+            />
+            <TextField.Root
+              aria-label="Album ID"
+              placeholder="Album ID"
+              inputMode="numeric"
+              value={overrides.albumID}
+              onChange={(e) =>
+                setOverrides({ ...overrides, albumID: e.target.value })
+              }
+            />
+            <TextField.Root
+              aria-label="Corrected year"
+              placeholder="Year"
+              inputMode="numeric"
+              value={overrides.year}
+              onChange={(e) =>
+                setOverrides({ ...overrides, year: e.target.value })
+              }
+            />
+          </div>
+        </FieldSet>
         <RequestState
           loading={files.loading}
           error={files.error}
           retry={files.reload}
         />
-        {files.data && files.data.items.length === 0 && (
+        {files.data && items.length === 0 && (
           <EmptyState icon={FolderCog} title="No registered music files">
             Import and register files from the Music import page first.
           </EmptyState>
         )}
-        {files.data && files.data.items.length > 0 && (
-          <FieldSet legend="Registered files">
-            <Table label="Registered music files">
-              <thead>
-                <tr>
-                  <th scope="col">
-                    <span className="sr-only">Select</span>
-                  </th>
-                  <th scope="col">Artist</th>
-                  <th scope="col">Album</th>
-                  <th scope="col">Track</th>
-                  <th scope="col">Path</th>
-                  <th scope="col">Format</th>
-                </tr>
-              </thead>
-              <tbody>
-                {files.data.items.map((file) => (
-                  <tr key={file.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${file.relative_path}`}
-                        checked={selected.includes(file.id)}
-                        onChange={(e) =>
-                          setSelected(
-                            e.target.checked
-                              ? [...selected, file.id]
-                              : selected.filter((id) => id !== file.id),
-                          )
-                        }
-                      />
-                    </td>
-                    <td>{file.artist_name}</td>
-                    <td>{file.album_title}</td>
-                    <td>
-                      {file.disc > 1
-                        ? `${file.disc}.${file.number}`
-                        : file.number}{" "}
-                      {file.track_title}
-                    </td>
-                    <td>
-                      <span className="mus-path">{file.relative_path}</span>
-                    </td>
-                    <td>{file.format || "—"}</td>
+        {files.data && items.length > 0 && (
+          <FieldSet
+            legend="Registered files"
+            actions={
+              <>
+                <Button
+                  size="1"
+                  variant="soft"
+                  disabled={visibleFiles.length === 0}
+                  onClick={selectAllVisible}
+                >
+                  Select all
+                </Button>
+                <Button
+                  size="1"
+                  variant="soft"
+                  color="gray"
+                  disabled={selected.length === 0}
+                  onClick={() => setSelected([])}
+                >
+                  Clear
+                </Button>
+              </>
+            }
+          >
+            <div className="mus-filter">
+              <TextField.Root
+                aria-label="Filter registered files"
+                placeholder="Filter by artist, album, track or path"
+                maxLength={200}
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              >
+                <TextField.Slot>
+                  <Search size={15} aria-hidden="true" />
+                </TextField.Slot>
+              </TextField.Root>
+            </div>
+            {visibleFiles.length === 0 ? (
+              <Alert kind="info">No registered files match this filter.</Alert>
+            ) : (
+              <Table label="Registered music files">
+                <thead>
+                  <tr>
+                    <th scope="col">
+                      <span className="sr-only">Select</span>
+                    </th>
+                    <th scope="col">Artist</th>
+                    <th scope="col">Album</th>
+                    <th scope="col">Track</th>
+                    <th scope="col">Path</th>
+                    <th scope="col">Format</th>
                   </tr>
-                ))}
-              </tbody>
-            </Table>
+                </thead>
+                <tbody>
+                  {visibleFiles.map((file) => (
+                    <tr key={file.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${file.relative_path}`}
+                          checked={selected.includes(file.id)}
+                          onChange={(e) => toggle(file.id, e.target.checked)}
+                        />
+                      </td>
+                      <td>{file.artist_name}</td>
+                      <td>{file.album_title}</td>
+                      <td>
+                        {file.disc > 1
+                          ? `${file.disc}.${file.number}`
+                          : file.number}{" "}
+                        {file.track_title}
+                      </td>
+                      <td>
+                        <span className="mus-path">{file.relative_path}</span>
+                      </td>
+                      <td>{file.format || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+            <div className="mus-paging">
+              <span>{`Page ${page} of ${pageCount} · ${files.data.total} registered files · ${selected.length} selected`}</span>
+              <Button
+                size="1"
+                variant="soft"
+                aria-label="Previous page"
+                disabled={pending || page <= 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+              >
+                <ChevronLeft size={14} aria-hidden="true" /> Previous
+              </Button>
+              <Button
+                size="1"
+                variant="soft"
+                aria-label="Next page"
+                disabled={pending || page >= pageCount}
+                onClick={() =>
+                  setPage((value) => Math.min(pageCount, value + 1))
+                }
+              >
+                Next <ChevronRight size={14} aria-hidden="true" />
+              </Button>
+            </div>
           </FieldSet>
         )}
         {error && <Alert kind="danger">{error}</Alert>}
@@ -207,7 +399,10 @@ export function MusicOrganize() {
                   size="1"
                   variant="soft"
                   color="gray"
-                  onClick={() => setPlan(null)}
+                  onClick={() => {
+                    setPlan(null);
+                    setPlanBody(null);
+                  }}
                 >
                   Cancel
                 </Button>
@@ -230,6 +425,11 @@ export function MusicOrganize() {
                 <thead>
                   <tr>
                     <th scope="col">Source</th>
+                    <th scope="col">Title</th>
+                    <th scope="col">Artist</th>
+                    <th scope="col">Album</th>
+                    <th scope="col">Year</th>
+                    <th scope="col">Track</th>
                     <th scope="col">Destination</th>
                     <th scope="col">Action</th>
                   </tr>
@@ -239,6 +439,15 @@ export function MusicOrganize() {
                     <tr key={file.music_file_id}>
                       <td>
                         <span className="mus-path">{file.source_path}</span>
+                      </td>
+                      <td>{file.tags.title}</td>
+                      <td>{file.tags.artist}</td>
+                      <td>{file.tags.album}</td>
+                      <td>{file.tags.year > 0 ? file.tags.year : "—"}</td>
+                      <td>
+                        {file.tags.disc > 1
+                          ? `${file.tags.disc}.${file.tags.track}`
+                          : file.tags.track}
                       </td>
                       <td>
                         <span className="mus-path">

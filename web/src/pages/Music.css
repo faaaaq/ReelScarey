@@ -148,6 +148,27 @@
   word-break: break-all;
 }
 
+/* Organize page: metadata corrections, file filter and list paging. */
+.mus-overrides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  max-width: 760px;
+}
+
+.mus-filter {
+  max-width: 420px;
+  margin-bottom: 10px;
+}
+
+.mus-paging {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
 .mus-scan-form {
   display: flex;
   flex-direction: column;
