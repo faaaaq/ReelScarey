@@ -149,6 +149,39 @@
   flex-wrap: wrap;
   gap: 6px 18px;
 }
+.client-folder-mapping,
+.client-sab-setup {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-2);
+}
+.client-folder-paths {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 10px 18px;
+}
+.client-folder-paths > div,
+.client-folder-mapping details .adm-field {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+}
+.client-mapped-folder {
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.client-folder-mapping summary {
+  cursor: pointer;
+}
+.client-folder-mapping details .adm-field {
+  margin-top: 8px;
+}
 fieldset:disabled {
   opacity: 0.75;
 }

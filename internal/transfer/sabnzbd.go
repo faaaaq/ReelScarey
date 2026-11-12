@@ -123,7 +123,29 @@ func (s *SABnzbd) Test(ctx context.Context, c ClientConfig) error {
 			return nil
 		}
 	}
-	return problem("invalid_settings", "Create a SABnzbd category named reelscarey with folder ReelScarey, no sorting and no script, then test again.")
+	return problem("invalid_settings", "SABnzbd did not report a reelscarey category. In SABnzbd's Config → Categories, add and save reelscarey with Folder/Path ReelScarey and Script None. Leave this category out of Sorting.")
+}
+
+// CompletedRoot reads SABnzbd's resolved path so a relative setting in its
+// own Folders page is never interpreted relative to ReelScarey's mount.
+func (s *SABnzbd) CompletedRoot(ctx context.Context, c ClientConfig) (string, error) {
+	var out struct {
+		Status struct {
+			CompletedDir string `json:"completedir"`
+		} `json:"status"`
+	}
+	err := s.api(ctx, c, url.Values{"mode": {"status"}, "skip_dashboard": {"1"}}, nil, &out)
+	if err != nil {
+		var apiErr *Error
+		if !errors.As(err, &apiErr) || (apiErr.Code != "client_response" && apiErr.Code != "client_rejected") {
+			return "", err
+		}
+	}
+	remote, pathErr := remoteRoot(out.Status.CompletedDir)
+	if err != nil || pathErr != nil || !textOK(out.Status.CompletedDir, 4096) || strings.Contains(out.Status.CompletedDir, "...") || strings.Contains(out.Status.CompletedDir, "…") {
+		return "", problem("invalid_settings", "SABnzbd did not report a usable completed folder. Enter the full path shown in SABnzbd's Config → Folders.")
+	}
+	return remote, nil
 }
 func (s *SABnzbd) Add(ctx context.Context, c ClientConfig, tag string, nzb []byte) (string, error) {
 	if _, e := NZBIdentity(nzb); e != nil {

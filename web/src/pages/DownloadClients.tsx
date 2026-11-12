@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button } from "@radix-ui/themes";
 import { Plus, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   AddCard,
   Card,
@@ -714,6 +715,11 @@ function ClientForm({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  const sabnzbd = kind === "sabnzbd";
+  const localFolder = local.trim();
+  const localPath = localFolder
+    ? `${root.replace(/[\\/]+$/, "")}/${localFolder}`
+    : root;
   async function save(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -722,7 +728,7 @@ function ClientForm({
     try {
       await api(`/download-clients${client ? `/${client.id}` : ""}`, {
         method: client ? "PUT" : "POST",
-        signal: AbortSignal.timeout(40000),
+        signal: AbortSignal.timeout(50000),
         body: JSON.stringify({
           name,
           kind,
@@ -730,9 +736,9 @@ function ClientForm({
           username,
           enabled: client ? enabled : false,
           download_path: remote,
-          local_folder: local,
+          local_folder: localFolder,
           revision: client?.revision ?? 0,
-          ...(kind === "sabnzbd"
+          ...(sabnzbd
             ? key
               ? { api_key: key }
               : {}
@@ -816,12 +822,14 @@ function ClientForm({
             placeholder={
               kind === "nzbget"
                 ? "http://nzbget:6789"
-                : "http://download-server:8080"
+                : sabnzbd
+                  ? "http://sabnzbd:8080"
+                  : "http://download-server:8080"
             }
             onChange={(e) => setURL(e.target.value)}
           />
         </label>
-        {kind === "sabnzbd" ? (
+        {sabnzbd ? (
           <label>
             API key
             <input
@@ -859,28 +867,82 @@ function ClientForm({
             </label>
           </>
         )}
-        <label>
-          Client's completed download folder
-          <input
-            value={remote}
-            required
-            placeholder="/completed"
-            onChange={(e) => setRemote(e.target.value)}
-          />
-        </label>
-        <label>
-          Local subfolder inside {root}
-          <input
-            value={local}
-            placeholder="Optional, for example server-a"
-            onChange={(e) => setLocal(e.target.value)}
-          />
-        </label>
-        <p className="rs-form-help">
-          Leave the local subfolder blank when both services share the download
-          root. Otherwise this maps the client's completed folder to {root}/
-          {local || "server-a"}. Separate clients may use different subfolders.
-        </p>
+        {sabnzbd && (
+          <div className="client-sab-setup">
+            <strong>SABnzbd category setup</strong>
+            <p className="rs-form-help">
+              In SABnzbd’s <strong>Config → Categories</strong>, save a category
+              named <code>reelscarey</code> with <strong>Folder/Path</strong>{" "}
+              <code>ReelScarey</code> and <strong>Script</strong>{" "}
+              <code>None</code>. Leave this category out of Sorting.
+            </p>
+            {!client && (
+              <p className="rs-form-help">
+                Using the bundled SABnzbd?{" "}
+                <Link to="/usenet">Set it up on the Usenet page.</Link>
+              </p>
+            )}
+          </div>
+        )}
+        <section
+          className="client-folder-mapping"
+          aria-labelledby="completed-downloads-heading"
+        >
+          <h3 id="completed-downloads-heading">Completed downloads</h3>
+          <p className="rs-form-help">
+            Both paths should point to the same files through a shared folder or
+            mount.
+          </p>
+          <div className="client-folder-paths">
+            <div className="adm-field">
+              <label htmlFor="download-client-completed-folder">
+                Folder in {names[kind]}
+              </label>
+              <input
+                id="download-client-completed-folder"
+                value={remote}
+                required={!sabnzbd}
+                aria-describedby="download-client-completed-help"
+                placeholder={
+                  sabnzbd
+                    ? "Auto-detect when saving"
+                    : "Absolute path, e.g. /downloads/complete"
+                }
+                onChange={(e) => setRemote(e.target.value)}
+              />
+              <p className="rs-form-help" id="download-client-completed-help">
+                {sabnzbd
+                  ? "Leave blank to detect it from SABnzbd. To override it, enter the full completed folder from Config → Folders."
+                  : "Enter the absolute path as the download client sees it."}
+              </p>
+            </div>
+            <div className="adm-field">
+              <span className="form-label">Folder in ReelScarey</span>
+              <code className="client-mapped-folder">{localPath}</code>
+              <p className="rs-form-help">
+                Mount the client’s completed files here.
+              </p>
+            </div>
+          </div>
+          <details open={client?.local_folder ? true : undefined}>
+            <summary>Use a subfolder of ReelScarey’s download mount</summary>
+            <div className="adm-field">
+              <label htmlFor="download-client-local-folder">
+                ReelScarey subfolder
+              </label>
+              <input
+                id="download-client-local-folder"
+                value={local}
+                placeholder="For example, server-a"
+                onChange={(e) => setLocal(e.target.value)}
+              />
+              <p className="rs-form-help">
+                Use a relative folder name. Blank uses the download mount
+                itself.
+              </p>
+            </div>
+          </details>
+        </section>
         {client ? (
           <label>
             <input
@@ -894,8 +956,8 @@ function ClientForm({
           </label>
         ) : (
           <p>
-            New connections start paused. Enable and select a default after
-            reviewing the saved mapping.
+            New clients start paused. Enable the client and choose a default
+            when ready.
           </p>
         )}
         <Button type="submit">

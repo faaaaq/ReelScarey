@@ -158,9 +158,13 @@ func (s *Service) SaveDownloadClient(ctx context.Context, in DownloadClientUpdat
 	if in.Kind == "nzbget" {
 		u.Path = strings.TrimSuffix(u.Path, "/jsonrpc")
 	}
-	remote, e := remoteRoot(in.DownloadPath)
-	if e != nil {
-		return result, e
+	detectSABPath := in.Kind == "sabnzbd" && strings.TrimSpace(in.DownloadPath) == ""
+	var remote string
+	if !detectSABPath {
+		remote, e = remoteRoot(in.DownloadPath)
+		if e != nil {
+			return result, e
+		}
 	}
 	var prior ClientConfig
 	if in.ID == "" {
@@ -198,6 +202,12 @@ func (s *Service) SaveDownloadClient(ctx context.Context, in DownloadClientUpdat
 	}
 	if e = s.testDownloadClient(ctx, in.Kind, c); e != nil {
 		return result, e
+	}
+	if detectSABPath {
+		c.DownloadPath, e = s.sab.CompletedRoot(ctx, c)
+		if e != nil {
+			return result, e
+		}
 	}
 	plain, e := json.Marshal(c)
 	if e != nil {
