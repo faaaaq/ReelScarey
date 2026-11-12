@@ -424,6 +424,12 @@ type importPublication struct {
 	SHA         string    `json:"sha256"`
 	Size        int64     `json:"size"`
 	Tags        AudioTags `json:"tags"`
+	// Resolution of a conflicting destination recorded when the publication
+	// was prepared: identical content deduplicates, differing content was
+	// renamed aside to this sibling. importFile reconciles the catalog rows
+	// for the recorded (or freshly re-resolved) conflict before registering.
+	Deduped bool   `json:"deduped,omitempty"`
+	Aside   string `json:"aside,omitempty"`
 }
 
 func (s *Service) runImport(ctx context.Context, jobID, albumID int64, folder string) (int64, error) {
@@ -493,10 +499,21 @@ func (s *Service) importFile(ctx context.Context, media *os.Root, album importAl
 	if err := expectMusicDigest(ctx, media, p.Stage, p.SHA); err != nil {
 		return errors.New("The staged music file changed. Inspect it before retrying.")
 	}
+	deduped, aside := p.Deduped, p.Aside
 	if !sameMusicFile(media, p.Stage, p.Destination) {
-		if _, _, err := placeMusicStage(ctx, media, p.Destination, p.Stage, p.SHA); err != nil {
+		freshDeduped, freshAside, err := placeMusicStage(ctx, media, p.Destination, p.Stage, p.SHA)
+		if err != nil {
 			return err
 		}
+		deduped = deduped || freshDeduped
+		if aside == "" {
+			aside = freshAside
+		}
+	} else if aside == "" {
+		// The destination already holds identical content and no occupant
+		// was renamed aside; any registered row at that path is a duplicate
+		// to reconcile below.
+		deduped = true
 	}
 	if err := expectMusicDigest(ctx, media, p.Destination, p.SHA); err != nil {
 		return filecheck.ErrChanged
@@ -510,6 +527,26 @@ func (s *Service) importFile(ctx context.Context, media *os.Root, album importAl
 		return err
 	}
 	defer tx.Rollback()
+	if deduped {
+		// The destination already holds identical content that another
+		// catalog row may still register. Drop that row so the import can
+		// register the destination without violating UNIQUE(relative_path).
+		if _, err := tx.ExecContext(ctx, `DELETE FROM music_files WHERE relative_path=?`, p.Destination); err != nil {
+			return err
+		}
+	} else if aside != "" {
+		// The previous occupant was renamed aside on disk; repoint its
+		// catalog row before registering the destination, otherwise the
+		// UNIQUE(relative_path) constraint fails the import and leaves the
+		// occupant row pointing at a path that now holds the imported file.
+		asideRoot := ""
+		if slash := strings.IndexByte(aside, '/'); slash > 0 {
+			asideRoot = aside[:slash]
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=? WHERE relative_path=?`, aside, asideRoot, p.Destination); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO music_files(artist_id,album_id,track_id,root,relative_path,size_bytes,sha256,format,bitrate,sample_rate,channels,duration_ms,tag_json,imported_at,origin,source_name)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,unixepoch(),'download',?)`,
 		album.ArtistID, album.AlbumID, track.ID, folder, p.Destination, p.Size, p.SHA, p.Tags.Format, p.Tags.Bitrate, p.Tags.SampleRate, p.Tags.Channels, p.Tags.DurationMS, string(tagJSON), path.Base(source)); err != nil {
@@ -607,8 +644,11 @@ func (s *Service) prepareMusicImport(ctx context.Context, media *os.Root, album 
 	}
 	// A conflicting destination is resolved here, once the staged content is
 	// final: differing content is renamed aside under a versioned sibling,
-	// identical content is left for deduplication at publish time.
-	if err := reconcileMusicDestination(ctx, media, p.Destination, p.SHA); err != nil {
+	// identical content is left for deduplication at publish time. The
+	// resolution is recorded on the publication so importFile can reconcile
+	// the catalog rows even across a journal replay.
+	p.Deduped, p.Aside, err = reconcileMusicDestination(ctx, media, p.Destination, p.SHA)
+	if err != nil {
 		return p, err
 	}
 	staged, err := media.OpenFile(p.Stage, os.O_RDWR, 0)

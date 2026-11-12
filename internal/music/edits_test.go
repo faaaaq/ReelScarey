@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -247,6 +248,10 @@ func TestApplyMoveDeduplicatesIdenticalDestination(t *testing.T) {
 	if err := os.WriteFile(destination, []byte("fixture"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// That copy is also registered in the catalog, as it would be after a
+	// previous organize run. The duplicate row must be dropped so this
+	// edit's row can take over the destination path.
+	insertMusicFile(t, db, 2, 3, plan.Files[0].DestinationPath, matchingTags())
 	job, err := service.ApplyEdits(ctx, []int64{1}, plan.PlanHash, true)
 	if err != nil {
 		t.Fatal(err)
@@ -267,6 +272,10 @@ func TestApplyMoveDeduplicatesIdenticalDestination(t *testing.T) {
 	var relative string
 	if err := db.QueryRow(`SELECT relative_path FROM music_files WHERE id=1`).Scan(&relative); err != nil || relative != plan.Files[0].DestinationPath {
 		t.Fatal("catalog path", relative, err)
+	}
+	var total int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM music_files`).Scan(&total); err != nil || total != 1 {
+		t.Fatal("registered duplicate was not deduplicated", total, err)
 	}
 	// Rolling back restores the original registration and removes the shared
 	// destination copy.
@@ -306,6 +315,9 @@ func TestApplyMoveVersionsAsideDifferingDestination(t *testing.T) {
 	if err := os.WriteFile(destination, []byte("occupied"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The occupant is registered in the catalog, as it would be after a
+	// previous organize run; its row must follow the file aside.
+	insertMusicFile(t, db, 2, 3, plan.Files[0].DestinationPath, matchingTags())
 	job, err := service.ApplyEdits(ctx, []int64{1}, plan.PlanHash, true)
 	if err != nil {
 		t.Fatal(err)
@@ -331,6 +343,12 @@ func TestApplyMoveVersionsAsideDifferingDestination(t *testing.T) {
 	if err := db.QueryRow(`SELECT stage_path FROM music_edit_files WHERE job_id=?`, job.ID).Scan(&journal); err != nil || journal != aside {
 		t.Fatal("set-aside rename was not journaled", journal, err)
 	}
+	destRel := plan.Files[0].DestinationPath
+	asideRel := strings.TrimSuffix(destRel, path.Ext(destRel)) + " (2)" + path.Ext(destRel)
+	var occupant string
+	if err := db.QueryRow(`SELECT relative_path FROM music_files WHERE id=2`).Scan(&occupant); err != nil || occupant != asideRel {
+		t.Fatal("occupant row was not repointed to the set-aside path", occupant, err)
+	}
 	// Rolling back restores the move while the set-aside copy of the previous
 	// destination content stays on disk.
 	if _, err := service.RollbackEdits(ctx, job.ID, true); err != nil {
@@ -347,6 +365,11 @@ func TestApplyMoveVersionsAsideDifferingDestination(t *testing.T) {
 	}
 	if err := db.QueryRow(`SELECT relative_path FROM music_files WHERE id=1`).Scan(&relative); err != nil || relative != sourceRel {
 		t.Fatal("rollback path", relative, err)
+	}
+	// Rollback does not undo the set-aside rename: the occupant row keeps
+	// describing the preserved sibling copy.
+	if err := db.QueryRow(`SELECT relative_path FROM music_files WHERE id=2`).Scan(&occupant); err != nil || occupant != asideRel {
+		t.Fatal("rollback disturbed the set-aside occupant row", occupant, err)
 	}
 }
 

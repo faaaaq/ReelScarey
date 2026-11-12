@@ -177,13 +177,10 @@ func TestImportDeduplicatesIdenticalDestination(t *testing.T) {
 	if job.State != "completed" || job.ImportedCount != 2 {
 		t.Fatal("first import job", job)
 	}
-	// Reset the catalog registrations and re-import the same folder. The
-	// destinations already exist with identical content (writeTags is
-	// bitexact), so the re-import must succeed without versioning anything
-	// aside and without duplicating the downloads.
-	if _, err := service.store.db.Exec(`DELETE FROM music_files WHERE album_id=2`); err != nil {
-		t.Fatal(err)
-	}
+	// Re-import the same folder while the identical destinations are still
+	// registered in the catalog (as they are after a normal import). The
+	// duplicate rows must be reconciled instead of tripping the
+	// UNIQUE(relative_path) constraint, and nothing may be versioned aside.
 	job, err = service.StartImport(ctx, 2, "Album", "Music")
 	if err != nil {
 		t.Fatal(err)
@@ -208,6 +205,10 @@ func TestImportDeduplicatesIdenticalDestination(t *testing.T) {
 	if err := service.store.db.QueryRow(`SELECT COUNT(*) FROM music_files WHERE album_id=2`).Scan(&count); err != nil || count != 2 {
 		t.Fatal("registered files", count, err)
 	}
+	var rel string
+	if err := service.store.db.QueryRow(`SELECT relative_path FROM music_files WHERE album_id=2 AND track_id=3`).Scan(&rel); err != nil || rel != "Music/Artist/Album/01 Song.flac" {
+		t.Fatal("re-imported registration", rel, err)
+	}
 }
 
 func TestImportVersionsAsideDifferingDestination(t *testing.T) {
@@ -225,6 +226,9 @@ func TestImportVersionsAsideDifferingDestination(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(albumDir, "01 Song.flac"), []byte("occupied"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The occupant is registered in the catalog; its row must follow the
+	// file aside.
+	insertMusicFile(t, service.store.db, 2, 3, "Music/Artist/Album/01 Song.flac", matchingTags())
 	job, err := service.StartImport(ctx, 2, "Album", "Music")
 	if err != nil {
 		t.Fatal(err)
@@ -241,11 +245,15 @@ func TestImportVersionsAsideDifferingDestination(t *testing.T) {
 	if got, err := os.ReadFile(filepath.Join(albumDir, "01 Song (2).flac")); err != nil || string(got) != "occupied" {
 		t.Fatal("previous destination content was not set aside", got, err)
 	}
+	var occupant string
+	if err := service.store.db.QueryRow(`SELECT relative_path FROM music_files WHERE id=2`).Scan(&occupant); err != nil || occupant != "Music/Artist/Album/01 Song (2).flac" {
+		t.Fatal("occupant row was not repointed to the set-aside path", occupant, err)
+	}
 	if _, err := os.Stat(filepath.Join(source, "01.flac")); err != nil {
 		t.Fatal("download source was modified", err)
 	}
 	var count int
-	if err := service.store.db.QueryRow(`SELECT COUNT(*) FROM music_files WHERE album_id=2`).Scan(&count); err != nil || count != 2 {
+	if err := service.store.db.QueryRow(`SELECT COUNT(*) FROM music_files WHERE album_id=2`).Scan(&count); err != nil || count != 3 {
 		t.Fatal("registered files", count, err)
 	}
 }

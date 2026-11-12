@@ -502,6 +502,8 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		return err
 	}
 	replaced := ""
+	deduped := false
+	aside := ""
 	if dest == source {
 		replaced = sourceRel + ".reelscarey-replaced"
 		if err := media.Link(sourceRel, replaced); err != nil {
@@ -521,7 +523,7 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		}
 		os.Remove(stage)
 	} else {
-		deduped, aside, err := placeMusicStage(ctx, media, destRel, stageRel, editedSHA)
+		deduped, aside, err = placeMusicStage(ctx, media, destRel, stageRel, editedSHA)
 		if aside != "" {
 			// The previous occupant of the destination was renamed aside to
 			// preserve its content. Record the retained sibling in stage_path:
@@ -539,8 +541,8 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		}
 		// A deduplicated destination (identical content) needs no placement:
 		// keep the existing file, drop the staged duplicate, and let the shared
-		// source removal below deduplicate the original.
-		_ = deduped
+		// source removal below deduplicate the original. The catalog
+		// reconciliation below handles a registered duplicate row.
 		os.Remove(stage)
 	}
 	tx, err := s.store.db.BeginTx(ctx, nil)
@@ -553,6 +555,30 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		root = root[:slash]
 	} else {
 		root = ""
+	}
+	if deduped {
+		// The destination already held identical content registered under
+		// another catalog row. Drop that duplicate row so this edit's row can
+		// take over the destination path; the job's journal references this
+		// row, not the duplicate, so rollback stays intact.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM music_files WHERE relative_path=? AND id<>?`, destRel, musicFileID); err != nil {
+			return err
+		}
+	} else if aside != "" {
+		// The previous occupant of the destination was renamed aside on disk.
+		// Repoint its catalog row before this edit's row claims the
+		// destination path, otherwise the UNIQUE(relative_path) constraint
+		// fails the whole job and leaves the occupant row pointing at a path
+		// that now holds the edited content.
+		asideRoot := destRel
+		if slash := strings.IndexByte(aside, '/'); slash > 0 {
+			asideRoot = aside[:slash]
+		} else {
+			asideRoot = ""
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=? WHERE relative_path=? AND id<>?`, aside, asideRoot, destRel, musicFileID); err != nil {
+			return err
+		}
 	}
 	if retag {
 		tagJSON, _ := json.Marshal(verified)
@@ -753,26 +779,29 @@ func linkMusicStage(ctx context.Context, root *os.Root, destRel, stageRel string
 // reconcileMusicDestination prepares an occupied destination before staging is
 // finalized: differing content is renamed aside, identical content is left in
 // place to be deduplicated at publish time. A missing destination is a no-op.
-func reconcileMusicDestination(ctx context.Context, root *os.Root, destRel, stagedSHA string) error {
+// It reports whether the destination already held identical content and the
+// sibling path when an existing file was renamed aside, so the caller can
+// reconcile the catalog rows for the resolved conflict.
+func reconcileMusicDestination(ctx context.Context, root *os.Root, destRel, stagedSHA string) (bool, string, error) {
 	info, err := root.Lstat(destRel)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return false, "", nil
 	}
 	if err != nil {
-		return err
+		return false, "", err
 	}
 	if !info.Mode().IsRegular() {
-		return occupiedDestinationError()
+		return false, "", occupiedDestinationError()
 	}
 	destSHA, _, err := musicDigest(ctx, root, destRel)
 	if err != nil {
-		return occupiedDestinationError()
+		return false, "", occupiedDestinationError()
 	}
 	if destSHA == stagedSHA {
-		return nil
+		return true, "", nil
 	}
-	_, err = setAsideOccupiedMusicDestination(root, destRel)
-	return err
+	aside, err := setAsideOccupiedMusicDestination(root, destRel)
+	return false, aside, err
 }
 
 // placeMusicStage publishes staged content at destRel, resolving conflicts:
