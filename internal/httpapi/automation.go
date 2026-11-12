@@ -23,7 +23,7 @@ func (s *Server) automationError(w http.ResponseWriter, err error) {
 	if errors.As(err, &p) {
 		status := 400
 		switch p.Code {
-		case "invalid_automation":
+		case "invalid_automation", "invalid_selection":
 		case "not_found":
 			status = 404
 		default:
@@ -127,7 +127,8 @@ func (s *Server) automationRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 // automationSearchItem starts a focused automatic search for one title after
-// an explicit owner action on a library page.
+// an explicit owner action on a library page. The scope is the whole show,
+// one season (season, with no episode_id) or one episode (episode_id).
 func (s *Server) automationSearchItem(w http.ResponseWriter, r *http.Request) {
 	if !s.automationReady(w) {
 		return
@@ -135,6 +136,7 @@ func (s *Server) automationSearchItem(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		MediaID   int64  `json:"media_id"`
 		EpisodeID *int64 `json:"episode_id"`
+		Season    *int   `json:"season"`
 	}
 	if !decodeJSON(w, r, &in) {
 		return
@@ -143,7 +145,11 @@ func (s *Server) automationSearchItem(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "invalid_selection", "Choose a saved title.")
 		return
 	}
-	if e := s.automation.RequestItem(r.Context(), in.MediaID, in.EpisodeID); e != nil {
+	if in.EpisodeID != nil && in.Season != nil {
+		fail(w, 400, "invalid_selection", "Choose one scope: the show, one season or one episode.")
+		return
+	}
+	if e := s.automation.RequestItem(r.Context(), in.MediaID, in.EpisodeID, in.Season); e != nil {
 		s.automationError(w, e)
 		return
 	}

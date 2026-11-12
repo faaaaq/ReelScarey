@@ -148,7 +148,7 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	if created && item.Monitored && s.automation != nil {
 		// The show-level focus searches every loaded, missing monitored episode
 		// using the saved automatic-search mode.
-		if e := s.automation.RequestItem(r.Context(), item.ID, nil); e != nil {
+		if e := s.automation.RequestItem(r.Context(), item.ID, nil, nil); e != nil {
 			s.logger.Warn("automatic search after show add was not requested", "series", item.ID, "error", e)
 		}
 	}
@@ -277,8 +277,11 @@ func (s *Server) unlinkEpisodeFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	deleteFile := body.DeleteFile != nil && *body.DeleteFile
+	// RemoveEpisodeFile reports user-facing failures as *transfer.Error with
+	// their own codes and messages; transferError maps those to the right
+	// HTTP statuses instead of surfacing a generic 500.
 	if e = s.transfer.RemoveEpisodeFile(r.Context(), id, body.Revision, episode, deleteFile); e != nil {
-		s.tvError(w, e)
+		s.transferError(w, e)
 		return
 	}
 	s.sendSeries(w, r, id)

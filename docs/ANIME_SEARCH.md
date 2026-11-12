@@ -181,10 +181,16 @@ selection.
 
 The rule is global and editable on the Anime library page. It accepts one term
 per line: `/regex/i` for a case-insensitive regular expression, or a plain
-case-insensitive phrase. A release matches when any term matches. The default
-covers `[English Dub]`, `[Eng Dub]`, `FuniDub`, `Dual Audio`/`Dual-Audio` and
-`[Dual]`. Invalid regexes are refused before saving, and the page includes a
-test box for a sample release title.
+case-insensitive phrase. A line prefixed with `!` is an exclusion: a release
+whose title matches any exclusion line is rejected, even when a positive term
+also matches, so a release matches when a positive term matches and no
+exclusion matches. The default covers `[English Dub]`, `[Eng Dub]`, `FuniDub`,
+`Dual Audio`/`Dual-Audio` and `[Dual]`, and excludes titles naming other dub
+languages (French, Spanish, Portuguese, German, Italian, Korean, Chinese and
+Russian); titles naming only English and Japanese still match. Migration 093
+upgrades the seeded default rule with the exclusion lines and leaves a
+customized rule exactly as saved. Invalid regexes are refused before saving,
+and the page includes a test box for a sample release title.
 
 The Anime page also has **Enable for all anime** and **Disable for all anime**
 actions. They are reviewed, apply to every Anime show, and bump each show's

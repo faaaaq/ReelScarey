@@ -67,7 +67,7 @@ func scanTarget(row interface{ Scan(...any) error }) (searchTarget, error) {
 	}
 	return t, e
 }
-func (s *Service) targets(ctx context.Context, cursor string, limit int, focusMedia, focusEpisode, focusKind string) ([]searchTarget, error) {
+func (s *Service) targets(ctx context.Context, cursor string, limit int, focusMedia, focusEpisode string, focusSeason int, focusKind string) ([]searchTarget, error) {
 	date := s.now().Format("2006-01-02")
 	out := []searchTarget{}
 	filter := ""
@@ -88,6 +88,12 @@ func (s *Service) targets(ctx context.Context, cursor string, limit int, focusMe
 		filter += " AND episode_id=?"
 		args = append(args, id)
 	}
+	if focusSeason > 0 {
+		// A season focus is always requested together with a show focus;
+		// the outer projection exposes the season number for both kinds.
+		filter += " AND season=?"
+		args = append(args, focusSeason)
+	}
 	switch focusKind {
 	case "movie":
 		filter += " AND episode_id IS NULL"
@@ -101,7 +107,7 @@ func (s *Service) targets(ctx context.Context, cursor string, limit int, focusMe
 	// wrap-around below keeps the ordinary cycle full, but re-searching a
 	// focused target after its turn would leave a search-only request running
 	// forever because a missing item can never be satisfied.
-	focused := focusMedia != "" || focusEpisode != "" || focusKind != ""
+	focused := focusMedia != "" || focusEpisode != "" || focusSeason > 0 || focusKind != ""
 	for pass := 0; pass < 2 && len(out) < limit; pass++ {
 		suffix := ` WHERE key>?` + filter + ` ORDER BY key LIMIT ?`
 		args2 := append([]any{date, boolInt(focused), cursor}, args...)
@@ -138,8 +144,8 @@ func (s *Service) targets(ctx context.Context, cursor string, limit int, focusMe
 // focusRemaining counts the focused targets the current pass has not visited
 // yet, so a title or bulk search continues across batches exactly once and
 // then stops instead of re-searching targets that cannot be satisfied.
-func (s *Service) focusRemaining(ctx context.Context, cursor, focusMedia, focusEpisode, focusKind string) (int, error) {
-	if focusMedia == "" && focusEpisode == "" && focusKind == "" {
+func (s *Service) focusRemaining(ctx context.Context, cursor, focusMedia, focusEpisode string, focusSeason int, focusKind string) (int, error) {
+	if focusMedia == "" && focusEpisode == "" && focusSeason == 0 && focusKind == "" {
 		return 0, nil
 	}
 	date := s.now().Format("2006-01-02")
@@ -160,6 +166,10 @@ func (s *Service) focusRemaining(ctx context.Context, cursor, focusMedia, focusE
 		}
 		filter += ` AND episode_id=?`
 		args = append(args, id)
+	}
+	if focusSeason > 0 {
+		filter += ` AND season=?`
+		args = append(args, focusSeason)
 	}
 	switch focusKind {
 	case "movie":
@@ -346,35 +356,37 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 	// backoff delay.
 	requestedOut := state == "retrying" || (state == "interrupted" && c.Requested)
 	focusMedia, focusEpisode, focusKind := "", "", ""
+	focusSeason := 0
 	var pendingRequested bool
 	var pendingFocusMedia, pendingFocusEpisode, pendingFocusKind, pendingCursor string
-	_ = s.db.QueryRowContext(finish, `SELECT requested,focus_media,focus_episode,focus_kind,cursor FROM search_schedule WHERE id=1`).Scan(&pendingRequested, &pendingFocusMedia, &pendingFocusEpisode, &pendingFocusKind, &pendingCursor)
+	var pendingFocusSeason int
+	_ = s.db.QueryRowContext(finish, `SELECT requested,focus_media,focus_episode,focus_season,focus_kind,cursor FROM search_schedule WHERE id=1`).Scan(&pendingRequested, &pendingFocusMedia, &pendingFocusEpisode, &pendingFocusSeason, &pendingFocusKind, &pendingCursor)
 	cursorOut := pendingCursor
 	if !requestedOut && pendingRequested && !c.Requested {
 		requestedOut = true
 	}
-	if !requestedOut && c.Requested && (pendingFocusMedia != c.FocusMedia || pendingFocusEpisode != c.FocusEpisode || pendingFocusKind != c.FocusKind) {
+	if !requestedOut && c.Requested && (pendingFocusMedia != c.FocusMedia || pendingFocusEpisode != c.FocusEpisode || pendingFocusSeason != c.FocusSeason || pendingFocusKind != c.FocusKind) {
 		requestedOut = true
 	}
 	// A finished focused run continues immediately while focused targets
 	// remain; once none are left it returns to the saved cadence. The pass is
 	// bounded by the cursor, so targets that stay missing are visited once.
-	focused := c.FocusMedia != "" || c.FocusEpisode != "" || c.FocusKind != ""
+	focused := c.FocusMedia != "" || c.FocusEpisode != "" || c.FocusSeason > 0 || c.FocusKind != ""
 	if !requestedOut && c.Requested && focused && state != "retrying" && state != "interrupted" {
-		if remaining, e := s.focusRemaining(finish, pendingCursor, c.FocusMedia, c.FocusEpisode, c.FocusKind); e == nil && remaining > 0 {
+		if remaining, e := s.focusRemaining(finish, pendingCursor, c.FocusMedia, c.FocusEpisode, c.FocusSeason, c.FocusKind); e == nil && remaining > 0 {
 			requestedOut = true
 		}
 	}
 	if requestedOut {
-		if pendingFocusMedia != "" || pendingFocusEpisode != "" || pendingFocusKind != "" {
-			if pendingFocusMedia != c.FocusMedia || pendingFocusEpisode != c.FocusEpisode || pendingFocusKind != c.FocusKind {
+		if pendingFocusMedia != "" || pendingFocusEpisode != "" || pendingFocusSeason != 0 || pendingFocusKind != "" {
+			if pendingFocusMedia != c.FocusMedia || pendingFocusEpisode != c.FocusEpisode || pendingFocusSeason != c.FocusSeason || pendingFocusKind != c.FocusKind {
 				// A newly requested focus starts its own single pass from the
 				// beginning; the previous run may have moved the cursor.
 				cursorOut = ""
 			}
-			focusMedia, focusEpisode, focusKind = pendingFocusMedia, pendingFocusEpisode, pendingFocusKind
+			focusMedia, focusEpisode, focusSeason, focusKind = pendingFocusMedia, pendingFocusEpisode, pendingFocusSeason, pendingFocusKind
 		} else {
-			focusMedia, focusEpisode, focusKind = c.FocusMedia, c.FocusEpisode, c.FocusKind
+			focusMedia, focusEpisode, focusSeason, focusKind = c.FocusMedia, c.FocusEpisode, c.FocusSeason, c.FocusKind
 		}
 		if state != "retrying" {
 			next = s.now().Unix()
@@ -391,7 +403,7 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 	if _, err = tx.ExecContext(finish, `UPDATE automation_runs SET finished_at=?,state=?,message=? WHERE id=? AND state='running'`, s.now().Unix(), state, message, c.ID); err != nil {
 		return true, err
 	}
-	if _, err = tx.ExecContext(finish, `UPDATE search_schedule SET next_run=?,requested=?,focus_media=?,focus_episode=?,focus_kind=?,cursor=?,attempts=?,state=?,message=?,lease_owner='',lease_until=0 WHERE id=1 AND lease_owner=? AND revision=?`, next, boolInt(requestedOut), focusMedia, focusEpisode, focusKind, cursorOut, attempts, state, message, c.ID, c.Revision); err != nil {
+	if _, err = tx.ExecContext(finish, `UPDATE search_schedule SET next_run=?,requested=?,focus_media=?,focus_episode=?,focus_season=?,focus_kind=?,cursor=?,attempts=?,state=?,message=?,lease_owner='',lease_until=0 WHERE id=1 AND lease_owner=? AND revision=?`, next, boolInt(requestedOut), focusMedia, focusEpisode, focusSeason, focusKind, cursorOut, attempts, state, message, c.ID, c.Revision); err != nil {
 		return true, err
 	}
 	// A changed schedule keeps its new intent, but releases this worker's lease.
@@ -421,7 +433,7 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 	if c.Mode == "download" && !client.Configured {
 		return "waiting_client", "Connect qBittorrent or SABnzbd before automatic downloads can start.", nil
 	}
-	targets, e := s.targets(ctx, c.Cursor, c.Batch, c.FocusMedia, c.FocusEpisode, c.FocusKind)
+	targets, e := s.targets(ctx, c.Cursor, c.Batch, c.FocusMedia, c.FocusEpisode, c.FocusSeason, c.FocusKind)
 	if e != nil {
 		return "", "", e
 	}
@@ -597,10 +609,16 @@ func (s *Service) process(ctx context.Context, c claim) (string, string, error) 
 
 // packSeasons lists seasons with at least two eligible missing standard
 // episodes, so a focused show search can try one season pack before falling
-// back to individual episodes.
-func (s *Service) packSeasons(ctx context.Context, mediaID int64) ([]int, error) {
+// back to individual episodes. A season-scoped focus restricts the list to
+// that one season so its pack is still considered.
+func (s *Service) packSeasons(ctx context.Context, mediaID int64, focusSeason int) ([]int, error) {
 	date := s.now().Format("2006-01-02")
-	rows, e := s.db.QueryContext(ctx, `SELECT season FROM (`+targetSQL+`) WHERE media_id=? AND category='standard' AND season>0 AND episode_id IS NOT NULL GROUP BY season HAVING COUNT(*)>1 ORDER BY season`, date, 1, mediaID)
+	filter, args := ``, []any{date, 1, mediaID}
+	if focusSeason > 0 {
+		filter = ` AND season=?`
+		args = append(args, focusSeason)
+	}
+	rows, e := s.db.QueryContext(ctx, `SELECT season FROM (`+targetSQL+`) WHERE media_id=? AND category='standard' AND season>0 AND episode_id IS NOT NULL`+filter+` GROUP BY season HAVING COUNT(*)>1 ORDER BY season`, args...)
 	if e != nil {
 		return nil, e
 	}
@@ -642,7 +660,7 @@ func (s *Service) processPacks(ctx context.Context, c claim, covered map[int64]b
 	if e != nil {
 		return e
 	}
-	seasons, e := s.packSeasons(ctx, mediaID)
+	seasons, e := s.packSeasons(ctx, mediaID, c.FocusSeason)
 	if e != nil {
 		return e
 	}

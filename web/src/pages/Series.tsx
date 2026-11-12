@@ -6,6 +6,7 @@ import {
   ListChecks,
   RefreshCw,
   FileX,
+  Search,
   SearchCheck,
   Settings2,
 } from "lucide-react";
@@ -41,6 +42,7 @@ import {
   useItemSearch,
 } from "./details/ItemSearch";
 import { bulkSearchMessage, useBulkSearch } from "./details/bulkSearch";
+import { ReleaseSearchModal } from "./details/ReleaseSearchModal";
 import { AnimeSettings } from "./AnimeSettings";
 import { AnimeSearch } from "./AnimeSearch";
 import { AnimeOrder } from "./AnimeOrder";
@@ -104,6 +106,13 @@ function seasonOrder(a: TVSeason, b: TVSeason) {
   return b.number - a.number;
 }
 
+type ReleaseSearchScope = {
+  season: number;
+  seasonTitle: string;
+  episode?: number;
+  episodeTitle?: string;
+};
+
 function SeriesView({ initial }: { initial: TVSeries }) {
   const [show, setShow] = useState(initial);
   const [expanded, setExpanded] = useState<number[]>([]);
@@ -111,6 +120,9 @@ function SeriesView({ initial }: { initial: TVSeries }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [releaseSearch, setReleaseSearch] = useState<ReleaseSearchScope | null>(
+    null,
+  );
   const details = useItemDetails(show.id);
   const firstRevision = useRef(show.revision);
   const base = `/library/series/${show.id}`;
@@ -500,6 +512,14 @@ function SeriesView({ initial }: { initial: TVSeries }) {
                             onEpisodeSearch={(episodeID) =>
                               itemSearch.trigger(show.id, episodeID)
                             }
+                            onSeasonSearch={(seasonNumber) =>
+                              itemSearch.trigger(
+                                show.id,
+                                undefined,
+                                seasonNumber,
+                              )
+                            }
+                            onOpenReleaseSearch={setReleaseSearch}
                             onRemoveFile={removeFile}
                           />
                         ))}
@@ -578,6 +598,20 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           ]}
         />
       </PageBody>
+      {releaseSearch && (
+        <ReleaseSearchModal
+          open
+          onOpenChange={(o) => {
+            if (!o) setReleaseSearch(null);
+          }}
+          seriesID={show.id}
+          seriesTitle={show.title}
+          season={releaseSearch.season}
+          seasonTitle={releaseSearch.seasonTitle}
+          episode={releaseSearch.episode}
+          episodeTitle={releaseSearch.episodeTitle}
+        />
+      )}
     </>
   );
 }
@@ -603,6 +637,8 @@ function SeasonBlock({
   onSelect,
   searchPending,
   onEpisodeSearch,
+  onSeasonSearch,
+  onOpenReleaseSearch,
   onRemoveFile,
 }: {
   show: TVSeries;
@@ -617,6 +653,8 @@ function SeasonBlock({
   onSelect: (checked: boolean) => void;
   searchPending: boolean;
   onEpisodeSearch: (episodeID: number) => void;
+  onSeasonSearch: (seasonNumber: number) => void;
+  onOpenReleaseSearch: (scope: ReleaseSearchScope) => void;
   onRemoveFile?: (episodeID: number, code: string, filePath: string) => void;
 }) {
   const panelID = `season-${season.id}`;
@@ -670,10 +708,32 @@ function SeasonBlock({
             show.monitored &&
             season.monitored &&
             season.selected_episodes > 0 && (
-              <IconLink
-                to={`/releases?series=${show.id}&season=${season.number}`}
-                label={`Search ${season.title}`}
-              />
+              <>
+                <button
+                  type="button"
+                  className="det-icon-link"
+                  aria-label={`Automatic search for ${season.title}`}
+                  title="Automatic search now: download mode queues the best match, search-only mode saves results for review"
+                  disabled={searchPending}
+                  onClick={() => onSeasonSearch(season.number)}
+                >
+                  <SearchCheck size={16} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="det-icon-link"
+                  aria-label={`Search releases for ${season.title}`}
+                  title="Search releases for this season now"
+                  onClick={() =>
+                    onOpenReleaseSearch({
+                      season: season.number,
+                      seasonTitle: season.title,
+                    })
+                  }
+                >
+                  <Search size={16} aria-hidden="true" />
+                </button>
+              </>
             )}
         </div>
       </div>
@@ -688,6 +748,7 @@ function SeasonBlock({
             update={update}
             searchPending={searchPending}
             onEpisodeSearch={onEpisodeSearch}
+            onOpenReleaseSearch={onOpenReleaseSearch}
             onRemoveFile={onRemoveFile}
           />
         </div>
@@ -704,6 +765,7 @@ function SeasonEpisodes({
   attempt,
   searchPending,
   onEpisodeSearch,
+  onOpenReleaseSearch,
   onRemoveFile,
 }: {
   show: TVSeries;
@@ -713,6 +775,7 @@ function SeasonEpisodes({
   attempt: number;
   searchPending: boolean;
   onEpisodeSearch: (episodeID: number) => void;
+  onOpenReleaseSearch: (scope: ReleaseSearchScope) => void;
   onRemoveFile?: (episodeID: number, code: string, filePath: string) => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -954,10 +1017,22 @@ function SeasonEpisodes({
                             >
                               <SearchCheck size={16} aria-hidden="true" />
                             </button>
-                            <IconLink
-                              to={`/releases?series=${show.id}&season=${season.number}&episode=${e.number}`}
-                              label={`Search for ${episodeCode(season.number, e.number)} ${e.title}`}
-                            />
+                            <button
+                              type="button"
+                              className="det-icon-link"
+                              aria-label={`Search releases for ${episodeCode(season.number, e.number)} ${e.title}`}
+                              title="Search releases for this episode now"
+                              onClick={() =>
+                                onOpenReleaseSearch({
+                                  season: season.number,
+                                  seasonTitle: season.title,
+                                  episode: e.number,
+                                  episodeTitle: e.title,
+                                })
+                              }
+                            >
+                              <Search size={16} aria-hidden="true" />
+                            </button>
                           </>
                         )}
                         {e.available && e.file_id && (

@@ -696,7 +696,7 @@ func (s *Server) compatCommand(ctx context.Context, w http.ResponseWriter, r *ht
 				s.internal(w, "compat_refresh_movie", err)
 				return
 			}
-		} else if err := s.automation.RequestItem(ctx, body.MovieID, nil); err != nil {
+		} else if err := s.automation.RequestItem(ctx, body.MovieID, nil, nil); err != nil {
 			fail(w, 409, "command_failed", err.Error())
 			return
 		}
@@ -719,7 +719,7 @@ func (s *Server) compatCommand(ctx context.Context, w http.ResponseWriter, r *ht
 				fail(w, 400, "invalid_episode", "EpisodeSearch requires a valid episodeId.")
 				return
 			}
-			if err := s.automation.RequestItem(ctx, body.SeriesID, &body.EpisodeID); err != nil {
+			if err := s.automation.RequestItem(ctx, body.SeriesID, &body.EpisodeID, nil); err != nil {
 				fail(w, 409, "command_failed", err.Error())
 				return
 			}

@@ -425,7 +425,7 @@ func (idx *rssIndex) hasFile(t searchTarget) bool {
 const rssTargetLimit = 20000
 
 func (s *Service) rssTargets(ctx context.Context) (rssIndex, error) {
-	targets, e := s.targets(ctx, "", rssTargetLimit, "", "", "")
+	targets, e := s.targets(ctx, "", rssTargetLimit, "", "", 0, "")
 	if e != nil {
 		return rssIndex{}, e
 	}

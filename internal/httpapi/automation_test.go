@@ -176,3 +176,77 @@ func TestAutomationAPIRequiresAuthCSRFAndRevisions(t *testing.T) {
 		t.Fatal("assignment conflict ignored", w.Code)
 	}
 }
+
+// TestAutomationSearchItemSeasonScope covers the season scope of the focused
+// search-item endpoint: one saved season requests a scoped run, foreign
+// seasons are refused and the season scope cannot be combined with an
+// episode scope.
+func TestAutomationSearchItemSeasonScope(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, e := database.Open(ctx, dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	accounts, e := auth.New(ctx, db, dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw, e := securestore.SecretFile(filepath.Join(dir, "setup-token"), 32, false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	session, e := accounts.Setup(ctx, "testadmin", "test-only-password", base64.RawURLEncoding.EncodeToString(raw))
+	if e != nil {
+		t.Fatal(e)
+	}
+	h := New(db, config.Config{PublicURL: "http://example.com"}, slog.New(slog.NewTextHandler(io.Discard, nil)), fstest.MapFS{"index.html": {Data: []byte("test")}}, "test", Dependencies{Auth: accounts, Automation: automation.New(db, nil)})
+	request := func(method, path, body string, authenticated, csrf bool) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "http://example.com/api/v1"+path, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Origin", "http://example.com")
+		if authenticated {
+			r.AddCookie(&http.Cookie{Name: cookieName, Value: session.Token})
+		}
+		if csrf {
+			r.Header.Set("X-CSRF-Token", session.CSRFToken)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if _, e = db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title) VALUES(50,'series',50,'Season scope show')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`INSERT INTO series_details(media_id) VALUES(50)`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`INSERT INTO seasons(id,series_id,tmdb_id,number,title,overview,air_date,episode_count) VALUES(1,50,51,1,'Season 1','','',1),(2,50,52,2,'Season 2','','',1)`); e != nil {
+		t.Fatal(e)
+	}
+	if w := request("POST", "/automation/search-item", `{"media_id":50,"season":2}`, true, true); w.Code != 202 || !strings.Contains(w.Body.String(), `"requested":true`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var focusMedia string
+	var focusEpisode string
+	var focusSeason int
+	if e = db.QueryRow(`SELECT focus_media,focus_episode,focus_season FROM search_schedule WHERE id=1`).Scan(&focusMedia, &focusEpisode, &focusSeason); e != nil || focusMedia != "50" || focusEpisode != "" || focusSeason != 2 {
+		t.Fatal("the season-focused search was not recorded", focusMedia, focusEpisode, focusSeason, e)
+	}
+	if w := request("POST", "/automation/search-item", `{"media_id":50,"season":9}`, true, true); w.Code != 400 || !strings.Contains(w.Body.String(), "invalid_selection") {
+		t.Fatal("foreign season accepted", w.Code, w.Body.String())
+	}
+	if e = db.QueryRow(`SELECT focus_season FROM search_schedule WHERE id=1`).Scan(&focusSeason); e != nil || focusSeason != 2 {
+		t.Fatal("rejected season changed the schedule", focusSeason, e)
+	}
+	if w := request("POST", "/automation/search-item", `{"media_id":50,"season":1,"episode_id":1}`, true, true); w.Code != 400 || !strings.Contains(w.Body.String(), "invalid_selection") {
+		t.Fatal("combined season and episode scopes accepted", w.Code, w.Body.String())
+	}
+	if w := request("POST", "/automation/search-item", `{"media_id":50,"season":1}`, true, true); w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if e = db.QueryRow(`SELECT focus_season FROM search_schedule WHERE id=1`).Scan(&focusSeason); e != nil || focusSeason != 1 {
+		t.Fatal("the season focus was not updated", focusSeason, e)
+	}
+}

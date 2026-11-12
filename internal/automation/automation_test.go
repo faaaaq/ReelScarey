@@ -495,23 +495,23 @@ func TestBoundedCursorSearchesMissingMoviesAndReleasedTVEpisodes(t *testing.T) {
 	}
 	// Every monitored missing movie is eligible, including one whose saved
 	// release date is in the future; unreleased or undated episodes are not.
-	targets, e := f.s.targets(ctx, "", 25, "", "", "")
+	targets, e := f.s.targets(ctx, "", 25, "", "", 0, "")
 	if e != nil || len(targets) != 4 || targets[0].EpisodeID == nil {
 		t.Fatal(targets, e)
 	}
 	cursor := targets[0].Key
-	rotated, e := f.s.targets(ctx, cursor, 2, "", "", "")
+	rotated, e := f.s.targets(ctx, cursor, 2, "", "", 0, "")
 	if e != nil || len(rotated) != 2 || rotated[0].MediaID != 1 || rotated[1].MediaID != 2 {
 		t.Fatal(rotated, e)
 	}
-	wrapped, e := f.s.targets(ctx, rotated[1].Key, 2, "", "", "")
+	wrapped, e := f.s.targets(ctx, rotated[1].Key, 2, "", "", 0, "")
 	if e != nil || len(wrapped) != 2 || wrapped[0].MediaID != 4 || wrapped[1].EpisodeID == nil {
 		t.Fatal(wrapped, e)
 	}
 	if _, e = f.db.Exec(`UPDATE seasons SET monitored=0 WHERE id=1`); e != nil {
 		t.Fatal(e)
 	}
-	targets, e = f.s.targets(ctx, "", 25, "", "", "")
+	targets, e = f.s.targets(ctx, "", 25, "", "", 0, "")
 	if e != nil || len(targets) != 3 {
 		t.Fatal(targets, e)
 	}
@@ -683,7 +683,7 @@ func TestItemSearchScopesTheRunAndContinuesAcrossBatches(t *testing.T) {
 		t.Fatal(e)
 	}
 	configure(t, f.s, true, "download", 10)
-	if e := f.s.RequestItem(ctx, 1, nil); e != nil {
+	if e := f.s.RequestItem(ctx, 1, nil, nil); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := f.s.ProcessNext(ctx); e != nil {
@@ -718,7 +718,7 @@ func TestItemSearchScopesTheRunAndContinuesAcrossBatches(t *testing.T) {
 	if _, e = f2.s.Update(ctx, Update{Enabled: true, Mode: "download", Interval: 15, Batch: 1, DefaultProfile: 1, Revision: v.Revision}); e != nil {
 		t.Fatal(e)
 	}
-	if e = f2.s.RequestItem(ctx, 5, nil); e != nil {
+	if e = f2.s.RequestItem(ctx, 5, nil, nil); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = f2.s.ProcessNext(ctx); e != nil {
@@ -1000,7 +1000,7 @@ func TestShowSearchQueuesOneSeasonPackBeforeEpisodes(t *testing.T) {
 		return "Pack.Show.S01.1080p.English.WEB"
 	}
 	configure(t, f.s, false, "download", 1)
-	if e := f.s.RequestItem(ctx, 5, nil); e != nil {
+	if e := f.s.RequestItem(ctx, 5, nil, nil); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := f.s.ProcessNext(ctx); e != nil {

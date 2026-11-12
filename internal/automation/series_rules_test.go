@@ -54,7 +54,7 @@ func TestRuleChangeFencesQueuedAutomaticSelection(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	targets, e := f.s.targets(ctx, "", 10, "", "", "")
+	targets, e := f.s.targets(ctx, "", 10, "", "", 0, "")
 	if e != nil || len(targets) == 0 || !targets[0].TV {
 		t.Fatal(targets, e)
 	}

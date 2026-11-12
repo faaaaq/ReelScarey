@@ -3,6 +3,7 @@ import { Loader2, SearchCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, messageFor } from "../../api";
 import { Alert, ToolbarButton, ToolbarSection } from "../../ui";
+import { type RunSummary } from "./bulkSearch";
 
 export type ItemSearchResult = {
   outcome: string;
@@ -11,27 +12,65 @@ export type ItemSearchResult = {
   started_at?: number;
 };
 
+/** Summarise a finished scheduled run with the shared alert outcomes. */
+function runToResult(run: RunSummary): ItemSearchResult {
+  const message = (run.message ?? "").trim();
+  if (run.queued > 0) {
+    return {
+      outcome: "queued",
+      message:
+        message ||
+        `Queued ${run.queued} download${run.queued === 1 ? "" : "s"}.`,
+    };
+  }
+  if ((run.matched ?? 0) > 0) {
+    return {
+      outcome: "match",
+      message:
+        message ||
+        `Found ${run.matched} matching release${run.matched === 1 ? "" : "s"}. Open Automation to review them.`,
+    };
+  }
+  if (run.state === "completed") {
+    return {
+      outcome: "no_match",
+      message: message || "No matching release was found.",
+    };
+  }
+  return {
+    outcome: "needs_attention",
+    message:
+      message ||
+      "The search run did not complete normally. Check Automation for details.",
+  };
+}
+
 /**
  * Triggers the focused automatic search for one title (and optionally one
- * episode) and follows its recorded outcome. The run itself is the same
- * scheduled pipeline: download mode queues the best matching release,
- * search-only mode records candidates for review in Automation.
+ * episode or one season) and follows its recorded outcome. The run itself is
+ * the same scheduled pipeline: download mode queues the best matching
+ * release, search-only mode records candidates for review in Automation.
+ * Episode searches are followed through /automation/item-results; season
+ * searches have no single-item endpoint, so they are followed through the
+ * scheduled run list.
  */
 export function useItemSearch() {
   const [pending, setPending] = useState<{
     mediaID: number;
     episodeID?: number;
+    season?: number;
   } | null>(null);
   const [result, setResult] = useState<ItemSearchResult | null>(null);
   const startedAt = useRef(0);
   const attempt = useRef(0);
+  const baselineRun = useRef<string | null>(null);
 
   const stop = useCallback(() => {
     setPending(null);
     attempt.current = 0;
   }, []);
 
-  const poll = useCallback(
+  const episodePoll = useCallback(
     (target: { mediaID: number; episodeID?: number }) => {
       const query = new URLSearchParams({
         media_id: String(target.mediaID),
@@ -65,6 +104,54 @@ export function useItemSearch() {
     [stop],
   );
 
+  const runPoll = useCallback(
+    (_target: { mediaID: number; season: number }) => {
+      api<{ items: RunSummary[] }>("/automation/runs")
+        .then((out) => {
+          if (attempt.current > 40) {
+            setResult({
+              outcome: "timeout",
+              message:
+                "The search is still running or has not recorded a result. Check Automation.",
+            });
+            stop();
+            return;
+          }
+          // Only the run created by this request is summarised; the baseline
+          // run that existed before the trigger is ignored.
+          const fresh = (out.items ?? []).filter(
+            (run) =>
+              run.id !== baselineRun.current &&
+              run.started_at >= startedAt.current - 2,
+          );
+          const active = fresh.some(
+            (run) => run.state === "running" || run.state === "scheduled",
+          );
+          if (!active && fresh.length > 0) {
+            setResult(runToResult(fresh[0]));
+            stop();
+            return;
+          }
+          attempt.current += 1;
+        })
+        .catch(() => {
+          attempt.current += 1;
+        });
+    },
+    [stop],
+  );
+
+  const poll = useCallback(
+    (target: { mediaID: number; episodeID?: number; season?: number }) => {
+      if (target.season !== undefined && target.episodeID === undefined) {
+        runPoll({ mediaID: target.mediaID, season: target.season });
+        return;
+      }
+      episodePoll({ mediaID: target.mediaID, episodeID: target.episodeID });
+    },
+    [episodePoll, runPoll],
+  );
+
   useEffect(() => {
     if (!pending) return;
     const timer = window.setInterval(() => poll(pending), 3000);
@@ -72,26 +159,44 @@ export function useItemSearch() {
   }, [pending, poll]);
 
   const trigger = useCallback(
-    (mediaID: number, episodeID?: number) => {
+    (mediaID: number, episodeID?: number, seasonNumber?: number) => {
       if (pending) return;
-      setPending({ mediaID, episodeID });
+      const target = { mediaID, episodeID, season: seasonNumber };
+      setPending(target);
       setResult(null);
       startedAt.current = Math.floor(Date.now() / 1000);
       attempt.current = 0;
-      api("/automation/search-item", {
+      const request = api("/automation/search-item", {
         method: "POST",
         body: JSON.stringify({
           media_id: mediaID,
           ...(episodeID ? { episode_id: episodeID } : {}),
+          ...(seasonNumber !== undefined ? { season: seasonNumber } : {}),
         }),
-      })
-        .then(() => poll({ mediaID, episodeID }))
+      });
+      if (seasonNumber !== undefined && episodeID === undefined) {
+        // Remember which run was newest so only the new one is summarised.
+        api<{ items: RunSummary[] }>("/automation/runs")
+          .catch(() => ({ items: [] as RunSummary[] }))
+          .then((out) => {
+            baselineRun.current = out.items?.[0]?.id ?? null;
+            return request;
+          })
+          .then(() => runPoll({ mediaID, season: seasonNumber }))
+          .catch((e) => {
+            setResult({ outcome: "error", message: messageFor(e) });
+            stop();
+          });
+        return;
+      }
+      request
+        .then(() => episodePoll({ mediaID, episodeID }))
         .catch((e) => {
           setResult({ outcome: "error", message: messageFor(e) });
           stop();
         });
     },
-    [pending, stop],
+    [pending, stop, episodePoll, runPoll],
   );
 
   return { trigger, pending, result, reset: () => setResult(null) };

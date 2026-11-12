@@ -33,6 +33,21 @@ func TestAnimePreferencesAndEnglishDubToggle(t *testing.T) {
 	if _, err = store.SaveAnimePreferences(ctx, AnimePreferences{DubRule: "Custom Dub", Revision: prefs.Revision}); err == nil {
 		t.Fatal("stale rule revision accepted")
 	}
+	// A rule with !-prefixed exclusion lines round-trips and still validates.
+	saved, err = store.SaveAnimePreferences(ctx, AnimePreferences{DubRule: "Dual Audio\n!french", Revision: saved.Revision})
+	if err != nil || saved.DubRule != "Dual Audio\n!french" {
+		t.Fatal("exclusion rule round trip", saved, err)
+	}
+	rule, err := quality.ParseDubRule(saved.DubRule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rule.Matches("Show S01E01 Dual Audio") || rule.Matches("Show S01E01 Dual Audio French") {
+		t.Fatal("saved exclusion rule did not fence other-language releases")
+	}
+	if _, err = store.SaveAnimePreferences(ctx, AnimePreferences{DubRule: "Dual Audio\n!", Revision: saved.Revision}); err == nil {
+		t.Fatal("lone exclusion accepted")
+	}
 	count, err := store.SetAllAnimeEnglishDub(ctx, true)
 	if err != nil || count != 1 {
 		t.Fatal("bulk enable", count, err)

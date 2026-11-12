@@ -64,6 +64,7 @@ type Schedule struct {
 	Requested        bool   `json:"requested"`
 	FocusMedia       string `json:"focus_media"`
 	FocusEpisode     string `json:"focus_episode"`
+	FocusSeason      int    `json:"focus_season"`
 	FocusKind        string `json:"focus_kind"`
 	State            string `json:"state"`
 	Message          string `json:"message"`
@@ -71,11 +72,11 @@ type Schedule struct {
 	ClientConnected  bool   `json:"client_connected"`
 }
 
-const scheduleColumns = `enabled,mode,interval_minutes,batch_size,default_profile_id,revision,next_run,requested,focus_media,focus_episode,focus_kind,state,message`
+const scheduleColumns = `enabled,mode,interval_minutes,batch_size,default_profile_id,revision,next_run,requested,focus_media,focus_episode,focus_season,focus_kind,state,message`
 
 func scanSchedule(row interface{ Scan(...any) error }) (Schedule, error) {
 	var v Schedule
-	e := row.Scan(&v.Enabled, &v.Mode, &v.Interval, &v.Batch, &v.DefaultProfile, &v.Revision, &v.NextRun, &v.Requested, &v.FocusMedia, &v.FocusEpisode, &v.FocusKind, &v.State, &v.Message)
+	e := row.Scan(&v.Enabled, &v.Mode, &v.Interval, &v.Batch, &v.DefaultProfile, &v.Revision, &v.NextRun, &v.Requested, &v.FocusMedia, &v.FocusEpisode, &v.FocusSeason, &v.FocusKind, &v.State, &v.Message)
 	return v, e
 }
 func (s *Service) Get(ctx context.Context) (Schedule, error) {
@@ -149,11 +150,15 @@ func (s *Service) Request(ctx context.Context) error {
 	return nil
 }
 
-// RequestItem scopes the next search run to one show, movie or episode after
-// an explicit owner action on a library page. The run follows the saved mode
-// exactly like any other scheduled run: download mode queues the best
-// matching release, search-only mode records candidates for review.
-func (s *Service) RequestItem(ctx context.Context, mediaID int64, episodeID *int64) error {
+// RequestItem scopes the next search run to one show, movie, season or
+// episode after an explicit owner action on a library page. The run follows
+// the saved mode exactly like any other scheduled run: download mode queues
+// the best matching release, search-only mode records candidates for review.
+// Episode and season scopes are mutually exclusive.
+func (s *Service) RequestItem(ctx context.Context, mediaID int64, episodeID *int64, season *int) error {
+	if episodeID != nil && season != nil {
+		return &Error{"invalid_selection", "Choose one scope: the show, one season or one episode."}
+	}
 	var episodeCount int
 	e := s.db.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE s.series_id=m.id AND e.id=?) FROM media_items m WHERE m.id=?`, episodeID, mediaID).Scan(&episodeCount)
 	if errors.Is(e, sql.ErrNoRows) {
@@ -165,6 +170,17 @@ func (s *Service) RequestItem(ctx context.Context, mediaID int64, episodeID *int
 	if episodeID != nil && (*episodeID == 0 || episodeCount != 1) {
 		return &Error{"not_found", "This episode does not belong to the saved show."}
 	}
+	focusSeason := 0
+	if season != nil {
+		var seasonCount int
+		if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM seasons WHERE series_id=? AND number=?`, mediaID, *season).Scan(&seasonCount); e != nil {
+			return e
+		}
+		if seasonCount != 1 {
+			return &Error{"invalid_selection", "Choose a season that belongs to this saved show."}
+		}
+		focusSeason = *season
+	}
 	focusMedia := strconv.FormatInt(mediaID, 10)
 	focusEpisode := ""
 	if episodeID != nil {
@@ -173,7 +189,7 @@ func (s *Service) RequestItem(ctx context.Context, mediaID int64, episodeID *int
 	// A running search is not disturbed: the finish logic preserves requests
 	// made while it was active and starts the focused run immediately after.
 	// The cursor restarts so the focused pass visits every matching target.
-	if _, e = s.db.ExecContext(ctx, `UPDATE search_schedule SET requested=1,focus_media=?,focus_episode=?,focus_kind='',cursor='',next_run=0 WHERE id=1`, focusMedia, focusEpisode); e != nil {
+	if _, e = s.db.ExecContext(ctx, `UPDATE search_schedule SET requested=1,focus_media=?,focus_episode=?,focus_season=?,focus_kind='',cursor='',next_run=0 WHERE id=1`, focusMedia, focusEpisode, focusSeason); e != nil {
 		return e
 	}
 	return nil
@@ -186,7 +202,7 @@ func (s *Service) RequestBulk(ctx context.Context, kind string) error {
 	if kind != "movie" && kind != "series" {
 		return problemInvalidScope
 	}
-	if _, e := s.db.ExecContext(ctx, `UPDATE search_schedule SET requested=1,focus_media='',focus_episode='',focus_kind=?,cursor='',next_run=0 WHERE id=1`, kind); e != nil {
+	if _, e := s.db.ExecContext(ctx, `UPDATE search_schedule SET requested=1,focus_media='',focus_episode='',focus_season=0,focus_kind=?,cursor='',next_run=0 WHERE id=1`, kind); e != nil {
 		return e
 	}
 	return nil

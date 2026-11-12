@@ -175,7 +175,7 @@ func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
 		// Sonarr/Radarr-style search on add: the focused pipeline follows the
 		// saved automatic-search mode, while the feed check keeps watching for
 		// new releases independently.
-		if e := s.automation.RequestItem(r.Context(), item.ID, nil); e != nil {
+		if e := s.automation.RequestItem(r.Context(), item.ID, nil, nil); e != nil {
 			s.logger.Warn("search after movie add was not requested", "movie", item.ID, "error", e)
 		}
 	}
