@@ -6,7 +6,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 COPY web/ ./
 RUN npm run format:check && npm run check && npm test && npm run build
 
-FROM golang:1.27.3-bookworm AS backend
+FROM golang:1.27.4-bookworm AS backend
 WORKDIR /src
 RUN sed -i 's/^Components: main$/Components: main contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
