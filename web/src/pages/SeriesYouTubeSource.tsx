@@ -235,7 +235,9 @@ function ManualMatches({
           <p className="rs-form-help">
             {preview.title} · {preview.videos.length} videos ·{" "}
             {preview.episodes.length} episodes. Choose the episode each video
-            belongs to; unassigned videos are ignored.
+            belongs to. Your picks override monitoring; an episode that already
+            has a file is replaced after the reviewed swap. Unassigned videos
+            are ignored, and an episode with an active download stays blocked.
           </p>
           <ul className="yt-source-entries">
             {preview.videos.map((video) => (
@@ -259,9 +261,12 @@ function ManualMatches({
                     {preview.episodes.map((episode) => (
                       <option key={episode.id} value={String(episode.id)}>
                         {episode.label}
-                        {episode.monitored ? "" : " — not monitored"}
-                        {episode.files > 0 ? " — has file" : ""}
-                        {episode.active > 0 ? " — downloading" : ""}
+                        {episode.files > 0
+                          ? " — replaces the existing file (review)"
+                          : ""}
+                        {episode.active > 0
+                          ? " — blocked: a download is active"
+                          : ""}
                       </option>
                     ))}
                   </select>

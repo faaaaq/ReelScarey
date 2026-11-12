@@ -291,8 +291,9 @@ backfill (`{"action":"backfill"}`) or removal. A source with
 `.../youtube-sources/{source}/matches` lists the source's videos beside the
 show's loaded episodes, and PUT the same path with
 `{revision, queue, matches: [{video_id, episode_id, title, channel}]}` replaces
-the bindings; `queue` requests one run so the bound, monitored, missing episodes
-are queued.
+the bindings; `queue` requests one run so the bound episodes are queued. An
+explicit binding overrides monitoring, and an episode that already has a file is
+queued as a reviewed replacement.
 
 The playlist batch uses POST `/api/v1/youtube/playlist/preview` with
 `{source_url}`, optional `show_id` and `season_number`. It returns ranked saved

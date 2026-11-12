@@ -81,9 +81,13 @@ detail page. The mapping is never a title search:
   intro `XX` or a word like `infinity`). Save the source, then use **Match
   videos** on the source card: it lists the playlist videos beside the loaded
   episodes of the show, and each video is bound to one episode. Unbound videos
-  are ignored; **Save matches** optionally queues the bound, monitored, missing
-  episodes immediately. Re-binding a video that was previously skipped queues it
-  on the next check; a video already queued is never queued twice.
+  are ignored; **Save matches** optionally queues the bound episodes
+  immediately. An explicit pick overrides monitoring, and an episode that
+  already has a file is queued as a reviewed replacement — the original is
+  retained and the swap needs the Organize-library review. Only an episode with
+  another active download stays blocked. Re-binding a video that was previously
+  skipped queues it on the next check; a video already queued is never queued
+  twice.
 
 The owner previews the video-to-episode mapping before saving. New sources start
 paused. The first check records the current videos as a baseline; **Fill
@@ -112,11 +116,14 @@ future episodes** also creates the per-show source, which can be enabled on the
 show page.
 
 
-Only episodes that are loaded, monitored and missing are queued. Episodes with
-an existing file or another active download are skipped with a recorded reason.
-When **Import verified exact matches without review** is enabled, a verified
-download from that source is approved automatically; the normal no-overwrite,
-journaled import still runs. If automatic approval cannot prove the exact
-evidence, the job remains awaiting review. Generated videos keep their YouTube
-identity and provenance.
+For the automatic mapping modes (episode number, playlist order), only episodes
+that are loaded, monitored and missing are queued. Episodes with an existing
+file or another active download are skipped with a recorded reason. An explicit
+manual pick is different: it overrides monitoring, and an episode that already
+has a file is queued as a reviewed replacement. When **Import verified exact
+matches without review** is enabled, a verified download from that source is
+approved automatically; the normal no-overwrite, journaled import still runs. If
+automatic approval cannot prove the exact evidence, or the target is a
+replacement, the job remains awaiting review. Generated videos keep their
+YouTube identity and provenance.
 

@@ -359,6 +359,33 @@ func episodePreview(ctx context.Context, q queryer, mediaID, episodeID int64) (s
 	return "ready", "", label
 }
 
+// episodeManual resolves an explicit manual pick. Monitoring never blocks a
+// chosen episode, and an episode that already has a file is queued through the
+// existing reviewed replacement flow, where the original file is retained and
+// the swap needs an Organize-library review. Only a real write conflict — an
+// active transfer download or another active YouTube job for the same episode —
+// is refused, because the pipeline cannot own two writes for one episode at
+// once (a unique index enforces it).
+func episodeManual(ctx context.Context, q queryer, mediaID, episodeID int64) (state, note, label string) {
+	var season, number, downloads, active, files int
+	var epTitle string
+	e := q.QueryRowContext(ctx, `SELECT e.title,s.number,e.number,(SELECT COUNT(*) FROM episode_downloads d WHERE d.episode_id=e.id),(SELECT COUNT(*) FROM youtube_jobs y WHERE y.episode_id=e.id AND y.state NOT IN ('completed','cancelled','failed')),(SELECT COUNT(*) FROM episode_files f WHERE f.episode_id=e.id) FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE e.id=? AND s.series_id=?`, episodeID, mediaID).Scan(&epTitle, &season, &number, &downloads, &active, &files)
+	if errors.Is(e, sql.ErrNoRows) {
+		return "skipped", "Episode is not loaded in the catalog", ""
+	}
+	if e != nil {
+		return "skipped", "Episode lookup failed", ""
+	}
+	label = fmt.Sprintf("S%02dE%02d — %s", season, number, epTitle)
+	if downloads > 0 || active > 0 {
+		return "skipped", "Another download is already active for this episode.", label
+	}
+	if files > 0 {
+		return "ready", "", label + " (replacement)"
+	}
+	return "ready", "", label
+}
+
 func mapEpisodeNumber(in SeriesSourceInput, title string, position int) (int, int, bool) {
 	if in.Mapping == "order" {
 		if in.Season < 1 {
@@ -474,7 +501,7 @@ func (s *Store) ProcessSeriesSource(ctx context.Context, inspector SourceInspect
 					mapped, reason = "skipped", "No episode is assigned to this video."
 				} else {
 					episodeID = assigned
-					mapped, reason, label = episodePreview(work, tx, p.MediaID, assigned)
+					mapped, reason, label = episodeManual(work, tx, p.MediaID, assigned)
 				}
 			} else {
 				var season, number int
@@ -486,7 +513,7 @@ func (s *Store) ProcessSeriesSource(ctx context.Context, inspector SourceInspect
 				}
 			}
 			if mapped == "ready" {
-				jobID, queueErr := s.queueSeriesEntry(work, tx, p, entry, episodeID)
+				jobID, queueErr := s.queueSeriesEntry(work, tx, p, entry, episodeID, p.Mapping == "manual")
 				if queueErr == nil {
 					if _, e = tx.ExecContext(work, `INSERT INTO youtube_series_entries(source_id,video_id,position,title,channel,state,episode_id,job_id,note,discovered_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, p.ID, entry.ID, pos, entry.Title, entry.Channel, "queued", episodeID, jobID, label, now); e != nil {
 						return true, e
@@ -519,20 +546,25 @@ func (s *Store) ProcessSeriesSource(ctx context.Context, inspector SourceInspect
 	return true, tx.Commit()
 }
 
-func (s *Store) queueSeriesEntry(ctx context.Context, tx *sql.Tx, p SeriesSource, entry Entry, episodeID int64) (string, error) {
+func (s *Store) queueSeriesEntry(ctx context.Context, tx *sql.Tx, p SeriesSource, entry Entry, episodeID int64, override bool) (string, error) {
 	var monitored int
 	if e := tx.QueryRowContext(ctx, `SELECT (e.monitored=1 AND s.monitored=1 AND m.monitored=1) FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id WHERE e.id=? AND s.series_id=? AND m.kind='series'`, episodeID, p.MediaID).Scan(&monitored); e != nil {
 		return "", ErrChanged
 	}
-	if monitored != 1 {
+	if monitored != 1 && !override {
 		return "", ErrBusy
 	}
-	var fileID int64
-	if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episode_files WHERE episode_id=?`, episodeID).Scan(&fileID); e != nil {
-		return "", e
-	}
-	if fileID > 0 {
-		return "", ErrBusy
+	if !override {
+		// Automatic mappings never queue an episode that already has a file. An
+		// explicit manual pick may: targetSnapshot then records it as a
+		// reviewed replacement.
+		var fileID int64
+		if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episode_files WHERE episode_id=?`, episodeID).Scan(&fileID); e != nil {
+			return "", e
+		}
+		if fileID > 0 {
+			return "", ErrBusy
+		}
 	}
 	snap, _, e := targetSnapshot(ctx, tx, Target{Kind: "episode", MediaID: p.MediaID, EpisodeID: episodeID})
 	if e != nil {
@@ -717,7 +749,7 @@ func (s *Store) PreviewSeriesMatches(ctx context.Context, mediaID int64, sourceI
 		v := SeriesMatchVideo{VideoID: entry.ID, Title: entry.Title, Channel: entry.Channel, Position: position, State: "unassigned"}
 		if episodeID, ok := assigned[entry.ID]; ok && episodeID > 0 {
 			v.EpisodeID = episodeID
-			state, note, label := episodePreview(work, s.db, mediaID, episodeID)
+			state, note, label := episodeManual(work, s.db, mediaID, episodeID)
 			v.Label = label
 			if state == "ready" {
 				v.State = "ready"
