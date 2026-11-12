@@ -2860,3 +2860,65 @@ build. Its optional repeated Go test pass encountered two unrelated concurrent
 SQLite `SQLITE_BUSY` failures in automation and library tests; the complete Go
 test, vet and build gates had already passed natively, so the established
 release build was rerun with that optional repetition disabled.
+
+## Announce auto-grab, seeder-stall remediation and the canonical compose (2026-11-11)
+
+Release 0.54.7 (commit `2e1aad3`), merged into the canonical branch whose tip
+is `f39c938`. The version moved from 0.53.5 to 0.54.7 on this branch; the
+intermediate 0.53.x/0.54.x image tags were interim builds.
+
+**Container mapping simplified to one canonical template** (`374b20f`,
+`f39c938`). The mapping story had four divergent templates choosing different
+roots (`/config` vs `/config/state`, `/media` vs `/data`), so the required paths
+were never clear. There is now a single `compose.yaml`: one service, three fixed
+mounts (`/config`, `/media`, `/downloads`) plus private `backups` and
+`youtube_staging` volumes, and no path environment variable is required because
+the container defaults are correct. `compose.simple.yaml`, `compose.server.yaml`
+and `server.env.example` were deleted and their smoke coverage consolidated into
+`scripts/compose-smoke.sh`. `REELSCAREY_CONFIG_DIR`/`MEDIA_DIR`/`DOWNLOADS_DIR`/
+`BACKUPS_DIR` are documented as override-only, and `REELSCAREY_DOWNLOADS_DIR` is
+now explained as the download client's completed folder, not a ReelScarey
+download destination. `cap_drop: [ALL]` is deliberately omitted: startup briefly
+runs as root to chown the three mounts before dropping to `PUID`/`PGID`, so
+`no-new-privileges` plus a read-only root filesystem is the intended hardening.
+
+**Announce auto-grab for monitored titles** (migration `089`, commit `2e1aad3`).
+A monitored missing movie or an ordinary single episode announced on a matching
+source is queued through the existing reservation, delayed-submission and
+journaled importer workflow - no new download path is introduced. Auto-grab is
+an explicit per-source opt-in that defaults to off, and switching it on never
+replays the existing capture-only history. Announces accept an unknown seeder
+count so a brand-new swarm is not rejected, while scheduled searches still honour
+`min_seeders`; the seeder rules are not removed. A seeder watchdog polls recently
+submitted torrents every 8 seconds and re-announces a zero-seed swarm every 20
+seconds across a 30-minute window, so the grab starts the moment a seeder
+appears instead of stalling. Per-item quality-profile editing was added on the
+movie and series details pages (review-then-save, revision fencing and a
+stale-reload path), and indexer identity is stamped onto recent-feed candidates.
+
+**SABnzbd download-client setup simplified** (`51744d7`), included in this
+release.
+
+**Music server and index migrations** (`2698cb6`, `31e41c7`): migration `088`
+adds the music server token name and migration `090` adds the music files track
+index; playback transcoding, server song browsing and in-place album downloads
+land in the same release. Schema version is 90.
+
+**Tests.** `internal/automation/announce_integration_test.go` covers exact
+missing-movie and exact single-episode selection, that a registered episode is
+never replaced, exactly-once processing, expired-lease reclaim, unknown seeders
+satisfying the minimum, ignoring packs/ranges/specials and unrelated releases,
+and that a stale source is not queued. All pass locally under Go 1.27.0.
+
+**Production acceptance (2026-11-11).** Deployed `faaaaq/reelscarey:0.54.7`
+(image `sha256:97142d527f507699b5995078a49d9d7daecf3f6c3666bd79185116622f67d2c2`)
+through the single canonical compose to https://reelscarey.scareyhub.com. Health:
+`docker compose ps` healthy, public `/` = 200 and `/readyz` = 200, schema 90, VPN
+tunnel up, `#ipt.announce` joined, built-in qBittorrent running, and IRC
+certificate verification intentionally left off until IPTorrents renews its
+certificate. The three shows previously on profile 3 were confirmed on profile 1
+in the database and through the details API; no quality profile lists 720p; and
+the capture-only announce history was not replayed. The Docker Hub namespace was
+corrected to the four-a `faaaaq` account (`faaaq`, three a's, is never a valid
+account) and `0.54.7` plus `latest` were published at digest
+`sha256:97142d527f507...`.
