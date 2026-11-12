@@ -430,6 +430,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/series/{id}/youtube-sources", s.seriesYouTubeSources)
 	mux.HandleFunc("/api/v1/library/series/{id}/youtube-sources/preview", method(http.MethodPost, s.seriesYouTubePreview))
 	mux.HandleFunc("/api/v1/library/series/{id}/youtube-sources/{source}", s.seriesYouTubeSource)
+	mux.HandleFunc("/api/v1/library/series/{id}/youtube-sources/{source}/matches", s.seriesYouTubeMatches)
 	mux.HandleFunc("/api/v1/quality-profiles", s.qualityProfiles)
 	mux.HandleFunc("/api/v1/quality-profiles/{id}", method(http.MethodPut, s.qualityProfileUpdate))
 	mux.HandleFunc("/api/v1/api-keys", s.apiKeys)

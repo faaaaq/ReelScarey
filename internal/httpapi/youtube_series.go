@@ -10,6 +10,7 @@ import (
 type seriesSourceItem struct {
 	youtube.SeriesSource
 	Entries []youtube.SeriesEntry `json:"entries"`
+	Matches []youtube.SeriesMatch `json:"matches"`
 }
 
 func (s *Server) seriesYouTubeSources(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +35,12 @@ func (s *Server) seriesYouTubeSources(w http.ResponseWriter, r *http.Request) {
 				s.youtubeError(w, err)
 				return
 			}
-			items = append(items, seriesSourceItem{SeriesSource: source, Entries: entries})
+			matches, err := s.youtube.SeriesMatches(r.Context(), source.ID)
+			if err != nil {
+				s.youtubeError(w, err)
+				return
+			}
+			items = append(items, seriesSourceItem{SeriesSource: source, Entries: entries, Matches: matches})
 		}
 		send(w, 200, map[string]any{"items": items})
 	case http.MethodPost:
@@ -121,5 +127,50 @@ func (s *Server) seriesYouTubeSource(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.Header().Set("Allow", "POST, DELETE")
 		fail(w, 405, "method_not_allowed", "Use POST or DELETE.")
+	}
+}
+
+// seriesYouTubeMatches lets the owner bind the videos of a manual playlist
+// source to explicit episodes of the show. GET lists the playlist's videos with
+// the show's episodes; PUT replaces the bindings.
+func (s *Server) seriesYouTubeMatches(w http.ResponseWriter, r *http.Request) {
+	if !s.youtubeReady(w) {
+		return
+	}
+	id, ok := tvID(w, r)
+	if !ok {
+		return
+	}
+	sourceID := r.PathValue("source")
+	if sourceID == "" {
+		fail(w, 400, "invalid_selection", "Choose a YouTube source.")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		out, err := s.youtube.PreviewSeriesMatches(r.Context(), id, sourceID, s.youtubeInspector)
+		if err != nil {
+			s.youtubeError(w, err)
+			return
+		}
+		send(w, 200, out)
+	case http.MethodPut:
+		var in struct {
+			Revision int                        `json:"revision"`
+			Queue    bool                       `json:"queue"`
+			Matches  []youtube.SeriesMatchInput `json:"matches"`
+		}
+		if !decodeJSON(w, r, &in) {
+			return
+		}
+		n, err := s.youtube.SaveSeriesMatches(r.Context(), id, sourceID, in.Revision, in.Queue, in.Matches)
+		if err != nil {
+			s.youtubeError(w, err)
+			return
+		}
+		send(w, 200, map[string]any{"saved": n, "queued": in.Queue})
+	default:
+		w.Header().Set("Allow", "GET, PUT")
+		fail(w, 405, "method_not_allowed", "Use GET or PUT.")
 	}
 }

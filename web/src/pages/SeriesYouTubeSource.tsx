@@ -21,7 +21,7 @@ type Source = {
   media_id: number;
   source_url: string;
   title: string;
-  mapping: "episode" | "order";
+  mapping: "episode" | "order" | "manual";
   season_number: number;
   start_episode: number;
   quality: string;
@@ -38,6 +38,7 @@ type Source = {
   message: string;
   created_at: number;
   entries?: Entry[];
+  matches?: Match[];
 };
 type Preview = {
   title: string;
@@ -53,9 +54,46 @@ type Preview = {
     note: string;
   }[];
 };
+type Match = {
+  video_id: string;
+  title: string;
+  channel: string;
+  position: number;
+  episode_id: number;
+  season_number: number;
+  episode_number: number;
+  episode_title: string;
+};
+type MatchVideo = {
+  video_id: string;
+  title: string;
+  channel: string;
+  position: number;
+  episode_id?: number;
+  label: string;
+  state: string;
+  note: string;
+};
+type MatchEpisode = {
+  id: number;
+  season_number: number;
+  episode_number: number;
+  title: string;
+  label: string;
+  monitored: boolean;
+  files: number;
+  active: number;
+};
+type MatchPreview = {
+  title: string;
+  channel: string;
+  truncated: boolean;
+  videos: MatchVideo[];
+  episodes: MatchEpisode[];
+};
 type Draft = {
   source_url: string;
-  mapping: "episode" | "order";
+  mapping: "episode" | "order" | "manual";
   season_number: number;
   start_episode: number;
   quality: "best" | "1080" | "720";
@@ -71,6 +109,185 @@ const empty: Draft = {
   auto_import: true,
   interval_hours: 6,
 };
+function ManualMatches({
+  seriesID,
+  source,
+  reload,
+}: {
+  seriesID: number;
+  source: Source;
+  reload: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [preview, setPreview] = useState<MatchPreview>();
+  const [selection, setSelection] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [queue, setQueue] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const assigned = source.matches?.length ?? 0;
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const data = await api<MatchPreview>(
+        `/library/series/${seriesID}/youtube-sources/${source.id}/matches`,
+        { signal: AbortSignal.timeout(60000) },
+      );
+      setPreview(data);
+      const current: Record<string, number> = {};
+      for (const video of data.videos) {
+        current[video.video_id] = video.episode_id ?? 0;
+      }
+      setSelection(current);
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function save() {
+    if (!preview) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const matches = preview.videos
+        .filter((video) => (selection[video.video_id] ?? 0) > 0)
+        .map((video) => ({
+          video_id: video.video_id,
+          episode_id: selection[video.video_id],
+          title: video.title,
+          channel: video.channel,
+        }));
+      await api(
+        `/library/series/${seriesID}/youtube-sources/${source.id}/matches`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            revision: source.revision,
+            queue,
+            matches,
+          }),
+        },
+      );
+      const noun = matches.length === 1 ? "video" : "videos";
+      setNotice(
+        matches.length === 0
+          ? "No videos are matched."
+          : queue
+            ? `${matches.length} ${noun} matched; the matching episodes will be queued.`
+            : `${matches.length} ${noun} matched.`,
+      );
+      reload();
+      await load();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="rs-form-actions">
+        <Button
+          size="1"
+          variant="soft"
+          disabled={loading}
+          onClick={() => {
+            if (open) {
+              setOpen(false);
+            } else {
+              setOpen(true);
+              void load();
+            }
+          }}
+        >
+          {assigned ? `Match videos (${assigned})` : "Match videos"}
+        </Button>
+        {open && (
+          <Button
+            size="1"
+            variant="ghost"
+            disabled={loading || saving}
+            onClick={() => void load()}
+          >
+            {loading ? "Loading…" : "Reload videos"}
+          </Button>
+        )}
+      </div>
+      {error && (
+        <p role="alert" className="rs-alert is-danger">
+          {error}
+        </p>
+      )}
+      {notice && <p className="rs-alert is-success">{notice}</p>}
+      {open && loading && !preview && (
+        <p className="rs-form-help">Reading the playlist…</p>
+      )}
+      {open && preview && (
+        <>
+          <p className="rs-form-help">
+            {preview.title} · {preview.videos.length} videos ·{" "}
+            {preview.episodes.length} episodes. Choose the episode each video
+            belongs to; unassigned videos are ignored.
+          </p>
+          <ul className="yt-source-entries">
+            {preview.videos.map((video) => (
+              <li key={video.video_id}>
+                <div className="yt-source-head">
+                  <div>
+                    <strong title={video.title}>{video.title}</strong>
+                    <span>{video.label || "Not matched"}</span>
+                  </div>
+                  <select
+                    aria-label={`Episode for ${video.title}`}
+                    value={String(selection[video.video_id] ?? 0)}
+                    onChange={(e) =>
+                      setSelection({
+                        ...selection,
+                        [video.video_id]: Number(e.target.value),
+                      })
+                    }
+                  >
+                    <option value="0">Not matched</option>
+                    {preview.episodes.map((episode) => (
+                      <option key={episode.id} value={String(episode.id)}>
+                        {episode.label}
+                        {episode.monitored ? "" : " — not monitored"}
+                        {episode.files > 0 ? " — has file" : ""}
+                        {episode.active > 0 ? " — downloading" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {video.note && <p className="rs-form-help">{video.note}</p>}
+              </li>
+            ))}
+          </ul>
+          <label className="rs-check">
+            <input
+              type="checkbox"
+              checked={queue}
+              onChange={(e) => setQueue(e.target.checked)}
+            />{" "}
+            Queue the matched, monitored, missing episodes now
+          </label>
+          <div className="rs-form-actions">
+            <Button size="1" disabled={saving} onClick={() => void save()}>
+              {saving ? "Saving…" : "Save matches"}
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function SeriesYouTubeSource({ id }: { id: number }) {
   const sources = useResource<{ items: Source[] }>(
@@ -149,7 +366,7 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
     }
   }
   function save() {
-    if (!preview) {
+    if (draft.mapping !== "manual" && !preview) {
       setError("Preview the mapping first.");
       return;
     }
@@ -223,20 +440,23 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
             >
               <option value="episode">Episode number in title (S01E02)</option>
               <option value="order">Playlist order</option>
+              <option value="manual">Pick each video to an episode</option>
             </select>
           </label>
-          <label>
-            Season
-            <TextField.Root
-              type="number"
-              min={draft.mapping === "order" ? 1 : 0}
-              value={draft.season_number}
-              onChange={(e) => {
-                setDraft({ ...draft, season_number: Number(e.target.value) });
-                setPreview(undefined);
-              }}
-            />
-          </label>
+          {draft.mapping !== "manual" && (
+            <label>
+              Season
+              <TextField.Root
+                type="number"
+                min={draft.mapping === "order" ? 1 : 0}
+                value={draft.season_number}
+                onChange={(e) => {
+                  setDraft({ ...draft, season_number: Number(e.target.value) });
+                  setPreview(undefined);
+                }}
+              />
+            </label>
+          )}
           {draft.mapping === "order" && (
             <label>
               First episode
@@ -291,14 +511,24 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
             Import verified exact matches without review
           </label>
           <div className="rs-form-actions">
+            {draft.mapping === "manual" ? (
+              <span className="rs-form-help">
+                Save the source, then pick each video's episode on the source
+                card.
+              </span>
+            ) : (
+              <Button
+                variant="soft"
+                disabled={!!busy || !draft.source_url.trim()}
+                onClick={previewDraft}
+              >
+                {busy === "preview" ? "Checking…" : "Preview matches"}
+              </Button>
+            )}
             <Button
-              variant="soft"
-              disabled={!!busy || !draft.source_url.trim()}
-              onClick={previewDraft}
+              disabled={!!busy || (draft.mapping !== "manual" && !preview)}
+              onClick={save}
             >
-              {busy === "preview" ? "Checking…" : "Preview matches"}
-            </Button>
-            <Button disabled={!!busy || !preview} onClick={save}>
               Save source
             </Button>
             <Button
@@ -351,7 +581,9 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
                 <strong>
                   {source.mapping === "order"
                     ? `Playlist order · Season ${source.season_number}`
-                    : `Episode number${source.season_number ? ` · Season ${source.season_number}` : ""}`}
+                    : source.mapping === "manual"
+                      ? "Manual video matching"
+                      : `Episode number${source.season_number ? ` · Season ${source.season_number}` : ""}`}
                 </strong>
                 <span>{source.source_url}</span>
               </div>
@@ -461,6 +693,13 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
                 }
               />
             </div>
+            {source.mapping === "manual" && (
+              <ManualMatches
+                seriesID={id}
+                source={source}
+                reload={sources.reload}
+              />
+            )}
             {(source.entries?.length ?? 0) > 0 && (
               <details>
                 <summary>{source.entries?.length} discovered videos</summary>

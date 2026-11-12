@@ -286,7 +286,13 @@ Per-show sources use GET/POST
 `reviewed: true`; new sources start paused), POST `.../youtube-sources/preview`
 for the explicit video-to-episode mapping, and POST/DELETE
 `.../youtube-sources/{source}` for a fenced check, an explicit baseline
-backfill (`{"action":"backfill"}`) or removal.
+backfill (`{"action":"backfill"}`) or removal. A source with
+`mapping: "manual"` stores explicit video-to-episode bindings: GET
+`.../youtube-sources/{source}/matches` lists the source's videos beside the
+show's loaded episodes, and PUT the same path with
+`{revision, queue, matches: [{video_id, episode_id, title, channel}]}` replaces
+the bindings; `queue` requests one run so the bound, monitored, missing episodes
+are queued.
 
 The playlist batch uses POST `/api/v1/youtube/playlist/preview` with
 `{source_url}`, optional `show_id` and `season_number`. It returns ranked saved

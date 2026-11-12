@@ -76,6 +76,14 @@ detail page. The mapping is never a title search:
   the video title and maps it to the loaded, monitored episode.
 - **Playlist order** maps the Nth video to `First episode + N - 1` in the
   configured season. It requires a playlist and an explicit season.
+- **Pick each video to an episode** stores an explicit binding per video for
+  playlists whose videos carry no usable episode number (for example `X1`, an
+  intro `XX` or a word like `infinity`). Save the source, then use **Match
+  videos** on the source card: it lists the playlist videos beside the loaded
+  episodes of the show, and each video is bound to one episode. Unbound videos
+  are ignored; **Save matches** optionally queues the bound, monitored, missing
+  episodes immediately. Re-binding a video that was previously skipped queues it
+  on the next check; a video already queued is never queued twice.
 
 The owner previews the video-to-episode mapping before saving. New sources start
 paused. The first check records the current videos as a baseline; **Fill

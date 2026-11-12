@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 var episodeNumberRE = regexp.MustCompile(`(?i)\bS(\d{1,2})[ ._-]?E(\d{1,3})\b`)
@@ -154,7 +156,7 @@ func normalizedSeriesInput(in SeriesSourceInput) (SeriesSourceInput, Source, err
 		return in, Source{}, ErrInvalidURL
 	}
 	in.Mapping = strings.ToLower(strings.TrimSpace(in.Mapping))
-	if in.Mapping != "episode" && in.Mapping != "order" {
+	if in.Mapping != "episode" && in.Mapping != "order" && in.Mapping != "manual" {
 		return in, Source{}, ErrInput
 	}
 	if in.Mapping == "order" && (source.Kind != "playlist" || in.Season < 1 || in.StartEpisode < 1) {
@@ -321,26 +323,40 @@ func (s *Store) matchPreview(ctx context.Context, q queryer, mediaID int64, in S
 	if in.Season > 0 && season != in.Season {
 		return "skipped", fmt.Sprintf("Season %d does not match %d", season, in.Season), season, number, 0, ""
 	}
-	var monitored, files, active int
-	var epTitle string
-	e := q.QueryRowContext(ctx, `SELECT e.id,e.title, (e.monitored=1 AND s.monitored=1 AND m.monitored=1), (SELECT COUNT(*) FROM episode_files f WHERE f.episode_id=e.id), (SELECT COUNT(*) FROM episode_downloads d WHERE d.episode_id=e.id)+(SELECT COUNT(*) FROM youtube_jobs y WHERE y.episode_id=e.id AND y.state NOT IN ('completed','cancelled','failed')) FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id WHERE s.series_id=? AND s.number=? AND e.number=?`, mediaID, season, number).Scan(&episodeID, &epTitle, &monitored, &files, &active)
+	e := q.QueryRowContext(ctx, `SELECT e.id FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE s.series_id=? AND s.number=? AND e.number=?`, mediaID, season, number).Scan(&episodeID)
 	if errors.Is(e, sql.ErrNoRows) {
 		return "skipped", "Episode is not loaded in the catalog", season, number, 0, ""
 	}
 	if e != nil {
 		return "skipped", "Episode lookup failed", season, number, 0, ""
 	}
+	state, note, label = episodePreview(ctx, q, mediaID, episodeID)
+	return state, note, season, number, episodeID, label
+}
+
+// episodePreview reports whether a chosen episode can accept a download. It
+// backs both the automatic mapping and the explicit manual assignments.
+func episodePreview(ctx context.Context, q queryer, mediaID, episodeID int64) (state, note, label string) {
+	var monitored, files, active, season, number int
+	var epTitle string
+	e := q.QueryRowContext(ctx, `SELECT e.title,s.number,e.number,(e.monitored=1 AND s.monitored=1 AND m.monitored=1),(SELECT COUNT(*) FROM episode_files f WHERE f.episode_id=e.id),(SELECT COUNT(*) FROM episode_downloads d WHERE d.episode_id=e.id)+(SELECT COUNT(*) FROM youtube_jobs y WHERE y.episode_id=e.id AND y.state NOT IN ('completed','cancelled','failed')) FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id WHERE e.id=? AND s.series_id=?`, episodeID, mediaID).Scan(&epTitle, &season, &number, &monitored, &files, &active)
+	if errors.Is(e, sql.ErrNoRows) {
+		return "skipped", "Episode is not loaded in the catalog", ""
+	}
+	if e != nil {
+		return "skipped", "Episode lookup failed", ""
+	}
 	label = fmt.Sprintf("S%02dE%02d — %s", season, number, epTitle)
 	if monitored != 1 {
-		return "skipped", "Episode or season is not monitored", season, number, episodeID, label
+		return "skipped", "Episode or season is not monitored", label
 	}
 	if files > 0 {
-		return "skipped", "Episode already has a file", season, number, episodeID, label
+		return "skipped", "Episode already has a file", label
 	}
 	if active > 0 {
-		return "skipped", "Another download is active", season, number, episodeID, label
+		return "skipped", "Another download is active", label
 	}
-	return "ready", "", season, number, episodeID, label
+	return "ready", "", label
 }
 
 func mapEpisodeNumber(in SeriesSourceInput, title string, position int) (int, int, bool) {
@@ -422,6 +438,13 @@ func (s *Store) ProcessSeriesSource(ctx context.Context, inspector SourceInspect
 	if e != nil || current != p.snapshot {
 		return fail("This show changed; review the YouTube source.")
 	}
+	var manual map[string]int64
+	if p.Mapping == "manual" {
+		manual, e = seriesMatchIndex(work, tx, p.ID)
+		if e != nil {
+			return true, e
+		}
+	}
 	position := 0
 	queued := 0
 	for _, entry := range inspection.Entries {
@@ -444,8 +467,24 @@ func (s *Store) ProcessSeriesSource(ctx context.Context, inspector SourceInspect
 		state, note := "baseline", "Initial baseline; future videos are matched."
 		var episodeID int64
 		if p.Initialized && queued < 10 {
-			mapped, reason, season, number, epID, label := s.matchPreview(work, tx, p.MediaID, SeriesSourceInput{Mapping: p.Mapping, Season: p.Season, StartEpisode: p.StartEpisode}, entry, pos)
-			episodeID = epID
+			mapped, reason, label := "", "", ""
+			if p.Mapping == "manual" {
+				assigned, ok := manual[entry.ID]
+				if !ok {
+					mapped, reason = "skipped", "No episode is assigned to this video."
+				} else {
+					episodeID = assigned
+					mapped, reason, label = episodePreview(work, tx, p.MediaID, assigned)
+				}
+			} else {
+				var season, number int
+				var epID int64
+				mapped, reason, season, number, epID, label = s.matchPreview(work, tx, p.MediaID, SeriesSourceInput{Mapping: p.Mapping, Season: p.Season, StartEpisode: p.StartEpisode}, entry, pos)
+				episodeID = epID
+				if mapped != "ready" && number > 0 {
+					reason = fmt.Sprintf("S%02dE%02d: %s", season, number, reason)
+				}
+			}
 			if mapped == "ready" {
 				jobID, queueErr := s.queueSeriesEntry(work, tx, p, entry, episodeID)
 				if queueErr == nil {
@@ -458,9 +497,6 @@ func (s *Store) ProcessSeriesSource(ctx context.Context, inspector SourceInspect
 				state, note = "skipped", "Could not reserve this episode: "+queueErr.Error()
 			} else {
 				state, note = "skipped", reason
-				if number > 0 {
-					note = fmt.Sprintf("S%02dE%02d: %s", season, number, reason)
-				}
 			}
 		}
 		if _, e = tx.ExecContext(work, `INSERT INTO youtube_series_entries(source_id,video_id,position,title,channel,state,episode_id,note,discovered_at) VALUES(?,?,?,?,?,?,?,?,?)`, p.ID, entry.ID, pos, entry.Title, entry.Channel, state, nullable(episodeID), note, now); e != nil {
@@ -522,4 +558,249 @@ func (s *Store) queueSeriesEntry(ctx context.Context, tx *sql.Tx, p SeriesSource
 		return "", e
 	}
 	return job.ID, nil
+}
+
+// ----- Manual playlist matching -------------------------------------------
+//
+// A manual source carries no title or position heuristic: every video the owner
+// wants must be bound to a specific episode of the show. The bindings live in
+// youtube_series_matches, keyed by (source_id, video_id).
+
+type SeriesMatch struct {
+	VideoID      string `json:"video_id"`
+	Title        string `json:"title"`
+	Channel      string `json:"channel"`
+	Position     int    `json:"position"`
+	EpisodeID    int64  `json:"episode_id"`
+	SeasonNumber int    `json:"season_number"`
+	EpisodeNum   int    `json:"episode_number"`
+	EpisodeTitle string `json:"episode_title"`
+}
+
+type SeriesMatchVideo struct {
+	VideoID   string `json:"video_id"`
+	Title     string `json:"title"`
+	Channel   string `json:"channel"`
+	Position  int    `json:"position"`
+	EpisodeID int64  `json:"episode_id,omitempty"`
+	Label     string `json:"label"`
+	State     string `json:"state"`
+	Note      string `json:"note"`
+}
+
+type SeriesEpisodeOption struct {
+	ID            int64  `json:"id"`
+	SeasonNumber  int    `json:"season_number"`
+	EpisodeNumber int    `json:"episode_number"`
+	Title         string `json:"title"`
+	Label         string `json:"label"`
+	Monitored     bool   `json:"monitored"`
+	Files         int    `json:"files"`
+	Active        int    `json:"active"`
+}
+
+type SeriesMatchPreview struct {
+	Title     string                `json:"title"`
+	Channel   string                `json:"channel"`
+	Truncated bool                  `json:"truncated"`
+	Videos    []SeriesMatchVideo    `json:"videos"`
+	Episodes  []SeriesEpisodeOption `json:"episodes"`
+}
+
+type SeriesMatchInput struct {
+	VideoID   string `json:"video_id"`
+	EpisodeID int64  `json:"episode_id"`
+	Title     string `json:"title"`
+	Channel   string `json:"channel"`
+}
+
+type rowsQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func (s *Store) SeriesMatches(ctx context.Context, sourceID string) ([]SeriesMatch, error) {
+	rows, e := s.db.QueryContext(ctx, `SELECT m.video_id,m.title,m.channel,m.position,m.episode_id,COALESCE(se.number,0),COALESCE(e.number,0),COALESCE(e.title,'') FROM youtube_series_matches m LEFT JOIN episodes e ON e.id=m.episode_id LEFT JOIN seasons se ON se.id=e.season_id WHERE m.source_id=? ORDER BY m.position,m.video_id LIMIT 500`, sourceID)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []SeriesMatch{}
+	for rows.Next() {
+		var v SeriesMatch
+		if e = rows.Scan(&v.VideoID, &v.Title, &v.Channel, &v.Position, &v.EpisodeID, &v.SeasonNumber, &v.EpisodeNum, &v.EpisodeTitle); e != nil {
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+func seriesMatchIndex(ctx context.Context, q rowsQueryer, sourceID string) (map[string]int64, error) {
+	rows, e := q.QueryContext(ctx, `SELECT video_id,episode_id FROM youtube_series_matches WHERE source_id=?`, sourceID)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var videoID string
+		var episodeID int64
+		if e = rows.Scan(&videoID, &episodeID); e != nil {
+			return nil, e
+		}
+		out[videoID] = episodeID
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) seriesEpisodeOptions(ctx context.Context, mediaID int64) ([]SeriesEpisodeOption, error) {
+	rows, e := s.db.QueryContext(ctx, `SELECT e.id,s.number,e.number,e.title,(e.monitored=1 AND s.monitored=1 AND m.monitored=1),(SELECT COUNT(*) FROM episode_files f WHERE f.episode_id=e.id),(SELECT COUNT(*) FROM episode_downloads d WHERE d.episode_id=e.id)+(SELECT COUNT(*) FROM youtube_jobs y WHERE y.episode_id=e.id AND y.state NOT IN ('completed','cancelled','failed')) FROM episodes e JOIN seasons s ON s.id=e.season_id JOIN media_items m ON m.id=s.series_id WHERE s.series_id=? ORDER BY s.number,e.number LIMIT 5001`, mediaID)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []SeriesEpisodeOption{}
+	for rows.Next() {
+		var v SeriesEpisodeOption
+		if e = rows.Scan(&v.ID, &v.SeasonNumber, &v.EpisodeNumber, &v.Title, &v.Monitored, &v.Files, &v.Active); e != nil {
+			return nil, e
+		}
+		v.Label = fmt.Sprintf("S%02dE%02d — %s", v.SeasonNumber, v.EpisodeNumber, v.Title)
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// PreviewSeriesMatches lists the source's videos next to the show's loaded
+// episodes so the owner can bind each video to one episode. It saves nothing.
+func (s *Store) PreviewSeriesMatches(ctx context.Context, mediaID int64, sourceID string, inspector SourceInspector) (SeriesMatchPreview, error) {
+	src, e := scanSeriesSource(s.db.QueryRowContext(ctx, `SELECT `+seriesSourceColumns+` FROM youtube_series_sources WHERE id=? AND media_id=?`, sourceID, mediaID))
+	if errors.Is(e, sql.ErrNoRows) {
+		return SeriesMatchPreview{}, ErrChanged
+	}
+	if e != nil {
+		return SeriesMatchPreview{}, e
+	}
+	if src.Mapping != "manual" {
+		return SeriesMatchPreview{}, ErrInput
+	}
+	if inspector == nil {
+		return SeriesMatchPreview{}, ErrInspection
+	}
+	normalized, e := NormalizeURL(src.URL)
+	if e != nil {
+		return SeriesMatchPreview{}, ErrInvalidURL
+	}
+	work, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	inspection, e := inspector.Inspect(work, normalized.URL)
+	if e != nil {
+		return SeriesMatchPreview{}, e
+	}
+	if inspection.Source != normalized {
+		return SeriesMatchPreview{}, ErrInspection
+	}
+	assigned, e := seriesMatchIndex(work, s.db, sourceID)
+	if e != nil {
+		return SeriesMatchPreview{}, e
+	}
+	episodes, e := s.seriesEpisodeOptions(work, mediaID)
+	if e != nil {
+		return SeriesMatchPreview{}, e
+	}
+	out := SeriesMatchPreview{Title: inspection.Title, Channel: inspection.Channel, Truncated: inspection.Truncated, Videos: []SeriesMatchVideo{}, Episodes: episodes}
+	position := 0
+	for _, entry := range inspection.Entries {
+		if entry.Kind != "video" || !storeVideoID.MatchString(entry.ID) || !textOK(entry.Title, 500) {
+			continue
+		}
+		v := SeriesMatchVideo{VideoID: entry.ID, Title: entry.Title, Channel: entry.Channel, Position: position, State: "unassigned"}
+		if episodeID, ok := assigned[entry.ID]; ok && episodeID > 0 {
+			v.EpisodeID = episodeID
+			state, note, label := episodePreview(work, s.db, mediaID, episodeID)
+			v.Label = label
+			if state == "ready" {
+				v.State = "ready"
+			} else {
+				v.State, v.Note = "blocked", note
+			}
+		}
+		out.Videos = append(out.Videos, v)
+		position++
+	}
+	return out, nil
+}
+
+// SaveSeriesMatches replaces the explicit bindings for a manual source. When
+// queue is set the source is asked to run once so the assigned, monitored,
+// missing episodes are queued. Existing "queued" entries keep their job.
+func (s *Store) SaveSeriesMatches(ctx context.Context, mediaID int64, sourceID string, revision int, queue bool, matches []SeriesMatchInput) (int, error) {
+	if mediaID < 1 || revision < 1 || len(matches) > 200 {
+		return 0, ErrInput
+	}
+	seen := map[string]bool{}
+	clean := make([]SeriesMatchInput, 0, len(matches))
+	for _, m := range matches {
+		if !storeVideoID.MatchString(m.VideoID) || m.EpisodeID < 1 || seen[m.VideoID] {
+			return 0, ErrInput
+		}
+		if m.Title != "" && !textOK(m.Title, 500) {
+			return 0, ErrInput
+		}
+		if len(m.Channel) > 500 || !utf8.ValidString(m.Channel) || strings.ContainsFunc(m.Channel, unicode.IsControl) {
+			return 0, ErrInput
+		}
+		seen[m.VideoID] = true
+		clean = append(clean, m)
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return 0, e
+	}
+	defer tx.Rollback()
+	var mapping string
+	if e = tx.QueryRowContext(ctx, `SELECT mapping FROM youtube_series_sources WHERE id=? AND media_id=? AND revision=?`, sourceID, mediaID, revision).Scan(&mapping); e != nil {
+		return 0, ErrChanged
+	}
+	if mapping != "manual" {
+		return 0, ErrInput
+	}
+	for _, m := range clean {
+		var owned int
+		if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE e.id=? AND s.series_id=?`, m.EpisodeID, mediaID).Scan(&owned); e != nil {
+			return 0, e
+		}
+		if owned != 1 {
+			return 0, ErrChanged
+		}
+	}
+	if _, e = tx.ExecContext(ctx, `DELETE FROM youtube_series_matches WHERE source_id=?`, sourceID); e != nil {
+		return 0, e
+	}
+	now := time.Now().Unix()
+	for position, m := range clean {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_series_matches(source_id,video_id,episode_id,position,title,channel,created_at) VALUES(?,?,?,?,?,?,?)`, sourceID, m.VideoID, m.EpisodeID, position, m.Title, m.Channel, now); e != nil {
+			return 0, e
+		}
+	}
+	// Forget prior automatic decisions so a changed binding is re-evaluated.
+	// Queued entries stay put so an active job is never duplicated.
+	if _, e = tx.ExecContext(ctx, `DELETE FROM youtube_series_entries WHERE source_id=? AND state IN ('baseline','skipped')`, sourceID); e != nil {
+		return 0, e
+	}
+	requested := 0
+	if queue {
+		requested = 1
+	}
+	res, e := tx.ExecContext(ctx, `UPDATE youtube_series_sources SET initialized=1,requested=?,next_run=0,state='idle',message='',revision=revision+1 WHERE id=? AND media_id=? AND revision=?`, requested, sourceID, mediaID, revision)
+	if e != nil {
+		return 0, e
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return 0, ErrChanged
+	}
+	if e = tx.Commit(); e != nil {
+		return 0, e
+	}
+	return len(clean), nil
 }

@@ -2,6 +2,7 @@ package youtube
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/faaaaq/ReelScarey/internal/database"
@@ -131,5 +132,152 @@ func TestSeriesSourceOrderPreviewAndMonitoredFilter(t *testing.T) {
 	}
 	if len(preview.Entries) != 2 || preview.Entries[0].State != "ready" || preview.Entries[0].Episode != 2 || preview.Entries[1].State != "skipped" {
 		t.Fatal(preview)
+	}
+}
+
+func TestSeriesManualMatchesBindExplicitEpisodes(t *testing.T) {
+	ctx := context.Background()
+	s, inspector, mediaID := seriesFixture(t)
+	for _, q := range []string{
+		`INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(4,1,14,4,'Four','','',1)`,
+		`INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(5,1,15,5,'Five','','',1)`,
+	} {
+		if _, e := s.db.Exec(q); e != nil {
+			t.Fatal(q, e)
+		}
+	}
+	inspector.result.Entries = []Entry{
+		{Kind: "video", ID: "xxxxxxxxx01", Title: "Intro XX", Channel: "Fixture"},
+		{Kind: "video", ID: "xxxxxxxxx02", Title: "X1", Channel: "Fixture"},
+		{Kind: "video", ID: "xxxxxxxxx03", Title: "X2 infinity", Channel: "Fixture"},
+	}
+	source, e := s.SaveSeriesSource(ctx, mediaID, SeriesSourceInput{URL: inspector.result.Source.URL, Mapping: "manual", Season: 0, StartEpisode: 1, Quality: "best", Interval: 6, AutoImport: true, Reviewed: true})
+	if e != nil || source.Mapping != "manual" {
+		t.Fatal(source, e)
+	}
+	if source.Enabled || source.Initialized {
+		t.Fatal("a manual source must still start paused", source)
+	}
+
+	preview, e := s.PreviewSeriesMatches(ctx, mediaID, source.ID, inspector)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(preview.Videos) != 3 || len(preview.Episodes) != 5 {
+		t.Fatal(preview.Videos, preview.Episodes)
+	}
+	if preview.Videos[0].State != "unassigned" || preview.Videos[0].EpisodeID != 0 {
+		t.Fatal("unbound video was not reported as unassigned", preview.Videos[0])
+	}
+
+	// A stale revision and a foreign episode are both refused.
+	if _, e = s.SaveSeriesMatches(ctx, mediaID, source.ID, source.Revision+7, true, nil); !errors.Is(e, ErrChanged) {
+		t.Fatal("stale revision accepted", e)
+	}
+	if _, e = s.SaveSeriesMatches(ctx, mediaID, source.ID, source.Revision, false, []SeriesMatchInput{{VideoID: "xxxxxxxxx02", EpisodeID: 999, Title: "X1"}}); !errors.Is(e, ErrChanged) {
+		t.Fatal("episode outside the show accepted", e)
+	}
+	if _, e = s.SaveSeriesMatches(ctx, mediaID, source.ID, source.Revision, false, []SeriesMatchInput{{VideoID: "not-valid", EpisodeID: 2, Title: "X1"}}); !errors.Is(e, ErrInput) {
+		t.Fatal("invalid video id accepted", e)
+	}
+
+	round := []SeriesMatchInput{
+		{VideoID: "xxxxxxxxx01", EpisodeID: 1, Title: "Intro XX"}, // episode 1 already has a file
+		{VideoID: "xxxxxxxxx02", EpisodeID: 2, Title: "X1"},
+		{VideoID: "xxxxxxxxx03", EpisodeID: 4, Title: "X2 infinity"},
+	}
+	n, e := s.SaveSeriesMatches(ctx, mediaID, source.ID, source.Revision, true, round)
+	if e != nil || n != 3 {
+		t.Fatal(n, e)
+	}
+	sources, e := s.SeriesSources(ctx, mediaID)
+	if e != nil || len(sources) != 1 {
+		t.Fatal(sources, e)
+	}
+	source = sources[0]
+	if source.Revision == 1 || !source.Requested || !source.Initialized {
+		t.Fatal("saving matches must bump the revision and request a run", source)
+	}
+	matches, e := s.SeriesMatches(ctx, source.ID)
+	if e != nil || len(matches) != 3 || matches[0].VideoID != "xxxxxxxxx01" || matches[0].EpisodeID != 1 {
+		t.Fatal(matches, e)
+	}
+
+	preview, e = s.PreviewSeriesMatches(ctx, mediaID, source.ID, inspector)
+	if e != nil {
+		t.Fatal(e)
+	}
+	byVideo := map[string]SeriesMatchVideo{}
+	for _, v := range preview.Videos {
+		byVideo[v.VideoID] = v
+	}
+	if byVideo["xxxxxxxxx01"].State != "blocked" || byVideo["xxxxxxxxx02"].State != "ready" {
+		t.Fatal(byVideo)
+	}
+
+	if worked, e := s.ProcessSeriesSource(ctx, inspector); e != nil || !worked {
+		t.Fatal(worked, e)
+	}
+	jobs, e := s.Jobs(ctx)
+	if e != nil || len(jobs) != 2 {
+		t.Fatal("manual source queued the wrong videos", jobs, e)
+	}
+	queued := map[int64]bool{}
+	for _, job := range jobs {
+		queued[job.Target.EpisodeID] = true
+		if job.SeriesSourceID != source.ID {
+			t.Fatal("job lost its source", job)
+		}
+	}
+	if !queued[2] || !queued[4] {
+		t.Fatal(queued)
+	}
+	states := map[string]string{}
+	entries, _ := s.SeriesEntries(ctx, source.ID)
+	for _, entry := range entries {
+		states[entry.VideoID] = entry.State
+	}
+	if states["xxxxxxxxx01"] != "skipped" || states["xxxxxxxxx02"] != "queued" || states["xxxxxxxxx03"] != "queued" {
+		t.Fatal(states)
+	}
+
+	// A video that was skipped without a binding is queued once it is assigned.
+	sources, _ = s.SeriesSources(ctx, mediaID)
+	source = sources[0]
+	round[0] = SeriesMatchInput{VideoID: "xxxxxxxxx01", EpisodeID: 5, Title: "Intro XX"}
+	inspector.result.Entries = append(inspector.result.Entries, Entry{Kind: "video", ID: "yyyyyyyyy01", Title: "Extra", Channel: "Fixture"})
+	if _, e = s.SaveSeriesMatches(ctx, mediaID, source.ID, source.Revision, true, round[:3]); e != nil {
+		t.Fatal(e)
+	}
+	if worked, e := s.ProcessSeriesSource(ctx, inspector); e != nil || !worked {
+		t.Fatal(worked, e)
+	}
+	jobs, e = s.Jobs(ctx)
+	if e != nil || len(jobs) != 3 {
+		t.Fatal("reassigned video was not queued", jobs, e)
+	}
+	entries, _ = s.SeriesEntries(ctx, source.ID)
+	for _, entry := range entries {
+		if entry.VideoID == "xxxxxxxxx01" && (entry.State != "queued" || entry.EpisodeID != 5) {
+			t.Fatal("reassigned video entry is wrong", entry)
+		}
+		if entry.VideoID == "yyyyyyyyy01" && entry.State != "skipped" {
+			t.Fatal("unassigned video must stay skipped", entry)
+		}
+	}
+}
+
+func TestSeriesMatchesRefusedForAutomaticSources(t *testing.T) {
+	ctx := context.Background()
+	s, inspector, mediaID := seriesFixture(t)
+	source, e := s.SaveSeriesSource(ctx, mediaID, SeriesSourceInput{URL: inspector.result.Source.URL, Mapping: "episode", Season: 1, StartEpisode: 1, Quality: "best", Interval: 6, Reviewed: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.PreviewSeriesMatches(ctx, mediaID, source.ID, inspector); !errors.Is(e, ErrInput) {
+		t.Fatal("automatic source accepted a manual preview", e)
+	}
+	if _, e = s.SaveSeriesMatches(ctx, mediaID, source.ID, source.Revision, true, []SeriesMatchInput{{VideoID: "aaaaaaaaaaa", EpisodeID: 2, Title: "x"}}); !errors.Is(e, ErrInput) {
+		t.Fatal("automatic source accepted manual matches", e)
 	}
 }
