@@ -7,6 +7,7 @@ import {
   ExternalLink,
   FolderInput,
   ListMusic,
+  Pencil,
   Play,
   Search,
 } from "lucide-react";
@@ -38,6 +39,8 @@ import {
   type MusicArtistTrackPage,
   type MusicDiscographyAlbum,
   type MusicDiscographyPage,
+  type MusicEditJob,
+  type MusicEditPlan,
   type MusicImportJob,
   type MusicJob,
   type MusicRelease,
@@ -1174,7 +1177,20 @@ export function MusicAlbumPage() {
   const [prefsPending, setPrefsPending] = useState(false);
   const [albumDownload, setAlbumDownload] =
     useState<AlbumDownloadTarget | null>(null);
+  const [fixOpen, setFixOpen] = useState(false);
+  const [fixYear, setFixYear] = useState("");
+  const [fixAlbum, setFixAlbum] = useState("");
+  const [fixArtist, setFixArtist] = useState("");
+  const [fixPlan, setFixPlan] = useState<MusicEditPlan | null>(null);
+  const [fixPending, setFixPending] = useState(false);
+  const [fixMessage, setFixMessage] = useState("");
   const hasMissingTracks = tracks.some((track) => !track.file_id);
+  const fixOverrides = () => ({
+    album_id: album?.id ?? 0,
+    year: Number(fixYear) || 0,
+    album: fixAlbum.trim(),
+    artist: fixArtist.trim(),
+  });
 
   useEffect(() => {
     if (!albumPrefs.data?.preferences) return;
@@ -1293,6 +1309,70 @@ export function MusicAlbumPage() {
     }
   }
 
+  async function openFixMetadata() {
+    setFixYear(album?.year ? String(album.year) : "");
+    setFixAlbum(album?.title ?? "");
+    setFixArtist(album?.artist_name ?? "");
+    setFixPlan(null);
+    setFixMessage("");
+    setError("");
+    setFixOpen(true);
+  }
+
+  async function previewFixMetadata(e: FormEvent) {
+    e.preventDefault();
+    if (!album?.id || fixPending) return;
+    const overrides = fixOverrides();
+    if (!overrides.year && !overrides.album && !overrides.artist) {
+      setFixMessage("Enter a year, album title or artist to change.");
+      return;
+    }
+    setFixPending(true);
+    setError("");
+    setFixMessage("");
+    try {
+      const plan = await api<MusicEditPlan>("/library/music/edits/preview", {
+        method: "POST",
+        body: JSON.stringify(overrides),
+      });
+      setFixPlan(plan);
+      setFixMessage(
+        `${plan.files.length} file${plan.files.length === 1 ? "" : "s"} will be rewritten. Review the plan, then apply.`,
+      );
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setFixPending(false);
+    }
+  }
+
+  async function applyFixMetadata() {
+    if (!album?.id || !fixPlan || fixPending) return;
+    setFixPending(true);
+    setError("");
+    try {
+      const job = await api<MusicEditJob>("/library/music/edits/apply", {
+        method: "POST",
+        body: JSON.stringify({
+          ...fixOverrides(),
+          plan_hash: fixPlan.plan_hash,
+          reviewed: true,
+        }),
+      });
+      setFixPlan(null);
+      setFixMessage(
+        job.state === "completed"
+          ? `Updated ${job.file_count} file${job.file_count === 1 ? "" : "s"}.`
+          : `Correction ${job.state}.`,
+      );
+      details.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setFixPending(false);
+    }
+  }
+
   const importKind =
     importJob.data?.state === "completed"
       ? "success"
@@ -1342,6 +1422,12 @@ export function MusicAlbumPage() {
             icon={FolderInput}
             label="Import folder"
             onClick={() => setImportOpen(true)}
+          />
+          <ToolbarButton
+            icon={Pencil}
+            label="Fix metadata"
+            disabled={!album?.id || tracks.length === 0}
+            onClick={openFixMetadata}
           />
         </ToolbarSection>
       </PageToolbar>
@@ -1585,6 +1671,99 @@ export function MusicAlbumPage() {
           </FieldSet>
         )}
       </PageBody>
+      <Modal
+        open={fixOpen}
+        onOpenChange={setFixOpen}
+        title="Correct album metadata"
+        description="Rewrites the year, album title and artist tags of every file on this album, with a reviewed plan and rollback."
+        footer={
+          <Button variant="soft" color="gray" onClick={() => setFixOpen(false)}>
+            Close
+          </Button>
+        }
+      >
+        <form
+          className="mus-search"
+          onSubmit={(e) => void previewFixMetadata(e)}
+        >
+          <label>
+            Year{" "}
+            <TextField.Root
+              aria-label="Album year"
+              placeholder="e.g. 1998"
+              value={fixYear}
+              onChange={(e) => {
+                setFixYear(e.target.value);
+                setFixPlan(null);
+              }}
+              style={{ width: 100 }}
+            />
+          </label>
+          <label>
+            Album{" "}
+            <TextField.Root
+              aria-label="Album title"
+              value={fixAlbum}
+              onChange={(e) => {
+                setFixAlbum(e.target.value);
+                setFixPlan(null);
+              }}
+            />
+          </label>
+          <label>
+            Artist{" "}
+            <TextField.Root
+              aria-label="Album artist"
+              value={fixArtist}
+              onChange={(e) => {
+                setFixArtist(e.target.value);
+                setFixPlan(null);
+              }}
+            />
+          </label>
+          <Button type="submit" disabled={fixPending || !album?.id}>
+            Preview changes
+          </Button>
+        </form>
+        <p className="rs-muted">
+          Leave a field as it is to keep it. Clearing the year to 0 leaves the
+          year untouched, so enter the correct year explicitly.
+        </p>
+        {fixMessage && <Alert kind="info">{fixMessage}</Alert>}
+        {fixPlan && fixPlan.files.length > 0 && (
+          <>
+            <Table label="Planned metadata corrections">
+              <thead>
+                <tr>
+                  <th scope="col">File</th>
+                  <th scope="col">New destination</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fixPlan.files.map((file) => (
+                  <tr key={file.music_file_id}>
+                    <td>
+                      <span className="mus-path">{file.source_path}</span>
+                    </td>
+                    <td>
+                      <span className="mus-path">{file.destination_path}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+            <Button
+              color="red"
+              disabled={fixPending}
+              onClick={() => void applyFixMetadata()}
+            >
+              <Pencil size={15} aria-hidden="true" /> Apply to{" "}
+              {fixPlan.files.length} file
+              {fixPlan.files.length === 1 ? "" : "s"}
+            </Button>
+          </>
+        )}
+      </Modal>
       <Modal
         open={releaseOpen}
         onOpenChange={setReleaseOpen}

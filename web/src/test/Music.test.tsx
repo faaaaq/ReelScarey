@@ -101,6 +101,11 @@ describe("music", () => {
       </Theme>,
     );
 
+    // The library opens on the artist list, like the movie library.
+    expect(
+      await screen.findByRole("link", { name: "Open Radiohead" }),
+    ).toHaveAttribute("href", "/music/artists/1");
+    await userEvent.click(screen.getByRole("button", { name: "Albums" }));
     expect(
       (await screen.findAllByRole("link", { name: "OK Computer" }))[0],
     ).toHaveAttribute("href", "/music/albums/2");
@@ -393,6 +398,104 @@ describe("music", () => {
     expect(screen.getByText("Airbag")).toBeVisible();
     expect(screen.getByText("4:44")).toBeVisible();
     expect(screen.getByRole("button", { name: "Play Airbag" })).toBeVisible();
+  });
+
+  it("corrects a mistaken album year through the reviewed edit plan", async () => {
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/albums/2") {
+        return Response.json({
+          album: {
+            id: 2,
+            artist_id: 1,
+            artist_name: "XG",
+            title: "DEPENDS",
+            year: 6666,
+            primary_type: "Album",
+            track_count: 1,
+            status: "available",
+          },
+          tracks: [
+            {
+              disc: 1,
+              number: 1,
+              title: "S.A.D.",
+              duration_ms: 202000,
+              file_id: 9,
+            },
+          ],
+        });
+      }
+      if (
+        path === "/api/v1/library/music/edits/preview" &&
+        options?.method === "POST"
+      ) {
+        const body = JSON.parse(String(options.body));
+        expect(body.album_id).toBe(2);
+        expect(body.year).toBe(2022);
+        return Response.json({
+          files: [
+            {
+              music_file_id: 9,
+              source_path: "Music/XG/DEPENDS/01 S.A.D..flac",
+              destination_path: "Music/XG/DEPENDS/01 S.A.D..flac",
+              action: "retag",
+              tags: {},
+            },
+          ],
+          plan_hash: "abc123",
+        });
+      }
+      if (
+        path === "/api/v1/library/music/edits/apply" &&
+        options?.method === "POST"
+      ) {
+        const body = JSON.parse(String(options.body));
+        expect(body.plan_hash).toBe("abc123");
+        expect(body.reviewed).toBe(true);
+        return Response.json({
+          id: 7,
+          state: "completed",
+          file_count: 1,
+          error: "",
+          created_at: 0,
+          updated_at: 0,
+        });
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MusicPlayerProvider>
+          <MemoryRouter initialEntries={["/music/albums/2"]}>
+            <Routes>
+              <Route path="/music/albums/:id" element={<MusicAlbumPage />} />
+            </Routes>
+          </MemoryRouter>
+        </MusicPlayerProvider>
+      </Theme>,
+    );
+
+    await screen.findByRole("table", { name: "Music tracks" });
+    await userEvent.click(screen.getByRole("button", { name: "Fix metadata" }));
+    const year = await screen.findByRole("textbox", { name: "Album year" });
+    await userEvent.clear(year);
+    await userEvent.type(year, "2022");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Preview changes" }),
+    );
+
+    await screen.findByRole("table", {
+      name: "Planned metadata corrections",
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: /Apply to 1 file/ }),
+    );
+
+    await screen.findByText("Updated 1 file.");
+    const calls = fetch.mock.calls.map(([url]) => String(url));
+    expect(calls.some((url) => url.includes("/edits/preview"))).toBe(true);
+    expect(calls.some((url) => url.includes("/edits/apply"))).toBe(true);
   });
 
   it("searches releases and imports a completed folder", async () => {

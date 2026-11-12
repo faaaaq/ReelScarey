@@ -753,15 +753,32 @@ the existing ReelScarey address; do not open an additional music port.
 The administrator generates a music-server token on **Music -> Server**. The
 Subsonic username can be any label (for example `reelscarey`); the password is
 the generated token, never the administrator account password. The token is
-stored through `securestore` and is covered by the existing `secrets.key`
-backup. Enabling the endpoint does not enable the administrator browser session
+20 characters from Crockford's Base32 alphabet (digits and uppercase letters
+with I, L, O and U omitted), so it is short enough to type on a phone. The
+plaintext-password form accepts it in any case and ignores spaces and dashes;
+clients that send `md5(password+salt)` need the token exactly as shown. The
+token is stored through `securestore` and is covered by the existing
+`secrets.key` backup. Enabling the endpoint does not enable the administrator browser session
 for third-party clients.
 
-Supported subset: ping, license, music folders, artists, indexes, artist,
-album, album list, song, search, random songs, cover art, empty playlists,
-scrobble no-op, and stream/download with Range support. Write operations such
-as ratings are not implemented. Clients that require unsupported actions should
-be treated as untested.
+Supported subset: ping, license, music folders, indexes, artists, artist (with
+its albums), album, album list, music directory, song, search, random songs,
+top songs, genres, scan status, user, cover art, avatar, and stream/download
+with Range support. Playlists, play queue, now-playing, starred, lyrics,
+bookmarks, shares, podcasts, internet radio, chat and video collections are
+answered with empty, well-formed responses so clients that probe them do not
+report an unsupported or unconfigured server; similar-songs and songs-by-genre
+likewise return empty lists. `startScan` is a no-op and `getScanStatus` reports
+the number of playable songs. Scrobble, star/unstar, rating and play-queue
+writes are accepted and ignored. Actions outside this subset still fail with
+the standard Subsonic "not implemented" error.
+
+IDs are opaque and namespaced with a two-letter prefix so an artist and an
+album can never share a number: artists are `ar<id>`, albums `al<id>` and songs
+`tr<file-id>`. The music folder always has id `1`. Clients must pass these IDs
+back unchanged; `stream`, `download` and `getCoverArt` additionally accept a
+bare numeric id for compatibility with older clients. Every song entry carries
+its suffix, content type and byte size so clients can play it directly.
 
 ### Link downloads
 

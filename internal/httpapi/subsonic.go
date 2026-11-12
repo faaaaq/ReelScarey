@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/music"
 )
@@ -16,6 +18,20 @@ import (
 const (
 	subsonicVersion = "1.16.1"
 	subsonicType    = "ReelScarey"
+
+	// Subsonic identifiers are opaque strings that clients echo back verbatim.
+	// Artists, albums and songs live in separate catalog tables but share one
+	// integer space, so a bare number is ambiguous: artist 14 and album 14 are
+	// different rows. Each namespace gets its own prefix so an id is never
+	// interpreted as the wrong kind of object.
+	subsonicArtistPrefix = "ar"
+	subsonicAlbumPrefix  = "al"
+	subsonicSongPrefix   = "tr"
+
+	// The single music folder exposed to clients. ReelScarey has one library
+	// root, so the Subsonic folder id is fixed.
+	subsonicFolderID   = 1
+	subsonicFolderName = "Music"
 )
 
 type subsonicError struct {
@@ -75,21 +91,33 @@ type subsonicAlbum struct {
 	PlayCount int            `xml:"playCount,attr" json:"playCount"`
 }
 
+// subsonicSong is used both for the <song> element and for the <child> element
+// inside a <directory>. A directory child that is an album sets IsDir and only
+// the fields that make sense for a folder, so the numeric and media attributes
+// carry omitempty to keep those entries clean.
 type subsonicSong struct {
 	ID          string `xml:"id,attr" json:"id"`
-	Parent      string `xml:"parent,attr" json:"parent"`
+	Parent      string `xml:"parent,attr,omitempty" json:"parent,omitempty"`
 	Title       string `xml:"title,attr" json:"title"`
-	Album       string `xml:"album,attr" json:"album"`
-	Artist      string `xml:"artist,attr" json:"artist"`
-	Track       int    `xml:"track,attr" json:"track"`
-	DiscNumber  int    `xml:"discNumber,attr" json:"discNumber"`
+	Album       string `xml:"album,attr,omitempty" json:"album,omitempty"`
+	Artist      string `xml:"artist,attr,omitempty" json:"artist,omitempty"`
+	Track       int    `xml:"track,attr,omitempty" json:"track,omitempty"`
+	DiscNumber  int    `xml:"discNumber,attr,omitempty" json:"discNumber,omitempty"`
 	Year        *int   `xml:"year,attr,omitempty" json:"year,omitempty"`
-	Duration    int    `xml:"duration,attr" json:"duration"`
-	Suffix      string `xml:"suffix,attr" json:"suffix"`
-	ContentType string `xml:"contentType,attr" json:"contentType"`
-	Size        int64  `xml:"size,attr" json:"size"`
+	Duration    int    `xml:"duration,attr,omitempty" json:"duration,omitempty"`
+	Suffix      string `xml:"suffix,attr,omitempty" json:"suffix,omitempty"`
+	ContentType string `xml:"contentType,attr,omitempty" json:"contentType,omitempty"`
+	Size        int64  `xml:"size,attr,omitempty" json:"size,omitempty"`
 	CoverArt    string `xml:"coverArt,attr,omitempty" json:"coverArt,omitempty"`
 	IsDir       bool   `xml:"isDir,attr" json:"isDir"`
+	SongCount   int    `xml:"songCount,attr,omitempty" json:"songCount,omitempty"`
+}
+
+type subsonicDirectory struct {
+	ID       string         `xml:"id,attr" json:"id"`
+	Parent   string         `xml:"parent,attr,omitempty" json:"parent,omitempty"`
+	Name     string         `xml:"name,attr" json:"name"`
+	Children []subsonicSong `xml:"child" json:"child,omitempty"`
 }
 
 type subsonicAlbumList struct {
@@ -106,29 +134,193 @@ type subsonicSongs struct {
 	Songs []subsonicSong `xml:"song" json:"song"`
 }
 
+type subsonicPlaylist struct {
+	ID        string         `xml:"id,attr" json:"id"`
+	Name      string         `xml:"name,attr" json:"name"`
+	SongCount int            `xml:"songCount,attr" json:"songCount"`
+	Duration  int            `xml:"duration,attr" json:"duration"`
+	Created   string         `xml:"created,attr,omitempty" json:"created,omitempty"`
+	Entry     []subsonicSong `xml:"entry" json:"entry,omitempty"`
+}
+
 type subsonicPlaylists struct {
-	Playlists []any `xml:"playlist" json:"playlist,omitempty"`
+	Playlists []subsonicPlaylist `xml:"playlist" json:"playlist,omitempty"`
+}
+
+type subsonicPlayQueue struct {
+	Current   string         `xml:"current,attr,omitempty" json:"current,omitempty"`
+	Position  int64          `xml:"position,attr,omitempty" json:"position,omitempty"`
+	Username  string         `xml:"username,attr,omitempty" json:"username,omitempty"`
+	Changed   string         `xml:"changed,attr,omitempty" json:"changed,omitempty"`
+	ChangedBy string         `xml:"changedBy,attr,omitempty" json:"changedBy,omitempty"`
+	Entry     []subsonicSong `xml:"entry" json:"entry,omitempty"`
+}
+
+type subsonicNowPlaying struct {
+	Entry []subsonicSong `xml:"entry" json:"entry,omitempty"`
+}
+
+type subsonicStarred struct {
+	Artists []subsonicArtist `xml:"artist" json:"artist,omitempty"`
+	Albums  []subsonicAlbum  `xml:"album" json:"album,omitempty"`
+	Songs   []subsonicSong   `xml:"song" json:"song,omitempty"`
+}
+
+type subsonicScanStatus struct {
+	Scanning bool `xml:"scanning,attr" json:"scanning"`
+	Count    int  `xml:"count,attr" json:"count"`
+}
+
+type subsonicArtistInfo struct {
+	Biography      string           `xml:"biography,omitempty" json:"biography,omitempty"`
+	MusicBrainzID  string           `xml:"musicBrainzId,omitempty" json:"musicBrainzId,omitempty"`
+	SmallImageURL  string           `xml:"smallImageUrl,omitempty" json:"smallImageUrl,omitempty"`
+	MediumImageURL string           `xml:"mediumImageUrl,omitempty" json:"mediumImageUrl,omitempty"`
+	LargeImageURL  string           `xml:"largeImageUrl,omitempty" json:"largeImageUrl,omitempty"`
+	SimilarArtist  []subsonicArtist `xml:"similarArtist" json:"similarArtist,omitempty"`
+}
+
+type subsonicAlbumInfo struct {
+	Notes         string `xml:"notes,omitempty" json:"notes,omitempty"`
+	MusicBrainzID string `xml:"musicBrainzId,omitempty" json:"musicBrainzId,omitempty"`
+	SmallImageURL string `xml:"smallImageUrl,omitempty" json:"smallImageUrl,omitempty"`
+}
+
+type subsonicGenre struct {
+	Name       string `xml:"name,attr" json:"name"`
+	SongCount  int    `xml:"songCount,attr" json:"songCount"`
+	AlbumCount int    `xml:"albumCount,attr" json:"albumCount"`
+}
+
+type subsonicGenres struct {
+	Genres []subsonicGenre `xml:"genre" json:"genre,omitempty"`
+}
+
+type subsonicUser struct {
+	Username          string `xml:"username,attr" json:"username"`
+	Email             string `xml:"email,attr,omitempty" json:"email,omitempty"`
+	ScrobblingEnabled bool   `xml:"scrobblingEnabled,attr" json:"scrobblingEnabled"`
+	AdminRole         bool   `xml:"adminRole,attr" json:"adminRole"`
+	SettingsRole      bool   `xml:"settingsRole,attr" json:"settingsRole"`
+	DownloadRole      bool   `xml:"downloadRole,attr" json:"downloadRole"`
+	UploadRole        bool   `xml:"uploadRole,attr" json:"uploadRole"`
+	PlaylistRole      bool   `xml:"playlistRole,attr" json:"playlistRole"`
+	CoverArtRole      bool   `xml:"coverArtRole,attr" json:"coverArtRole"`
+	ShareRole         bool   `xml:"shareRole,attr" json:"shareRole"`
+}
+
+type subsonicLyrics struct {
+	Artist string `xml:"artist,attr,omitempty" json:"artist,omitempty"`
+	Title  string `xml:"title,attr,omitempty" json:"title,omitempty"`
+}
+
+type subsonicBookmarks struct {
+	Bookmarks []any `xml:"bookmark" json:"bookmark,omitempty"`
+}
+
+type subsonicShares struct {
+	Shares []any `xml:"share" json:"share,omitempty"`
+}
+
+type subsonicPodcasts struct {
+	Channels []any `xml:"channel" json:"channel,omitempty"`
+}
+
+type subsonicInternetRadioStations struct {
+	Stations []any `xml:"internetRadioStation" json:"internetRadioStation,omitempty"`
+}
+
+type subsonicChatMessages struct {
+	Messages []any `xml:"chatMessage" json:"chatMessage,omitempty"`
+}
+
+type subsonicVideos struct {
+	Videos []any `xml:"video" json:"video,omitempty"`
+}
+
+type subsonicLyricsList struct {
+	StructuredLyrics []any `xml:"structuredLyrics" json:"structuredLyrics,omitempty"`
+}
+
+type subsonicOpenSubsonicExtension struct {
+	Name     string `xml:"name,attr" json:"name"`
+	Versions []int  `xml:"versions" json:"versions"`
+}
+
+type subsonicOpenSubsonicExtensions struct {
+	Extensions []subsonicOpenSubsonicExtension `xml:"openSubsonicExtension" json:"openSubsonicExtension,omitempty"`
+}
+
+// subsonicSupportedExtensions lists the OpenSubsonic extensions this server
+// actually implements. Every entry must correspond to working behaviour, so
+// the list stays deliberately short:
+//
+//   - transcodeOffset: the stream endpoint honours ?timeOffset= and seeks the
+//     ffmpeg transcode (see music.transcodeArgs / OpenPlayback).
+//   - topSongsByArtistId: getTopSongs accepts ?id= with an artist id and scopes
+//     songs to that artist (see Server.subsonicTopSongs).
+//
+// Do not add extensions for actions that only return an empty or inert
+// payload, such as indexBasedQueue, songLyrics, formPost or playbackReport.
+func subsonicSupportedExtensions() []subsonicOpenSubsonicExtension {
+	return []subsonicOpenSubsonicExtension{
+		{Name: "transcodeOffset", Versions: []int{1}},
+		{Name: "topSongsByArtistId", Versions: []int{1}},
+	}
 }
 
 type subsonicResponse struct {
-	XMLName       xml.Name                  `xml:"subsonic-response" json:"-"`
-	Xmlns         string                    `xml:"xmlns,attr,omitempty" json:"-"`
-	Status        string                    `xml:"status,attr" json:"status"`
-	Version       string                    `xml:"version,attr" json:"version"`
-	Type          string                    `xml:"type,attr,omitempty" json:"type,omitempty"`
-	ServerVersion string                    `xml:"serverVersion,attr,omitempty" json:"serverVersion,omitempty"`
-	Error         *subsonicError            `xml:"error,omitempty" json:"error,omitempty"`
-	License       *subsonicLicense          `xml:"license,omitempty" json:"license,omitempty"`
-	MusicFolders  *subsonicMusicFolders     `xml:"musicFolders,omitempty" json:"musicFolders,omitempty"`
-	Artists       *subsonicArtists          `xml:"artists,omitempty" json:"artists,omitempty"`
-	Indexes       *subsonicIndexes          `xml:"indexes,omitempty" json:"indexes,omitempty"`
-	Artist        *subsonicArtistWithAlbums `xml:"artist,omitempty" json:"artist,omitempty"`
-	Album         *subsonicAlbum            `xml:"album,omitempty" json:"album,omitempty"`
-	AlbumList2    *subsonicAlbumList        `xml:"albumList2,omitempty" json:"albumList2,omitempty"`
-	Song          *subsonicSong             `xml:"song,omitempty" json:"song,omitempty"`
-	SearchResult3 *subsonicSearch           `xml:"searchResult3,omitempty" json:"searchResult3,omitempty"`
-	RandomSongs   *subsonicSongs            `xml:"randomSongs,omitempty" json:"randomSongs,omitempty"`
-	Playlists     *subsonicPlaylists        `xml:"playlists,omitempty" json:"playlists,omitempty"`
+	XMLName       xml.Name `xml:"subsonic-response" json:"-"`
+	Xmlns         string   `xml:"xmlns,attr,omitempty" json:"-"`
+	Status        string   `xml:"status,attr" json:"status"`
+	Version       string   `xml:"version,attr" json:"version"`
+	Type          string   `xml:"type,attr,omitempty" json:"type,omitempty"`
+	ServerVersion string   `xml:"serverVersion,attr,omitempty" json:"serverVersion,omitempty"`
+	// OpenSubsonic must be true for any server implementing OpenSubsonic API v1.
+	// Clients such as Arpeggi gate their whole sync/playback feature set on this
+	// flag, so omitting it makes the server look like plain Subsonic 1.16.1.
+	OpenSubsonic          bool                            `xml:"openSubsonic,attr" json:"openSubsonic"`
+	Error                 *subsonicError                  `xml:"error,omitempty" json:"error,omitempty"`
+	License               *subsonicLicense                `xml:"license,omitempty" json:"license,omitempty"`
+	MusicFolders          *subsonicMusicFolders           `xml:"musicFolders,omitempty" json:"musicFolders,omitempty"`
+	Artists               *subsonicArtists                `xml:"artists,omitempty" json:"artists,omitempty"`
+	Indexes               *subsonicIndexes                `xml:"indexes,omitempty" json:"indexes,omitempty"`
+	Artist                *subsonicArtistWithAlbums       `xml:"artist,omitempty" json:"artist,omitempty"`
+	Album                 *subsonicAlbum                  `xml:"album,omitempty" json:"album,omitempty"`
+	Directory             *subsonicDirectory              `xml:"directory,omitempty" json:"directory,omitempty"`
+	AlbumList             *subsonicAlbumList              `xml:"albumList,omitempty" json:"albumList,omitempty"`
+	AlbumList2            *subsonicAlbumList              `xml:"albumList2,omitempty" json:"albumList2,omitempty"`
+	Song                  *subsonicSong                   `xml:"song,omitempty" json:"song,omitempty"`
+	SearchResult2         *subsonicSearch                 `xml:"searchResult2,omitempty" json:"searchResult2,omitempty"`
+	SearchResult3         *subsonicSearch                 `xml:"searchResult3,omitempty" json:"searchResult3,omitempty"`
+	RandomSongs           *subsonicSongs                  `xml:"randomSongs,omitempty" json:"randomSongs,omitempty"`
+	Songs                 *subsonicSongs                  `xml:"songs,omitempty" json:"songs,omitempty"`
+	SongsByGenre          *subsonicSongs                  `xml:"songsByGenre,omitempty" json:"songsByGenre,omitempty"`
+	TopSongs              *subsonicSongs                  `xml:"topSongs,omitempty" json:"topSongs,omitempty"`
+	SimilarSongs          *subsonicSongs                  `xml:"similarSongs,omitempty" json:"similarSongs,omitempty"`
+	SimilarSongs2         *subsonicSongs                  `xml:"similarSongs2,omitempty" json:"similarSongs2,omitempty"`
+	Playlists             *subsonicPlaylists              `xml:"playlists,omitempty" json:"playlists,omitempty"`
+	Playlist              *subsonicPlaylist               `xml:"playlist,omitempty" json:"playlist,omitempty"`
+	PlayQueue             *subsonicPlayQueue              `xml:"playQueue,omitempty" json:"playQueue,omitempty"`
+	NowPlaying            *subsonicNowPlaying             `xml:"nowPlaying,omitempty" json:"nowPlaying,omitempty"`
+	Starred               *subsonicStarred                `xml:"starred,omitempty" json:"starred,omitempty"`
+	Starred2              *subsonicStarred                `xml:"starred2,omitempty" json:"starred2,omitempty"`
+	ScanStatus            *subsonicScanStatus             `xml:"scanStatus,omitempty" json:"scanStatus,omitempty"`
+	ArtistInfo            *subsonicArtistInfo             `xml:"artistInfo,omitempty" json:"artistInfo,omitempty"`
+	ArtistInfo2           *subsonicArtistInfo             `xml:"artistInfo2,omitempty" json:"artistInfo2,omitempty"`
+	AlbumInfo             *subsonicAlbumInfo              `xml:"albumInfo,omitempty" json:"albumInfo,omitempty"`
+	AlbumInfo2            *subsonicAlbumInfo              `xml:"albumInfo2,omitempty" json:"albumInfo2,omitempty"`
+	Genres                *subsonicGenres                 `xml:"genres,omitempty" json:"genres,omitempty"`
+	User                  *subsonicUser                   `xml:"user,omitempty" json:"user,omitempty"`
+	Lyrics                *subsonicLyrics                 `xml:"lyrics,omitempty" json:"lyrics,omitempty"`
+	LyricsList            *subsonicLyricsList             `xml:"lyricsList,omitempty" json:"lyricsList,omitempty"`
+	Bookmarks             *subsonicBookmarks              `xml:"bookmarks,omitempty" json:"bookmarks,omitempty"`
+	Shares                *subsonicShares                 `xml:"shares,omitempty" json:"shares,omitempty"`
+	Podcasts              *subsonicPodcasts               `xml:"podcasts,omitempty" json:"podcasts,omitempty"`
+	InternetRadioStations *subsonicInternetRadioStations  `xml:"internetRadioStations,omitempty" json:"internetRadioStations,omitempty"`
+	ChatMessages          *subsonicChatMessages           `xml:"chatMessages,omitempty" json:"chatMessages,omitempty"`
+	Videos                *subsonicVideos                 `xml:"videos,omitempty" json:"videos,omitempty"`
+	OpenSubsonicExtension *subsonicOpenSubsonicExtensions `xml:"openSubsonicExtensions,omitempty" json:"openSubsonicExtensions,omitempty"`
 }
 
 func subsonicResponseFor(version string) subsonicResponse {
@@ -138,6 +330,7 @@ func subsonicResponseFor(version string) subsonicResponse {
 		Version:       subsonicVersion,
 		Type:          subsonicType,
 		ServerVersion: version,
+		OpenSubsonic:  true,
 	}
 }
 
@@ -161,6 +354,11 @@ func writeSubsonic(w http.ResponseWriter, r *http.Request, response subsonicResp
 	_ = xml.NewEncoder(w).Encode(response)
 }
 
+func subsonicAction(r *http.Request) string {
+	action := strings.TrimPrefix(r.URL.Path, "/rest/")
+	return strings.ToLower(strings.TrimSuffix(action, ".view"))
+}
+
 func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 	if s.music == nil {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "The music catalog is unavailable."))
@@ -176,13 +374,12 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 		writeSubsonic(w, r, subsonicFailure(s.version, 40, "Wrong username or password."))
 		return
 	}
-	action := strings.TrimPrefix(r.URL.Path, "/rest/")
-	action = strings.TrimSuffix(action, ".view")
+	action := subsonicAction(r)
 	if action == "" || strings.Contains(action, "/") {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "Unknown Subsonic action."))
 		return
 	}
-	switch strings.ToLower(action) {
+	switch action {
 	case "ping":
 		writeSubsonic(w, r, subsonicResponseFor(s.version))
 	case "getlicense":
@@ -191,7 +388,11 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 		writeSubsonic(w, r, out)
 	case "getmusicfolders":
 		out := subsonicResponseFor(s.version)
-		out.MusicFolders = &subsonicMusicFolders{Folders: []subsonicMusicFolder{{ID: 1, Name: "Music"}}}
+		out.MusicFolders = &subsonicMusicFolders{Folders: []subsonicMusicFolder{{ID: subsonicFolderID, Name: subsonicFolderName}}}
+		writeSubsonic(w, r, out)
+	case "getopensubsonicextensions":
+		out := subsonicResponseFor(s.version)
+		out.OpenSubsonicExtension = &subsonicOpenSubsonicExtensions{Extensions: subsonicSupportedExtensions()}
 		writeSubsonic(w, r, out)
 	case "getartists":
 		s.subsonicArtists(w, r)
@@ -199,46 +400,161 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 		s.subsonicIndexes(w, r)
 	case "getartist":
 		s.subsonicArtist(w, r)
-	case "getalbum", "getmusicdirectory":
+	case "getartistinfo", "getartistinfo2":
+		s.subsonicArtistInfo(w, r)
+	case "getalbum":
 		s.subsonicAlbum(w, r)
-	case "getalbumlist2", "getalbumlist":
-		s.subsonicAlbumList(w, r)
+	case "getmusicdirectory":
+		s.subsonicDirectory(w, r)
+	case "getalbumlist":
+		s.subsonicAlbumList(w, r, false)
+	case "getalbumlist2":
+		s.subsonicAlbumList(w, r, true)
+	case "getalbuminfo", "getalbuminfo2":
+		s.subsonicAlbumInfo(w, r)
 	case "getsong":
 		s.subsonicSong(w, r)
-	case "search3", "search2", "search":
-		s.subsonicSearch(w, r)
+	case "search":
+		s.subsonicSearch(w, r, false)
+	case "search2":
+		s.subsonicSearch(w, r, false)
+	case "search3":
+		s.subsonicSearch(w, r, true)
 	case "getrandomsongs":
 		s.subsonicRandomSongs(w, r)
+	case "gettopsongs":
+		s.subsonicTopSongs(w, r)
+	case "getsimilarsongs", "getsimilarsongs2", "getsonicsimilartracks":
+		s.subsonicSimilarSongs(w, r)
+	case "getsongs":
+		s.subsonicAllSongs(w, r)
+	case "getsongsbygenre":
+		s.subsonicSongsByGenre(w, r)
 	case "stream", "download":
 		s.subsonicStream(w, r)
 	case "getcoverart":
 		s.subsonicCoverArt(w, r)
-	case "scrobble", "star", "unstar", "setrating":
-		writeSubsonic(w, r, subsonicResponseFor(s.version))
+	case "getavatar":
+		s.subsonicAvatar(w, r)
+	case "getscanstatus", "startscan":
+		s.subsonicScanStatus(w, r)
 	case "getplaylists":
+		s.subsonicPlaylists(w, r)
+	case "getplaylist":
+		s.subsonicPlaylist(w, r)
+	case "getplayqueue", "getplayqueuebyindex":
+		// OpenSubsonic marks username, changed and changedBy as required on
+		// playQueue. ReelScarey does not persist a server-side queue yet, so the
+		// entry list is empty and current is legitimately omitted (the spec only
+		// requires current when entry is non-empty). Reporting the requesting
+		// account and client keeps strict OpenSubsonic parsers happy.
 		out := subsonicResponseFor(s.version)
-		out.Playlists = &subsonicPlaylists{Playlists: []any{}}
+		out.PlayQueue = &subsonicPlayQueue{
+			Username:  subsonicUserParam(r),
+			Changed:   time.Now().UTC().Format(time.RFC3339),
+			ChangedBy: strings.TrimSpace(r.URL.Query().Get("c")),
+			Entry:     []subsonicSong{},
+		}
 		writeSubsonic(w, r, out)
-	case "getstarred2", "getstarred":
+	case "getnowplaying":
+		out := subsonicResponseFor(s.version)
+		out.NowPlaying = &subsonicNowPlaying{Entry: []subsonicSong{}}
+		writeSubsonic(w, r, out)
+	case "getstarred":
+		s.subsonicStarred(w, r, false)
+	case "getstarred2":
+		s.subsonicStarred(w, r, true)
+	case "getgenres":
+		out := subsonicResponseFor(s.version)
+		out.Genres = &subsonicGenres{Genres: []subsonicGenre{}}
+		writeSubsonic(w, r, out)
+	case "getuser":
+		s.subsonicUser(w, r)
+	case "getlyrics":
+		out := subsonicResponseFor(s.version)
+		out.Lyrics = &subsonicLyrics{}
+		writeSubsonic(w, r, out)
+	case "getlyricsbysongid":
+		out := subsonicResponseFor(s.version)
+		out.LyricsList = &subsonicLyricsList{StructuredLyrics: []any{}}
+		writeSubsonic(w, r, out)
+	case "getbookmarks":
+		out := subsonicResponseFor(s.version)
+		out.Bookmarks = &subsonicBookmarks{Bookmarks: []any{}}
+		writeSubsonic(w, r, out)
+	case "getshares":
+		out := subsonicResponseFor(s.version)
+		out.Shares = &subsonicShares{Shares: []any{}}
+		writeSubsonic(w, r, out)
+	case "getpodcasts", "getnewestpodcasts":
+		// ReelScarey has no podcast support; report an empty list so clients
+		// that probe getNewestPodcasts during sync do not treat the server as
+		// misconfigured.
+		out := subsonicResponseFor(s.version)
+		out.Podcasts = &subsonicPodcasts{Channels: []any{}}
+		writeSubsonic(w, r, out)
+	case "getinternetradiostations":
+		out := subsonicResponseFor(s.version)
+		out.InternetRadioStations = &subsonicInternetRadioStations{Stations: []any{}}
+		writeSubsonic(w, r, out)
+	case "getchatmessages":
+		out := subsonicResponseFor(s.version)
+		out.ChatMessages = &subsonicChatMessages{Messages: []any{}}
+		writeSubsonic(w, r, out)
+	case "getvideos":
+		out := subsonicResponseFor(s.version)
+		out.Videos = &subsonicVideos{Videos: []any{}}
+		writeSubsonic(w, r, out)
+	case "scrobble", "star", "unstar", "setrating", "saveplayqueue", "saveplayqueuebyindex", "deleteplaylist", "createplaylist", "updateplaylist":
 		writeSubsonic(w, r, subsonicResponseFor(s.version))
 	default:
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "This Subsonic action is not implemented."))
 	}
 }
 
-func subsonicID(r *http.Request) (int64, bool) {
-	id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
-	return id, err == nil && id > 0
+// --- identifier helpers -----------------------------------------------------
+
+func subsonicPrefixedID(prefix string, id int64) string {
+	return prefix + strconv.FormatInt(id, 10)
 }
+
+func subsonicArtistID(id int64) string { return subsonicPrefixedID(subsonicArtistPrefix, id) }
+func subsonicAlbumID(id int64) string  { return subsonicPrefixedID(subsonicAlbumPrefix, id) }
+func subsonicSongID(id int64) string   { return subsonicPrefixedID(subsonicSongPrefix, id) }
+
+func subsonicParseID(raw, prefix string) (int64, bool) {
+	raw = strings.TrimSpace(raw)
+	if len(raw) <= len(prefix) || !strings.EqualFold(raw[:len(prefix)], prefix) {
+		return 0, false
+	}
+	value, err := strconv.ParseInt(raw[len(prefix):], 10, 64)
+	return value, err == nil && value > 0
+}
+
+// subsonicRequestID reads ?id= and accepts either the given namespace prefix or
+// a bare integer. Every id this server emits is prefixed, but clients such as
+// Amperfy keep the id form they were given and echo it back; older syncs and
+// hand-written URLs also use bare integers. The action itself selects the
+// namespace, so a bare integer is unambiguous here.
+func subsonicRequestID(r *http.Request, prefix string) (int64, bool) {
+	if id, ok := subsonicParseID(r.URL.Query().Get("id"), prefix); ok {
+		return id, true
+	}
+	value, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+	return value, err == nil && value > 0
+}
+
+// --- element builders -------------------------------------------------------
 
 func subsonicAlbumFrom(album music.Album) subsonicAlbum {
 	return subsonicAlbum{
-		ID:        strconv.FormatInt(album.ID, 10),
+		ID:        subsonicAlbumID(album.ID),
 		Name:      album.Title,
 		Artist:    album.ArtistName,
-		ArtistID:  strconv.FormatInt(album.ArtistID, 10),
-		CoverArt:  strconv.FormatInt(album.ID, 10),
+		ArtistID:  subsonicArtistID(album.ArtistID),
+		CoverArt:  subsonicAlbumID(album.ID),
 		SongCount: album.TrackCount,
+		Duration:  album.DurationMS / 1000,
 		Year:      album.Year,
 		PlayCount: 0,
 	}
@@ -246,8 +562,8 @@ func subsonicAlbumFrom(album music.Album) subsonicAlbum {
 
 func subsonicSongFrom(song music.ServerSong) subsonicSong {
 	return subsonicSong{
-		ID:          strconv.FormatInt(song.FileID, 10),
-		Parent:      strconv.FormatInt(song.AlbumID, 10),
+		ID:          subsonicSongID(song.FileID),
+		Parent:      subsonicAlbumID(song.AlbumID),
 		Title:       song.Title,
 		Album:       song.Album,
 		Artist:      song.Artist,
@@ -258,13 +574,42 @@ func subsonicSongFrom(song music.ServerSong) subsonicSong {
 		Suffix:      strings.TrimPrefix(strings.ToLower(song.Suffix), "."),
 		ContentType: song.ContentType,
 		Size:        song.SizeBytes,
-		CoverArt:    strconv.FormatInt(song.AlbumID, 10),
+		CoverArt:    subsonicAlbumID(song.AlbumID),
 	}
 }
 
 func subsonicArtistFrom(artist music.Artist) subsonicArtist {
-	return subsonicArtist{ID: strconv.FormatInt(artist.ID, 10), Name: artist.Name, AlbumCount: artist.AlbumCount}
+	return subsonicArtist{ID: subsonicArtistID(artist.ID), Name: artist.Name, AlbumCount: artist.AlbumCount}
 }
+
+// subsonicAlbumChild renders an album as a directory entry (isDir) so an artist
+// can be browsed with getMusicDirectory.
+func subsonicAlbumChild(album music.Album, parent string) subsonicSong {
+	return subsonicSong{
+		ID:        subsonicAlbumID(album.ID),
+		Parent:    parent,
+		Title:     album.Title,
+		Album:     album.Title,
+		Artist:    album.ArtistName,
+		Year:      album.Year,
+		Duration:  album.DurationMS / 1000,
+		CoverArt:  subsonicAlbumID(album.ID),
+		IsDir:     true,
+		SongCount: album.TrackCount,
+	}
+}
+
+func subsonicArtistChild(artist music.Artist) subsonicSong {
+	return subsonicSong{
+		ID:     subsonicArtistID(artist.ID),
+		Parent: strconv.Itoa(subsonicFolderID),
+		Title:  artist.Name,
+		Artist: artist.Name,
+		IsDir:  true,
+	}
+}
+
+// --- handlers ---------------------------------------------------------------
 
 func (s *Server) subsonicArtistGroups(ctx context.Context) ([]subsonicIndex, error) {
 	groups := map[string][]subsonicArtist{}
@@ -311,7 +656,7 @@ func (s *Server) subsonicIndexes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) subsonicArtist(w http.ResponseWriter, r *http.Request) {
-	id, ok := subsonicID(r)
+	id, ok := subsonicRequestID(r, subsonicArtistPrefix)
 	if !ok {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "A valid artist ID is required."))
 		return
@@ -331,8 +676,25 @@ func (s *Server) subsonicArtist(w http.ResponseWriter, r *http.Request) {
 	writeSubsonic(w, r, out)
 }
 
+func (s *Server) subsonicArtistInfo(w http.ResponseWriter, r *http.Request) {
+	out := subsonicResponseFor(s.version)
+	info := &subsonicArtistInfo{SimilarArtist: []subsonicArtist{}}
+	if id, ok := subsonicRequestID(r, subsonicArtistPrefix); ok {
+		if details, err := s.music.Artist(r.Context(), id); err == nil {
+			info.MusicBrainzID = details.Artist.MusicBrainzID
+			info.Biography = details.Artist.Overview
+		}
+	}
+	if subsonicAction(r) == "getartistinfo" {
+		out.ArtistInfo = info
+	} else {
+		out.ArtistInfo2 = info
+	}
+	writeSubsonic(w, r, out)
+}
+
 func (s *Server) subsonicAlbum(w http.ResponseWriter, r *http.Request) {
-	id, ok := subsonicID(r)
+	id, ok := subsonicRequestID(r, subsonicAlbumPrefix)
 	if !ok {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "A valid album ID is required."))
 		return
@@ -344,32 +706,129 @@ func (s *Server) subsonicAlbum(w http.ResponseWriter, r *http.Request) {
 	}
 	entry := subsonicAlbumFrom(album.Album)
 	entry.Songs = []subsonicSong{}
-	for _, track := range album.Tracks {
-		if track.FileID == nil {
-			continue
+	if songs, err := s.music.ServerAlbumSongs(r.Context(), id); err == nil {
+		for _, song := range songs {
+			entry.Songs = append(entry.Songs, subsonicSongFrom(song))
 		}
-		entry.Songs = append(entry.Songs, subsonicSong{
-			ID:          strconv.FormatInt(*track.FileID, 10),
-			Parent:      strconv.FormatInt(album.Album.ID, 10),
-			Title:       track.Title,
-			Album:       album.Album.Title,
-			Artist:      album.Album.ArtistName,
-			Track:       track.Number,
-			DiscNumber:  track.Disc,
-			Year:        album.Album.Year,
-			Duration:    track.DurationMS / 1000,
-			Suffix:      "",
-			ContentType: "",
-			CoverArt:    strconv.FormatInt(album.Album.ID, 10),
-		})
+	} else {
+		// Fall back to the catalog tracks when the file-backed view fails.
+		for _, track := range album.Tracks {
+			if track.FileID == nil {
+				continue
+			}
+			entry.Songs = append(entry.Songs, subsonicSong{
+				ID:         subsonicSongID(*track.FileID),
+				Parent:     subsonicAlbumID(album.Album.ID),
+				Title:      track.Title,
+				Album:      album.Album.Title,
+				Artist:     album.Album.ArtistName,
+				Track:      track.Number,
+				DiscNumber: track.Disc,
+				Year:       album.Album.Year,
+				Duration:   track.DurationMS / 1000,
+				CoverArt:   subsonicAlbumID(album.Album.ID),
+			})
+		}
 	}
 	entry.SongCount = len(entry.Songs)
+	// Report the playable total rather than the catalog sum so the album
+	// duration matches the songs actually returned to the client.
+	entry.Duration = 0
+	for _, song := range entry.Songs {
+		entry.Duration += song.Duration
+	}
 	out := subsonicResponseFor(s.version)
 	out.Album = &entry
 	writeSubsonic(w, r, out)
 }
 
-func (s *Server) subsonicAlbumList(w http.ResponseWriter, r *http.Request) {
+// subsonicDirectory serves getMusicDirectory. An "ar" id browses an artist's
+// albums; an "al" id browses an album's songs; the music-folder id browses all
+// artists. Distinct prefixes keep those three cases from colliding.
+func (s *Server) subsonicDirectory(w http.ResponseWriter, r *http.Request) {
+	raw := strings.TrimSpace(r.URL.Query().Get("id"))
+	// A bare integer is ambiguous here, so probe the catalog and adopt the
+	// namespace that actually exists before dispatching on the prefix below.
+	// The music-folder id and "root" are reserved and never probed.
+	if raw != strconv.Itoa(subsonicFolderID) && !strings.EqualFold(raw, "root") {
+		_, artist := subsonicParseID(raw, subsonicArtistPrefix)
+		_, album := subsonicParseID(raw, subsonicAlbumPrefix)
+		if !artist && !album {
+			if value, err := strconv.ParseInt(raw, 10, 64); err == nil && value > 0 {
+				if _, err := s.music.Artist(r.Context(), value); err == nil {
+					raw = subsonicArtistID(value)
+				} else if _, err := s.music.ServerAlbum(r.Context(), value); err == nil {
+					raw = subsonicAlbumID(value)
+				}
+			}
+		}
+	}
+	if id, ok := subsonicParseID(raw, subsonicArtistPrefix); ok {
+		details, err := s.music.Artist(r.Context(), id)
+		if err != nil {
+			writeSubsonic(w, r, subsonicFailure(s.version, 70, "Directory not found."))
+			return
+		}
+		dir := &subsonicDirectory{ID: raw, Parent: strconv.Itoa(subsonicFolderID), Name: details.Artist.Name, Children: []subsonicSong{}}
+		for _, album := range details.Albums {
+			dir.Children = append(dir.Children, subsonicAlbumChild(album, subsonicArtistID(details.Artist.ID)))
+		}
+		out := subsonicResponseFor(s.version)
+		out.Directory = dir
+		writeSubsonic(w, r, out)
+		return
+	}
+	if id, ok := subsonicParseID(raw, subsonicAlbumPrefix); ok {
+		album, err := s.music.ServerAlbum(r.Context(), id)
+		if err != nil {
+			writeSubsonic(w, r, subsonicFailure(s.version, 70, "Directory not found."))
+			return
+		}
+		dir := &subsonicDirectory{ID: raw, Parent: subsonicArtistID(album.Album.ArtistID), Name: album.Album.Title, Children: []subsonicSong{}}
+		if songs, err := s.music.ServerAlbumSongs(r.Context(), id); err == nil {
+			for _, song := range songs {
+				dir.Children = append(dir.Children, subsonicSongFrom(song))
+			}
+		}
+		out := subsonicResponseFor(s.version)
+		out.Directory = dir
+		writeSubsonic(w, r, out)
+		return
+	}
+	if raw == strconv.Itoa(subsonicFolderID) || strings.EqualFold(raw, "root") {
+		dir := &subsonicDirectory{ID: strconv.Itoa(subsonicFolderID), Name: subsonicFolderName, Children: []subsonicSong{}}
+		if indexes, err := s.subsonicArtistGroups(r.Context()); err == nil {
+			for _, index := range indexes {
+				for _, artist := range index.Artists {
+					dir.Children = append(dir.Children, subsonicSong{ID: artist.ID, Parent: dir.ID, Title: artist.Name, Artist: artist.Name, IsDir: true})
+				}
+			}
+		}
+		out := subsonicResponseFor(s.version)
+		out.Directory = dir
+		writeSubsonic(w, r, out)
+		return
+	}
+	writeSubsonic(w, r, subsonicFailure(s.version, 0, "A valid directory ID is required."))
+}
+
+func (s *Server) subsonicAlbumInfo(w http.ResponseWriter, r *http.Request) {
+	out := subsonicResponseFor(s.version)
+	info := &subsonicAlbumInfo{}
+	if id, ok := subsonicRequestID(r, subsonicAlbumPrefix); ok {
+		if album, err := s.music.ServerAlbum(r.Context(), id); err == nil {
+			info.MusicBrainzID = album.Album.MusicBrainzID
+		}
+	}
+	if subsonicAction(r) == "getalbuminfo" {
+		out.AlbumInfo = info
+	} else {
+		out.AlbumInfo2 = info
+	}
+	writeSubsonic(w, r, out)
+}
+
+func (s *Server) subsonicAlbumList(w http.ResponseWriter, r *http.Request, second bool) {
 	size := subsonicCount(r, "size", 50, 500)
 	offset := 0
 	if value, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && value > 0 {
@@ -377,8 +836,18 @@ func (s *Server) subsonicAlbumList(w http.ResponseWriter, r *http.Request) {
 	}
 	order := "alphabeticalByName"
 	switch r.URL.Query().Get("type") {
-	case "newest", "recent", "frequent", "highest", "starred":
+	case "newest":
 		order = "newest"
+	case "recent":
+		order = "recent"
+	case "frequent":
+		order = "frequent"
+	case "highest", "starred":
+		order = "starred"
+	case "byYear":
+		order = "byYear"
+	case "alphabeticalByArtist":
+		order = "alphabeticalByArtist"
 	case "random":
 		order = "random"
 	}
@@ -392,12 +861,16 @@ func (s *Server) subsonicAlbumList(w http.ResponseWriter, r *http.Request) {
 	for _, album := range albums {
 		list.Albums = append(list.Albums, subsonicAlbumFrom(album))
 	}
-	out.AlbumList2 = list
+	if second {
+		out.AlbumList2 = list
+	} else {
+		out.AlbumList = list
+	}
 	writeSubsonic(w, r, out)
 }
 
 func (s *Server) subsonicSong(w http.ResponseWriter, r *http.Request) {
-	id, ok := subsonicID(r)
+	id, ok := subsonicRequestID(r, subsonicSongPrefix)
 	if !ok {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "A valid song ID is required."))
 		return
@@ -413,7 +886,7 @@ func (s *Server) subsonicSong(w http.ResponseWriter, r *http.Request) {
 	writeSubsonic(w, r, out)
 }
 
-func (s *Server) subsonicSearch(w http.ResponseWriter, r *http.Request) {
+func (s *Server) subsonicSearch(w http.ResponseWriter, r *http.Request, third bool) {
 	query := strings.TrimSpace(r.URL.Query().Get("query"))
 	if query == "" {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "A search query is required."))
@@ -438,7 +911,42 @@ func (s *Server) subsonicSearch(w http.ResponseWriter, r *http.Request) {
 			result.Songs = append(result.Songs, subsonicSongFrom(song))
 		}
 	}
-	out.SearchResult3 = result
+	if third {
+		out.SearchResult3 = result
+	} else {
+		out.SearchResult2 = result
+	}
+	writeSubsonic(w, r, out)
+}
+
+// subsonicAllSongs serves getSongs: an alphabetical listing of the whole
+// catalog with size/offset paging. Some clients use it instead of
+// getAlbumList2 for the initial library sync.
+func (s *Server) subsonicAllSongs(w http.ResponseWriter, r *http.Request) {
+	size := subsonicCount(r, "size", 500, 500)
+	offset := subsonicCount(r, "offset", 0, 1000000)
+	// An empty query turns into a match-all LIKE pattern, so the existing
+	// catalog search doubles as the full listing. Fetch size+offset rows and
+	// slice out the page.
+	songs, err := s.music.ServerSongs(r.Context(), "", size+offset)
+	if err != nil {
+		writeSubsonic(w, r, subsonicFailure(s.version, 0, "Could not read songs."))
+		return
+	}
+	if offset >= len(songs) {
+		songs = nil
+	} else {
+		songs = songs[offset:]
+		if len(songs) > size {
+			songs = songs[:size]
+		}
+	}
+	out := subsonicResponseFor(s.version)
+	list := &subsonicSongs{Songs: []subsonicSong{}}
+	for _, song := range songs {
+		list.Songs = append(list.Songs, subsonicSongFrom(song))
+	}
+	out.Songs = list
 	writeSubsonic(w, r, out)
 }
 
@@ -458,31 +966,176 @@ func (s *Server) subsonicRandomSongs(w http.ResponseWriter, r *http.Request) {
 	writeSubsonic(w, r, out)
 }
 
+func (s *Server) subsonicTopSongs(w http.ResponseWriter, r *http.Request) {
+	count := subsonicCount(r, "count", 50, 500)
+	out := subsonicResponseFor(s.version)
+	list := &subsonicSongs{Songs: []subsonicSong{}}
+	// The topSongsByArtistId extension lets clients ask by artist id instead of
+	// by artist name. Prefer the id when it is present and well formed: it is
+	// exact, while the name path is a substring match.
+	if strings.TrimSpace(r.URL.Query().Get("id")) != "" {
+		if id, ok := subsonicRequestID(r, subsonicArtistPrefix); ok {
+			if songs, err := s.music.ServerArtistSongs(r.Context(), id, count); err == nil {
+				for _, song := range songs {
+					list.Songs = append(list.Songs, subsonicSongFrom(song))
+				}
+			}
+		}
+	} else if artist := strings.TrimSpace(r.URL.Query().Get("artist")); artist != "" {
+		if songs, err := s.music.ServerSongs(r.Context(), artist, count); err == nil {
+			for _, song := range songs {
+				list.Songs = append(list.Songs, subsonicSongFrom(song))
+			}
+		}
+	}
+	out.TopSongs = list
+	writeSubsonic(w, r, out)
+}
+
+func (s *Server) subsonicSimilarSongs(w http.ResponseWriter, r *http.Request) {
+	out := subsonicResponseFor(s.version)
+	list := &subsonicSongs{Songs: []subsonicSong{}}
+	if subsonicAction(r) == "getsimilarsongs" {
+		out.SimilarSongs = list
+	} else {
+		out.SimilarSongs2 = list
+	}
+	writeSubsonic(w, r, out)
+}
+
+func (s *Server) subsonicSongsByGenre(w http.ResponseWriter, r *http.Request) {
+	out := subsonicResponseFor(s.version)
+	out.SongsByGenre = &subsonicSongs{Songs: []subsonicSong{}}
+	writeSubsonic(w, r, out)
+}
+
+func (s *Server) subsonicScanStatus(w http.ResponseWriter, r *http.Request) {
+	count := 0
+	if value, err := s.music.ServerSongCount(r.Context()); err == nil {
+		count = value
+	}
+	out := subsonicResponseFor(s.version)
+	out.ScanStatus = &subsonicScanStatus{Scanning: false, Count: count}
+	writeSubsonic(w, r, out)
+}
+
+func (s *Server) subsonicPlaylists(w http.ResponseWriter, r *http.Request) {
+	out := subsonicResponseFor(s.version)
+	out.Playlists = &subsonicPlaylists{Playlists: []subsonicPlaylist{}}
+	writeSubsonic(w, r, out)
+}
+
+func (s *Server) subsonicPlaylist(w http.ResponseWriter, r *http.Request) {
+	raw := strings.TrimSpace(r.URL.Query().Get("id"))
+	out := subsonicResponseFor(s.version)
+	out.Playlist = &subsonicPlaylist{ID: raw, Name: "Playlist", Entry: []subsonicSong{}}
+	writeSubsonic(w, r, out)
+}
+
+func (s *Server) subsonicStarred(w http.ResponseWriter, r *http.Request, second bool) {
+	out := subsonicResponseFor(s.version)
+	starred := &subsonicStarred{Artists: []subsonicArtist{}, Albums: []subsonicAlbum{}, Songs: []subsonicSong{}}
+	if second {
+		out.Starred2 = starred
+	} else {
+		out.Starred = starred
+	}
+	writeSubsonic(w, r, out)
+}
+
+func (s *Server) subsonicUser(w http.ResponseWriter, r *http.Request) {
+	username := subsonicUserParam(r)
+	out := subsonicResponseFor(s.version)
+	out.User = &subsonicUser{
+		Username: username,
+		// Scrobbling is genuinely accepted (see the scrobble case: it is stored
+		// as a no-op acknowledgement), so advertising it is accurate and stops
+		// clients from disabling their now-playing/play-count reporting.
+		ScrobblingEnabled: true,
+		DownloadRole:      true,
+		PlaylistRole:      true,
+		CoverArtRole:      true,
+	}
+	writeSubsonic(w, r, out)
+}
+
+// subsonicUserParam resolves the acting account name. Subsonic requires ?u=
+// for authentication, while getUser is specified to take ?username=. Accept
+// both so the value always reflects the authenticated caller.
+func subsonicUserParam(r *http.Request) string {
+	if username := strings.TrimSpace(r.URL.Query().Get("username")); username != "" {
+		return username
+	}
+	return strings.TrimSpace(r.URL.Query().Get("u"))
+}
+
+// subsonicAvatarPNG is a 1x1 transparent PNG. ReelScarey has no user avatars,
+// but several clients request one and treat a missing image as an error.
+var subsonicAvatarPNG = []byte{
+	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+	0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+	0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+	0x42, 0x60, 0x82,
+}
+
+func (s *Server) subsonicAvatar(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(subsonicAvatarPNG)
+}
+
 func (s *Server) subsonicStream(w http.ResponseWriter, r *http.Request) {
-	id, ok := subsonicID(r)
+	id, ok := subsonicRequestID(r, subsonicSongPrefix)
 	if !ok {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "A valid song ID is required."))
 		return
 	}
-	stream, err := s.music.OpenAudioFile(r.Context(), id)
+	// Convert when the client asked for another format or when the native
+	// container is one the client cannot decode; the pristine file is streamed
+	// byte-for-byte otherwise.
+	playback, err := s.music.OpenPlayback(r.Context(), id, r.URL.Query().Get("format"),
+		subsonicQueryInt(r, "maxBitRate"), subsonicQueryInt(r, "timeOffset"))
 	if err != nil {
 		writeSubsonic(w, r, subsonicFailure(s.version, 70, "Song file not found."))
 		return
 	}
-	defer stream.File.Close()
-	w.Header().Set("Content-Type", stream.ContentType)
-	w.Header().Set("Cache-Control", "private, max-age=3600")
+	defer playback.Close()
+	w.Header().Set("Content-Type", playback.ContentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if strings.EqualFold(strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/rest/"), ".view"), "download") {
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", stream.Name))
+	if playback.Body != nil {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Accept-Ranges", "none")
+		if subsonicAction(r) == "download" {
+			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", playback.Name))
+		} else {
+			w.Header().Set("Content-Disposition", "inline")
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.Copy(w, playback.Body)
+		return
+	}
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	if subsonicAction(r) == "download" {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", playback.Name))
 	} else {
 		w.Header().Set("Content-Disposition", "inline")
 	}
-	http.ServeContent(w, r, stream.Name, stream.ModTime, stream.File)
+	http.ServeContent(w, r, playback.Name, playback.ModTime, playback.File)
+}
+
+// subsonicQueryInt parses a bounded non-negative integer query parameter.
+func subsonicQueryInt(r *http.Request, key string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get(key)))
+	if err != nil || value < 0 {
+		return 0
+	}
+	return value
 }
 
 func (s *Server) subsonicCoverArt(w http.ResponseWriter, r *http.Request) {
-	id, ok := subsonicID(r)
+	id, ok := subsonicRequestID(r, subsonicAlbumPrefix)
 	if !ok {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "A valid cover ID is required."))
 		return

@@ -134,6 +134,10 @@ func (s *Service) ListArtists(ctx context.Context, query string, page int) (Arti
 	return s.store.ListArtists(ctx, query, page)
 }
 
+func (s *Service) ListAllArtists(ctx context.Context, query string) (ArtistPage, error) {
+	return s.store.ListAllArtists(ctx, query)
+}
+
 func (s *Service) ListAlbums(ctx context.Context, query string, page, limit int) (AlbumPage, error) {
 	return s.store.ListAlbums(ctx, query, page, limit)
 }

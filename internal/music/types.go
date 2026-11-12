@@ -21,6 +21,14 @@ func (e *Error) Error() string { return e.Message }
 
 var ErrNotFound = errors.New("The requested music item is not in the catalog.")
 
+// MaxAllItems bounds page=all so a single request cannot materialize an
+// unbounded artist list.
+const MaxAllItems = 5000
+
+// ErrListAllLimit means page=all matched more than MaxAllItems. The caller must
+// narrow the search or request a numbered page.
+var ErrListAllLimit = errors.New("This music view has more than 5000 items. Narrow the search or choose a page.")
+
 var mbidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 func ValidMBID(value string) bool { return mbidPattern.MatchString(value) }
@@ -68,6 +76,10 @@ type Album struct {
 	Monitored      bool     `json:"monitored"`
 	Status         string   `json:"status"`
 	TrackCount     int      `json:"track_count"`
+	// DurationMS is the summed catalog track duration. It is only populated by
+	// the file-backed server queries (server_data.go) that feed the Subsonic
+	// API, so catalog-only reads leave it at zero.
+	DurationMS int `json:"duration_ms,omitempty"`
 }
 
 type Track struct {

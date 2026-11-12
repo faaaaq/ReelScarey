@@ -63,11 +63,11 @@ export function MusicLibrary() {
   const page = /^[1-9][0-9]*$/.test(pageValue) ? Number(pageValue) : 1;
   const query = params.get("query") ?? "";
   const view: View =
-    params.get("view") === "artists"
-      ? "artists"
+    params.get("view") === "albums"
+      ? "albums"
       : params.get("view") === "tracks"
         ? "tracks"
-        : "albums";
+        : "artists";
   const [input, setInput] = useState(query);
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -82,11 +82,28 @@ export function MusicLibrary() {
   const albums = useResource<MusicAlbumPage>(
     view === "albums" ? `/library/music/albums?${apiParams.toString()}` : null,
   );
-  const artists = useResource<MusicArtistPage>(
+  // The artist list renders on a single page with an A–Z index. Ask for the
+  // whole catalog; a server that rejects `page=all` past its cap (or ignores
+  // it) falls back to the paginated view, keyed on the machine-readable code.
+  const artistsParams = new URLSearchParams();
+  if (query) artistsParams.set("query", query);
+  artistsParams.set("page", "all");
+  const artistsAll = useResource<MusicArtistPage>(
     view === "artists"
-      ? `/library/music/artists?${apiParams.toString()}`
+      ? `/library/music/artists?${artistsParams.toString()}`
       : null,
   );
+  const artistsCapped =
+    artistsAll.code === "library_too_large" ||
+    (!!artistsAll.data && artistsAll.data.total > artistsAll.data.items.length);
+  const artistsPagedParams = new URLSearchParams(artistsParams);
+  artistsPagedParams.set("page", String(page));
+  const artistsPaged = useResource<MusicArtistPage>(
+    view === "artists" && artistsCapped
+      ? `/library/music/artists?${artistsPagedParams.toString()}`
+      : null,
+  );
+  const artists = artistsCapped ? artistsPaged : artistsAll;
   const tracksParams = new URLSearchParams(apiParams);
   tracksParams.set("limit", "100");
   const tracks = useResource<MusicArtistTrackPage>(
@@ -244,7 +261,7 @@ export function MusicLibrary() {
             icon={LayoutGrid}
             label="Albums"
             active={view === "albums"}
-            onClick={() => change("view", "")}
+            onClick={() => change("view", "albums")}
           />
           <ToolbarButton
             icon={Users}

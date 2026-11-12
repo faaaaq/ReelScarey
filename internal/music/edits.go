@@ -52,6 +52,20 @@ type EditPlan struct {
 	PlanHash string     `json:"plan_hash"`
 }
 
+// EditOverrides lets a caller correct catalog values that the catalog itself
+// reports wrongly, such as a tag year of 6666. Any non-zero field replaces the
+// value derived from the catalog before the retag/move plan is built, so the
+// corrected values are written back to both the file tags and the catalog rows.
+type EditOverrides struct {
+	Year   int
+	Album  string
+	Artist string
+}
+
+func (o EditOverrides) empty() bool {
+	return o.Year <= 0 && strings.TrimSpace(o.Album) == "" && strings.TrimSpace(o.Artist) == ""
+}
+
 type EditJob struct {
 	ID        int64         `json:"id"`
 	State     string        `json:"state"`
@@ -78,8 +92,39 @@ type EditJobList struct {
 	Limit int       `json:"limit"`
 }
 
+// AlbumFileIDs returns the registered file IDs for every track on an album, in
+// disc/track order. It lets a metadata correction target a whole album without
+// the caller first enumerating files.
+func (s *Service) AlbumFileIDs(ctx context.Context, albumID int64) ([]int64, error) {
+	if albumID <= 0 {
+		return nil, ErrInvalidInput
+	}
+	rows, err := s.store.db.QueryContext(ctx, `SELECT f.id FROM music_files f
+		JOIN music_tracks t ON t.id=f.track_id
+		WHERE t.album_id=? ORDER BY t.disc, t.number, f.id`, albumID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (s *Service) PreviewEdits(ctx context.Context, fileIDs []int64) (EditPlan, error) {
-	files, err := s.loadEditFiles(ctx, fileIDs)
+	return s.PreviewEditsWith(ctx, fileIDs, EditOverrides{})
+}
+
+// PreviewEditsWith builds the edit plan with optional catalog corrections
+// applied, so a caller can preview a year/album/artist fix before applying it.
+func (s *Service) PreviewEditsWith(ctx context.Context, fileIDs []int64, overrides EditOverrides) (EditPlan, error) {
+	files, err := s.loadEditFilesWith(ctx, fileIDs, overrides)
 	if err != nil {
 		return EditPlan{}, err
 	}
@@ -87,6 +132,10 @@ func (s *Service) PreviewEdits(ctx context.Context, fileIDs []int64) (EditPlan, 
 }
 
 func (s *Service) loadEditFiles(ctx context.Context, fileIDs []int64) ([]EditFile, error) {
+	return s.loadEditFilesWith(ctx, fileIDs, EditOverrides{})
+}
+
+func (s *Service) loadEditFilesWith(ctx context.Context, fileIDs []int64, overrides EditOverrides) ([]EditFile, error) {
 	if len(fileIDs) == 0 || len(fileIDs) > 500 {
 		return nil, ErrInvalidInput
 	}
@@ -168,6 +217,19 @@ func (s *Service) loadEditFiles(ctx context.Context, fileIDs []int64) ([]EditFil
 			MusicBrainzTrackID:        genuineMBID(trackMBID.String),
 			MusicBrainzRecordingID:    genuineMBID(recordingID.String),
 		}
+		if overrides.Year > 0 {
+			tags.Year = overrides.Year
+		}
+		if v := strings.TrimSpace(overrides.Album); v != "" {
+			tags.Album = v
+		}
+		if v := strings.TrimSpace(overrides.Artist); v != "" {
+			tags.Artist = v
+			tags.AlbumArtist = v
+		}
+		// Recompute the destination from the (possibly corrected) tags so a
+		// renamed album or artist also moves the file to the matching folder.
+		destination = path.Join(root, safeName(tags.Artist), safeName(tags.Album), prefix+" "+safeName(tags.Title)+ext)
 		retag := needsRetag(tagJSON, tags)
 		move := destination != relative
 		action := ""
@@ -251,10 +313,15 @@ func safeName(value string) string {
 }
 
 func (s *Service) ApplyEdits(ctx context.Context, fileIDs []int64, planHash string, reviewed bool) (EditJob, error) {
+	return s.ApplyEditsWith(ctx, fileIDs, planHash, reviewed, EditOverrides{})
+}
+
+// ApplyEditsWith applies a reviewed plan that may carry catalog corrections.
+func (s *Service) ApplyEditsWith(ctx context.Context, fileIDs []int64, planHash string, reviewed bool, overrides EditOverrides) (EditJob, error) {
 	if !reviewed {
 		return EditJob{}, ErrInvalidInput
 	}
-	plan, err := s.PreviewEdits(ctx, fileIDs)
+	plan, err := s.PreviewEditsWith(ctx, fileIDs, overrides)
 	if err != nil {
 		return EditJob{}, err
 	}
@@ -482,6 +549,24 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		tagJSON, _ := json.Marshal(verified)
 		if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=?,sha256=?,size_bytes=?,tag_json=? WHERE id=?`, destRel, root, editedSHA, editedSize, string(tagJSON), musicFileID); err != nil {
 			return err
+		}
+		// Keep the album/artist rows in step with the corrected file tags. The
+		// tag_json is the source of truth; without this the library, Subsonic
+		// clients and the web UI keep showing the stale (e.g. year 6666) values.
+		if tags.Year > 0 {
+			if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET year=?,updated_at=unixepoch() WHERE id=(SELECT album_id FROM music_files WHERE id=?)`, tags.Year, musicFileID); err != nil {
+				return err
+			}
+		}
+		if strings.TrimSpace(tags.Album) != "" {
+			if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET title=?,updated_at=unixepoch() WHERE id=(SELECT album_id FROM music_files WHERE id=?)`, tags.Album, musicFileID); err != nil {
+				return err
+			}
+		}
+		if strings.TrimSpace(tags.Artist) != "" {
+			if _, err := tx.ExecContext(ctx, `UPDATE music_artists SET name=?,updated_at=unixepoch() WHERE id=(SELECT artist_id FROM music_files WHERE id=?)`, tags.Artist, musicFileID); err != nil {
+				return err
+			}
 		}
 	} else if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=?,sha256=?,size_bytes=? WHERE id=?`, destRel, root, editedSHA, editedSize, musicFileID); err != nil {
 		return err

@@ -25,20 +25,25 @@ import (
 const musicTestMBID = "a74b1b7f-71a5-4011-9441-d0b5e4122711"
 
 type fakeMusic struct {
-	search            music.SearchResults
-	artist            music.Artist
-	created           bool
-	err               error
-	acoustidStatus    music.AcoustIDStatus
-	savedKey          string
-	deletedKey        bool
-	musicbrainzStatus music.MusicBrainzStatus
-	savedBaseURL      string
-	resetBaseURL      bool
-	fingerprintResult music.DiscoverResult
-	audioPath         string
-	artworkPath       string
-	serverTokenOK     bool
+	search             music.SearchResults
+	artist             music.Artist
+	created            bool
+	err                error
+	acoustidStatus     music.AcoustIDStatus
+	savedKey           string
+	deletedKey         bool
+	musicbrainzStatus  music.MusicBrainzStatus
+	savedBaseURL       string
+	resetBaseURL       bool
+	fingerprintResult  music.DiscoverResult
+	audioPath          string
+	artworkPath        string
+	serverTokenOK      bool
+	serverArtists      []music.Artist
+	serverArtistDetail music.ArtistDetails
+	serverAlbumDetail  music.AlbumDetails
+	serverAlbumSongs   []music.ServerSong
+	serverSongCount    int
 }
 
 func (f *fakeMusic) SearchArtists(context.Context, string, int) (music.SearchResults, error) {
@@ -48,9 +53,21 @@ func (f *fakeMusic) AddArtist(context.Context, string, bool) (music.Artist, bool
 	return f.artist, f.created, f.err
 }
 func (f *fakeMusic) ListArtists(context.Context, string, int) (music.ArtistPage, error) {
+	if len(f.serverArtists) > 0 {
+		return music.ArtistPage{Items: f.serverArtists, Page: 1, Total: len(f.serverArtists), Limit: 48}, f.err
+	}
 	return music.ArtistPage{Items: []music.Artist{}, Page: 1, Limit: 48}, f.err
 }
+func (f *fakeMusic) ListAllArtists(context.Context, string) (music.ArtistPage, error) {
+	if len(f.serverArtists) > 0 {
+		return music.ArtistPage{Items: f.serverArtists, Page: 1, Total: len(f.serverArtists), Limit: music.MaxAllItems}, f.err
+	}
+	return music.ArtistPage{Items: []music.Artist{}, Page: 1, Limit: music.MaxAllItems}, f.err
+}
 func (f *fakeMusic) Artist(context.Context, int64) (music.ArtistDetails, error) {
+	if f.serverArtistDetail.Artist.Name != "" {
+		return f.serverArtistDetail, f.err
+	}
 	return music.ArtistDetails{Artist: music.Artist{ID: 1, Name: "Artist"}, Albums: []music.Album{}}, f.err
 }
 func (f *fakeMusic) ArtistTracks(context.Context, int64, int, int) (music.ArtistTrackPage, error) {
@@ -112,6 +129,9 @@ func (f *fakeMusic) ListAcquisitions(context.Context, int) (music.AcquisitionJob
 	return music.AcquisitionJobList{Items: []music.AcquisitionJob{}, Page: 1, Limit: 20}, f.err
 }
 func (f *fakeMusic) ServerAlbum(context.Context, int64) (music.AlbumDetails, error) {
+	if f.serverAlbumDetail.Album.Title != "" {
+		return f.serverAlbumDetail, f.err
+	}
 	return music.AlbumDetails{Album: music.Album{ID: 1, Title: "Album"}, Tracks: []music.Track{}}, f.err
 }
 func (f *fakeMusic) ServerSong(context.Context, int64) (music.ServerSong, error) {
@@ -129,6 +149,19 @@ func (f *fakeMusic) ServerAlbums(context.Context, string, int, int) ([]music.Alb
 func (f *fakeMusic) ServerSearchAlbums(context.Context, string, int) ([]music.Album, error) {
 	return []music.Album{}, f.err
 }
+func (f *fakeMusic) ServerAlbumSongs(context.Context, int64) ([]music.ServerSong, error) {
+	if len(f.serverAlbumSongs) > 0 {
+		return f.serverAlbumSongs, f.err
+	}
+	return []music.ServerSong{}, f.err
+}
+func (f *fakeMusic) ServerArtistSongs(context.Context, int64, int) ([]music.ServerSong, error) {
+	if len(f.serverAlbumSongs) > 0 {
+		return f.serverAlbumSongs, f.err
+	}
+	return []music.ServerSong{}, f.err
+}
+func (f *fakeMusic) ServerSongCount(context.Context) (int, error) { return f.serverSongCount, f.err }
 func (f *fakeMusic) MusicServer(context.Context) (music.MusicServerStatus, error) {
 	return music.MusicServerStatus{Enabled: false, Revision: 1}, f.err
 }
@@ -164,6 +197,16 @@ func (f *fakeMusic) OpenAudioFile(context.Context, int64) (music.AudioStream, er
 		return music.AudioStream{}, err
 	}
 	return music.AudioStream{File: file, Name: filepath.Base(f.audioPath), ContentType: "audio/mpeg", Size: info.Size(), ModTime: info.ModTime()}, nil
+}
+
+// OpenPlayback mirrors OpenAudioFile: the fake has no transcoding pipeline, so
+// it always returns the registered file for a direct byte-for-byte stream.
+func (f *fakeMusic) OpenPlayback(ctx context.Context, id int64, _ string, _, _ int) (music.PlaybackStream, error) {
+	stream, err := f.OpenAudioFile(ctx, id)
+	if err != nil {
+		return music.PlaybackStream{}, err
+	}
+	return music.PlaybackStream{Name: stream.Name, ContentType: stream.ContentType, Size: stream.Size, ModTime: stream.ModTime, File: stream.File}, nil
 }
 
 func (f *fakeMusic) ArtistImage(context.Context, int64) (music.Artwork, error) {
@@ -279,8 +322,17 @@ func (f *fakeMusic) ListFiles(context.Context, int) (music.MusicFilePage, error)
 func (f *fakeMusic) PreviewEdits(context.Context, []int64) (music.EditPlan, error) {
 	return music.EditPlan{Files: []music.EditFile{}, PlanHash: "hash"}, f.err
 }
+func (f *fakeMusic) PreviewEditsWith(_ context.Context, ids []int64, _ music.EditOverrides) (music.EditPlan, error) {
+	return music.EditPlan{Files: []music.EditFile{}, PlanHash: "hash"}, f.err
+}
 func (f *fakeMusic) ApplyEdits(context.Context, []int64, string, bool) (music.EditJob, error) {
 	return music.EditJob{ID: 1, State: "running"}, f.err
+}
+func (f *fakeMusic) ApplyEditsWith(context.Context, []int64, string, bool, music.EditOverrides) (music.EditJob, error) {
+	return music.EditJob{ID: 1, State: "running"}, f.err
+}
+func (f *fakeMusic) AlbumFileIDs(context.Context, int64) ([]int64, error) {
+	return []int64{1}, f.err
 }
 func (f *fakeMusic) EditJob(context.Context, int64) (music.EditJob, error) {
 	return music.EditJob{ID: 1, State: "completed", Files: []music.EditJobFile{}}, f.err
@@ -518,6 +570,208 @@ func TestSubsonicPingAndStreamUseOptInToken(t *testing.T) {
 	out = request("/rest/stream.view?u=reelscarey&p=test-token&v=1.16.1&c=test&id=1")
 	if out.Code != 200 || out.Body.String() != "0123456789" || out.Header().Get("Content-Type") != "audio/mpeg" {
 		t.Fatal("stream", out.Code, out.Header().Get("Content-Type"), out.Body.String())
+	}
+}
+
+func TestSubsonicOpenSubsonicCapabilities(t *testing.T) {
+	handler, _ := musicFixture(t, &fakeMusic{
+		serverTokenOK: true,
+		serverAlbumSongs: []music.ServerSong{{
+			FileID: 9, Title: "Dancing Queen", Artist: "ABBA", Album: "Arrival",
+			ArtistID: 5, AlbumID: 7, Track: 1, Disc: 1, DurationMS: 231000,
+			Suffix: "mp3", ContentType: "audio/mpeg", SizeBytes: 4065305,
+		}},
+	})
+	request := func(rawURL string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", rawURL, nil)
+		out := httptest.NewRecorder()
+		handler.ServeHTTP(out, r)
+		return out
+	}
+	const auth = "u=reelscarey&p=test-token&v=1.16.1&c=Arpeggi"
+
+	// OpenSubsonic requires openSubsonic="true" on every response. Clients that
+	// gate their sync and playback features on it treat the server as plain
+	// Subsonic 1.16.1 when it is missing.
+	for _, action := range []string{"ping", "getScanStatus", "getAlbumList2"} {
+		out := request("/rest/" + action + ".view?" + auth)
+		if out.Code != 200 || !strings.Contains(out.Body.String(), `status="ok"`) {
+			t.Fatalf("%s failed: %d %s", action, out.Code, out.Body.String())
+		}
+		if !strings.Contains(out.Body.String(), `openSubsonic="true"`) {
+			t.Fatalf("%s must advertise openSubsonic=true: %s", action, out.Body.String())
+		}
+	}
+
+	// The advertised extension list must be non-empty and may only name features
+	// this server actually implements.
+	out := request("/rest/getOpenSubsonicExtensions.view?" + auth)
+	body := out.Body.String()
+	if out.Code != 200 || !strings.Contains(body, `openSubsonicExtension`) {
+		t.Fatalf("extensions: %d %s", out.Code, body)
+	}
+	for _, name := range []string{"transcodeOffset", "topSongsByArtistId"} {
+		if !strings.Contains(body, `name="`+name+`"`) {
+			t.Fatalf("missing extension %q in %s", name, body)
+		}
+	}
+	for _, unsupported := range []string{"indexBasedQueue", "formPost", "songLyrics", "playbackReport", "apikeyauth"} {
+		if strings.Contains(body, `name="`+unsupported+`"`) {
+			t.Fatalf("must not advertise unimplemented extension %q", unsupported)
+		}
+	}
+
+	// getUser must report scrobbling as available, otherwise clients stop
+	// sending now-playing and play-count updates.
+	out = request("/rest/getUser.view?" + auth)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `scrobblingEnabled="true"`) || !strings.Contains(out.Body.String(), `username="reelscarey"`) {
+		t.Fatal("getUser", out.Code, out.Body.String())
+	}
+
+	// playQueue carries the OpenSubsonic-required username/changed/changedBy
+	// attributes even when the queue itself is empty.
+	out = request("/rest/getPlayQueue.view?" + auth)
+	body = out.Body.String()
+	if out.Code != 200 || !strings.Contains(body, `username="reelscarey"`) ||
+		!strings.Contains(body, `changedBy="Arpeggi"`) || !strings.Contains(body, `changed="`) {
+		t.Fatal("getPlayQueue", out.Code, body)
+	}
+
+	// topSongsByArtistId: ?id= scopes songs to one artist, and a bare numeric id
+	// is accepted the same way every other action accepts one.
+	out = request("/rest/getTopSongs.view?" + auth + "&id=ar5")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `id="tr9"`) {
+		t.Fatal("getTopSongs by id", out.Code, out.Body.String())
+	}
+
+	// savePlayQueueByIndex is acknowledged so index-based clients do not receive
+	// a "not implemented" error.
+	out = request("/rest/savePlayQueueByIndex.view?" + auth + "&index=0")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `status="ok"`) {
+		t.Fatal("savePlayQueueByIndex", out.Code, out.Body.String())
+	}
+}
+
+func TestSubsonicPrefixedIDsAndActions(t *testing.T) {
+	handler, _ := musicFixture(t, &fakeMusic{
+		serverTokenOK: true,
+		serverArtists: []music.Artist{{ID: 5, Name: "ABBA", AlbumCount: 1}},
+		serverArtistDetail: music.ArtistDetails{
+			Artist: music.Artist{ID: 5, Name: "ABBA", AlbumCount: 1},
+			Albums: []music.Album{{ID: 7, ArtistID: 5, Title: "Arrival", ArtistName: "ABBA", TrackCount: 1}},
+		},
+		serverAlbumDetail: music.AlbumDetails{
+			Album: music.Album{ID: 7, ArtistID: 5, Title: "Arrival", ArtistName: "ABBA", TrackCount: 1},
+		},
+		serverAlbumSongs: []music.ServerSong{{
+			FileID: 9, Title: "Dancing Queen", Artist: "ABBA", Album: "Arrival",
+			ArtistID: 5, AlbumID: 7, Track: 1, Disc: 1, DurationMS: 231000,
+			Suffix: "mp3", ContentType: "audio/mpeg", SizeBytes: 4065305,
+		}},
+		serverSongCount: 3,
+	})
+	request := func(rawURL string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", rawURL, nil)
+		out := httptest.NewRecorder()
+		handler.ServeHTTP(out, r)
+		return out
+	}
+	const auth = "u=reelscarey&p=test-token&v=1.16.1&c=test"
+
+	// Artist and album ids must be namespaced: artist 5 and album 7 never
+	// collide, and every emitted id carries its kind prefix.
+	out := request("/rest/getArtists.view?" + auth)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `id="ar5"`) || !strings.Contains(out.Body.String(), `albumCount="1"`) {
+		t.Fatal("getArtists prefixes", out.Code, out.Body.String())
+	}
+
+	// Browsing an artist yields album children that are directories.
+	out = request("/rest/getMusicDirectory.view?" + auth + "&id=ar5")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `id="al7"`) || !strings.Contains(out.Body.String(), `isDir="true"`) {
+		t.Fatal("artist directory", out.Code, out.Body.String())
+	}
+
+	// Browsing an album yields playable song children with full media metadata.
+	out = request("/rest/getMusicDirectory.view?" + auth + "&id=al7")
+	body := out.Body.String()
+	if out.Code != 200 || !strings.Contains(body, `id="tr9"`) || !strings.Contains(body, `suffix="mp3"`) ||
+		!strings.Contains(body, `contentType="audio/mpeg"`) || !strings.Contains(body, `size="4065305"`) ||
+		!strings.Contains(body, `isDir="false"`) {
+		t.Fatal("album directory", out.Code, body)
+	}
+
+	// getAlbum must report the same file-backed metadata.
+	out = request("/rest/getAlbum.view?" + auth + "&id=al7")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `suffix="mp3"`) || !strings.Contains(out.Body.String(), `contentType="audio/mpeg"`) {
+		t.Fatal("getAlbum metadata", out.Code, out.Body.String())
+	}
+
+	// Clients such as Amperfy keep whatever id form the server handed them and
+	// echo it back, and older syncs used bare integers, so a bare album id must
+	// resolve too. The action itself selects the namespace, so there is no
+	// artist/album ambiguity.
+	out = request("/rest/getAlbum.view?" + auth + "&id=7")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `id="al7"`) || !strings.Contains(out.Body.String(), `suffix="mp3"`) {
+		t.Fatal("bare album id should resolve", out.Code, out.Body.String())
+	}
+
+	// Bare artist and song ids resolve the same way.
+	out = request("/rest/getArtist.view?" + auth + "&id=5")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `id="ar5"`) {
+		t.Fatal("bare artist id should resolve", out.Code, out.Body.String())
+	}
+	out = request("/rest/getSong.view?" + auth + "&id=9")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `id="tr1"`) {
+		t.Fatal("bare song id should resolve", out.Code, out.Body.String())
+	}
+
+	// getMusicDirectory cannot tell a bare artist id from a bare album id, so it
+	// probes the catalog; a real artist id must adopt the artist namespace.
+	out = request("/rest/getMusicDirectory.view?" + auth + "&id=5")
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `id="al7"`) || !strings.Contains(out.Body.String(), `isDir="true"`) {
+		t.Fatal("bare artist directory should resolve", out.Code, out.Body.String())
+	}
+
+	// getScanStatus reports the registered song count rather than an error.
+	out = request("/rest/getScanStatus.view?" + auth)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `count="3"`) || !strings.Contains(out.Body.String(), `scanning="false"`) {
+		t.Fatal("scan status", out.Code, out.Body.String())
+	}
+
+	// Previously unimplemented read actions now return empty, well-formed
+	// payloads instead of code 0 "not implemented".
+	for _, action := range []string{
+		"getPlaylists", "getPlayQueue", "getNowPlaying", "getStarred", "getStarred2",
+		"getGenres", "getLyrics", "getBookmarks", "getShares", "getPodcasts",
+		"getInternetRadioStations", "getChatMessages", "getVideos", "getArtistInfo2",
+		"getAlbumInfo2", "getScanStatus",
+	} {
+		out = request("/rest/" + action + ".view?" + auth)
+		if out.Code != 200 || !strings.Contains(out.Body.String(), `status="ok"`) {
+			t.Fatal(action, out.Code, out.Body.String())
+		}
+	}
+
+	// getAvatar serves a small image even though ReelScarey has no user avatars;
+	// clients that request one should not see an error.
+	out = request("/rest/getAvatar.view?" + auth)
+	if out.Code != 200 || out.Header().Get("Content-Type") != "image/png" || out.Body.Len() == 0 {
+		t.Fatal("avatar", out.Code, out.Header().Get("Content-Type"))
+	}
+
+	// Write actions are accepted as benign no-ops so clients that sync state do
+	// not surface a server-side error.
+	for _, action := range []string{"scrobble", "star", "unstar", "setRating", "savePlayQueue", "createPlaylist"} {
+		out = request("/rest/" + action + ".view?" + auth)
+		if out.Code != 200 || !strings.Contains(out.Body.String(), `status="ok"`) {
+			t.Fatal(action, out.Code, out.Body.String())
+		}
+	}
+
+	// The default still fails closed for genuinely unknown actions.
+	out = request("/rest/definitelyNotAnAction.view?" + auth)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `status="failed"`) {
+		t.Fatal("unknown action", out.Code, out.Body.String())
 	}
 }
 

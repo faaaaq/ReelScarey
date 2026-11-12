@@ -21,6 +21,7 @@ export function MusicServer() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [token, setToken] = useState("");
+  const [copied, setCopied] = useState(false);
   const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
@@ -60,6 +61,7 @@ export function MusicServer() {
     setError("");
     setMessage("");
     setToken("");
+    setCopied(false);
     try {
       const result = await api<{ token: string; server: MusicServerStatus }>(
         "/library/music/server/token",
@@ -83,6 +85,7 @@ export function MusicServer() {
     setError("");
     setMessage("");
     setToken("");
+    setCopied(false);
     try {
       await api("/library/music/server/token", { method: "DELETE" });
       setMessage(
@@ -93,6 +96,18 @@ export function MusicServer() {
       setError(messageFor(e));
     } finally {
       setPending(false);
+    }
+  }
+
+  async function copyToken() {
+    if (!token) return;
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopied(true);
+    } catch {
+      setError(
+        "Could not copy automatically. Select the token and copy it manually.",
+      );
     }
   }
 
@@ -175,9 +190,17 @@ export function MusicServer() {
                       readOnly
                       onFocus={(event) => event.currentTarget.select()}
                     />
+                    <Button
+                      type="button"
+                      variant="soft"
+                      onClick={() => void copyToken()}
+                    >
+                      {copied ? "Copied" : "Copy token"}
+                    </Button>
                   </div>
                   <p className="rs-muted">
-                    Use this token as the password in your Subsonic client. The
+                    Use this token as the password in your Subsonic client. It
+                    is 20 characters; type or paste it exactly as shown. The
                     username can be any label, for example{" "}
                     <code>reelscarey</code>. The administrator account password
                     is not accepted.
@@ -207,8 +230,8 @@ export function MusicServer() {
                 <li>
                   <KeyRound size={16} aria-hidden="true" />
                   <span>
-                    <strong>Password</strong> the generated token, not your
-                    administrator password
+                    <strong>Password</strong> the generated 20-character token,
+                    not your administrator password
                   </span>
                 </li>
               </ul>

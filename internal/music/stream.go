@@ -66,12 +66,26 @@ func (s *Service) OpenAudioFile(ctx context.Context, id int64) (AudioStream, err
 	}, nil
 }
 
-func audioContentType(format, name string) string {
-	ext := strings.ToLower(strings.TrimPrefix(path.Ext(name), "."))
-	if ext == "" {
-		ext = strings.ToLower(strings.TrimSpace(format))
+// audioSuffix derives the Subsonic "suffix" for a file from its real path
+// extension, falling back to the probed container format when the path has no
+// usable extension. music_files.format holds ffprobe container names such as
+// "matroska,webm" or "mov,mp4,m4a,3gp,3g2,mj2", which are not valid suffixes
+// and must never be handed to a client as-is.
+func audioSuffix(format, name string) string {
+	if ext := strings.ToLower(strings.TrimPrefix(path.Ext(name), ".")); ext != "" {
+		return ext
 	}
-	switch ext {
+	for _, part := range strings.Split(strings.ToLower(strings.TrimSpace(format)), ",") {
+		switch part = strings.TrimSpace(part); part {
+		case "mp3", "flac", "m4a", "mp4", "aac", "ogg", "oga", "opus", "wav", "aif", "aiff", "wma", "webm", "matroska", "asf":
+			return part
+		}
+	}
+	return ""
+}
+
+func audioContentType(format, name string) string {
+	switch audioSuffix(format, name) {
 	case "mp3":
 		return "audio/mpeg"
 	case "flac":
@@ -84,7 +98,9 @@ func audioContentType(format, name string) string {
 		return "audio/wav"
 	case "aif", "aiff":
 		return "audio/aiff"
-	case "wma":
+	case "webm", "matroska":
+		return "audio/webm"
+	case "wma", "asf":
 		return "audio/x-ms-wma"
 	default:
 		return "application/octet-stream"

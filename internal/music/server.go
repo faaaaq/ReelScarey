@@ -5,12 +5,51 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/subtle"
-	"encoding/base64"
 	"encoding/hex"
 	"strings"
 )
 
 const musicServerTokenName = "music-server-token"
+
+// musicServerTokenAlphabet is Crockford's Base32 alphabet: digits and uppercase
+// letters with the easily confused characters I, L, O and U removed. Tokens are
+// short enough to type on a phone and unambiguous when read or copied by hand.
+const musicServerTokenAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+// musicServerTokenLength is the number of characters in a generated token. Each
+// character carries five bits (32 symbols), so 20 characters is 100 bits of
+// entropy while staying easy to enter on a mobile keyboard.
+const musicServerTokenLength = 20
+
+// newMusicServerToken returns a random token drawn uniformly from the Crockford
+// Base32 alphabet. Because 256 is a whole multiple of 32, masking a uniform
+// random byte to its low five bits selects an alphabet index without bias.
+func newMusicServerToken() (string, error) {
+	raw := make([]byte, musicServerTokenLength)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	out := make([]byte, len(raw))
+	for i, b := range raw {
+		out[i] = musicServerTokenAlphabet[b&0x1f]
+	}
+	return string(out), nil
+}
+
+// normalizeMusicServerToken upper-cases a token and drops the separators people
+// habitually add (spaces, dashes and underscores) so a hand-typed token still
+// matches. Crockford Base32 is case-insensitive by design.
+func normalizeMusicServerToken(token string) string {
+	var b strings.Builder
+	for _, r := range strings.ToUpper(strings.TrimSpace(token)) {
+		switch r {
+		case ' ', '-', '_':
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
 
 // MusicServerStatus describes the opt-in Subsonic-compatible endpoint. The
 // endpoint is disabled by default and has no listener of its own: it uses the
@@ -73,11 +112,10 @@ func (s *Service) GenerateMusicServerToken(ctx context.Context) (string, MusicSe
 	if s.secrets == nil {
 		return "", MusicServerStatus{}, &Error{Code: "music_server_unavailable", Message: "Encrypted credential storage is unavailable, so a music server token cannot be created."}
 	}
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
+	token, err := newMusicServerToken()
+	if err != nil {
 		return "", MusicServerStatus{}, err
 	}
-	token := base64.RawURLEncoding.EncodeToString(raw)
 	if err := s.secrets.SetNamed(ctx, musicServerTokenName, []byte(token)); err != nil {
 		return "", MusicServerStatus{}, err
 	}
@@ -123,7 +161,14 @@ func (s *Service) VerifyMusicServerToken(ctx context.Context, username, password
 			}
 			value = string(decoded)
 		}
-		return subtle.ConstantTimeCompare([]byte(value), []byte(expected)) == 1, nil
+		if subtle.ConstantTimeCompare([]byte(value), []byte(expected)) == 1 {
+			return true, nil
+		}
+		// Crockford Base32 tokens are case-insensitive, and people habitually
+		// group characters with spaces or dashes when typing on a phone, so a
+		// normalised comparison keeps a hand-typed token working.
+		normalized := normalizeMusicServerToken(value)
+		return subtle.ConstantTimeCompare([]byte(normalized), []byte(normalizeMusicServerToken(expected))) == 1, nil
 	}
 	if token == "" || salt == "" {
 		return false, nil

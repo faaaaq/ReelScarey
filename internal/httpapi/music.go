@@ -93,6 +93,23 @@ func (s *Server) musicArtists(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		query := strings.TrimSpace(r.URL.Query().Get("query"))
+		if !music.ValidListQuery(query, 1) {
+			fail(w, 400, "invalid_music", "Enter at most 200 characters and a valid page.")
+			return
+		}
+		if r.URL.Query().Get("page") == "all" {
+			items, err := s.music.ListAllArtists(r.Context(), query)
+			if errors.Is(err, music.ErrListAllLimit) {
+				fail(w, 400, "library_too_large", err.Error())
+				return
+			}
+			if err != nil {
+				s.musicError(w, err)
+				return
+			}
+			send(w, 200, items)
+			return
+		}
 		page, valid := pageNumber(r, 100000)
 		if !valid || !music.ValidListQuery(query, page) {
 			fail(w, 400, "invalid_music", "Enter at most 200 characters and a valid page.")
@@ -1224,15 +1241,28 @@ func (s *Server) musicEditPreview(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		FileIDs []int64 `json:"file_ids"`
+		AlbumID int64   `json:"album_id"`
+		Year    int     `json:"year"`
+		Album   string  `json:"album"`
+		Artist  string  `json:"artist"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if len(body.FileIDs) == 0 || len(body.FileIDs) > 500 {
+	fileIDs := body.FileIDs
+	if body.AlbumID > 0 {
+		ids, err := s.music.AlbumFileIDs(r.Context(), body.AlbumID)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		fileIDs = ids
+	}
+	if len(fileIDs) == 0 || len(fileIDs) > 500 {
 		fail(w, 400, "invalid_music", "Choose between 1 and 500 registered files.")
 		return
 	}
-	plan, err := s.music.PreviewEdits(r.Context(), body.FileIDs)
+	plan, err := s.music.PreviewEditsWith(r.Context(), fileIDs, music.EditOverrides{Year: body.Year, Album: body.Album, Artist: body.Artist})
 	if err != nil {
 		s.musicError(w, err)
 		return
@@ -1247,6 +1277,10 @@ func (s *Server) musicEditApply(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		FileIDs  []int64 `json:"file_ids"`
+		AlbumID  int64   `json:"album_id"`
+		Year     int     `json:"year"`
+		Album    string  `json:"album"`
+		Artist   string  `json:"artist"`
 		PlanHash string  `json:"plan_hash"`
 		Reviewed bool    `json:"reviewed"`
 	}
@@ -1257,11 +1291,20 @@ func (s *Server) musicEditApply(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "review_required", "Review the organization and tag changes before applying them.")
 		return
 	}
-	if len(body.FileIDs) == 0 || len(body.FileIDs) > 500 || strings.TrimSpace(body.PlanHash) == "" {
+	fileIDs := body.FileIDs
+	if body.AlbumID > 0 {
+		ids, err := s.music.AlbumFileIDs(r.Context(), body.AlbumID)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		fileIDs = ids
+	}
+	if len(fileIDs) == 0 || len(fileIDs) > 500 || strings.TrimSpace(body.PlanHash) == "" {
 		fail(w, 400, "invalid_music", "Choose between 1 and 500 registered files and a reviewed plan.")
 		return
 	}
-	job, err := s.music.ApplyEdits(r.Context(), body.FileIDs, body.PlanHash, true)
+	job, err := s.music.ApplyEditsWith(r.Context(), fileIDs, body.PlanHash, true, music.EditOverrides{Year: body.Year, Album: body.Album, Artist: body.Artist})
 	if err != nil {
 		s.musicError(w, err)
 		return

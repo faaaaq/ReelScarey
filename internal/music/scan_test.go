@@ -230,6 +230,23 @@ func TestMatchAlbumTrackRejectsAmbiguousTitle(t *testing.T) {
 	}
 }
 
+func TestTrackMatchContradictsDifferentTitleAtSameNumber(t *testing.T) {
+	depends := Track{ID: 10, Disc: 1, Number: 1, Title: "DEPENDS"}
+	// Same disc/number but a clearly different song is not the same track; the
+	// tag-authoritative caller must treat the slot as occupied, not overwrite it.
+	if !trackMatchContradicts(ScanFile{Title: "S.A.D", Track: intPtr(1), Disc: intPtr(1)}, depends) {
+		t.Fatal("different title at same number was accepted")
+	}
+	// A title that agrees after normalization is the same track.
+	if trackMatchContradicts(ScanFile{Title: "S.A.D.", Track: intPtr(1), Disc: intPtr(1)}, Track{Disc: 1, Number: 1, Title: "S.A.D"}) {
+		t.Fatal("normalized agreeing title was contradicted")
+	}
+	// A genuine provider ID is authoritative even when the title differs.
+	if trackMatchContradicts(ScanFile{Title: "S.A.D", MusicBrainzTrackID: testTrackID, Track: intPtr(1), Disc: intPtr(1)}, Track{MusicBrainzID: testTrackID, Disc: 1, Number: 1, Title: "DEPENDS"}) {
+		t.Fatal("provider ID match was contradicted")
+	}
+}
+
 func TestFindCatalogAlbumIgnoresArticleAndUnicodeForm(t *testing.T) {
 	ctx := context.Background()
 	db, err := database.Open(ctx, t.TempDir())

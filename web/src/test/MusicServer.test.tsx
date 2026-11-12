@@ -67,5 +67,14 @@ describe("music server", () => {
     expect(
       await screen.findByDisplayValue("generated-test-token"),
     ).toBeVisible();
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Copy token" }));
+    expect(writeText).toHaveBeenCalledWith("generated-test-token");
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeVisible();
   });
 });

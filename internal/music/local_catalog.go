@@ -482,6 +482,9 @@ func (c *localCatalog) findExisting(ctx context.Context, file ScanFile) (int64, 
 	if err != nil {
 		return ref.artistID, ref.id, 0, false, nil
 	}
+	if track := trackByID(tracks, trackID); track != nil && trackMatchContradicts(file, *track) {
+		return ref.artistID, ref.id, 0, false, nil
+	}
 	c.enrichLocalTrackIDs(ctx, ref, trackID, ev)
 	return ref.artistID, ref.id, trackID, true, nil
 }
@@ -525,8 +528,13 @@ func (c *localCatalog) findOrCreateTrack(ctx context.Context, file ScanFile, ev 
 	}
 	if len(tracks) > 0 {
 		if id, err := matchAlbumTrack(file, tracks); err == nil {
-			c.enrichLocalTrackIDs(ctx, album, id, ev)
-			return id, nil
+			// A match that rests on the disc/number while the titles disagree is
+			// not evidence of the same song; treat the position as occupied so
+			// the caller can use the next free number instead of overwriting.
+			if track := trackByID(tracks, id); track == nil || !trackMatchContradicts(file, *track) {
+				c.enrichLocalTrackIDs(ctx, album, id, ev)
+				return id, nil
+			}
 		}
 	}
 	disc := ev.disc

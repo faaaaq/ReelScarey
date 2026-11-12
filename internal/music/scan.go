@@ -838,6 +838,42 @@ func matchAlbumTrack(file ScanFile, tracks []Track) (int64, error) {
 	return 0, &Error{Code: "music_unmatched_track", Message: "The album matched but no track matches this file's MusicBrainz track ID, disc/track number or title. Correct the tags and try again."}
 }
 
+// trackNumberTitleAgrees reports whether a file's title is compatible with an
+// existing catalog track's title. A blank title on either side cannot be
+// checked and is accepted; otherwise the titles have to agree under the catalog
+// normalization.
+func trackNumberTitleAgrees(fileTitle, trackTitle string) bool {
+	if normalizeMatchName(fileTitle) == "" || normalizeMatchName(trackTitle) == "" {
+		return true
+	}
+	return trackTitleMatches(trackTitle, trackTitleKeys(fileTitle))
+}
+
+// trackMatchContradicts reports whether a file that was matched to an existing
+// catalog track actually relies on the disc/number alone while the titles
+// disagree. Provider IDs and an agreeing title are strong evidence and are
+// never treated as a contradiction. Tag-authoritative callers use this so a new
+// song such as "S.A.D" is not conflated with an existing same-numbered
+// "DEPENDS" track, while provider-authoritative discovery stays lenient.
+func trackMatchContradicts(file ScanFile, track Track) bool {
+	if id := strings.TrimSpace(file.MusicBrainzTrackID); id != "" && strings.EqualFold(id, track.MusicBrainzID) {
+		return false
+	}
+	if id := strings.TrimSpace(file.MusicBrainzRecordingID); id != "" && strings.EqualFold(id, track.RecordingID) {
+		return false
+	}
+	if trackNumberTitleAgrees(file.Title, track.Title) {
+		return false
+	}
+	if file.Track == nil || *file.Track <= 0 || track.Number != *file.Track {
+		return false
+	}
+	if file.Disc != nil && *file.Disc > 0 && track.Disc != *file.Disc {
+		return false
+	}
+	return true
+}
+
 func uniqueTrackByTitle(tracks []Track, title string) (int64, bool) {
 	keys := trackTitleKeys(title)
 	if len(keys) == 0 {

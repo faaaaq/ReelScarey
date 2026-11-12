@@ -66,12 +66,49 @@ func (s *Store) ListArtists(ctx context.Context, query string, page int) (Artist
 	return out, rows.Err()
 }
 
+// ListAllArtists returns every matching artist on a single page, bounded by
+// MaxAllItems so one request cannot materialize an unbounded list.
+func (s *Store) ListAllArtists(ctx context.Context, query string) (ArtistPage, error) {
+	query = strings.TrimSpace(query)
+	where := ""
+	args := []any{}
+	if query != "" {
+		where = ` WHERE name LIKE ? ESCAPE '\'`
+		args = append(args, likePattern(query))
+	}
+	out := ArtistPage{Items: []Artist{}, Page: 1, Limit: MaxAllItems}
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_artists`+where, args...).Scan(&out.Total); err != nil {
+		return ArtistPage{}, err
+	}
+	if out.Total > MaxAllItems {
+		return ArtistPage{}, ErrListAllLimit
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+artistColumns+`,(SELECT COUNT(*) FROM music_albums a WHERE a.artist_id=music_artists.id) FROM music_artists`+where+` ORDER BY name COLLATE NOCASE, id LIMIT ?`, append(args, MaxAllItems)...)
+	if err != nil {
+		return ArtistPage{}, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		artist, err := scanArtist(rows)
+		if err != nil {
+			return ArtistPage{}, err
+		}
+		out.Items = append(out.Items, artist)
+	}
+	return out, rows.Err()
+}
+
 const albumColumns = `a.id, a.artist_id, a.musicbrainz_id, a.title, a.primary_type, a.secondary_types, a.year, a.release_date, a.cover_url, a.monitored, a.status, ar.name`
 
-func scanAlbum(row interface{ Scan(...any) error }) (Album, error) {
+// scanAlbum reads the shared album column list. extra destinations are appended
+// to the scan targets so callers that select additional aggregate columns (for
+// example a summed duration) can reuse the same field mapping.
+func scanAlbum(row interface{ Scan(...any) error }, extra ...any) (Album, error) {
 	var album Album
 	var secondary string
-	if err := row.Scan(&album.ID, &album.ArtistID, &album.MusicBrainzID, &album.Title, &album.PrimaryType, &secondary, &album.Year, &album.ReleaseDate, &album.CoverURL, &album.Monitored, &album.Status, &album.ArtistName, &album.TrackCount); err != nil {
+	dest := []any{&album.ID, &album.ArtistID, &album.MusicBrainzID, &album.Title, &album.PrimaryType, &secondary, &album.Year, &album.ReleaseDate, &album.CoverURL, &album.Monitored, &album.Status, &album.ArtistName, &album.TrackCount}
+	dest = append(dest, extra...)
+	if err := row.Scan(dest...); err != nil {
 		return Album{}, err
 	}
 	if secondary != "" {
@@ -85,17 +122,19 @@ func scanAlbum(row interface{ Scan(...any) error }) (Album, error) {
 }
 
 func (s *Store) Albums(ctx context.Context, artistID int64) ([]Album, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+albumColumns+`,(SELECT COUNT(*) FROM music_tracks t WHERE t.album_id=a.id) FROM music_albums a JOIN music_artists ar ON ar.id=a.artist_id WHERE a.artist_id=? ORDER BY a.year IS NULL, a.year, a.title COLLATE NOCASE, a.id LIMIT 1000`, artistID)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+albumColumns+`,(SELECT COUNT(*) FROM music_tracks t WHERE t.album_id=a.id),(SELECT COALESCE(SUM(t.duration_ms),0) FROM music_tracks t WHERE t.album_id=a.id) FROM music_albums a JOIN music_artists ar ON ar.id=a.artist_id WHERE a.artist_id=? ORDER BY a.year IS NULL, a.year, a.title COLLATE NOCASE, a.id LIMIT 1000`, artistID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []Album{}
 	for rows.Next() {
-		album, err := scanAlbum(rows)
+		var durationMS int
+		album, err := scanAlbum(rows, &durationMS)
 		if err != nil {
 			return nil, err
 		}
+		album.DurationMS = durationMS
 		out = append(out, album)
 	}
 	return out, rows.Err()

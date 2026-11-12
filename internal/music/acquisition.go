@@ -408,7 +408,7 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 		if err != nil {
 			return &Error{Code: "music_acquisition_search", Message: "YouTube search failed for this track."}
 		}
-		chosen := chooseAudioCandidate(candidates, track.DurationMS)
+		chosen := chooseAudioCandidate(candidates, track.DurationMS, track.Title)
 		if chosen == nil {
 			return &Error{Code: "music_acquisition_match", Message: "No close enough YouTube audio match was found for this track."}
 		}
@@ -440,26 +440,52 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 	return nil
 }
 
-func chooseAudioCandidate(candidates []AudioCandidate, durationMS int) *AudioCandidate {
+// audioCandidateMatchesTitle reports whether a YouTube result title plausibly
+// belongs to the requested track. Titles are compared with the catalog
+// normalization, so "S.A.D." and "sad" agree while an unrelated song such as
+// "DEPENDS" is rejected instead of being chosen on duration alone. A blank
+// requested title cannot be checked and is accepted so callers without a title
+// keep the previous duration-only behavior.
+func audioCandidateMatchesTitle(candidateTitle, title string) bool {
+	want := compactMatchName(title)
+	if want == "" {
+		return true
+	}
+	got := compactMatchName(candidateTitle)
+	if got == "" {
+		return false
+	}
+	return strings.Contains(got, want)
+}
+
+// chooseAudioCandidate picks the closest-duration YouTube result that also
+// names the requested track. Timing alone is not evidence of identity: without
+// a title match the caller gets no candidate and reports an honest "no match"
+// instead of importing a different song.
+func chooseAudioCandidate(candidates []AudioCandidate, durationMS int, title string) *AudioCandidate {
 	if len(candidates) == 0 {
 		return nil
 	}
 	expected := int64(durationMS / 1000)
-	if expected <= 0 {
-		return &candidates[0]
-	}
 	var best *AudioCandidate
 	bestDiff := int64(11)
 	for i := range candidates {
-		if candidates[i].DurationSeconds <= 0 {
+		candidate := &candidates[i]
+		if !audioCandidateMatchesTitle(candidate.Title, title) {
 			continue
 		}
-		diff := candidates[i].DurationSeconds - expected
+		if expected <= 0 {
+			return candidate
+		}
+		if candidate.DurationSeconds <= 0 {
+			continue
+		}
+		diff := candidate.DurationSeconds - expected
 		if diff < 0 {
 			diff = -diff
 		}
 		if diff < bestDiff {
-			best, bestDiff = &candidates[i], diff
+			best, bestDiff = candidate, diff
 		}
 	}
 	return best
