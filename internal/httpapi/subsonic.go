@@ -359,12 +359,32 @@ func subsonicAction(r *http.Request) string {
 	return strings.ToLower(strings.TrimSuffix(action, ".view"))
 }
 
+// subsonicUserKey carries the account resolved during authentication into the
+// individual Subsonic handlers, which only receive the request.
+type subsonicUserKey struct{}
+
+func withSubsonicUser(ctx context.Context, user music.MusicServerUser) context.Context {
+	return context.WithValue(ctx, subsonicUserKey{}, user)
+}
+
+// subsonicRequestUser returns the account that authenticated this request. The
+// zero value means the legacy shared token, which keeps full rights.
+func subsonicRequestUser(r *http.Request) music.MusicServerUser {
+	user, _ := r.Context().Value(subsonicUserKey{}).(music.MusicServerUser)
+	return user
+}
+
+// subsonicDenied answers an action the account is not permitted to perform.
+func (s *Server) subsonicDenied(w http.ResponseWriter, r *http.Request) {
+	writeSubsonic(w, r, subsonicFailure(s.version, 50, "The user is not authorized for this operation."))
+}
+
 func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 	if s.music == nil {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "The music catalog is unavailable."))
 		return
 	}
-	ok, err := s.music.VerifyMusicServerToken(r.Context(), r.URL.Query().Get("u"), r.URL.Query().Get("p"), r.URL.Query().Get("t"), r.URL.Query().Get("s"))
+	user, ok, err := s.music.AuthenticateMusicServer(r.Context(), r.URL.Query().Get("u"), r.URL.Query().Get("p"), r.URL.Query().Get("t"), r.URL.Query().Get("s"))
 	if err != nil {
 		s.logger.Error("music server authentication failed", "error", err)
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "The music server could not verify this request."))
@@ -374,6 +394,7 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 		writeSubsonic(w, r, subsonicFailure(s.version, 40, "Wrong username or password."))
 		return
 	}
+	r = r.WithContext(withSubsonicUser(r.Context(), user))
 	action := subsonicAction(r)
 	if action == "" || strings.Contains(action, "/") {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "Unknown Subsonic action."))
@@ -431,16 +452,36 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 	case "getsongsbygenre":
 		s.subsonicSongsByGenre(w, r)
 	case "stream", "download":
+		if !user.CanDownload() {
+			s.subsonicDenied(w, r)
+			return
+		}
 		s.subsonicStream(w, r)
 	case "getcoverart":
+		if !user.CanCoverArt() {
+			s.subsonicDenied(w, r)
+			return
+		}
 		s.subsonicCoverArt(w, r)
 	case "getavatar":
+		if !user.CanCoverArt() {
+			s.subsonicDenied(w, r)
+			return
+		}
 		s.subsonicAvatar(w, r)
 	case "getscanstatus", "startscan":
 		s.subsonicScanStatus(w, r)
 	case "getplaylists":
+		if !user.CanPlaylist() {
+			s.subsonicDenied(w, r)
+			return
+		}
 		s.subsonicPlaylists(w, r)
 	case "getplaylist":
+		if !user.CanPlaylist() {
+			s.subsonicDenied(w, r)
+			return
+		}
 		s.subsonicPlaylist(w, r)
 	case "getplayqueue", "getplayqueuebyindex":
 		// OpenSubsonic marks username, changed and changedBy as required on
@@ -483,6 +524,10 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 		out.Bookmarks = &subsonicBookmarks{Bookmarks: []any{}}
 		writeSubsonic(w, r, out)
 	case "getshares":
+		if !user.CanShare() {
+			s.subsonicDenied(w, r)
+			return
+		}
 		out := subsonicResponseFor(s.version)
 		out.Shares = &subsonicShares{Shares: []any{}}
 		writeSubsonic(w, r, out)
@@ -505,7 +550,13 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 		out := subsonicResponseFor(s.version)
 		out.Videos = &subsonicVideos{Videos: []any{}}
 		writeSubsonic(w, r, out)
-	case "scrobble", "star", "unstar", "setrating", "saveplayqueue", "saveplayqueuebyindex", "deleteplaylist", "createplaylist", "updateplaylist":
+	case "createplaylist", "updateplaylist", "deleteplaylist":
+		if !user.CanPlaylist() {
+			s.subsonicDenied(w, r)
+			return
+		}
+		writeSubsonic(w, r, subsonicResponseFor(s.version))
+	case "scrobble", "star", "unstar", "setrating", "saveplayqueue", "saveplayqueuebyindex":
 		writeSubsonic(w, r, subsonicResponseFor(s.version))
 	default:
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "This Subsonic action is not implemented."))
@@ -1046,15 +1097,25 @@ func (s *Server) subsonicStarred(w http.ResponseWriter, r *http.Request, second 
 func (s *Server) subsonicUser(w http.ResponseWriter, r *http.Request) {
 	username := subsonicUserParam(r)
 	out := subsonicResponseFor(s.version)
+	account := subsonicRequestUser(r)
+	if !account.Anonymous() && account.Username != "" {
+		username = account.Username
+	}
+	// Report the roles that actually govern this account. Scrobbling is
+	// genuinely accepted (see the scrobble case: a no-op acknowledgement), and
+	// the legacy shared token keeps the playback roles so existing clients
+	// never lose access.
 	out.User = &subsonicUser{
-		Username: username,
-		// Scrobbling is genuinely accepted (see the scrobble case: it is stored
-		// as a no-op acknowledgement), so advertising it is accurate and stops
-		// clients from disabling their now-playing/play-count reporting.
-		ScrobblingEnabled: true,
-		DownloadRole:      true,
-		PlaylistRole:      true,
-		CoverArtRole:      true,
+		Username:          username,
+		Email:             account.Email,
+		ScrobblingEnabled: account.Anonymous() || account.ScrobblingEnabled,
+		AdminRole:         account.AdminRole,
+		SettingsRole:      account.SettingsRole,
+		DownloadRole:      account.CanDownload(),
+		UploadRole:        account.CanUpload(),
+		PlaylistRole:      account.CanPlaylist(),
+		CoverArtRole:      account.CanCoverArt(),
+		ShareRole:         account.CanShare(),
 	}
 	writeSubsonic(w, r, out)
 }

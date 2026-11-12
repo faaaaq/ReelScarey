@@ -302,8 +302,41 @@ export type MusicServerStatus = {
   enabled: boolean;
   configured: boolean;
   token_hint: string;
+  users: number;
   revision: number;
   updated_at: number;
+};
+
+export type MusicServerUser = {
+  id: number;
+  username: string;
+  email: string;
+  password_generated: boolean;
+  scrobbling_enabled: boolean;
+  admin_role: boolean;
+  settings_role: boolean;
+  download_role: boolean;
+  upload_role: boolean;
+  playlist_role: boolean;
+  cover_art_role: boolean;
+  share_role: boolean;
+  created_at: number;
+  updated_at: number;
+  last_used_at: number;
+};
+
+export type MusicServerUserInput = {
+  username: string;
+  email: string;
+  password?: string;
+  scrobbling_enabled?: boolean;
+  admin_role?: boolean;
+  settings_role?: boolean;
+  download_role?: boolean;
+  upload_role?: boolean;
+  playlist_role?: boolean;
+  cover_art_role?: boolean;
+  share_role?: boolean;
 };
 
 export type MusicAlbumDetails = {

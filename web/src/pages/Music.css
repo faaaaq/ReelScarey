@@ -254,3 +254,24 @@
 .mus-progress .rs-progress {
   margin: 2px 0;
 }
+
+/* Music server accounts. */
+.mus-role-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 4px 18px;
+  margin: 4px 0 14px;
+}
+
+.mus-account-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mus-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}

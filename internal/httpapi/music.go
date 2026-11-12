@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -49,6 +50,18 @@ func (s *Server) musicError(w http.ResponseWriter, err error) {
 			w.Header().Set("Retry-After", strconv.Itoa(provider.RetryAfter))
 		}
 		fail(w, status, provider.Code, provider.Message)
+		return
+	}
+	if errors.Is(err, music.ErrMusicServerUserExists) {
+		fail(w, 409, "music_server_user_exists", err.Error())
+		return
+	}
+	if errors.Is(err, music.ErrMusicServerUserAbsent) {
+		fail(w, 404, "not_found", err.Error())
+		return
+	}
+	if errors.Is(err, music.ErrMusicServerUsername) || errors.Is(err, music.ErrMusicServerEmail) || errors.Is(err, music.ErrMusicServerPassword) {
+		fail(w, 400, "invalid_music", err.Error())
 		return
 	}
 	if errors.Is(err, music.ErrPlanChanged) {
@@ -718,6 +731,152 @@ func (s *Server) musicServerToken(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", "POST, DELETE")
 		fail(w, 405, "method_not_allowed", "Use POST or DELETE.")
 	}
+}
+
+// musicServerUserBody carries the editable fields of one music server account.
+// Every role is a pointer so an omitted field keeps the stored value.
+type musicServerUserBody struct {
+	Username          string `json:"username"`
+	Email             string `json:"email"`
+	Password          string `json:"password"`
+	ScrobblingEnabled *bool  `json:"scrobbling_enabled"`
+	AdminRole         *bool  `json:"admin_role"`
+	SettingsRole      *bool  `json:"settings_role"`
+	DownloadRole      *bool  `json:"download_role"`
+	UploadRole        *bool  `json:"upload_role"`
+	PlaylistRole      *bool  `json:"playlist_role"`
+	CoverArtRole      *bool  `json:"cover_art_role"`
+	ShareRole         *bool  `json:"share_role"`
+}
+
+func (b musicServerUserBody) input() music.MusicServerUserInput {
+	return music.MusicServerUserInput{
+		Username:          b.Username,
+		Email:             b.Email,
+		Password:          b.Password,
+		ScrobblingEnabled: b.ScrobblingEnabled,
+		AdminRole:         b.AdminRole,
+		SettingsRole:      b.SettingsRole,
+		DownloadRole:      b.DownloadRole,
+		UploadRole:        b.UploadRole,
+		PlaylistRole:      b.PlaylistRole,
+		CoverArtRole:      b.CoverArtRole,
+		ShareRole:         b.ShareRole,
+	}
+}
+
+// musicServerUsers lists or creates music server accounts. A generated password
+// is returned exactly once, when the owner did not choose one.
+func (s *Server) musicServerUsers(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		users, err := s.music.ListMusicServerUsers(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, map[string]any{"users": users})
+	case http.MethodPost:
+		var body musicServerUserBody
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		user, password, err := s.music.CreateMusicServerUser(r.Context(), body.input())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 201, map[string]any{"user": user, "password": password})
+	default:
+		w.Header().Set("Allow", "GET, POST")
+		fail(w, 405, "method_not_allowed", "Use GET or POST.")
+	}
+}
+
+// musicServerUser reads, edits or removes one music server account.
+func (s *Server) musicServerUser(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		user, found, err := s.musicMusicServerUser(r.Context(), id)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		if !found {
+			fail(w, 404, "not_found", music.ErrMusicServerUserAbsent.Error())
+			return
+		}
+		send(w, 200, user)
+	case http.MethodPut:
+		var body musicServerUserBody
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		user, err := s.music.UpdateMusicServerUser(r.Context(), id, body.input())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, user)
+	case http.MethodDelete:
+		if err := s.music.DeleteMusicServerUser(r.Context(), id); err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, map[string]any{"deleted": true})
+	default:
+		w.Header().Set("Allow", "GET, PUT, DELETE")
+		fail(w, 405, "method_not_allowed", "Use GET, PUT or DELETE.")
+	}
+}
+
+// musicServerUserPassword issues a new generated password for one account.
+func (s *Server) musicServerUserPassword(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		fail(w, 405, "method_not_allowed", "Use POST.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	user, password, err := s.music.ResetMusicServerUserPassword(r.Context(), id)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, map[string]any{"user": user, "password": password})
+}
+
+// musicMusicServerUser resolves one account by ID using the list projection.
+func (s *Server) musicMusicServerUser(ctx context.Context, id int64) (music.MusicServerUser, bool, error) {
+	users, err := s.music.ListMusicServerUsers(ctx)
+	if err != nil {
+		return music.MusicServerUser{}, false, err
+	}
+	for _, user := range users {
+		if user.ID == id {
+			return user, true, nil
+		}
+	}
+	return music.MusicServerUser{}, false, nil
 }
 
 func (s *Server) musicAlbum(w http.ResponseWriter, r *http.Request) {

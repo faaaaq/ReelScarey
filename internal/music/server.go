@@ -2,10 +2,7 @@ package music
 
 import (
 	"context"
-	"crypto/md5"
 	"crypto/rand"
-	"crypto/subtle"
-	"encoding/hex"
 	"strings"
 )
 
@@ -54,10 +51,15 @@ func normalizeMusicServerToken(token string) string {
 // MusicServerStatus describes the opt-in Subsonic-compatible endpoint. The
 // endpoint is disabled by default and has no listener of its own: it uses the
 // existing ReelScarey HTTP port.
+//
+// Configured is true once any credential exists: either a named account or the
+// legacy shared token, so a client can sign in as soon as the administrator has
+// created one. Users counts the named accounts.
 type MusicServerStatus struct {
 	Enabled    bool   `json:"enabled"`
 	Configured bool   `json:"configured"`
 	TokenHint  string `json:"token_hint"`
+	Users      int    `json:"users"`
 	Revision   int    `json:"revision"`
 	UpdatedAt  int64  `json:"updated_at"`
 }
@@ -70,6 +72,9 @@ func (s *Service) MusicServer(ctx context.Context) (MusicServerStatus, error) {
 		return MusicServerStatus{}, err
 	}
 	out.Enabled = enabled == 1
+	if err := s.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_server_users`).Scan(&out.Users); err != nil {
+		return MusicServerStatus{}, err
+	}
 	if s.secrets != nil {
 		token, err := s.secrets.GetNamed(ctx, musicServerTokenName)
 		if err != nil {
@@ -80,6 +85,7 @@ func (s *Service) MusicServer(ctx context.Context) (MusicServerStatus, error) {
 			out.TokenHint = tokenHint(string(token))
 		}
 	}
+	out.Configured = out.Configured || out.Users > 0
 	return out, nil
 }
 
@@ -133,47 +139,10 @@ func (s *Service) DeleteMusicServerToken(ctx context.Context) (MusicServerStatus
 	return s.MusicServer(ctx)
 }
 
-// VerifyMusicServerToken accepts the Subsonic token form md5(password+salt) or
-// the plaintext form. The password is the generated server token, never the
-// administrator's account password.
+// VerifyMusicServerToken reports whether a Subsonic request authenticates. It
+// accepts either the named-account credentials or the legacy shared token; see
+// AuthenticateMusicServer for the full resolution including account roles.
 func (s *Service) VerifyMusicServerToken(ctx context.Context, username, password, token, salt string) (bool, error) {
-	if strings.TrimSpace(username) == "" || len(username) > 200 || s.secrets == nil {
-		return false, nil
-	}
-	status, err := s.MusicServer(ctx)
-	if err != nil {
-		return false, err
-	}
-	if !status.Enabled || !status.Configured {
-		return false, nil
-	}
-	secret, err := s.secrets.GetNamed(ctx, musicServerTokenName)
-	if err != nil || len(secret) == 0 {
-		return false, err
-	}
-	expected := string(secret)
-	if password != "" {
-		value := password
-		if strings.HasPrefix(strings.ToLower(value), "enc:") {
-			decoded, err := hex.DecodeString(value[4:])
-			if err != nil {
-				return false, nil
-			}
-			value = string(decoded)
-		}
-		if subtle.ConstantTimeCompare([]byte(value), []byte(expected)) == 1 {
-			return true, nil
-		}
-		// Crockford Base32 tokens are case-insensitive, and people habitually
-		// group characters with spaces or dashes when typing on a phone, so a
-		// normalised comparison keeps a hand-typed token working.
-		normalized := normalizeMusicServerToken(value)
-		return subtle.ConstantTimeCompare([]byte(normalized), []byte(normalizeMusicServerToken(expected))) == 1, nil
-	}
-	if token == "" || salt == "" {
-		return false, nil
-	}
-	sum := md5.Sum([]byte(expected + salt))
-	computed := hex.EncodeToString(sum[:])
-	return subtle.ConstantTimeCompare([]byte(strings.ToLower(token)), []byte(computed)) == 1, nil
+	_, ok, err := s.AuthenticateMusicServer(ctx, username, password, token, salt)
+	return ok, err
 }

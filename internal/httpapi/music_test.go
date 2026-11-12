@@ -39,6 +39,8 @@ type fakeMusic struct {
 	audioPath          string
 	artworkPath        string
 	serverTokenOK      bool
+	serverUser         music.MusicServerUser
+	serverUsers        []music.MusicServerUser
 	serverArtists      []music.Artist
 	serverArtistDetail music.ArtistDetails
 	serverAlbumDetail  music.AlbumDetails
@@ -174,15 +176,36 @@ func (f *fakeMusic) GenerateMusicServerToken(context.Context) (string, music.Mus
 func (f *fakeMusic) DeleteMusicServerToken(context.Context) (music.MusicServerStatus, error) {
 	return music.MusicServerStatus{Configured: false, Revision: 1}, f.err
 }
-func (f *fakeMusic) VerifyMusicServerToken(_ context.Context, _ string, password, token, salt string) (bool, error) {
+func (f *fakeMusic) AuthenticateMusicServer(_ context.Context, _ string, password, token, salt string) (music.MusicServerUser, bool, error) {
 	if f.err != nil {
-		return false, f.err
+		return music.MusicServerUser{}, false, f.err
 	}
 	if !f.serverTokenOK {
-		return false, nil
+		return music.MusicServerUser{}, false, nil
 	}
-	return password == "test-token" || (token != "" && salt != ""), nil
+	if password == "test-token" || (token != "" && salt != "") {
+		return f.serverUser, true, nil
+	}
+	return music.MusicServerUser{}, false, nil
 }
+func (f *fakeMusic) ListMusicServerUsers(context.Context) ([]music.MusicServerUser, error) {
+	return f.serverUsers, f.err
+}
+func (f *fakeMusic) CreateMusicServerUser(_ context.Context, input music.MusicServerUserInput) (music.MusicServerUser, string, error) {
+	if f.err != nil {
+		return music.MusicServerUser{}, "", f.err
+	}
+	user := music.MusicServerUser{ID: int64(len(f.serverUsers)) + 1, Username: input.Username, Email: input.Email}
+	f.serverUsers = append(f.serverUsers, user)
+	return user, "generated-password", nil
+}
+func (f *fakeMusic) UpdateMusicServerUser(_ context.Context, id int64, input music.MusicServerUserInput) (music.MusicServerUser, error) {
+	return music.MusicServerUser{ID: id, Username: input.Username, Email: input.Email}, f.err
+}
+func (f *fakeMusic) ResetMusicServerUserPassword(_ context.Context, id int64) (music.MusicServerUser, string, error) {
+	return music.MusicServerUser{ID: id}, "reset-password", f.err
+}
+func (f *fakeMusic) DeleteMusicServerUser(context.Context, int64) error { return f.err }
 func (f *fakeMusic) OpenAudioFile(context.Context, int64) (music.AudioStream, error) {
 	if f.err != nil {
 		return music.AudioStream{}, f.err
@@ -794,6 +817,109 @@ func TestMusicServerSettingsRoutes(t *testing.T) {
 	}
 	if out := request(handler, "DELETE", "/api/v1/library/music/server/token", "", session, true); out.Code != 200 {
 		t.Fatal("token delete", out.Code, out.Body.String())
+	}
+}
+
+func TestMusicServerUserRoutes(t *testing.T) {
+	handler, session := musicFixture(t, &fakeMusic{})
+
+	// Accounts are only visible to an authenticated session.
+	if out := request(handler, "GET", "/api/v1/library/music/server/users", "", nil, false); out.Code != 401 {
+		t.Fatal("user list leaked", out.Code)
+	}
+	out := request(handler, "GET", "/api/v1/library/music/server/users", "", session, false)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"users"`) {
+		t.Fatal("user list", out.Code, out.Body.String())
+	}
+
+	// Creating an account is a write, so it requires the CSRF header.
+	if out := request(handler, "POST", "/api/v1/library/music/server/users", `{"username":"dana"}`, session, false); out.Code != 403 {
+		t.Fatal("user create without CSRF", out.Code)
+	}
+	out = request(handler, "POST", "/api/v1/library/music/server/users", `{"username":"dana","email":"dana@example.com","download_role":true}`, session, true)
+	if out.Code != 201 || !strings.Contains(out.Body.String(), `"password":"generated-password"`) {
+		t.Fatal("user create", out.Code, out.Body.String())
+	}
+
+	// A single account can be read back, edited and have its password reset.
+	out = request(handler, "GET", "/api/v1/library/music/server/users/1", "", session, false)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"username":"dana"`) {
+		t.Fatal("user get", out.Code, out.Body.String())
+	}
+	out = request(handler, "PUT", "/api/v1/library/music/server/users/1", `{"username":"dana2"}`, session, true)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"username":"dana2"`) {
+		t.Fatal("user update", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/server/users/1/password", `{}`, session, true)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"password":"reset-password"`) {
+		t.Fatal("user password reset", out.Code, out.Body.String())
+	}
+	if out := request(handler, "DELETE", "/api/v1/library/music/server/users/1", "", session, true); out.Code != 200 {
+		t.Fatal("user delete", out.Code, out.Body.String())
+	}
+
+	// Unknown ids fail closed and unsupported methods are rejected.
+	if out := request(handler, "GET", "/api/v1/library/music/server/users/9999", "", session, false); out.Code != 404 {
+		t.Fatal("missing user", out.Code)
+	}
+	if out := request(handler, "PATCH", "/api/v1/library/music/server/users", `{}`, session, true); out.Code != 405 {
+		t.Fatal("user method", out.Code)
+	}
+}
+
+func TestSubsonicPerUserRoles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(path, []byte("0123456789"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	restricted := music.MusicServerUser{
+		ID: 4, Username: "kid", Email: "kid@example.com",
+		DownloadRole: false, CoverArtRole: false, PlaylistRole: false, ShareRole: false,
+	}
+	handler, _ := musicFixture(t, &fakeMusic{serverTokenOK: true, serverUser: restricted, audioPath: path})
+	request := func(rawURL string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", rawURL, nil)
+		out := httptest.NewRecorder()
+		handler.ServeHTTP(out, r)
+		return out
+	}
+	const auth = "u=kid&p=test-token&v=1.16.1&c=test"
+
+	// Browsing and pinging stay available to every account.
+	if out := request("/rest/ping.view?" + auth); out.Code != 200 || !strings.Contains(out.Body.String(), `status="ok"`) {
+		t.Fatal("ping", out.Code, out.Body.String())
+	}
+
+	// Actions the account lacks a role for are refused with Subsonic code 50.
+	for _, action := range []string{"stream", "download", "getCoverArt", "getAvatar", "getPlaylists", "getShares"} {
+		out := request("/rest/" + action + ".view?" + auth + "&id=1")
+		if out.Code != 200 || !strings.Contains(out.Body.String(), `code="50"`) {
+			t.Fatalf("%s should be denied: %d %s", action, out.Code, out.Body.String())
+		}
+	}
+
+	// getUser reports the roles that actually govern this account.
+	out := request("/rest/getUser.view?" + auth)
+	body := out.Body.String()
+	if out.Code != 200 || !strings.Contains(body, `username="kid"`) ||
+		!strings.Contains(body, `downloadRole="false"`) || !strings.Contains(body, `playlistRole="false"`) ||
+		!strings.Contains(body, `coverArtRole="false"`) || !strings.Contains(body, `shareRole="false"`) {
+		t.Fatal("getUser roles", out.Code, body)
+	}
+}
+
+func TestSubsonicAdminRoleOverrides(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(path, []byte("0123456789"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	admin := music.MusicServerUser{ID: 9, Username: "boss", AdminRole: true}
+	handler, _ := musicFixture(t, &fakeMusic{serverTokenOK: true, serverUser: admin, audioPath: path})
+	r := httptest.NewRequest("GET", "/rest/stream.view?u=boss&p=test-token&v=1.16.1&c=test&id=1", nil)
+	out := httptest.NewRecorder()
+	handler.ServeHTTP(out, r)
+	if out.Code != 200 || out.Body.String() != "0123456789" {
+		t.Fatal("admin stream", out.Code, out.Body.String())
 	}
 }
 
