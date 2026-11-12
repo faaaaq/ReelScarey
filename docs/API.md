@@ -167,7 +167,10 @@ saved playlist/artist links; POST `/monitor/run` requests one bounded run.
 
 GET/PUT `/api/v1/library/music/server` reads or changes the opt-in
 Subsonic-compatible endpoint. POST/DELETE `/server/token` creates or removes the
-client token; the token is returned only on creation. The optional `/rest/*`
+client token; the token is returned only on creation. The token is 20 characters
+of Crockford's Base32 alphabet. The plaintext-password form accepts it in any
+case and ignores spaces and dashes; clients that send `md5(password+salt)` need
+the token exactly as shown. The optional `/rest/*`
 endpoint uses that token on the same ReelScarey port; it is disabled by default
 and never opens another listener.
 
@@ -1203,32 +1206,62 @@ All routes retain administrator authentication, same-origin and CSRF checks.
 Files remain distinct by file ID/path, and replacements require a specific file.
 See [behavior, recovery and limits](MOVIE_VERSIONS.md).
 
-## IRC announce feeds (0.34)
+## IRC announce feeds and IPTorrents automatic grabbing (0.34)
 
 - `GET /api/v1/announce-sources` returns `{items,definitions}`. Items expose
-  tracker, name, enabled, revision, nick, server, port, TLS, channel,
-  `has_password`, `has_key`, `key_label`, `last_error` and `last_event_at`;
-  passwords and keys are never returned.
-- `POST /api/v1/announce-sources` with `{tracker,name,nick,account,password,invite,key,enabled,skip_tls_verify}`
+  `id`, `tracker`, `name`, `enabled`, `revision`, `auto_grab`, `nick`,
+  `account`, `server`, `port`, `tls`, `channel`, `require_account`,
+  `has_password`, `has_key`, `key_label`, `skip_tls_verify`, `last_error` and
+  `last_event_at`; passwords and keys are never returned.
+- `POST /api/v1/announce-sources` with
+  `{tracker,name,nick,account,password,invite,key,enabled,auto_grab,skip_tls_verify}`
   creates a source. `PUT /api/v1/announce-sources/{id}` requires the current
-  `revision`; a blank password, invite or key retains the saved value and
-  omitting `skip_tls_verify` keeps the saved value. `skip_tls_verify` (default
+  `revision` and returns `409 revision_conflict` when it is stale. A blank
+  `password`, `invite` or `key` retains the saved value; omitting
+  `skip_tls_verify` or `auto_grab` keeps the saved value, so a pause/resume
+  update that sends only `enabled` preserves both. `skip_tls_verify` (default
   false) connects to a tracker whose IRC certificate is expired or untrusted;
-  the link stays encrypted but the server is not authenticated. The key
-  is the tracker download credential (IPTorrents passkey, TorrentLeech/BeyondHD
-  RSS key, FileList/AnimeBytes passkey, MyAnonamouse session cookie) and is used
-  only by automatic grabbing when that step is enabled.
+  the link stays encrypted but the server is not authenticated.
+- `auto_grab` is the per-source automatic-grabbing opt-in. It defaults to
+  **false**, is supported **only for IPTorrents**, and is refused for any other
+  tracker (`invalid_settings`). Enabling it requires a saved `key` and is
+  otherwise rejected with `Save a tracker passkey before enabling automatic
+  grabbing.` The `key` is the tracker download credential (IPTorrents passkey,
+  TorrentLeech/BeyondHD RSS key, FileList/AnimeBytes passkey, MyAnonamouse
+  session cookie); it is stored encrypted with the application key, is never
+  returned by the API, and is used only to build the IPTorrents download URL.
+  Leaving it blank on edit keeps the saved key.
+- Every save writes a new `revision`. Capture fences on the captured revision:
+  a source whose settings change reconnects at the new revision, and announces
+  captured under an older revision are stored as `capture_only`. Toggling
+  pause/resume also writes a revision but does not change `auto_grab`.
 - `DELETE /api/v1/announce-sources/{id}` requires `{revision}` and removes the
   encrypted settings and captured events.
-- `GET /api/v1/announces?page=1` returns the newest 50 parsed events with
-  tracker, release name, category, size, freeleech, torrent ID, tracker info
-  URL and receive time. Raw IRC lines are not stored.
+- `GET /api/v1/announces?page=1` returns `{items,page,total,limit}` with the
+  newest 50 parsed events. Each event exposes `id`, `source_id`, `tracker`,
+  `release_name`, `category`, `size_bytes`, `freeleech`, `torrent_id`,
+  `info_url`, `received_at`, `outcome`, `message`, `attempts`, `processed_at`
+  and `download_id`. Raw IRC lines are not stored. `outcome` is one of
+  `capture_only` (the tracker, source or release was not eligible),
+  `unmatched` (no monitored missing movie or ordinary single episode),
+  `ambiguous` (matches more than one saved title), `rejected` (no candidate
+  satisfies the profile), `queued`, `already_tracked`, `needs_attention`,
+  `retry`, or `stale_policy`/`stale_source` when the saved decision changed
+  before the grab; work still awaiting processing reports an empty `outcome`.
+- Automatic grabbing matches only an **exact monitored missing movie** or a
+  **single ordinary TV episode** (positive season and episode). Season packs,
+  multi-episode ranges, specials (season zero), Anime, titles that already have
+  a registered file and ambiguous titles stay capture-only for review. Announce
+  lines carry no seeder count, so a missing count satisfies the profile's
+  minimum seeder count for the announce; the minimum still applies to scheduled
+  searches, which report a real count. See
+  [announce feeds](ANNOUNCE.md).
 - Supported definitions: IPTorrents, TorrentLeech, FileList, BeyondHD,
   AnimeBytes and MyAnonamouse. IPTorrents needs no NickServ account and no
   invite command — only a unique nick (and optionally its details-page
-  passkey). The source starts paused unless `enabled` is true; automatic
-  grabbing is not available in this version. See
-  [announce feeds](ANNOUNCE.md).
+  passkey). The source starts paused unless `enabled` is true. Automatic
+  grabbing is implemented only for IPTorrents; the other five trackers remain
+  capture-only and an opt-in for them is refused.
 
 ## Torrents page API
 

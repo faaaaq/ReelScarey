@@ -190,7 +190,23 @@ func identityLabels(title string, t Target) (string, bool) {
 	return strings.TrimPrefix(n, prefix), true
 }
 func Identify(title string, t Target) bool { _, ok := identityLabels(title, t); return ok }
+
+// EvaluateOptions controls explicit exceptions to conservative release evaluation.
+type EvaluateOptions struct {
+	// AllowUnknownSeeders treats a missing seed count as satisfying the
+	// profile's minimum. Announce events never carry a seed count, so this lets
+	// an announce match a profile that sets MinSeeders without weakening the
+	// rule for scheduled searches, which always report a count. A release that
+	// reports a count below the minimum is still rejected, and no seed count is
+	// invented.
+	AllowUnknownSeeders bool
+}
+
 func Evaluate(p Profile, t Target, r Release) Decision {
+	return EvaluateWithOptions(p, t, r, EvaluateOptions{})
+}
+
+func EvaluateWithOptions(p Profile, t Target, r Release, opts EvaluateOptions) Decision {
 	d := Decision{ID: r.ID, Title: r.Title, Reasons: []string{}, Language: "unknown"}
 	reject := func(s string) { d.Reasons = append(d.Reasons, s) }
 	labels, identified := identityLabels(r.Title, t)
@@ -271,8 +287,22 @@ func Evaluate(p Profile, t Target, r Release) Decision {
 	if p.Language != "any" && d.Language != p.Language {
 		reject("The required language is not explicitly labeled.")
 	}
-	if r.Protocol != "usenet" && (r.Seeders == nil || *r.Seeders < p.MinSeeders) {
-		reject("Seed count is unknown or below the minimum.")
+	if r.Protocol != "usenet" {
+		if r.Seeders == nil {
+			// A missing seed count is normal for announce events. When the
+			// caller allows it, the absence satisfies the profile's minimum
+			// instead of failing it; searches that report a real count still
+			// enforce the minimum in the branch below.
+			if !opts.AllowUnknownSeeders {
+				if p.MinSeeders > 0 {
+					reject(fmt.Sprintf("Seed count is unknown; the profile requires at least %d seeders.", p.MinSeeders))
+				} else {
+					reject("Seed count is unknown or below the minimum.")
+				}
+			}
+		} else if *r.Seeders < p.MinSeeders {
+			reject("Seed count is unknown or below the minimum.")
+		}
 	}
 	if r.Size <= 0 || r.Size > int64(p.MaxSizeGiB)*(1<<30) {
 		reject("Size is unknown or exceeds the profile limit.")

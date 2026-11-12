@@ -50,6 +50,9 @@ type ItemDetails struct {
 	Files           []LocalFile           `json:"files"`
 	History         []History             `json:"history"`
 	Page            int                   `json:"page"`
+	// ProfileContext carries the schedule default and every saved quality
+	// profile so the title's own page can review or change its assignment.
+	ProfileContext *library.ProfileContext `json:"profile_context,omitempty"`
 }
 
 func (s *Service) Details(ctx context.Context, id int64, page int) (ItemDetails, error) {
@@ -59,6 +62,9 @@ func (s *Service) Details(ctx context.Context, id int64, page int) (ItemDetails,
 		return out, e
 	}
 	out.Item = item
+	if e = s.assignmentProfiles(ctx, id, &out); e != nil {
+		return out, e
+	}
 	assignment, e := organization.New(s.db, s.cfg).GetAssignment(ctx, id)
 	if e != nil {
 		return out, e
@@ -134,4 +140,41 @@ func (s *Service) Details(ctx context.Context, id int64, page int) (ItemDetails,
 		out.History = append(out.History, h)
 	}
 	return out, rows.Err()
+}
+
+// assignmentProfiles attaches the title's effective quality profile, its
+// assignment revision and the saved profile list. It reads a single snapshot
+// so the reviewed assignment and the later write cannot disagree.
+func (s *Service) assignmentProfiles(ctx context.Context, id int64, out *ItemDetails) error {
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	profileContext, profiles, e := library.CatalogProfiles(ctx, tx)
+	if e != nil {
+		return e
+	}
+	assignment := &library.CatalogProfile{}
+	effectiveID := profileContext.Default.ID
+	var profileID sql.NullInt64
+	var revision int
+	e = tx.QueryRowContext(ctx, `SELECT profile_id,revision FROM item_automation WHERE media_id=?`, id).Scan(&profileID, &revision)
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return e
+	}
+	if profileID.Valid {
+		value := profileID.Int64
+		assignment.ProfileID = &value
+		effectiveID = value
+	}
+	effective, ok := profiles[effectiveID]
+	if !ok {
+		return errors.New("saved profile assignment is unavailable")
+	}
+	assignment.Effective = effective
+	assignment.Revision = revision
+	out.Item.QualityProfile = assignment
+	out.ProfileContext = profileContext
+	return tx.Commit()
 }

@@ -29,6 +29,11 @@ type Workflow interface {
 	Recent(context.Context) ([]transfer.RecentFeed, error)
 	QueueCandidate(context.Context, string, int64, *int64, string, transfer.QueueGuard) (transfer.Job, bool, error)
 	QueueCandidateAfter(context.Context, string, int64, *int64, string, time.Duration, transfer.QueueGuard) (transfer.Job, bool, error)
+	// QueueAnnounceAfter queues one exact captured IPTorrents announce through
+	// the ordinary reservation and delayed-submission workflow. It revalidates
+	// the captured source revision and re-fetches the torrent from the tracker's
+	// fixed origin; automation never carries a download URL or credential.
+	QueueAnnounceAfter(context.Context, int64, string, int, int64, *int64, string, time.Duration, transfer.QueueGuard) (transfer.Job, bool, error)
 }
 type Service struct {
 	db       *sql.DB

@@ -20,7 +20,16 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 	go func() { defer close(musicDone); s.RunMusic(libraryCtx, logger) }()
 	stallDone := make(chan struct{})
 	go func() { defer close(stallDone); s.RunStallWatch(libraryCtx, logger) }()
-	defer func() { libraryCancel(); <-libraryDone; <-matchingDone; <-musicDone; <-stallDone }()
+	seederDone := make(chan struct{})
+	go func() { defer close(seederDone); s.RunSeederWatch(libraryCtx, logger) }()
+	defer func() {
+		libraryCancel()
+		<-libraryDone
+		<-matchingDone
+		<-musicDone
+		<-stallDone
+		<-seederDone
+	}()
 	if err := s.cleanupCommitted(ctx); err != nil && ctx.Err() == nil {
 		logger.Warn("committed import staging cleanup deferred")
 	}

@@ -30,6 +30,7 @@ import {
 } from "./details/ItemSearch";
 import { AutomaticFranchise } from "./AutomaticFranchise";
 import { MovieVersions } from "./MovieVersions";
+import { QualityProfile } from "./details/QualityProfile";
 import { WatchProviders } from "./WatchProviders";
 import {
   CreditsSection,
@@ -247,6 +248,13 @@ function MovieView({ id }: { id: number }) {
                   label: "Settings",
                   content: (
                     <>
+                      <QualityProfile
+                        id={id}
+                        assignment={data.item.quality_profile}
+                        context={data.profile_context}
+                        reload={details.reload}
+                        onSaved={details.reload}
+                      />
                       <AnimeSettings id={id} onSaved={details.reload} />
                       {data.item.category === "anime" && <AnimeOrder id={id} />}
                       <ItemOrganization id={id} />

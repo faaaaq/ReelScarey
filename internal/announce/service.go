@@ -25,8 +25,8 @@ type SourceSettings struct {
 	Password string `json:"password,omitempty"`
 	Invite   string `json:"invite,omitempty"`
 	// Key is the tracker download credential (passkey, RSS key or session
-	// cookie). It is stored encrypted and is not used until automatic grabbing
-	// is enabled.
+	// cookie). It is stored encrypted and used for explicitly enabled automatic
+	// grabbing on supported trackers; it is never returned by the API.
 	Key string `json:"key,omitempty"`
 	// SkipTLSVerify connects to a tracker whose IRC server presents an expired
 	// or otherwise untrusted certificate. The link stays encrypted but the
@@ -48,6 +48,7 @@ type Source struct {
 
 type SourceStatus struct {
 	Source
+	AutoGrab       bool   `json:"auto_grab"`
 	Server         string `json:"server"`
 	Port           int    `json:"port"`
 	TLS            bool   `json:"tls"`
@@ -71,6 +72,8 @@ type SourceUpdate struct {
 	Password string `json:"password"`
 	Invite   string `json:"invite"`
 	Key      string `json:"key"`
+	// AutoGrab preserves the saved opt-in when omitted. New sources capture only.
+	AutoGrab *bool `json:"auto_grab,omitempty"`
 	// SkipTLSVerify is a pointer so a request that omits it (for example the
 	// pause/resume toggle) keeps the saved value instead of clearing it.
 	SkipTLSVerify *bool `json:"skip_tls_verify,omitempty"`
@@ -87,6 +90,11 @@ type Event struct {
 	TorrentID   string `json:"torrent_id,omitempty"`
 	InfoURL     string `json:"info_url,omitempty"`
 	ReceivedAt  int64  `json:"received_at"`
+	Outcome     string `json:"outcome"`
+	Message     string `json:"message"`
+	Attempts    int    `json:"attempts"`
+	ProcessedAt int64  `json:"processed_at"`
+	DownloadID  string `json:"download_id"`
 }
 
 type EventPage struct {
@@ -169,7 +177,7 @@ func (s *Service) loadSettings(ctx context.Context, id string, sealed []byte) (S
 }
 
 func (s *Service) Sources(ctx context.Context) ([]SourceStatus, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT id,tracker,name,enabled,revision,settings,last_error,last_event_at FROM announce_sources ORDER BY name COLLATE NOCASE,id`)
+	rows, e := s.db.QueryContext(ctx, `SELECT id,tracker,name,enabled,auto_grab,revision,settings,last_error,last_event_at FROM announce_sources ORDER BY name COLLATE NOCASE,id`)
 	if e != nil {
 		return nil, e
 	}
@@ -179,7 +187,7 @@ func (s *Service) Sources(ctx context.Context) ([]SourceStatus, error) {
 	for rows.Next() {
 		var st SourceStatus
 		var sealed []byte
-		if e = rows.Scan(&st.ID, &st.Tracker, &st.Name, &st.Enabled, &st.Revision, &sealed, &st.LastError, &st.LastEventAt); e != nil {
+		if e = rows.Scan(&st.ID, &st.Tracker, &st.Name, &st.Enabled, &st.AutoGrab, &st.Revision, &sealed, &st.LastError, &st.LastEventAt); e != nil {
 			return nil, e
 		}
 		if d, ok := defs[st.Tracker]; ok {
@@ -229,6 +237,8 @@ func (s *Service) SaveSource(ctx context.Context, id string, in SourceUpdate) (S
 	var sealed []byte
 	var prior SourceSettings
 	var revision int
+	var autoGrab bool
+	var savedTracker string
 	isNew := id == ""
 	if isNew {
 		id = newID()
@@ -237,7 +247,7 @@ func (s *Service) SaveSource(ctx context.Context, id string, in SourceUpdate) (S
 		if in.Revision < 1 {
 			return SourceStatus{}, problem("invalid_settings", "A valid revision is required.")
 		}
-		if e := s.db.QueryRowContext(ctx, `SELECT revision,settings FROM announce_sources WHERE id=?`, id).Scan(&revision, &sealed); e != nil {
+		if e := s.db.QueryRowContext(ctx, `SELECT revision,settings,auto_grab,tracker FROM announce_sources WHERE id=?`, id).Scan(&revision, &sealed, &autoGrab, &savedTracker); e != nil {
 			if errors.Is(e, sql.ErrNoRows) {
 				return SourceStatus{}, problem("invalid_settings", "This announce source no longer exists.")
 			}
@@ -245,6 +255,9 @@ func (s *Service) SaveSource(ctx context.Context, id string, in SourceUpdate) (S
 		}
 		if revision != in.Revision {
 			return SourceStatus{}, problem("revision_conflict", "The announce source changed. Reload it before saving.")
+		}
+		if savedTracker != in.Tracker {
+			return SourceStatus{}, problem("invalid_settings", "The tracker of an existing announce source cannot be changed.")
 		}
 		prior, _ = s.loadSettings(ctx, id, sealed)
 	}
@@ -265,6 +278,15 @@ func (s *Service) SaveSource(ctx context.Context, id string, in SourceUpdate) (S
 	if in.SkipTLSVerify != nil {
 		settings.SkipTLSVerify = *in.SkipTLSVerify
 	}
+	if in.AutoGrab != nil {
+		autoGrab = *in.AutoGrab
+	}
+	if autoGrab && in.Tracker != "iptorrents" {
+		return SourceStatus{}, problem("invalid_settings", "Automatic grabbing is currently supported only for IPTorrents.")
+	}
+	if autoGrab && strings.TrimSpace(settings.Key) == "" {
+		return SourceStatus{}, problem("invalid_settings", "Save a tracker passkey before enabling automatic grabbing.")
+	}
 	if in.Enabled && def.RequireAccount && (settings.Account == "" || settings.Password == "") {
 		return SourceStatus{}, problem("invalid_settings", "This tracker requires a NickServ account and password before it can be enabled.")
 	}
@@ -278,9 +300,9 @@ func (s *Service) SaveSource(ctx context.Context, id string, in SourceUpdate) (S
 	}
 	now := time.Now().Unix()
 	if isNew {
-		_, e = s.db.ExecContext(ctx, `INSERT INTO announce_sources(id,tracker,name,enabled,revision,settings,created_at,updated_at) VALUES(?,?,?,?,1,?,?,?)`, id, in.Tracker, in.Name, in.Enabled, cipher, now, now)
+		_, e = s.db.ExecContext(ctx, `INSERT INTO announce_sources(id,tracker,name,enabled,auto_grab,revision,settings,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?,?)`, id, in.Tracker, in.Name, in.Enabled, autoGrab, cipher, now, now)
 	} else {
-		res, err := s.db.ExecContext(ctx, `UPDATE announce_sources SET name=?,enabled=?,revision=revision+1,settings=?,last_error='',updated_at=? WHERE id=? AND revision=?`, in.Name, in.Enabled, cipher, now, id, in.Revision)
+		res, err := s.db.ExecContext(ctx, `UPDATE announce_sources SET name=?,enabled=?,auto_grab=?,revision=revision+1,settings=?,last_error='',updated_at=? WHERE id=? AND revision=?`, in.Name, in.Enabled, autoGrab, cipher, now, id, in.Revision)
 		e = err
 		if e == nil {
 			if n, _ := res.RowsAffected(); n != 1 {
@@ -330,7 +352,7 @@ func (s *Service) Events(ctx context.Context, page int) (EventPage, error) {
 	if e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM announce_events`).Scan(&total); e != nil {
 		return EventPage{}, e
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT id,source_id,tracker,release_name,category,size_bytes,freeleech,torrent_id,info_url,received_at FROM announce_events ORDER BY received_at DESC,id DESC LIMIT ? OFFSET ?`, limit, (page-1)*limit)
+	rows, e := s.db.QueryContext(ctx, `SELECT id,source_id,tracker,release_name,category,size_bytes,freeleech,torrent_id,info_url,received_at,outcome,message,attempts,COALESCE(processed_at,0),COALESCE(download_id,'') FROM announce_events ORDER BY received_at DESC,id DESC LIMIT ? OFFSET ?`, limit, (page-1)*limit)
 	if e != nil {
 		return EventPage{}, e
 	}
@@ -338,7 +360,7 @@ func (s *Service) Events(ctx context.Context, page int) (EventPage, error) {
 	out := EventPage{Items: []Event{}, Page: page, Total: total, Limit: limit}
 	for rows.Next() {
 		var ev Event
-		if e = rows.Scan(&ev.ID, &ev.SourceID, &ev.Tracker, &ev.ReleaseName, &ev.Category, &ev.SizeBytes, &ev.Freeleech, &ev.TorrentID, &ev.InfoURL, &ev.ReceivedAt); e != nil {
+		if e = rows.Scan(&ev.ID, &ev.SourceID, &ev.Tracker, &ev.ReleaseName, &ev.Category, &ev.SizeBytes, &ev.Freeleech, &ev.TorrentID, &ev.InfoURL, &ev.ReceivedAt, &ev.Outcome, &ev.Message, &ev.Attempts, &ev.ProcessedAt, &ev.DownloadID); e != nil {
 			return EventPage{}, e
 		}
 		out.Items = append(out.Items, ev)
@@ -346,20 +368,47 @@ func (s *Service) Events(ctx context.Context, page int) (EventPage, error) {
 	return out, rows.Err()
 }
 
-// Record stores one parsed announce. The dedupe hash covers the raw line, but
-// the line itself is never stored, so tracker links or credentials cannot leak
-// from the event list.
+// Record stores one parsed announce using the current source revision. IRC
+// connections use RecordAtRevision instead to fence their captured settings.
 func (s *Service) Record(ctx context.Context, sourceID, tracker string, p Parsed, raw string) error {
+	var revision int
+	if e := s.db.QueryRowContext(ctx, `SELECT revision FROM announce_sources WHERE id=?`, sourceID).Scan(&revision); e != nil {
+		return e
+	}
+	return s.RecordAtRevision(ctx, sourceID, revision, tracker, p, raw)
+}
+
+// RecordAtRevision captures parsed facts without storing the raw line or its
+// credentials. Only a currently enabled, opted-in source at the captured
+// revision and tracker can create pending work; stale connections capture only.
+// Duplicate announces never reset processing state or update last_event_at.
+func (s *Service) RecordAtRevision(ctx context.Context, sourceID string, sourceRevision int, tracker string, p Parsed, raw string) error {
 	sum := sha256.Sum256([]byte(raw))
 	dedupe := hex.EncodeToString(sum[:])
-	res, e := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO announce_events(source_id,tracker,release_name,category,size_bytes,freeleech,torrent_id,info_url,dedupe,received_at) VALUES(?,?,?,?,?,?,?,?,?,unixepoch())`, sourceID, tracker, p.ReleaseName, p.Category, p.SizeBytes, p.Freeleech, p.TorrentID, p.InfoURL, dedupe)
+	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
-	if n, _ := res.RowsAffected(); n == 1 {
-		_, e = s.db.ExecContext(ctx, `UPDATE announce_sources SET last_event_at=unixepoch() WHERE id=?`, sourceID)
+	defer tx.Rollback()
+	res, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO announce_events(source_id,tracker,release_name,category,size_bytes,freeleech,torrent_id,info_url,dedupe,received_at,source_revision,processing_state,outcome,processed_at)
+SELECT id,?,?,?,?,?,?,?,?,unixepoch(),revision,
+CASE WHEN enabled=1 AND auto_grab=1 AND revision=? AND tracker=? THEN 'pending' ELSE 'done' END,
+CASE WHEN enabled=1 AND auto_grab=1 AND revision=? AND tracker=? THEN '' ELSE 'capture_only' END,
+CASE WHEN enabled=1 AND auto_grab=1 AND revision=? AND tracker=? THEN 0 ELSE unixepoch() END
+FROM announce_sources WHERE id=?`, tracker, p.ReleaseName, p.Category, p.SizeBytes, p.Freeleech, p.TorrentID, p.InfoURL, dedupe, sourceRevision, tracker, sourceRevision, tracker, sourceRevision, tracker, sourceID)
+	if e != nil {
+		return e
 	}
-	return e
+	n, e := res.RowsAffected()
+	if e != nil {
+		return e
+	}
+	if n == 1 {
+		if _, e = tx.ExecContext(ctx, `UPDATE announce_sources SET last_event_at=unixepoch() WHERE id=?`, sourceID); e != nil {
+			return e
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Service) setError(ctx context.Context, sourceID, message string) {
@@ -448,11 +497,11 @@ func (s *Service) reconcile(ctx context.Context) {
 		}
 		runCtx, cancel := context.WithCancel(ctx)
 		s.active[id] = &sourceRun{cancel: cancel, revision: r.st.Revision}
-		go s.runSource(runCtx, id, def, r.settings)
+		go s.runSource(runCtx, id, r.st.Revision, def, r.settings)
 	}
 }
 
-func (s *Service) runSource(ctx context.Context, id string, def Definition, settings SourceSettings) {
+func (s *Service) runSource(ctx context.Context, id string, revision int, def Definition, settings SourceSettings) {
 	s.setError(ctx, id, "")
 	if def.TLS && settings.SkipTLSVerify {
 		s.logger.Warn("announce source is not verifying the IRC TLS certificate", "tracker", def.ID)
@@ -462,7 +511,7 @@ func (s *Service) runSource(ctx context.Context, id string, def Definition, sett
 		client := &ircClient{def: def, settings: settings, logger: s.logger}
 		e := client.Run(ctx, func(line string) {
 			if parsed, ok := def.Parse(line); ok {
-				if err := s.Record(ctx, id, def.ID, parsed, line); err != nil {
+				if err := s.RecordAtRevision(ctx, id, revision, def.ID, parsed, line); err != nil {
 					s.logger.Warn("announce event could not be stored", "tracker", def.ID, "error", err)
 				}
 			}
@@ -483,10 +532,11 @@ func (s *Service) runSource(ctx context.Context, id string, def Definition, sett
 	}
 }
 
-// Prune keeps a bounded history: 30 days and at most 5000 events.
+// Prune keeps terminal history to 30 days and at most 5000 completed events.
+// Pending, retry and processing work is retained regardless of age or count.
 func (s *Service) Prune(ctx context.Context) {
-	_, _ = s.db.ExecContext(ctx, `DELETE FROM announce_events WHERE received_at < unixepoch()-30*86400`)
-	_, _ = s.db.ExecContext(ctx, `DELETE FROM announce_events WHERE id NOT IN (SELECT id FROM announce_events ORDER BY received_at DESC,id DESC LIMIT 5000)`)
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM announce_events WHERE processing_state='done' AND received_at < unixepoch()-30*86400`)
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM announce_events WHERE processing_state='done' AND id NOT IN (SELECT id FROM announce_events WHERE processing_state='done' ORDER BY received_at DESC,id DESC LIMIT 5000)`)
 }
 
 func NewID() string {

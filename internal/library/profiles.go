@@ -14,6 +14,17 @@ type ProfileContext struct {
 type CatalogProfile struct {
 	ProfileID *int64          `json:"profile_id"`
 	Effective quality.Summary `json:"effective_profile"`
+	// Revision is the saved item_automation revision, or 0 when the title has
+	// no explicit assignment. Callers echo it back so a stale editor cannot
+	// overwrite a newer assignment.
+	Revision int `json:"revision"`
+}
+
+// CatalogProfiles exposes the schedule default, every saved profile and their
+// summaries for callers that render or fence one title's assignment. It shares
+// one coherent snapshot with the surrounding transaction.
+func CatalogProfiles(ctx context.Context, tx *sql.Tx) (*ProfileContext, map[int64]quality.Summary, error) {
+	return catalogProfiles(ctx, tx)
 }
 
 func catalogProfiles(ctx context.Context, tx *sql.Tx) (*ProfileContext, map[int64]quality.Summary, error) {

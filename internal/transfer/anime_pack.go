@@ -110,7 +110,7 @@ func (s *Service) SearchAnimePack(ctx context.Context, seriesID int64, episodeID
 	sum := sha256.Sum256(key)
 	scope := "animepack:" + hex.EncodeToString(sum[:16])
 	now := time.Now().Unix()
-	if _, e = tx.ExecContext(ctx, `DELETE FROM release_candidates WHERE id NOT IN (SELECT release_id FROM downloads) AND ((movie_id=? AND scope=?) OR expires_at<?)`, seriesID, scope, now); e != nil {
+	if _, e = tx.ExecContext(ctx, `DELETE FROM release_candidates WHERE scope<>'announce:iptorrents' AND NOT EXISTS (SELECT 1 FROM downloads d WHERE d.release_id=release_candidates.id) AND ((movie_id=? AND scope=?) OR expires_at<?)`, seriesID, scope, now); e != nil {
 		return nil, e
 	}
 	out := []Release{}

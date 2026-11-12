@@ -173,6 +173,15 @@ func (s *Service) Recent(ctx context.Context) ([]RecentFeed, error) {
 					continue
 				}
 				seen[i][key] = true
+				// Stamp the source indexer identity onto the candidate before it
+				// is remembered. QueueCandidate later resolves the release's own
+				// indexer and generation fence from these fields; without them a
+				// matched feed entry falls back to the legacy single-indexer
+				// configuration and fails with "Connect a Torznab indexer".
+				v.IndexerID = c.ID
+				v.IndexerName = c.Name
+				v.Generation = c.Generation
+				v.Protocol = protocol
 				feeds[i].Items = append(feeds[i].Items, RecentItem{
 					Key:       key,
 					Token:     s.rememberRecent(v),

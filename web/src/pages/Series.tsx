@@ -44,6 +44,7 @@ import { bulkSearchMessage, useBulkSearch } from "./details/bulkSearch";
 import { AnimeSettings } from "./AnimeSettings";
 import { AnimeSearch } from "./AnimeSearch";
 import { AnimeOrder } from "./AnimeOrder";
+import { QualityProfile } from "./details/QualityProfile";
 import { ItemOrganization } from "./Organization";
 import { AutomaticFranchise } from "./AutomaticFranchise";
 import { RelatedTitles } from "./RelatedTitles";
@@ -551,6 +552,13 @@ function SeriesView({ initial }: { initial: TVSeries }) {
               label: "Settings",
               content: (
                 <>
+                  <QualityProfile
+                    id={show.id}
+                    assignment={details.data?.item.quality_profile}
+                    context={details.data?.profile_context}
+                    reload={details.reload}
+                    onSaved={details.reload}
+                  />
                   <SeriesReleaseRules id={show.id} />
                   <ShowSubtitlePreferences id={show.id} />
                   <SeriesYouTubeSource id={show.id} />

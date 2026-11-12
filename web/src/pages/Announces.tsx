@@ -35,6 +35,7 @@ type Source = {
   tracker: string;
   name: string;
   enabled: boolean;
+  auto_grab: boolean;
   revision: number;
   last_error?: string;
   last_event_at: number;
@@ -61,6 +62,11 @@ type Event = {
   torrent_id?: string;
   info_url?: string;
   received_at: number;
+  outcome?: string;
+  message?: string;
+  attempts?: number;
+  processed_at?: number;
+  download_id?: string;
 };
 type Sources = { items: Source[]; definitions: Definition[] };
 type Events = { items: Event[]; page: number; total: number; limit: number };
@@ -73,6 +79,7 @@ type Form = {
   invite: string;
   key: string;
   enabled: boolean;
+  auto_grab: boolean;
   skip_tls_verify: boolean;
 };
 
@@ -85,8 +92,42 @@ const emptyForm: Form = {
   invite: "",
   key: "",
   enabled: false,
+  auto_grab: false,
   skip_tls_verify: false,
 };
+
+// Automatic grabbing is currently implemented only for IPTorrents and only
+// when a tracker passkey is saved, mirroring the backend validation.
+const AUTO_GRAB_TRACKER = "iptorrents";
+
+type OutcomeKind =
+  "default" | "info" | "success" | "warning" | "danger" | "disabled";
+
+// readable() renders the stored outcome the same way the Automation page does.
+function readable(value: string) {
+  return value.replaceAll("_", " ");
+}
+
+function outcomeInfo(event: Event): { text: string; kind: OutcomeKind } {
+  const outcome = (event.outcome ?? "").trim();
+  // An empty outcome with no message is captured work still waiting to be
+  // grabbed; capture-only history keeps its stored label.
+  if (!outcome) return { text: "Queued", kind: "warning" };
+  if (outcome === "capture_only")
+    return { text: "Capture only", kind: "disabled" };
+  const text = readable(outcome);
+  if (outcome === "queued" || outcome === "grabbed" || outcome === "downloaded")
+    return { text, kind: "success" };
+  if (
+    outcome === "attention" ||
+    outcome === "needs_attention" ||
+    outcome === "retry"
+  )
+    return { text, kind: "warning" };
+  if (outcome === "failed" || outcome === "error" || outcome === "rejected")
+    return { text, kind: "danger" };
+  return { text, kind: "info" };
+}
 
 function bytes(value: number) {
   if (!value) return "Size unknown";
@@ -110,6 +151,8 @@ export function Announces() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const def = sources.data?.definitions.find((d) => d.id === form.tracker);
+  const autoGrabAvailable = form.tracker === AUTO_GRAB_TRACKER;
+  const keySaved = !!editing?.has_key || form.key.trim() !== "";
 
   function chooseTracker(id: string) {
     const next = sources.data?.definitions.find((d) => d.id === id);
@@ -139,6 +182,7 @@ export function Announces() {
       invite: "",
       key: "",
       enabled: source.enabled,
+      auto_grab: source.auto_grab,
       skip_tls_verify: source.skip_tls_verify,
     });
     setNotice("");
@@ -167,6 +211,7 @@ export function Announces() {
         invite: form.invite,
         ...(form.key ? { key: form.key } : {}),
         enabled: form.enabled,
+        auto_grab: form.auto_grab,
         skip_tls_verify: form.skip_tls_verify,
         revision: editing?.revision ?? 0,
       };
@@ -244,7 +289,7 @@ export function Announces() {
       <PageBody>
         <PageHeading
           title="Announce feeds"
-          description="Watches tracker IRC announce channels and records new releases. Capture only: nothing is downloaded from here."
+          description="Watches tracker IRC announce channels and records new releases. Sources capture announces only unless you enable automatic grabbing for a source."
         />
         <RequestState
           loading={sources.loading || events.loading}
@@ -288,6 +333,14 @@ export function Announces() {
                           {source.enabled ? "Enabled" : "Paused"}
                         </Label>
                         {source.has_key && <Label outline>Key saved</Label>}
+                        {source.auto_grab && (
+                          <Label
+                            kind="success"
+                            title="Automatic grabbing is enabled for this source"
+                          >
+                            Auto-grab on
+                          </Label>
+                        )}
                       </span>
                       {source.last_error && (
                         <p className="rs-danger-text rs-small" role="alert">
@@ -387,41 +440,72 @@ export function Announces() {
                     Size
                   </th>
                   <th scope="col">Received</th>
+                  <th scope="col">Status</th>
                   <th scope="col" className="is-actions">
                     <span className="sr-only">Link</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {events.data.items.map((event) => (
-                  <tr key={event.id}>
-                    <td>
-                      <span className="rs-row">
-                        {event.release_name}
-                        {event.freeleech && (
-                          <Label kind="success">{event.freeleech}</Label>
+                {events.data.items.map((event) => {
+                  const status = outcomeInfo(event);
+                  return (
+                    <tr key={event.id}>
+                      <td>
+                        <span className="rs-row">
+                          {event.release_name}
+                          {event.freeleech && (
+                            <Label kind="success">{event.freeleech}</Label>
+                          )}
+                        </span>
+                      </td>
+                      <td>{event.tracker}</td>
+                      <td className="rs-small">{event.category || "—"}</td>
+                      <td className="is-numeric">{bytes(event.size_bytes)}</td>
+                      <td className="rs-small">
+                        {new Date(event.received_at * 1000).toLocaleString()}
+                      </td>
+                      <td className="rs-small">
+                        <span className="rs-row">
+                          <Label kind={status.kind}>{status.text}</Label>
+                          {!!event.attempts && (
+                            <span className="rs-muted">
+                              {event.attempts} attempt
+                              {event.attempts === 1 ? "" : "s"}
+                            </span>
+                          )}
+                        </span>
+                        {event.message && (
+                          <span
+                            className="rs-muted"
+                            style={{ display: "block" }}
+                          >
+                            {event.message}
+                          </span>
                         )}
-                      </span>
-                    </td>
-                    <td>{event.tracker}</td>
-                    <td className="rs-small">{event.category || "—"}</td>
-                    <td className="is-numeric">{bytes(event.size_bytes)}</td>
-                    <td className="rs-small">
-                      {new Date(event.received_at * 1000).toLocaleString()}
-                    </td>
-                    <td className="is-actions">
-                      {event.info_url && (
-                        <a
-                          href={event.info_url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Open on tracker
-                        </a>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                        {event.download_id && (
+                          <span
+                            className="rs-muted"
+                            style={{ display: "block" }}
+                          >
+                            Download {event.download_id}
+                          </span>
+                        )}
+                      </td>
+                      <td className="is-actions">
+                        {event.info_url && (
+                          <a
+                            href={event.info_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open on tracker
+                          </a>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </Table>
           )}
@@ -620,6 +704,43 @@ export function Announces() {
                 <p className="rs-form-help">
                   New sources start paused. A paused source keeps its
                   credentials without opening an IRC connection.
+                </p>
+                <label className="rs-check">
+                  <input
+                    type="checkbox"
+                    checked={form.auto_grab}
+                    disabled={busy || !autoGrabAvailable || !keySaved}
+                    onChange={(e) =>
+                      setForm({ ...form, auto_grab: e.target.checked })
+                    }
+                  />
+                  Automatic grabbing
+                </label>
+                {!autoGrabAvailable && (
+                  <p className="rs-form-help is-warning">
+                    Automatic grabbing is currently supported only for
+                    IPTorrents.
+                  </p>
+                )}
+                {autoGrabAvailable && !keySaved && (
+                  <p className="rs-form-help is-warning">
+                    Save a tracker passkey before enabling automatic grabbing.
+                  </p>
+                )}
+                <p className="rs-form-help">
+                  Off by default. When enabled for IPTorrents, a captured
+                  release is queued for download only when it matches a
+                  monitored, missing movie or an ordinary single TV episode,
+                  using that title&rsquo;s saved quality profile and its grab
+                  delay. Season packs, Anime and replacement searches are never
+                  grabbed automatically and stay manual. Every other tracker and
+                  every release that does not match stays capture-only: it is
+                  recorded here for review and nothing is downloaded. A quality
+                  profile whose minimum seeders is 0 still accepts a release
+                  with an unknown seeder count; a profile that requires at least
+                  one seeder rejects a release whose seeder count is unknown.
+                  The passkey is used only to build the tracker download URL and
+                  is never shown.
                 </p>
                 <label className="rs-check">
                   <input

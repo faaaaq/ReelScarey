@@ -258,6 +258,28 @@ SABnzbd and NZBGet is bounded and treats warnings as failure, but the
 application does not expose an unauthenticated completion webhook; normal
 queue reconciliation remains authoritative.
 
+### Seeder assist for fresh grabs (0.54.3)
+
+A release grabbed the instant a tracker advertises it is often submitted before
+its swarm has a reachable seeder. qBittorrent then sits in a zero-peer state
+until its own periodic re-announce, which is measured in many minutes.
+
+Every eight seconds ReelScarey re-checks torrent jobs submitted in the last
+thirty minutes. When the client reports no connected seeds and no seeds in the
+swarm while the transfer has not begun (zero progress, in an active
+downloading/meta/stalled/allocating state), it sends qBittorrent an immediate
+`reannounce` for that infohash so the tracker and DHT are queried again at once.
+The re-announces are spaced at least twenty seconds apart and capped at eight per
+job, so a public tracker is never hammered and a release with genuinely no
+seeders is not retried forever. Once the transfer starts or the swarm reports
+seeds, the job is dropped from the watch. Stale submissions are left to the
+normal worker and the observed stall watch below.
+
+This is an acceleration only. It never deletes, retries, resubmits or replaces a
+release, does not force-start queued torrents, and is skipped for the classic
+Transmission adapter (which reports no seeder count). It is separate from the
+thirty-minute stalled-download signal, which remains an attention signal.
+
 ## Built-in torrent queue limits (0.51.1)
 
 The built-in qBittorrent client now exposes the same active-torrent limits as

@@ -45,6 +45,8 @@ export type CatalogProfileContext = {
 export type CatalogProfile = {
   profile_id: number | null;
   effective_profile: ProfileSummary;
+  /** item_automation revision; 0 when the title has no explicit assignment. */
+  revision?: number;
 };
 export type MediaItem = {
   id: number;

@@ -159,6 +159,7 @@ type Release struct {
 }
 type Candidate struct {
 	Release
+	Announce                      *AnnounceRef                `json:"announce,omitempty"`
 	AnimeOrder                    *library.AnimeOrderSnapshot `json:"anime_order,omitempty"`
 	AnimeSearch                   *AnimeSearchSnapshot        `json:"anime_search,omitempty"`
 	Kind                          string                      `json:"kind,omitempty"`

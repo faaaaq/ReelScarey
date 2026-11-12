@@ -50,10 +50,16 @@ type Service struct {
 	// durable: a crash simply lets the next feed check offer them again.
 	recentMu sync.Mutex
 	recent   map[string]recentOffer
+
+	// seederMu guards the in-memory re-announce ledger for freshly submitted
+	// torrents. Like recent, it is deliberately not durable: a crash at worst
+	// repeats one re-announce.
+	seederMu   sync.Mutex
+	seederHelp map[string]seederAssistState
 }
 
 func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Client, indexer Indexer) *Service {
-	s := &Service{db: db, secrets: secrets, cfg: cfg, client: client, indexer: indexer, shareHandledSet: map[string]bool{}, recent: map[string]recentOffer{}}
+	s := &Service{db: db, secrets: secrets, cfg: cfg, client: client, indexer: indexer, shareHandledSet: map[string]bool{}, recent: map[string]recentOffer{}, seederHelp: map[string]seederAssistState{}}
 	s.adapters = map[string]Indexer{"iptorrents": NewDirect("iptorrents"), "xspeeds": NewDirect("xspeeds"), "nyaa": NewDirect("nyaa"), "rss": NewDirect("rss")}
 	s.adapters["newznab"] = NewNewznab()
 	s.adapters["cardigann"] = NewCardigann()
@@ -401,7 +407,7 @@ func (s *Service) Search(ctx context.Context, movieID int64, query string) ([]Re
 	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
 		return nil, e
 	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM release_candidates WHERE id NOT IN (SELECT release_id FROM downloads) AND (movie_id=? OR expires_at<?)`, movieID, now); e != nil {
+	if _, e = tx.ExecContext(ctx, `DELETE FROM release_candidates WHERE scope<>'announce:iptorrents' AND NOT EXISTS (SELECT 1 FROM downloads d WHERE d.release_id=release_candidates.id) AND (movie_id=? OR expires_at<?)`, movieID, now); e != nil {
 		return nil, e
 	}
 	for _, v := range candidates {
@@ -470,7 +476,9 @@ func (s *Service) queue(ctx context.Context, releaseID string, guard QueueGuard,
 	return s.queueVersion(ctx, releaseID, guard, replacementID, version, 0)
 }
 func (s *Service) queueVersion(ctx context.Context, releaseID string, guard QueueGuard, replacementID int64, version string, delay time.Duration) (Job, bool, error) {
-	// ---- No lock: read candidate, check expiry ----
+	// A durable release ID is an idempotent acknowledgement. In particular, a
+	// recovered announce may already be done and no longer hold its work lease,
+	// so deduplication deliberately does not invoke the reservation guard.
 	if existing, e := s.jobBy(ctx, "d.release_id", releaseID); e == nil {
 		if existing.Kind == "series" && version != "" && version != "replacement" {
 			return Job{}, false, problem("invalid_version", "Movie versions cannot target TV episodes.")
@@ -510,6 +518,12 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 	if v.ID != releaseID {
 		return Job{}, false, problem("invalid_release", "The encrypted release selection does not match its record. Search again.")
 	}
+	// Search and announce movie candidates historically leave Kind empty while
+	// downloads persist the database default "movie". Normalize that equivalent
+	// identity before same-info-hash acknowledgement; TV remains exact.
+	if v.Kind == "" {
+		v.Kind = "movie"
+	}
 	if guard != nil && v.AnimeOrder != nil && (v.AnimeSearch == nil || v.AnimeSearch.Mode != "mapped") {
 		return Job{}, false, problem("manual_anime_selection", "Reviewed Anime packs and specials cannot be queued automatically.")
 	}
@@ -518,7 +532,19 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 	var payload Payload
 	var hash string
 	var indexerPublic int
-	if v.Manual {
+	if v.Announce != nil {
+		// Announce releases have their own fixed-origin fetch and source fencing;
+		// they never resolve an unrelated indexer or inherit its generation.
+		if v.Manual || v.Generation != "" || v.Protocol != "" && v.Protocol != "torrent" {
+			return Job{}, false, problem("invalid_release", "The saved announce release identity is invalid.")
+		}
+		protocol = "torrent"
+		v.Protocol = protocol
+		payload, hash, e = s.fetchAnnounce(ctx, v)
+		if e != nil {
+			return Job{}, false, e
+		}
+	} else if v.Manual {
 		// A manually uploaded torrent carries its own metainfo: no indexer is
 		// involved, so generation fencing and network fetch do not apply.
 		if v.Generation != "" || len(v.Torrent) == 0 || v.Hash == "" || v.Protocol != "" && v.Protocol != "torrent" {
@@ -573,6 +599,9 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 			return Job{}, false, e
 		}
 	}
+	// Revalidate the announce event/source after network I/O and inside the
+	// same transaction that reserves either the movie version or TV episode.
+	guard = s.fenceAnnounce(guard, v.Announce)
 	if indexerPublic != 0 && len(payload.Torrent) > 0 {
 		if info, err := TorrentInfo(payload.Torrent); err != nil || info.Private {
 			indexerPublic = 0
@@ -593,7 +622,7 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 		if existing.Kind == "series" && version != "" && version != "replacement" {
 			return Job{}, false, problem("invalid_version", "Movie versions cannot target TV episodes.")
 		}
-		if existing.MovieID != v.MovieID || (v.Kind == "series" && (existing.Kind != "series" || !sameTargets(existing.Targets, v.Targets))) {
+		if existing.MovieID != v.MovieID || existing.Kind != v.Kind || (v.Kind == "series" && !sameTargets(existing.Targets, v.Targets)) {
 			return Job{}, false, problem("duplicate_hash", "This torrent is already attached to a different target selection. Open its existing Activity job or choose another release.")
 		}
 		if version != "" && existing.Kind != "series" && existing.MovieVersion != version {

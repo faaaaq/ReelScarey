@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { api, messageFor, type MediaItem } from "../../api";
+import {
+  api,
+  messageFor,
+  type CatalogProfileContext,
+  type MediaItem,
+} from "../../api";
 import { useResource } from "../../useResource";
 
 export type Information = {
@@ -57,6 +62,8 @@ export type LocalDetails = {
   page: number;
   files: DetailFile[];
   history: DetailJob[];
+  /** Schedule default and every saved profile, for this title's own profile editor. */
+  profile_context?: CatalogProfileContext;
 };
 
 /**

@@ -43,7 +43,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.53.5"
+var version = "0.54.7"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -467,6 +467,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		}
 	}()
 	defer func() { workerCancel(); <-rssDone }()
+	announceAutomationDone := make(chan struct{})
+	go func() {
+		defer close(announceAutomationDone)
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			automationService.RunAnnounces(workerCtx, logger)
+		}
+	}()
+	defer func() { workerCancel(); <-announceAutomationDone }()
 	subtitleDone := make(chan struct{})
 	go func() {
 		defer close(subtitleDone)

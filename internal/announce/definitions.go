@@ -1,6 +1,6 @@
 // Package announce captures tracker IRC announce lines and stores the parsed
-// release facts for review. It never queues automatically: the existing search
-// and manual-upload paths remain the only ways to start a download.
+// release facts for review. Capture-only is the default; explicitly opted-in
+// supported sources also create durable, revision-fenced automatic-grab work.
 package announce
 
 import (

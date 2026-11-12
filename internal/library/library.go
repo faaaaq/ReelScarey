@@ -161,7 +161,7 @@ func (s *Store) Browse(ctx context.Context, f BrowseFilter) (Page, error) {
 	if f.All && out.Total > MaxAllItems {
 		return Page{}, ErrBrowseAllLimit
 	}
-	query := "SELECT " + columns + ",(SELECT profile_id FROM item_automation a WHERE a.media_id=media_items.id) FROM media_items" + where + " ORDER BY " + orders[f.Sort]
+	query := "SELECT " + columns + ",(SELECT profile_id FROM item_automation a WHERE a.media_id=media_items.id),COALESCE((SELECT revision FROM item_automation a WHERE a.media_id=media_items.id),0) FROM media_items" + where + " ORDER BY " + orders[f.Sort]
 	if f.All {
 		out.Page = 1
 		out.Limit = out.Total
@@ -175,13 +175,14 @@ func (s *Store) Browse(ctx context.Context, f BrowseFilter) (Page, error) {
 	}
 	for rows.Next() {
 		var profileID sql.NullInt64
-		item, err := scan(rows, &profileID)
+		var revision int
+		item, err := scan(rows, &profileID, &revision)
 		if err != nil {
 			rows.Close()
 			return Page{}, err
 		}
 		effectiveID := profileContext.Default.ID
-		assignment := &CatalogProfile{}
+		assignment := &CatalogProfile{Revision: revision}
 		if profileID.Valid {
 			id := profileID.Int64
 			assignment.ProfileID = &id
