@@ -22,6 +22,31 @@ var listNumber = regexp.MustCompile(`^[1-9][0-9]{0,15}$`)
 var traktClientID = regexp.MustCompile(`^[A-Za-z0-9]{20,200}$`)
 var mdblistKey = regexp.MustCompile(`^[A-Za-z0-9_-]{16,256}$`)
 
+// listRetryError carries a Retry-After hint from a provider 429 response so
+// the failed-sync path can defer the next check past the provider's window.
+type listRetryError struct {
+	error
+	seconds int64
+}
+
+// listRetrySeconds parses a Retry-After header; it accepts seconds and
+// HTTP-date forms and returns 0 when the header is absent or unusable.
+func listRetrySeconds(value string) int64 {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
+		return int64(seconds)
+	}
+	if when, err := http.ParseTime(value); err == nil {
+		if seconds := int64(time.Until(when).Seconds()); seconds > 0 {
+			return seconds + 1
+		}
+	}
+	return 0
+}
+
 func validPrivateToken(token string) bool {
 	return len(token) >= 20 && len(token) <= 4096 && regexp.MustCompile(`^[A-Za-z0-9._~-]+$`).MatchString(token)
 }
@@ -249,6 +274,11 @@ func (s *Lists) fetch(ctx context.Context, provider, owner, id, key string) ([]l
 			return nil, errors.New("The list provider returned an unreadable response.")
 		}
 		if resp.StatusCode != 200 {
+			if resp.StatusCode == 429 {
+				if seconds := listRetrySeconds(resp.Header.Get("Retry-After")); seconds > 0 {
+					return nil, listRetryError{errors.New("The list provider rate limited the request. Check visibility, access-token expiry and provider settings."), seconds}
+				}
+			}
 			return nil, errors.New("The list is unavailable. Check visibility, access-token expiry and provider settings.")
 		}
 		last := false
@@ -356,6 +386,11 @@ func (s *Lists) fetchTraktWatchlist(ctx context.Context, owner, key, token strin
 				return nil, errors.New("The Trakt watchlist returned an unreadable response.")
 			}
 			if resp.StatusCode != 200 {
+				if resp.StatusCode == 429 {
+					if seconds := listRetrySeconds(resp.Header.Get("Retry-After")); seconds > 0 {
+						return nil, listRetryError{errors.New("The Trakt watchlist is unavailable. Check the profile visibility and client ID."), seconds}
+					}
+				}
 				return nil, errors.New("The Trakt watchlist is unavailable. Check the profile visibility and client ID.")
 			}
 			var data []struct {
@@ -452,7 +487,11 @@ func (s *Lists) Tick(ctx context.Context) (bool, error) {
 		titles, err = s.fetch(ctx, provider, owner, listID, key)
 	}
 	if err != nil {
-		_, saveErr := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE request_lists SET last_error=?,last_checked=unixepoch(),next_check=unixepoch()+3600,lease_until=0 WHERE id=? AND revision=? AND lease_until=?`, err.Error(), id, revision, lease)
+		next := int64(3600)
+		if retry, ok := err.(listRetryError); ok && retry.seconds > next {
+			next = retry.seconds
+		}
+		_, saveErr := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE request_lists SET last_error=?,last_checked=unixepoch(),next_check=unixepoch()+?,lease_until=0 WHERE id=? AND revision=? AND lease_until=?`, err.Error(), next, id, revision, lease)
 		return true, saveErr
 	}
 	tx, err = s.db.BeginTx(ctx, nil)

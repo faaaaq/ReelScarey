@@ -141,7 +141,7 @@ func (d *Discord) Tick(ctx context.Context) (bool, error) {
 		return true, d.finish(ctx, id, "sent", 0)
 	}
 	if response.StatusCode == 429 {
-		return true, d.finish(ctx, id, "pending", time.Now().Add(5*time.Minute).Unix())
+		return true, d.finish(context.WithoutCancel(ctx), id, "pending", time.Now().Add(5*time.Minute).Unix())
 	}
 	return true, d.finish(ctx, id, "uncertain", 0)
 }
