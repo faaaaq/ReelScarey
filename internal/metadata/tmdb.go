@@ -186,8 +186,19 @@ type Client struct {
 	http     *http.Client
 	mu       sync.Mutex
 	retryAt  time.Time
+	next     time.Time // next permitted outgoing request time (RS-0017 pacing)
+	interval time.Duration
 	cooldown ProviderCooldown
 }
+
+// tmdbMinInterval paces outgoing TMDb requests so a full-library refresh,
+// which enqueues the entire library at once and processes batches of up to 25
+// titles per tick, cannot burst the provider (RS-0017). The audited nominal
+// refresh budget is ~1.7 titles/s, and TV titles cost two or more calls each
+// (series plus seasons), so 600 ms between requests (~1.6/s) sits at or below
+// that budget in the worst case. The reactive 429 Retry-After cooldown below
+// is unchanged and remains authoritative whenever the provider asks for more.
+const tmdbMinInterval = 600 * time.Millisecond
 
 func NewTMDb() *Client {
 	return newClient("https://api.themoviedb.org/3", &http.Client{Timeout: 10 * time.Second})
@@ -199,7 +210,31 @@ func (c *Client) SetCooldown(store ProviderCooldown) { c.cooldown = store }
 func newClient(base string, client *http.Client) *Client {
 	copy := *client
 	copy.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("provider redirects are disabled") }
-	return &Client{base: strings.TrimRight(base, "/"), http: &copy}
+	return &Client{base: strings.TrimRight(base, "/"), http: &copy, interval: tmdbMinInterval}
+}
+
+// pace reserves the next request slot so concurrent callers — the refresher
+// worker and interactive searches share one client — cannot burst TMDb
+// (RS-0017). The wait honors context cancellation and never lengthens or
+// shortens a 429 cooldown; it only spaces healthy traffic.
+func (c *Client) pace(ctx context.Context) error {
+	c.mu.Lock()
+	start := time.Now()
+	if c.next.After(start) {
+		start = c.next
+	}
+	c.next = start.Add(c.interval)
+	c.mu.Unlock()
+	if wait := time.Until(start); wait > 0 {
+		timer := time.NewTimer(wait)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return nil
 }
 func ValidToken(token string) bool {
 	return len(token) >= 20 && len(token) <= 4096 && strings.TrimSpace(token) == token && strings.IndexFunc(token, func(r rune) bool { return r < 33 || r > 126 }) < 0
@@ -223,6 +258,11 @@ func (c *Client) requestLimit(ctx context.Context, token, endpoint string, query
 	}
 	if time.Now().Before(retryAt) {
 		return &Error{Code: "tmdb_rate_limited", Message: "TMDb is limiting requests. Wait before trying again.", RetryAfter: max(1, int(time.Until(retryAt).Seconds())+1)}
+	}
+	// Proactive pacing (RS-0017): keep at least the minimum interval between
+	// outgoing requests so a full-library refresh cannot burst the provider.
+	if err := c.pace(ctx); err != nil {
+		return err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+endpoint+"?"+query.Encode(), nil)
 	if err != nil {
@@ -255,7 +295,11 @@ func (c *Client) requestLimit(ctx context.Context, token, endpoint string, query
 		}
 		until := time.Now().Add(time.Duration(seconds) * time.Second)
 		c.mu.Lock()
-		c.retryAt = until
+		// Monotonic write (NEW-D1): a racing 429 with a shorter Retry-After
+		// must never shorten the effective cooldown.
+		if until.After(c.retryAt) {
+			c.retryAt = until
+		}
 		c.mu.Unlock()
 		// Persist the deadline so a restart inside the cooldown window
 		// resumes throttling instead of re-bursting the provider (RS-0025).
@@ -263,6 +307,12 @@ func (c *Client) requestLimit(ctx context.Context, token, endpoint string, query
 		// this process, and failing the request because a write failed would
 		// only add more pressure to a database that just failed.
 		if c.cooldown != nil {
+			// Merge with the stored deadline first so a racing shorter
+			// Retry-After write cannot move the persisted cooldown earlier
+			// (NEW-D1); the SQL upsert also refuses to lower the stored value.
+			if persisted, err := c.cooldown.Load(ctx); err == nil && persisted.After(until) {
+				until = persisted
+			}
 			_ = c.cooldown.Save(ctx, until)
 		}
 		return &Error{Code: "tmdb_rate_limited", Message: "TMDb is limiting requests. Wait before trying again.", RetryAfter: seconds}

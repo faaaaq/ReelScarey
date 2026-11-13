@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -58,6 +59,41 @@ func randomChoice() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
+// RateLimitError reports that Discord answered 429 with a Retry-After hint.
+// Callers distinguish a temporary rejection from a permanent one (NEW-C1).
+type RateLimitError struct {
+	RetryAfter int
+}
+
+func (e *RateLimitError) Error() string { return "Discord is rate limiting requests. Try again later." }
+
+// parseRetryAfter reads a seconds or HTTP-date Retry-After hint, clamped to a
+// conservative [1,300] second window.
+func parseRetryAfter(value string) int {
+	seconds, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		if when, parseErr := http.ParseTime(value); parseErr == nil {
+			seconds = int(time.Until(when).Seconds())
+		}
+	}
+	return min(300, max(1, seconds))
+}
+
+// waitOut delays for at most five seconds of a provider-provided Retry-After
+// hint and returns early when the context is cancelled.
+func (s *Service) waitOut(ctx context.Context, seconds int) {
+	delay := time.Duration(min(5, seconds)) * time.Second
+	if delay <= 0 {
+		return
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+	case <-timer.C:
+	}
+}
+
 func (s *Service) send(ctx context.Context, method, endpoint, authorization string, payload any) error {
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -78,6 +114,9 @@ func (s *Service) send(ctx context.Context, method, endpoint, authorization stri
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return &RateLimitError{RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"))}
+		}
 		return errors.New("Discord did not accept the request.")
 	}
 	return nil
@@ -170,8 +209,18 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 	}
 	endpoint := "/webhooks/" + c.ApplicationID + "/" + url.PathEscape(string(token)) + "/messages/@original"
 	if e := s.send(ctx, http.MethodPatch, endpoint, "", response); e != nil {
-		_ = s.finishJob(context.WithoutCancel(ctx), id, "uncertain")
-		return true, e
+		// A 429 is temporary and re-editing the interaction reply is safe, so
+		// wait out the hint and retry once inside the fourteen-minute
+		// interaction window instead of discarding the answer (NEW-C1).
+		var limited *RateLimitError
+		if errors.As(e, &limited) {
+			s.waitOut(ctx, limited.RetryAfter)
+			e = s.send(ctx, http.MethodPatch, endpoint, "", response)
+		}
+		if e != nil {
+			_ = s.finishJob(context.WithoutCancel(ctx), id, "uncertain")
+			return true, e
+		}
 	}
 	return true, s.finishJob(ctx, id, "sent")
 }
@@ -399,7 +448,15 @@ func (s *Service) ProcessNotice(ctx context.Context) (bool, error) {
 	payload := message(fmt.Sprintf("New request %d: %s (from %s)", id, title, user), []button{{Type: 2, Style: 3, Label: "Approve and search", CustomID: fmt.Sprintf("approve:%d", id)}})
 	state := "sent"
 	if err = s.send(ctx, http.MethodPost, "/channels/"+c.AdminChannelID+"/messages", secret.Token, payload); err != nil {
-		state = "uncertain"
+		var limited *RateLimitError
+		if errors.As(err, &limited) {
+			// The notice was not delivered, so it stays retryable: requeue it
+			// for the next worker tick rather than parking it in the terminal
+			// uncertain state (NEW-C1).
+			state = "queued"
+		} else {
+			state = "uncertain"
+		}
 	}
 	_, saveErr := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE discord_bot_notices SET state=?,updated_at=unixepoch() WHERE request_id=? AND state='sending'`, state, id)
 	if saveErr != nil {

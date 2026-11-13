@@ -15,6 +15,8 @@ type ProviderCooldown interface {
 }
 
 // NewSQLCooldown stores the cooldown in a single-row provider state table.
+// The upsert is monotonic (NEW-D1): a shorter racing write never lowers a
+// stored cooldown deadline, only extends or keeps it.
 func NewSQLCooldown(db *sql.DB) ProviderCooldown { return sqlCooldown{db: db} }
 
 type sqlCooldown struct{ db *sql.DB }
@@ -30,6 +32,6 @@ func (s sqlCooldown) Load(ctx context.Context) (time.Time, error) {
 
 func (s sqlCooldown) Save(ctx context.Context, until time.Time) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO tmdb_provider_state(id,cooldown_until,message,updated_at) VALUES(1,?,'TMDb is rate limiting requests; they resume automatically.',strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-		ON CONFLICT(id) DO UPDATE SET cooldown_until=excluded.cooldown_until,message=excluded.message,updated_at=excluded.updated_at`, until.Unix())
+		ON CONFLICT(id) DO UPDATE SET cooldown_until=max(cooldown_until,excluded.cooldown_until),message=excluded.message,updated_at=excluded.updated_at`, until.Unix())
 	return err
 }
