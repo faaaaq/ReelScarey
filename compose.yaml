@@ -17,7 +17,8 @@
 # container (see "Changing the container paths" in README.md).
 #
 # Before starting, set REELSCAREY_PUBLIC_URL to the exact address you open in a
-# browser, then run:  docker compose up -d
+# browser (required unless you browse from the server itself, localhost), then
+# run:  docker compose up -d
 services:
   reelscarey:
     image: ${REELSCAREY_IMAGE:-faaaaq/reelscarey:latest}
@@ -37,7 +38,8 @@ services:
       # - "${REELSCAREY_BIND_IP:-127.0.0.1}:${REELSCAREY_QBT_PORT:-6881}:6881/tcp"
       # - "${REELSCAREY_BIND_IP:-127.0.0.1}:${REELSCAREY_QBT_PORT:-6881}:6881/udp"
     environment:
-      # The only required setting: the exact browser address (no trailing path).
+      # Required unless you browse from the server itself (localhost): the exact
+      # browser address (no trailing path).
       REELSCAREY_PUBLIC_URL: ${REELSCAREY_PUBLIC_URL:-}
       REELSCAREY_LOG_LEVEL: ${REELSCAREY_LOG_LEVEL:-info}
       # Optional shared TMDb Read Access Token (see README.md). Leave unset to

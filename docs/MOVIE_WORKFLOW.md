@@ -34,7 +34,9 @@ remote paths such as `D:/Downloads` are also supported on a Linux server.
 The worker requests `<remote download root>/ReelScarey/<job id>` for each add,
 with a unique job tag, automatic torrent management disabled for that add and
 normal torrent verification enabled. Content must remain in this directory.
-Compose mounts downloads read-only and media writable. UID/GID 10001 (or your
+Compose mounts downloads writable (needed by the built-in clients) and media
+writable; the `:ro` downloads variant is an optional hardening for external-only
+clients. UID/GID 10001 (or your
 override) must read downloads and create files in media. Native imports require
 FFprobe on PATH; Docker includes it. Config/download/media roots must exist,
 remain separate and not overlap after resolving configured root symlinks.
@@ -94,9 +96,8 @@ inside the destination directory. It never overwrites an existing file. The
 media filesystem must therefore support hardlinks (such as NTFS, ext4, XFS or
 ZFS); unsupported publication stops safely and retains staging for review.
 Download-to-library hardlinks additionally require both roots on one writable
-mounted filesystem. The default container mounts are separate and downloads is
-read-only, so imports copy there even when the preference is *Hardlink when
-possible*. Symbolic-link imports are not supported.
+mounted filesystem. The default container mounts are separate, so imports copy there even when the
+preference is *Hardlink when possible*. Symbolic-link imports are not supported.
 Linux syncs file/directory changes. Windows flushes staged file contents and
 uses the same recovery checks without a directory-fsync guarantee.
 
@@ -120,11 +121,13 @@ in place. Resume tracking reuses the original hash/journal. Client URL/root
 changes and disconnection are refused while active jobs exist; stop tracking
 those jobs first. Password rotation on the same endpoint is supported.
 
-Existing-library scans, playback, movie/file removal, replacement imports,
-subtitles, multiple clients/indexers and automatic torrent deletion/seeding limits
-remain future work. TV shares this pipeline (TV_DOWNLOADS.md). Scheduled searches,
-ranked profile decisions, opt-in missing-item downloads and resolution upgrade
-suggestions are described in AUTOMATION.md.
+The remaining features are implemented and documented elsewhere: existing-library
+scans in EXISTING_LIBRARY.md, replacement imports in MOVIE_VERSIONS.md, and
+subtitles in SUBTITLES.md. Playback history is covered by the Emby integration
+(EMBY.md), and movie removal from the library is described in UI.md. TV shares
+this pipeline (TV_DOWNLOADS.md). Scheduled searches, ranked profile decisions, opt-in
+missing-item downloads and resolution upgrade suggestions are described in
+AUTOMATION.md.
 
 ## Checks and references
 

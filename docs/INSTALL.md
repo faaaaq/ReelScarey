@@ -21,7 +21,8 @@ docker compose up -d
 ```
 
 That is the whole mapping. ReelScarey reads `/config`, `/media` and `/downloads`;
-backups and YouTube staging are private volumes created for you.
+backups and YouTube staging are private volumes created for you. `REELSCAREY_PUBLIC_URL`
+is required unless you browse from the server itself (localhost).
 
 ## The three folders
 
@@ -71,7 +72,11 @@ to be published. The proxy must preserve the original Host. This explicit URL
 enables secure cookies and rejects unexpected browser origins.
 
 For direct LAN access instead, keep `ports` and use
-`REELSCAREY_PUBLIC_URL=http://YOUR-SERVER-IP:8787`.
+`REELSCAREY_PUBLIC_URL=http://YOUR-SERVER-IP:8787`. By default the port is
+published on loopback only; to reach it from other machines on the LAN also set
+`REELSCAREY_BIND_IP=0.0.0.0` (or the server's LAN IP) in `.env` — this exposes
+the port to the network, so a reverse proxy with HTTPS is preferred for remote
+access.
 
 ## Setup code
 

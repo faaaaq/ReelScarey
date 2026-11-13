@@ -57,7 +57,8 @@ titles dated before today start unselected. See
 - **Header** (fixed, 60px): logo, global search, recent activity, theme toggle
   and the account menu (sign out). Global search (`Ctrl/Cmd+K` or `/`) finds
   saved titles, jumps to pages and offers "Search TMDb" for new titles.
-- **Sidebar** (210px): Dashboard, Movies, TV Shows, Anime, YouTube, Calendar,
+- **Sidebar** (210px): Dashboard, Movies, TV Shows, Anime, Music, YouTube,
+  Calendar,
   Activity, Wanted, Torrents, Usenet, Requests, Settings and System. Like
   Sonarr, a section shows its child links only while it is active. The structure
   is defined once in `web/src/navigation.ts`, along with document titles.
