@@ -482,6 +482,13 @@ func (s *Service) validate(ctx context.Context, root *os.Root, q query, p Plan, 
 	return nil
 }
 func (s *Service) Run(ctx context.Context) {
+	// Startup recovery for interrupted episode-file removals (NEW-B1): the
+	// sweep journals its own findings, so a failure here is recorded, not
+	// silent. It runs before the tick loop so no plan competes for the media
+	// root while staging copies are reconciled.
+	if err := s.RecoverStagedRemovals(ctx); err != nil {
+		s.journalRecoverySkipped(ctx)
+	}
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -507,10 +514,13 @@ func (s *Service) Tick(ctx context.Context) error {
 	}
 	var id string
 	// Plans whose terminal failure could not be persisted are skipped so a
-	// bookkeeping failure never causes a second execution (RS-0004).
+	// bookkeeping failure never causes a second execution (RS-0004). The
+	// claim cursor and the ordering must agree on the same column: ordering
+	// by created_at while comparing string ids let a degraded plan's random
+	// hex id starve every queued plan whose id sorted below it (NEW-B3).
 	cursor := ""
 	for {
-		e := s.db.QueryRowContext(ctx, `SELECT id FROM organization_plans WHERE state IN ('queued','running') AND id>? ORDER BY created_at LIMIT 1`, cursor).Scan(&id)
+		e := s.db.QueryRowContext(ctx, `SELECT id FROM organization_plans WHERE state IN ('queued','running') AND id>? ORDER BY id LIMIT 1`, cursor).Scan(&id)
 		if errors.Is(e, sql.ErrNoRows) {
 			return nil
 		}
@@ -534,6 +544,18 @@ func (s *Service) Tick(ctx context.Context) error {
 		s.recordPlanFailure(ctx, &p, e)
 	}
 	return e
+}
+
+// journalRecoverySkipped records a skipped startup sweep as an Activity
+// event so an unavailable media root is visible, not silent (RS-0014). The
+// write is deduplicated and best-effort: if the database itself is the
+// failing component the sweep failure stays visible through the next
+// startup attempt instead.
+func (s *Service) journalRecoverySkipped(ctx context.Context) {
+	const state = "staged-removal recovery could not run; check the media folder and restart"
+	_, _ = s.db.ExecContext(context.WithoutCancel(ctx), `INSERT INTO activity_events(occurred_at,kind,object_id,title,state)
+		SELECT unixepoch(),'organization','startup','Library organization',?
+		WHERE NOT EXISTS (SELECT 1 FROM activity_events WHERE kind='organization' AND object_id='startup' AND state=?)`, state, state)
 }
 
 // recordPlanFailure persists the terminal failure of a plan execution. The

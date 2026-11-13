@@ -68,9 +68,15 @@ func inventoryFolder(ctx context.Context, root *os.Root, q query, folder string,
 	if err := segments(root, folder, false); err != nil {
 		return out, err
 	}
-	// Compare paths as path components, not SQL LIKE patterns, so %, _ and
-	// case differences cannot hide another registered title.
-	rows, err := q.QueryContext(ctx, `SELECT relative_path,COALESCE(movie_id,series_id) FROM media_files`)
+	// SQL-side prefix bounds narrow the scan to the folder and its case
+	// variants; the Go-side check below remains the authority so %, _ and
+	// remaining case differences cannot hide another registered title. The
+	// bounds compare with COLLATE NOCASE so the media_file_path_folded index
+	// serves the range, and the exclusive upper bound is the first character
+	// after '/' so sibling folders (e.g. "Film2") stay outside (RS-0016).
+	lo := strings.ToLower(folder) + "/"
+	hi := strings.ToLower(folder) + "0"
+	rows, err := q.QueryContext(ctx, `SELECT relative_path,COALESCE(movie_id,series_id) FROM media_files WHERE relative_path>=? COLLATE NOCASE AND relative_path<? COLLATE NOCASE`, lo, hi)
 	if err != nil {
 		return out, err
 	}
@@ -91,7 +97,7 @@ func inventoryFolder(ctx context.Context, root *os.Root, q query, folder string,
 	if err != nil {
 		return out, err
 	}
-	rows, err = q.QueryContext(ctx, `SELECT yf.relative_path,COALESCE(m.movie_id,m.series_id,0) FROM youtube_files yf LEFT JOIN media_files m ON m.id=yf.media_file_id UNION ALL SELECT sf.relative_path,COALESCE(m.movie_id,m.series_id,0) FROM youtube_subtitle_files sf JOIN youtube_files yf ON yf.job_id=sf.job_id LEFT JOIN media_files m ON m.id=yf.media_file_id UNION ALL SELECT s.relative_path,COALESCE(m.movie_id,m.series_id,0) FROM subtitles s JOIN media_files m ON m.id=s.media_file_id WHERE s.relative_path<>'' UNION ALL SELECT i.destination,COALESCE(m.movie_id,m.series_id,0) FROM subtitle_imports i JOIN media_files m ON m.id=i.media_file_id WHERE i.phase='committed'`)
+	rows, err = q.QueryContext(ctx, `SELECT yf.relative_path,COALESCE(m.movie_id,m.series_id,0) FROM youtube_files yf LEFT JOIN media_files m ON m.id=yf.media_file_id WHERE yf.relative_path>=? COLLATE NOCASE AND yf.relative_path<? COLLATE NOCASE UNION ALL SELECT sf.relative_path,COALESCE(m.movie_id,m.series_id,0) FROM youtube_subtitle_files sf JOIN youtube_files yf ON yf.job_id=sf.job_id LEFT JOIN media_files m ON m.id=yf.media_file_id WHERE sf.relative_path>=? COLLATE NOCASE AND sf.relative_path<? COLLATE NOCASE UNION ALL SELECT s.relative_path,COALESCE(m.movie_id,m.series_id,0) FROM subtitles s JOIN media_files m ON m.id=s.media_file_id WHERE s.relative_path<>'' AND s.relative_path>=? COLLATE NOCASE AND s.relative_path<? COLLATE NOCASE UNION ALL SELECT i.destination,COALESCE(m.movie_id,m.series_id,0) FROM subtitle_imports i JOIN media_files m ON m.id=i.media_file_id WHERE i.phase='committed' AND i.destination>=? COLLATE NOCASE AND i.destination<? COLLATE NOCASE`, lo, hi, lo, hi, lo, hi, lo, hi)
 	if err != nil {
 		return out, err
 	}
