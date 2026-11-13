@@ -1,4 +1,10 @@
-import { useId, type ReactNode } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  useId,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { Spinner } from "@radix-ui/themes";
 import {
   AlertCircle,
@@ -82,6 +88,26 @@ export function FormGroup({
   children: ReactNode;
 }) {
   const id = useId();
+  // Programmatic error association (A11Y-008): the message gets a stable id
+  // and a single control child is decorated with aria-invalid and
+  // aria-describedby, unless it already manages its own description.
+  const errorId = htmlFor ? `${htmlFor}-error` : `${id}-error`;
+  const helpId = htmlFor ? `${htmlFor}-help` : `${id}-help`;
+  const describedBy =
+    [help ? helpId : null, error ? errorId : null]
+      .filter(Boolean)
+      .join(" ") || undefined;
+  const decorated = isValidElement(children)
+    ? cloneElement(
+        children as ReactElement<Record<string, unknown>>,
+        {
+          "aria-invalid": error ? true : undefined,
+          "aria-describedby":
+            (children.props as Record<string, unknown>)["aria-describedby"] ??
+            describedBy,
+        },
+      )
+    : children;
   if (!htmlFor)
     return (
       <div className="rs-form-group" role="group" aria-labelledby={id}>
@@ -89,13 +115,20 @@ export function FormGroup({
           {label}
         </div>
         <div className="rs-form-control">
-          {children}
+          {decorated}
           {help && (
-            <p className={cx("rs-form-help", warning && "is-warning")}>
+            <p
+              className={cx("rs-form-help", warning && "is-warning")}
+              id={helpId}
+            >
               {help}
             </p>
           )}
-          {error && <p className="rs-form-error">{error}</p>}
+          {error && (
+            <p className="rs-form-error" id={errorId} role="alert">
+              {error}
+            </p>
+          )}
         </div>
       </div>
     );
@@ -105,11 +138,20 @@ export function FormGroup({
         {label}
       </label>
       <div className="rs-form-control">
-        {children}
+        {decorated}
         {help && (
-          <p className={cx("rs-form-help", warning && "is-warning")}>{help}</p>
+          <p
+            className={cx("rs-form-help", warning && "is-warning")}
+            id={helpId}
+          >
+            {help}
+          </p>
         )}
-        {error && <p className="rs-form-error">{error}</p>}
+        {error && (
+          <p className="rs-form-error" id={errorId} role="alert">
+            {error}
+          </p>
+        )}
       </div>
     </div>
   );

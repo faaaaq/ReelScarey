@@ -86,9 +86,12 @@ export function MovieCard({
     <article
       className={onOpen ? "add-result is-interactive" : "add-result"}
       onClick={open}
-      onKeyDown={onOpen ? openFromKey : undefined}
-      role={onOpen ? "button" : undefined}
-      tabIndex={onOpen ? 0 : undefined}
+      // A card that also contains links must not be a button itself
+      // (A11Y-004): the poster link already provides the keyboard path. The
+      // role stays only when the card is the sole control (no href).
+      onKeyDown={onOpen && !href ? openFromKey : undefined}
+      role={onOpen && !href ? "button" : undefined}
+      tabIndex={onOpen && !href ? 0 : undefined}
     >
       {href ? (
         <Link

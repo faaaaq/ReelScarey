@@ -280,6 +280,7 @@ function Sidebar({ place, open }: { place: Place; open: boolean }) {
 function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountError, setAccountError] = useState("");
+  const [routeAnnouncement, setRouteAnnouncement] = useState("");
   const location = useLocation();
   const place = { pathname: location.pathname, search: location.search };
   const previousPath = useRef(location.pathname);
@@ -287,10 +288,14 @@ function AppShell() {
 
   useEffect(() => {
     setMenuOpen(false);
-    document.title = `${pageTitle(location.pathname)} · ReelScarey`;
+    const title = pageTitle(location.pathname);
+    document.title = `${title} · ReelScarey`;
     if (previousPath.current !== location.pathname) {
       document.getElementById("main-content")?.focus({ preventScroll: true });
       previousPath.current = location.pathname;
+      // Announce the new page for screen readers (A11Y-006): the focused main
+      // landmark alone is silent in several common reader modes.
+      setRouteAnnouncement(title);
     }
   }, [location.pathname, location.search]);
 
@@ -317,6 +322,9 @@ function AppShell() {
         <a href="#main-content" className="skip-link">
           Skip to content
         </a>
+        <p className="sr-only" aria-live="polite">
+          {routeAnnouncement}
+        </p>
         <header className="rs-header">
           <div className="rs-header-logo">
             <button

@@ -194,7 +194,7 @@ export function GlobalSearch() {
         <input
           ref={input}
           role="combobox"
-          aria-label="Search the library or pages"
+          aria-label="Search the library or pages (press / or Ctrl K)"
           aria-expanded={showList}
           aria-controls={listId}
           aria-autocomplete="list"
@@ -227,7 +227,7 @@ export function GlobalSearch() {
             }
           }}
         />
-        <kbd aria-hidden="true">Ctrl K</kbd>
+        <kbd aria-hidden="true">Ctrl K /</kbd>
       </label>
       {showList && (
         <div className="rs-search-results" id={listId} role="listbox">

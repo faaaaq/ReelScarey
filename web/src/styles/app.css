@@ -101,6 +101,9 @@ html[data-theme="light"] {
   --rs-danger: #d93c3c;
   --rs-warning: #d98a00;
   --rs-disabled: #9ca3af;
+  /* Status labels use dark ink on filled tokens (RS-0009); the light-theme
+     disabled token is lighter, so it needs dark text instead of white. */
+  --rs-label-disabled-ink: #1f2328;
 }
 
 /* Base ------------------------------------------------------------------- */
@@ -113,7 +116,9 @@ body {
   margin: 0;
   color: var(--rs-text);
   font-family: var(--rs-font);
-  font-size: 14px;
+  /* rem so the browser's text-size preference scales body text (A11Y-012);
+     the equivalent of the previous 14px. A full px-to-rem sweep is deferred. */
+  font-size: 0.875rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -123,7 +128,8 @@ body {
   --accent-9: var(--rs-primary);
   --accent-10: var(--rs-primary-hover);
   --accent-11: var(--rs-link);
-  --accent-contrast: #ffffff;
+  /* Dark ink on the brand accent: white measured 2.83:1 on #5d9cec (A11Y-001). */
+  --accent-contrast: #0f2a35;
   --color-background: var(--rs-page-bg);
   --color-panel-solid: var(--rs-surface);
   --color-panel-translucent: var(--rs-surface);
@@ -193,7 +199,7 @@ hr {
   margin: 16px 0;
 }
 :focus-visible {
-  outline: 2px solid var(--rs-brand);
+  outline: 2px solid var(--rs-link);
   outline-offset: 1px;
 }
 ::selection {
@@ -331,13 +337,13 @@ details > summary {
   top: -60px;
   z-index: 100;
   background: var(--rs-primary);
-  color: #fff;
+  color: #0f2a35;
   padding: 8px 14px;
   border-radius: var(--rs-radius);
 }
 .skip-link:focus {
   top: 10px;
-  color: #fff;
+  color: #0f2a35;
 }
 .rs-app {
   min-height: 100vh;
@@ -417,14 +423,15 @@ details > summary {
 }
 .rs-header-search-field input:focus,
 .rs-header-search-field input:focus-visible {
-  outline: none;
-  box-shadow: none;
+  outline: 2px solid var(--rs-link);
+  outline-offset: 2px;
   border: 0;
 }
 .rs-header-search-field kbd {
   font-size: 11px;
-  color: rgba(225, 226, 227, 0.55);
-  border: 1px solid rgba(225, 226, 227, 0.25);
+  /* ≥0.6 alpha keeps the hint above 4.5:1 on the header background. */
+  color: rgba(225, 226, 227, 0.72);
+  border: 1px solid rgba(225, 226, 227, 0.35);
   border-radius: 3px;
   padding: 0 5px;
 }
@@ -985,22 +992,24 @@ details > summary {
 .rs-label.is-info {
   border-color: var(--rs-info);
   background: var(--rs-info);
-  color: #fff;
+  /* Dark ink on the filled token, matching is-primary: white measured
+     2.83:1 here (RS-0009). */
+  color: #10243f;
 }
 .rs-label.is-success {
   border-color: var(--rs-success);
   background: var(--rs-success);
-  color: #fff;
+  color: #062b10;
 }
 .rs-label.is-warning {
   border-color: var(--rs-warning);
   background: var(--rs-warning);
-  color: #fff;
+  color: #2b1800;
 }
 .rs-label.is-danger {
   border-color: var(--rs-danger);
   background: var(--rs-danger);
-  color: #fff;
+  color: #1c0707;
 }
 .rs-label.is-purple {
   border-color: var(--rs-purple);
@@ -1011,6 +1020,9 @@ details > summary {
   border-color: var(--rs-disabled);
   background: var(--rs-disabled);
   color: #fff;
+}
+html[data-theme="light"] .rs-label.is-disabled {
+  color: var(--rs-label-disabled-ink, #1f2328);
 }
 .rs-label.is-outline {
   background: transparent;
@@ -1218,7 +1230,11 @@ details > summary {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 0;
+  /* Comfortable pointer/keyboard target (A11Y-011): the previous 0 padding
+     left a ~21px control. */
+  min-height: 28px;
+  padding: 2px 6px;
+  margin: -2px -6px;
   border: 0;
   background: none;
   color: inherit;

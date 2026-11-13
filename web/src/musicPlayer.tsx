@@ -391,6 +391,7 @@ export function MusicPlayerBar() {
             type="range"
             aria-label="Seek"
             aria-disabled={!total}
+            aria-valuetext={`${clock(position)} of ${clock(total)}`}
             min={0}
             max={total || 1}
             step={0.1}
