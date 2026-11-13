@@ -259,6 +259,7 @@ export function Indexers() {
         <RequestState
           loading={list.loading}
           error={list.error}
+        code={list.code}
           retry={list.reload}
         />
         {error && <Alert kind="danger">{error}</Alert>}

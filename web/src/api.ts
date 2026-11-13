@@ -1068,6 +1068,14 @@ export type Diagnostics = {
     indexers: number;
     automation_runs: number;
   };
+  /** Read-only write-ahead-log health (RS-0037). Omitted by older servers. */
+  wal?: {
+    page_count: number;
+    freelist_pages: number;
+    page_size: number;
+    wal_file_bytes: number;
+    autocheckpoint_pages: number;
+  };
 };
 
 export type SubtitleTrack = {

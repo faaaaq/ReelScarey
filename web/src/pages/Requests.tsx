@@ -226,6 +226,7 @@ export function RequesterHome() {
             <RequestState
               loading={requests.loading}
               error={requests.error}
+        code={requests.code}
               retry={requests.reload}
             />
             {requests.data &&
@@ -573,6 +574,7 @@ function RequestLists({ onImported }: { onImported: () => void }) {
       <RequestState
         loading={lists.loading}
         error={lists.error}
+        code={lists.code}
         retry={lists.reload}
       />
       {lists.data && (
@@ -689,6 +691,7 @@ function DiscordSettings() {
       <RequestState
         loading={status.loading}
         error={status.error}
+        code={status.code}
         retry={status.reload}
       />
       {status.data && (
@@ -824,6 +827,7 @@ export function AdminRequests() {
           <RequestState
             loading={requests.loading}
             error={requests.error}
+        code={requests.code}
             retry={requests.reload}
           />
           {requests.data &&
@@ -956,6 +960,7 @@ export function AdminRequests() {
           <RequestState
             loading={accounts.loading}
             error={accounts.error}
+        code={accounts.code}
             retry={accounts.reload}
           />
           {accounts.data &&
@@ -1151,6 +1156,7 @@ function BotSettings() {
       <RequestState
         loading={config.loading}
         error={config.error}
+        code={config.code}
         retry={config.reload}
       />
       {config.data?.configured && (

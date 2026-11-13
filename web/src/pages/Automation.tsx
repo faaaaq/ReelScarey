@@ -1,10 +1,11 @@
 ﻿import { PageBody } from "../ui";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
 import {
   api,
   messageFor,
+  APIError,
   type LibraryDefault,
   type LibraryProfileDefaults,
 } from "../api";
@@ -198,9 +199,16 @@ function ScheduleForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  // Tracks unsaved edits: a background revision bump must never clobber a
+  // draft in progress (RS-0020/CS-5). Only a clean draft syncs from the poll.
+  const dirtyRef = useRef(false);
   useEffect(() => {
-    setForm(schedule);
+    if (!dirtyRef.current) setForm(schedule);
   }, [schedule.revision]);
+  function update(patch: Partial<Schedule>) {
+    dirtyRef.current = true;
+    setForm((current) => ({ ...current, ...patch }));
+  }
   async function save(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
@@ -220,10 +228,22 @@ function ScheduleForm({
         }),
       });
       setForm(out);
+      dirtyRef.current = false;
       setSuccess("Automation preferences saved.");
       reload();
     } catch (e) {
       setError(messageFor(e));
+      // A stale-revision rejection means the server moved on: refetch so the
+      // next save starts from current state instead of failing forever.
+      if (e instanceof APIError && e.status === 409) {
+        try {
+          setForm(await api<Schedule>("/automation"));
+          dirtyRef.current = false;
+          reload();
+        } catch {
+          /* the original error is already shown */
+        }
+      }
     } finally {
       setBusy(false);
     }
@@ -281,7 +301,7 @@ function ScheduleForm({
             <input
               type="checkbox"
               checked={form.enabled}
-              onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+              onChange={(e) => update({ enabled: e.target.checked })}
             />
             Enable scheduled searches
           </label>
@@ -291,7 +311,7 @@ function ScheduleForm({
               <select
                 value={form.mode}
                 onChange={(e) =>
-                  setForm({ ...form, mode: e.target.value as Schedule["mode"] })
+                  update({ mode: e.target.value as Schedule["mode"] })
                 }
               >
                 <option value="search">Save search results for review</option>
@@ -309,7 +329,7 @@ function ScheduleForm({
                 required
                 value={form.interval_minutes}
                 onChange={(e) =>
-                  setForm({ ...form, interval_minutes: Number(e.target.value) })
+                  update({ interval_minutes: Number(e.target.value) })
                 }
               />
             </label>
@@ -322,7 +342,7 @@ function ScheduleForm({
                 required
                 value={form.batch_size}
                 onChange={(e) =>
-                  setForm({ ...form, batch_size: Number(e.target.value) })
+                  update({ batch_size: Number(e.target.value) })
                 }
               />
             </label>
@@ -331,10 +351,7 @@ function ScheduleForm({
               <select
                 value={form.default_profile_id}
                 onChange={(e) =>
-                  setForm({
-                    ...form,
-                    default_profile_id: Number(e.target.value),
-                  })
+                  update({ default_profile_id: Number(e.target.value) })
                 }
               >
                 {profiles.map((p) => (
@@ -433,7 +450,6 @@ function ReleaseDetection() {
             <p className="rs-muted">{status.data.message}</p>
           )}
           <RSSForm
-            key={status.data.revision}
             status={status.data}
             reload={status.reload}
           />
@@ -508,6 +524,17 @@ function RSSForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  // The revision key remount was removed (it discarded in-progress edits);
+  // external revision changes sync only while the draft is clean, matching
+  // the schedule form's RS-0020 guard.
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    if (!dirtyRef.current) setForm(status);
+  }, [status.revision]);
+  function update(patch: Partial<RSSSettings>) {
+    dirtyRef.current = true;
+    setForm((current) => ({ ...current, ...patch }));
+  }
   async function save(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
@@ -524,10 +551,20 @@ function RSSForm({
         }),
       });
       setForm({ ...form, ...out });
+      dirtyRef.current = false;
       setSuccess("Release detection preferences saved.");
       reload();
     } catch (e) {
       setError(messageFor(e));
+      if (e instanceof APIError && e.status === 409) {
+        try {
+          setForm(await api<RSSStatus>("/automation/rss"));
+          dirtyRef.current = false;
+          reload();
+        } catch {
+          /* the original error is already shown */
+        }
+      }
     } finally {
       setBusy(false);
     }
@@ -554,7 +591,7 @@ function RSSForm({
           <input
             type="checkbox"
             checked={form.enabled}
-            onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+            onChange={(e) => update({ enabled: e.target.checked })}
           />
           Check indexer feeds automatically
         </label>
@@ -568,7 +605,7 @@ function RSSForm({
               required
               value={form.interval_minutes}
               onChange={(e) =>
-                setForm({ ...form, interval_minutes: Number(e.target.value) })
+                update({ interval_minutes: Number(e.target.value) })
               }
             />
           </label>
@@ -621,7 +658,11 @@ function RSSForm({
 function RunHistory() {
   const runs = useLiveResource<{ items: Run[] }>("/automation/runs", 5000);
   const [selected, setSelected] = useState("");
-  const id = selected || runs.data?.items[0]?.id || "";
+  const items = runs.data?.items ?? [];
+  // A selected run can be pruned from history between polls; following the
+  // stale id would 404 forever, so fall back to the newest kept run.
+  const known = items.some((r) => r.id === selected);
+  const id = (known ? selected : "") || items[0]?.id || "";
   return (
     <section className="rs-panel automation-panel">
       <div className="rs-panel-header">
@@ -631,14 +672,14 @@ function RunHistory() {
         </Button>
       </div>
       {runs.error && <p role="alert">{runs.error}</p>}
-      {!runs.data?.items.length ? (
+      {!items.length ? (
         <p className="rs-muted">No searches have run yet.</p>
       ) : (
         <>
           <label>
             Search run
             <select value={id} onChange={(e) => setSelected(e.target.value)}>
-              {runs.data.items.map((r) => (
+              {items.map((r) => (
                 <option key={r.id} value={r.id}>
                   {formatTimestamp(r.started_at)} · {readable(r.state)} ·{" "}
                   {r.checked} checked · {r.matched} matched · {r.queued} queued
@@ -646,7 +687,7 @@ function RunHistory() {
               ))}
             </select>
           </label>
-          {runs.data.items
+          {items
             .filter((r) => r.id === id)
             .map((r) => (
               <p key={r.id} className="rs-form-help">

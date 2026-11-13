@@ -364,6 +364,7 @@ export function MusicLibrary() {
         <RequestState
           loading={activeResource.loading}
           error={activeResource.error}
+        code={activeResource.code}
           retry={reload}
         />
         {ready &&

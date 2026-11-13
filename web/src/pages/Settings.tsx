@@ -324,6 +324,7 @@ function GeneralSettings() {
         <RequestState
           loading={settings.loading}
           error={settings.error}
+        code={settings.code}
           retry={settings.reload}
         />
         {form && (
@@ -495,6 +496,7 @@ function GeneralSettings() {
           <RequestState
             loading={system.loading}
             error={system.error}
+        code={system.code}
             retry={system.reload}
           />
           {system.data && (
@@ -529,6 +531,7 @@ function MediaSettings() {
       <RequestState
         loading={collections.loading}
         error={collections.error}
+        code={collections.code}
         retry={collections.reload}
       />
       {collections.data?.libraries && (

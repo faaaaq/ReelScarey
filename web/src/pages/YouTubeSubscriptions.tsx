@@ -94,6 +94,7 @@ export function YouTubeSubscriptions() {
         <RequestState
           loading={subs.loading}
           error={subs.error}
+        code={subs.code}
           retry={subs.reload}
         />
         <form className="rs-panel rs-stack" onSubmit={(e) => void add(e)}>
@@ -353,6 +354,7 @@ function Entries({ sub, reload }: { sub: Sub; reload: () => void }) {
       <RequestState
         loading={resource.loading}
         error={resource.error}
+        code={resource.code}
         retry={resource.reload}
       />
       {resource.data && (

@@ -31,14 +31,32 @@ export function PageHeading({
 export function RequestState({
   loading,
   error,
+  code,
   retry,
 }: {
   loading: boolean;
   error: string;
+  /** Backend error code, when available: it distinguishes permission and
+   * capability problems from outages instead of blaming the network. */
+  code?: string;
   retry: () => void;
 }) {
   if (loading) return <LoadingIndicator label="Loading…" />;
-  if (error)
+  if (error) {
+    // A requester opening an administrator page is not an outage: retrying
+    // cannot help, so the frame and the affordance change (RS-0036).
+    if (code === "administrator_required")
+      return (
+        <div className="rs-alert is-danger" role="alert">
+          <AlertCircle size={18} aria-hidden="true" />
+          <div className="rs-alert-content">
+            <span className="rs-alert-title">
+              Administrator access required
+            </span>
+            <p>{error}</p>
+          </div>
+        </div>
+      );
     return (
       <div className="rs-alert is-danger" role="alert">
         <AlertCircle size={18} aria-hidden="true" />
@@ -53,5 +71,6 @@ export function RequestState({
         </div>
       </div>
     );
+  }
   return null;
 }

@@ -315,6 +315,7 @@ export function ExistingLibrary() {
       <RequestState
         loading={roots.loading}
         error={roots.error}
+        code={roots.code}
         retry={roots.reload}
       />
       {roots.data && (
@@ -623,6 +624,7 @@ function ScanReview({
       <RequestState
         loading={result.loading}
         error={result.error}
+        code={result.code}
         retry={result.reload}
       />
       {scan && (
@@ -1356,6 +1358,7 @@ export function MatchReview({
       <RequestState
         loading={catalog.loading}
         error={catalog.error}
+        code={catalog.code}
         retry={catalog.reload}
       />
       {!provider.data?.configured && (
@@ -1549,6 +1552,7 @@ function EpisodePicker({
       <RequestState
         loading={resource.loading}
         error={resource.error}
+        code={resource.code}
         retry={resource.reload}
       />
       {show && (
@@ -1574,6 +1578,7 @@ function EpisodePicker({
           <RequestState
             loading={episodes.loading}
             error={episodes.error}
+        code={episodes.code}
             retry={episodes.reload}
           />
           {episodes.data && !episodes.data.season.loaded_at && (

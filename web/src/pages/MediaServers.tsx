@@ -158,6 +158,7 @@ function JellyfinPanel() {
       <RequestState
         loading={status.loading}
         error={status.error}
+        code={status.code}
         retry={status.reload}
       />
       {error && <Alert kind="danger">{error}</Alert>}
@@ -343,6 +344,7 @@ function PlexPanel() {
       <RequestState
         loading={status.loading}
         error={status.error}
+        code={status.code}
         retry={status.reload}
       />
       {error && <Alert kind="danger">{error}</Alert>}

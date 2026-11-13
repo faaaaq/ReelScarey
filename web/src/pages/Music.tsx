@@ -748,6 +748,7 @@ export function MusicArtistPage() {
         <RequestState
           loading={details.loading}
           error={details.error}
+        code={details.code}
           retry={details.reload}
         />
         {albumJob.data && (
@@ -1346,7 +1347,9 @@ export function MusicAlbumPage() {
       setFixMessage(
         job.state === "completed"
           ? `Updated ${job.file_count} file${job.file_count === 1 ? "" : "s"}.`
-          : `Correction ${job.state}.`,
+          : job.error
+            ? `Correction ${job.state}: ${job.error}`
+            : `Correction ${job.state}.`,
       );
       details.reload();
     } catch (e) {
@@ -1458,6 +1461,7 @@ export function MusicAlbumPage() {
         <RequestState
           loading={details.loading}
           error={details.error}
+        code={details.code}
           retry={details.reload}
         />
         {albumJob.data && (

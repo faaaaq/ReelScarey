@@ -91,6 +91,7 @@ export function DownloadClients() {
         <RequestState
           loading={resource.loading}
           error={resource.error}
+        code={resource.code}
           retry={resource.reload}
         />
         {resource.data && defaults && (
@@ -335,6 +336,7 @@ function VPNCard() {
       <RequestState
         loading={resource.loading}
         error={resource.error}
+        code={resource.code}
         retry={resource.reload}
       />
       {data && (
@@ -507,6 +509,7 @@ function BuiltinCard({ reload }: { reload: () => void }) {
       <RequestState
         loading={resource.loading}
         error={resource.error}
+        code={resource.code}
         retry={resource.reload}
       />
       {data && (

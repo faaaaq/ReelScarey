@@ -59,6 +59,7 @@ export function ReleaseBlacklist() {
         <RequestState
           loading={resource.loading}
           error={resource.error}
+        code={resource.code}
           retry={resource.reload}
         />
         {notice && <Alert kind="success">{notice}</Alert>}

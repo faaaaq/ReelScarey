@@ -111,6 +111,7 @@ export function Organization() {
       <RequestState
         loading={config.loading}
         error={config.error}
+        code={config.code}
         retry={config.reload}
       />
       {config.data && (
@@ -781,6 +782,7 @@ function Reorganize({ config }: { config: Config }) {
         <RequestState
           loading={files.loading}
           error={files.error}
+        code={files.code}
           retry={files.reload}
         />
         {files.data && (
@@ -917,6 +919,7 @@ function Reorganize({ config }: { config: Config }) {
             <RequestState
               loading={versions.loading}
               error={versions.error}
+        code={versions.code}
               retry={versions.reload}
             />
             {versions.data?.items
@@ -1240,6 +1243,7 @@ function Reorganize({ config }: { config: Config }) {
         <RequestState
           loading={history.loading}
           error={history.error}
+        code={history.code}
           retry={history.reload}
         />
         {history.data?.items

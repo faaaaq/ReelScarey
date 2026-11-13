@@ -123,6 +123,43 @@ function setup(
   return fetch;
 }
 describe("automation", () => {
+  it("keeps in-progress schedule edits across a background revision bump", async () => {
+    // RS-0020/CS-5: the 10s poll must not clobber a draft in progress, and a
+    // clean draft must still pick up the server's revision.
+    let bumped = false;
+    setup((url) => {
+      if (url.endsWith("/automation") && bumped)
+        return Response.json({
+          ...initial,
+          revision: 2,
+          interval_minutes: 720,
+        });
+      return undefined;
+    });
+    mount();
+    const interval = await screen.findByLabelText("Search every (minutes)");
+    await userEvent.clear(interval);
+    await userEvent.type(interval, "240");
+    bumped = true;
+    document.dispatchEvent(new Event("visibilitychange"));
+    // Wait until the polled revision actually landed (the draft would revert
+    // to 720 under the old behavior), then assert the draft survived.
+    const deadline = Date.now() + 1500;
+    let revertedTo: string | null = null;
+    while (Date.now() < deadline) {
+      const value = (
+        screen.getByLabelText("Search every (minutes)") as HTMLInputElement
+      ).value;
+      if (value !== "240") {
+        revertedTo = value;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(revertedTo).toBeNull();
+    expect(screen.getByLabelText("Search every (minutes)")).toHaveValue(240);
+  });
+
   it("saves ordered source and codec preferences with Usenet retention limits", async () => {
     let sent: unknown;
     setup((url, o) => {

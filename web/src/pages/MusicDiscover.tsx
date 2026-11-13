@@ -496,6 +496,7 @@ export function MusicDiscover() {
           <RequestState
             loading={charts.loading}
             error={charts.error}
+        code={charts.code}
             retry={charts.reload}
           />
           {charts.data?.message && (
@@ -529,6 +530,7 @@ export function MusicDiscover() {
           <RequestState
             loading={monitor.loading}
             error={monitor.error}
+        code={monitor.code}
             retry={monitor.reload}
           />
           {monitor.data && (
@@ -604,6 +606,7 @@ export function MusicDiscover() {
               <RequestState
                 loading={sources.loading}
                 error={sources.error}
+        code={sources.code}
                 retry={sources.reload}
               />
               {sources.data && sources.data.items.length === 0 && (
@@ -683,6 +686,7 @@ export function MusicDiscover() {
           <RequestState
             loading={jobs.loading}
             error={jobs.error}
+        code={jobs.code}
             retry={jobs.reload}
           />
           {jobs.data && jobs.data.items.length === 0 && (

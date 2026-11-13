@@ -322,6 +322,7 @@ export function Dashboard() {
                 <RequestState
                   loading={wanted.loading}
                   error={wanted.error}
+        code={wanted.code}
                   retry={wanted.reload}
                 />
                 {wanted.data && !wanted.error && !wanted.loading && (
@@ -357,6 +358,7 @@ export function Dashboard() {
                 <RequestState
                   loading={upcoming.loading}
                   error={upcoming.error}
+        code={upcoming.code}
                   retry={upcoming.reload}
                 />
                 {upcoming.data && !upcoming.error && !upcoming.loading && (

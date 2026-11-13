@@ -89,6 +89,7 @@ export function TMDbSettings() {
       <RequestState
         loading={resource.loading}
         error={resource.error}
+        code={resource.code}
         retry={resource.reload}
       />
       {resource.data && !resource.error && (

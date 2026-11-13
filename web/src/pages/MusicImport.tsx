@@ -918,6 +918,7 @@ export function MusicImport() {
         <RequestState
           loading={scans.loading}
           error={scans.error}
+        code={scans.code}
           retry={scans.reload}
         />
         {scans.data && scans.data.items.length === 0 && (

@@ -223,6 +223,7 @@ export function Notifications() {
       <RequestState
         loading={channels.loading}
         error={channels.error}
+        code={channels.code}
         retry={channels.reload}
       />
       {error && <Alert kind="danger">{error}</Alert>}
@@ -493,6 +494,7 @@ export function Notifications() {
         <RequestState
           loading={outbox.loading}
           error={outbox.error}
+        code={outbox.code}
           retry={outbox.reload}
         />
         {!outbox.loading && deliveries.length === 0 && (

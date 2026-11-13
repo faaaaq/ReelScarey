@@ -91,6 +91,7 @@ export function Series() {
         <RequestState
           loading={resource.loading}
           error={resource.error}
+        code={resource.code}
           retry={resource.reload}
         />
       )}
@@ -809,6 +810,7 @@ function SeasonEpisodes({
       <RequestState
         loading={resource.loading}
         error={resource.error}
+        code={resource.code}
         retry={resource.reload}
       />
     );

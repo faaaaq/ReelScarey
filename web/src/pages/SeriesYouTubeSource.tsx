@@ -409,6 +409,7 @@ export function SeriesYouTubeSource({ id }: { id: number }) {
       <RequestState
         loading={sources.loading}
         error={sources.error}
+        code={sources.code}
         retry={sources.reload}
       />
       {error && (

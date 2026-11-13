@@ -113,6 +113,7 @@ export function WatchActivity() {
         <RequestState
           loading={settings.loading}
           error={settings.error}
+        code={settings.code}
           retry={settings.reload}
         />
         {error && (

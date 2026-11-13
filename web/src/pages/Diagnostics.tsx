@@ -26,6 +26,7 @@ export function Diagnostics() {
       <RequestState
         loading={resource.loading}
         error={resource.error}
+        code={resource.code}
         retry={resource.reload}
       />
       {resource.error && (
@@ -192,6 +193,47 @@ export function Diagnostics() {
               <Link to="/timeline">Open the full timeline</Link>
             </p>
           </Panel>
+          {data.wal && (
+            <Panel title="Database write-ahead log">
+              <p className="rs-muted">
+                Read-only counters for the SQLite write-ahead log. Sustained
+                growth across restarts would be worth investigating; the file
+                normally returns to zero after checkpoints.
+              </p>
+              <Table label="Database write-ahead log">
+                <thead>
+                  <tr>
+                    <th>Counter</th>
+                    <th>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>WAL file size</td>
+                    <td>{data.wal.wal_file_bytes.toLocaleString()} bytes</td>
+                  </tr>
+                  <tr>
+                    <td>Database pages</td>
+                    <td>{data.wal.page_count.toLocaleString()}</td>
+                  </tr>
+                  <tr>
+                    <td>Unused pages</td>
+                    <td>{data.wal.freelist_pages.toLocaleString()}</td>
+                  </tr>
+                  <tr>
+                    <td>Page size</td>
+                    <td>{data.wal.page_size.toLocaleString()} bytes</td>
+                  </tr>
+                  <tr>
+                    <td>Autocheckpoint threshold</td>
+                    <td>
+                      {data.wal.autocheckpoint_pages.toLocaleString()} pages
+                    </td>
+                  </tr>
+                </tbody>
+              </Table>
+            </Panel>
+          )}
           {data.counts.downloads +
             data.counts.blacklist +
             data.counts.indexers +

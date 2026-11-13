@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, messageFor } from "./api";
+import { APIError, api, messageFor } from "./api";
 // Background refreshes retain drafts and the last useful response on outages.
 export function useLiveResource<T>(path: string | null, interval = 0) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState("");
+  const [code, setCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState<number>();
   const [attempt, setAttempt] = useState(0);
@@ -14,6 +15,7 @@ export function useLiveResource<T>(path: string | null, interval = 0) {
       currentPath.current = null;
       setData(undefined);
       setError("");
+      setCode("");
       setUpdatedAt(undefined);
       setLoading(false);
       return;
@@ -26,6 +28,7 @@ export function useLiveResource<T>(path: string | null, interval = 0) {
       currentPath.current = path;
       setData(undefined);
       setError("");
+      setCode("");
       setUpdatedAt(undefined);
       setLoading(true);
     }
@@ -42,10 +45,14 @@ export function useLiveResource<T>(path: string | null, interval = 0) {
         if (!controller.signal.aborted) {
           setData(value);
           setError("");
+          setCode("");
           setUpdatedAt(Date.now());
         }
       } catch (e) {
-        if (!controller.signal.aborted) setError(messageFor(e));
+        if (!controller.signal.aborted) {
+          setError(messageFor(e));
+          setCode(e instanceof APIError ? e.code : "");
+        }
       } finally {
         busy = false;
         if (!controller.signal.aborted) setLoading(false);
@@ -66,5 +73,5 @@ export function useLiveResource<T>(path: string | null, interval = 0) {
         document.removeEventListener("visibilitychange", refreshVisible);
     };
   }, [path, interval, attempt]);
-  return { data, error, loading, updatedAt, reload };
+  return { data, error, code, loading, updatedAt, reload };
 }

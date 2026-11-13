@@ -114,6 +114,7 @@ export function APIKeys() {
       <RequestState
         loading={resource.loading}
         error={resource.error}
+        code={resource.code}
         retry={resource.reload}
       />
       {error && <Alert kind="danger">{error}</Alert>}

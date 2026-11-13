@@ -97,7 +97,14 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     void audio
       .play()
       .then(() => setPlaying(true))
-      .catch(() => setPlaying(false));
+      .catch((e: unknown) => {
+        setPlaying(false);
+        // Autoplay policies reject programmatic play before any request is
+        // made; that is not a server failure and must be phrased as one the
+        // user can act on (RS-0008).
+        if (e instanceof DOMException && e.name === "NotAllowedError")
+          setError("The browser blocked autoplay. Press play to start.");
+      });
   }
 
   function play(track: PlayerTrack, requestedQueue?: PlayerTrack[]) {
@@ -123,7 +130,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       void audioRef.current
         .play()
         .then(() => setPlaying(true))
-        .catch(() => setPlaying(false));
+        .catch((e: unknown) => {
+          setPlaying(false);
+          if (e instanceof DOMException && e.name === "NotAllowedError")
+            setError("The browser blocked autoplay. Press play to start.");
+        });
       return;
     }
     start(track);
@@ -137,7 +148,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       void audio
         .play()
         .then(() => setPlaying(true))
-        .catch(() => setPlaying(false));
+        .catch((e: unknown) => {
+          setPlaying(false);
+          if (e instanceof DOMException && e.name === "NotAllowedError")
+            setError("The browser blocked autoplay. Press play to start.");
+        });
     } else {
       audio.pause();
     }
@@ -227,7 +242,32 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     const onEnded = () => next();
     const onError = () => {
       setPlaying(false);
+      // The media element only reports "something failed"; probe the stream
+      // endpoint once so auth expiry, permissions and missing files get
+      // distinct, actionable messages and an expired session reaches the
+      // same login funnel as every other page (RS-0008).
+      const source = audio.currentSrc || audio.src;
       setError("Playback is unavailable for this file.");
+      if (!source) return;
+      void fetch(source, { headers: { Range: "bytes=0-0" } }).then(
+        (response) => {
+          if (response.status === 401) {
+            window.dispatchEvent(new Event("reelscarey:unauthorized"));
+            setError("Sign in again to keep listening.");
+          } else if (response.status === 403) {
+            setError("This account cannot play music files.");
+          } else if (response.status === 404) {
+            setError(
+              "This file is no longer registered in the music library.",
+            );
+          } else if (!response.ok) {
+            setError("Playback is unavailable for this file.");
+          }
+        },
+        () => {
+          setError("Playback stopped because ReelScarey could not be reached.");
+        },
+      );
     };
     audio.addEventListener("timeupdate", updatePosition);
     audio.addEventListener("durationchange", updateDuration);
@@ -352,10 +392,12 @@ export function MusicPlayerBar() {
           <input
             type="range"
             aria-label="Seek"
+            aria-disabled={!total}
             min={0}
-            max={total || 0}
+            max={total || 1}
             step={0.1}
             value={position}
+            tabIndex={total ? 0 : -1}
             onChange={(event) => player.seek(Number(event.target.value))}
           />
           <span>{clock(total)}</span>

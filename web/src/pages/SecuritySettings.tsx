@@ -117,6 +117,7 @@ export function SecuritySettings() {
       <RequestState
         loading={totp.loading}
         error={totp.error}
+        code={totp.code}
         retry={totp.reload}
       />
       {notice && <Alert kind="success">{notice}</Alert>}

@@ -406,6 +406,7 @@ export function MusicServer() {
         <RequestState
           loading={server.loading}
           error={server.error}
+        code={server.code}
           retry={server.reload}
         />
         {server.data && (
@@ -491,6 +492,7 @@ export function MusicServer() {
               <RequestState
                 loading={accounts.loading}
                 error={accounts.error}
+        code={accounts.code}
                 retry={accounts.reload}
               />
               {accounts.data && users.length === 0 && (

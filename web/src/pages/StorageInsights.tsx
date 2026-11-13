@@ -58,6 +58,7 @@ export function StorageInsights() {
       <RequestState
         loading={resource.loading}
         error={resource.error}
+        code={resource.code}
         retry={resource.reload}
       />
       {resource.error && (

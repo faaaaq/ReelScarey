@@ -62,6 +62,7 @@ export function Setup() {
       <RequestState
         loading={guide.loading}
         error={guide.error}
+        code={guide.code}
         retry={guide.reload}
       />
       {guide.data && (
@@ -172,6 +173,7 @@ export function SystemChecks() {
         <RequestState
           loading={resource.loading}
           error={resource.error}
+        code={resource.code}
           retry={resource.reload}
         />
         {error && (
@@ -447,6 +449,7 @@ function SystemAbout() {
       <RequestState
         loading={system.loading}
         error={system.error}
+        code={system.code}
         retry={system.reload}
       />
       {system.data && (

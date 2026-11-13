@@ -261,6 +261,7 @@ export function AnimeOrder({ id }: { id: number }) {
           <RequestState
             loading={resource.loading}
             error={resource.error}
+        code={resource.code}
             retry={resource.reload}
           />
           {resource.data && !resource.loading && !resource.error && (

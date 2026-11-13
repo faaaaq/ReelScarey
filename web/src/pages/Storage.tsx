@@ -87,6 +87,7 @@ export function Storage() {
         <RequestState
           loading={listing.loading}
           error={listing.error}
+        code={listing.code}
           retry={listing.reload}
         />
         {listing.data && (
@@ -214,6 +215,7 @@ export function Storage() {
         <RequestState
           loading={migration.loading}
           error={migration.error}
+        code={migration.code}
           retry={migration.reload}
         />
         {migration.data && migration.data.state !== "none" && (

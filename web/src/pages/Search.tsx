@@ -132,6 +132,7 @@ function MediaSearch({
       <RequestState
         loading={provider.loading}
         error={provider.error}
+        code={provider.code}
         retry={provider.reload}
       />
       {provider.data && !provider.data.configured && (

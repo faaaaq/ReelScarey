@@ -891,6 +891,7 @@ function FilePage({
       <RequestState
         loading={files.loading}
         error={files.error}
+        code={files.code}
         retry={files.reload}
       />
       {files.data?.items.length === 0 && (
@@ -1165,6 +1166,7 @@ function Matches({
       <RequestState
         loading={result.loading}
         error={result.error}
+        code={result.code}
         retry={result.reload}
       />
       {result.data?.candidates?.length === 0 && (

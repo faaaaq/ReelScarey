@@ -56,6 +56,7 @@ function Loader({ id }: { id: number }) {
       <RequestState
         loading={resource.loading}
         error={resource.error}
+        code={resource.code}
         retry={resource.reload}
       />
       {resource.data && (
