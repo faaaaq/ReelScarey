@@ -20,17 +20,17 @@ import (
 )
 
 var (
-	ErrUnauthorized  = errors.New("The username or password is incorrect.")
-	ErrSetupClosed   = errors.New("The administrator account has already been created.")
-	ErrSetupToken    = errors.New("The setup code is incorrect. Read setup-token from your config folder.")
+	ErrUnauthorized = errors.New("The username or password is incorrect.")
+	ErrSetupClosed  = errors.New("The administrator account has already been created.")
+	ErrSetupToken   = errors.New("The setup code is incorrect. Read setup-token from your config folder.")
 	// ErrSetupTokenFile distinguishes a deleted setup-token file from a wrong
 	// code: restarting the app while setup is still incomplete recreates the
 	// file, which is the actual recovery (ONB-P3-1).
 	ErrSetupTokenFile = errors.New("The setup-token file is missing. Restart ReelScarey while setup is still incomplete and it will be recreated, then read the new code.")
-	ErrPassword      = errors.New("Use a password of at least 12 characters and at most 256 bytes.")
-	ErrUsername      = errors.New("Use a username of 3–40 letters, numbers, underscores or hyphens.")
-	ErrBusy          = errors.New("Too many authentication attempts. Wait a minute and try again.")
-	ErrAccountExists = errors.New("That username is already in use.")
+	ErrPassword       = errors.New("Use a password of at least 12 characters and at most 256 bytes.")
+	ErrUsername       = errors.New("Use a username of 3–40 letters, numbers, underscores or hyphens.")
+	ErrBusy           = errors.New("Too many authentication attempts. Wait a minute and try again.")
+	ErrAccountExists  = errors.New("That username is already in use.")
 )
 
 const SessionLifetime = 24 * time.Hour

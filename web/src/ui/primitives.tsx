@@ -94,19 +94,15 @@ export function FormGroup({
   const errorId = htmlFor ? `${htmlFor}-error` : `${id}-error`;
   const helpId = htmlFor ? `${htmlFor}-help` : `${id}-help`;
   const describedBy =
-    [help ? helpId : null, error ? errorId : null]
-      .filter(Boolean)
-      .join(" ") || undefined;
+    [help ? helpId : null, error ? errorId : null].filter(Boolean).join(" ") ||
+    undefined;
   const decorated = isValidElement(children)
-    ? cloneElement(
-        children as ReactElement<Record<string, unknown>>,
-        {
-          "aria-invalid": error ? true : undefined,
-          "aria-describedby":
-            (children.props as Record<string, unknown>)["aria-describedby"] ??
-            describedBy,
-        },
-      )
+    ? cloneElement(children as ReactElement<Record<string, unknown>>, {
+        "aria-invalid": error ? true : undefined,
+        "aria-describedby":
+          (children.props as Record<string, unknown>)["aria-describedby"] ??
+          describedBy,
+      })
     : children;
   if (!htmlFor)
     return (
