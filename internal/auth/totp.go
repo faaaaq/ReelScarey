@@ -121,10 +121,10 @@ func (t *TOTPStore) Provision(ctx context.Context, account string) (TOTPProvisio
 		return TOTPProvision{}, err
 	}
 	now := t.now().Unix()
-	_, err = t.db.ExecContext(ctx, `INSERT INTO admin_totp(id,secret_ciphertext,recovery_hashes,enabled,created_at,updated_at)
-		VALUES(1,?,'',0,?,?)
+	_, err = t.db.ExecContext(ctx, `INSERT INTO admin_totp(id,secret_ciphertext,recovery_hashes,enabled,created_at,updated_at,totp_last_step)
+		VALUES(1,?,'',0,?,?,0)
 		ON CONFLICT(id) DO UPDATE SET secret_ciphertext=excluded.secret_ciphertext,
-			recovery_hashes='',enabled=0,updated_at=excluded.updated_at`, sealed, now, now)
+			recovery_hashes='',enabled=0,updated_at=excluded.updated_at,totp_last_step=0`, sealed, now, now)
 	if err != nil {
 		return TOTPProvision{}, err
 	}
@@ -155,7 +155,7 @@ func (t *TOTPStore) Confirm(ctx context.Context, code string) ([]string, error) 
 	if err != nil {
 		return nil, err
 	}
-	if !validateTOTP(string(secret), normalized, t.now()) {
+	if _, ok := validateTOTPStep(string(secret), normalized, t.now()); !ok {
 		return nil, ErrTOTPCode
 	}
 	codes, hashes, err := generateRecoveryCodes()
@@ -168,7 +168,8 @@ func (t *TOTPStore) Confirm(ctx context.Context, code string) ([]string, error) 
 	}
 	defer tx.Rollback()
 	// Fence concurrent provisioning or confirmation: only the exact pending
-	// ciphertext we verified may be enabled.
+	// ciphertext we verified may be enabled. The confirmed step is not
+	// consumed here — Verify fences replay once TOTP is enabled.
 	result, err := tx.ExecContext(ctx, `UPDATE admin_totp SET recovery_hashes=?,enabled=1,updated_at=?
 		WHERE id=1 AND enabled=0 AND secret_ciphertext=?`, strings.Join(hashes, "\n"), t.now().Unix(), sealed)
 	if err != nil {
@@ -203,7 +204,8 @@ func (t *TOTPStore) Verify(ctx context.Context, code string) error {
 	}
 	var sealed []byte
 	var enabled int
-	err := t.db.QueryRowContext(ctx, `SELECT secret_ciphertext,enabled FROM admin_totp WHERE id=1`).Scan(&sealed, &enabled)
+	var lastStep int64
+	err := t.db.QueryRowContext(ctx, `SELECT secret_ciphertext,enabled,totp_last_step FROM admin_totp WHERE id=1`).Scan(&sealed, &enabled, &lastStep)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && enabled != 1) {
 		return ErrTOTPNotEnabled
 	}
@@ -214,7 +216,23 @@ func (t *TOTPStore) Verify(ctx context.Context, code string) error {
 	if err != nil {
 		return err
 	}
-	if !validateTOTP(string(secret), normalized, t.now()) {
+	step, ok := validateTOTPStep(string(secret), normalized, t.now())
+	if !ok || step <= lastStep {
+		return ErrTOTPCode
+	}
+	// Persist the consumed step with the same compare-gated fencing the
+	// recovery-code consumption uses, so a concurrent replay of the same code
+	// cannot slip past the read above.
+	result, err := t.db.ExecContext(ctx, `UPDATE admin_totp SET totp_last_step=?,updated_at=?
+		WHERE id=1 AND enabled=1 AND secret_ciphertext=? AND totp_last_step<?`, step, t.now().Unix(), sealed, step)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
 		return ErrTOTPCode
 	}
 	return nil
@@ -298,25 +316,35 @@ func totpCode(secret string, at time.Time) (string, error) {
 // validateTOTP accepts the current step plus one step of clock skew in each
 // direction, comparing every candidate in constant time.
 func validateTOTP(secret, code string, at time.Time) bool {
+	_, ok := validateTOTPStep(secret, code, at)
+	return ok
+}
+
+// validateTOTPStep returns the exact time step that matched, so callers can
+// reject a replay of an already-consumed code. The skew window is unchanged:
+// the current step plus one step in each direction.
+func validateTOTPStep(secret, code string, at time.Time) (int64, bool) {
 	normalized, ok := normalizeTOTPCode(code)
 	if !ok {
-		return false
+		return 0, false
 	}
 	key, err := decodeTOTPSecret(secret)
 	if err != nil || at.Unix() < 0 {
-		return false
+		return 0, false
 	}
 	step := at.Unix() / totpPeriodSeconds
-	matched := 0
+	matched := int64(-1)
 	for offset := int64(-totpSkew); offset <= totpSkew; offset++ {
 		candidate := step + offset
 		if candidate < 0 {
 			continue
 		}
 		expected := hotpCode(key, uint64(candidate))
-		matched |= subtle.ConstantTimeCompare([]byte(expected), []byte(normalized))
+		if subtle.ConstantTimeCompare([]byte(expected), []byte(normalized)) == 1 {
+			matched = candidate
+		}
 	}
-	return matched == 1
+	return matched, matched >= 0
 }
 
 // hotpCode implements RFC 4226 dynamic truncation.

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"modernc.org/sqlite"
 )
 
 type RequestAccount struct {
@@ -57,6 +59,11 @@ func (s *Service) CreateRequestAccount(ctx context.Context, username, password s
 	now := time.Now().Unix()
 	result, err := tx.ExecContext(ctx, `INSERT INTO request_accounts(username,password_hash,created_at) VALUES(?,?,?)`, username, hash, now)
 	if err != nil {
+		// A concurrent creation can win the UNIQUE(username) race after the
+		// COUNT check; report the typed duplicate error, never a raw 500.
+		if isUsernameUniqueConflict(err, "request_accounts.username") {
+			return RequestAccount{}, ErrAccountExists
+		}
 		return RequestAccount{}, err
 	}
 	id, err := result.LastInsertId()
@@ -157,6 +164,21 @@ func (s *Service) ChangeRequestPassword(ctx context.Context, id int64, currentPa
 		return err
 	}
 	return tx.Commit()
+}
+
+// isUsernameUniqueConflict reports whether err is the driver's UNIQUE
+// constraint failure on the named column. The COUNT check above usually
+// catches duplicates, but a concurrent insert can win the race; callers map
+// this to the typed ErrAccountExists instead of leaking a raw driver error.
+func isUsernameUniqueConflict(err error, column string) bool {
+	if err == nil {
+		return false
+	}
+	var serr *sqlite.Error
+	if errors.As(err, &serr) && strings.Contains(serr.Error(), "UNIQUE constraint failed: "+column) {
+		return true
+	}
+	return strings.Contains(err.Error(), "UNIQUE constraint failed: "+column)
 }
 
 // Called only after Login has acquired the shared password-work limiter.
