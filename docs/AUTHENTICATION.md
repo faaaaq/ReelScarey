@@ -19,6 +19,11 @@ Retrieve the code on the server (this command intentionally prints the code):
 docker compose exec reelscarey reelscarey setup-token
 ```
 
+A setup code expires after seven days. If it is not used within a week — for
+example on an instance that stays running but unconfigured — completing setup
+rejects it and deletes the stale file; restarting the still-unconfigured
+application issues a fresh code. The file format itself is unchanged.
+
 Native installation: read the setup-token file or run `bin/reelscarey setup-token`
 with the same config environment as the running service. On Windows use
 `.\bin\reelscarey.exe setup-token`. Keep codes and provider tokens out of chats,
@@ -94,12 +99,17 @@ artwork URLs. Disconnecting TMDb removes its token and retains your library.
 ## Host and TLS configuration
 
 Default native and Compose ports are loopback-only. Only loopback Host names
-are accepted unless REELSCAREY_PUBLIC_URL specifies another browser origin.
-For HTTPS through a reverse proxy, preserve the original Host and set that
-variable to the exact `https://...` origin. Cookies then require Secure.
-Forwarded-Proto/Host headers are ignored. Deploying remotely also requires TLS
-and an explicit network/proxy configuration; the environment variable alone
-does not change Compose's loopback port publication.
+are accepted unless REELSCAREY_PUBLIC_URL specifies another browser origin,
+and a loopback Host claim is honored only from a loopback connection, so a
+remote client cannot spoof `Host: localhost`. For HTTPS through a reverse
+proxy, preserve the original Host and set that variable to the exact
+`https://...` origin. Cookies then require Secure. If the bind address accepts
+remote connections while the public URL is not `https://`, the application
+logs a one-time startup warning because session cookies cannot carry the
+Secure flag even behind a TLS-terminating proxy; plain-HTTP LAN deployments
+keep working. Forwarded-Proto/Host headers are ignored. Deploying remotely
+also requires TLS and an explicit network/proxy configuration; the environment
+variable alone does not change Compose's loopback port publication.
 
 ## Sources and attribution
 

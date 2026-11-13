@@ -16,7 +16,10 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/faaaaq/ReelScarey/internal/config"
 )
 
 const cookieName = "reelscarey_session"
@@ -25,8 +28,18 @@ type sessionKey struct{}
 
 func (s *Server) security(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.allowedHost(r.Host) {
+		s.warnInsecureBind()
+		if !s.allowedHost(r.Host, r.RemoteAddr) {
 			fail(w, 403, "invalid_host", "Open ReelScarey using localhost or its configured public URL.")
+			return
+		}
+		// A reviewed restore restarts the application; refuse Subsonic writes
+		// alongside the first-party API and compatibility gates (NEW-E3).
+		// Subsonic writes already fail with code 50, so this only keeps clients
+		// from hitting the database mid-restore.
+		if s.backups != nil && subsonicRestoreBlocked(s.backups.Restoring(), r.URL.Path, r.Method) {
+			w.Header().Set("Retry-After", "5")
+			fail(w, 503, "restore_restarting", "A reviewed restore is restarting ReelScarey. Wait a moment, then retry.")
 			return
 		}
 		if compatPath(r.URL.Path) {
@@ -190,7 +203,9 @@ func (s *Server) compatSecurity(next http.Handler, w http.ResponseWriter, r *htt
 	fail(w, 401, "authentication_required", "Provide a scoped ReelScarey API key in the X-Api-Key header.")
 }
 
-func (s *Server) allowedHost(host string) bool {
+// isLoopbackHostname reports whether a claimed Host header names the loopback
+// interface ("localhost" or a loopback IP literal).
+func isLoopbackHostname(host string) bool {
 	hostname := host
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		hostname = h
@@ -202,11 +217,85 @@ func (s *Server) allowedHost(host string) bool {
 	if ip := net.ParseIP(hostname); ip != nil && ip.IsLoopback() {
 		return true
 	}
+	return false
+}
+
+func (s *Server) allowedHost(host, remoteAddr string) bool {
+	// NEW-E2: a client-controlled Host header may only claim a loopback name
+	// from a loopback connection. A remote client spoofing "Host: localhost"
+	// is rejected; local clients keep working and proxies forwarding the real
+	// configured origin are unaffected. An unparseable remote address is
+	// treated as non-loopback, so the guard fails closed.
+	remote := remoteAddr
+	if h, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		remote = h
+	}
+	remoteIP := net.ParseIP(strings.Trim(remote, "[]"))
+	if isLoopbackHostname(host) && (remoteIP == nil || !remoteIP.IsLoopback()) {
+		return false
+	}
+	if isLoopbackHostname(host) {
+		return true
+	}
 	if s.config.PublicURL != "" {
 		u, err := url.Parse(s.config.PublicURL)
 		return err == nil && strings.EqualFold(host, u.Host)
 	}
 	return false
+}
+
+// subsonicRestoreBlocked reports whether a Subsonic /rest/ request must be
+// refused while a reviewed restore is restarting the application. It mirrors
+// the compatibility surface: plain reads are still served, everything else is
+// refused with 503 (NEW-E3). Expressed as a pure function so the gate is
+// testable without driving a real restore; the caller supplies Restoring().
+func subsonicRestoreBlocked(restoring bool, path, method string) bool {
+	if !restoring || !strings.HasPrefix(path, "/rest/") {
+		return false
+	}
+	return method != "GET" && method != "HEAD" && method != "OPTIONS"
+}
+
+// listenLoopback reports whether a bind address only accepts loopback
+// connections. An empty host, a wildcard address or any resolvable
+// non-loopback host listens beyond this machine.
+func listenLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
+// insecureBindWarning reports the RS-0029 misconfiguration: a bind that accepts
+// remote connections while REELSCAREY_PUBLIC_URL is not https://, so session
+// cookies are issued without the Secure flag even behind a TLS-terminating
+// proxy. Plain-HTTP LAN deployments remain fully supported; this only makes
+// the trade-off visible instead of silently downgrading the cookie.
+func insecureBindWarning(cfg config.Config) bool {
+	return !listenLoopback(cfg.ListenAddr) && !strings.HasPrefix(cfg.PublicURL, "https://")
+}
+
+// warnInsecureBind logs the RS-0029 warning once per process, on the first
+// served request.
+var warnInsecureBindOnce sync.Once
+
+func (s *Server) warnInsecureBind() {
+	if !insecureBindWarning(s.config) {
+		return
+	}
+	warnInsecureBindOnce.Do(func() {
+		if s.logger != nil {
+			s.logger.Warn("insecure bind: session cookies will not carry the Secure flag because the listen address is not loopback-only and REELSCAREY_PUBLIC_URL is not https://. Set REELSCAREY_PUBLIC_URL to the exact https:// origin behind a TLS reverse proxy, or keep the published port loopback-only.")
+		}
+	})
 }
 
 func (s *Server) cookie(w http.ResponseWriter, r *http.Request, token string, expires int64) {

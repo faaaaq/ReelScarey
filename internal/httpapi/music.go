@@ -686,7 +686,20 @@ func (s *Server) musicServer(w http.ResponseWriter, r *http.Request) {
 			s.musicError(w, err)
 			return
 		}
-		send(w, 200, status)
+		// legacy_token_configured (RS-0018) surfaces the legacy shared token —
+		// a full-rights god credential — so the administrator can discover it
+		// and delete it. TokenHint is populated only when the shared token
+		// exists in the secret store, so its presence is exactly that signal;
+		// the remaining fields mirror MusicServerStatus unchanged.
+		send(w, 200, map[string]any{
+			"enabled":                 status.Enabled,
+			"configured":              status.Configured,
+			"token_hint":              status.TokenHint,
+			"users":                   status.Users,
+			"revision":                status.Revision,
+			"updated_at":              status.UpdatedAt,
+			"legacy_token_configured": status.TokenHint != "",
+		})
 	case http.MethodPut:
 		var body struct {
 			Enabled  bool `json:"enabled"`

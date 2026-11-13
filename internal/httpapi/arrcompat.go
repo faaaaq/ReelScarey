@@ -171,7 +171,11 @@ func (s *Server) compatAuthorized(w http.ResponseWriter, r *http.Request, flavou
 		}
 		return true
 	}
-	if _, ok := r.Context().Value(sessionKey{}).(auth.Session); ok {
+	// Presence of a session in context is not authorization by itself
+	// (RS-0024): only an administrator session may inspect compatibility
+	// output. compatSecurity already filters to admin sessions, so this check
+	// is defense in depth against future call-site changes.
+	if session, ok := r.Context().Value(sessionKey{}).(auth.Session); ok && session.Role == "admin" {
 		return true
 	}
 	fail(w, 401, "authentication_required", "Provide a scoped API key.")
@@ -232,6 +236,12 @@ func qualityName(q int) string {
 	}
 }
 
+// compatRootFolders deliberately reports the real configured library paths.
+// RS-0022 flagged the absolute-path disclosure to scoped compat keys, but real
+// Sonarr/Radarr clients validate and display root-folder paths when connecting
+// and refuse synthetic paths, so the shape is kept and the disclosure is
+// documented in docs/SECURITY.md. Revisit only with evidence that no client
+// depends on the path values.
 func (s *Server) compatRootFolders(ctx context.Context, w http.ResponseWriter) {
 	prefs, err := s.settings.Get(ctx)
 	if err != nil {

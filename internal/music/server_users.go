@@ -77,16 +77,49 @@ type MusicServerUserInput struct {
 	ShareRole         *bool
 }
 
-// Anonymous marks an account that is not a named user: the legacy shared token
-// path or an unauthenticated request. The zero id never matches a real row,
-// because the table's primary key starts at 1.
-func (u MusicServerUser) Anonymous() bool { return u.ID == 0 }
+// musicServerLegacyTokenID is the sentinel row identity of the legacy shared
+// token account. It is negative, so it can never collide with a real row id
+// (the table's primary key starts at 1) and must never be sent to a query that
+// expects a music_server_users row.
+const musicServerLegacyTokenID = -1
 
-// has reports whether a role is granted. The legacy shared token (zero value)
-// and administrators are treated as fully privileged so an existing client that
-// has not been moved to a named account keeps working exactly as before.
+// LegacyMusicServerUser is the explicit sentinel identity the legacy shared
+// token authenticates as. It deliberately carries every role in plain fields
+// (including AdminRole) so the god credential is visible on any honest surface
+// that reports the account, instead of hiding behind an unnamed zero value.
+// The administrator removes it with DeleteMusicServerToken.
+func LegacyMusicServerUser() MusicServerUser {
+	return MusicServerUser{
+		ID:                musicServerLegacyTokenID,
+		ScrobblingEnabled: true,
+		AdminRole:         true,
+		SettingsRole:      true,
+		DownloadRole:      true,
+		UploadRole:        true,
+		PlaylistRole:      true,
+		CoverArtRole:      true,
+		ShareRole:         true,
+	}
+}
+
+// Anonymous marks an account that is not a named user: the legacy shared-token
+// sentinel or an identity that was never resolved (the zero value). The zero
+// id never matches a real row, because the table's primary key starts at 1.
+func (u MusicServerUser) Anonymous() bool { return u.ID <= 0 }
+
+// has reports whether a role is granted. A named account needs the explicit
+// role or the administrator override. The zero value — an identity that was
+// never resolved by authentication — fails closed: every Can*() is false, so a
+// handler that somehow skips authentication can never act with full rights
+// (defense in depth; previously the zero value was fully privileged). The
+// legacy shared token is represented by LegacyMusicServerUser (negative
+// sentinel id, explicit full roles), so its privileges come from its own
+// fields and existing clients keep working exactly as before.
 func (u MusicServerUser) has(role bool) bool {
-	return u.Anonymous() || u.AdminRole || role
+	if u.ID == 0 {
+		return false
+	}
+	return u.AdminRole || role
 }
 
 func (u MusicServerUser) CanDownload() bool { return u.has(u.DownloadRole) }
@@ -390,9 +423,10 @@ func (s *Service) DeleteMusicServerUser(ctx context.Context, id int64) error {
 }
 
 // AuthenticateMusicServer resolves a Subsonic request to a named account. ok
-// reports whether the credentials are valid; a zero-id user with ok true means
-// the legacy shared token authenticated (an unnamed account with full rights).
-// Both the plaintext p= form and the salted md5 t=/s= form are accepted.
+// reports whether the credentials are valid; the LegacyMusicServerUser
+// sentinel (negative id, full explicit roles) with ok true means the legacy
+// shared token authenticated. Both the plaintext p= form and the salted md5
+// t=/s= form are accepted.
 func (s *Service) AuthenticateMusicServer(ctx context.Context, username, password, token, salt string) (MusicServerUser, bool, error) {
 	username = strings.TrimSpace(username)
 	if username == "" || len(username) > 200 || s.secrets == nil {
@@ -426,7 +460,8 @@ func (s *Service) AuthenticateMusicServer(ctx context.Context, username, passwor
 	}
 	// No named account matched. Fall back to the shared token so a client that
 	// was configured before named accounts existed keeps working until the
-	// administrator removes it.
+	// administrator removes it. The fallback resolves to the explicit sentinel
+	// identity, never the zero value: an unresolved identity is unprivileged.
 	if !status.Configured {
 		return MusicServerUser{}, false, nil
 	}
@@ -435,14 +470,19 @@ func (s *Service) AuthenticateMusicServer(ctx context.Context, username, passwor
 		return MusicServerUser{}, false, err
 	}
 	if verifyMusicServerSecret(string(secret), true, password, token, salt) {
-		return MusicServerUser{}, true, nil
+		return LegacyMusicServerUser(), true, nil
 	}
 	return MusicServerUser{}, false, nil
 }
 
 // touchMusicServerUser records activity without writing on every request; a
-// sync-heavy client would otherwise hammer the row.
+// sync-heavy client would otherwise hammer the row. It is only ever called for
+// a resolved named row; the guard keeps the sentinel and any unresolved
+// identity from reaching a query that expects a real row id.
 func (s *Service) touchMusicServerUser(ctx context.Context, user MusicServerUser) {
+	if user.ID < 1 {
+		return
+	}
 	now := time.Now().Unix()
 	if now-user.LastUsedAt < 300 {
 		return

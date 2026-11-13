@@ -227,6 +227,21 @@ func TestMusicServerUserPasswordResetAndDelete(t *testing.T) {
 	}
 }
 
+// The zero value of MusicServerUser means "no resolved identity". It must fail
+// closed: every role check is false, so a handler that somehow skips
+// authentication can never act with full rights. The legacy shared token is a
+// separate, explicit sentinel account (see TestMusicServerLegacyTokenFallback),
+// deliberately not the zero value.
+func TestMusicServerZeroValueUnprivileged(t *testing.T) {
+	var user MusicServerUser
+	if !user.Anonymous() {
+		t.Fatal("the zero value must report Anonymous: it is not a named row")
+	}
+	if user.CanDownload() || user.CanUpload() || user.CanPlaylist() || user.CanCoverArt() || user.CanShare() || user.CanSettings() {
+		t.Fatalf("the zero value must be unprivileged: %+v", user)
+	}
+}
+
 func TestMusicServerLegacyTokenFallback(t *testing.T) {
 	ctx := context.Background()
 	service := newMusicServerUserService(t)
@@ -236,17 +251,23 @@ func TestMusicServerLegacyTokenFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Any username still works with the shared token, and resolves to the
-	// unnamed full-rights account so existing clients are never locked out.
+	// Any username still works with the shared token. Semantic change pinned
+	// here: the legacy identity is now an explicit sentinel account (negative
+	// id, full explicit roles) instead of the zero value, so "unset" and "the
+	// legacy shared token" can never be the same account and the sentinel
+	// surfaces the god credential honestly (AdminRole true).
 	user, ok, err := service.AuthenticateMusicServer(ctx, "anything", token, "", "")
 	if err != nil || !ok {
 		t.Fatalf("the legacy token should still authenticate: ok=%v err=%v", ok, err)
 	}
-	if !user.Anonymous() {
-		t.Fatalf("the legacy token must resolve to the unnamed account: %+v", user)
+	if !user.Anonymous() || user.ID != -1 {
+		t.Fatalf("the legacy token must resolve to the negative-id sentinel account: %+v", user)
+	}
+	if !user.AdminRole {
+		t.Fatalf("the legacy sentinel must report its god credential honestly: %+v", user)
 	}
 	if !user.CanDownload() || !user.CanUpload() || !user.CanShare() || !user.CanSettings() {
-		t.Fatalf("the unnamed account keeps full rights: %+v", user)
+		t.Fatalf("the legacy sentinel keeps full rights: %+v", user)
 	}
 
 	// A named account takes precedence over the shared token for its username.

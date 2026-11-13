@@ -33,6 +33,12 @@ const (
 	// root, so the Subsonic folder id is fixed.
 	subsonicFolderID   = 1
 	subsonicFolderName = "Music"
+
+	// RS-0023: paged client syncs must not be able to scan past a bounded
+	// offset. The getSongs offset is clamped against the catalog size, so the
+	// 1,000,000 cap only ever materializes as a bounded scan; getAlbumList2
+	// offsets feed SQL OFFSET directly and share the same bound.
+	subsonicAllSongsOffsetCap = 1000000
 )
 
 type subsonicError struct {
@@ -368,8 +374,12 @@ func withSubsonicUser(ctx context.Context, user music.MusicServerUser) context.C
 	return context.WithValue(ctx, subsonicUserKey{}, user)
 }
 
-// subsonicRequestUser returns the account that authenticated this request. The
-// zero value means the legacy shared token, which keeps full rights.
+// subsonicRequestUser returns the account that authenticated this request. A
+// missing context key yields the zero value, which is deliberately
+// unprivileged (every Can*() is false), so a handler that somehow runs outside
+// s.subsonic fails closed instead of silently acting with full rights. The
+// legacy shared token resolves to music.LegacyMusicServerUser, an explicit
+// sentinel with full roles, never to the zero value.
 func subsonicRequestUser(r *http.Request) music.MusicServerUser {
 	user, _ := r.Context().Value(subsonicUserKey{}).(music.MusicServerUser)
 	return user
@@ -481,7 +491,20 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.subsonicAvatar(w, r)
-	case "getscanstatus", "startscan":
+	case "getscanstatus":
+		// A harmless read that Subsonic clients routinely poll during sync; any
+		// authenticated account may see it.
+		s.subsonicScanStatus(w, r)
+	case "startscan":
+		// Starting a scan is a settings-level operation (the equivalent
+		// catalog-scan controls behind the session API are administrator-only),
+		// so it requires the settings role like every other privileged case
+		// above (RS-0018). The handler stays the honest no-op it already is:
+		// it reports the current status and never starts a real scan.
+		if !user.CanSettings() {
+			s.subsonicDenied(w, r)
+			return
+		}
 		s.subsonicScanStatus(w, r)
 	case "getplaylists":
 		if !user.CanPlaylist() {
@@ -904,6 +927,9 @@ func (s *Server) subsonicAlbumList(w http.ResponseWriter, r *http.Request, secon
 	if value, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && value > 0 {
 		offset = value
 	}
+	if offset > subsonicAllSongsOffsetCap {
+		offset = subsonicAllSongsOffsetCap
+	}
 	order := "alphabeticalByName"
 	switch r.URL.Query().Get("type") {
 	case "newest":
@@ -996,20 +1022,33 @@ func (s *Server) subsonicAllSongs(w http.ResponseWriter, r *http.Request) {
 	size := subsonicCount(r, "size", 500, 500)
 	offset := subsonicCount(r, "offset", 0, 1000000)
 	// An empty query turns into a match-all LIKE pattern, so the existing
-	// catalog search doubles as the full listing. Fetch size+offset rows and
-	// slice out the page.
-	songs, err := s.music.ServerSongs(r.Context(), "", size+offset)
+	// catalog search doubles as the full listing. The fetch bound is clamped
+	// against the catalog size so a paged client can never materialize
+	// size+offset rows beyond the catalog; an offset past the catalog end is
+	// an honest empty page for paged clients, not an error.
+	count, err := s.music.ServerSongCount(r.Context())
 	if err != nil {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "Could not read songs."))
 		return
 	}
-	if offset >= len(songs) {
-		songs = nil
-	} else {
-		songs = songs[offset:]
-		if len(songs) > size {
-			songs = songs[:size]
-		}
+	if offset >= count {
+		out := subsonicResponseFor(s.version)
+		out.Songs = &subsonicSongs{Songs: []subsonicSong{}}
+		writeSubsonic(w, r, out)
+		return
+	}
+	limit := size + offset
+	if limit > count {
+		limit = count
+	}
+	songs, err := s.music.ServerSongs(r.Context(), "", limit)
+	if err != nil {
+		writeSubsonic(w, r, subsonicFailure(s.version, 0, "Could not read songs."))
+		return
+	}
+	songs = songs[offset:]
+	if len(songs) > size {
+		songs = songs[:size]
 	}
 	out := subsonicResponseFor(s.version)
 	list := &subsonicSongs{Songs: []subsonicSong{}}
@@ -1122,14 +1161,16 @@ func (s *Server) subsonicUser(w http.ResponseWriter, r *http.Request) {
 	}
 	// Report the roles that actually govern this account. Scrobble requests
 	// are rejected explicitly (see the scrobble case: writes are not
-	// implemented), and the legacy shared token keeps the playback roles so
-	// existing clients never lose access.
+	// implemented), and the legacy shared token resolves to the sentinel
+	// account whose explicit full roles — including AdminRole — are reported
+	// honestly (NEW-E4), so existing clients never lose access and a client
+	// that gates admin UI on AdminRole sees the real state.
 	out.User = &subsonicUser{
 		Username:          username,
 		Email:             account.Email,
-		ScrobblingEnabled: account.Anonymous() || account.ScrobblingEnabled,
+		ScrobblingEnabled: account.ScrobblingEnabled,
 		AdminRole:         account.AdminRole,
-		SettingsRole:      account.SettingsRole,
+		SettingsRole:      account.CanSettings(),
 		DownloadRole:      account.CanDownload(),
 		UploadRole:        account.CanUpload(),
 		PlaylistRole:      account.CanPlaylist(),

@@ -18,10 +18,18 @@ Authentication uses a private setup code, Argon2id password hashes, bounded
 login throttling and revocable hashed sessions. Cookies are HttpOnly, Strict
 SameSite and Secure when HTTPS is configured. Authenticated mutations require
 same-origin checks and a separate CSRF token. Host validation limits browser
-rebinding. Use a TLS reverse proxy and the exact public URL for remote access;
-only the loopback published port should be exposed without it. Configured HTTPS
-adds HSTS for one day; the application does not terminate TLS itself. Forwarded
-headers are not trusted to select origins or authenticate users.
+rebinding: a loopback Host claim is only honored from a loopback connection,
+so a remote client cannot spoof `Host: localhost`. When the bind address
+accepts remote connections and the public URL is not `https://`, ReelScarey
+logs a one-time startup warning because session cookies then lack the Secure
+flag even behind a TLS-terminating proxy; plain-HTTP LAN deployments keep
+working. The unauthenticated session-status response discloses only whether
+setup is still open (`setup_required`); this small state disclosure is
+accepted as informational. Use a TLS reverse proxy and the exact public URL
+for remote access; only the loopback published port should be exposed without
+it. Configured HTTPS adds HSTS for one day; the application does not terminate
+TLS itself. Forwarded headers are not trusted to select origins or
+authenticate users.
 
 Credentials use AES-GCM with a separate local random key. Missing or mismatched
 keys fail closed. Backups intentionally contain the key alongside encrypted
@@ -34,12 +42,21 @@ They reach only the Sonarr/Radarr/Prowlarr compatibility prefixes, not the
 administrator API, and request-account sessions are rejected there. API keys are
 revocable, optionally expiring and shown once. A query-string `?apikey=` is
 accepted only for GET/HEAD compatibility reads; every mutation must send the
-`X-Api-Key` header, because a query key lands in proxy and access logs. Failed
+`X-Api-Key` header, because a query key lands in proxy and access logs. The
+root-folder compatibility read deliberately reports the real configured library
+folder paths (with a live existence check), because Sonarr/Radarr clients
+validate and display them when connecting; a scoped compatibility key therefore
+learns those absolute paths. Failed
 Subsonic `/rest/` sign-in attempts are throttled per source address like
-compatibility keys. Subsonic clients may still authenticate with the legacy
-cleartext `p=` parameter where the protocol requires it; deploy behind a TLS
-reverse proxy when such clients are used off-host, or prefer token (`t=`/`s=`)
-authentication. Whether two-factor authentication is enabled is not disclosed
+compatibility keys. A configured legacy shared music-server token is a
+full-privilege god credential: it outranks every named account and keeps
+working until the administrator deletes it, and the administrator settings
+report its presence as `legacy_token_configured`. Starting a catalog scan over
+Subsonic (`startScan`) requires the settings role; scan-status reads stay
+available to every authenticated account. Subsonic clients may still
+authenticate with the legacy cleartext `p=` parameter where the protocol
+requires it; deploy behind a TLS reverse proxy when such clients are used
+off-host, or prefer token (`t=`/`s=`) authentication. Whether two-factor authentication is enabled is not disclosed
 before authentication; the sign-in form asks for a code only after a
 credentials-correct attempt is refused. Notification and media-server secrets
 use the same secure store. A notification whose network result is

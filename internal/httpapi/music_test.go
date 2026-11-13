@@ -46,6 +46,7 @@ type fakeMusic struct {
 	serverAlbumDetail  music.AlbumDetails
 	serverAlbumSongs   []music.ServerSong
 	serverSongCount    int
+	serverStatus       *music.MusicServerStatus
 }
 
 func (f *fakeMusic) SearchArtists(context.Context, string, int) (music.SearchResults, error) {
@@ -165,6 +166,9 @@ func (f *fakeMusic) ServerArtistSongs(context.Context, int64, int) ([]music.Serv
 }
 func (f *fakeMusic) ServerSongCount(context.Context) (int, error) { return f.serverSongCount, f.err }
 func (f *fakeMusic) MusicServer(context.Context) (music.MusicServerStatus, error) {
+	if f.serverStatus != nil {
+		return *f.serverStatus, f.err
+	}
 	return music.MusicServerStatus{Enabled: false, Revision: 1}, f.err
 }
 func (f *fakeMusic) SaveMusicServer(_ context.Context, enabled bool, revision int) (music.MusicServerStatus, error) {
@@ -184,6 +188,12 @@ func (f *fakeMusic) AuthenticateMusicServer(_ context.Context, _ string, passwor
 		return music.MusicServerUser{}, false, nil
 	}
 	if password == "test-token" || (token != "" && salt != "") {
+		// A zero configured serverUser stands in for the legacy shared token,
+		// which the real service resolves to the explicit sentinel account
+		// with full roles (never the unprivileged zero value).
+		if f.serverUser.ID == 0 {
+			return music.LegacyMusicServerUser(), true, nil
+		}
 		return f.serverUser, true, nil
 	}
 	return music.MusicServerUser{}, false, nil
@@ -817,6 +827,25 @@ func TestMusicServerSettingsRoutes(t *testing.T) {
 	}
 	if out := request(handler, "DELETE", "/api/v1/library/music/server/token", "", session, true); out.Code != 200 {
 		t.Fatal("token delete", out.Code, out.Body.String())
+	}
+}
+
+// RS-0018: the administrator settings response must surface whether the legacy
+// shared token (the full-rights god credential) is still configured, so an
+// admin can discover and delete it. Additive field only; the frontend is
+// untouched.
+func TestMusicServerStatusFlagsLegacyToken(t *testing.T) {
+	withToken := music.MusicServerStatus{Enabled: true, Configured: true, TokenHint: "abcd", Revision: 1}
+	handler, session := musicFixture(t, &fakeMusic{serverStatus: &withToken})
+	out := request(handler, "GET", "/api/v1/library/music/server", "", session, false)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"legacy_token_configured":true`) {
+		t.Fatal("legacy token must be surfaced to the administrator", out.Code, out.Body.String())
+	}
+
+	handler, session = musicFixture(t, &fakeMusic{})
+	out = request(handler, "GET", "/api/v1/library/music/server", "", session, false)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"legacy_token_configured":false`) {
+		t.Fatal("absent legacy token must be reported honestly", out.Code, out.Body.String())
 	}
 }
 

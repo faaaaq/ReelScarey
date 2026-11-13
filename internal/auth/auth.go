@@ -35,6 +35,13 @@ var (
 
 const SessionLifetime = 24 * time.Hour
 
+// setupTokenMaxAge bounds how long an unexercised setup code stays valid.
+// The token file format is unchanged (plain secret bytes); the file's
+// modification time is the creation time, so a code older than this is
+// rejected and its file deleted. Restarting recreates a fresh code, which
+// stays the documented recovery (RS-0021).
+const setupTokenMaxAge = 7 * 24 * time.Hour
+
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{3,40}$`)
 
 type Session struct {
@@ -158,6 +165,15 @@ func (s *Service) setup(ctx context.Context, username, password, code string, co
 		return Session{}, err
 	}
 	expected := base64.RawURLEncoding.EncodeToString(secret)
+	// A setup code must not stay valid forever while an instance runs
+	// unconfigured (RS-0021). Judge the age from the file's modification time
+	// — the file format deliberately stays plain secret bytes — and reject an
+	// expired code with the same invalid_setup_token failure, deleting the
+	// stale file so a restart issues a fresh one.
+	if info, statErr := os.Stat(s.setupPath); statErr == nil && time.Since(info.ModTime()) > setupTokenMaxAge {
+		_ = s.removeSetupToken()
+		return Session{}, ErrSetupToken
+	}
 	if subtle.ConstantTimeCompare([]byte(expected), []byte(code)) != 1 {
 		return Session{}, ErrSetupToken
 	}
