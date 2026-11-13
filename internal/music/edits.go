@@ -2,6 +2,7 @@ package music
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -355,16 +356,41 @@ func (s *Service) ApplyEditsWith(ctx context.Context, fileIDs []int64, planHash 
 	if err := tx.Commit(); err != nil {
 		return EditJob{}, err
 	}
-	go s.runEditJob(context.WithoutCancel(ctx), jobID)
+	go s.runEditJob(ctx, jobID)
 	return s.EditJob(ctx, jobID)
 }
 
+// editLeaseOwner returns a random lease identity for one edit-job claimant.
+func editLeaseOwner() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("edit-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
+}
+
 func (s *Service) runEditJob(ctx context.Context, jobID int64) {
-	defer organization.ReadMedia()()
+	// The context stays derived from the caller (the apply request), so process
+	// shutdown and request cancellation stop this goroutine instead of letting
+	// it linger detached from the process lifecycle.
 	s.fileMu.Lock()
 	defer s.fileMu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
+	// Claim a 60s lease on the job row so a stale claimant can never finish a
+	// job a new worker has taken over, and a cancelled job is detectably free.
+	owner := editLeaseOwner()
+	now := time.Now().Unix()
+	claimed, err := s.store.db.ExecContext(ctx, `UPDATE music_edit_jobs SET lease_owner=?,lease_until=? WHERE id=? AND state='running' AND lease_until<?`, owner, now+60, jobID, now)
+	if err != nil {
+		return
+	}
+	if n, _ := claimed.RowsAffected(); n != 1 {
+		return
+	}
+	defer func() {
+		_, _ = s.store.db.ExecContext(context.Background(), `UPDATE music_edit_jobs SET lease_owner='',lease_until=0 WHERE id=? AND lease_owner=?`, jobID, owner)
+	}()
 	type item struct {
 		id, musicFileID int64
 		source, dest    string
@@ -385,20 +411,51 @@ func (s *Service) runEditJob(ctx context.Context, jobID int64) {
 		s.finishEditJob(ctx, jobID, "failed", err.Error())
 		return
 	}
+	renewLease := func() bool {
+		result, e := s.store.db.ExecContext(context.Background(), `UPDATE music_edit_jobs SET lease_until=? WHERE id=? AND lease_owner=?`, time.Now().Unix()+60, jobID, owner)
+		if e != nil {
+			return false
+		}
+		n, _ := result.RowsAffected()
+		return n == 1
+	}
 	for _, it := range items {
-		if err := s.applyEdit(ctx, jobID, it.id, it.musicFileID, it.source, it.dest, it.action, it.tags); err != nil {
+		if ctx.Err() != nil {
+			// A cancelled job is fenced through its still-owned lease so the
+			// terminal write lands and the files stay retryable.
+			s.finishEditJob(context.Background(), jobID, "failed", "The edit was cancelled. Review the source, output and retained files, then apply the plan again.")
+			return
+		}
+		// Hold the shared media read lock only around each file's work, not the
+		// whole job, so a long edit never blocks scans or imports for its full
+		// duration.
+		release := organization.ReadMedia()
+		err := s.applyEdit(ctx, jobID, it.id, it.musicFileID, it.source, it.dest, it.action, it.tags)
+		release()
+		if err != nil {
 			_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_edit_files SET state='failed',error=?,updated_at=unixepoch() WHERE id=?`, err.Error(), it.id)
-			s.finishEditJob(ctx, jobID, "failed", err.Error())
+			s.finishEditJob(context.Background(), jobID, "failed", err.Error())
 			return
 		}
 		_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_edit_files SET state='completed',updated_at=unixepoch() WHERE id=?`, it.id)
+		if !renewLease() {
+			s.finishEditJob(context.Background(), jobID, "failed", "The edit lease was lost. Review the files, then apply the plan again.")
+			return
+		}
 	}
 	// A completed edit whose original copy could not be removed leaves a
 	// duplicate on disk. Keep the job completed so rollback stays available, but
 	// surface the leftover file in the durable job error instead of only on the
 	// file row.
 	var leftovers int
-	if err := s.store.db.QueryRowContext(context.WithoutCancel(ctx), `SELECT COUNT(*) FROM music_edit_files WHERE job_id=? AND state='completed' AND error<>''`, jobID).Scan(&leftovers); err == nil && leftovers > 0 {
+	if err := s.store.db.QueryRowContext(context.WithoutCancel(ctx), `SELECT COUNT(*) FROM music_edit_files WHERE job_id=? AND state='completed' AND error<>''`, jobID).Scan(&leftovers); err != nil {
+		// Fail loud: a leftover-count query error must never silently finalize
+		// the job as a clean completion. Report it as a leftover condition so
+		// the duplicate check stays honest.
+		s.finishEditJob(ctx, jobID, "completed", "The leftover-file check could not be completed: "+err.Error()+" Duplicates may remain on disk; review the file list before rolling back.")
+		return
+	}
+	if leftovers > 0 {
 		s.finishEditJob(ctx, jobID, "completed", fmt.Sprintf("%d original file(s) could not be removed; duplicates remain on disk. Review the file list before rolling back.", leftovers))
 		return
 	}

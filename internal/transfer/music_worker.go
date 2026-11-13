@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,6 +52,19 @@ func (s *Service) musicImporter() MusicImporter {
 // errMusicSettled means processMusic already wrote a terminal or review state
 // (completed or blocked) and the generic success bookkeeping must not clear it.
 var errMusicSettled = errors.New("music download settled")
+
+// recordMusicEvent appends one deduplicated activity event for a settled music
+// download. It uses kind='title' keyed on the album like other catalog-side
+// events (media_items has no download row for music), and the NOT EXISTS guard
+// makes retries and restart reconciliation idempotent, so a repeated tick
+// never duplicates the event.
+func (s *Service) recordMusicEvent(ctx context.Context, j MusicJob, state string) {
+	album := strconv.FormatInt(j.AlbumID, 10)
+	_, _ = s.db.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state)
+SELECT unixepoch(),'title',?,?,?
+WHERE NOT EXISTS (SELECT 1 FROM activity_events WHERE kind='title' AND object_id=? AND state=?)`,
+		album, j.Title, state, album, state)
+}
 
 // RunMusic is the music reconciliation loop. It is a second claimant over one
 // shared worker goroutine, not a second daemon: Run must start exactly one.
@@ -140,6 +154,9 @@ func (s *Service) ProcessMusic(ctx context.Context) (bool, error) {
 			err = s.ownedMusic(finish, j, `UPDATE music_downloads SET error=?,attempts=?,next_run=?,updated_at=unixepoch()`, musicErrorText(p.Message), attempts, next)
 		} else {
 			err = s.ownedMusic(finish, j, `UPDATE music_downloads SET state=?,error=?,attempts=?,next_run=?,updated_at=unixepoch()`, state, musicErrorText(p.Message), attempts, next)
+			if state == "blocked" || state == "failed" {
+				s.recordMusicEvent(finish, j, "music download failed")
+			}
 		}
 	} else {
 		err = s.ownedMusic(finish, j, `UPDATE music_downloads SET attempts=0,error='',next_run=unixepoch()+5,updated_at=unixepoch()`)
@@ -197,6 +214,7 @@ func (s *Service) processMusic(ctx context.Context, j MusicJob) error {
 			if e = s.ownedMusic(ctx, j, `UPDATE music_downloads SET state='completed',progress=1,error='',updated_at=unixepoch()`); e != nil {
 				return e
 			}
+			s.recordMusicEvent(ctx, j, "music download completed")
 			return errMusicSettled
 		case "failed":
 			message := job.Error
@@ -206,6 +224,7 @@ func (s *Service) processMusic(ctx context.Context, j MusicJob) error {
 			if e = s.ownedMusic(ctx, j, `UPDATE music_downloads SET state='blocked',error=?,updated_at=unixepoch()`, musicErrorText(message)); e != nil {
 				return e
 			}
+			s.recordMusicEvent(ctx, j, "music download failed")
 			return errMusicSettled
 		}
 		return nil

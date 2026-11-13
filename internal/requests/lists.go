@@ -106,7 +106,13 @@ func (s *Lists) Add(ctx context.Context, account int64, provider, owner, id, key
 	}
 	result, err := tx.ExecContext(ctx, `INSERT INTO request_lists(account_id,provider,owner,list_id,enabled) VALUES(?,?,?,?,1)`, account, provider, owner, id)
 	if err != nil {
-		return ImportList{}, ErrList
+		// A UNIQUE conflict means this exact list already exists for the
+		// account; anything else is a genuine database failure and is
+		// reported unchanged instead of being masked as bad input.
+		if strings.Contains(err.Error(), "UNIQUE constraint") {
+			return ImportList{}, ErrList
+		}
+		return ImportList{}, err
 	}
 	rowID, err := result.LastInsertId()
 	if err != nil {

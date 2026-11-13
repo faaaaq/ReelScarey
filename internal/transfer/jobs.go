@@ -150,13 +150,28 @@ func (s *Service) claim(ctx context.Context) (Job, error) {
 	}
 	owner := ID()
 	now := time.Now().Unix()
-	var id string
-	e := s.db.QueryRowContext(ctx, `UPDATE downloads SET lease_owner=?,lease_until=? WHERE id=(SELECT id FROM downloads WHERE state IN ('queued','submitting','downloading','importing') AND next_run<=? AND lease_until<? ORDER BY next_run,created_at,id LIMIT 1) RETURNING id`, owner, now+60, now, now).Scan(&id)
+	// One statement claims the lease and returns the whole job row, so no
+	// separate re-read races the claim. SQLite RETURNING cannot reference a
+	// joined table, so the media title is supplied by a correlated subquery
+	// matching jobColumns' scan order.
+	j, e := scanJob(s.db.QueryRowContext(ctx, `UPDATE downloads SET lease_owner=?,lease_until=? WHERE id=(SELECT id FROM downloads WHERE state IN ('queued','submitting','downloading','importing') AND next_run<=? AND lease_until<? ORDER BY next_run,created_at,id LIMIT 1) RETURNING `+claimReturningColumns, owner, now+60, now, now))
 	if e != nil {
 		return Job{}, e
 	}
-	return s.Job(ctx, id)
+	j.owner = owner
+	if j.Kind == "series" {
+		if j.Targets, e = s.targets(ctx, j.ID); e != nil {
+			return Job{}, e
+		}
+	}
+	return j, nil
 }
+
+// claimReturningColumns mirrors jobColumns for the claim UPDATE's RETURNING:
+// every downloads column loses its d. prefix and the joined media_items title
+// becomes a correlated subquery on the updated row's movie_id.
+const claimReturningColumns = `kind,id,movie_id,(SELECT title FROM media_items WHERE media_items.id=movie_id),title,info_hash,state,progress,total_bytes,downloaded_bytes,client_state,selected_file,choices,attempts,error_code,error_message,created_at,updated_at,lease_owner,payload,client_url,save_path,submission_attempted,submitted_at,protocol,client_id,client_files,client_storage,organization_snapshot,anime_search_snapshot,anime_order_snapshot,client_key,client_kind,client_label,client_download_root,client_local_folder,movie_version,extract_path`
+
 func (s *Service) Retry(ctx context.Context, id string) error {
 	if err := s.ensureReplacementMutation(ctx, id); err != nil {
 		return err

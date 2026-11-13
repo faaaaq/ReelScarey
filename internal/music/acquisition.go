@@ -351,14 +351,19 @@ func (s *Service) ProcessAcquisition(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	if err := s.acquireTrack(ctx, track, job); err != nil {
-		_ = s.setAcquisitionTrackState(ctx, trackID, "failed", err.Error())
-		_ = s.refreshAcquisitionJob(ctx, job.ID)
+		if stateErr := s.setAcquisitionTrackState(ctx, trackID, "failed", err.Error()); stateErr != nil {
+			slog.Default().Error("music acquisition track state write failed", "track_id", trackID, "error", stateErr)
+		}
+		if refreshErr := s.refreshAcquisitionJob(ctx, job.ID); refreshErr != nil {
+			slog.Default().Error("music acquisition job refresh failed", "job_id", job.ID, "error", refreshErr)
+		}
 		return true, nil
 	}
-	_ = s.refreshAcquisitionJob(ctx, job.ID)
+	if err := s.refreshAcquisitionJob(ctx, job.ID); err != nil {
+		slog.Default().Error("music acquisition job refresh failed", "job_id", job.ID, "error", err)
+	}
 	return true, nil
 }
-
 func (s *Service) acquisitionTrack(ctx context.Context, trackID int64) (AcquisitionTrack, AcquisitionJob, error) {
 	job, err := s.acquisitionJobForTrack(ctx, trackID)
 	if err != nil {
@@ -640,6 +645,34 @@ func (s *Service) setAcquisitionTrackState(ctx context.Context, id int64, state,
 }
 
 func (s *Service) reconcileAcquisitions(ctx context.Context) {
+	// Rescue tracks whose download vanished: a 'downloading' row untouched for
+	// two hours is never going to finish, so it fails honestly instead of
+	// blocking the worker queue forever.
+	stale, err := s.store.db.QueryContext(ctx, `SELECT id,job_id FROM music_acquisition_tracks WHERE state='downloading' AND updated_at < unixepoch()-7200`)
+	if err == nil {
+		type stuckTrack struct {
+			id, jobID int64
+		}
+		stuck := []stuckTrack{}
+		for stale.Next() {
+			var item stuckTrack
+			if err := stale.Scan(&item.id, &item.jobID); err != nil {
+				break
+			}
+			stuck = append(stuck, item)
+		}
+		staleErr := stale.Err()
+		stale.Close()
+		if staleErr != nil {
+			return
+		}
+		for _, item := range stuck {
+			if err := s.setAcquisitionTrackState(ctx, item.id, "failed", "The download did not finish. Try this track again."); err != nil {
+				return
+			}
+			_ = s.refreshAcquisitionJob(ctx, item.jobID)
+		}
+	}
 	rows, err := s.store.db.QueryContext(ctx, `SELECT t.id,t.job_id,t.import_job_id,j.state,j.error FROM music_acquisition_tracks t JOIN music_import_jobs j ON j.id=t.import_job_id WHERE t.state='importing'`)
 	if err != nil {
 		return

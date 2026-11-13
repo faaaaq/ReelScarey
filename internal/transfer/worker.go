@@ -7,6 +7,8 @@ import (
 	"errors"
 	"log/slog"
 	"math"
+	"math/rand"
+	"runtime/debug"
 	"time"
 )
 
@@ -34,7 +36,7 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 		logger.Warn("committed import staging cleanup deferred")
 	}
 	for ctx.Err() == nil {
-		processed, err := s.ProcessNext(ctx)
+		processed, err := s.safeProcessNext(ctx, logger)
 		if err != nil && ctx.Err() == nil {
 			logger.Error("download worker failed", "operation", "reconcile", "error", err)
 		}
@@ -50,6 +52,18 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 		}
 	}
 }
+func (s *Service) safeProcessNext(ctx context.Context, logger *slog.Logger) (processed bool, err error) {
+	// A worker panic must never kill the whole process. Convert it into a
+	// logged error and let the loop resume with its normal delay.
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("download worker panic", "operation", "reconcile", "panic", r, "stack", string(debug.Stack()))
+			processed, err = false, nil
+		}
+	}()
+	return s.ProcessNext(ctx)
+}
+
 func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 	j, err := s.claim(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -62,6 +76,13 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		defer func() {
+			// A heartbeat panic must not leak the ticker goroutine.
+			if r := recover(); r != nil {
+				slog.Error("download worker heartbeat panic", "panic", r, "stack", string(debug.Stack()))
+				cancel()
+			}
+		}()
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -99,6 +120,16 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 			delay := int64(5 * math.Pow(2, float64(attempts-1)))
 			if delay > 300 {
 				delay = 300
+			}
+			// Small jitter keeps simultaneous claimants from retrying in lockstep.
+			delay = int64(float64(delay) * (1 + 0.2*rand.Float64()))
+			if delay > 300 {
+				delay = 300
+			}
+			// A provider-supplied Retry-After (e.g. HTTP 429) can outlast the
+			// computed backoff; honor the later of the two.
+			if p.RetryAt > next+delay {
+				delay = p.RetryAt - next
 			}
 			next += delay
 		} else if p.Temporary {

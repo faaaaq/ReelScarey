@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -214,6 +215,13 @@ func (s *Service) cleanScanRoot(root string) (string, error) {
 }
 
 func (s *Service) runScan(ctx context.Context, id int64, roots []string, full bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Default().Error("music scan panicked", "scan_id", id, "panic", r)
+			_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_scans SET state='failed',phase='failed',current_path='',message=?,error=?,updated_at=unixepoch() WHERE id=?`,
+				"The scan stopped unexpectedly. Run it again.", "The scan stopped unexpectedly. Run it again.", id)
+		}
+	}()
 	defer organization.ReadMedia()()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
@@ -330,7 +338,7 @@ func (s *Service) countScanEligible(ctx context.Context, roots []string) (int, e
 				return err
 			}
 			if entry.IsDir() {
-				if entry.Name() == ".reelscarey" {
+				if strings.HasPrefix(entry.Name(), ".") {
 					return filepath.SkipDir
 				}
 				rel, e := filepath.Rel(absRoot, name)
@@ -340,6 +348,9 @@ func (s *Service) countScanEligible(ctx context.Context, roots []string) (int, e
 				return nil
 			}
 			if entry.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
+			if strings.HasPrefix(entry.Name(), ".") {
 				return nil
 			}
 			if !audioExtensions[strings.ToLower(filepath.Ext(name))] {
@@ -448,7 +459,7 @@ func (s *Service) walkScan(ctx context.Context, id int64, root string, progress 
 			return err
 		}
 		if entry.IsDir() {
-			if entry.Name() == ".reelscarey" {
+			if strings.HasPrefix(entry.Name(), ".") {
 				return filepath.SkipDir
 			}
 			rel, e := filepath.Rel(absRoot, name)
@@ -458,6 +469,9 @@ func (s *Service) walkScan(ctx context.Context, id int64, root string, progress 
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if strings.HasPrefix(entry.Name(), ".") {
 			return nil
 		}
 		if !audioExtensions[strings.ToLower(filepath.Ext(name))] {

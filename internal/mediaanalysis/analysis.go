@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/faaaaq/ReelScarey/internal/organization"
@@ -251,6 +252,11 @@ func (w *Worker) analyze(ctx context.Context, relative string) (Analysis, error)
 func safeRelative(relative string) (string, error) {
 	if relative == "" || strings.ContainsAny(relative, "\\:\x00\r\n") {
 		return "", ErrUnsafePath
+	}
+	for _, r := range relative {
+		if unicode.IsControl(r) {
+			return "", ErrUnsafePath
+		}
 	}
 	clean := path.Clean(relative)
 	if clean != relative || clean == "." || !fs.ValidPath(clean) {

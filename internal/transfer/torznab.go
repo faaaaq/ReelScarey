@@ -84,7 +84,12 @@ func (t *Torznab) get(ctx context.Context, c IndexerConfig, target *url.URL, max
 	if resp.StatusCode == 401 || resp.StatusCode == 403 {
 		return nil, problem("indexer_auth", "The indexer rejected its API key.")
 	}
-	if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+	if resp.StatusCode == 429 {
+		e := &Error{Code: "upstream_unavailable", Message: "The indexer is busy or unavailable. Try again later.", Temporary: true}
+		e.RetryAt = retryAfterSeconds(resp.Header.Get("Retry-After"))
+		return nil, e
+	}
+	if resp.StatusCode >= 500 {
 		return nil, unavailable("The indexer is busy or unavailable. Try again later.")
 	}
 	if resp.StatusCode != 200 {

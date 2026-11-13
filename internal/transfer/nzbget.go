@@ -44,6 +44,11 @@ func (n *NZBGet) rpc(ctx context.Context, c ClientConfig, method string, params 
 	if response.StatusCode == 401 || response.StatusCode == 403 {
 		return problem("client_auth", "NZBGet rejected the username/password or access level.")
 	}
+	if response.StatusCode == http.StatusTooManyRequests {
+		e := &Error{Code: "upstream_unavailable", Message: "NZBGet is limiting requests. Try again later.", Temporary: true}
+		e.RetryAt = retryAfterSeconds(response.Header.Get("Retry-After"))
+		return e
+	}
 	if response.StatusCode != 200 {
 		return unavailable("NZBGet did not return a successful response. Redirects are not followed.")
 	}

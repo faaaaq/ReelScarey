@@ -342,7 +342,16 @@ func audioFiles(root string) ([]string, error) {
 		if walkErr != nil {
 			return nil
 		}
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+		if entry.IsDir() {
+			if strings.HasPrefix(entry.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if strings.HasPrefix(entry.Name(), ".") {
 			return nil
 		}
 		if !audioExtensions[strings.ToLower(filepath.Ext(name))] {

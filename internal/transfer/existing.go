@@ -173,6 +173,39 @@ func scanRootFor(scan LibraryScan, relative string) (string, bool) {
 func (s *Service) StartLibraryScan(ctx context.Context, kind string, collection ...string) (LibraryScan, error) {
 	return s.startLibraryScan(ctx, kind, false, "", collection...)
 }
+
+// overlappingScanRoots reports whether any library scan still queued or
+// scanning covers one of the requested roots (or sits inside one).
+func (s *Service) overlappingScanRoots(ctx context.Context, roots []string) (bool, error) {
+	rows, e := s.db.QueryContext(ctx, `SELECT roots FROM library_scans WHERE state IN ('queued','scanning')`)
+	if e != nil {
+		return false, e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw string
+		if e = rows.Scan(&raw); e != nil {
+			return false, e
+		}
+		var existing []string
+		if json.Unmarshal([]byte(raw), &existing) != nil {
+			continue
+		}
+		for _, old := range existing {
+			old = strings.TrimSuffix(old, "/")
+			if old == "" {
+				continue
+			}
+			for _, next := range roots {
+				next = strings.TrimSuffix(next, "/")
+				if next == old || strings.HasPrefix(next+"/", old+"/") || strings.HasPrefix(old+"/", next+"/") {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, rows.Err()
+}
 func (s *Service) StartLibraryScanWithMatching(ctx context.Context, kind, collection string, automatic bool) (LibraryScan, error) {
 	return s.startLibraryScan(ctx, kind, automatic, "", collection)
 }
@@ -260,6 +293,16 @@ func (s *Service) startLibraryScan(ctx context.Context, kind string, automatic b
 			return LibraryScan{}, problem("storage_unavailable", "A selected library root cannot be read.")
 		}
 		dir.Close()
+	}
+	// Never start a second scan whose roots overlap a scan still queued or
+	// scanning: two discovery walks over the same folders would race over the
+	// same files and reservations.
+	busy, e := s.overlappingScanRoots(ctx, roots)
+	if e != nil {
+		return LibraryScan{}, e
+	}
+	if busy {
+		return LibraryScan{}, problem("scan_busy", "An existing scan over these folders is running. Wait for it to finish or cancel it before starting another scan.")
 	}
 	resolved, e := filepath.EvalSymlinks(s.cfg.MediaDir)
 	if e != nil {

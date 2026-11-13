@@ -687,6 +687,12 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,next_run,indexer_name,protocol,organization_snapshot,movie_version,indexer_public) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, save, now, now, nextRun, v.IndexerName, protocol, string(namingJSON), version, indexerPublic); e != nil {
+		if strings.Contains(e.Error(), "UNIQUE constraint failed") && strings.Contains(e.Error(), "downloads") {
+			// A UNIQUE index on release_id/info_hash means another job already
+			// tracks this release. Translate the raw constraint failure into
+			// the friendly duplicate problem instead of a 500.
+			return Job{}, false, problem("duplicate_release", "This release is already queued or downloading. Check Activity before adding it again.")
+		}
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE downloads SET client_key=?,client_kind=?,client_label=?,client_download_root=?,client_local_folder=? WHERE id=?`, client.profileKey, client.kind, client.label, client.DownloadPath, client.LocalFolder, id); e != nil {

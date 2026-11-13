@@ -154,12 +154,10 @@ func TestExistingMovieDiscoveryReviewedRegistrationAndRestart(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	other, e := f.s.StartLibraryScan(ctx, "movie")
-	if e != nil {
-		t.Fatal("additional scan was not queued", e)
-	}
-	if e = f.s.CancelLibraryScan(ctx, other.ID); e != nil {
-		t.Fatal(e)
+	// A queued scan over the same roots fences a duplicate scan until it is
+	// cancelled or finishes.
+	if other, e := f.s.StartLibraryScan(ctx, "movie"); e == nil {
+		t.Fatal("overlapping scan was not refused", other)
 	}
 	// Persist discovery work before reopening, without using a client/provider.
 	if _, e = f.s.ProcessLibraryNext(ctx); e != nil {

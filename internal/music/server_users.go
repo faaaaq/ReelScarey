@@ -9,6 +9,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"modernc.org/sqlite"
 )
 
 // musicServerUserPasswordPurpose is the AES-GCM associated-data tag used when
@@ -228,6 +230,11 @@ func (s *Service) CreateMusicServerUser(ctx context.Context, input MusicServerUs
 		boolInt(roleDefault(input.ShareRole, false)),
 		now, now)
 	if err != nil {
+		// A concurrent creation can win the COLLATE NOCASE UNIQUE(username)
+		// race after the taken check; report the typed duplicate error.
+		if isMusicUsernameUniqueConflict(err) {
+			return MusicServerUser{}, "", ErrMusicServerUserExists
+		}
 		return MusicServerUser{}, "", err
 	}
 	id, err := result.LastInsertId()
@@ -242,6 +249,22 @@ func (s *Service) CreateMusicServerUser(ctx context.Context, input MusicServerUs
 		return user, password, nil
 	}
 	return user, "", nil
+}
+
+// isMusicUsernameUniqueConflict reports whether err is the driver's UNIQUE
+// constraint failure on music_server_users.username. The taken check usually
+// catches duplicates, but a concurrent insert can win the race; callers map
+// this to ErrMusicServerUserExists instead of leaking a raw driver error.
+func isMusicUsernameUniqueConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	const column = "UNIQUE constraint failed: music_server_users.username"
+	var serr *sqlite.Error
+	if errors.As(err, &serr) && strings.Contains(serr.Error(), column) {
+		return true
+	}
+	return strings.Contains(err.Error(), column)
 }
 
 // UpdateMusicServerUser edits an existing account. Omitted role fields keep

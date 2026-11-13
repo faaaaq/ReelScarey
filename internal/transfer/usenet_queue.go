@@ -407,20 +407,49 @@ func (s *Service) activeUsenetJobs(ctx context.Context, ids []string) (bool, err
 // AddManualNZB accepts only a bounded uploaded NZB. It uses the same dedicated
 // category and unique job-name rule as tracked downloads, but it is not linked
 // to a library job and is never imported automatically.
+//
+// Submission is idempotent by content: the NZB checksum is claimed in a fenced
+// transaction before the client submission, so a repeated upload of the same
+// NZB returns the friendly duplicate problem instead of enqueueing a second
+// identical job. A failed submission releases the claim so a retry stays
+// possible, and stale claims older than a day are purged so a re-upload after
+// the queue job has run its course is not blocked forever.
 func (s *Service) AddManualNZB(ctx context.Context, nzb []byte) (string, error) {
-	if _, e := NZBIdentity(nzb); e != nil {
+	identity, e := NZBIdentity(nzb)
+	if e != nil {
 		return "", e
 	}
 	c, e := s.builtinUsenetClient(ctx)
 	if e != nil {
 		return "", e
 	}
-	suffix, e := randomHex(8)
+	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return "", e
 	}
-	id, e := s.sab.Add(ctx, c, "reelscarey-manual-"+suffix, nzb)
+	defer tx.Rollback()
+	if _, e = tx.ExecContext(ctx, `DELETE FROM usenet_manual_nzbs WHERE created_at<unixepoch()-86400`); e != nil {
+		return "", e
+	}
+	result, e := tx.ExecContext(ctx, `INSERT INTO usenet_manual_nzbs(nzb_identity,created_at) VALUES(?,unixepoch()) ON CONFLICT(nzb_identity) DO NOTHING`, identity)
 	if e != nil {
+		return "", e
+	}
+	claimed, e := result.RowsAffected()
+	if e != nil {
+		return "", e
+	}
+	if claimed != 1 {
+		return "", problem("duplicate_nzb", "This NZB was already submitted recently and may still be in the built-in Usenet client's queue. Check the Usenet page before submitting it again.")
+	}
+	if e = tx.Commit(); e != nil {
+		return "", e
+	}
+	id, e := s.sab.Add(ctx, c, "reelscarey-manual-"+identity, nzb)
+	if e != nil {
+		// The submission was not accepted; release the identity claim so an
+		// explicit retry can submit again.
+		_, _ = s.db.ExecContext(context.WithoutCancel(ctx), `DELETE FROM usenet_manual_nzbs WHERE nzb_identity=?`, identity)
 		return "", e
 	}
 	return id, nil

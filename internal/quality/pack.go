@@ -64,5 +64,12 @@ func identifyPack(title string, t Target) (string, bool) {
 			return title, false
 		}
 	}
-	return strings.TrimSpace(norm[idx+len(base):]), true
+	label := strings.TrimSpace(norm[idx+len(base):])
+	// The same 180-character bound mapped_anime.go applies to provider-facing
+	// titles caps the extracted pack label so oversized garbage never becomes
+	// a quality rule input.
+	if len(label) > 180 {
+		return title, false
+	}
+	return label, true
 }

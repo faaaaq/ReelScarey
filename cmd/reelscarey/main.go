@@ -144,7 +144,9 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	musicService.SetDownloadsDir(cfg.DownloadsDir)
 	musicService.SetArtworkDir(filepath.Join(cfg.ConfigDir, "artwork"))
 	musicService.SetSecrets(secretStore)
-	if err := musicService.LoadMusicBrainzBase(context.Background()); err != nil {
+	musicBrainzCtx, musicBrainzCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer musicBrainzCancel()
+	if err := musicService.LoadMusicBrainzBase(musicBrainzCtx); err != nil {
 		return false, err
 	}
 	if err := musicService.RecoverScans(ctx); err != nil {

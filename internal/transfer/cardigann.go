@@ -186,8 +186,15 @@ func (c *Cardigann) Search(ctx context.Context, config IndexerConfig, query stri
 		return nil, unavailable("The Cardigann indexer could not be reached.")
 	}
 	defer response.Body.Close()
-	if response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusTooManyRequests {
+	if response.StatusCode == http.StatusForbidden {
 		return nil, problem("indexer_refused", "The Cardigann indexer refused the request. Check the session cookie, user agent and rate limit.")
+	}
+	if response.StatusCode == http.StatusTooManyRequests {
+		// A rate limit is temporary, not a permanent refusal. Honor the
+		// provider's Retry-After hint so the worker waits instead of hammering.
+		e := &Error{Code: "upstream_unavailable", Message: "The Cardigann indexer is limiting requests. Try again later.", Temporary: true}
+		e.RetryAt = retryAfterSeconds(response.Header.Get("Retry-After"))
+		return nil, e
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, unavailable(fmt.Sprintf("The Cardigann indexer returned HTTP %d.", response.StatusCode))

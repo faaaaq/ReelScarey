@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"net/http"
 	"sort"
 	"time"
@@ -73,7 +75,10 @@ func (s *Server) bulkMatchSuggestions(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				var mediaID int64
-				_ = s.db.QueryRowContext(ctx, `SELECT id FROM media_items WHERE kind=? AND tmdb_id=?`, scan.Kind, movie.TMDbID).Scan(&mediaID)
+				if err := s.db.QueryRowContext(ctx, `SELECT id FROM media_items WHERE kind=? AND tmdb_id=?`, scan.Kind, movie.TMDbID).Scan(&mediaID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+					fail(w, 500, "internal_error", "Provider suggestion lookup failed.")
+					return
+				}
 				v.Candidates = append(v.Candidates, transfer.MatchCandidate{MediaID: mediaID, TMDbID: movie.TMDbID, Title: movie.Title, Year: movie.Year, Source: "tmdb", Score: score, Reasons: []string{"Provider search suggestion; verify title, year and canonical identity before adding."}, Episodes: []int64{}})
 				seen[movie.TMDbID] = true
 			}

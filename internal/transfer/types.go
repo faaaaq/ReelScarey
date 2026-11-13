@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -21,6 +22,24 @@ import (
 type Error struct {
 	Code, Message string
 	Temporary     bool
+	// RetryAt is an optional unix-seconds timestamp supplied by the provider
+	// (for example an HTTP 429 Retry-After header). When it is later than the
+	// computed backoff, the worker waits until it instead.
+	RetryAt int64
+}
+
+// retryAfterSeconds parses a Retry-After header into a unix-seconds retry
+// time, clamped to 1..3600 seconds from now. A missing or malformed header
+// yields 0, leaving the caller's own backoff in charge.
+func retryAfterSeconds(header string) int64 {
+	seconds, err := strconv.ParseInt(strings.TrimSpace(header), 10, 64)
+	if err != nil || seconds < 1 {
+		return 0
+	}
+	if seconds > 3600 {
+		seconds = 3600
+	}
+	return time.Now().Unix() + seconds
 }
 
 func (e *Error) Error() string           { return e.Message }
