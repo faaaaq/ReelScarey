@@ -94,7 +94,13 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64
+          # linux/arm64 is published config-only: the release-candidate build,
+          # startup/backup/storage smokes and the acceptance job's container
+          # smokes all execute on the amd64 image, so arm64 is never run in
+          # CI. Native arm64 runtime coverage remains an open gap.
+          # TODO: a Windows/macOS smoke job is pending available runners; do
+          # not gate publication on it.
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tags.outputs.value }}
           build-args: |
             VERSION=${{ steps.version.outputs.value }}

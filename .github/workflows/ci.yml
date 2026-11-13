@@ -55,6 +55,16 @@ jobs:
           sudo mount -t tmpfs -o "uid=$(id -u),gid=$(id -g),size=32m" tmpfs "$fixture/media/Anime"
           trap 'sudo umount "$fixture/media/Anime"' EXIT
           REELSCAREY_TEST_CROSS_ROOT="$fixture" go test -race ./internal/organization -run '^TestCrossFilesystemFolderMove$' -count=1 -v -timeout=3m
+      - name: Race-enabled concurrency suite
+        # Fast-CI race coverage beyond the single cross-filesystem move above,
+        # bounded to the most concurrency-sensitive code: revision-fenced
+        # organization reviews, metadata provider clients, the database WAL
+        # pool under sustained load, and transfer lease/claim/reservation
+        # fences. The full -race suite stays nightly-only (acceptance job).
+        run: |
+          go test -race ./internal/organization ./internal/metadata -count=1 -timeout=10m
+          go test -race ./internal/database -run '^TestWALStaysBoundedUnderSustainedLoad$' -count=1 -timeout=10m
+          go test -race ./internal/transfer -run 'TestLeaseExpiryRefusesTorrentWrites|TestLeaseExpiryRefusesMusicWrites|TestLeaseFencesStaleWorker|TestTVReservationsSkipAndDuplicateProtection|TestTVActiveReservationsAndCancelledResumeConflicts|TestQueueManualTorrentTargetsMovieAndDeduplicatesByHash|TestMusicSubmissionIsReservedBeforeClientAndSurvivesCancellation|TestMatchingQueueDoesNotWaitForDiskInspection|TestQBittorrentLoginsDoNotSerializeAcrossClients' -count=1 -timeout=10m
       - run: go vet ./...
       - name: Known dependency vulnerabilities
         run: |
