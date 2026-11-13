@@ -29,6 +29,7 @@ type fakeMusic struct {
 	artist             music.Artist
 	created            bool
 	err                error
+	transcodeBusy      bool
 	acoustidStatus     music.AcoustIDStatus
 	savedKey           string
 	deletedKey         bool
@@ -235,6 +236,9 @@ func (f *fakeMusic) OpenAudioFile(context.Context, int64) (music.AudioStream, er
 // OpenPlayback mirrors OpenAudioFile: the fake has no transcoding pipeline, so
 // it always returns the registered file for a direct byte-for-byte stream.
 func (f *fakeMusic) OpenPlayback(ctx context.Context, id int64, _ string, _, _ int) (music.PlaybackStream, error) {
+	if f.transcodeBusy {
+		return music.PlaybackStream{}, &music.Error{Code: "music_transcode_busy", Message: "The server is already converting too many songs. Wait a moment and try again."}
+	}
 	stream, err := f.OpenAudioFile(ctx, id)
 	if err != nil {
 		return music.PlaybackStream{}, err

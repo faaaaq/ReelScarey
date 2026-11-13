@@ -214,10 +214,12 @@ type PlaybackStream struct {
 	Body        io.ReadCloser
 	Codec       string
 
-	cmd *exec.Cmd
+	cmd     *exec.Cmd
+	release func()
 }
 
-// Close stops any conversion process and closes every open handle.
+// Close stops any conversion process, closes every open handle and releases
+// the bounded transcode slot exactly once.
 func (p *PlaybackStream) Close() {
 	if p.Body != nil {
 		_ = p.Body.Close()
@@ -230,6 +232,9 @@ func (p *PlaybackStream) Close() {
 	}
 	if p.File != nil {
 		_ = p.File.Close()
+	}
+	if p.release != nil {
+		p.release()
 	}
 }
 
@@ -256,8 +261,17 @@ func (s *Service) OpenPlayback(ctx context.Context, id int64, requestedFormat st
 		}, nil
 	}
 
+	// NEW-A1: bound simultaneous ffmpeg conversions. The slot is taken only
+	// when a conversion will actually start; a failed spawn or a closed
+	// stream always releases it.
+	release, err := s.acquireTranscodeSlot(ctx)
+	if err != nil {
+		_ = native.File.Close()
+		return PlaybackStream{}, err
+	}
 	stdout, err := newTranscodeStream(ctx, ffmpeg, native.File, codec, bitRate, timeOffset)
 	if err != nil {
+		release()
 		_ = native.File.Close()
 		return PlaybackStream{}, &Error{Code: "music_transcode_failed", Message: "The server could not convert this file for playback."}
 	}
@@ -268,6 +282,7 @@ func (s *Service) OpenPlayback(ctx context.Context, id int64, requestedFormat st
 		Body:        stdout.body,
 		Codec:       codec,
 		cmd:         stdout.cmd,
+		release:     release,
 	}, nil
 }
 

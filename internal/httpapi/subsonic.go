@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -1219,6 +1220,14 @@ func (s *Server) subsonicStream(w http.ResponseWriter, r *http.Request) {
 	playback, err := s.music.OpenPlayback(r.Context(), id, r.URL.Query().Get("format"),
 		subsonicQueryInt(r, "maxBitRate"), subsonicQueryInt(r, "timeOffset"))
 	if err != nil {
+		// NEW-A1: an over-limit transcode request is not a missing song; it
+		// gets an honest busy failure instead of the not-found code.
+		var musicErr *music.Error
+		if errors.As(err, &musicErr) && musicErr.Code == "music_transcode_busy" {
+			w.Header().Set("Retry-After", "2")
+			writeSubsonic(w, r, subsonicFailure(s.version, 50, "The server is at its concurrent conversion limit. Wait a moment and try again."))
+			return
+		}
 		writeSubsonic(w, r, subsonicFailure(s.version, 70, "Song file not found."))
 		return
 	}

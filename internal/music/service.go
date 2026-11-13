@@ -6,9 +6,26 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 )
+
+// maxTranscodes bounds the number of simultaneous ffmpeg conversions the
+// Subsonic stream endpoint may run. Each conversion decodes and re-encodes a
+// full audio stream, so unbounded concurrent requests exhaust CPU and memory
+// on a typical 4-8 core deployment; four slots keep one core per active
+// transcode with headroom for the rest of the server.
+const maxTranscodes = 4
+
+// defaultTranscodeGrace is how long a stream request that could not take a
+// slot immediately may keep waiting before failing with a busy error. Clients
+// that start playback in bursts get this window instead of an instant error.
+const defaultTranscodeGrace = 2 * time.Second
+
+// transcodeGracePeriod is the active grace period. Tests in this package
+// shorten it so busy-error paths finish quickly.
+var transcodeGracePeriod = defaultTranscodeGrace
 
 // Service combines the fixed MusicBrainz provider with the local catalog,
 // scanning, reviewed catalog discovery, reviewed AcoustID/Chromaprint matching
@@ -33,9 +50,59 @@ type Service struct {
 	scheduleRunner ScheduleRunner
 	fileMu         sync.Mutex
 	scheduleMu     sync.Mutex
+
+	// transcodeSem bounds simultaneous ffmpeg conversions. It is created
+	// lazily (transcodeSlots) so hand-built test Services work too; it is
+	// never replaced after creation. transcodeMu guards the lazy init.
+	transcodeMu  sync.Mutex
+	transcodeSem chan struct{}
 }
 
 func (s *Service) SetDownloadsDir(dir string) { s.downloadsDir = dir }
+
+// transcodeSlots lazily creates the bounded conversion semaphore so
+// hand-built test Services keep working; the channel is never replaced after
+// creation. The transcodeMu field guards only this lazy init.
+func (s *Service) transcodeSlots() chan struct{} {
+	s.transcodeMu.Lock()
+	defer s.transcodeMu.Unlock()
+	if s.transcodeSem == nil {
+		s.transcodeSem = make(chan struct{}, maxTranscodes)
+	}
+	return s.transcodeSem
+}
+
+// acquireTranscodeSlot reserves one ffmpeg conversion slot. A caller that
+// cannot take a slot immediately waits a bounded, ctx-aware grace period for
+// a bursting client, then fails with an honest busy error instead of
+// queueing unbounded work. The returned release func is idempotent so a
+// double Close can never underflow the semaphore.
+func (s *Service) acquireTranscodeSlot(ctx context.Context) (func(), error) {
+	slots := s.transcodeSlots()
+	select {
+	case slots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		timer := time.NewTimer(transcodeGracePeriod)
+		defer timer.Stop()
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timer.C:
+			return nil, &Error{Code: "music_transcode_busy", Message: "The server is already converting too many songs. Wait a moment and try again."}
+		}
+	}
+	released := false
+	return func() {
+		if released {
+			return
+		}
+		released = true
+		<-slots
+	}, nil
+}
 
 func (s *Service) SetArtworkDir(dir string) { s.artworkDir = dir }
 
