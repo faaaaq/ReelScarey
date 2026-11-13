@@ -133,7 +133,8 @@ web interface:
       - /mnt/music:/media/music
 ```
 
-In **Organize library**, set the TV folder to `tvshows` and the Anime folder to
+In **Organize Files** (`/organization`) and **Settings → Media Management →
+Collections & folders**, set the TV folder to `tvshows` and the Anime folder to
 `anime` (paths relative to `/media`, case-sensitive). The Anime scan finds series
 directly under `anime`; include anime films in the Movies scan. The Movies
 collection stays available even without a movie folder.

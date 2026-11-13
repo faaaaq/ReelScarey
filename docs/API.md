@@ -577,19 +577,6 @@ explicitly documented as breaking before the first stable release.
 | GET | `/api/v1/dashboard` | Library name, real SQL movie/series counts, settings revision/time |
 | GET | `/api/v1/settings` | Current library preferences and revision |
 | PUT | `/api/v1/settings` | Validate and atomically update preferences if revision matches |
-
-`register_unverified_video` (default false) lets existing-library discovery and
-matching register files whose video ffprobe cannot inspect. Registered files
-carry no resolution or embedded-title facts, their scan rows say "Added without
-video verification", and embedded-title rewrites and subtitle matching refuse
-them. Files ffprobe reads but finds no video stream in are never registered.
-
-`import_mode` is `hardlink` (default) or `copy`. `hardlink` attempts a download
-to library hardlink and falls back to a verified staged copy when the roots are
-on different mounts, the download mount is read-only, or the link is otherwise
-unsupported. `copy` always writes an independent library copy. Publication and
-reorganization inside the media root still use private no-overwrite hardlinks;
-symbolic-link imports are not supported.
 | GET | `/api/v1/library?kind=movie&page=1&query=&status=all&monitored=all&sort=title&profile=all` | Filtered movies, saved metadata, filtered/collection totals and coherent effective-profile context |
 | GET | `/api/v1/library?kind=series&page=1` | Same filters and pagination for TV parent catalog status/monitoring |
 | POST | `/api/v1/library/monitoring/preview` | Read current monitoring/revisions for explicit kind/ids; authenticated + CSRF; 1–5000 distinct IDs, up to 1 MiB; no writes |
@@ -671,6 +658,19 @@ symbolic-link imports are not supported.
 | POST | `/api/v1/subtitles/files/{id}/search` | `{}`; 202 queued search for manual review, no automatic download |
 | POST | `/api/v1/subtitles/files/{id}/retry` | `{}`; 202 retry preserving job intent/selection |
 | POST | `/api/v1/subtitles/candidates/{id}/download` | `{ "reviewed": true }`; 202 queue an opaque, unexpired subtitle choice |
+
+`register_unverified_video` (default false) lets existing-library discovery and
+matching register files whose video ffprobe cannot inspect. Registered files
+carry no resolution or embedded-title facts, their scan rows say "Added without
+video verification", and embedded-title rewrites and subtitle matching refuse
+them. Files ffprobe reads but finds no video stream in are never registered.
+
+`import_mode` is `hardlink` (default) or `copy`. `hardlink` attempts a download
+to library hardlink and falls back to a verified staged copy when the roots are
+on different mounts, the download mount is read-only, or the link is otherwise
+unsupported. `copy` always writes an independent library copy. Publication and
+reorganization inside the media root still use private no-overwrite hardlinks;
+symbolic-link imports are not supported.
 
 Library responses contain `items`, `page`, `total`, `limit`, and
 `collection_total`. Numbered page bounds are 1–100000; `page=all` returns every

@@ -65,7 +65,9 @@ migration ledger, database integrity and every encrypted record. It writes a
 manifest with SHA-256 checksums, the schema and application version. Only the
 database, matching secrets.key and any remaining initial setup-token are copied.
 Media, downloaded torrents, environment variables and reverse-proxy settings
-need their own backups. Limits: 32 GiB database, 1 KiB key/setup files, 10 minutes
+need their own backups. For reviewing and moving media between host folders
+after a restore or migration, see [Storage](STORAGE.md) and the media migration
+commands described there. Limits: 32 GiB database, 1 KiB key/setup files, 10 minutes
 per command. Do not put backups inside config, media or downloads.
 
 For example, after preparing a private host backup parent writable by UID 10001:

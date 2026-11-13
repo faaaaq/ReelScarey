@@ -213,14 +213,14 @@ Mount your library at `/media` and your download client's completed folder at
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `REELSCAREY_PUBLIC_URL` | empty | Explicit browser origin for another hostname or HTTPS reverse proxy |
-| `REELSCAREY_LISTEN_ADDR` | `127.0.0.1:8787` | HTTP bind address |
-| `PUID` / `PGID` | `10001` | Linux account that owns the library and the private folders |
+| `REELSCAREY_LISTEN_ADDR` | `127.0.0.1:8787` outside the image; `0.0.0.0:8787` inside the image (so the published port is reachable from the host) | HTTP bind address |
+| `PUID` / `PGID` | `10001` | Linux account the container runs as; set to the host account that owns the mounted library and download folders, or imports will fail to write |
 | `REELSCAREY_APPDATA_DIR` | unset | Container path of one parent bind mount that holds the private folders on the host; startup owns it and everything between it and the private folders, so Docker's root-created bind directories do not stay root-owned (see docs/INSTALL.md) |
 | `TZ` | `UTC` | Timezone for calendar dates and scheduled times |
 | `REELSCAREY_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 | `REELSCAREY_TMDB_TOKEN` | empty | TMDb Read Access Token seeded at startup; normally saved in Settings instead |
 | `REELSCAREY_BROWSE_ROOTS` | empty | JSON object of up to eight named absolute folders shown read-only in Storage |
-| `REELSCAREY_KEEP_NET_ADMIN` | `0` | Keep `NET_ADMIN` after startup for the optional VPN kill switch |
+| `REELSCAREY_KEEP_NET_ADMIN` | `0` | Keep `NET_ADMIN` after startup for the optional VPN kill switch (see [Download clients](docs/DOWNLOAD_CLIENTS.md) for VPN setup) |
 | `REELSCAREY_FPCALC_PATH` | `fpcalc` from `PATH` | Chromaprint audio-fingerprint executable |
 
 ### Changing the container paths

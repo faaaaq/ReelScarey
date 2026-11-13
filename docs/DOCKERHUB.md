@@ -187,6 +187,12 @@ volumes:
   youtube_staging:
 ```
 
+This excerpt is simplified for readability: it publishes `8787` on all host
+interfaces and omits the hardening in the shipped `compose.yaml`
+(`read_only: true`, `no-new-privileges`, a `/tmp` tmpfs and a PID limit, plus a
+loopback-only port binding by default). Prefer the shipped `compose.yaml` in
+production.
+
 Mounts are the whole mapping: `/config` (database and key), `/media` (library,
 writable) and `/downloads` (completed downloads, writable only inside
 ReelScarey's own `builtin` folders; add `:ro` if you use only an external
@@ -297,10 +303,44 @@ override for installations that cannot use the default container path.
 | `REELSCAREY_DOWNLOADS_DIR` | `/downloads` | Override only: the download client's completed folder. |
 | `REELSCAREY_BACKUPS_DIR` | `/backups` | Override only: managed snapshots. |
 | `REELSCAREY_YOUTUBE_STAGING_DIR` | `/youtube-staging/work` | Override only: YouTube review staging. |
+| `REELSCAREY_APPDATA_DIR` | unset | Optional single parent directory inside the container that holds the private folders (config/state, backups, YouTube staging); see "Private appdata parent" below. |
 
 Notes:
 
 - `REELSCAREY_YTDLP_PATH` is configured inside the image. Do not override it.
+
+### Private appdata parent: `REELSCAREY_APPDATA_DIR`
+
+By default the three private folders are mounted at fixed container paths —
+`/config` (database, key and state), `/backups` and `/youtube-staging` at the
+container root. If you bind-mount host folders for all of them, Docker creates
+any missing bind source as root, and a container process cannot chown an
+unmounted host *parent*, so ownership of intermediate host folders can end up
+wrong.
+
+Set `REELSCAREY_APPDATA_DIR` to an absolute container path (for example
+`/appdata`) and mount one host parent directory there; then mount the private
+folders *inside* it:
+
+```yaml
+    environment:
+      REELSCAREY_APPDATA_DIR: /appdata
+    volumes:
+      - ./appdata:/appdata
+      - ./appdata/state:/config
+      - ./appdata/backups:/backups
+      - ./appdata/youtube-staging:/youtube-staging
+```
+
+The container init script verifies the layout at startup: the parent must be an
+absolute directory with no symlinks, must be separate from media and downloads,
+and must not itself be one of the private folders — it is their parent, not a
+replacement for the fixed `/config`, `/backups` and `/youtube-staging` mount
+points. It then chowns the parent and every intermediate folder to PUID:PGID,
+so a single `chown -R` (or a single mounted parent) is enough. The private
+folders may also stay on their default Docker volumes while the parent is
+bind-mounted; the parent is then owned on its own mount. The appdata parent
+must not overlap media or downloads; it holds only private app state.
 
 ---
 
@@ -366,7 +406,7 @@ image; in-place downgrades are not supported, restore a backup instead.
 | Tag | Meaning |
 | --- | --- |
 | `latest` | Newest successful primary-branch build or release; moves on each publication |
-| `0.40.0` | Immutable application version |
+| `0.54.10` | Immutable application version |
 | `sha-<commit>` | Exact source commit |
 
 Published images target **linux/amd64**. Pin a version tag or digest if you

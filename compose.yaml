@@ -42,10 +42,10 @@ services:
       REELSCAREY_LOG_LEVEL: ${REELSCAREY_LOG_LEVEL:-info}
       # Optional shared TMDb Read Access Token (see README.md). Leave unset to
       # require each administrator to save a token in Settings.
-      # REELSCAREY_TMDB_TOKEN: ${REELSCAREY_TMDB_TOKEN:-}
+      REELSCAREY_TMDB_TOKEN: ${REELSCAREY_TMDB_TOKEN:-}
       # Optional extra read-only file-browser roots as a JSON object
       # (see README.md).
-      # REELSCAREY_BROWSE_ROOTS: ${REELSCAREY_BROWSE_ROOTS:-}
+      REELSCAREY_BROWSE_ROOTS: ${REELSCAREY_BROWSE_ROOTS:-}
       # Linux account that owns the library and the private folders below.
       PUID: ${PUID:-10001}
       PGID: ${PGID:-10001}
