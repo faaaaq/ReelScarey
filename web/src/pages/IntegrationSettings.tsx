@@ -1,10 +1,24 @@
 import { useEffect, useState, type FormEvent } from "react";
+
 import { Button, TextField } from "@radix-ui/themes";
-import { Alert, FormGroup, Label } from "../ui";
+import { Alert, ConfirmDialog, FormGroup, Label } from "../ui";
 import { api, messageFor, type IntegrationStatus } from "../api";
 import { RequestState } from "../components";
 import { useResource } from "../useResource";
 import "./Admin.css";
+
+/** Warns before leaving with unsaved form changes. */
+function useUnsavedGuard(dirty: boolean) {
+  useEffect(() => {
+    if (!dirty) return;
+    function handler(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
+}
 
 export function IntegrationSettings({
   kind,
@@ -29,6 +43,12 @@ export function IntegrationSettings({
       setDownloadPath(resource.data.download_path ?? "");
     }
   }, [resource.data]);
+  const dirty =
+    secret !== "" ||
+    url !== (resource.data?.url ?? "") ||
+    username !== (resource.data?.username ?? "") ||
+    downloadPath !== (resource.data?.download_path ?? "");
+  useUnsavedGuard(dirty);
   async function action(type: "save" | "test" | "remove") {
     if (pending) return;
     setPending(true);
@@ -228,15 +248,22 @@ export function IntegrationSettings({
                 >
                   Test saved connection
                 </Button>
-                <Button
-                  type="button"
-                  variant="soft"
-                  color="red"
-                  disabled={pending}
-                  onClick={() => void action("remove")}
-                >
-                  Disconnect
-                </Button>
+                <ConfirmDialog
+                  trigger={
+                    <Button
+                      type="button"
+                      variant="soft"
+                      color="red"
+                      disabled={pending}
+                    >
+                      Disconnect
+                    </Button>
+                  }
+                  title={`Disconnect ${name}?`}
+                  description={`This removes the saved ${name} connection and its stored credentials. Saved releases, download history and library files are unchanged, but searches and downloads that use this connection stop until it is saved again.`}
+                  confirmLabel="Disconnect"
+                  onConfirm={() => action("remove")}
+                />
               </>
             )}
           </div>

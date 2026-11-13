@@ -1,11 +1,24 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
-import { Alert, FormGroup, Label } from "../ui";
+import { Alert, ConfirmDialog, FormGroup, Label } from "../ui";
 import { KeyRound, Unplug } from "lucide-react";
 import { api, messageFor, type ProviderStatus } from "../api";
 import { RequestState } from "../components";
 import { useResource } from "../useResource";
 import "./Admin.css";
+
+/** Warns before leaving with unsaved form changes. */
+function useUnsavedGuard(dirty: boolean) {
+  useEffect(() => {
+    if (!dirty) return;
+    function handler(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
+}
 
 export function TMDbSettings() {
   const resource = useResource<ProviderStatus>("/providers/tmdb");
@@ -13,6 +26,7 @@ export function TMDbSettings() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  useUnsavedGuard(token.trim() !== "");
   async function action(kind: "save" | "test" | "remove") {
     if (pending) return;
     setPending(true);
@@ -144,18 +158,39 @@ export function TMDbSettings() {
                 >
                   Test saved connection
                 </Button>
-                <Button
-                  type="button"
-                  variant="soft"
-                  color={resource.data.default_available ? undefined : "red"}
-                  disabled={pending}
-                  onClick={() => void action("remove")}
-                >
-                  <Unplug size={15} />{" "}
-                  {resource.data.default_available
-                    ? "Use shared default"
-                    : "Disconnect"}
-                </Button>
+                <ConfirmDialog
+                  trigger={
+                    <Button
+                      type="button"
+                      variant="soft"
+                      color={
+                        resource.data.default_available ? undefined : "red"
+                      }
+                      disabled={pending}
+                    >
+                      <Unplug size={15} />{" "}
+                      {resource.data.default_available
+                        ? "Use shared default"
+                        : "Disconnect"}
+                    </Button>
+                  }
+                  title={
+                    resource.data.default_available
+                      ? "Use the shared default token?"
+                      : "Disconnect TMDb?"
+                  }
+                  description={
+                    resource.data.default_available
+                      ? "This removes your saved TMDb token and credentials. Metadata lookups continue with the shared default token; your saved movies and shows are unchanged."
+                      : "This removes your saved TMDb token and credentials. Movie and TV lookups stop until a new token is saved; your saved movies and shows are unchanged."
+                  }
+                  confirmLabel={
+                    resource.data.default_available
+                      ? "Use shared default"
+                      : "Disconnect"
+                  }
+                  onConfirm={() => action("remove")}
+                />
               </>
             )}
           </div>

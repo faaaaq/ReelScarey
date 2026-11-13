@@ -1,4 +1,4 @@
-import {
+﻿import {
   Activity,
   ArrowDownUp,
   CalendarDays,
@@ -71,12 +71,12 @@ export const navigation: NavItem[] = [
       importKind(p) === "movie",
     children: [
       {
-        label: "Add New",
+        label: "Add new",
         to: "/search",
         match: (p) => searchKind(p) === "movie",
       },
       {
-        label: "Library Import",
+        label: "Library import",
         to: "/import",
         match: (p) => importKind(p) === "movie",
       },
@@ -92,12 +92,12 @@ export const navigation: NavItem[] = [
       importKind(p) === "series",
     children: [
       {
-        label: "Add New",
+        label: "Add new",
         to: "/search?kind=series",
         match: (p) => searchKind(p) === "series",
       },
       {
-        label: "Library Import",
+        label: "Library import",
         to: "/import?collection=series",
         match: (p) => importKind(p) === "series",
       },
@@ -113,12 +113,12 @@ export const navigation: NavItem[] = [
       importKind(p) === "anime",
     children: [
       {
-        label: "Add New",
+        label: "Add new",
         to: "/search?kind=anime&format=series",
         match: (p) => searchKind(p) === "anime",
       },
       {
-        label: "Library Import",
+        label: "Library import",
         to: "/import?collection=anime",
         match: (p) => importKind(p) === "anime",
       },
@@ -131,7 +131,7 @@ export const navigation: NavItem[] = [
     match: (p) => starts(p, "/music"),
     children: [
       { label: "Library", to: "/music" },
-      { label: "Library Import", to: "/music/import" },
+      { label: "Library import", to: "/music/import" },
       { label: "Organize", to: "/music/organize" },
       { label: "Wanted", to: "/music/wanted" },
     ],
@@ -211,11 +211,11 @@ export const navigation: NavItem[] = [
         "/language-profiles",
       ),
     children: [
-      { label: "Media Management", to: "/settings/media" },
+      { label: "Media management", to: "/settings/media" },
       { label: "Duplicate review", to: "/duplicates" },
       { label: "Indexers", to: "/indexers" },
-      { label: "Announce Feeds", to: "/announces" },
-      { label: "Download Clients", to: "/download-clients" },
+      { label: "Announce feeds", to: "/announces" },
+      { label: "Download clients", to: "/download-clients" },
       { label: "Automation", to: "/automation" },
       { label: "Subtitles", to: "/subtitles" },
       { label: "Metadata", to: "/metadata-refresh" },
@@ -240,7 +240,7 @@ export const navigation: NavItem[] = [
       { label: "Backups", to: "/backups" },
       { label: "Storage", to: "/storage" },
       { label: "Storage insights", to: "/storage/insights" },
-      { label: "Setup Guide", to: "/setup" },
+      { label: "Setup guide", to: "/setup" },
     ],
   },
 ];
@@ -264,8 +264,8 @@ const titles: Record<string, string> = {
   "/music/server": "Music server",
   "/youtube": "YouTube",
   "/youtube/subscriptions": "YouTube subscriptions",
-  "/search": "Add New",
-  "/import": "Library Import",
+  "/search": "Add new",
+  "/import": "Library import",
   "/calendar": "Calendar",
   "/activity": "Activity",
   "/timeline": "History",

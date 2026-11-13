@@ -355,9 +355,14 @@ describe("authentication and movies", () => {
       screen.getByRole("button", { name: "Save my own token" }),
     );
     expect(await screen.findByText("Configured")).toBeVisible();
+    // The removal is destructive, so it requires a dialog confirmation.
     await userEvent.click(
       screen.getByRole("button", { name: "Use shared default" }),
     );
+    const confirmButtons = await screen.findAllByRole("button", {
+      name: "Use shared default",
+    });
+    await userEvent.click(confirmButtons[confirmButtons.length - 1]);
     expect(await screen.findByText("Shared default")).toBeVisible();
   });
   it("returns to sign-in when a session expires", async () => {

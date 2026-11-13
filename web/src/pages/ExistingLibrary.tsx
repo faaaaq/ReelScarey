@@ -266,6 +266,16 @@ export function ExistingLibrary() {
     entry: { roots?: { available: boolean }[] } | undefined,
   ) => !!entry?.roots?.length && !entry.roots.some((item) => item.available);
   const targetRoots = collection?.roots ?? [];
+  // Collections without configured multi-root entries fall back to the
+  // server-advertised legacy root; only when both are missing is there
+  // nothing to scan.
+  const fallbackRoot =
+    target === "movie"
+      ? roots.data?.movie_root
+      : target === "series"
+        ? roots.data?.series_root
+        : animeRoot;
+  const noRoot = targetRoots.length === 0 && !fallbackRoot;
   const selectedRoot = targetRoots.find((item) => item.path === root);
   const selectedUnavailable = !!selectedRoot && !selectedRoot.available;
   const [busy, setBusy] = useState(false);
@@ -446,6 +456,7 @@ export function ExistingLibrary() {
               size="3"
               disabled={
                 busy ||
+                noRoot ||
                 (target === "anime" && !animeRoot) ||
                 selectedUnavailable ||
                 roots.data.items.some((s) =>
@@ -460,6 +471,12 @@ export function ExistingLibrary() {
                   ? "Scan and match library"
                   : "Scan configured folder"}
             </Button>
+            {noRoot && (
+              <p className="rs-form-help" role="status">
+                This collection has no configured folder yet. Add a storage root
+                for this collection in Library settings, then scan here.
+              </p>
+            )}
           </div>
 
           {roots.data.items.some((s) =>
@@ -1358,7 +1375,7 @@ export function MatchReview({
                   {item.year ?? "Year unknown"} ·{" "}
                   {item.status === "available"
                     ? "Has registered media"
-                    : "Catalogued"}
+                    : "In catalog"}
                 </span>
               </div>
               <Button

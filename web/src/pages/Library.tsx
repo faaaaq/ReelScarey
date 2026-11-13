@@ -737,7 +737,9 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                         <div className="lib-card-info">
                           <div className="lib-card-line">
                             <h2 className="lib-card-title">
-                              <Link to={detailsPath(item)}>{item.title}</Link>
+                              <Link to={detailsPath(item)} title={item.title}>
+                                {item.title}
+                              </Link>
                             </h2>
                             <MonitorIcon monitored={item.monitored} />
                           </div>

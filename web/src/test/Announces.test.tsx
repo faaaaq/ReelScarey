@@ -116,18 +116,18 @@ it("lists announce sources and captured releases", async () => {
   ).not.toBeChecked();
 });
 
-it("defaults automatic grabbing off and requires a saved passkey", async () => {
+it("defaults automatic downloading off and requires a saved passkey", async () => {
   stub([], []);
   mount();
   await userEvent.click(screen.getByRole("button", { name: "Add Source" }));
   const dialog = await screen.findByRole("dialog");
-  const autoGrab = within(dialog).getByLabelText("Automatic grabbing");
+  const autoGrab = within(dialog).getByLabelText("Automatic downloading");
   expect(autoGrab).not.toBeChecked();
   // No passkey typed yet for a new source, so opt-in is blocked.
   expect(autoGrab).toBeDisabled();
   expect(
     within(dialog).getByText(
-      "Save a tracker passkey before enabling automatic grabbing.",
+      "Save a tracker passkey before enabling automatic downloading.",
     ),
   ).toBeVisible();
   await userEvent.type(
@@ -137,7 +137,7 @@ it("defaults automatic grabbing off and requires a saved passkey", async () => {
   await waitFor(() => expect(autoGrab).toBeEnabled());
 });
 
-it("limits automatic grabbing to IPTorrents", async () => {
+it("limits automatic downloading to IPTorrents", async () => {
   stub([], []);
   mount();
   await userEvent.click(screen.getByRole("button", { name: "Add Source" }));
@@ -146,15 +146,15 @@ it("limits automatic grabbing to IPTorrents", async () => {
     within(dialog).getByLabelText("Tracker"),
     "beyondhd",
   );
-  expect(within(dialog).getByLabelText("Automatic grabbing")).toBeDisabled();
+  expect(within(dialog).getByLabelText("Automatic downloading")).toBeDisabled();
   expect(
     within(dialog).getByText(
-      "Automatic grabbing is currently supported only for IPTorrents.",
+      "Automatic downloading is currently supported only for IPTorrents.",
     ),
   ).toBeVisible();
 });
 
-it("saves the automatic grabbing opt-in for a new IPTorrents source", async () => {
+it("saves the automatic downloading opt-in for a new IPTorrents source", async () => {
   const fetch = stub([], []);
   mount();
   await userEvent.click(screen.getByRole("button", { name: "Add Source" }));
@@ -171,7 +171,7 @@ it("saves the automatic grabbing opt-in for a new IPTorrents source", async () =
     within(dialog).getByLabelText("Tracker key"),
     "fixture-passkey",
   );
-  const autoGrab = within(dialog).getByLabelText("Automatic grabbing");
+  const autoGrab = within(dialog).getByLabelText("Automatic downloading");
   await waitFor(() => expect(autoGrab).toBeEnabled());
   await userEvent.click(autoGrab);
   await userEvent.click(
@@ -188,11 +188,11 @@ it("saves the automatic grabbing opt-in for a new IPTorrents source", async () =
   });
 });
 
-it("preserves a saved automatic grabbing opt-in when pausing a source", async () => {
+it("preserves a saved automatic downloading opt-in when pausing a source", async () => {
   const fetch = stub([{ ...source, auto_grab: true }], []);
   mount();
   expect(await screen.findByText("Acceptance IPT")).toBeInTheDocument();
-  expect(screen.getByText("Auto-grab on")).toBeInTheDocument();
+  expect(screen.getByText("Auto-download on")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Pause" }));
   const put = fetch.mock.calls.find(([, o]) => o?.method === "PUT");
   const body = JSON.parse(String(put?.[1]?.body));

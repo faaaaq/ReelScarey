@@ -125,7 +125,7 @@ export function AddNZBDialog({
           >
             <ul className="use-file-list">
               {failures.map((f, i) => (
-                <li key={i}>
+                <li key={`${f.name}-${f.message}-${i}`}>
                   {f.name}: {f.message}
                 </li>
               ))}

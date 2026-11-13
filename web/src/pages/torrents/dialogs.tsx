@@ -122,7 +122,7 @@ export function AddLinksDialog({
           >
             <ul className="tor-failures">
               {failures.map((f, i) => (
-                <li key={i}>
+                <li key={`${f.input}-${i}`}>
                   <code>{shorten(f.input)}</code>: {f.message}
                 </li>
               ))}

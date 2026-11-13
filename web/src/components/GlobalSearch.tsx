@@ -27,21 +27,29 @@ const pages = navigation.flatMap((item) => [
 function useLibraryMatches(query: string) {
   const [items, setItems] = useState<Option[]>([]);
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const value = query.trim();
     if (value.length < 2) {
       setItems([]);
       setBusy(false);
+      setFailed(false);
       return;
     }
     let cancelled = false;
+    let failures = 0;
     setBusy(true);
+    setFailed(false);
     const timer = window.setTimeout(() => {
       Promise.all(
         (["movie", "series", "anime"] as const).map((kind) =>
           api<LibraryPage>(
             `/library?kind=${kind}&page=1&query=${encodeURIComponent(value)}`,
-          ).catch(() => null),
+          ).catch(() => {
+            failures += 1;
+            return null;
+          }),
         ),
       ).then((results) => {
         if (cancelled) return;
@@ -70,6 +78,7 @@ function useLibraryMatches(query: string) {
             });
           }
         setItems(found.slice(0, 10));
+        setFailed(failures > 0);
         setBusy(false);
       });
     }, 200);
@@ -77,8 +86,8 @@ function useLibraryMatches(query: string) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [query]);
-  return { items, busy };
+  }, [query, attempt]);
+  return { items, busy, failed, retry: () => setAttempt((n) => n + 1) };
 }
 
 /**
@@ -103,6 +112,12 @@ export function GlobalSearch() {
           target.tagName === "TEXTAREA" ||
           target.tagName === "SELECT" ||
           target.isContentEditable);
+      // Radix dialogs (and other open dialogs) keep the shortcuts from
+      // stealing focus away from the open conversation.
+      const dialogOpen = document.querySelector(
+        '[role="dialog"][data-state="open"]',
+      );
+      if (dialogOpen) return;
       if (
         ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") ||
         (event.key === "/" && !typing)
@@ -150,6 +165,11 @@ export function GlobalSearch() {
   }, [query, library.items]);
 
   useEffect(() => setActive(0), [query]);
+
+  // Keep the active option valid when the option list shrinks.
+  useEffect(() => {
+    setActive((current) => Math.min(current, Math.max(0, options.length - 1)));
+  }, [options.length]);
 
   function choose(option: Option | undefined) {
     if (!option) return;
@@ -214,6 +234,18 @@ export function GlobalSearch() {
           {library.busy && (
             <p className="rs-search-empty" role="status">
               Searching the library…
+            </p>
+          )}
+          {library.failed && !library.busy && (
+            <p className="rs-search-empty" role="alert">
+              Search failed.{" "}
+              <button
+                type="button"
+                className="rs-link-button rs-small"
+                onClick={library.retry}
+              >
+                Try again.
+              </button>
             </p>
           )}
           {options.map((option, index) => {

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+﻿import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import {
   ArrowLeft,
@@ -37,13 +37,8 @@ import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
 import { useMusicPlayer, type PlayerTrack } from "../musicPlayer";
 import { albumCoverURL } from "../musicArtwork";
+import { formatTrackDuration } from "../ui/format";
 import "./Music.css";
-
-function formatDuration(ms: number) {
-  if (ms <= 0) return "—";
-  const total = Math.round(ms / 1000);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
 
 function trackPlayer(track: MusicTopTrack): PlayerTrack | null {
   if (!track.file_id) return null;
@@ -95,7 +90,7 @@ function ChartTable({
             </td>
             <td>{track.artist || "—"}</td>
             <td>{track.album || "—"}</td>
-            <td>{formatDuration(track.duration_ms)}</td>
+            <td>{formatTrackDuration(track.duration_ms)}</td>
             <td className="is-actions">
               {track.file_id ? (
                 <Button
@@ -444,7 +439,7 @@ export function MusicDiscover() {
                       <td>{track.title}</td>
                       <td>{track.artist || "—"}</td>
                       <td>{track.album || "—"}</td>
-                      <td>{formatDuration(track.duration_ms)}</td>
+                      <td>{formatTrackDuration(track.duration_ms)}</td>
                     </tr>
                   ))}
                 </tbody>

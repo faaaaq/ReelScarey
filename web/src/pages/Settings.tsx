@@ -3,6 +3,7 @@ import { Button, TextField } from "@radix-ui/themes";
 import { RotateCcw, Save } from "lucide-react";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
 import {
+  APIError,
   api,
   messageFor,
   type Settings as LibrarySettings,
@@ -34,6 +35,19 @@ import { SecuritySettings } from "./SecuritySettings";
 import "./Admin.css";
 
 type Area = { title: string; to: string; description: string };
+
+/** Warns before leaving with unsaved form changes. */
+export function useUnsavedGuard(dirty: boolean) {
+  useEffect(() => {
+    if (!dirty) return;
+    function handler(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
+}
 
 const groups: { name: string; items: Area[] }[] = [
   {
@@ -242,6 +256,7 @@ function GeneralSettings() {
   }, [settings.data]);
 
   const dirty = JSON.stringify(form) !== JSON.stringify(saved);
+  useUnsavedGuard(dirty);
   function update<K extends keyof Omit<SettingsUpdate, "revision">>(
     field: K,
     value: SettingsUpdate[K],
@@ -266,7 +281,17 @@ function GeneralSettings() {
       setSaved(value);
       setSuccess(true);
     } catch (e) {
-      setError(messageFor(e));
+      if (e instanceof APIError && e.status === 409) {
+        // Someone else saved settings first. Reload the saved values so the
+        // form and saved snapshot rebase from the server and the conflict
+        // loop ends; the current edit is discarded.
+        settings.reload();
+        setError(
+          "Your edit was discarded because the settings changed while you were working. The saved settings have been reloaded — review them and apply your changes again.",
+        );
+      } else {
+        setError(messageFor(e));
+      }
     } finally {
       setSaving(false);
     }

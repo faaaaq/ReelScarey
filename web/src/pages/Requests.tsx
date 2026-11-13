@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
-import { Inbox, LogOut, RefreshCw } from "lucide-react";
+import { Inbox, LogOut, RefreshCw, UserPlus, Clock } from "lucide-react";
 import {
   Alert,
+  EmptyState,
   FieldSet,
   Label,
   PageBody,
@@ -11,6 +12,7 @@ import {
   ToolbarButton,
   ToolbarSection,
 } from "../ui";
+import { Pagination } from "../movieComponents";
 import "./Admin.css";
 import { api, messageFor } from "../api";
 import { useAuth } from "../auth";
@@ -42,6 +44,18 @@ type Result = {
   in_library: boolean;
 };
 
+/** Friendly labels for internal request states, shown to requesters. */
+const requestStateLabels: Record<string, string> = {
+  pending: "Waiting for review",
+  approving: "Being added",
+  uncertain: "Delivery result unknown",
+  declined: "Declined",
+};
+
+function friendlyRequestState(state: string) {
+  return requestStateLabels[state] ?? state;
+}
+
 export function RequesterHome() {
   const { session, signOut } = useAuth();
   useEffect(() => {
@@ -53,24 +67,35 @@ export function RequesterHome() {
   );
   const [kind, setKind] = useState<"movie" | "series">("movie"),
     [query, setQuery] = useState(""),
+    [page, setPage] = useState(1),
+    [totalPages, setTotalPages] = useState(1),
     [results, setResults] = useState<Result[]>([]),
     [pending, setPending] = useState(false),
     [error, setError] = useState("");
-  async function search(e: FormEvent) {
-    e.preventDefault();
-    if (pending || !query.trim()) return;
+  async function fetchResults(nextPage: number) {
     setPending(true);
     setError("");
     try {
-      const data = await api<{ items: Result[] }>(
-        `/requester/search/${kind === "movie" ? "movies" : "series"}?query=${encodeURIComponent(query.trim())}&page=1`,
+      const data = await api<{
+        items: Result[];
+        page: number;
+        total_pages: number;
+      }>(
+        `/requester/search/${kind === "movie" ? "movies" : "series"}?query=${encodeURIComponent(query.trim())}&page=${nextPage}`,
       );
       setResults(data.items);
+      setPage(nextPage);
+      setTotalPages(data.total_pages || 1);
     } catch (e) {
       setError(messageFor(e));
     } finally {
       setPending(false);
     }
+  }
+  async function search(e: FormEvent) {
+    e.preventDefault();
+    if (pending || !query.trim()) return;
+    await fetchResults(1);
   }
   async function submit(id: number) {
     if (pending) return;
@@ -180,10 +205,10 @@ export function RequesterHome() {
                       <td className="is-actions">
                         <Button
                           size="1"
-                          disabled={pending}
+                          disabled={pending || item.in_library}
                           onClick={() => void submit(item.tmdb_id)}
                         >
-                          Request
+                          {item.in_library ? "Already in library" : "Request"}
                         </Button>
                       </td>
                     </tr>
@@ -191,6 +216,11 @@ export function RequesterHome() {
                 </tbody>
               </Table>
             )}
+            <Pagination
+              page={page}
+              pages={totalPages}
+              onPage={(p) => void fetchResults(p)}
+            />
           </FieldSet>
           <FieldSet legend="My submitted requests">
             <RequestState
@@ -218,7 +248,7 @@ export function RequesterHome() {
                         <td>{item.kind === "movie" ? "Movie" : "TV show"}</td>
                         <td>
                           <Label kind={item.available ? "success" : "info"}>
-                            {item.state}
+                            {friendlyRequestState(item.state)}
                           </Label>
                           {item.available ? " · Media available" : ""}
                         </td>
@@ -245,7 +275,13 @@ export function RequesterHome() {
                   </tbody>
                 </Table>
               ) : (
-                <p className="rs-muted">No requests yet.</p>
+                <EmptyState icon={Clock} title="No requests yet">
+                  <p>
+                    Titles you request are reviewed by an administrator before
+                    they are added. Use the search above to find a movie or show
+                    and request it.
+                  </p>
+                </EmptyState>
               ))}
           </FieldSet>
           <RequestLists onImported={requests.reload} />
@@ -885,7 +921,12 @@ export function AdminRequests() {
                 </tbody>
               </Table>
             ) : (
-              <p className="rs-muted">No requests yet.</p>
+              <EmptyState icon={Clock} title="No requests yet">
+                <p>
+                  No titles have been submitted for review yet. Requests from
+                  request accounts appear here for approval or decline.
+                </p>
+              </EmptyState>
             ))}
         </FieldSet>
         <FieldSet legend="Request accounts">
@@ -957,7 +998,13 @@ export function AdminRequests() {
                 </tbody>
               </Table>
             ) : (
-              <p className="rs-muted">No request accounts yet.</p>
+              <EmptyState icon={UserPlus} title="No request accounts yet">
+                <p>
+                  Create a request account so someone can sign in, browse the
+                  catalog, and submit titles. Link a Discord user ID to enable
+                  notifications.
+                </p>
+              </EmptyState>
             ))}
         </FieldSet>
         <BotSettings />

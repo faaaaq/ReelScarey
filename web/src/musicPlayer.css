@@ -1,4 +1,4 @@
-/* Persistent music player. Layout uses the shared --rs tokens. */
+﻿/* Persistent music player. Layout uses the shared --rs tokens. */
 
 .music-player-audio {
   display: none;
@@ -120,12 +120,12 @@
   width: 36px;
   height: 36px;
   background: var(--rs-primary);
-  color: #fff;
+  color: var(--accent-contrast);
 }
 
 .music-player-button.is-primary:hover {
   background: var(--rs-primary-hover);
-  color: #fff;
+  color: var(--accent-contrast);
 }
 
 .music-player-seek {

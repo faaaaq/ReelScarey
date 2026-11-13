@@ -4,6 +4,7 @@ import { ArrowLeft, FolderSearch, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   Alert,
+  ConfirmDialog,
   EmptyState,
   FieldSet,
   FormActions,
@@ -304,6 +305,16 @@ export function MusicImport() {
   const [error, setError] = useState("");
   const acoustidKeyID = useId();
   const musicbrainzURLID = useId();
+  // Warn before leaving with an unsaved provider key or URL typed in.
+  useEffect(() => {
+    if (acoustidKey.trim() === "" && musicbrainzBaseURL.trim() === "") return;
+    function handler(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [acoustidKey, musicbrainzBaseURL]);
   const musicRoots =
     rootsResource.data?.libraries?.find((library) => library.key === "music")
       ?.roots ?? [];
@@ -648,6 +659,7 @@ export function MusicImport() {
 
   async function removeAcoustID() {
     if (acoustidPending) return;
+
     setAcoustidPending(true);
     setAcoustidError("");
     setAcoustidNotice("");
@@ -1604,15 +1616,22 @@ export function MusicImport() {
               Save key
             </Button>
             {acoustid.data?.configured && (
-              <Button
-                type="button"
-                variant="soft"
-                color="red"
-                disabled={acoustidPending}
-                onClick={() => void removeAcoustID()}
-              >
-                Remove key
-              </Button>
+              <ConfirmDialog
+                trigger={
+                  <Button
+                    type="button"
+                    variant="soft"
+                    color="red"
+                    disabled={acoustidPending}
+                  >
+                    Remove key
+                  </Button>
+                }
+                title="Remove the AcoustID key?"
+                description="This removes the saved AcoustID application API key. Fingerprint matching is disabled until a key is saved again; scanned files and registered music are unchanged."
+                confirmLabel="Remove key"
+                onConfirm={() => removeAcoustID()}
+              />
             )}
           </FormActions>
         </form>

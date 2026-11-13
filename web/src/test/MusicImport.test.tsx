@@ -879,7 +879,12 @@ describe("music import", () => {
     );
     expect(document.body.textContent).not.toContain("acoustid-fixture-key");
 
+    // Removing the key is destructive, so it requires a dialog confirmation.
     await userEvent.click(screen.getByRole("button", { name: "Remove key" }));
+    const confirmButtons = await screen.findAllByRole("button", {
+      name: "Remove key",
+    });
+    await userEvent.click(confirmButtons[confirmButtons.length - 1]);
     await waitFor(() =>
       expect(
         fetch.mock.calls.some(

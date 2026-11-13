@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+﻿import { useState, type FormEvent } from "react";
 import { Button } from "@radix-ui/themes";
 import { Plus, Radio, RefreshCw } from "lucide-react";
 import {
@@ -14,6 +14,7 @@ import {
   ToolbarButton,
   ToolbarSection,
 } from "../ui";
+import { formatTimestamp } from "../ui/format";
 import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { useLiveResource } from "../useLiveResource";
@@ -289,7 +290,7 @@ export function Announces() {
       <PageBody>
         <PageHeading
           title="Announce feeds"
-          description="Watches tracker IRC announce channels and records new releases. Sources capture announces only unless you enable automatic grabbing for a source."
+          description="Watches tracker IRC announce channels and records new releases. Sources capture announces only unless you enable automatic downloading for a source."
         />
         <RequestState
           loading={sources.loading || events.loading}
@@ -336,9 +337,9 @@ export function Announces() {
                         {source.auto_grab && (
                           <Label
                             kind="success"
-                            title="Automatic grabbing is enabled for this source"
+                            title="Automatic downloading is enabled for this source"
                           >
-                            Auto-grab on
+                            Auto-download on
                           </Label>
                         )}
                       </span>
@@ -358,7 +359,7 @@ export function Announces() {
                     <td>{source.nick}</td>
                     <td className="rs-small">
                       {source.last_event_at
-                        ? new Date(source.last_event_at * 1000).toLocaleString()
+                        ? formatTimestamp(source.last_event_at)
                         : "None yet"}
                     </td>
                     <td className="is-actions">
@@ -463,7 +464,7 @@ export function Announces() {
                       <td className="rs-small">{event.category || "—"}</td>
                       <td className="is-numeric">{bytes(event.size_bytes)}</td>
                       <td className="rs-small">
-                        {new Date(event.received_at * 1000).toLocaleString()}
+                        {formatTimestamp(event.received_at)}
                       </td>
                       <td className="rs-small">
                         <span className="rs-row">
@@ -539,8 +540,8 @@ export function Announces() {
                   <li>
                     <strong>Passkey:</strong> copy the passkey from your
                     IPTorrents details page. It is encrypted and only used once
-                    automatic grabbing is enabled, so you can leave it blank to
-                    capture announces only.
+                    automatic downloading is enabled, so you can leave it blank
+                    to capture announces only.
                   </li>
                   <li>
                     <strong>Invite command:</strong> leave blank — IPTorrents
@@ -579,7 +580,7 @@ export function Announces() {
                   <li>
                     <strong>Tracker key:</strong> paste the credential named on
                     the field (RSS key, passkey or session cookie). It is
-                    encrypted and unused until automatic grabbing is enabled.
+                    encrypted and unused until automatic downloading is enabled.
                   </li>
                   <li>
                     <strong>Invite command:</strong> open the tracker’s IRC page
@@ -714,33 +715,34 @@ export function Announces() {
                       setForm({ ...form, auto_grab: e.target.checked })
                     }
                   />
-                  Automatic grabbing
+                  Automatic downloading
                 </label>
                 {!autoGrabAvailable && (
                   <p className="rs-form-help is-warning">
-                    Automatic grabbing is currently supported only for
+                    Automatic downloading is currently supported only for
                     IPTorrents.
                   </p>
                 )}
                 {autoGrabAvailable && !keySaved && (
                   <p className="rs-form-help is-warning">
-                    Save a tracker passkey before enabling automatic grabbing.
+                    Save a tracker passkey before enabling automatic
+                    downloading.
                   </p>
                 )}
                 <p className="rs-form-help">
                   Off by default. When enabled for IPTorrents, a captured
                   release is queued for download only when it matches a
                   monitored, missing movie or an ordinary single TV episode,
-                  using that title&rsquo;s saved quality profile and its grab
-                  delay. Season packs, Anime and replacement searches are never
-                  grabbed automatically and stay manual. Every other tracker and
-                  every release that does not match stays capture-only: it is
-                  recorded here for review and nothing is downloaded. A quality
-                  profile whose minimum seeders is 0 still accepts a release
-                  with an unknown seeder count; a profile that requires at least
-                  one seeder rejects a release whose seeder count is unknown.
-                  The passkey is used only to build the tracker download URL and
-                  is never shown.
+                  using that title&rsquo;s saved quality profile and its
+                  download delay. Season packs, Anime and replacement searches
+                  are never downloaded automatically and stay manual. Every
+                  other tracker and every release that does not match stays
+                  capture-only: it is recorded here for review and nothing is
+                  downloaded. A quality profile whose minimum seeders is 0 still
+                  accepts a release with an unknown seeder count; a profile that
+                  requires at least one seeder rejects a release whose seeder
+                  count is unknown. The passkey is used only to build the
+                  tracker download URL and is never shown.
                 </p>
                 <label className="rs-check">
                   <input

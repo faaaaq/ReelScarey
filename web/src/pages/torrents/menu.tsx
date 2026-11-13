@@ -19,17 +19,22 @@ export type MenuEntry =
   | { kind: "separator" }
   | { kind: "sub"; label: string; entries: MenuEntry[]; disabled?: boolean };
 
+/** Stable React key for a menu entry (labels, with positional separators). */
+function entryKey(entry: MenuEntry, index: number) {
+  return entry.kind === "separator" ? `separator-${index}` : entry.label;
+}
+
 export function ContextMenuEntries({ entries }: { entries: MenuEntry[] }) {
   return (
     <>
       {entries.map((entry, index) => {
         switch (entry.kind) {
           case "separator":
-            return <ContextMenu.Separator key={index} />;
+            return <ContextMenu.Separator key={entryKey(entry, index)} />;
           case "item":
             return (
               <ContextMenu.Item
-                key={index}
+                key={entryKey(entry, index)}
                 disabled={entry.disabled}
                 color={entry.danger ? "red" : undefined}
                 shortcut={entry.shortcut}
@@ -41,7 +46,7 @@ export function ContextMenuEntries({ entries }: { entries: MenuEntry[] }) {
           case "check":
             return (
               <ContextMenu.CheckboxItem
-                key={index}
+                key={entryKey(entry, index)}
                 checked={entry.checked}
                 disabled={entry.disabled}
                 onSelect={entry.onSelect}
@@ -51,7 +56,7 @@ export function ContextMenuEntries({ entries }: { entries: MenuEntry[] }) {
             );
           case "sub":
             return (
-              <ContextMenu.Sub key={index}>
+              <ContextMenu.Sub key={entryKey(entry, index)}>
                 <ContextMenu.SubTrigger disabled={entry.disabled}>
                   {entry.label}
                 </ContextMenu.SubTrigger>
@@ -72,11 +77,11 @@ export function DropdownMenuEntries({ entries }: { entries: MenuEntry[] }) {
       {entries.map((entry, index) => {
         switch (entry.kind) {
           case "separator":
-            return <DropdownMenu.Separator key={index} />;
+            return <DropdownMenu.Separator key={entryKey(entry, index)} />;
           case "item":
             return (
               <DropdownMenu.Item
-                key={index}
+                key={entryKey(entry, index)}
                 disabled={entry.disabled}
                 color={entry.danger ? "red" : undefined}
                 shortcut={entry.shortcut}
@@ -88,7 +93,7 @@ export function DropdownMenuEntries({ entries }: { entries: MenuEntry[] }) {
           case "check":
             return (
               <DropdownMenu.CheckboxItem
-                key={index}
+                key={entryKey(entry, index)}
                 checked={entry.checked}
                 disabled={entry.disabled}
                 onSelect={entry.onSelect}
@@ -98,7 +103,7 @@ export function DropdownMenuEntries({ entries }: { entries: MenuEntry[] }) {
             );
           case "sub":
             return (
-              <DropdownMenu.Sub key={index}>
+              <DropdownMenu.Sub key={entryKey(entry, index)}>
                 <DropdownMenu.SubTrigger disabled={entry.disabled}>
                   {entry.label}
                 </DropdownMenu.SubTrigger>

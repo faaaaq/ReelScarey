@@ -21,6 +21,18 @@ export function formatSpeed(value: number | null | undefined, zero = "—") {
   return value && value > 0 ? `${formatBytes(value)}/s` : zero;
 }
 
+/** Media track duration from milliseconds, rendered as m:ss (or h:mm:ss). */
+export function formatTrackDuration(ms: number | null | undefined) {
+  if (!ms || ms < 0) return "—";
+  const totalSeconds = Math.round(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const mm = String(m).padStart(h ? 2 : 1, "0");
+  const ss = String(s).padStart(2, "0");
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
 /** Compact duration such as "2d 4h", "3h 12m", "45s". */
 export function formatDuration(seconds: number | null | undefined) {
   if (seconds === null || seconds === undefined || seconds < 0) return "—";

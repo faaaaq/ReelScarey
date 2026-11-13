@@ -18,6 +18,7 @@ import { api, messageFor, type DownloadJob, type DownloadPage } from "../api";
 import { PageHeading, RequestState } from "../components";
 import {
   Alert,
+  ConfirmDialog,
   DescriptionItem,
   DescriptionList,
   EmptyState,
@@ -788,14 +789,17 @@ function JobActions({
         </span>
       )}
       {attention && (
-        <Button
-          variant="soft"
-          color="red"
-          disabled={pending}
-          onClick={() => void action("stop")}
-        >
-          Stop tracking
-        </Button>
+        <ConfirmDialog
+          trigger={
+            <Button variant="soft" color="red" disabled={pending}>
+              Stop tracking
+            </Button>
+          }
+          title="Stop tracking this download?"
+          description="Tracking will stop and this job will no longer be retried. You can start a new download for this title later."
+          confirmLabel="Stop tracking"
+          onConfirm={() => action("stop")}
+        />
       )}
       {attention &&
         job.error_code !== "replacement_review" &&

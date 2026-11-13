@@ -1,4 +1,10 @@
-import { useId, useState, type MouseEvent, type ReactNode } from "react";
+import {
+  useId,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { Button, DropdownMenu, Switch } from "@radix-ui/themes";
 import {
   ChevronDown,
@@ -67,10 +73,22 @@ export function MovieCard({
       return;
     onOpen();
   }
+  function openFromKey(event: ReactKeyboardEvent<HTMLElement>) {
+    if (!onOpen) return;
+    if ((event.target as HTMLElement).closest("button, a, input, select"))
+      return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onOpen();
+    }
+  }
   return (
     <article
       className={onOpen ? "add-result is-interactive" : "add-result"}
       onClick={open}
+      onKeyDown={onOpen ? openFromKey : undefined}
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
     >
       {href ? (
         <Link
@@ -141,6 +159,7 @@ export function AddMovieButton({
   >("");
   const [error, setError] = useState("");
   const [folderMessage, setFolderMessage] = useState("");
+  const [libraryID, setLibraryID] = useState<number | null>(null);
   async function add(choice: "monitored" | "unmonitored" | SeriesMonitorMode) {
     if (pending) return;
     setPending(choice);
@@ -159,6 +178,7 @@ export function AddMovieButton({
           }),
         },
       );
+      setLibraryID(result?.item?.id ?? null);
       if (createFolder) {
         try {
           if (!result?.item) throw new Error("The new title was not returned.");
@@ -184,7 +204,15 @@ export function AddMovieButton({
     return (
       <div className="add-button">
         <Label kind="success" large>
-          In library
+          {libraryID ? (
+            <Link
+              to={`/${kind === "series" ? "series" : "movies"}/${libraryID}`}
+            >
+              In library
+            </Link>
+          ) : (
+            "In library"
+          )}
         </Label>
         {folderMessage && (
           <p role="status" className="add-button-message">

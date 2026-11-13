@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+﻿import { useId, useState } from "react";
 import { Button } from "@radix-ui/themes";
 import { api, messageFor } from "../api";
 import { RequestState } from "../components";
@@ -343,7 +343,7 @@ function AnimeSearchForm({
         help="Reject releases that are not labeled as an English dub. The matching rule is editable on the Anime library page."
       >
         <OptIn
-          label="Only grab English-dubbed releases"
+          label="Only download English-dubbed releases"
           checked={englishDubOnly}
           disabled={locked}
           onChange={(value) => {

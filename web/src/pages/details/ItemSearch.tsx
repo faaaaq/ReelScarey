@@ -63,11 +63,21 @@ export function useItemSearch() {
   const [result, setResult] = useState<ItemSearchResult | null>(null);
   const startedAt = useRef(0);
   const attempt = useRef(0);
+  const failures = useRef(0);
   const baselineRun = useRef<string | null>(null);
+
+  /** Consecutive poll failures tolerated before giving up with an error. */
+  const maxPollFailures = 3;
+
+  function failPoll(message: string) {
+    setResult({ outcome: "poll_failed", message });
+    stop();
+  }
 
   const stop = useCallback(() => {
     setPending(null);
     attempt.current = 0;
+    failures.current = 0;
   }, []);
 
   const episodePoll = useCallback(
@@ -78,6 +88,7 @@ export function useItemSearch() {
       if (target.episodeID) query.set("episode_id", String(target.episodeID));
       api<ItemSearchResult>(`/automation/item-results?${query.toString()}`)
         .then((value) => {
+          failures.current = 0;
           if (attempt.current > 30) {
             setResult({
               outcome: "timeout",
@@ -97,8 +108,14 @@ export function useItemSearch() {
           }
           attempt.current += 1;
         })
-        .catch(() => {
+        .catch((e) => {
+          failures.current += 1;
           attempt.current += 1;
+          if (failures.current >= maxPollFailures) {
+            failPoll(
+              `The search result could not be checked (${messageFor(e)}).`,
+            );
+          }
         });
     },
     [stop],
@@ -108,6 +125,7 @@ export function useItemSearch() {
     (_target: { mediaID: number; season: number }) => {
       api<{ items: RunSummary[] }>("/automation/runs")
         .then((out) => {
+          failures.current = 0;
           if (attempt.current > 40) {
             setResult({
               outcome: "timeout",
@@ -134,8 +152,14 @@ export function useItemSearch() {
           }
           attempt.current += 1;
         })
-        .catch(() => {
+        .catch((e) => {
+          failures.current += 1;
           attempt.current += 1;
+          if (failures.current >= maxPollFailures) {
+            failPoll(
+              `The search result could not be checked (${messageFor(e)}).`,
+            );
+          }
         });
     },
     [stop],
@@ -213,7 +237,9 @@ export function ItemSearchResultAlert({
   const kind =
     result.outcome === "queued" || result.outcome === "match"
       ? "success"
-      : result.outcome === "error" || result.outcome === "needs_attention"
+      : result.outcome === "error" ||
+          result.outcome === "needs_attention" ||
+          result.outcome === "poll_failed"
         ? "danger"
         : "info";
   const titles: Record<string, string> = {
@@ -223,6 +249,7 @@ export function ItemSearchResultAlert({
     needs_attention: "Search needs attention",
     timeout: "Search still running",
     error: "Search could not start",
+    poll_failed: "Search could not be checked",
   };
   return (
     <Alert

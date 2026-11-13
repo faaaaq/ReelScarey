@@ -442,11 +442,12 @@ export function Torrents() {
 
   const onDoubleClick = useCallback(
     (hash: string) => {
+      if (busy) return;
       const t = items.find((i) => i.hash === hash);
       if (!t) return;
       void send([hash], isPaused(t) ? "resume" : "pause");
     },
-    [items, send],
+    [items, send, busy],
   );
 
   const openDelete = useCallback(() => {
@@ -454,28 +455,29 @@ export function Torrents() {
   }, [selection.selected]);
 
   const menuEntries = useMemo<MenuEntry[]>(() => {
+    const inactive = none || busy;
     const all = (pick: (t: Torrent) => boolean) =>
       selected.length > 0 && selected.every(pick);
     const complete = all((t) => t.progress >= 1);
     const job = single && originOf(single) === "job" && single.job_id;
-    const queueDisabled = none || !queueing;
+    const queueDisabled = inactive || !queueing;
     const entries: MenuEntry[] = [
       {
         kind: "item",
         label: "Resume",
-        disabled: none,
+        disabled: inactive,
         onSelect: () => void act("resume"),
       },
       {
         kind: "item",
         label: "Pause",
-        disabled: none,
+        disabled: inactive,
         onSelect: () => void act("pause"),
       },
       {
         kind: "item",
         label: "Force Resume",
-        disabled: none,
+        disabled: inactive,
         onSelect: () => void act("force_start", { enabled: true }),
       },
       {
@@ -483,26 +485,26 @@ export function Torrents() {
         label: "Delete…",
         danger: true,
         shortcut: "Del",
-        disabled: none,
+        disabled: inactive,
         onSelect: () => setDeleteOpen(true),
       },
       { kind: "separator" },
       {
         kind: "item",
         label: "Limit download rate…",
-        disabled: none,
+        disabled: inactive,
         onSelect: () => setLimitDialog("dl"),
       },
       {
         kind: "item",
         label: "Limit upload rate…",
-        disabled: none,
+        disabled: inactive,
         onSelect: () => setLimitDialog("ul"),
       },
       {
         kind: "item",
         label: "Limit share ratio…",
-        disabled: none,
+        disabled: inactive,
         onSelect: () => setShareOpen(true),
       },
       { kind: "separator" },
@@ -510,7 +512,7 @@ export function Torrents() {
         kind: "check",
         label: "Sequential download",
         checked: all((t) => t.seq_dl),
-        disabled: none,
+        disabled: inactive,
         onSelect: () =>
           void act("sequential", { enabled: !all((t) => t.seq_dl) }),
       },
@@ -518,7 +520,7 @@ export function Torrents() {
         kind: "check",
         label: "Download first and last pieces first",
         checked: all((t) => t.f_l_piece_prio),
-        disabled: none,
+        disabled: inactive,
         onSelect: () =>
           void act("first_last_piece", {
             enabled: !all((t) => t.f_l_piece_prio),
@@ -528,7 +530,7 @@ export function Torrents() {
         kind: "check",
         label: "Super seeding mode",
         checked: all((t) => t.super_seeding),
-        disabled: none || !complete,
+        disabled: inactive || !complete,
         onSelect: () =>
           void act("super_seeding", { enabled: !all((t) => t.super_seeding) }),
       },
@@ -536,13 +538,13 @@ export function Torrents() {
       {
         kind: "item",
         label: "Force recheck",
-        disabled: none,
+        disabled: inactive,
         onSelect: () => void act("recheck"),
       },
       {
         kind: "item",
         label: "Force reannounce",
-        disabled: none,
+        disabled: inactive,
         onSelect: () => void act("reannounce"),
       },
       { kind: "separator" },
@@ -576,7 +578,7 @@ export function Torrents() {
       {
         kind: "sub",
         label: "Copy",
-        disabled: none,
+        disabled: inactive,
         entries: [
           {
             kind: "item",
@@ -610,7 +612,7 @@ export function Torrents() {
         },
       );
     return entries;
-  }, [selected, single, none, queueing, act, copy, navigate]);
+  }, [selected, single, none, busy, queueing, act, copy, navigate]);
 
   // Splitter between the torrent list and the properties panel.
   const drag = useRef<{ y: number; height: number } | null>(null);

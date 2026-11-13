@@ -206,7 +206,7 @@ describe("foundation UI", () => {
     });
   });
 
-  it("preserves unsaved edits on a revision conflict and allows reload", async () => {
+  it("discards edits and reloads saved settings on a revision conflict", async () => {
     setupFetch(() =>
       Response.json(
         { error: { message: "Settings changed; reload and try again." } },
@@ -218,14 +218,8 @@ describe("foundation UI", () => {
     await userEvent.clear(name);
     await userEvent.type(name, "My edits");
     await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Settings changed",
-    );
-    expect(name).toHaveValue("My edits");
+    expect(await screen.findByRole("alert")).toHaveTextContent("discarded");
     expect(screen.queryByText("Preferences saved.")).not.toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("button", { name: "Reload saved settings" }),
-    );
     await waitFor(() =>
       expect(screen.getByLabelText("Library name")).toHaveValue("My library"),
     );

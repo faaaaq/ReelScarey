@@ -1,4 +1,4 @@
-import { PageBody } from "../ui";
+﻿import { PageBody } from "../ui";
 import { useEffect, useState, type FormEvent } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
@@ -11,6 +11,7 @@ import {
 import { PageHeading, RequestState } from "../components";
 import { useLiveResource } from "../useLiveResource";
 import { useResource } from "../useResource";
+import { formatTimestamp } from "../ui/format";
 import "./Admin.css";
 
 export type Profile = {
@@ -147,9 +148,7 @@ const languages = [
 function readable(value: string) {
   return value.replaceAll("_", " ");
 }
-function date(value: number) {
-  return value ? new Date(value * 1000).toLocaleString() : "Not scheduled";
-}
+
 export function Automation() {
   const schedule = useLiveResource<Schedule>("/automation", 10000);
   const profiles = useLiveResource<{ items: Profile[] }>("/quality-profiles");
@@ -399,7 +398,7 @@ function ScheduleForm({
       </form>
       <p className="rs-form-help">
         {schedule.enabled
-          ? `Next search: ${date(schedule.next_run)}`
+          ? `Next search: ${formatTimestamp(schedule.next_run)}`
           : "Scheduled searches are paused. Search now runs once using the saved preferences."}{" "}
         Pausing stops further searches; existing downloads continue.
       </p>
@@ -440,10 +439,10 @@ function ReleaseDetection() {
           />
           <p className="rs-form-help">
             {status.data.enabled
-              ? `Next check: ${date(status.data.next_run)}`
+              ? `Next check: ${formatTimestamp(status.data.next_run)}`
               : "Release checks are paused. Check now runs one pass using the saved interval."}
             {status.data.last_checked
-              ? ` Last check: ${date(status.data.last_checked)}.`
+              ? ` Last check: ${formatTimestamp(status.data.last_checked)}.`
               : ""}
           </p>
           {status.data.last_run && (
@@ -451,7 +450,7 @@ function ReleaseDetection() {
               Last pass: {readable(status.data.last_run.state)} ·{" "}
               {status.data.last_run.indexers} indexers ·{" "}
               {status.data.last_run.checked} releases checked ·{" "}
-              {status.data.last_run.queued} grabbed
+              {status.data.last_run.queued} downloaded
             </p>
           )}
           <h3>Recent feed results</h3>
@@ -479,7 +478,8 @@ function ReleaseDetection() {
                     </Badge>
                   </div>
                   <p className="rs-small">
-                    {r.release_title} · {r.indexer} · {date(r.created_at)}
+                    {r.release_title} · {r.indexer} ·{" "}
+                    {formatTimestamp(r.created_at)}
                   </p>
                   <p>{r.message}</p>
                   {r.download_id && (
@@ -576,14 +576,14 @@ function RSSForm({
         <p className="rs-form-help">
           Every passing feed entry is matched against monitored, missing movies
           and episodes using the existing exact title, episode and quality
-          rules. A match is grabbed automatically, even while the scheduled
+          rules. A match is downloaded automatically, even while the scheduled
           search above is paused or in search-only mode. Registered files are
           never replaced; upgrades remain suggestions. Manual release searches
           still show results for review.
         </p>
         {!form.client_connected && (
           <p className="automation-notice">
-            Connect a download client before automatic grabs can start. Feed
+            Connect a download client before automatic downloads can start. Feed
             checks will record waiting matches until then.
           </p>
         )}
@@ -640,8 +640,8 @@ function RunHistory() {
             <select value={id} onChange={(e) => setSelected(e.target.value)}>
               {runs.data.items.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {date(r.started_at)} · {readable(r.state)} · {r.checked}{" "}
-                  checked · {r.matched} matched · {r.queued} queued
+                  {formatTimestamp(r.started_at)} · {readable(r.state)} ·{" "}
+                  {r.checked} checked · {r.matched} matched · {r.queued} queued
                 </option>
               ))}
             </select>
@@ -1067,7 +1067,7 @@ function ProfileForm({
             />
           </label>
           <label>
-            Grab delay (minutes)
+            Download delay (minutes)
             <input
               required
               type="number"
@@ -1213,8 +1213,8 @@ function ProfileForm({
           </label>
         </div>
         <p className="rs-form-help">
-          Automatic grabs wait for the grab delay before submission so better
-          releases can appear. Manual release selections are submitted
+          Automatic downloads wait for the download delay before submission so
+          better releases can appear. Manual release selections are submitted
           immediately.
         </p>
         <p className="rs-form-help">

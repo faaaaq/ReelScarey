@@ -1,10 +1,11 @@
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { Link } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import {
   Alert,
   Check,
+  ConfirmDialog,
   EmptyState,
   FieldSet,
   FormActions,
@@ -426,14 +427,17 @@ function ProviderSection({
                   >
                     Test saved connection
                   </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    color="red"
-                    onClick={() => void action("remove")}
-                  >
-                    Disconnect
-                  </Button>
+                  <ConfirmDialog
+                    trigger={
+                      <Button type="button" variant="ghost" color="red">
+                        Disconnect
+                      </Button>
+                    }
+                    title={`Disconnect ${providerLabel}?`}
+                    description="This removes the saved subtitle provider connection and its stored credentials, including the account password and application API key. Existing subtitle files stay in the library; automatic downloads stop until a provider is connected again."
+                    confirmLabel="Disconnect"
+                    onConfirm={() => action("remove")}
+                  />
                 </>
               )}
             </FormActions>
@@ -466,6 +470,16 @@ function Preferences({
   const [adding, setAdding] = useState("es");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<PreferenceFeedback>(null);
+  const dirty = JSON.stringify(form) !== JSON.stringify(data.preferences);
+  useEffect(() => {
+    if (!dirty) return;
+    function handler(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
   const addID = useId();
   const formatID = useId();
   const timingID = useId();

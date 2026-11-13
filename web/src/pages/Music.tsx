@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+﻿import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import {
   ArrowLeft,
@@ -59,12 +59,7 @@ import {
 } from "../musicDownload";
 import "./Library.css";
 import "./Music.css";
-
-function formatDuration(ms: number) {
-  if (ms <= 0) return "—";
-  const total = Math.round(ms / 1000);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
+import { formatBytes, formatTrackDuration } from "../ui/format";
 
 function statusKind(status: string, monitored: boolean) {
   if (status === "available") return "success";
@@ -249,7 +244,7 @@ export function LibraryTrackTable({ tracks }: { tracks: MusicArtistTrack[] }) {
                   {track.album_title}
                 </Link>
               </td>
-              <td>{formatDuration(track.duration_ms)}</td>
+              <td>{formatTrackDuration(track.duration_ms)}</td>
               <td className="is-actions">
                 {fileID ? (
                   <Button
@@ -347,7 +342,7 @@ function ArtistTrackTable({
                   {track.album_title}
                 </Link>
               </td>
-              <td>{formatDuration(track.duration_ms)}</td>
+              <td>{formatTrackDuration(track.duration_ms)}</td>
               <td className="is-actions">
                 {fileID ? (
                   <Button
@@ -440,7 +435,7 @@ function TopTrackTable({
               {track.in_library && <Label kind="success">In library</Label>}
             </td>
             <td>{track.album || "—"}</td>
-            <td>{formatDuration(track.duration_ms)}</td>
+            <td>{formatTrackDuration(track.duration_ms)}</td>
             <td className="is-actions">
               {track.file_id ? (
                 <Button
@@ -1097,18 +1092,6 @@ export function MusicArtistPage() {
   );
 }
 
-function formatBytes(bytes: number) {
-  if (!bytes) return "—";
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
-}
-
 export function MusicAlbumPage() {
   const { id } = useParams();
   const details = useResource<MusicAlbumDetails>(
@@ -1520,7 +1503,7 @@ export function MusicAlbumPage() {
                         : track.number}
                     </td>
                     <td>{track.title}</td>
-                    <td>{formatDuration(track.duration_ms)}</td>
+                    <td>{formatTrackDuration(track.duration_ms)}</td>
                     <td className="is-actions">
                       {fileID ? (
                         <Button

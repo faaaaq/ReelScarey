@@ -1200,5 +1200,12 @@ export async function api<T>(
 
 export function messageFor(error: unknown): string {
   if (error instanceof APIError) return error.message;
+  // AbortSignal.timeout rejects with a DOMException named TimeoutError; some
+  // browsers wrap it in a TypeError, so match on the name in both cases.
+  if (
+    (error instanceof DOMException && error.name === "TimeoutError") ||
+    (error instanceof Error && error.name === "TimeoutError")
+  )
+    return "The request timed out. It may still have completed — check Activity before retrying.";
   return "ReelScarey could not be reached. Check that the server is running, then try again.";
 }
