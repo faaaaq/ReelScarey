@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -391,6 +392,17 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
+		// Password attempts over /rest/ arrive unthrottled from clients, so
+		// failed authentications are limited per source address like the
+		// compatibility API keys.
+		ip, _, splitErr := net.SplitHostPort(r.RemoteAddr)
+		if splitErr != nil {
+			ip = r.RemoteAddr
+		}
+		if !s.compatLimitedIP(&s.subsonicAttempts, ip) {
+			writeSubsonic(w, r, subsonicFailure(s.version, 50, "Too many failed sign-in attempts. Wait a minute and try again."))
+			return
+		}
 		writeSubsonic(w, r, subsonicFailure(s.version, 40, "Wrong username or password."))
 		return
 	}

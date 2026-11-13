@@ -11,6 +11,7 @@ import { Button, TextField } from "@radix-ui/themes";
 import { Film, KeyRound, LogIn, ShieldCheck } from "lucide-react";
 import {
   api,
+  APIError,
   messageFor,
   setCSRFToken,
   type AuthStatus,
@@ -87,7 +88,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return (
       <AuthForm
         setup={status?.setup_required ?? false}
-        totpEnabled={status?.totp_enabled ?? false}
         onSignedIn={(session) => {
           if (status?.setup_required) navigate("/setup", { replace: true });
           setCSRFToken(session.csrf_token);
@@ -104,11 +104,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
 function AuthForm({
   setup,
-  totpEnabled,
   onSignedIn,
 }: {
   setup: boolean;
-  totpEnabled: boolean;
   onSignedIn: (session: Session) => void;
 }) {
   useEffect(() => {
@@ -120,6 +118,10 @@ function AuthForm({
   const [importMode, setImportMode] = useState<"hardlink" | "copy">("hardlink");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  // Two-factor status is deliberately not revealed before authentication.
+  // The code field appears after a sign-in that used the right credentials
+  // and was asked for a code.
+  const [totpRequired, setTotpRequired] = useState(false);
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (pending) return;
@@ -141,7 +143,7 @@ function AuthForm({
             password,
             ...(setup
               ? { setup_token: code.trim(), import_mode: importMode }
-              : totpEnabled
+              : totpRequired
                 ? { totp_code: code.trim() }
                 : {}),
           }),
@@ -152,6 +154,13 @@ function AuthForm({
       onSignedIn(session);
     } catch (error) {
       setError(messageFor(error));
+      if (
+        !setup &&
+        error instanceof APIError &&
+        error.code === "invalid_totp"
+      ) {
+        setTotpRequired(true);
+      }
       setPassword("");
       if (!setup) setCode("");
     } finally {
@@ -242,7 +251,7 @@ function AuthForm({
                 </p>
               )}
             </div>
-            {!setup && totpEnabled && (
+            {!setup && totpRequired && (
               <div className="rs-auth-field">
                 <label htmlFor="auth-totp">
                   Authenticator or recovery code

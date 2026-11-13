@@ -84,6 +84,7 @@ type Server struct {
 	totp             *auth.TOTPStore
 	compatMu         sync.Mutex
 	compatAttempts   map[string]compatAttempt
+	subsonicAttempts map[string]compatAttempt
 }
 
 type Dependencies struct {

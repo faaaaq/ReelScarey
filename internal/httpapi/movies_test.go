@@ -98,6 +98,9 @@ func TestAuthProtectionCookieAndLogout(t *testing.T) {
 	if !strings.Contains(out.Body.String(), `"setup_required":true`) {
 		t.Fatal(out.Body)
 	}
+	if strings.Contains(out.Body.String(), "totp_enabled") {
+		t.Fatal("unauthenticated session status reveals two-factor state")
+	}
 	body, _ := json.Marshal(map[string]string{"username": "admin", "password": "test-only-password", "setup_token": code})
 	out = request(handler, "POST", "/api/v1/auth/setup", string(body), nil, false)
 	if out.Code != 201 {

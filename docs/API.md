@@ -45,7 +45,8 @@ redirects are refused, and non-torrent definitions are not claimed as working.
 Administrator GET/POST `/api/v1/api-keys` and DELETE `/api/v1/api-keys/{id}`
 manage scoped compatibility keys. The token is returned once; only its digest is
 stored. `/sonarr`, `/radarr`, `/prowlarr` and `/api/v3` accept `X-Api-Key`,
-`?apikey=` or a Bearer token. Compatibility reads and the four allowed `POST
+`?apikey=` (GET/HEAD reads only; mutations must send the header) or a Bearer
+token. Compatibility reads and the four allowed `POST
 /command` names are documented in [integrations](INTEGRATIONS.md). Unsupported
 operations return an explicit 404/501; the layer never invents history.
 
@@ -1523,9 +1524,12 @@ one-time `{secret, otpauth_uri}`; nothing is enabled until POST
 `/api/v1/auth/totp/confirm` with `{code}` succeeds, which returns ten one-time
 recovery codes. POST `/api/v1/auth/totp/disable` requires a current code.
 The secret is encrypted through the existing secure store and recovery codes
-are stored only as hashes. Login accepts `{username,password,totp_code}` when
-`/api/v1/auth/session` reports `totp_enabled: true`; the code may be an
-authenticator code or a single-use recovery code.
+are stored only as hashes. Login accepts `{username,password,totp_code}` when two-factor
+authentication is enabled; the code may be an authenticator code or a
+single-use recovery code. The unauthenticated `/api/v1/auth/session` response
+does not reveal whether two-factor authentication is enabled: a sign-in with
+the correct credentials is refused with `invalid_totp` when a code is
+required, and the sign-in form then asks for one.
 
 Quality profiles now include `grab_delay_minutes` (0-1440). Automatic grabs,
 scheduled searches and release-feed matches remain visible as queued but are

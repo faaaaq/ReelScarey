@@ -268,16 +268,18 @@ describe("two-factor sign-in", () => {
     const user = userEvent.setup();
     const fetch = vi.fn(async (url: string, options?: RequestInit) => {
       if (url.endsWith("/auth/session"))
-        return Response.json({
-          setup_required: false,
-          authenticated: false,
-          totp_enabled: true,
-        });
+        // Two-factor status is deliberately not revealed before authentication.
+        return Response.json({ setup_required: false, authenticated: false });
       if (url.endsWith("/auth/login") && options?.method === "POST") {
         const body = JSON.parse(String(options.body));
         if (body.totp_code !== "123456")
           return Response.json(
-            { error: { message: "The authenticator code is incorrect." } },
+            {
+              error: {
+                code: "invalid_totp",
+                message: "The authenticator code is incorrect.",
+              },
+            },
             { status: 401 },
           );
         return Response.json({
@@ -298,22 +300,24 @@ describe("two-factor sign-in", () => {
       </Theme>,
     );
 
+    // The authenticator code field appears only after a credentials-correct
+    // sign-in was refused for a missing or wrong code.
     expect(
-      await screen.findByLabelText("Authenticator or recovery code"),
-    ).toBeVisible();
-    await user.type(screen.getByLabelText("Username"), "testadmin");
+      screen.queryByLabelText("Authenticator or recovery code"),
+    ).toBeNull();
+    await user.type(await screen.findByLabelText("Username"), "testadmin");
     await user.type(screen.getByLabelText("Password"), "test-password");
-    await user.type(
-      screen.getByLabelText("Authenticator or recovery code"),
-      "000000",
-    );
     await user.click(screen.getByRole("button", { name: "Sign in" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The authenticator code is incorrect.",
     );
+    // The code field stays available for a corrected attempt.
+    expect(
+      screen.getByLabelText("Authenticator or recovery code"),
+    ).toBeVisible();
 
-    const password = screen.getByLabelText("Password");
     const code = screen.getByLabelText("Authenticator or recovery code");
+    const password = screen.getByLabelText("Password");
     await user.clear(password);
     await user.type(password, "test-password");
     await user.clear(code);

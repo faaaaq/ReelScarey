@@ -104,27 +104,33 @@ type compatAttempt struct {
 	until time.Time
 }
 
-func (s *Server) compatLimited(ip string) bool {
+// compatLimitedIP is a per-IP 60/minute sliding bucket shared by the
+// compatibility API-key path and failed Subsonic sign-in attempts.
+func (s *Server) compatLimitedIP(attempts *map[string]compatAttempt, ip string) bool {
 	s.compatMu.Lock()
 	defer s.compatMu.Unlock()
 	now := time.Now()
-	if s.compatAttempts == nil {
-		s.compatAttempts = map[string]compatAttempt{}
+	if *attempts == nil {
+		*attempts = map[string]compatAttempt{}
 	}
-	attempt := s.compatAttempts[ip]
+	attempt := (*attempts)[ip]
 	if now.After(attempt.until) {
 		attempt = compatAttempt{until: now.Add(time.Minute)}
 	}
 	attempt.count++
-	s.compatAttempts[ip] = attempt
-	if len(s.compatAttempts) > 2048 {
-		for key, value := range s.compatAttempts {
+	(*attempts)[ip] = attempt
+	if len(*attempts) > 2048 {
+		for key, value := range *attempts {
 			if now.After(value.until) {
-				delete(s.compatAttempts, key)
+				delete(*attempts, key)
 			}
 		}
 	}
 	return attempt.count <= 60
+}
+
+func (s *Server) compatLimited(ip string) bool {
+	return s.compatLimitedIP(&s.compatAttempts, ip)
 }
 
 func (s *Server) compatSecurity(next http.Handler, w http.ResponseWriter, r *http.Request) {
@@ -135,7 +141,9 @@ func (s *Server) compatSecurity(next http.Handler, w http.ResponseWriter, r *htt
 		return
 	}
 	token := strings.TrimSpace(r.Header.Get("X-Api-Key"))
-	if token == "" {
+	if token == "" && (r.Method == "GET" || r.Method == "HEAD") {
+		// A query-string key lands in proxy and access logs, so it is accepted
+		// only for reads; mutations must send the X-Api-Key header.
 		token = strings.TrimSpace(r.URL.Query().Get("apikey"))
 	}
 	if token == "" {
@@ -278,7 +286,10 @@ func (s *Server) authSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	send(w, 200, map[string]any{"setup_required": !configured, "authenticated": false, "totp_enabled": totpEnabled})
+	// The unauthenticated response must not reveal whether two-factor
+	// authentication is enabled. A failed sign-in with the correct username
+	// and password already asks for the code through the invalid_totp error.
+	send(w, 200, map[string]any{"setup_required": !configured, "authenticated": false})
 }
 func (s *Server) authAttempt(w http.ResponseWriter, r *http.Request) bool {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)

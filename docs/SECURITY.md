@@ -32,8 +32,17 @@ not appear in logs or returned error messages. Password reset revokes sessions.
 Scoped API keys are stored only as SHA-256 digests with a short display prefix.
 They reach only the Sonarr/Radarr/Prowlarr compatibility prefixes, not the
 administrator API, and request-account sessions are rejected there. API keys are
-revocable, optionally expiring and shown once. Notification and media-server
-secrets use the same secure store. A notification whose network result is
+revocable, optionally expiring and shown once. A query-string `?apikey=` is
+accepted only for GET/HEAD compatibility reads; every mutation must send the
+`X-Api-Key` header, because a query key lands in proxy and access logs. Failed
+Subsonic `/rest/` sign-in attempts are throttled per source address like
+compatibility keys. Subsonic clients may still authenticate with the legacy
+cleartext `p=` parameter where the protocol requires it; deploy behind a TLS
+reverse proxy when such clients are used off-host, or prefer token (`t=`/`s=`)
+authentication. Whether two-factor authentication is enabled is not disclosed
+before authentication; the sign-in form asks for a code only after a
+credentials-correct attempt is refused. Notification and media-server secrets
+use the same secure store. A notification whose network result is
 ambiguous is marked uncertain and is never retried automatically, because a
 retry could duplicate a message the provider already accepted.
 

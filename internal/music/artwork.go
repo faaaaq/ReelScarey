@@ -267,7 +267,7 @@ func (s *Service) downloadArtwork(ctx context.Context, kind string, id int64, so
 	default:
 		return &Error{Code: "music_artwork_missing", Message: "The artwork response is not a supported image."}
 	}
-	if err := os.MkdirAll(s.artworkDir, 0o755); err != nil {
+	if err := os.MkdirAll(s.artworkDir, 0o700); err != nil {
 		return err
 	}
 	temp, err := os.CreateTemp(s.artworkDir, ".artwork-*")

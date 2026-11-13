@@ -395,7 +395,7 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 	if err := os.RemoveAll(stagingRoot); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(stagingRoot, 0o755); err != nil {
+	if err := os.MkdirAll(stagingRoot, 0o700); err != nil {
 		return err
 	}
 	videoID := strings.TrimSpace(track.SourceURL)
