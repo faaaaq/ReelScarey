@@ -152,6 +152,15 @@ func (s *Service) reconcileStagedRemoval(ctx context.Context, root *os.Root, ori
 		journal(staged, "The staged removal copy at "+staged+" does not match the registered checksum of "+original+"; it was not restored. Restore or delete it manually, then rescan.", stagedRemovalLeft)
 		return
 	}
+	// Re-check the original path after hashing: a removal that started after
+	// this sweep began but before the hash finished could still be in flight,
+	// and renaming the staged copy back now would race that removal's commit
+	// (NEW-V4-1). If the original appeared while we were hashing, leave the
+	// staged copy alone and journal it for manual review instead.
+	if appeared, err := existsFolded(root, original); err == nil && appeared {
+		journal(staged, "The staged removal copy at "+staged+" was left in place because "+original+" reappeared while its content was being verified. Review the staged copy, then rescan.", stagedRemovalLeft)
+		return
+	}
 	// The staged copy is verified registered content: rename it back.
 	if err = root.Rename(filepath.FromSlash(staged), filepath.FromSlash(original)); err != nil {
 		journal(staged, "The staged removal copy at "+staged+" could not be restored to its registered path "+original+" ("+err.Error()+"). Restore or delete it manually, then rescan.", stagedRemovalLeft)
