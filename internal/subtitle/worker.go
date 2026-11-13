@@ -121,8 +121,33 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 	n, _ := r.RowsAffected()
 	if n == 0 {
 		_, e = s.db.ExecContext(finish, `UPDATE subtitle_jobs SET lease_owner='',lease_until=0 WHERE id=? AND lease_owner=?`, j.ID, j.owner)
+		return true, e
 	}
-	return true, e
+	// One bounded, deduplicated activity event per finished job, written only
+	// after this worker actually finalized it. A failed event write must
+	// never fail the finalized job.
+	if state == "completed" || state == "blocked" {
+		_ = s.recordJobOutcome(finish, j, state)
+	}
+	return true, nil
+}
+
+// recordJobOutcome writes the activity event for a finished subtitle job,
+// mirroring transfer's recordDownloadCompleted guard so retries and restart
+// reconciliation never duplicate it. The subtitle_jobs triggers already
+// record every typed job state; this event attributes the outcome to the
+// media title. Subtitle jobs end in 'blocked' when work needs attention or
+// retries are exhausted, so that outcome is recorded as failed.
+func (s *Service) recordJobOutcome(ctx context.Context, j Job, state string) error {
+	outcome := "completed"
+	if state != "completed" {
+		outcome = "failed"
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state)
+SELECT unixepoch(),'subtitle',?,COALESCE((SELECT m.title FROM media_files f JOIN media_items m ON m.id=COALESCE(f.movie_id,f.series_id) WHERE f.id=?),'Subtitle job'),?
+WHERE NOT EXISTS (SELECT 1 FROM activity_events WHERE kind='subtitle' AND object_id=? AND state=?)`,
+		j.ID, j.MediaFileID, outcome, j.ID, outcome)
+	return err
 }
 func (s *Service) process(ctx context.Context, j Job, p Preferences) (string, string, error) {
 	m, e := s.media(ctx, j.MediaFileID)

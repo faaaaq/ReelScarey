@@ -418,7 +418,45 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 	if _, err = tx.ExecContext(finish, `DELETE FROM automation_runs WHERE id NOT IN (SELECT id FROM automation_runs ORDER BY started_at DESC,rowid DESC LIMIT 100) AND state<>'running'`); err != nil {
 		return true, err
 	}
-	return true, tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return true, err
+	}
+	// Bounded retention pruning shares this periodic pass. It runs in its own
+	// short transaction after the finalize committed, and a pruning failure
+	// must never fail the run's finalize.
+	retention, stop := context.WithTimeout(context.Background(), 15*time.Second)
+	defer stop()
+	s.pruneRetention(retention)
+	return true, nil
+}
+
+// pruneRetention bounds the high-churn history tables during the same
+// periodic pass that prunes automation_runs. Each statement keeps recent
+// history while preventing unbounded growth:
+//   - activity_events: 30 days of feed history, additionally capped to the
+//     newest 20,000 rows so a very active library cannot outgrow that cap;
+//   - notification_outbox: terminal deliveries (sent, failed, uncertain,
+//     cancelled) older than 30 days carry no further action;
+//   - import_operations: committed journal rows beyond the newest 1,000 are
+//     historical records only.
+//
+// Pruning is best effort: a failure is ignored here and retried on the next
+// periodic pass.
+func (s *Service) pruneRetention(ctx context.Context) {
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return
+	}
+	defer tx.Rollback()
+	// Keep one month of activity feed history.
+	_, _ = tx.ExecContext(ctx, `DELETE FROM activity_events WHERE occurred_at < unixepoch()-30*86400`)
+	// Cap the activity feed to the newest 20,000 events.
+	_, _ = tx.ExecContext(ctx, `DELETE FROM activity_events WHERE id NOT IN (SELECT id FROM activity_events ORDER BY id DESC LIMIT 20000)`)
+	// Terminal notification deliveries older than one month.
+	_, _ = tx.ExecContext(ctx, `DELETE FROM notification_outbox WHERE state IN ('sent','failed','uncertain','cancelled') AND updated_at < unixepoch()-30*86400`)
+	// Committed import journal rows beyond the newest 1,000.
+	_, _ = tx.ExecContext(ctx, `DELETE FROM import_operations WHERE phase='committed' AND rowid NOT IN (SELECT rowid FROM import_operations ORDER BY rowid DESC LIMIT 1000)`)
+	_ = tx.Commit()
 }
 func (s *Service) process(ctx context.Context, c claim) (string, string, error) {
 	if s.workflow == nil {

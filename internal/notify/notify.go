@@ -33,7 +33,7 @@ var SupportedKinds = []string{"email", "ntfy", "gotify", "pushover", "telegram",
 var SupportedEvents = []string{
 	"download.completed", "download.failed", "import.completed",
 	"request.approved", "request.declined", "health.failed",
-	"subtitle.failed", "backup.failed", "organization.failed", "youtube.completed",
+	"subtitle.failed", "organization.failed", "youtube.completed",
 }
 
 type Channel struct {
@@ -450,45 +450,51 @@ func notificationChannels(ctx context.Context, tx *sql.Tx) ([]channelEvents, err
 	return out, rows.Err()
 }
 
+// eventName maps a recorded activity event to its notification event. Each
+// state is compared exactly against the values the event-writing code
+// produces: the typed table states carried by the change triggers plus the
+// fixed outcome strings written by the workers. An unknown state records no
+// event instead of guessing from substrings.
 func eventName(kind, state string) (string, bool) {
 	state = strings.ToLower(state)
 	switch kind {
 	case "download":
-		if strings.Contains(state, "completed") {
+		switch state {
+		case "completed":
 			return "download.completed", true
-		}
-		if strings.Contains(state, "failed") || strings.Contains(state, "blocked") {
+		// 'blocked' is a typed download state; 'blocked by policy' is kept
+		// for blocked-download classifications already recorded by earlier
+		// versions. Both mean the download will not complete on its own.
+		case "failed", "blocked", "blocked by policy":
 			return "download.failed", true
 		}
 	case "title":
-		if strings.Contains(state, "file registered") {
+		if state == "file registered" {
 			return "import.completed", true
 		}
 	case "request":
-		if strings.Contains(state, "approved") {
+		switch state {
+		case "approved":
 			return "request.approved", true
-		}
-		if strings.Contains(state, "declined") {
+		case "declined":
 			return "request.declined", true
 		}
 	case "subtitle":
-		if strings.Contains(state, "failed") {
+		// Subtitle jobs end in 'blocked', never 'failed'; the subtitle
+		// worker records the failed outcome itself with this exact state.
+		if state == "failed" {
 			return "subtitle.failed", true
 		}
-	case "backup":
-		if strings.Contains(state, "failed") {
-			return "backup.failed", true
-		}
 	case "organization":
-		if strings.Contains(state, "failed") {
+		if state == "failed" {
 			return "organization.failed", true
 		}
 	case "youtube":
-		if strings.Contains(state, "completed") {
+		if state == "completed" {
 			return "youtube.completed", true
 		}
 	case "automation":
-		if strings.Contains(state, "failed") {
+		if state == "failed" {
 			return "health.failed", true
 		}
 	}
