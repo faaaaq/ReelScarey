@@ -98,8 +98,8 @@ jobs:
           # startup/backup/storage smokes and the acceptance job's container
           # smokes all execute on the amd64 image, so arm64 is never run in
           # CI. Native arm64 runtime coverage remains an open gap.
-          # TODO: a Windows/macOS smoke job is pending available runners; do
-          # not gate publication on it.
+          # A Windows smoke job now exists in ci.yml (windows-smoke); it does
+          # not gate publication until its first green runs.
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tags.outputs.value }}
           build-args: |

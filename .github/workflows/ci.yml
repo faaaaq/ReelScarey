@@ -225,3 +225,62 @@ jobs:
         run: bash scripts/storage-container-smoke.sh reelscarey:ci
       - name: Constrained container read and write budget
         run: bash scripts/container-workload.sh reelscarey:ci 60
+
+  # RS-0015 remainder: a real Windows smoke. The hosted Windows runner builds
+  # the binary natively, validates the CLI/config-path behavior on Windows
+  # path semantics, and runs the same smoke script the Linux fast job runs.
+  # Route-level API coverage rides along through the smoke script's
+  # authenticated endpoint checks; the full test suite stays on Linux.
+  windows-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the Windows binary
+        run: go build -o bin/reelscarey.exe ./cmd/reelscarey
+      - name: Route-level package tests on Windows path semantics
+        run: go test ./internal/httpapi ./internal/storage ./internal/backups -count=1 -timeout=15m
+      - name: Windows startup and route smoke
+        run: node scripts/smoke.mjs
+
+  # Phase 5: browser E2E on the real backend (built frontend embedded in the
+  # binary) driving the setup, returning-user, library, settings and
+  # destructive-action journeys. Report-only until the first green run, so a
+  # harness/environment issue cannot block pushes.
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: npm ci
+        working-directory: web
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - run: npx playwright test
+        working-directory: web
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7
