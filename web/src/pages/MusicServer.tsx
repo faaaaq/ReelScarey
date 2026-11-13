@@ -376,16 +376,18 @@ export function MusicServer() {
     setPending(true);
     setError("");
     setMessage("");
-    setToken("");
     setCopied(false);
     try {
       await api("/library/music/server/token", { method: "DELETE" });
+      setToken("");
       setMessage(
         "The shared token was removed. Accounts above keep working; clients using the shared token cannot sign in.",
       );
       server.reload();
     } catch (e) {
       setError(messageFor(e));
+      // Let the confirm dialog keep itself open and show the failure.
+      throw e;
     } finally {
       setPending(false);
     }
@@ -406,7 +408,7 @@ export function MusicServer() {
         <RequestState
           loading={server.loading}
           error={server.error}
-        code={server.code}
+          code={server.code}
           retry={server.reload}
         />
         {server.data && (
@@ -492,7 +494,7 @@ export function MusicServer() {
               <RequestState
                 loading={accounts.loading}
                 error={accounts.error}
-        code={accounts.code}
+                code={accounts.code}
                 retry={accounts.reload}
               />
               {accounts.data && users.length === 0 && (
@@ -667,14 +669,18 @@ export function MusicServer() {
                   {hasSharedToken ? "Rotate token" : "Generate token"}
                 </Button>
                 {hasSharedToken && (
-                  <Button
-                    variant="soft"
-                    color="gray"
-                    disabled={pending}
-                    onClick={() => void removeToken()}
-                  >
-                    <Trash2 size={15} aria-hidden="true" /> Remove token
-                  </Button>
+                  <ConfirmDialog
+                    trigger={
+                      <Button variant="soft" color="gray" disabled={pending}>
+                        <Trash2 size={15} aria-hidden="true" /> Remove token
+                      </Button>
+                    }
+                    title="Remove the shared music-server token?"
+                    description="Every client signed in with the shared token immediately loses access. Named accounts above keep working. Create a new token when it is needed again."
+                    confirmLabel="Remove token"
+                    color="red"
+                    onConfirm={() => removeToken()}
+                  />
                 )}
               </div>
               {token && (

@@ -173,7 +173,7 @@ export function SystemChecks() {
         <RequestState
           loading={resource.loading}
           error={resource.error}
-        code={resource.code}
+          code={resource.code}
           retry={resource.reload}
         />
         {error && (

@@ -341,9 +341,7 @@ function ScheduleForm({
                 max={25}
                 required
                 value={form.batch_size}
-                onChange={(e) =>
-                  update({ batch_size: Number(e.target.value) })
-                }
+                onChange={(e) => update({ batch_size: Number(e.target.value) })}
               />
             </label>
             <label>
@@ -449,10 +447,7 @@ function ReleaseDetection() {
           ) : (
             <p className="rs-muted">{status.data.message}</p>
           )}
-          <RSSForm
-            status={status.data}
-            reload={status.reload}
-          />
+          <RSSForm status={status.data} reload={status.reload} />
           <p className="rs-form-help">
             {status.data.enabled
               ? `Next check: ${formatTimestamp(status.data.next_run)}`

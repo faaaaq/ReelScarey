@@ -92,7 +92,7 @@ export function Timeline() {
         <RequestState
           loading={first.loading}
           error={first.error}
-        code={first.code}
+          code={first.code}
           retry={first.reload}
         />
         {error && (

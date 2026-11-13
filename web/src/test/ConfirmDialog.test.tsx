@@ -29,7 +29,13 @@ it("shows the backend's own message when the API fails with one", async () => {
   const { APIError } = await import("../api");
   const onConfirm = vi
     .fn()
-    .mockRejectedValue(new APIError("This show changed. Reload and try again.", 409, "revision_conflict"));
+    .mockRejectedValue(
+      new APIError(
+        "This show changed. Reload and try again.",
+        409,
+        "revision_conflict",
+      ),
+    );
   render(
     <ConfirmDialog
       trigger={<button type="button">Delete</button>}
@@ -49,7 +55,10 @@ it("shows the backend's own message when the API fails with one", async () => {
 it("closes only after a successful confirm", async () => {
   let settle: (() => void) | undefined;
   const onConfirm = vi.fn().mockImplementation(
-    () => new Promise<void>((resolve) => { settle = resolve; }),
+    () =>
+      new Promise<void>((resolve) => {
+        settle = resolve;
+      }),
   );
   render(
     <ConfirmDialog

@@ -257,9 +257,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
           } else if (response.status === 403) {
             setError("This account cannot play music files.");
           } else if (response.status === 404) {
-            setError(
-              "This file is no longer registered in the music library.",
-            );
+            setError("This file is no longer registered in the music library.");
           } else if (!response.ok) {
             setError("Playback is unavailable for this file.");
           }

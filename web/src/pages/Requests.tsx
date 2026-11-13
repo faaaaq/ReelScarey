@@ -3,6 +3,7 @@ import { Button, TextField } from "@radix-ui/themes";
 import { Inbox, LogOut, RefreshCw, UserPlus, Clock } from "lucide-react";
 import {
   Alert,
+  ConfirmDialog,
   EmptyState,
   FieldSet,
   Label,
@@ -226,7 +227,7 @@ export function RequesterHome() {
             <RequestState
               loading={requests.loading}
               error={requests.error}
-        code={requests.code}
+              code={requests.code}
               retry={requests.reload}
             />
             {requests.data &&
@@ -427,6 +428,10 @@ function RequestLists({ onImported }: { onImported: () => void }) {
       lists.reload();
     } catch (e) {
       setError(messageFor(e));
+      if (remove) {
+        // Let the confirm dialog keep itself open and show the failure.
+        throw e;
+      }
     } finally {
       setPending(false);
     }
@@ -602,14 +607,17 @@ function RequestLists({ onImported }: { onImported: () => void }) {
               >
                 Check now
               </Button>{" "}
-              <Button
-                size="1"
-                variant="soft"
-                disabled={pending}
-                onClick={() => void action(l.id, true)}
-              >
-                Remove
-              </Button>
+              <ConfirmDialog
+                trigger={
+                  <Button size="1" variant="soft" disabled={pending}>
+                    Remove
+                  </Button>
+                }
+                title="Remove this list?"
+                description="The list stops being synced. Titles already requested or added stay in the library."
+                confirmLabel="Remove list"
+                onConfirm={() => action(l.id, true)}
+              />
             </li>
           ))}
         </ul>
@@ -674,6 +682,8 @@ function DiscordSettings() {
       setMessage("Webhook removed.");
     } catch (e) {
       setError(messageFor(e));
+      // Let the confirm dialog keep itself open and show the failure.
+      throw e;
     } finally {
       setPending(false);
     }
@@ -718,14 +728,17 @@ function DiscordSettings() {
         {status.data?.configured && (
           <>
             {" "}
-            <Button
-              type="button"
-              variant="soft"
-              disabled={pending}
-              onClick={() => void remove()}
-            >
-              Remove
-            </Button>
+            <ConfirmDialog
+              trigger={
+                <Button type="button" variant="soft" disabled={pending}>
+                  Remove
+                </Button>
+              }
+              title="Remove the Discord webhook?"
+              description="You stop receiving webhook messages when approved requests become available. You can save a new webhook at any time."
+              confirmLabel="Remove webhook"
+              onConfirm={() => remove()}
+            />
           </>
         )}
       </form>
@@ -785,6 +798,10 @@ export function AdminRequests() {
     } catch (e) {
       setError(messageFor(e));
       requests.reload();
+      if (action === "decline") {
+        // Let the confirm dialog keep itself open and show the failure.
+        throw e;
+      }
     } finally {
       setPending(false);
     }
@@ -827,7 +844,7 @@ export function AdminRequests() {
           <RequestState
             loading={requests.loading}
             error={requests.error}
-        code={requests.code}
+            code={requests.code}
             retry={requests.reload}
           />
           {requests.data &&
@@ -908,15 +925,22 @@ export function AdminRequests() {
                             </Button>
                           )}
                           {item.state === "pending" && (
-                            <Button
-                              size="1"
-                              variant="soft"
-                              color="red"
-                              disabled={pending}
-                              onClick={() => void act(item.id, "decline")}
-                            >
-                              Decline
-                            </Button>
+                            <ConfirmDialog
+                              trigger={
+                                <Button
+                                  size="1"
+                                  variant="soft"
+                                  color="red"
+                                  disabled={pending}
+                                >
+                                  Decline
+                                </Button>
+                              }
+                              title={`Decline "${item.title}"?`}
+                              description="The request is declined and the requester is notified. They can submit it again."
+                              confirmLabel="Decline request"
+                              onConfirm={() => act(item.id, "decline")}
+                            />
                           )}
                         </span>
                       </td>
@@ -960,7 +984,7 @@ export function AdminRequests() {
           <RequestState
             loading={accounts.loading}
             error={accounts.error}
-        code={accounts.code}
+            code={accounts.code}
             retry={accounts.reload}
           />
           {accounts.data &&

@@ -748,7 +748,7 @@ export function MusicArtistPage() {
         <RequestState
           loading={details.loading}
           error={details.error}
-        code={details.code}
+          code={details.code}
           retry={details.reload}
         />
         {albumJob.data && (
@@ -1461,7 +1461,7 @@ export function MusicAlbumPage() {
         <RequestState
           loading={details.loading}
           error={details.error}
-        code={details.code}
+          code={details.code}
           retry={details.reload}
         />
         {albumJob.data && (

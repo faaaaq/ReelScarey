@@ -10,6 +10,7 @@ import {
 import { PageHeading, RequestState } from "../components";
 import {
   Alert,
+  ConfirmDialog,
   EmptyState,
   FieldSet,
   FormActions,
@@ -145,6 +146,8 @@ function JellyfinPanel() {
       status.reload();
     } catch (e) {
       setError(messageFor(e));
+      // Let the confirm dialog keep itself open and show the failure.
+      throw e;
     } finally {
       setBusy(false);
     }
@@ -210,15 +213,17 @@ function JellyfinPanel() {
           <RefreshCw size={16} aria-hidden="true" /> Refresh library
         </Button>
         {status.data?.configured && (
-          <Button
-            type="button"
-            color="red"
-            variant="soft"
-            disabled={busy}
-            onClick={() => void remove()}
-          >
-            <Trash2 size={16} aria-hidden="true" /> Remove
-          </Button>
+          <ConfirmDialog
+            trigger={
+              <Button type="button" color="red" variant="soft" disabled={busy}>
+                <Trash2 size={16} aria-hidden="true" /> Remove
+              </Button>
+            }
+            title="Remove the Jellyfin connection?"
+            description="The stored credential and observed playback history are deleted. Your Jellyfin server keeps its own libraries."
+            confirmLabel="Remove connection"
+            onConfirm={() => remove()}
+          />
         )}
       </FormActions>
       {activity && <ActivityTable items={activity} />}
@@ -331,6 +336,8 @@ function PlexPanel() {
       status.reload();
     } catch (e) {
       setError(messageFor(e));
+      // Let the confirm dialog keep itself open and show the failure.
+      throw e;
     } finally {
       setBusy(false);
     }
@@ -416,15 +423,17 @@ function PlexPanel() {
           <RefreshCw size={16} aria-hidden="true" /> Refresh library
         </Button>
         {status.data?.configured && (
-          <Button
-            type="button"
-            color="red"
-            variant="soft"
-            disabled={busy}
-            onClick={() => void remove()}
-          >
-            <Trash2 size={16} aria-hidden="true" /> Remove
-          </Button>
+          <ConfirmDialog
+            trigger={
+              <Button type="button" color="red" variant="soft" disabled={busy}>
+                <Trash2 size={16} aria-hidden="true" /> Remove
+              </Button>
+            }
+            title="Remove the Plex connection?"
+            description="The stored credential and observed playback history are deleted. Your Plex server keeps its own libraries."
+            confirmLabel="Remove connection"
+            onConfirm={() => remove()}
+          />
         )}
       </FormActions>
       {sections && sections.length > 0 && (

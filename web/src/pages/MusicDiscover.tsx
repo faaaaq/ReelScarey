@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import {
   Alert,
+  ConfirmDialog,
   EmptyState,
   FieldSet,
   Label,
@@ -336,6 +337,8 @@ export function MusicDiscover() {
       sources.reload();
     } catch (e) {
       setMonitorError(messageFor(e));
+      // Let the confirm dialog keep itself open and show the failure.
+      throw e;
     }
   }
 
@@ -496,7 +499,7 @@ export function MusicDiscover() {
           <RequestState
             loading={charts.loading}
             error={charts.error}
-        code={charts.code}
+            code={charts.code}
             retry={charts.reload}
           />
           {charts.data?.message && (
@@ -530,7 +533,7 @@ export function MusicDiscover() {
           <RequestState
             loading={monitor.loading}
             error={monitor.error}
-        code={monitor.code}
+            code={monitor.code}
             retry={monitor.reload}
           />
           {monitor.data && (
@@ -606,7 +609,7 @@ export function MusicDiscover() {
               <RequestState
                 loading={sources.loading}
                 error={sources.error}
-        code={sources.code}
+                code={sources.code}
                 retry={sources.reload}
               />
               {sources.data && sources.data.items.length === 0 && (
@@ -663,15 +666,22 @@ export function MusicDiscover() {
                           >
                             {source.enabled ? "Pause" : "Watch"}
                           </Button>{" "}
-                          <Button
-                            size="1"
-                            variant="ghost"
-                            color="gray"
-                            aria-label={`Remove ${source.title || source.url}`}
-                            onClick={() => void removeSource(source)}
-                          >
-                            <Trash2 size={14} aria-hidden="true" />
-                          </Button>
+                          <ConfirmDialog
+                            trigger={
+                              <Button
+                                size="1"
+                                variant="ghost"
+                                color="gray"
+                                aria-label={`Remove ${source.title || source.url}`}
+                              >
+                                <Trash2 size={14} aria-hidden="true" />
+                              </Button>
+                            }
+                            title={`Remove "${source.title || source.url}"?`}
+                            description="The public source stops being watched. Chart and discovery data stay available."
+                            confirmLabel="Remove source"
+                            onConfirm={() => removeSource(source)}
+                          />
                         </td>
                       </tr>
                     ))}
@@ -686,7 +696,7 @@ export function MusicDiscover() {
           <RequestState
             loading={jobs.loading}
             error={jobs.error}
-        code={jobs.code}
+            code={jobs.code}
             retry={jobs.reload}
           />
           {jobs.data && jobs.data.items.length === 0 && (

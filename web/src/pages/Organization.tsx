@@ -782,7 +782,7 @@ function Reorganize({ config }: { config: Config }) {
         <RequestState
           loading={files.loading}
           error={files.error}
-        code={files.code}
+          code={files.code}
           retry={files.reload}
         />
         {files.data && (
@@ -919,7 +919,7 @@ function Reorganize({ config }: { config: Config }) {
             <RequestState
               loading={versions.loading}
               error={versions.error}
-        code={versions.code}
+              code={versions.code}
               retry={versions.reload}
             />
             {versions.data?.items
@@ -1243,7 +1243,7 @@ function Reorganize({ config }: { config: Config }) {
         <RequestState
           loading={history.loading}
           error={history.error}
-        code={history.code}
+          code={history.code}
           retry={history.reload}
         />
         {history.data?.items

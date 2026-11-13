@@ -533,7 +533,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
         <RequestState
           loading={resource.loading}
           error={resource.error}
-        code={resource.code}
+          code={resource.code}
           retry={reload}
         />
         {!resource.loading && resource.error && (

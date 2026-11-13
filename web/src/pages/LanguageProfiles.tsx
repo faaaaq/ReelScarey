@@ -11,6 +11,7 @@ import {
 import { PageHeading, RequestState } from "../components";
 import {
   Alert,
+  ConfirmDialog,
   EmptyState,
   FieldSet,
   FormActions,
@@ -131,6 +132,8 @@ export function LanguageProfiles() {
       defaults.reload();
     } catch (e) {
       setError(messageFor(e));
+      // Let the confirm dialog keep itself open and show the failure.
+      throw e;
     } finally {
       setBusy(false);
     }
@@ -278,16 +281,23 @@ export function LanguageProfiles() {
                     >
                       Edit
                     </Button>
-                    <Button
-                      type="button"
-                      size="1"
-                      color="red"
-                      variant="soft"
-                      disabled={busy}
-                      onClick={() => void removeProfile(profile)}
-                    >
-                      <Trash2 size={14} aria-hidden="true" /> Remove
-                    </Button>
+                    <ConfirmDialog
+                      trigger={
+                        <Button
+                          type="button"
+                          size="1"
+                          color="red"
+                          variant="soft"
+                          disabled={busy}
+                        >
+                          <Trash2 size={14} aria-hidden="true" /> Remove
+                        </Button>
+                      }
+                      title={`Remove "${profile.name}"?`}
+                      description="Assigned titles fall back to the library or global subtitle preferences. The profile is removed immediately once confirmed."
+                      confirmLabel="Remove profile"
+                      onConfirm={() => removeProfile(profile)}
+                    />
                   </div>
                 </td>
               </tr>

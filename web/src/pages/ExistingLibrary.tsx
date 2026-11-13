@@ -1578,7 +1578,7 @@ function EpisodePicker({
           <RequestState
             loading={episodes.loading}
             error={episodes.error}
-        code={episodes.code}
+            code={episodes.code}
             retry={episodes.reload}
           />
           {episodes.data && !episodes.data.season.loaded_at && (

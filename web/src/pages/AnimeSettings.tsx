@@ -61,7 +61,7 @@ export function AnimeSettings({
             <RequestState
               loading={resource.loading}
               error={resource.error}
-        code={resource.code}
+              code={resource.code}
               retry={resource.reload}
             />
             {resource.data && !resource.loading && !resource.error && (

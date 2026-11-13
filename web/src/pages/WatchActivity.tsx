@@ -5,6 +5,7 @@ import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import {
   Alert,
+  ConfirmDialog,
   EmptyState,
   FieldSet,
   FormActions,
@@ -89,6 +90,8 @@ export function WatchActivity() {
       settings.reload();
     } catch (e) {
       setError(messageFor(e));
+      // Let the confirm dialog keep itself open and show the failure.
+      throw e;
     } finally {
       setBusy(false);
     }
@@ -113,7 +116,7 @@ export function WatchActivity() {
         <RequestState
           loading={settings.loading}
           error={settings.error}
-        code={settings.code}
+          code={settings.code}
           retry={settings.reload}
         />
         {error && (
@@ -236,15 +239,22 @@ export function WatchActivity() {
                 Save connection
               </Button>
               {configured && (
-                <Button
-                  type="button"
-                  variant="soft"
-                  color="red"
-                  disabled={busy}
-                  onClick={() => void remove()}
-                >
-                  Remove connection
-                </Button>
+                <ConfirmDialog
+                  trigger={
+                    <Button
+                      type="button"
+                      variant="soft"
+                      color="red"
+                      disabled={busy}
+                    >
+                      Remove connection
+                    </Button>
+                  }
+                  title="Remove the Emby connection?"
+                  description="The stored credential is deleted and watch history stops updating. Your Emby server keeps its own libraries."
+                  confirmLabel="Remove connection"
+                  onConfirm={() => remove()}
+                />
               )}
             </FormActions>
           </form>

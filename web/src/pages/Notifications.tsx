@@ -14,6 +14,7 @@ import { PageHeading, RequestState } from "../components";
 import {
   Alert,
   Check,
+  ConfirmDialog,
   EmptyState,
   FieldSet,
   FormActions,
@@ -167,6 +168,8 @@ export function Notifications() {
       channels.reload();
     } catch (e) {
       setError(messageFor(e));
+      // Let the confirm dialog keep itself open and show the failure.
+      throw e;
     } finally {
       setBusy(false);
     }
@@ -470,16 +473,23 @@ export function Notifications() {
                     >
                       <Pencil size={14} aria-hidden="true" /> Edit
                     </Button>
-                    <Button
-                      type="button"
-                      size="1"
-                      color="red"
-                      variant="soft"
-                      disabled={busy}
-                      onClick={() => void remove(channel)}
-                    >
-                      <Trash2 size={14} aria-hidden="true" /> Remove
-                    </Button>
+                    <ConfirmDialog
+                      trigger={
+                        <Button
+                          type="button"
+                          size="1"
+                          color="red"
+                          variant="soft"
+                          disabled={busy}
+                        >
+                          <Trash2 size={14} aria-hidden="true" /> Remove
+                        </Button>
+                      }
+                      title={`Remove "${channel.name}"?`}
+                      description="The channel configuration is deleted and queued notifications for it stop being delivered."
+                      confirmLabel="Remove channel"
+                      onConfirm={() => remove(channel)}
+                    />
                   </div>
                 </td>
               </tr>
@@ -494,7 +504,7 @@ export function Notifications() {
         <RequestState
           loading={outbox.loading}
           error={outbox.error}
-        code={outbox.code}
+          code={outbox.code}
           retry={outbox.reload}
         />
         {!outbox.loading && deliveries.length === 0 && (

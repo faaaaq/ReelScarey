@@ -678,7 +678,7 @@ export function Torrents() {
         <RequestState
           loading={overview.loading}
           error={overview.error}
-        code={overview.code}
+          code={overview.code}
           retry={overview.reload}
         />
       </PageBody>

@@ -324,7 +324,7 @@ function GeneralSettings() {
         <RequestState
           loading={settings.loading}
           error={settings.error}
-        code={settings.code}
+          code={settings.code}
           retry={settings.reload}
         />
         {form && (
@@ -496,7 +496,7 @@ function GeneralSettings() {
           <RequestState
             loading={system.loading}
             error={system.error}
-        code={system.code}
+            code={system.code}
             retry={system.reload}
           />
           {system.data && (

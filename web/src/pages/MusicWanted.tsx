@@ -267,7 +267,7 @@ export function MusicWanted() {
           <RequestState
             loading={prefs.loading}
             error={prefs.error}
-        code={prefs.code}
+            code={prefs.code}
             retry={prefs.reload}
           />
           {prefs.data && (
@@ -310,7 +310,7 @@ export function MusicWanted() {
           <RequestState
             loading={schedule.loading}
             error={schedule.error}
-        code={schedule.code}
+            code={schedule.code}
             retry={schedule.reload}
           />
           {schedule.data && (
@@ -374,7 +374,7 @@ export function MusicWanted() {
         <RequestState
           loading={wanted.loading}
           error={wanted.error}
-        code={wanted.code}
+          code={wanted.code}
           retry={wanted.reload}
         />
         {wanted.data && wanted.data.items.length === 0 && (
