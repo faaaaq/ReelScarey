@@ -567,9 +567,16 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 			s.subsonicDenied(w, r)
 			return
 		}
-		writeSubsonic(w, r, subsonicResponseFor(s.version))
+		// Playlist writes are not implemented. A silent ok made clients believe
+		// their data was saved while nothing was persisted (RS-0002), so the
+		// OpenSubsonic "not authorized for this operation" error is returned
+		// explicitly instead.
+		writeSubsonic(w, r, subsonicFailure(s.version, 50, "Playlist changes are not implemented; this server stores no playlist data."))
 	case "scrobble", "star", "unstar", "setrating", "saveplayqueue", "saveplayqueuebyindex":
-		writeSubsonic(w, r, subsonicResponseFor(s.version))
+		// Playback-state writes are not implemented and previously reported ok
+		// while discarding the client's data (RS-0002); they now fail
+		// explicitly with the OpenSubsonic not-authorized code.
+		writeSubsonic(w, r, subsonicFailure(s.version, 50, "Playback-state changes are not implemented; this server stores no star, rating or play-queue data."))
 	default:
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "This Subsonic action is not implemented."))
 	}
@@ -1113,10 +1120,10 @@ func (s *Server) subsonicUser(w http.ResponseWriter, r *http.Request) {
 	if !account.Anonymous() && account.Username != "" {
 		username = account.Username
 	}
-	// Report the roles that actually govern this account. Scrobbling is
-	// genuinely accepted (see the scrobble case: a no-op acknowledgement), and
-	// the legacy shared token keeps the playback roles so existing clients
-	// never lose access.
+	// Report the roles that actually govern this account. Scrobble requests
+	// are rejected explicitly (see the scrobble case: writes are not
+	// implemented), and the legacy shared token keeps the playback roles so
+	// existing clients never lose access.
 	out.User = &subsonicUser{
 		Username:          username,
 		Email:             account.Email,

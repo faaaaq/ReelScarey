@@ -506,12 +506,21 @@ func (s *Service) Tick(ctx context.Context) error {
 		return nil
 	}
 	var id string
-	e := s.db.QueryRowContext(ctx, `SELECT id FROM organization_plans WHERE state IN ('queued','running') ORDER BY created_at LIMIT 1`).Scan(&id)
-	if errors.Is(e, sql.ErrNoRows) {
-		return nil
-	}
-	if e != nil {
-		return e
+	// Plans whose terminal failure could not be persisted are skipped so a
+	// bookkeeping failure never causes a second execution (RS-0004).
+	cursor := ""
+	for {
+		e := s.db.QueryRowContext(ctx, `SELECT id FROM organization_plans WHERE state IN ('queued','running') AND id>? ORDER BY created_at LIMIT 1`, cursor).Scan(&id)
+		if errors.Is(e, sql.ErrNoRows) {
+			return nil
+		}
+		if e != nil {
+			return e
+		}
+		if !s.degraded[id] {
+			break
+		}
+		cursor = id
 	}
 	p, e := s.Plan(ctx, id)
 	if e != nil {
@@ -522,42 +531,83 @@ func (s *Service) Tick(ctx context.Context) error {
 	}
 	e = s.execute(ctx, &p)
 	if e != nil {
-		if p.Removal != nil && p.Phase != "committed" {
-			if root, _, err := s.openRoot(p.Root); err == nil {
-				safe := true
-				for _, file := range allFiles(p) {
-					if checkSource(context.WithoutCancel(ctx), root, file, false) != nil {
-						safe = false
-						break
-					}
-				}
-				if safe {
-					_ = s.savePhase(context.WithoutCancel(ctx), &p, "failed_safe")
-				}
-				root.Close()
-			}
-		}
-		if p.Replacement != nil && (p.Phase == "planned" || p.Phase == "prepared") {
-			if root, _, err := s.openRoot(p.Root); err == nil {
-				// No source deletion occurs in these phases. Avoid an unbounded
-				// checksum during shutdown while confirming the original path is intact.
-				if checkSource(context.WithoutCancel(ctx), root, p.Replacement.Original, false) == nil {
-					_ = s.savePhase(context.WithoutCancel(ctx), &p, "failed_safe")
-				}
-				root.Close()
-			}
-		}
-		if p.FolderMove != nil && s.folderStillAtSource(p) {
-			_ = s.savePhase(context.WithoutCancel(ctx), &p, "failed_safe")
-		}
-		message := "Organization stopped safely. Original files and verified outputs were retained; review the failure before retrying."
-		var problem *Error
-		if errors.As(e, &problem) {
-			message = problem.Message
-		}
-		_, _ = s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE organization_plans SET state='failed',message=?,updated_at=unixepoch() WHERE id=?`, message, id)
+		s.recordPlanFailure(ctx, &p, e)
 	}
 	return e
+}
+
+// recordPlanFailure persists the terminal failure of a plan execution. The
+// state transition to 'failed' is written first so a failed plan is never
+// re-executed by the next tick (RS-0004); the failed_safe phase snapshot is
+// recorded afterwards because losing it only costs review convenience, not
+// filesystem safety. A terminal write that still fails is journaled and the
+// plan is remembered in memory so this process stops claiming it.
+func (s *Service) recordPlanFailure(ctx context.Context, p *Plan, execErr error) {
+	withoutCancel := context.WithoutCancel(ctx)
+	message := "Organization stopped safely. Original files and verified outputs were retained; review the failure before retrying."
+	var failure *Error
+	if errors.As(execErr, &failure) {
+		message = failure.Message
+	}
+	res, err := s.db.ExecContext(withoutCancel, `UPDATE organization_plans SET state='failed',message=?,updated_at=unixepoch() WHERE id=? AND state IN ('queued','running')`, message, p.ID)
+	if err == nil {
+		if n, nerr := res.RowsAffected(); nerr == nil && n == 1 {
+			_, _ = s.db.ExecContext(withoutCancel, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'organization',?,'Library organization','plan failed; review the message and retry or remove the plan')`, p.ID)
+			s.recordSafePhases(withoutCancel, p)
+			return
+		}
+	}
+	_, _ = s.db.ExecContext(withoutCancel, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'organization',?,'Library organization','plan failure could not be recorded; check storage, review the plan, then restart to recover')`, p.ID)
+	// Tick holds s.mu for the whole claim-execute-fail cycle, so the degraded
+	// map needs no separate lock here; every reader runs inside Tick.
+	if s.degraded == nil {
+		s.degraded = map[string]bool{}
+	}
+	s.degraded[p.ID] = true
+}
+
+// recordSafePhases captures the failed_safe phase whenever the original files
+// are verified intact. Its write failure is journaled, never discarded
+// (RS-0014): the plan stays failed either way, but an operator must be able
+// to see that the safety snapshot is missing.
+func (s *Service) recordSafePhases(ctx context.Context, p *Plan) {
+	journal := func() {
+		_, _ = s.db.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'organization',?,'Library organization','failed-safe phase could not be recorded; the plan stays failed for review')`, p.ID)
+	}
+	if p.Removal != nil && p.Phase != "committed" {
+		if root, _, err := s.openRoot(p.Root); err == nil {
+			safe := true
+			for _, file := range allFiles(*p) {
+				if checkSource(context.WithoutCancel(ctx), root, file, false) != nil {
+					safe = false
+					break
+				}
+			}
+			if safe {
+				if err := s.savePhase(ctx, p, "failed_safe"); err != nil {
+					journal()
+				}
+			}
+			root.Close()
+		}
+	}
+	if p.Replacement != nil && (p.Phase == "planned" || p.Phase == "prepared") {
+		if root, _, err := s.openRoot(p.Root); err == nil {
+			// No source deletion occurs in these phases. Avoid an unbounded
+			// checksum during shutdown while confirming the original path is intact.
+			if checkSource(context.WithoutCancel(ctx), root, p.Replacement.Original, false) == nil {
+				if err := s.savePhase(ctx, p, "failed_safe"); err != nil {
+					journal()
+				}
+			}
+			root.Close()
+		}
+	}
+	if p.FolderMove != nil && s.folderStillAtSource(*p) {
+		if err := s.savePhase(ctx, p, "failed_safe"); err != nil {
+			journal()
+		}
+	}
 }
 func (s *Service) savePhase(ctx context.Context, p *Plan, phase string) error {
 	p.Phase = phase

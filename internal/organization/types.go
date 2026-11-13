@@ -132,6 +132,10 @@ type Service struct {
 	cfg      config.Config
 	mu       sync.Mutex
 	healthMu sync.Mutex
+	// degraded holds plan ids whose terminal failure could not be persisted
+	// (RS-0004): the claim loop skips them so a failed plan is never
+	// re-executed because its state write failed.
+	degraded map[string]bool
 	link     func(*os.Root, string, string) error
 	probe    func(context.Context, *os.File) (string, error)
 	tag      func(context.Context, *os.File, *os.File, string, string) (string, error)

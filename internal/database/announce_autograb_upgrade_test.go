@@ -60,7 +60,7 @@ func TestAnnounceAutograbUpgradePreservesCaptureOnlyHistory(t *testing.T) {
 	if err = Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	if version, err := Version(ctx, db); err != nil || version != 98 {
+	if version, err := Version(ctx, db); err != nil || version != 99 {
 		t.Fatal("unexpected schema version", version, err)
 	}
 	// The source stays enabled for capture, but auto_grab defaults off so the

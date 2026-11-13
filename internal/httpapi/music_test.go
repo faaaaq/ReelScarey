@@ -667,10 +667,10 @@ func TestSubsonicOpenSubsonicCapabilities(t *testing.T) {
 		t.Fatal("getTopSongs by id", out.Code, out.Body.String())
 	}
 
-	// savePlayQueueByIndex is acknowledged so index-based clients do not receive
-	// a "not implemented" error.
+	// savePlayQueueByIndex fails explicitly: writes are not implemented and a
+	// silent ok would let index-based clients believe their queue was saved.
 	out = request("/rest/savePlayQueueByIndex.view?" + auth + "&index=0")
-	if out.Code != 200 || !strings.Contains(out.Body.String(), `status="ok"`) {
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `status="failed"`) || !strings.Contains(out.Body.String(), `code="50"`) {
 		t.Fatal("savePlayQueueByIndex", out.Code, out.Body.String())
 	}
 }
@@ -782,11 +782,11 @@ func TestSubsonicPrefixedIDsAndActions(t *testing.T) {
 		t.Fatal("avatar", out.Code, out.Header().Get("Content-Type"))
 	}
 
-	// Write actions are accepted as benign no-ops so clients that sync state do
-	// not surface a server-side error.
+	// Write actions fail explicitly with the not-implemented error instead of
+	// acknowledging ok while discarding the client's data (RS-0002).
 	for _, action := range []string{"scrobble", "star", "unstar", "setRating", "savePlayQueue", "createPlaylist"} {
 		out = request("/rest/" + action + ".view?" + auth)
-		if out.Code != 200 || !strings.Contains(out.Body.String(), `status="ok"`) {
+		if out.Code != 200 || !strings.Contains(out.Body.String(), `status="failed"`) || !strings.Contains(out.Body.String(), `code="50"`) {
 			t.Fatal(action, out.Code, out.Body.String())
 		}
 	}

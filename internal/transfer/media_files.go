@@ -115,22 +115,58 @@ func (s *Service) RemoveEpisodeFile(ctx context.Context, seriesID, revision, epi
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'title',?,?,?)`, seriesID, title, state); e != nil {
 		if staged != "" {
-			_ = os.Rename(staged, filepath.Join(s.cfg.MediaDir, filepath.FromSlash(relative)))
+			if rerr := s.restoreStagedMedia(ctx, staged, relative); rerr != nil {
+				return fmt.Errorf("%w (and the staged copy could not be restored: %v)", e, rerr)
+			}
 		}
 		return e
 	}
 	if e = tx.Commit(); e != nil {
 		if staged != "" {
-			_ = os.Rename(staged, filepath.Join(s.cfg.MediaDir, filepath.FromSlash(relative)))
+			if rerr := s.restoreStagedMedia(ctx, staged, relative); rerr != nil {
+				return fmt.Errorf("%w (and the staged copy could not be restored: %v)", e, rerr)
+			}
 		}
 		return e
 	}
 	if staged != "" {
-		// The registration is gone; a staging file that cannot be deleted is
-		// harmless and stays out of the library.
-		_ = os.Remove(staged)
+		s.removeStagedMedia(ctx, staged, relative)
 	}
 	return nil
+}
+
+// removeStagedMedia deletes the staged copy after a successful removal
+// commit. A staging file that cannot be deleted is no longer part of the
+// library, but a leftover copy must stay visible as an actionable event
+// instead of silently accumulating (RS-0003).
+func (s *Service) removeStagedMedia(ctx context.Context, staged, relative string) {
+	err := os.Remove(staged)
+	if err == nil || errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	_, _ = s.db.ExecContext(context.WithoutCancel(ctx), `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'title',?,?,?)`,
+		relative, fmt.Sprintf("Deleted episode file %s: its staged copy %s could not be removed (%v). The library copy is already gone.", relative, staged, err), "staged copy removal failed; delete it manually")
+}
+
+// restoreStagedMedia undoes a staged removal after a failed removal
+// transaction. One immediate retry absorbs transient locks (antivirus,
+// backup tools); a restore that still fails is journaled as an actionable
+// divergence event instead of leaving an untracked staged copy behind with a
+// catalog that still references the original path (RS-0003).
+func (s *Service) restoreStagedMedia(ctx context.Context, staged, relative string) error {
+	target := filepath.Join(s.cfg.MediaDir, filepath.FromSlash(relative))
+	var last error
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			time.Sleep(50 * time.Millisecond)
+		}
+		if last = os.Rename(staged, target); last == nil {
+			return nil
+		}
+	}
+	_, _ = s.db.ExecContext(context.WithoutCancel(ctx), `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'title',?,?,?)`,
+		relative, fmt.Sprintf("Episode file %s could not be restored after a failed removal (%v). The catalog still lists the original path; the file is staged at %s. Restore or delete the staged copy, then rescan.", relative, last, staged), "restore failed; manual repair needed")
+	return last
 }
 
 // stageMediaRemoval renames the library copy to a neighbouring temporary name

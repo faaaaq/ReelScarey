@@ -62,10 +62,17 @@ const PageSize = 48
 // catalog response.
 const MaxAllItems = 5000
 
-// TitleSort orders alphabetically by title without a leading "The ", while the
-// stored and displayed title stays unchanged. SQLite's lower() is ASCII-only,
-// matching the existing COLLATE NOCASE behavior.
-const TitleSort = "(CASE WHEN lower(title) LIKE 'the %' THEN substr(title,5) ELSE title END)"
+// titleSortExpr orders alphabetically by title without a leading "The ",
+// while the stored and displayed title stays unchanged. Browse uses the
+// materialized title_sort generated column (migration 099) with the identical
+// definition so its ORDER BY can use the title_sort index; queries that read
+// projections without that column (planning) keep the explicit expression.
+// SQLite's lower() is ASCII-only, matching the existing COLLATE NOCASE
+// behavior.
+const titleSortExpr = "(CASE WHEN lower(title) LIKE 'the %' THEN substr(title,5) ELSE title END)"
+
+// TitleSort references the generated column for ordering.
+const TitleSort = "title_sort"
 
 const columns = "id, kind, tmdb_id, title, year, monitored, status, overview, poster_path, release_date, theatrical_release_date, digital_release_date, physical_release_date, runtime_minutes, category, category_revision"
 
@@ -142,26 +149,37 @@ func (s *Store) Browse(ctx context.Context, f BrowseFilter) (Page, error) {
 		return Page{}, e
 	}
 	out.ProfileContext = profileContext
+	// item_automation is keyed by media_id (its primary key), so the per-row
+	// profile subselects collapse into one left join without changing rows or
+	// ordering (RS-0001).
+	from := " FROM media_items LEFT JOIN item_automation a ON a.media_id=media_items.id"
 	if f.Profile == "default" {
-		where += ` AND NOT EXISTS(SELECT 1 FROM item_automation a WHERE a.media_id=media_items.id AND a.profile_id IS NOT NULL)`
+		where += ` AND a.profile_id IS NULL`
 	} else if f.Profile != "" && f.Profile != "all" {
 		id, e := strconv.ParseInt(f.Profile, 10, 64)
 		if e != nil || id < 1 || strconv.FormatInt(id, 10) != f.Profile || profiles[id].ID == 0 {
 			return Page{}, ErrBrowseInput
 		}
-		where += ` AND COALESCE((SELECT profile_id FROM item_automation a WHERE a.media_id=media_items.id),?)=?`
+		where += ` AND COALESCE(a.profile_id,?)=?`
 		args = append(args, profileContext.Default.ID, id)
 	}
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items"+collectionWhere, collectionArgs...).Scan(&out.CollectionTotal); err != nil {
 		return Page{}, err
 	}
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items"+where, args...).Scan(&out.Total); err != nil {
-		return Page{}, err
+	// Without a query, status, monitoring or profile filter the filtered
+	// total equals the collection total, so the second full scan is skipped
+	// on the default browse view (RS-0001).
+	if f.Query != "" || f.Status != "all" || f.Monitored != "all" || (f.Profile != "" && f.Profile != "all") {
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_items LEFT JOIN item_automation a ON a.media_id=media_items.id"+where, args...).Scan(&out.Total); err != nil {
+			return Page{}, err
+		}
+	} else {
+		out.Total = out.CollectionTotal
 	}
 	if f.All && out.Total > MaxAllItems {
 		return Page{}, ErrBrowseAllLimit
 	}
-	query := "SELECT " + columns + ",(SELECT profile_id FROM item_automation a WHERE a.media_id=media_items.id),COALESCE((SELECT revision FROM item_automation a WHERE a.media_id=media_items.id),0) FROM media_items" + where + " ORDER BY " + orders[f.Sort]
+	query := "SELECT " + columns + ",a.profile_id,COALESCE(a.revision,0)" + from + where + " ORDER BY " + orders[f.Sort]
 	if f.All {
 		out.Page = 1
 		out.Limit = out.Total
