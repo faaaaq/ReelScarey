@@ -103,6 +103,7 @@ func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, o
 	candidates := map[int64]metadata.Movie{}
 	var directMovie *metadata.Movie
 	var directSeries *metadata.Series
+	truncated := false
 	if h.ProviderID > 0 {
 		var m metadata.Movie
 		if scan.Kind == "movie" {
@@ -140,8 +141,12 @@ func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, o
 			if err != nil {
 				return out, err
 			}
+			// Short titles ("Up", "It", "Heat") return hundreds of pages. TMDb
+			// ranks exact titles first, so scan the bounded prefix instead of
+			// refusing outright. Exact normalized title equality is still
+			// required, and any second exact candidate keeps the file in review.
 			if total > 3 {
-				return out, automaticReview("The provider search is too broad for a unique automatic match. Choose a title or use its TMDb ID in the title folder.")
+				truncated = true
 			}
 			for _, m := range items {
 				if m.TMDbID > 0 && h.matches(m.Title, m.Year, m.TMDbID) {
@@ -152,6 +157,14 @@ func (s *Service) resolveAutomaticTitle(ctx context.Context, scan LibraryScan, o
 				break
 			}
 		}
+	}
+	if len(candidates) > 1 {
+		return out, automaticReview("More than one title matches this name and year. Choose the intended title.")
+	}
+	if truncated && h.Year == 0 {
+		// Without a year an unscanned result page could hold another title
+		// with the same name, so a broad, year-less search stays in review.
+		return out, automaticReview("Many titles share this name. Add the release year to the folder name, for example \"" + h.Title + " (2009)\", or choose a title.")
 	}
 	if len(candidates) != 1 {
 		return out, automaticReview("No unique exact title/year match was found. Review the suggested titles.")

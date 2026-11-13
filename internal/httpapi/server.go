@@ -902,6 +902,10 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			if s.instruments != nil {
 				s.instruments.ObserveHTTPRequest(r.Method, routePattern(r), status)
 			}
+			// Health probes run every few seconds; only log them when they fail.
+			if (r.URL.Path == "/readyz" || r.URL.Path == "/healthz") && status < 400 {
+				return
+			}
 			s.logger.Info("http request", "method", r.Method, "path", r.URL.Path, "status", status, "duration_ms", time.Since(start).Milliseconds())
 		}()
 		next.ServeHTTP(wrapped, r)

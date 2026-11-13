@@ -15,6 +15,7 @@ import {
 import { Link, useSearchParams } from "react-router-dom";
 import {
   api,
+  APIError,
   messageFor,
   type MediaItem,
   type SearchResults,
@@ -1490,19 +1491,36 @@ function EpisodePicker({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  async function refreshSeason(revision: number) {
+    const fresh = await api<TVSeries>(
+      `/library/series/${id}/seasons/${season}/refresh`,
+      {
+        method: "POST",
+        body: JSON.stringify({ revision }),
+      },
+    );
+    setFresh(fresh);
+    change([]);
+    episodes.reload();
+  }
   async function load() {
-    if (!show || season === undefined) return;
+    if (season === undefined) return;
     setLoading(true);
     setError("");
     try {
-      setFresh(
-        await api<TVSeries>(`/library/series/${id}/seasons/${season}/refresh`, {
-          method: "POST",
-          body: JSON.stringify({ revision: show.revision }),
-        }),
-      );
-      change([]);
-      episodes.reload();
+      // A background metadata refresh or an automatic match of another file in
+      // the same scan can bump the show's revision while this dialog is open.
+      // Always read the current revision right before refreshing, and retry
+      // once if it moves again mid-operation.
+      let revision = (await api<TVSeries>(`/library/series/${id}`)).revision;
+      try {
+        await refreshSeason(revision);
+      } catch (e) {
+        const code = e instanceof APIError ? e.code : "";
+        if (code !== "revision_conflict") throw e;
+        revision = (await api<TVSeries>(`/library/series/${id}`)).revision;
+        await refreshSeason(revision);
+      }
     } catch (e) {
       setError(messageFor(e));
     } finally {

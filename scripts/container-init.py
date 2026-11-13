@@ -29,6 +29,30 @@ for index, folder in enumerate(private):
     if any(overlaps(folder, other) for other in private[index + 1:]):
         sys.exit("Configuration, backups and staging must use separate folders.")
 
+# Optional single parent for all private folders (one host bind mount). Docker
+# creates missing bind sources as root on the host, and a container can only
+# fix ownership of what is mounted, so mounting one parent lets the whole
+# private tree, including the parent itself, belong to PUID:PGID.
+appdata_raw = os.environ.get("REELSCAREY_APPDATA_DIR")
+if appdata_raw:
+    appdata = Path(appdata_raw)
+    if not appdata.is_absolute() or appdata == Path("/") or appdata.resolve() != appdata:
+        sys.exit("REELSCAREY_APPDATA_DIR must be an absolute directory without symlinks.")
+    if any(overlaps(appdata, other.resolve()) for other in [media, downloads]):
+        sys.exit("REELSCAREY_APPDATA_DIR must be separate from media and downloads.")
+    if any(appdata not in folder.parents for folder in private):
+        sys.exit("Configuration, backups and staging must be inside REELSCAREY_APPDATA_DIR.")
+    appdata.mkdir(parents=True, exist_ok=True)
+    for folder in private:
+        # Own every intermediate folder between the parent and each private
+        # folder; never recurse into unrelated siblings.
+        for level in [appdata, *[p for p in folder.parents if appdata in p.parents]]:
+            level.mkdir(exist_ok=True)
+            info = os.lstat(level)
+            if stat.S_ISDIR(info.st_mode) and (info.st_uid != uid or info.st_gid != gid):
+                os.chown(level, uid, gid, follow_symlinks=False)
+    appdata.chmod(0o750)
+
 for folder in private:
     folder.mkdir(parents=True, exist_ok=True)
     device = folder.stat().st_dev
