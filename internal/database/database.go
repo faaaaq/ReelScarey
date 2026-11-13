@@ -56,8 +56,15 @@ func Open(ctx context.Context, dir string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(2)
+	// Four connections (measured in pool_soak_test.go, RS-0006): under
+	// concurrent readers plus a long lease transaction the audited pool of 2
+	// serialized all HTTP reads behind the workers (read p95 2.5ms, max
+	// 156ms, ~13k reads/5s); four connections cut the tail to ~11ms and
+	// served 7x the reads with zero busy errors, unchanged write throughput
+	// and a bounded WAL. Eight connections offered no additional write
+	// benefit, so the conservative end of the measured range is used.
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
 	if err := db.PingContext(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("connect to database: %w", err)
@@ -154,10 +161,11 @@ func Version(ctx context.Context, db *sql.DB) (int, error) {
 }
 
 // Ping checks database liveness without blocking behind a busy shared
-// connection. The caller must have configured the pool with ≥2 connections
-// (SetMaxOpenConns) so a dedicated pool slot is available even when the main
-// connection is mid-transaction. This prevents the /readyz healthcheck (2s
-// budget) from 503-ing the Docker healthcheck during long catalog snapshots.
+// connection. The caller must have configured the pool with more than one
+// connection (SetMaxOpenConns) so a dedicated pool slot is available even
+// when every other connection is mid-transaction. This prevents the /readyz
+// healthcheck (2s budget) from 503-ing the Docker healthcheck during long
+// catalog snapshots.
 func Ping(ctx context.Context, db *sql.DB) error {
 	var ready int
 	return db.QueryRowContext(ctx, `SELECT 1`).Scan(&ready)

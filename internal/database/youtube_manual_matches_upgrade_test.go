@@ -62,7 +62,7 @@ func TestYouTubeManualMatchesUpgradePreservesSourcesAndEntries(t *testing.T) {
 	if err = Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	if version, err := Version(ctx, db); err != nil || version != 96 {
+	if version, err := Version(ctx, db); err != nil || version != 98 {
 		t.Fatal("unexpected schema version", version, err)
 	}
 	var mapping, quality, subtitles, state, message, snapshot, owner, url, title string

@@ -294,6 +294,12 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 		orderJSON = string(b)
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,next_run,kind,indexer_name,protocol,organization_snapshot,anime_search_snapshot,anime_order_snapshot,indexer_public) VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?,'series',?,?,?,?,?,?)`, id, v.MovieID, releaseID, v.Title, hash, sealed, client.URL, path.Join(client.DownloadPath, "ReelScarey", id), now, now, nextRun, v.IndexerName, v.Protocol, string(namingJSON), animeJSON, orderJSON, indexerPublic); e != nil {
+		if strings.Contains(e.Error(), "UNIQUE constraint failed") && strings.Contains(e.Error(), "downloads") {
+			// The same UNIQUE(info_hash) backstop as the movie path: a lost
+			// response followed by a retry must surface as a duplicate
+			// problem, not an internal error.
+			return Job{}, false, problem("duplicate_release", "This release is already queued or downloading. Check Activity before adding it again.")
+		}
 		return Job{}, false, e
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO download_tv(download_id,series_tmdb_id,series_title,series_year,season_number,series_folder,naming) VALUES(?,?,?,?,?,?,?)`, id, show.TMDbID, show.Title, show.Year, v.Targets[0].Season, prefs.SeriesFolder, prefs.EpisodeNaming); e != nil {

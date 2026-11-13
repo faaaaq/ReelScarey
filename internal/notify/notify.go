@@ -671,42 +671,55 @@ func (s *Store) ProcessOne(ctx context.Context) (bool, error) {
 	ch, err := s.get(ctx, item.ChannelID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			_ = s.finish(ctx, item.ID, "cancelled", 0, "")
-			return true, nil
+			return true, s.report(ctx, item.ID, "cancelled", 0, "")
 		}
 		// A transient database/read failure must not permanently cancel the
 		// delivery. Put it back with a short retry instead.
 		next := time.Now().Add(time.Minute).Unix()
-		_ = s.finish(ctx, item.ID, "pending", next, "The notification channel could not be read; retrying.")
+		if rerr := s.report(ctx, item.ID, "pending", next, "The notification channel could not be read; retrying."); rerr != nil {
+			return true, rerr
+		}
 		return true, err
 	}
 	if !ch.Enabled {
-		_ = s.finish(ctx, item.ID, "cancelled", 0, "")
-		return true, nil
+		return true, s.report(ctx, item.ID, "cancelled", 0, "")
 	}
 	secret, err := s.secret(ctx, item.ChannelID)
 	if err != nil {
-		_ = s.finish(ctx, item.ID, "failed", 0, "The channel secret could not be read.")
-		return true, nil
+		return true, s.report(ctx, item.ID, "failed", 0, "The channel secret could not be read.")
 	}
 	if err := s.send(ctx, ch, secret, item.Event, item.Title, item.Body); err != nil {
 		var problem *sendError
 		if errors.As(err, &problem) {
 			if problem.uncertain {
-				return true, s.finish(ctx, item.ID, "uncertain", 0, problem.message)
+				return true, s.report(ctx, item.ID, "uncertain", 0, problem.message)
 			}
 			if problem.retry && item.Attempts < 3 {
 				next := time.Now().Add(time.Duration(item.Attempts) * 2 * time.Minute).Unix()
-				return true, s.finish(ctx, item.ID, "pending", next, problem.message)
+				return true, s.report(ctx, item.ID, "pending", next, problem.message)
 			}
-			return true, s.finish(ctx, item.ID, "failed", 0, problem.message)
+			return true, s.report(ctx, item.ID, "failed", 0, problem.message)
 		}
-		return true, s.finish(ctx, item.ID, "failed", 0, "The notification could not be sent.")
+		return true, s.report(ctx, item.ID, "failed", 0, "The notification could not be sent.")
 	}
-	return true, s.finish(ctx, item.ID, "sent", 0, "")
+	return true, s.report(ctx, item.ID, "sent", 0, "")
 }
 
 func (s *Store) finish(ctx context.Context, id int64, state string, next int64, message string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE notification_outbox SET state=?,next_attempt=?,last_error=?,updated_at=? WHERE id=?`, state, next, truncate(message, 500), time.Now().Unix(), id)
+	return err
+}
+
+// report persists a retry or terminal outbox state. A failed state write is
+// never silent: the item would otherwise stay in 'sending' with no record of
+// what happened (RS-0014). The write error is journaled as an activity event
+// on a detached context and then returned, so the delivery loop logs it and
+// the failure is visible in Activity even though delivery already happened.
+func (s *Store) report(ctx context.Context, id int64, state string, next int64, message string) error {
+	err := s.finish(ctx, id, state, next, message)
+	if err == nil {
+		return nil
+	}
+	_, _ = s.db.ExecContext(context.WithoutCancel(ctx), `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'notification',?,?,'notification delivery state update failed')`, strconv.FormatInt(id, 10), "Notification #"+strconv.FormatInt(id, 10))
 	return err
 }

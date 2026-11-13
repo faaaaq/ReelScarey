@@ -28,13 +28,14 @@ type fixtureProvider struct {
 	content             []byte
 	searches, downloads int
 	searchErr, fetchErr error
+	testErr             error
 	matches             []Candidate
 	onFetch             func()
 	remaining           *int
 	target              Target
 }
 
-func (*fixtureProvider) Test(context.Context, Credentials) error { return nil }
+func (p *fixtureProvider) Test(context.Context, Credentials) error { return p.testErr }
 func (p *fixtureProvider) Search(_ context.Context, _ Credentials, target Target, _ []string) ([]Candidate, error) {
 	p.searches++
 	p.target = target

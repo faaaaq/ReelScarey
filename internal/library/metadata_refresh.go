@@ -64,7 +64,7 @@ func (s *Store) ApplyMetadataRefresh(ctx context.Context, expected Item, revisio
 		if e = bumpSeries(ctx, tx, expected.ID, revision); e != nil {
 			return e
 		}
-		if _, e = tx.ExecContext(ctx, `UPDATE series_details SET series_status=? WHERE media_id=?`, fresh.Series.SeriesStatus, expected.ID); e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE series_details SET series_status=COALESCE(NULLIF(?,''),series_status) WHERE media_id=?`, fresh.Series.SeriesStatus, expected.ID); e != nil {
 			return e
 		}
 		if e = putSeasons(ctx, tx, expected.ID, fresh.Series.Seasons); e != nil {
@@ -87,17 +87,23 @@ func (s *Store) ApplyMetadataRefresh(ctx context.Context, expected Item, revisio
 				if e == nil && prior != ep.TMDbID {
 					return ErrRevision
 				}
-				if _, e = tx.ExecContext(ctx, `INSERT INTO episodes(season_id,tmdb_id,number,title,overview,air_date,runtime_minutes) VALUES(?,?,?,?,?,?,?) ON CONFLICT(season_id,number) DO UPDATE SET title=excluded.title,overview=excluded.overview,air_date=excluded.air_date,runtime_minutes=excluded.runtime_minutes`, seasonID, ep.TMDbID, ep.Number, ep.Title, ep.Overview, ep.AirDate, ep.RuntimeMinutes); e != nil {
+				// A partial provider response must not erase previously valid
+				// facts: empty strings and missing runtimes keep the stored
+				// values instead of overwriting them with null/blank.
+				if _, e = tx.ExecContext(ctx, `INSERT INTO episodes(season_id,tmdb_id,number,title,overview,air_date,runtime_minutes) VALUES(?,?,?,?,?,?,?) ON CONFLICT(season_id,number) DO UPDATE SET title=COALESCE(NULLIF(excluded.title,''),episodes.title),overview=COALESCE(NULLIF(excluded.overview,''),episodes.overview),air_date=COALESCE(NULLIF(excluded.air_date,''),episodes.air_date),runtime_minutes=COALESCE(excluded.runtime_minutes,episodes.runtime_minutes)`, seasonID, ep.TMDbID, ep.Number, ep.Title, ep.Overview, ep.AirDate, ep.RuntimeMinutes); e != nil {
 					return e
 				}
 			}
-			if _, e = tx.ExecContext(ctx, `UPDATE seasons SET title=?,overview=?,air_date=?,episode_count=?,loaded_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`, season.Title, season.Overview, season.AirDate, len(season.Episodes), seasonID); e != nil {
+			// Same null-preserving merge for the season summary itself.
+			if _, e = tx.ExecContext(ctx, `UPDATE seasons SET title=COALESCE(NULLIF(?,''),title),overview=COALESCE(NULLIF(?,''),overview),air_date=COALESCE(NULLIF(?,''),air_date),episode_count=?,loaded_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`, season.Title, season.Overview, season.AirDate, len(season.Episodes), seasonID); e != nil {
 				return e
 			}
 		}
 	}
+	// The media row merges the same way: a partial provider response keeps
+	// previously valid title, year, overview, artwork, dates and runtime.
 	m := fresh.Movie
-	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET title=?,year=?,overview=?,poster_path=?,release_date=?,theatrical_release_date=?,digital_release_date=?,physical_release_date=?,runtime_minutes=? WHERE id=?`, m.Title, m.Year, m.Overview, m.PosterPath, m.ReleaseDate, m.TheatricalReleaseDate, m.DigitalReleaseDate, m.PhysicalReleaseDate, m.RuntimeMinutes, expected.ID); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET title=COALESCE(NULLIF(?,''),title),year=COALESCE(?,year),overview=COALESCE(NULLIF(?,''),overview),poster_path=COALESCE(NULLIF(?,''),poster_path),release_date=COALESCE(NULLIF(?,''),release_date),theatrical_release_date=COALESCE(NULLIF(?,''),theatrical_release_date),digital_release_date=COALESCE(NULLIF(?,''),digital_release_date),physical_release_date=COALESCE(NULLIF(?,''),physical_release_date),runtime_minutes=COALESCE(?,runtime_minutes) WHERE id=?`, m.Title, m.Year, m.Overview, m.PosterPath, m.ReleaseDate, m.TheatricalReleaseDate, m.DigitalReleaseDate, m.PhysicalReleaseDate, m.RuntimeMinutes, expected.ID); e != nil {
 		return e
 	}
 	payload, e := json.Marshal(fresh.Information)

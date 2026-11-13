@@ -26,7 +26,7 @@ profiles are unchanged.
 `GET /api/v1/metadata/movies/{id}/watch?region=US` returns region-scoped TMDb
 provider suggestions. `GET /api/v1/diagnostics` is a read-only aggregation of
 failed downloads, blacklist entries, failed events, indexer errors and
-unfinished automation runs. `GET /api/v1/storage/insights` reports registered
+unfinished automation runs, plus read-only write-ahead-log size counters. `GET /api/v1/storage/insights` reports registered
 file counts/sizes, duplicate groups, unresolved scan files and analyzed files
 below their assigned cutoff. Neither page scans disk or changes state.
 

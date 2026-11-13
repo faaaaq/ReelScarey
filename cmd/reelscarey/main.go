@@ -140,6 +140,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	cancel()
 	metadataService := metadata.New(secretStore, metadata.NewTMDb())
 	metadataService.SetDefaultToken(cfg.TMDbToken)
+	metadataService.SetCooldownDB(db)
 	musicService := music.NewService(db, cfg.MediaDir)
 	musicService.SetDownloadsDir(cfg.DownloadsDir)
 	musicService.SetArtworkDir(filepath.Join(cfg.ConfigDir, "artwork"))
@@ -263,6 +264,8 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		return false, fmt.Errorf("listen: %w", err)
 	}
 	workerCtx, workerCancel := context.WithCancel(ctx)
+	workers := newWorkerDrain(logger, workerCancel)
+	defer workers.report()
 
 	notifyDone := make(chan struct{})
 	go func() {
@@ -271,7 +274,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			notifyService.Run(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-notifyDone }()
+	defer workers.join(notifyDone, "notify")
 
 	musicImportsDone := make(chan struct{})
 	go func() {
@@ -280,7 +283,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			musicService.RunImports(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-musicImportsDone }()
+	defer workers.join(musicImportsDone, "musicImports")
 	musicAcquisitionsDone := make(chan struct{})
 	go func() {
 		defer close(musicAcquisitionsDone)
@@ -288,7 +291,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			musicService.RunAcquisitions(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-musicAcquisitionsDone }()
+	defer workers.join(musicAcquisitionsDone, "musicAcquisitions")
 	musicMonitorDone := make(chan struct{})
 	go func() {
 		defer close(musicMonitorDone)
@@ -296,7 +299,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			musicService.RunMonitorLoop(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-musicMonitorDone }()
+	defer workers.join(musicMonitorDone, "musicMonitor")
 	musicScheduleDone := make(chan struct{})
 	go func() {
 		defer close(musicScheduleDone)
@@ -304,7 +307,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			musicService.RunScheduleLoop(workerCtx)
 		}
 	}()
-	defer func() { workerCancel(); <-musicScheduleDone }()
+	defer workers.join(musicScheduleDone, "musicSchedule")
 	musicWorkflowDone := make(chan struct{})
 	go func() {
 		defer close(musicWorkflowDone)
@@ -312,7 +315,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			musicService.RunWorkflow(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-musicWorkflowDone }()
+	defer workers.join(musicWorkflowDone, "musicWorkflow")
 	subscriptionsDone := make(chan struct{})
 	go func() {
 		defer close(subscriptionsDone)
@@ -320,7 +323,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			youtube.NewStore(db).RunSubscriptions(workerCtx, youtubeInspector, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-subscriptionsDone }()
+	defer workers.join(subscriptionsDone, "subscriptions")
 	seriesSourcesDone := make(chan struct{})
 	go func() {
 		defer close(seriesSourcesDone)
@@ -328,7 +331,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			youtube.NewStore(db).RunSeriesSources(workerCtx, youtubeInspector, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-seriesSourcesDone }()
+	defer workers.join(seriesSourcesDone, "seriesSources")
 	metadataDone := make(chan struct{})
 	go func() {
 		defer close(metadataDone)
@@ -336,10 +339,10 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			metadataRefresh.Run(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-metadataDone }()
+	defer workers.join(metadataDone, "metadata")
 	backupDone := make(chan struct{})
 	go func() { defer close(backupDone); backupService.Run(workerCtx, logger) }()
-	defer func() { workerCancel(); <-backupDone }()
+	defer workers.join(backupDone, "backup")
 	botDone := make(chan struct{})
 	go func() {
 		defer close(botDone)
@@ -347,7 +350,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			botService.Run(workerCtx)
 		}
 	}()
-	defer func() { workerCancel(); <-botDone }()
+	defer workers.join(botDone, "bot")
 	listsDone := make(chan struct{})
 	go func() {
 		defer close(listsDone)
@@ -355,7 +358,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			requests.NewLists(db, secretStore).Run(workerCtx)
 		}
 	}()
-	defer func() { workerCancel(); <-listsDone }()
+	defer workers.join(listsDone, "lists")
 	discordDone := make(chan struct{})
 	go func() {
 		defer close(discordDone)
@@ -363,7 +366,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			requests.NewDiscord(db, secretStore).Run(workerCtx)
 		}
 	}()
-	defer func() { workerCancel(); <-discordDone }()
+	defer workers.join(discordDone, "discord")
 	youtubeDone := make(chan struct{})
 	go func() {
 		defer close(youtubeDone)
@@ -392,7 +395,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			}
 		}
 	}()
-	defer func() { workerCancel(); <-youtubeDone }()
+	defer workers.join(youtubeDone, "youtube")
 	workerDone := make(chan struct{})
 	go func() {
 		defer close(workerDone)
@@ -413,7 +416,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		worker := &mediaanalysis.Worker{DB: db, MediaRoot: cfg.MediaDir, Binary: probe}
 		worker.Run(workerCtx, logger)
 	}()
-	defer func() { workerCancel(); <-analysisDone }()
+	defer workers.join(analysisDone, "analysis")
 	nfoDone := make(chan struct{})
 	go func() {
 		defer close(nfoDone)
@@ -421,7 +424,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			(&nfoexport.Worker{DB: db, MediaRoot: cfg.MediaDir}).Run(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-nfoDone }()
+	defer workers.join(nfoDone, "nfo")
 	artworkDone := make(chan struct{})
 	go func() {
 		defer close(artworkDone)
@@ -429,7 +432,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			(&artworkexport.Worker{DB: db, MediaRoot: cfg.MediaDir}).Run(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-artworkDone }()
+	defer workers.join(artworkDone, "artwork")
 	bundledDone := make(chan struct{})
 	go func() {
 		defer close(bundledDone)
@@ -437,7 +440,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			transferService.SuperviseBundled(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-bundledDone }()
+	defer workers.join(bundledDone, "bundled")
 	usenetBuiltinDone := make(chan struct{})
 	go func() {
 		defer close(usenetBuiltinDone)
@@ -445,7 +448,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			transferService.SuperviseBundledUsenet(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-usenetBuiltinDone }()
+	defer workers.join(usenetBuiltinDone, "usenetBuiltin")
 	seedingDone := make(chan struct{})
 	go func() {
 		defer close(seedingDone)
@@ -453,7 +456,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			transferService.SuperviseTorrentPolicies(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-seedingDone }()
+	defer workers.join(seedingDone, "seeding")
 	automationDone := make(chan struct{})
 	go func() {
 		defer close(automationDone)
@@ -468,7 +471,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			automationService.RunRSS(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-rssDone }()
+	defer workers.join(rssDone, "rss")
 	announceAutomationDone := make(chan struct{})
 	go func() {
 		defer close(announceAutomationDone)
@@ -476,7 +479,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			automationService.RunAnnounces(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-announceAutomationDone }()
+	defer workers.join(announceAutomationDone, "announceAutomation")
 	subtitleDone := make(chan struct{})
 	go func() {
 		defer close(subtitleDone)
@@ -491,8 +494,8 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			vpnService.Supervise(workerCtx, logger)
 		}
 	}()
-	defer func() { workerCancel(); <-subtitleDone }()
-	defer func() { workerCancel(); <-vpnDone }()
+	defer workers.join(subtitleDone, "subtitle")
+	defer workers.join(vpnDone, "vpn")
 	announceDone := make(chan struct{})
 	go func() {
 		defer close(announceDone)
@@ -500,7 +503,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			announceService.Run(workerCtx)
 		}
 	}()
-	defer func() { workerCancel(); <-announceDone }()
+	defer workers.join(announceDone, "announce")
 
 	embyDone := make(chan struct{})
 	go func() {
@@ -509,7 +512,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			embyMonitor.Run(workerCtx)
 		}
 	}()
-	defer func() { workerCancel(); <-embyDone }()
+	defer workers.join(embyDone, "emby")
 	organizationDone := make(chan struct{})
 	go func() {
 		defer close(organizationDone)
@@ -517,9 +520,9 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			organizationService.Run(workerCtx)
 		}
 	}()
-	defer func() { workerCancel(); <-organizationDone }()
-	defer func() { workerCancel(); <-automationDone }()
-	defer func() { workerCancel(); <-workerDone }()
+	defer workers.join(organizationDone, "organization")
+	defer workers.join(automationDone, "automation")
+	defer workers.join(workerDone, "worker")
 	failed := make(chan error, 1)
 	go func() { failed <- server.Serve(listener) }()
 	logger.Info("ReelScarey started", "address", listener.Addr().String(), "version", version)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"time"
+
+	"github.com/faaaaq/ReelScarey/internal/database"
 )
 
 type diagnosticDownload struct {
@@ -77,9 +79,21 @@ func (s *Server) diagnostics(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, "diagnostics_runs", err)
 		return
 	}
+	// Read-only write-ahead-log health (RS-0037). Never runs a checkpoint;
+	// a failure here degrades the section instead of the whole report.
+	wal := map[string]any{}
+	if stats, err := database.WALInfo(ctx, s.db); err == nil {
+		wal["page_count"] = stats.PageCount
+		wal["freelist_pages"] = stats.FreelistPages
+		wal["page_size"] = stats.PageSize
+		wal["wal_file_bytes"] = stats.WALFileBytes
+		wal["autocheckpoint_pages"] = stats.AutoCheckpointPages
+	} else {
+		wal["unavailable"] = err.Error()
+	}
 	send(w, 200, map[string]any{
 		"downloads": downloads, "blacklist": blacklist, "events": events,
-		"indexers": indexers, "automation_runs": runs,
+		"indexers": indexers, "automation_runs": runs, "wal": wal,
 		"counts": map[string]int{
 			"downloads": len(downloads), "blacklist": len(blacklist),
 			"events": len(events), "indexers": len(indexers), "automation_runs": len(runs),

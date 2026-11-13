@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -218,7 +219,7 @@ func (s *Service) runScan(ctx context.Context, id int64, roots []string, full bo
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Default().Error("music scan panicked", "scan_id", id, "panic", r)
-			_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_scans SET state='failed',phase='failed',current_path='',message=?,error=?,updated_at=unixepoch() WHERE id=?`,
+			_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_scans SET state='failed',phase='failed',current_path='',message=?,error=?,updated_at=unixepoch() WHERE id=? AND state<>'cancelled'`,
 				"The scan stopped unexpectedly. Run it again.", "The scan stopped unexpectedly. Run it again.", id)
 		}
 	}()
@@ -242,7 +243,7 @@ func (s *Service) runScan(ctx context.Context, id int64, roots []string, full bo
 			registered, prepareErr = s.registeredScanPaths(context.WithoutCancel(ctx))
 		}
 	}
-	_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_scans SET phase='scanning',progress_total=?,progress_done=0,message=?,error='',updated_at=unixepoch() WHERE id=?`,
+	_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_scans SET phase='scanning',progress_total=?,progress_done=0,message=?,error='',updated_at=unixepoch() WHERE id=? AND state<>'cancelled'`,
 		total, firstNonEmpty(skipMessage, "Scanning audio files."), id)
 	progress := &scanProgress{}
 	var walkErr error
@@ -272,8 +273,14 @@ func (s *Service) runScan(ctx context.Context, id int64, roots []string, full bo
 			state, phase, message = "failed", "failed", "The scan took too long. Narrow the folder and try again."
 		}
 	} else {
-		_ = s.updateScanPhase(context.WithoutCancel(ctx), id, "matching", "Matching scanned files against the saved catalog.", total, progress.done)
-		if err := s.matchScan(ctx, id); err != nil {
+		advanced, err := s.updateScanPhase(context.WithoutCancel(ctx), id, "matching", "Matching scanned files against the saved catalog.", total, progress.done)
+		if err != nil {
+			state, phase, message = "failed", "failed", err.Error()
+		} else if !advanced {
+			// A persisted cancel must not be overwritten by continuing into
+			// matching: the cancel was already acknowledged to the caller (CS-8).
+			state, phase, message = "cancelled", "cancelled", ""
+		} else if err := s.matchScan(ctx, id); err != nil {
 			state, phase, message = "failed", "failed", err.Error()
 		}
 	}
@@ -294,8 +301,15 @@ func (s *Service) runScan(ctx context.Context, id int64, roots []string, full bo
 	if total < done {
 		total = done
 	}
-	_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_scans SET state=?,phase=?,progress_total=?,progress_done=?,current_path='',message=?,file_count=?,matched_count=?,unresolved_count=?,skipped_count=?,error=?,updated_at=unixepoch() WHERE id=?`,
-		state, phase, total, done, message, files, matched, unresolved, progress.skipped, scanError(state, message), id)
+	// The final write refuses to overwrite a persisted cancel: a cancel that
+	// was durably acknowledged must not be silently reverted by the run's
+	// completion path (CS-8). A failed state write is journaled, not ignored
+	// (RS-0014).
+	if _, err := s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_scans SET state=?,phase=?,progress_total=?,progress_done=?,current_path='',message=?,file_count=?,matched_count=?,unresolved_count=?,skipped_count=?,error=?,updated_at=unixepoch() WHERE id=? AND state<>'cancelled'`,
+		state, phase, total, done, message, files, matched, unresolved, progress.skipped, scanError(state, message), id); err != nil {
+		_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'music',?,?,'scan state update failed')`,
+			strconv.FormatInt(id, 10), fmt.Sprintf("Music scan #%d: its final state could not be saved (%v)", id, err))
+	}
 }
 
 func scanSummary(files, matched, unresolved, skipped int) string {
@@ -313,10 +327,14 @@ func scanError(state, message string) string {
 	return ""
 }
 
-func (s *Service) updateScanPhase(ctx context.Context, id int64, phase, message string, total, done int) error {
-	_, err := s.store.db.ExecContext(ctx, `UPDATE music_scans SET phase=?,message=?,progress_total=?,progress_done=?,updated_at=unixepoch() WHERE id=?`,
+func (s *Service) updateScanPhase(ctx context.Context, id int64, phase, message string, total, done int) (bool, error) {
+	r, err := s.store.db.ExecContext(ctx, `UPDATE music_scans SET phase=?,message=?,progress_total=?,progress_done=?,updated_at=unixepoch() WHERE id=? AND state<>'cancelled'`,
 		phase, message, total, done, id)
-	return err
+	if err != nil {
+		return false, err
+	}
+	n, err := r.RowsAffected()
+	return n == 1, err
 }
 
 // countScanEligible is the fast name-only pre-count for the progress bar. It

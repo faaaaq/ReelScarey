@@ -127,6 +127,19 @@ lock prevents cooperating 0.8+ instances from owning the same local config;
 stale lockfiles are harmless and must not be deleted to bypass a running owner.
 Network filesystem lock semantics are not a supported substitute for local config.
 
+## Bounded shutdown
+
+On SIGINT/SIGTERM the HTTP server drains first (10 seconds on a normal stop,
+5 minutes for a reviewed restore restart). Background workers are then cancelled
+and joined against a shared 30-second drain deadline. A worker that ignores
+cancellation cannot hang shutdown forever: after the deadline the process
+exits, terminating the worker, and durable leases, recovery journals and
+startup reconciliation finish or reset its work on the next start. The startup
+log distinguishes a clean drain ("all background workers stopped cleanly") from
+a timed-out one ("shutdown finished after the worker drain deadline expired",
+naming the workers still running at exit). A timed-out shutdown is not a
+graceful one; check the named workers' journals after the next start.
+
 In-place schema downgrades are unsupported. To roll back, stop the new build and
 use the retained old build with its own compatible stopped config snapshot in a
 separate folder. New-format recovery holds require 0.8+; do not point older builds

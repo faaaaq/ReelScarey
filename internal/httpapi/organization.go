@@ -58,6 +58,15 @@ func (s *Server) organizationSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out, e = s.organization.Update(r.Context(), in)
+		// Organization library/category changes feed automatic identity
+		// matching; stale per-scan resolution results must not survive the
+		// new configuration (CS-3).
+		if e == nil && s.transfer != nil {
+			if cerr := s.transfer.InvalidateAutomaticMatchCache(r.Context()); cerr != nil {
+				s.internal(w, "match_cache_invalidate", cerr)
+				return
+			}
+		}
 	default:
 		w.Header().Set("Allow", "GET, PUT")
 		fail(w, 405, "method_not_allowed", "Use GET or PUT.")

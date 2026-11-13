@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -136,7 +137,9 @@ func (s *Service) StartAlbumAcquisition(ctx context.Context, albumID int64, root
 	if len(inputs) == 0 {
 		return AcquisitionJob{}, &Error{Code: "music_nothing_to_do", Message: "Every catalog track in this album already has a registered file."}
 	}
-	return s.StartAcquisition(ctx, "", "album", album.Title, root, format, inputs)
+	// The album identity makes a double-clicked or retried submit return the
+	// existing queued/running job instead of re-downloading every track.
+	return s.startAcquisition(ctx, "album:"+strconv.FormatInt(albumID, 10), "", "album", album.Title, root, format, inputs)
 }
 
 // StartProviderAlbumAcquisition resolves a public Deezer album link and queues
@@ -183,6 +186,10 @@ func validAcquisitionFormat(format string) bool {
 }
 
 func (s *Service) StartAcquisition(ctx context.Context, sourceURL, sourceKind, title, root, format string, tracks []AcquisitionTrackInput) (AcquisitionJob, error) {
+	return s.startAcquisition(ctx, "", sourceURL, sourceKind, title, root, format, tracks)
+}
+
+func (s *Service) startAcquisition(ctx context.Context, dedupKey, sourceURL, sourceKind, title, root, format string, tracks []AcquisitionTrackInput) (AcquisitionJob, error) {
 	if s.audio == nil {
 		return AcquisitionJob{}, &Error{Code: "music_acquisition_unavailable", Message: "Audio downloading is unavailable because yt-dlp is not configured."}
 	}
@@ -197,14 +204,47 @@ func (s *Service) StartAcquisition(ctx context.Context, sourceURL, sourceKind, t
 	if format == "" {
 		format = "source"
 	}
+	// Provider links deduplicate on their URL; album jobs on the album id
+	// (CS-7). The write transaction is BEGIN IMMEDIATE, so a concurrent
+	// duplicate submit serializes behind this check and the partial unique
+	// index backs the check up even across processes.
+	dedupKey = strings.TrimSpace(dedupKey)
+	if dedupKey == "" {
+		if trimmed := strings.TrimSpace(sourceURL); trimmed != "" {
+			dedupKey = "url:" + trimmed
+		}
+	}
 	tx, err := s.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return AcquisitionJob{}, err
 	}
 	defer tx.Rollback()
+	if dedupKey != "" {
+		var existing int64
+		err := tx.QueryRowContext(ctx, `SELECT id FROM music_acquisition_jobs WHERE dedup_key=? AND state IN ('queued','running') LIMIT 1`, dedupKey).Scan(&existing)
+		if err == nil {
+			tx.Rollback()
+			return s.Acquisition(ctx, existing)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return AcquisitionJob{}, err
+		}
+	}
 	now := time.Now().Unix()
-	result, err := tx.ExecContext(ctx, `INSERT INTO music_acquisition_jobs(source_url,source_kind,title,root,format,state,track_count,created_at,updated_at) VALUES(?,?,?,?,?,'queued',?,?,?)`,
-		strings.TrimSpace(sourceURL), strings.TrimSpace(sourceKind), strings.TrimSpace(title), root, format, len(tracks), now, now)
+	result, err := tx.ExecContext(ctx, `INSERT INTO music_acquisition_jobs(dedup_key,source_url,source_kind,title,root,format,state,track_count,created_at,updated_at) VALUES(?,?,?,?,?,?,'queued',?,?,?)`,
+		nullableText(dedupKey), strings.TrimSpace(sourceURL), strings.TrimSpace(sourceKind), strings.TrimSpace(title), root, format, len(tracks), now, now)
+	if err != nil {
+		// The partial unique index is the cross-process backstop for the
+		// in-transaction check above (CS-7).
+		if dedupKey != "" && strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			var existing int64
+			if e := tx.QueryRowContext(ctx, `SELECT id FROM music_acquisition_jobs WHERE dedup_key=? AND state IN ('queued','running') LIMIT 1`, dedupKey).Scan(&existing); e == nil {
+				tx.Rollback()
+				return s.Acquisition(ctx, existing)
+			}
+		}
+		return AcquisitionJob{}, err
+	}
 	if err != nil {
 		return AcquisitionJob{}, err
 	}
@@ -244,6 +284,15 @@ func (s *Service) StartAcquisition(ctx context.Context, sourceURL, sourceKind, t
 		return AcquisitionJob{}, err
 	}
 	return s.Acquisition(ctx, jobID)
+}
+
+// nullableText stores an optional dedup identity as NULL so pre-migration
+// rows and identity-less jobs never collide in the partial unique index.
+func nullableText(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func (s *Service) Acquisition(ctx context.Context, id int64) (AcquisitionJob, error) {
@@ -668,9 +717,12 @@ func (s *Service) reconcileAcquisitions(ctx context.Context) {
 		}
 		for _, item := range stuck {
 			if err := s.setAcquisitionTrackState(ctx, item.id, "failed", "The download did not finish. Try this track again."); err != nil {
-				return
+				s.journalAcquisitionWriteFailure(ctx, item.jobID, "a stuck download could not be marked failed", err)
+				continue
 			}
-			_ = s.refreshAcquisitionJob(ctx, item.jobID)
+			if err := s.refreshAcquisitionJob(ctx, item.jobID); err != nil {
+				s.journalAcquisitionWriteFailure(ctx, item.jobID, "the acquisition job could not be refreshed", err)
+			}
 		}
 	}
 	rows, err := s.store.db.QueryContext(ctx, `SELECT t.id,t.job_id,t.import_job_id,j.state,j.error FROM music_acquisition_tracks t JOIN music_import_jobs j ON j.id=t.import_job_id WHERE t.state='importing'`)
@@ -696,15 +748,32 @@ func (s *Service) reconcileAcquisitions(ctx context.Context) {
 			var fileID int64
 			err := s.store.db.QueryRowContext(ctx, `SELECT f.id FROM music_files f JOIN music_import_files i ON i.destination_path=f.relative_path WHERE i.job_id=? AND i.track_id=(SELECT track_id FROM music_import_files WHERE job_id=? LIMIT 1) LIMIT 1`, item.importID, item.importID).Scan(&fileID)
 			if err != nil {
-				_ = s.setAcquisitionTrackState(ctx, item.id, "failed", "The imported file could not be attached to the acquisition.")
+				if err := s.setAcquisitionTrackState(ctx, item.id, "failed", "The imported file could not be attached to the acquisition."); err != nil {
+					s.journalAcquisitionWriteFailure(ctx, item.jobID, "an imported track could not be marked failed", err)
+				}
 				continue
 			}
-			_, _ = s.store.db.ExecContext(ctx, `UPDATE music_acquisition_tracks SET state='completed',music_file_id=?,error='',updated_at=unixepoch() WHERE id=?`, fileID, item.id)
+			if _, err := s.store.db.ExecContext(ctx, `UPDATE music_acquisition_tracks SET state='completed',music_file_id=?,error='',updated_at=unixepoch() WHERE id=?`, fileID, item.id); err != nil {
+				s.journalAcquisitionWriteFailure(ctx, item.jobID, "an imported track could not be marked completed", err)
+			}
 		case "failed":
-			_ = s.setAcquisitionTrackState(ctx, item.id, "failed", item.message)
+			if err := s.setAcquisitionTrackState(ctx, item.id, "failed", item.message); err != nil {
+				s.journalAcquisitionWriteFailure(ctx, item.jobID, "a failed import could not be recorded", err)
+			}
 		}
-		_ = s.refreshAcquisitionJob(ctx, item.jobID)
+		if err := s.refreshAcquisitionJob(ctx, item.jobID); err != nil {
+			s.journalAcquisitionWriteFailure(ctx, item.jobID, "the acquisition job could not be refreshed", err)
+		}
 	}
+}
+
+// journalAcquisitionWriteFailure records a failed acquisition state write as
+// an activity event so a job cannot sit in a running state with no record of
+// the failure (RS-0014). The journal write itself is best effort: when the
+// database is failing there is nowhere durable left to record anything.
+func (s *Service) journalAcquisitionWriteFailure(ctx context.Context, jobID int64, detail string, writeErr error) {
+	_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'music',?,?,'acquisition state update failed')`,
+		strconv.FormatInt(jobID, 10), fmt.Sprintf("Music acquisition #%d: %s (%v)", jobID, detail, writeErr))
 }
 
 func (s *Service) refreshAcquisitionJob(ctx context.Context, jobID int64) error {

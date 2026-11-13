@@ -55,7 +55,7 @@ func TestFastRegistrationUpgradePreservesExistingFilesAndPendingScan(t *testing.
 	if err = db.QueryRow(`SELECT j.state,j.phase,c.payload FROM library_match_jobs j JOIN library_match_candidates c ON c.scan_id=j.scan_id WHERE j.scan_id='scan'`).Scan(&state, &phase, &payload); err != nil || state != "running" || phase != "queue" || payload != `{"saved":"evidence"}` {
 		t.Fatal("pending matching state changed", err)
 	}
-	if version, err := Version(ctx, db); err != nil || version != 96 {
+	if version, err := Version(ctx, db); err != nil || version != 98 {
 		t.Fatal(version, err)
 	}
 }

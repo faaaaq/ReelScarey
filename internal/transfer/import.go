@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/organization"
@@ -59,6 +60,13 @@ func fileHash(ctx context.Context, f *os.File) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 func safeRelative(name string) (string, error) {
+	// Filenames must round-trip as UTF-8. A path with invalid byte sequences
+	// would be silently rewritten to U+FFFD by JSON encoding, so the review
+	// UI would show a name that cannot match the file on disk. Fail closed
+	// at planning instead of corrupting the displayed path.
+	if !utf8.ValidString(name) {
+		return "", problem("unsafe_path", "A download path contains invalid text encoding and cannot be imported safely. Rename the file in the download client, then refresh.")
+	}
 	name = strings.ReplaceAll(name, "\\", "/")
 	if !textOK(name, 4096) || strings.HasPrefix(name, "/") || strings.Contains(name, ":") {
 		return "", problem("unsafe_path", "A download path is outside the configured root or contains unsafe components.")

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -217,8 +218,7 @@ func (s *Service) Test(ctx context.Context) error {
 		return e
 	}
 	if e = s.selectedProvider(c).Test(ctx, c); e != nil {
-		_ = s.providerError(ctx, c.Generation, e)
-		return e
+		return s.persistProviderError(ctx, c.Generation, e)
 	}
 	_, e = s.db.ExecContext(ctx, `UPDATE subtitle_provider_state SET state='ready',message='Connection verified.',cooldown_until=0,remaining=NULL WHERE id=1 AND generation=?`, c.Generation)
 	return e
@@ -253,6 +253,20 @@ func (s *Service) providerError(ctx context.Context, generation string, err erro
 	}
 	_, e := s.db.ExecContext(ctx, `UPDATE subtitle_provider_state SET state=?,message=?,cooldown_until=? WHERE id=1 AND generation=?`, p.Code, p.Message, until, generation)
 	return e
+}
+
+// persistProviderError records a provider cooldown after a provider call. The
+// original provider error stays authoritative; a failed state write is folded
+// into it so an unrecorded cooldown cannot go unnoticed. Without this, a
+// failed write would let the worker keep contacting a provider that just
+// asked us to back off (RS-0014). The combined error uses a code the job
+// state machine does not classify as a recorded cooldown, so the run fails
+// visibly into review instead of presenting an unsaved cooldown as usable.
+func (s *Service) persistProviderError(ctx context.Context, generation string, providerErr error) error {
+	if err := s.providerError(ctx, generation, providerErr); err != nil {
+		return &Error{Code: "provider_state_write_failed", Message: fmt.Sprintf("%s (the provider cooldown could not be saved: %v)", providerErr, err)}
+	}
+	return providerErr
 }
 func (s *Service) providerReady(ctx context.Context, generation string) error {
 	var state, message, actual string

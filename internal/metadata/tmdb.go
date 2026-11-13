@@ -182,15 +182,20 @@ type MovieProvider interface {
 	Movie(context.Context, string, int64) (Movie, error)
 }
 type Client struct {
-	base    string
-	http    *http.Client
-	mu      sync.Mutex
-	retryAt time.Time
+	base     string
+	http     *http.Client
+	mu       sync.Mutex
+	retryAt  time.Time
+	cooldown ProviderCooldown
 }
 
 func NewTMDb() *Client {
 	return newClient("https://api.themoviedb.org/3", &http.Client{Timeout: 10 * time.Second})
 }
+
+// SetCooldown attaches durable provider-state storage so a rate-limit
+// deadline survives restarts (RS-0025).
+func (c *Client) SetCooldown(store ProviderCooldown) { c.cooldown = store }
 func newClient(base string, client *http.Client) *Client {
 	copy := *client
 	copy.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("provider redirects are disabled") }
@@ -209,6 +214,13 @@ func (c *Client) requestLimit(ctx context.Context, token, endpoint string, query
 	c.mu.Lock()
 	retryAt := c.retryAt
 	c.mu.Unlock()
+	// A cooldown earned before a restart persists in the provider state
+	// table, so a fresh process does not re-burst the provider (RS-0025).
+	if !time.Now().Before(retryAt) && c.cooldown != nil {
+		if persisted, err := c.cooldown.Load(ctx); err == nil && persisted.After(retryAt) {
+			retryAt = persisted
+		}
+	}
 	if time.Now().Before(retryAt) {
 		return &Error{Code: "tmdb_rate_limited", Message: "TMDb is limiting requests. Wait before trying again.", RetryAfter: max(1, int(time.Until(retryAt).Seconds())+1)}
 	}
@@ -241,9 +253,18 @@ func (c *Client) requestLimit(ctx context.Context, token, endpoint string, query
 		if seconds < 2 {
 			seconds = 5
 		}
+		until := time.Now().Add(time.Duration(seconds) * time.Second)
 		c.mu.Lock()
-		c.retryAt = time.Now().Add(time.Duration(seconds) * time.Second)
+		c.retryAt = until
 		c.mu.Unlock()
+		// Persist the deadline so a restart inside the cooldown window
+		// resumes throttling instead of re-bursting the provider (RS-0025).
+		// Persistence is best effort: the in-memory deadline still throttles
+		// this process, and failing the request because a write failed would
+		// only add more pressure to a database that just failed.
+		if c.cooldown != nil {
+			_ = c.cooldown.Save(ctx, until)
+		}
 		return &Error{Code: "tmdb_rate_limited", Message: "TMDb is limiting requests. Wait before trying again.", RetryAfter: seconds}
 	default:
 		return &Error{Code: "tmdb_unavailable", Message: "TMDb is temporarily unavailable. Try again later."}

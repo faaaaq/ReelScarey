@@ -242,8 +242,7 @@ func (s *Service) process(ctx context.Context, j Job, p Preferences) (string, st
 		}
 		raw, e := s.selectedProvider(c).Search(ctx, c, m.Target, langs)
 		if e != nil {
-			_ = s.providerError(ctx, c.Generation, e)
-			return "", "", e
+			return "", "", s.persistProviderError(ctx, c.Generation, e)
 		}
 		if e = s.fence(ctx, nil, j, c.Generation, true); e != nil {
 			return "", "", e
@@ -285,8 +284,7 @@ func (s *Service) process(ctx context.Context, j Job, p Preferences) (string, st
 		}
 		download, e := s.selectedProvider(c).Fetch(ctx, c, *chosen)
 		if e != nil {
-			_ = s.providerError(ctx, c.Generation, e)
-			return "", "", e
+			return "", "", s.persistProviderError(ctx, c.Generation, e)
 		}
 		if e = s.quota(ctx, c, download); e != nil {
 			return "", "", e

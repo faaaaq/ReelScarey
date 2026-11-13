@@ -59,6 +59,17 @@ func (s *Service) AutomaticMatchStatus(ctx context.Context, scan string) (*Autom
 	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(state='queued'),0),COALESCE(SUM(state='review'),0) FROM library_match_candidates WHERE scan_id=?`, scan).Scan(&out.Resolved, &out.Queued, &out.Review)
 	return &out, err
 }
+
+// InvalidateAutomaticMatchCache drops per-scan title resolution results so
+// the next matching run re-reads the provider with current configuration
+// (CS-3). Rows are only consulted while a scan's resolve phase runs and are
+// keyed per scan, so deleting them never converts an ambiguous outcome into
+// an automatic match and never touches manual review or canonical identities;
+// it only forces fresh, fail-closed re-resolution.
+func (s *Service) InvalidateAutomaticMatchCache(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM library_match_cache`)
+	return err
+}
 func (s *Service) StartAutomaticMatching(ctx context.Context, scanID string) error {
 	defer organization.ReadMedia()()
 	scan, err := s.LibraryScan(ctx, scanID)

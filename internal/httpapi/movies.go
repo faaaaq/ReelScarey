@@ -74,6 +74,14 @@ func (s *Server) tmdbSettings(w http.ResponseWriter, r *http.Request) {
 			s.providerError(w, err)
 			return
 		}
+		// Cached title resolutions predate the new key; drop them so the next
+		// matching run re-reads the provider with the new credentials (CS-3).
+		if s.transfer != nil {
+			if err := s.transfer.InvalidateAutomaticMatchCache(r.Context()); err != nil {
+				s.internal(w, "match_cache_invalidate", err)
+				return
+			}
+		}
 		send(w, 200, map[string]bool{"configured": true, "tested": true})
 	case http.MethodDelete:
 		if err := s.metadata.Remove(r.Context()); err != nil {

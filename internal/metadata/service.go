@@ -2,6 +2,8 @@ package metadata
 
 import (
 	"context"
+	"database/sql"
+
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 )
 
@@ -19,6 +21,15 @@ func New(secrets *securestore.Store, provider MovieProvider) *Service {
 // deployment environment. A token saved in Settings always wins, so users can
 // replace the shared default without changing the deployment.
 func (s *Service) SetDefaultToken(token string) { s.defaultToken = token }
+
+// SetCooldownDB persists provider rate-limit cooldowns in the application
+// database so they survive restarts (RS-0025). Providers without cooldown
+// support are left untouched.
+func (s *Service) SetCooldownDB(db *sql.DB) {
+	if c, ok := s.provider.(interface{ SetCooldown(ProviderCooldown) }); ok {
+		c.SetCooldown(NewSQLCooldown(db))
+	}
+}
 
 // DefaultTokenAvailable reports whether the deployment supplies a shared token.
 func (s *Service) DefaultTokenAvailable() bool { return s.defaultToken != "" }
