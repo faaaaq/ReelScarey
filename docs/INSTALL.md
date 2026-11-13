@@ -97,6 +97,28 @@ When you set an explicit `user:` instead, PUID/PGID must match it or be omitted;
 automatic permission initialization is disabled. No application process runs as
 root.
 
+Docker creates missing bind-mount folders on the host as root, and the container
+can only fix ownership of what is mounted, so the parent of your `./config`
+bind mount stays root-owned while the folders inside it are corrected. That is
+harmless as long as the parent itself needs no other owner. To have everything
+under one account, mount one host parent and name it with
+`REELSCAREY_APPDATA_DIR`:
+
+```yaml
+    environment:
+      REELSCAREY_APPDATA_DIR: /appdata
+    volumes:
+      - ${APPDATA_PATH:-./appdata}:/appdata
+      - ${APPDATA_PATH:-./appdata}/state:/config
+      - ${APPDATA_PATH:-./appdata}/backups:/backups
+      - ${APPDATA_PATH:-./appdata}/youtube-staging:/youtube-staging
+```
+
+Startup verifies the layout, refuses overlaps and symlinks, and chowns the
+parent and every intermediate folder to PUID:PGID. The private folders may also
+use their default Docker volumes with this option; the parent is then owned on
+its own mount.
+
 ## Library folders
 
 Mount each existing library folder **inside** `/media` and then choose it in the

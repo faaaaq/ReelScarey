@@ -29,10 +29,12 @@ for index, folder in enumerate(private):
     if any(overlaps(folder, other) for other in private[index + 1:]):
         sys.exit("Configuration, backups and staging must use separate folders.")
 
-# Optional single parent for all private folders (one host bind mount). Docker
+# Optional single parent mount holding the private folders on the host. Docker
 # creates missing bind sources as root on the host, and a container can only
-# fix ownership of what is mounted, so mounting one parent lets the whole
-# private tree, including the parent itself, belong to PUID:PGID.
+# fix ownership of what is mounted, so mounting one parent and declaring it
+# here lets the parent itself (and any intermediate folders when private
+# folders use custom nested container paths) belong to PUID:PGID. The private
+# folders themselves are chowned below regardless of where they are mounted.
 appdata_raw = os.environ.get("REELSCAREY_APPDATA_DIR")
 if appdata_raw:
     appdata = Path(appdata_raw)
@@ -40,17 +42,20 @@ if appdata_raw:
         sys.exit("REELSCAREY_APPDATA_DIR must be an absolute directory without symlinks.")
     if any(overlaps(appdata, other.resolve()) for other in [media, downloads]):
         sys.exit("REELSCAREY_APPDATA_DIR must be separate from media and downloads.")
-    if any(appdata not in folder.parents for folder in private):
-        sys.exit("Configuration, backups and staging must be inside REELSCAREY_APPDATA_DIR.")
+    if any(overlaps(appdata, other) for other in private):
+        sys.exit("REELSCAREY_APPDATA_DIR must not be one of the private folders; mount it as their parent.")
     appdata.mkdir(parents=True, exist_ok=True)
+    levels = {appdata}
     for folder in private:
-        # Own every intermediate folder between the parent and each private
-        # folder; never recurse into unrelated siblings.
-        for level in [appdata, *[p for p in folder.parents if appdata in p.parents]]:
-            level.mkdir(exist_ok=True)
-            info = os.lstat(level)
-            if stat.S_ISDIR(info.st_mode) and (info.st_uid != uid or info.st_gid != gid):
-                os.chown(level, uid, gid, follow_symlinks=False)
+        # Own intermediate folders only when a private folder is nested under
+        # the parent inside the container (custom paths); never recurse into
+        # unrelated siblings.
+        levels.update(p for p in folder.parents if appdata in p.parents)
+    for level in sorted(levels):
+        level.mkdir(exist_ok=True)
+        info = os.lstat(level)
+        if stat.S_ISDIR(info.st_mode) and (info.st_uid != uid or info.st_gid != gid):
+            os.chown(level, uid, gid, follow_symlinks=False)
     appdata.chmod(0o750)
 
 for folder in private:

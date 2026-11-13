@@ -172,7 +172,8 @@ services:
       # Optional shared TMDb Read Access Token. New installs work immediately
       # with this default; each owner can replace it in Settings. Leave empty
       # to require a token in Settings. Never commit a real token.
-      REELSCAREY_TMDB_TOKEN: ""    ports:
+      REELSCAREY_TMDB_TOKEN: ""
+    ports:
       - "8787:8787"
     volumes:
       - /srv/reelscarey/config:/config
@@ -229,12 +230,13 @@ installation to save its own token.
 
 ### First-run checklist
 
-1. **Settings → Primary Connections**: enter your TMDb API Read Access Token,
+1. **Settings → General → Connect**: enter your TMDb API Read Access Token,
    then test and save.
 2. **Indexers**: add Torznab/Newznab, a direct tracker or a private RSS feed.
 3. **Download clients**: add an external client, or configure the bundled
    qBittorrent and optional SABnzbd clients and choose protocol defaults.
-4. **Organize library**: set your Movies/TV/Anime folders and naming presets.
+4. **Organize Files** and **Settings → General**: set your Movies/TV/Anime
+   folders and naming presets.
 5. **Settings → General → File imports**: confirm hardlink-when-possible or
    always-copy for completed downloads. Separate or read-only download mounts
    make imports copy in practice.
@@ -352,8 +354,10 @@ docker compose up -d
 docker compose exec reelscarey reelscarey doctor
 ```
 
-The example sets `pull_policy: always`, so `docker compose up -d` also re-checks
-`:latest`. In-place downgrades are not supported; restore a backup instead.
+The shipped `compose.yaml` adds hardening this excerpt omits for brevity:
+`read_only: true`, `no-new-privileges`, a `/tmp` tmpfs and a PID limit. Keep
+them in production. `docker compose pull && docker compose up -d` updates the
+image; in-place downgrades are not supported, restore a backup instead.
 
 ---
 

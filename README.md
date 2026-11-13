@@ -215,6 +215,7 @@ Mount your library at `/media` and your download client's completed folder at
 | `REELSCAREY_PUBLIC_URL` | empty | Explicit browser origin for another hostname or HTTPS reverse proxy |
 | `REELSCAREY_LISTEN_ADDR` | `127.0.0.1:8787` | HTTP bind address |
 | `PUID` / `PGID` | `10001` | Linux account that owns the library and the private folders |
+| `REELSCAREY_APPDATA_DIR` | unset | Container path of one parent bind mount that holds the private folders on the host; startup owns it and everything between it and the private folders, so Docker's root-created bind directories do not stay root-owned (see docs/INSTALL.md) |
 | `TZ` | `UTC` | Timezone for calendar dates and scheduled times |
 | `REELSCAREY_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 | `REELSCAREY_TMDB_TOKEN` | empty | TMDb Read Access Token seeded at startup; normally saved in Settings instead |
