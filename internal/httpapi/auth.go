@@ -362,6 +362,8 @@ func (s *Server) authError(w http.ResponseWriter, err error) {
 		fail(w, 401, "invalid_totp", err.Error())
 	case errors.Is(err, auth.ErrSetupToken):
 		fail(w, 403, "invalid_setup_token", err.Error())
+	case errors.Is(err, auth.ErrSetupTokenFile):
+		fail(w, 403, "setup_token_missing", err.Error())
 	case errors.Is(err, auth.ErrSetupClosed):
 		fail(w, 409, "setup_closed", err.Error())
 	case errors.Is(err, auth.ErrPassword), errors.Is(err, auth.ErrUsername):

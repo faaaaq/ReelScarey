@@ -66,9 +66,21 @@ func (s *Service) AutomaticMatchStatus(ctx context.Context, scan string) (*Autom
 // keyed per scan, so deleting them never converts an ambiguous outcome into
 // an automatic match and never touches manual review or canonical identities;
 // it only forces fresh, fail-closed re-resolution.
+//
+// A failed delete is journaled rather than returned: the caller's
+// configuration change is already durably saved, and surfacing the cache
+// delete as a request failure would turn a partial success into an apparent
+// total one (Phase 3 finding F3). The queue-phase snapshot re-verification
+// still guards matching, so a stale entry cannot produce a wrong automatic
+// match; it can only replay a review reason until the next scan.
 func (s *Service) InvalidateAutomaticMatchCache(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM library_match_cache`)
-	return err
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM library_match_cache`); err != nil {
+		_, _ = s.db.ExecContext(context.WithoutCancel(ctx), `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'title','match-cache','Automatic matching','cache invalidation failed; stale results may replay until the next scan')`)
+		if s.logger != nil {
+			s.logger.Error("match cache invalidation failed", "error", err)
+		}
+	}
+	return nil
 }
 func (s *Service) StartAutomaticMatching(ctx context.Context, scanID string) error {
 	defer organization.ReadMedia()()

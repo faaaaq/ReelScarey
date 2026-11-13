@@ -150,11 +150,14 @@ and pip/setuptools never ship in that runtime. CI retains disposable binary
 regressions for backup/recovery, then verifies the actual container. Tests and
 operational recovery commands remain part of the source repository.
 
-Set `REELSCAREY_VERSION` in `.env` when creating a named build. To upgrade:
+Set `REELSCAREY_VERSION` when building a named image from this checkout. Compose
+runs a prebuilt image; to upgrade, pull the new image (or build a local one with
+`docker build -t reelscarey:local .` plus `REELSCAREY_IMAGE=reelscarey:local` in
+`.env`), then:
 
 ```sh
 # First stop the app and create/check an offline backup as described above.
-docker compose build reelscarey
+docker compose pull reelscarey
 docker compose up -d --no-build reelscarey
 docker compose exec reelscarey reelscarey version
 docker compose exec reelscarey reelscarey healthcheck

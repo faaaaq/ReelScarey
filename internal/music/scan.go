@@ -1223,7 +1223,14 @@ func (s *Service) CancelScan(ctx context.Context, id int64) error {
 		return err
 	}
 	if n, err := result.RowsAffected(); err != nil || n != 1 {
-		return sql.ErrNoRows
+		// A no-op update means either an unknown scan or one that just
+		// finished before the cancel landed. Reporting ErrNoRows would map
+		// to a misleading "not in your catalog"; tell the user the truth.
+		var state string
+		if lookupErr := s.store.db.QueryRowContext(ctx, `SELECT state FROM music_scans WHERE id=?`, id).Scan(&state); lookupErr != nil {
+			return sql.ErrNoRows
+		}
+		return &Error{Code: "music_scan_state", Message: fmt.Sprintf("The scan already finished (%s); there is nothing left to cancel.", state)}
 	}
 	return nil
 }

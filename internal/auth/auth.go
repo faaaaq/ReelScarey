@@ -23,6 +23,10 @@ var (
 	ErrUnauthorized  = errors.New("The username or password is incorrect.")
 	ErrSetupClosed   = errors.New("The administrator account has already been created.")
 	ErrSetupToken    = errors.New("The setup code is incorrect. Read setup-token from your config folder.")
+	// ErrSetupTokenFile distinguishes a deleted setup-token file from a wrong
+	// code: restarting the app while setup is still incomplete recreates the
+	// file, which is the actual recovery (ONB-P3-1).
+	ErrSetupTokenFile = errors.New("The setup-token file is missing. Restart ReelScarey while setup is still incomplete and it will be recreated, then read the new code.")
 	ErrPassword      = errors.New("Use a password of at least 12 characters and at most 256 bytes.")
 	ErrUsername      = errors.New("Use a username of 3–40 letters, numbers, underscores or hyphens.")
 	ErrBusy          = errors.New("Too many authentication attempts. Wait a minute and try again.")
@@ -148,6 +152,9 @@ func (s *Service) setup(ctx context.Context, username, password, code string, co
 	}
 	secret, err := securestore.SecretFile(s.setupPath, 32, false)
 	if err != nil {
+		if _, statErr := os.Lstat(s.setupPath); errors.Is(statErr, os.ErrNotExist) {
+			return Session{}, ErrSetupTokenFile
+		}
 		return Session{}, err
 	}
 	expected := base64.RawURLEncoding.EncodeToString(secret)

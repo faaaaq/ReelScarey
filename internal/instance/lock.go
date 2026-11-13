@@ -12,12 +12,14 @@ import (
 type Lock struct{ file *os.File }
 
 func Acquire(dir string) (*Lock, error) {
-	return acquire(dir, ".instance.lock", false)
+	return acquire(dir, ".instance.lock", false, "another ReelScarey server is already using this config directory; stop that server or container before starting this one")
 }
 
 // Guard shares access for live administration, excluding offline maintenance.
-func Guard(dir string, shared bool) (*Lock, error) { return acquire(dir, ".maintenance.lock", shared) }
-func acquire(dir, name string, shared bool) (*Lock, error) {
+func Guard(dir string, shared bool) (*Lock, error) {
+	return acquire(dir, ".maintenance.lock", shared, "this config directory is in use; stop its ReelScarey server before offline maintenance")
+}
+func acquire(dir, name string, shared bool, busyMessage string) (*Lock, error) {
 	if e := os.MkdirAll(dir, 0700); e != nil {
 		return nil, fmt.Errorf("config directory is unavailable")
 	}
@@ -43,7 +45,7 @@ func acquire(dir, name string, shared bool) (*Lock, error) {
 	}
 	if e = lock(f, shared); e != nil {
 		f.Close()
-		return nil, errors.New("this config directory is in use; stop its ReelScarey server before offline maintenance")
+		return nil, errors.New(busyMessage)
 	}
 	return &Lock{f}, nil
 }

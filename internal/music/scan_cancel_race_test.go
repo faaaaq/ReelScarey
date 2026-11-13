@@ -3,6 +3,8 @@ package music
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"strings"
 	"testing"
 )
 
@@ -51,5 +53,31 @@ func TestScanCompletionStillAppliesWithoutCancel(t *testing.T) {
 	}
 	if state == "scanning" {
 		t.Fatalf("completion write never applied: %q", state)
+	}
+}
+
+// Cancelling a scan that finished between the user's click and the request
+// must report the finished state, not a misleading "not in your catalog"
+// 404 (Phase 3 finding F4).
+func TestCancelAfterScanFinishesReportsTheTruth(t *testing.T) {
+	ctx := context.Background()
+	s, db, _ := editFixture(t)
+	id := seedScanRow(t, db, "scanning")
+	s.runScan(ctx, id, nil, false)
+	var state string
+	if err := db.QueryRow(`SELECT state FROM music_scans WHERE id=?`, id).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	err := s.CancelScan(ctx, id)
+	var problem *Error
+	if !errors.As(err, &problem) || problem.Code != "music_scan_state" {
+		t.Fatalf("expected a music_scan_state problem, got %v", err)
+	}
+	if !strings.Contains(problem.Message, "already finished") {
+		t.Fatalf("message lost the finished state: %q", problem.Message)
+	}
+	// Unknown scans still report ErrNotFound so the API maps to 404.
+	if err := s.CancelScan(ctx, 999999); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("unknown scan must stay ErrNoRows, got %v", err)
 	}
 }

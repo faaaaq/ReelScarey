@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -213,10 +214,17 @@ func (s *Service) Run(ctx context.Context) (Report, error) {
 			add("publication", "Safe file publication", message, linkErr)
 		}
 	}
-	_, e = exec.LookPath("ffprobe")
+	// RS-0012: honor REELSCAREY_FFPROBE_PATH exactly like the imports and
+	// media-analysis subsystems, so the check cannot contradict actual
+	// behavior on hosts where ffprobe is off PATH.
+	probeBinary := os.Getenv("REELSCAREY_FFPROBE_PATH")
+	if strings.TrimSpace(probeBinary) == "" {
+		probeBinary = "ffprobe"
+	}
+	_, e = exec.LookPath(probeBinary)
 	message = "FFprobe was found on the server's program path."
 	if e != nil {
-		message = "FFprobe was not found. Install it before importing or inspecting videos."
+		message = "FFprobe was not found. Install it, or point REELSCAREY_FFPROBE_PATH at the executable, before importing or inspecting videos."
 	}
 	add("ffprobe", "Video inspection", message, e)
 	message = "Local HTTP is configured. Keep the published port on loopback; use HTTPS for remote sign-in."

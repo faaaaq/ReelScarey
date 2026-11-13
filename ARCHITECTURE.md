@@ -6,9 +6,12 @@ One Go process owns a REST API, an embedded React application, and SQLite.
 The application is deployed as one container, without Redis or another database.
 Go's standard HTTP library supplies routing, cancellation, and timeouts. SQLite
 uses modernc.org/sqlite so builds do not require CGO; the tradeoff is a larger
-binary than a native SQLite binding. A single database connection serializes
-access for this initial low-throughput milestone. WAL and a busy timeout allow
-external backup/read tools without immediately failing on transient contention.
+binary than a native SQLite binding. The pool holds four connections (measured
+in `internal/database/pool_soak_test.go`: concurrent readers plus long lease
+transactions serialize behind two), writes still serialize through SQLite's
+single-writer WAL with `_txlock=immediate` and a busy timeout, and `/readyz`
+keeps a dedicated slot so the Docker healthcheck survives long catalog
+snapshots.
 
 React + TypeScript + Vite implement the UI. Tailwind supplies layout utilities;
 Radix Themes supplies accessible form and action primitives. React Router owns

@@ -97,9 +97,14 @@ included; consult [validation](docs/VALIDATION.md) for what was actually run.
 
 ```sh
 cp .env.example .env
-docker compose up --build -d
+docker compose up -d
 docker compose logs -f reelscarey
 ```
+
+`docker compose up` pulls the published image (`REELSCAREY_IMAGE`, default
+`faaaaq/reelscarey:latest`) — the shipped compose file has no `build:` step. To
+run a build from this checkout instead: `docker build -t reelscarey:local .`,
+then set `REELSCAREY_IMAGE=reelscarey:local` in `.env` and run `up -d` again.
 
 On PowerShell, use `Copy-Item .env.example .env` for the first command.
 Open [ReelScarey](http://localhost:8787). The port is published on loopback only.
@@ -222,6 +227,7 @@ Mount your library at `/media` and your download client's completed folder at
 | `REELSCAREY_BROWSE_ROOTS` | empty | JSON object of up to eight named absolute folders shown read-only in Storage |
 | `REELSCAREY_KEEP_NET_ADMIN` | `0` | Keep `NET_ADMIN` after startup for the optional VPN kill switch (see [Download clients](docs/DOWNLOAD_CLIENTS.md) for VPN setup) |
 | `REELSCAREY_FPCALC_PATH` | `fpcalc` from `PATH` | Chromaprint audio-fingerprint executable |
+| `REELSCAREY_FFPROBE_PATH` | `ffprobe` from `PATH` | FFprobe executable used by imports, media analysis and System checks (native installs where ffprobe is off `PATH`) |
 
 ### Changing the container paths
 
@@ -280,7 +286,9 @@ The application, embedded web interface, FFmpeg/FFprobe and pinned YouTube tool
 run in a single non-root container. Runtime images exclude Node, Go, pip and
 standalone packaging tools. Interface pages load on demand; an old browser tab
 offers a reload action if a page chunk changed during an upgrade. For a named
-build, set `REELSCAREY_VERSION` in `.env` before `docker compose build`.
+local build, run `docker build -t reelscarey:local .`, set
+`REELSCAREY_IMAGE=reelscarey:local` in `.env`, then `docker compose up -d`;
+`REELSCAREY_VERSION` only labels images built from this checkout.
 
 Open **Backups** to create live snapshots, configure schedules and retention,
 download/upload ZIPs and review a restore. A restore saves a verified safety
