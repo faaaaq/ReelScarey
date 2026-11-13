@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
-import { MemoryRouter } from "react-router-dom";
+import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import App from "../App";
 const session = {
@@ -20,11 +20,14 @@ const movie = {
   runtime_minutes: 101,
 };
 function mount(path = "/") {
+  // A data router matches production (main.tsx uses createBrowserRouter) and
+  // is required by the unsaved-changes route guard on the settings forms.
+  const router = createMemoryRouter([{ path: "*", element: <App /> }], {
+    initialEntries: [path],
+  });
   render(
     <Theme>
-      <MemoryRouter initialEntries={[path]}>
-        <App />
-      </MemoryRouter>
+      <RouterProvider router={router} />
     </Theme>,
   );
 }

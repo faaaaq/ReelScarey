@@ -25,6 +25,7 @@ import { api, messageFor } from "../api";
 import { PageHeading, RequestState } from "../components";
 import { Pagination } from "../movieComponents";
 import { useLiveResource } from "../useLiveResource";
+import { UnsavedRouteGuard } from "../UnsavedRouteGuard";
 import { SubtitleEdits } from "./SubtitleEdits";
 import "./Subtitles.css";
 
@@ -555,6 +556,7 @@ function Preferences({
   }
   return (
     <>
+      <UnsavedRouteGuard dirty={dirty} />
       <FieldSet
         legend="Languages & tracks"
         description="Up to three languages; each can request full, signs/songs and forced tracks."

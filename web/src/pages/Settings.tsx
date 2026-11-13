@@ -17,6 +17,7 @@ import {
 } from "../components/CollectionSettings";
 import { LibraryRootsEditor } from "../components/LibraryRootsEditor";
 import { useResource } from "../useResource";
+import { UnsavedRouteGuard } from "../UnsavedRouteGuard";
 import {
   Alert,
   DescriptionItem,
@@ -257,6 +258,8 @@ function GeneralSettings() {
 
   const dirty = JSON.stringify(form) !== JSON.stringify(saved);
   useUnsavedGuard(dirty);
+  // In-app route changes also prompt; see docs/UI draft-guard scope.
+  const guard = <UnsavedRouteGuard dirty={dirty} />;
   function update<K extends keyof Omit<SettingsUpdate, "revision">>(
     field: K,
     value: SettingsUpdate[K],
@@ -299,6 +302,7 @@ function GeneralSettings() {
 
   return (
     <>
+      {guard}
       <PageToolbar>
         <ToolbarSection>
           <ToolbarButton

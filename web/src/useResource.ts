@@ -23,7 +23,8 @@ export function useResource<T>(path: string | null) {
     setCode("");
     setData(undefined);
     api<T>(path, {
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]),
+      // Matches api()'s default read timeout.
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]),
     })
       .then((value) => {
         if (!controller.signal.aborted) setData(value);

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
@@ -201,6 +201,65 @@ describe("automation", () => {
       },
     });
   });
+  it("rejects custom-format JSON with the wrong shape without submitting", async () => {
+    const fetch = setup((url, o) => {
+      if (url.endsWith("/quality-profiles/1") && o?.method === "PUT")
+        return Response.json({ ...profile, revision: 2 });
+      return undefined;
+    });
+    mount();
+    await screen.findByText("Searches are waiting for an indexer.");
+    const field = screen.getByLabelText("Custom formats JSON");
+    fireEvent.change(field, { target: { value: '[{"name":"Proper"}]' } });
+    await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      'Custom format 1 needs 1–20 non-empty "patterns" strings.',
+    );
+    expect(
+      fetch.mock.calls.some(
+        (c) =>
+          String(c[0]).endsWith("/quality-profiles/1") &&
+          c[1]?.method === "PUT",
+      ),
+    ).toBe(false);
+  });
+
+  it("still submits shape-valid custom-format JSON", async () => {
+    let sent: unknown;
+    setup((url, o) => {
+      if (url.endsWith("/quality-profiles/1") && o?.method === "PUT") {
+        sent = JSON.parse(String(o.body));
+        return Response.json({ ...profile, revision: 2 });
+      }
+      return undefined;
+    });
+    mount();
+    await screen.findByText("Searches are waiting for an indexer.");
+    const field = screen.getByLabelText("Custom formats JSON");
+    fireEvent.change(field, {
+      target: {
+        value:
+          '[{"name":"Proper","patterns":["\\\\bproper\\\\b"],"weight":75,"required":false,"excluded":false}]',
+      },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    await screen.findByText("Profile saved.");
+    expect(sent).toMatchObject({
+      scoring: {
+        custom_formats: [
+          {
+            name: "Proper",
+            patterns: ["\\bproper\\b"],
+            weight: 75,
+            required: false,
+            excluded: false,
+          },
+        ],
+      },
+    });
+  });
+
   it("lets Torznab wait while saving an opt-in download schedule", async () => {
     const fetch = setup();
     mount();

@@ -148,7 +148,7 @@ export function Activity() {
         const out = await api<DownloadPage>(`/downloads?page=${page}`, {
           signal: AbortSignal.any([
             controller.signal,
-            AbortSignal.timeout(15000),
+            AbortSignal.timeout(30000),
           ]),
         });
         if (!controller.signal.aborted) {
@@ -163,10 +163,17 @@ export function Activity() {
       }
     }
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 5000);
+    // Pause the 5s poll while the page is hidden and refresh once when it
+    // becomes visible again (same pattern as useLiveResource).
+    function refreshVisible() {
+      if (document.visibilityState !== "hidden") void refresh();
+    }
+    const timer = window.setInterval(refreshVisible, 5000);
+    document.addEventListener("visibilitychange", refreshVisible);
     return () => {
       controller.abort();
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshVisible);
     };
   }, [page, attempt]);
   function setParam(key: string, value: string | null) {

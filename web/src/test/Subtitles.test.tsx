@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
-import { MemoryRouter } from "react-router-dom";
+import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi } from "vitest";
 import App from "../App";
 import type {
@@ -138,9 +138,11 @@ function mount() {
   );
   render(
     <Theme>
-      <MemoryRouter initialEntries={["/subtitles"]}>
-        <App />
-      </MemoryRouter>
+      <RouterProvider
+        router={createMemoryRouter([{ path: "*", element: <App /> }], {
+          initialEntries: ["/subtitles"],
+        })}
+      />
     </Theme>,
   );
 }

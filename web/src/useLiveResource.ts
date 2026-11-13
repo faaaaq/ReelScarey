@@ -39,7 +39,7 @@ export function useLiveResource<T>(path: string | null, interval = 0) {
         const value = await api<T>(path as string, {
           signal: AbortSignal.any([
             controller.signal,
-            AbortSignal.timeout(15000),
+            AbortSignal.timeout(30000),
           ]),
         });
         if (!controller.signal.aborted) {

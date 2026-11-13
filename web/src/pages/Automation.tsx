@@ -941,6 +941,59 @@ function Profiles({
     </section>
   );
 }
+/** Shape validation for the custom-formats JSON textarea; throws a
+ * user-facing message. Range/rule details stay with the server. */
+function parseCustomFormats(text: string): CustomFormat[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text || "[]");
+  } catch {
+    throw new Error("Custom formats must be valid JSON.");
+  }
+  const shape =
+    "Custom formats must be a JSON array of {name, patterns, weight, required, excluded} objects.";
+  if (!Array.isArray(parsed)) throw new Error(shape);
+  if (parsed.length > 20)
+    throw new Error("Use at most 20 custom formats per profile.");
+  return parsed.map((entry, index) => {
+    const which = `Custom format ${index + 1}`;
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry))
+      throw new Error(
+        `${which} must be an object with name, patterns, weight, required and excluded.`,
+      );
+    const format = entry as Record<string, unknown>;
+    const name = typeof format.name === "string" ? format.name.trim() : "";
+    if (!name) throw new Error(`${which} needs a non-empty "name" string.`);
+    if (format.weight !== undefined && typeof format.weight !== "number")
+      throw new Error(
+        `${which} "weight" must be a number between -500 and 500.`,
+      );
+    if (format.required !== undefined && typeof format.required !== "boolean")
+      throw new Error(`${which} "required" must be true or false.`);
+    if (format.excluded !== undefined && typeof format.excluded !== "boolean")
+      throw new Error(`${which} "excluded" must be true or false.`);
+    if (format.required === true && format.excluded === true)
+      throw new Error(`${which} cannot be both required and excluded.`);
+    const patterns = format.patterns;
+    if (
+      !Array.isArray(patterns) ||
+      patterns.length === 0 ||
+      patterns.length > 20 ||
+      patterns.some(
+        (pattern) => typeof pattern !== "string" || pattern.trim() === "",
+      )
+    )
+      throw new Error(`${which} needs 1–20 non-empty "patterns" strings.`);
+    return {
+      name,
+      patterns,
+      weight: format.weight === undefined ? 0 : format.weight,
+      required: format.required === true,
+      excluded: format.excluded === true,
+    } satisfies CustomFormat;
+  });
+}
+
 function ProfileForm({
   profile,
   saved,
@@ -971,20 +1024,17 @@ function ProfileForm({
   async function save(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
-    setBusy(true);
     setError("");
-    let customFormats: CustomFormat[] = [];
+    let customFormats: CustomFormat[];
     try {
-      const parsed: unknown = JSON.parse(customFormatsText || "[]");
-      if (!Array.isArray(parsed)) throw new Error("not an array");
-      customFormats = parsed as CustomFormat[];
-    } catch {
-      setBusy(false);
+      customFormats = parseCustomFormats(customFormatsText);
+    } catch (e) {
       setError(
-        "Custom formats must be a JSON array of {name, patterns, weight, required, excluded} objects.",
+        e instanceof Error ? e.message : "Custom formats must be valid JSON.",
       );
       return;
     }
+    setBusy(true);
     const body: Profile = {
       ...form,
       scoring: {
