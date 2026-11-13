@@ -59,7 +59,9 @@ try {
   await start()
   const duplicate = spawnSync(binary, [], { env: { ...env, REELSCAREY_LISTEN_ADDR: `127.0.0.1:${port === 65535 ? port - 1 : port + 1}` }, windowsHide: true, encoding: 'utf8', timeout: 15000 })
   assert.notEqual(duplicate.status, 0)
-  assert.match(duplicate.stdout + duplicate.stderr, /config directory is in use/)
+  // RS-0019 wording: a plain double-start names the other server, not the
+  // offline-maintenance message.
+  assert.match(duplicate.stdout + duplicate.stderr, /another ReelScarey server is already using this config directory/)
   const activeBackup = spawnSync(binary, ['backup', path.join(directory, 'active-backup')], { env, windowsHide: true, encoding: 'utf8', timeout: 15000 })
   assert.notEqual(activeBackup.status, 0, 'backup must refuse a running server')
   const health = await fetch(`${base}/healthz`)

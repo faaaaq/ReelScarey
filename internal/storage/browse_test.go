@@ -32,7 +32,14 @@ func TestBrowserMountedScopesPaginationAndLinks(t *testing.T) {
 			t.Fatal("hidden item returned")
 		}
 	}
-	for _, p := range []string{"../config", "/config", "Series/../..", "Series\\..", "."} {
+	for _, p := range []string{
+		"../config", "/config", "Series/../..", "Series\\..", ".",
+		// NEW-E6 boundary additions: Windows drive prefixes, UNC shares, mixed
+		// separators, percent-reserved sequences and NUL bytes must never be
+		// accepted as a relative browse path.
+		"C:", "C:\\Windows", "//server/share", "media/../../config", "a/../..",
+		"..%2Fconfig", "Series\\..\\..", "a\x00b",
+	} {
 		if _, e = Browse(context.Background(), cfg, "media", p, 1); e == nil {
 			t.Fatal("traversal accepted", p)
 		}
