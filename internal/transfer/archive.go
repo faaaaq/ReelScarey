@@ -423,8 +423,9 @@ func (s *Service) cleanupExtract(ctx context.Context, j Job) error {
 		return err
 	}
 	// Clear the durable pointer through the lease fence so a stale claimant
-	// cannot clear another worker's extraction state.
-	return s.owned(ctx, j, `UPDATE downloads SET extract_path='' WHERE id=?`)
+	// cannot clear another worker's extraction state. owned appends its own
+	// ownership/lease predicate.
+	return s.owned(ctx, j, `UPDATE downloads SET extract_path=''`)
 }
 
 func inside(root, name string) error {
