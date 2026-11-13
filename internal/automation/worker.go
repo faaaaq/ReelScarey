@@ -338,7 +338,12 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 		state = "retrying"
 		message = "A provider or storage request failed. The search will retry with backoff."
 		var old int
-		_ = s.db.QueryRowContext(finish, `SELECT attempts FROM search_schedule WHERE id=1`).Scan(&old)
+		if e := s.db.QueryRowContext(finish, `SELECT attempts FROM search_schedule WHERE id=1`).Scan(&old); e != nil {
+			// Without the retry count the finalize cannot preserve backoff or
+			// exhaustion; leave the lease to expire and finalize on the next
+			// claim instead of silently resetting the schedule's retries.
+			return false, e
+		}
 		attempts = old + 1
 		if attempts < 5 {
 			delay := int64(60) * (1 << min(attempts-1, 6))

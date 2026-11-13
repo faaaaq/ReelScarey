@@ -493,6 +493,12 @@ func (s *Service) resubmitMusic(ctx context.Context, j MusicJob, c ClientConfig)
 	if e = validateMusicPayload(protocol, payload, hash); e != nil {
 		return e
 	}
+	// Fenced pre-submit: the attempt flag is owned by this lease before any
+	// client submission, so a lease expiry during a slow Add keeps every later
+	// claimant on the reconcile-only path instead of resubmitting the payload.
+	if e = s.ownedMusic(ctx, j, `UPDATE music_downloads SET state='submitting',submission_attempted=1,updated_at=unixepoch()`); e != nil {
+		return e
+	}
 	submit, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	tag := "reelscarey-" + j.ID
@@ -509,18 +515,28 @@ func (s *Service) resubmitMusic(ctx context.Context, j MusicJob, c ClientConfig)
 	} else {
 		addErr = s.torrentClient(c).Add(submit, c, tag, j.SavePath, payload)
 	}
+	// The lease may have expired during the client call; the terminal writes
+	// must respect ownership the same way the movie worker does.
 	finish, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer stop()
 	if addErr != nil {
-		attempted := 1
 		if definitiveAddRejection(addErr) {
-			attempted = 0
+			// A proven rejection never reached the client, so a later retry
+			// may submit the same selection again. A stale claimant must not
+			// clear the attempt flag a current claimant relies on.
+			if _, e := s.db.ExecContext(finish, `UPDATE music_downloads SET error=?,submission_attempted=0,updated_at=unixepoch() WHERE id=? AND lease_owner=?`, musicErrorText(addErr.Error()), j.ID, j.owner); e != nil {
+				return e
+			}
+			return addErr
 		}
-		if _, e := s.db.ExecContext(finish, `UPDATE music_downloads SET error=?,submission_attempted=?,updated_at=unixepoch() WHERE id=?`, musicErrorText(addErr.Error()), attempted, j.ID); e != nil {
+		// The submission stays uncertain: submission_attempted stays 1 and the
+		// job reconciles by identity on the next claim.
+		if e := s.ownedMusic(finish, j, `UPDATE music_downloads SET error=?,next_run=unixepoch(),updated_at=unixepoch()`, musicErrorText(addErr.Error())); e != nil {
 			return e
 		}
 		return addErr
 	}
-	_, e = s.db.ExecContext(finish, `UPDATE music_downloads SET state='downloading',error='',remote_id=?,submission_attempted=1,next_run=unixepoch(),updated_at=unixepoch() WHERE id=?`, remoteID, j.ID)
-	return e
+	// Record the accepted submission only while this claimant still owns the
+	// lease; otherwise the next claimant reconciles the visible job.
+	return s.ownedMusic(finish, j, `UPDATE music_downloads SET state='downloading',error='',remote_id=?,next_run=unixepoch(),updated_at=unixepoch()`, remoteID)
 }

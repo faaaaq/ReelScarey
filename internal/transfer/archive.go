@@ -422,8 +422,9 @@ func (s *Service) cleanupExtract(ctx context.Context, j Job) error {
 	if err = os.RemoveAll(root); err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE downloads SET extract_path='' WHERE id=?`, j.ID)
-	return err
+	// Clear the durable pointer through the lease fence so a stale claimant
+	// cannot clear another worker's extraction state.
+	return s.owned(ctx, j, `UPDATE downloads SET extract_path='' WHERE id=?`)
 }
 
 func inside(root, name string) error {
