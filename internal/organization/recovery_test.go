@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -59,6 +59,38 @@ func TestRecoverStagedRemovalsJournalsOrphanWithoutDeleting(t *testing.T) {
 	}
 }
 
+// A staged copy whose content does not match the registered checksum is
+// never restored: the sweep journals it as a leftover for manual review and
+// leaves the registered row untouched (VERIF-B-2).
+func TestRecoverStagedRemovalsRefusesUnverifiedStagedContent(t *testing.T) {
+	f := newReviewFixture(t)
+	f.movie(t, 1, "Movies/Film/film.mkv", []byte("video"))
+	staged := filepath.Join(f.cfg.MediaDir, "Movies", "Film", "film.mkv"+stagedRemovalSuffix+"1000")
+	if err := os.Rename(filepath.Join(f.cfg.MediaDir, "Movies", "Film", "film.mkv"), staged); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(staged, []byte("tampered content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.RecoverStagedRemovals(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(staged); err != nil {
+		t.Fatal("the unverified staged copy must be retained for manual review", err)
+	}
+	if _, err := os.Stat(filepath.Join(f.cfg.MediaDir, "Movies", "Film", "film.mkv")); !os.IsNotExist(err) {
+		t.Fatal("the registered path must not be restored from unverified content", err)
+	}
+	var repaired int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM activity_events WHERE kind='title' AND state='` + stagedRemovalRepaired + `'`).Scan(&repaired); err != nil || repaired != 0 {
+		t.Fatal("an unverified restore was journaled as repaired", repaired, err)
+	}
+	var left int
+	if err := f.db.QueryRow(`SELECT COUNT(*) FROM activity_events WHERE kind='title' AND state='` + stagedRemovalLeft + `'`).Scan(&left); err != nil || left != 1 {
+		t.Fatal("the unverified staged copy was not journaled as a leftover", left, err)
+	}
+}
+
 // A staged copy beside a live file is a leftover, not a crashed removal:
 // the sweep must journal its location and leave both files untouched.
 func TestRecoverStagedRemovalsLeavesLeftoverAndJournals(t *testing.T) {
@@ -88,7 +120,9 @@ func TestRecoverStagedRemovalsLeavesLeftoverAndJournals(t *testing.T) {
 func TestRecoverStagedRemovalsIgnoresInFlightStaging(t *testing.T) {
 	f := newReviewFixture(t)
 	f.movie(t, 1, "Movies/Film/film.mkv", []byte("video"))
-	fresh := filepath.Join(f.cfg.MediaDir, "Movies", "Film", "film.mkv"+stagedRemovalSuffix+strings.TrimSpace(time.Now().Format("20060102150405.999999999")))
+	// Use a real fresh unixnano staging name so the grace window itself is
+	// what excludes the copy, not the suffix parse guard.
+	fresh := filepath.Join(f.cfg.MediaDir, "Movies", "Film", "film.mkv"+stagedRemovalSuffix+strconv.FormatInt(time.Now().UnixNano(), 10))
 	if err := os.Rename(filepath.Join(f.cfg.MediaDir, "Movies", "Film", "film.mkv"), fresh); err != nil {
 		t.Fatal(err)
 	}

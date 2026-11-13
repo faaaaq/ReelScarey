@@ -120,13 +120,13 @@ func (d *Discord) Tick(ctx context.Context) (bool, error) {
 	}
 	plain, err := d.secrets.Open(fmt.Sprintf("discord:%d", account), sealed)
 	if err != nil || !validWebhook(string(plain)) {
-		_ = d.finish(ctx, id, "uncertain", 0)
+		_ = d.finish(context.WithoutCancel(ctx), id, "uncertain", 0)
 		return true, errors.New("Discord notification settings could not be read.")
 	}
 	body, _ := json.Marshal(map[string]any{"content": "Your request is available: " + title, "allowed_mentions": map[string]any{"parse": []string{}}})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, string(plain), bytes.NewReader(body))
 	if err != nil {
-		_ = d.finish(ctx, id, "uncertain", 0)
+		_ = d.finish(context.WithoutCancel(ctx), id, "uncertain", 0)
 		return true, errors.New("Discord notification could not be prepared.")
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -137,13 +137,16 @@ func (d *Discord) Tick(ctx context.Context) (bool, error) {
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
 	response.Body.Close()
+	// Terminal state writes use a context detached from the request so a
+	// cancelled tick cannot lose a sent/uncertain decision and cause a
+	// duplicate post on the next manual retry.
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
-		return true, d.finish(ctx, id, "sent", 0)
+		return true, d.finish(context.WithoutCancel(ctx), id, "sent", 0)
 	}
 	if response.StatusCode == 429 {
 		return true, d.finish(context.WithoutCancel(ctx), id, "pending", time.Now().Add(5*time.Minute).Unix())
 	}
-	return true, d.finish(ctx, id, "uncertain", 0)
+	return true, d.finish(context.WithoutCancel(ctx), id, "uncertain", 0)
 }
 func (d *Discord) finish(ctx context.Context, id int64, state string, next int64) error {
 	_, err := d.db.ExecContext(ctx, `UPDATE request_notifications SET state=?,next_attempt=?,updated_at=unixepoch() WHERE request_id=? AND state='sending'`, state, next, id)

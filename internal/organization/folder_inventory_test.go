@@ -34,6 +34,30 @@ func TestFolderInventoryCapturesExtrasAndRejectsSharedTitle(t *testing.T) {
 	}
 }
 
+// A non-ASCII folder path cannot be bounded by the ASCII-only COLLATE
+// NOCASE prefix bounds: a cross-case catalog row (Movies/CAFÉ/…) falls
+// outside the folded bounds and is excluded before the authoritative
+// Go-side check. Such folders must fall back to the unbounded scan so the
+// shared-folder guard still fires (RS-0016).
+func TestFolderInventoryFlagsCrossCaseRowInNonASCIIFolder(t *testing.T) {
+	f := newReviewFixture(t)
+	f.movie(t, 1, "Movies/Café/film.mkv", []byte("video"))
+	if _, err := f.db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,year,status) VALUES(2,'movie',2,'Cross case',2020,'available')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`INSERT INTO media_files(id,movie_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin,source_name) VALUES(2,2,'Movies/CAFÉ/other.mkv',1,'x','{}',1,'existing','other.mkv')`); err != nil {
+		t.Fatal(err)
+	}
+	root, _, err := f.s.openRoot("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if _, err = inventoryFolder(context.Background(), root, f.db, "Movies/Café", 1); err == nil {
+		t.Fatal("a cross-case catalog row in a non-ASCII folder was not flagged as shared")
+	}
+}
+
 func TestFolderInventoryStaysBoundedWithLargeCatalog(t *testing.T) {
 	f := newReviewFixture(t)
 	f.movie(t, 1, "Movies/Film/film.mkv", []byte("video"))

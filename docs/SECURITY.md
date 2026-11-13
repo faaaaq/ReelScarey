@@ -21,7 +21,8 @@ same-origin checks and a separate CSRF token. Host validation limits browser
 rebinding: a loopback Host claim is only honored from a loopback connection,
 so a remote client cannot spoof `Host: localhost`. When the bind address
 accepts remote connections and the public URL is not `https://`, ReelScarey
-logs a one-time startup warning because session cookies then lack the Secure
+logs a one-time warning when the first request is served (not at startup)
+because session cookies then lack the Secure
 flag even behind a TLS-terminating proxy; plain-HTTP LAN deployments keep
 working. The unauthenticated session-status response discloses only whether
 setup is still open (`setup_required`); this small state disclosure is

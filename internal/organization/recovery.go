@@ -123,7 +123,8 @@ func (s *Service) reconcileStagedRemoval(ctx context.Context, root *os.Root, ori
 		return
 	}
 	var registered int
-	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM media_files WHERE relative_path=? COLLATE NOCASE`, original).Scan(&registered); err != nil {
+	var stored string
+	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(sha256,'') FROM media_files WHERE relative_path=? COLLATE NOCASE`, original).Scan(&registered, &stored); err != nil {
 		journal(staged, "A staged removal copy could not be checked against the catalog ("+err.Error()+").", stagedRemovalLeft)
 		return
 	}
@@ -132,7 +133,26 @@ func (s *Service) reconcileStagedRemoval(ctx context.Context, root *os.Root, ori
 		return
 	}
 	// The removal never committed: the catalog still references the original
-	// path and the staged copy is its only content. Rename it back.
+	// path and the staged copy is its only content. Renaming it back is
+	// irreversible and trusts the staged file, so verify its digest against
+	// the registered row's stored sha256 first; anything that cannot be
+	// verified is never restored and stays for manual review instead.
+	stagedFile, err := root.Open(filepath.FromSlash(staged))
+	if err != nil {
+		journal(staged, "The staged removal copy at "+staged+" could not be read for its registered path "+original+" ("+err.Error()+"). Restore or delete it manually, then rescan.", stagedRemovalLeft)
+		return
+	}
+	actual, hashErr := hash(ctx, stagedFile)
+	stagedFile.Close()
+	if hashErr != nil {
+		journal(staged, "The staged removal copy at "+staged+" could not be hashed for its registered path "+original+" ("+hashErr.Error()+"). Restore or delete it manually, then rescan.", stagedRemovalLeft)
+		return
+	}
+	if stored == "" || actual != stored {
+		journal(staged, "The staged removal copy at "+staged+" does not match the registered checksum of "+original+"; it was not restored. Restore or delete it manually, then rescan.", stagedRemovalLeft)
+		return
+	}
+	// The staged copy is verified registered content: rename it back.
 	if err = root.Rename(filepath.FromSlash(staged), filepath.FromSlash(original)); err != nil {
 		journal(staged, "The staged removal copy at "+staged+" could not be restored to its registered path "+original+" ("+err.Error()+"). Restore or delete it manually, then rescan.", stagedRemovalLeft)
 		return

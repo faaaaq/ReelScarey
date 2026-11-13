@@ -52,6 +52,10 @@ type Service struct {
 	requests *requests.Store
 	client   *http.Client
 	mu       sync.Mutex
+	// noticeAttempts counts 429 requeues per notice id in memory. It caps
+	// the requeue loop; restarts reset it, which costs at most one more
+	// bounded batch of retries per notice (no schema change required).
+	noticeAttempts map[int64]int
 }
 
 func New(db *sql.DB, secrets *securestore.Store, meta *metadata.Service, transferService *transfer.Service) *Service {
@@ -59,7 +63,7 @@ func New(db *sql.DB, secrets *securestore.Store, meta *metadata.Service, transfe
 	if transferService != nil {
 		transferAdapter = transferService
 	}
-	return &Service{db: db, secrets: secrets, metadata: meta, transfer: transferAdapter, library: library.New(db), requests: requests.New(db), client: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects disabled") }}}
+	return &Service{db: db, secrets: secrets, metadata: meta, transfer: transferAdapter, library: library.New(db), requests: requests.New(db), client: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects disabled") }}, noticeAttempts: map[int64]int{}}
 }
 func (s *Service) Config(ctx context.Context) (Config, error) {
 	var c Config

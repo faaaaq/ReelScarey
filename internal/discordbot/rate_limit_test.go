@@ -187,3 +187,53 @@ func TestBotNotice429RequeuesForDelivery(t *testing.T) {
 		t.Fatalf("429 parked the notice in state %q instead of requeueing it", state)
 	}
 }
+
+// A persistent 429 must not requeue the same notice forever: after the
+// bounded in-memory requeue cap the notice is parked in the terminal
+// uncertain state with an honest rate-limit error (NEW-C1). The cap resets
+// on restart, which costs at most one more bounded batch of retries.
+func TestBotNoticePersistent429ParksAfterRetryCap(t *testing.T) {
+	ctx := context.Background()
+	setup := setupRateLimitService(t, ctx)
+	if _, err := setup.s.db.Exec(`INSERT INTO media_requests(id,account_id,kind,tmdb_id,title,state,created_at,updated_at) VALUES(1,1,'movie',11,'Test movie','pending',unixepoch(),unixepoch())`); err != nil {
+		t.Fatal(err)
+	}
+	setup.s.client = &http.Client{Timeout: time.Second, Transport: testTransport(func(r *http.Request) (*http.Response, error) {
+		if strings.Contains(r.URL.Path, "/channels/") {
+			return rateLimitResponse(), nil
+		}
+		return okResponse(), nil
+	})}
+	noticeState := func() string {
+		var state string
+		if err := setup.s.db.QueryRow(`SELECT state FROM discord_bot_notices WHERE request_id=1`).Scan(&state); err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
+	for i := 0; i < 5; i++ {
+		did, err := setup.s.ProcessNotice(ctx)
+		if !did {
+			t.Fatalf("429 requeue %d was not processed", i+1)
+		}
+		var limited *RateLimitError
+		if !errors.As(err, &limited) {
+			t.Fatalf("429 requeue %d was not reported as rate limited: %v", i+1, err)
+		}
+		if state := noticeState(); state != "queued" {
+			t.Fatalf("429 requeue %d must stay queued for the next tick, got %q", i+1, state)
+		}
+	}
+	// The next 429 exceeds the requeue cap: the notice is parked uncertain.
+	did, err := setup.s.ProcessNotice(ctx)
+	if !did {
+		t.Fatal("the capped notice was not processed")
+	}
+	var limited *RateLimitError
+	if !errors.As(err, &limited) {
+		t.Fatalf("the parked notice must still report the rate limit honestly: %v", err)
+	}
+	if state := noticeState(); state != "uncertain" {
+		t.Fatalf("a notice past the 429 requeue cap must be parked uncertain, got %q", state)
+	}
+}

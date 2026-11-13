@@ -113,3 +113,58 @@ func TestDiscordRateLimited429PersistsStateAfterCancellation(t *testing.T) {
 		t.Fatalf("429 must defer the next attempt past the current time: %d", next)
 	}
 }
+
+// The terminal sent write must survive request cancellation like the 429 and
+// network-error paths: a lost terminal write leaves the notification stuck
+// in sending and causes a duplicate post on the next manual retry.
+func TestDiscordSentStatePersistsAfterCancellation(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := database.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	secrets, err := securestore.New(ctx, db, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := NewDiscord(db, secrets)
+	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
+		t.Fatal(err)
+	}
+	url := "https://discord.com/api/webhooks/123456789012345678/" + strings.Repeat("a", 60)
+	if err = d.Save(ctx, 1, url); err != nil {
+		t.Fatal(err)
+	}
+	store := New(db)
+	request, err := store.Create(ctx, 1, "movie", 11, "Example @everyone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.Claim(ctx, request.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.Finish(ctx, request.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,status) VALUES(1,'movie',11,'Example','available'); INSERT INTO media_files(id,movie_id,relative_path,size_bytes,sha256,probe_json,imported_at,origin,source_name) VALUES(1,1,'Movies/example.mkv',1,'x','{}',1,'existing','example')`); err != nil {
+		t.Fatal(err)
+	}
+	cancelCtx, cancel := context.WithCancel(ctx)
+	d.client = &http.Client{Timeout: time.Second, Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+		cancel()
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
+	})}
+	did, err := d.Tick(cancelCtx)
+	if err != nil || !did {
+		t.Fatalf("a sent tick must report the notification handled: did=%v err=%v", did, err)
+	}
+	var state string
+	if err = db.QueryRow(`SELECT state FROM request_notifications WHERE request_id=?`, request.ID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "sent" {
+		t.Fatalf("the sent state was lost when the context was cancelled: %s", state)
+	}
+}

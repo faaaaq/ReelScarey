@@ -2,6 +2,7 @@ package organization
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // folderInventory is a bounded, read-only snapshot. It is not itself authority
@@ -60,6 +62,18 @@ func titleFolder(c Config, kind string, files []string) (string, error) {
 	return folder, nil
 }
 
+// boundedQuery supplies one lo/hi pair per prefix-bound fragment. Only the
+// bounded (ASCII) plan contains bound placeholders; the unbounded fallback
+// query carries none and takes no arguments.
+func boundedQuery(ctx context.Context, q query, sqlText string, lo, hi string) (*sql.Rows, error) {
+	pairs := strings.Count(sqlText, "?") / 2
+	args := make([]any, 0, 2*pairs)
+	for i := 0; i < pairs; i++ {
+		args = append(args, lo, hi)
+	}
+	return q.QueryContext(ctx, sqlText, args...)
+}
+
 func inventoryFolder(ctx context.Context, root *os.Root, q query, folder string, mediaID int64) (folderInventory, error) {
 	var out folderInventory
 	if mediaID < 1 || !validManagedRelative(folder) {
@@ -74,9 +88,36 @@ func inventoryFolder(ctx context.Context, root *os.Root, q query, folder string,
 	// bounds compare with COLLATE NOCASE so the media_file_path_folded index
 	// serves the range, and the exclusive upper bound is the first character
 	// after '/' so sibling folders (e.g. "Film2") stay outside (RS-0016).
+	// COLLATE NOCASE folds only ASCII, so a non-ASCII folder (e.g.
+	// Movies/Café) cannot be bounded safely: a cross-case catalog row
+	// (Movies/CAFÉ/…) would fall outside the folded bounds and be excluded
+	// before the authoritative Go-side check. Such folders fall back to the
+	// unbounded scan; the bounded index plan applies to ASCII folders only.
+	asciiOnly := true
+	for _, r := range folder {
+		if r >= utf8.RuneSelf {
+			asciiOnly = false
+			break
+		}
+	}
 	lo := strings.ToLower(folder) + "/"
 	hi := strings.ToLower(folder) + "0"
-	rows, err := q.QueryContext(ctx, `SELECT relative_path,COALESCE(movie_id,series_id) FROM media_files WHERE relative_path>=? COLLATE NOCASE AND relative_path<? COLLATE NOCASE`, lo, hi)
+	scanBound := " AND relative_path>=? COLLATE NOCASE AND relative_path<? COLLATE NOCASE"
+	yfBound := " WHERE yf.relative_path>=? COLLATE NOCASE AND yf.relative_path<? COLLATE NOCASE"
+	sfBound := " WHERE sf.relative_path>=? COLLATE NOCASE AND sf.relative_path<? COLLATE NOCASE"
+	sBound := " AND s.relative_path>=? COLLATE NOCASE AND s.relative_path<? COLLATE NOCASE"
+	iBound := " AND i.destination>=? COLLATE NOCASE AND i.destination<? COLLATE NOCASE"
+	if !asciiOnly {
+		// The unbounded fallback relies entirely on the Go-side prefix check;
+		// empty relative paths can never match its prefix, so excluding them
+		// here changes nothing about the guard.
+		scanBound = ""
+		yfBound = " WHERE yf.relative_path<>''"
+		sfBound = " WHERE sf.relative_path<>''"
+		sBound = ""
+		iBound = ""
+	}
+	rows, err := boundedQuery(ctx, q, `SELECT relative_path,COALESCE(movie_id,series_id) FROM media_files WHERE 1=1`+scanBound, lo, hi)
 	if err != nil {
 		return out, err
 	}
@@ -97,7 +138,11 @@ func inventoryFolder(ctx context.Context, root *os.Root, q query, folder string,
 	if err != nil {
 		return out, err
 	}
-	rows, err = q.QueryContext(ctx, `SELECT yf.relative_path,COALESCE(m.movie_id,m.series_id,0) FROM youtube_files yf LEFT JOIN media_files m ON m.id=yf.media_file_id WHERE yf.relative_path>=? COLLATE NOCASE AND yf.relative_path<? COLLATE NOCASE UNION ALL SELECT sf.relative_path,COALESCE(m.movie_id,m.series_id,0) FROM youtube_subtitle_files sf JOIN youtube_files yf ON yf.job_id=sf.job_id LEFT JOIN media_files m ON m.id=yf.media_file_id WHERE sf.relative_path>=? COLLATE NOCASE AND sf.relative_path<? COLLATE NOCASE UNION ALL SELECT s.relative_path,COALESCE(m.movie_id,m.series_id,0) FROM subtitles s JOIN media_files m ON m.id=s.media_file_id WHERE s.relative_path<>'' AND s.relative_path>=? COLLATE NOCASE AND s.relative_path<? COLLATE NOCASE UNION ALL SELECT i.destination,COALESCE(m.movie_id,m.series_id,0) FROM subtitle_imports i JOIN media_files m ON m.id=i.media_file_id WHERE i.phase='committed' AND i.destination>=? COLLATE NOCASE AND i.destination<? COLLATE NOCASE`, lo, hi, lo, hi, lo, hi, lo, hi)
+	companionScan := `SELECT yf.relative_path,COALESCE(m.movie_id,m.series_id,0) FROM youtube_files yf LEFT JOIN media_files m ON m.id=yf.media_file_id` + yfBound +
+		` UNION ALL SELECT sf.relative_path,COALESCE(m.movie_id,m.series_id,0) FROM youtube_subtitle_files sf JOIN youtube_files yf ON yf.job_id=sf.job_id LEFT JOIN media_files m ON m.id=yf.media_file_id` + sfBound +
+		` UNION ALL SELECT s.relative_path,COALESCE(m.movie_id,m.series_id,0) FROM subtitles s JOIN media_files m ON m.id=s.media_file_id WHERE s.relative_path<>''` + sBound +
+		` UNION ALL SELECT i.destination,COALESCE(m.movie_id,m.series_id,0) FROM subtitle_imports i JOIN media_files m ON m.id=i.media_file_id WHERE i.phase='committed'` + iBound
+	rows, err = boundedQuery(ctx, q, companionScan, lo, hi)
 	if err != nil {
 		return out, err
 	}

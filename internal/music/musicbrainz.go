@@ -320,8 +320,10 @@ func (m *musicbrainzStore) SetCooldown(ctx context.Context, until time.Time, mes
 	if runes := []rune(message); len(runes) > musicbrainzMessageLimit {
 		message = string(runes[:musicbrainzMessageLimit])
 	}
+	// The write is monotonic (NEW-D1): a shorter racing or later write never
+	// lowers the persisted deadline, mirroring the TMDb provider state.
 	_, err := m.db.ExecContext(ctx, `INSERT INTO musicbrainz_provider_state(id,retry_until,message,updated_at) VALUES(1,?,?,unixepoch())
-		ON CONFLICT(id) DO UPDATE SET retry_until=excluded.retry_until,message=excluded.message,updated_at=excluded.updated_at`,
+		ON CONFLICT(id) DO UPDATE SET retry_until=max(retry_until,excluded.retry_until),message=excluded.message,updated_at=excluded.updated_at`,
 		until.Unix(), message)
 	return err
 }

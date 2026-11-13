@@ -59,6 +59,10 @@ func randomChoice() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
+// noticeRequeueCap bounds how many times a rate-limited notice is requeued
+// before it is parked in the terminal uncertain state (NEW-C1).
+const noticeRequeueCap = 5
+
 // RateLimitError reports that Discord answered 429 with a Retry-After hint.
 // Callers distinguish a temporary rejection from a permanent one (NEW-C1).
 type RateLimitError struct {
@@ -222,7 +226,10 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 			return true, e
 		}
 	}
-	return true, s.finishJob(ctx, id, "sent")
+	// The terminal sent write must survive context cancellation like the
+	// 429 path above: losing it would turn a delivered reply into a
+	// duplicate post on the next manual retry.
+	return true, s.finishJob(context.WithoutCancel(ctx), id, "sent")
 }
 func (s *Service) finishJob(ctx context.Context, id, state string) error {
 	sealed, err := s.secrets.Seal("discord-job:"+id, []byte(""))
@@ -452,11 +459,28 @@ func (s *Service) ProcessNotice(ctx context.Context) (bool, error) {
 		if errors.As(err, &limited) {
 			// The notice was not delivered, so it stays retryable: requeue it
 			// for the next worker tick rather than parking it in the terminal
-			// uncertain state (NEW-C1).
-			state = "queued"
+			// uncertain state (NEW-C1). The requeues are capped in memory: a
+			// persistently rate-limited notice is parked uncertain after the
+			// cap instead of re-POSTing on every ~2 s tick indefinitely. The
+			// cap is not durable — a restart resets it, which costs at most
+			// one more bounded batch of retries per notice.
+			if s.noticeAttempts == nil {
+				s.noticeAttempts = map[int64]int{}
+			}
+			s.noticeAttempts[id]++
+			if s.noticeAttempts[id] > noticeRequeueCap {
+				delete(s.noticeAttempts, id)
+				state = "uncertain"
+			} else {
+				state = "queued"
+			}
 		} else {
+			delete(s.noticeAttempts, id)
 			state = "uncertain"
 		}
+	}
+	if state == "sent" {
+		delete(s.noticeAttempts, id)
 	}
 	_, saveErr := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE discord_bot_notices SET state=?,updated_at=unixepoch() WHERE request_id=? AND state='sending'`, state, id)
 	if saveErr != nil {

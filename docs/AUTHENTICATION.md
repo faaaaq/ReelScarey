@@ -22,7 +22,10 @@ docker compose exec reelscarey reelscarey setup-token
 A setup code expires after seven days. If it is not used within a week — for
 example on an instance that stays running but unconfigured — completing setup
 rejects it and deletes the stale file; restarting the still-unconfigured
-application issues a fresh code. The file format itself is unchanged.
+application issues a fresh code. The file format itself is unchanged. Note
+that restoring a config backup does not preserve file modification times, so
+a restored setup token always gets a fresh seven-day window; that is
+intentional.
 
 Native installation: read the setup-token file or run `bin/reelscarey setup-token`
 with the same config environment as the running service. On Windows use
