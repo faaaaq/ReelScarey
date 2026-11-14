@@ -313,10 +313,21 @@ jobs:
           oldIFS=$IFS; IFS=','
           for tag in ${{ steps.tags.outputs.value }}; do tag_args="$tag_args -t $tag"; done
           IFS=$oldIFS
-          # Merge both per-architecture manifests under the SAME tags; the
-          # digest files contain full sha256:... digests, so cat them (the
-          # bare-glob form passed filenames instead — run 43597792792).
-          docker buildx imagetools create $tag_args $(printf "$image@%s " $(cat *))
+          # Merge both per-architecture manifests under the SAME tags. Each
+          # digest file must contain exactly one full sha256:... reference;
+          # print and validate them so a bad artifact fails loudly instead of
+          # as an opaque "invalid reference format".
+          sources=""
+          for f in amd64 arm64; do
+            d=$(cat "$f")
+            echo "digest $f: $d"
+            case "$d" in
+              "$image"@sha256:[0-9a-f]*) echo "unexpected digest form: $d" >&2; exit 1 ;;
+              sha256:[0-9a-f]*) sources="$sources $image@$d" ;;
+              *) echo "invalid digest content in $f: $d" >&2; exit 1 ;;
+            esac
+          done
+          docker buildx imagetools create $tag_args $sources
           digest=$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}')
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           platforms=$(docker buildx imagetools inspect "$image:latest" \
