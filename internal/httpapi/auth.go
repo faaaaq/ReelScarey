@@ -226,22 +226,51 @@ func (s *Server) allowedHost(host, remoteAddr string) bool {
 	// is rejected; local clients keep working and proxies forwarding the real
 	// configured origin are unaffected. An unparseable remote address is
 	// treated as non-loopback, so the guard fails closed.
-	remote := remoteAddr
-	if h, _, err := net.SplitHostPort(remoteAddr); err == nil {
-		remote = h
-	}
-	remoteIP := net.ParseIP(strings.Trim(remote, "[]"))
-	if isLoopbackHostname(host) && (remoteIP == nil || !remoteIP.IsLoopback()) {
-		return false
-	}
+	//
+	// C3-0001: that premise only holds when this process can distinguish
+	// local from remote clients at the connection layer, which is true for a
+	// loopback-only bind. When the configured bind accepts non-loopback
+	// connections (the container's 0.0.0.0:8787, or an explicit LAN bind),
+	// the actual exposure boundary is outside this process: Docker publishes
+	// the container port on the host (by default on 127.0.0.1), so a host-side
+	// browser arrives from the bridge gateway address while claiming the
+	// loopback name it was told to use. The container cannot tell that client
+	// from a container-network client, and the host check is not an
+	// authentication boundary (NEW-E2: it never bypasses authentication), so
+	// the loopback claim is accepted there. The accepted Host set stays
+	// bounded to loopback names plus the configured PublicURL origin; an
+	// arbitrary hostname is still rejected, and sessions, CSRF and roles are
+	// enforced exactly as before.
 	if isLoopbackHostname(host) {
-		return true
+		if bindKnownNonLoopback(s.config.ListenAddr) {
+			return true
+		}
+		remote := remoteAddr
+		if h, _, err := net.SplitHostPort(remoteAddr); err == nil {
+			remote = h
+		}
+		remoteIP := net.ParseIP(strings.Trim(remote, "[]"))
+		return remoteIP != nil && remoteIP.IsLoopback()
 	}
 	if s.config.PublicURL != "" {
 		u, err := url.Parse(s.config.PublicURL)
 		return err == nil && strings.EqualFold(host, u.Host)
 	}
 	return false
+}
+
+// bindKnownNonLoopback reports whether the configured listen address
+// positively accepts connections from non-loopback interfaces. An empty or
+// unparseable address is treated as loopback-only so the loopback-claim guard
+// keeps failing closed when the bind is unknown.
+func bindKnownNonLoopback(addr string) bool {
+	if addr == "" {
+		return false
+	}
+	if _, _, err := net.SplitHostPort(addr); err != nil {
+		return false
+	}
+	return !listenLoopback(addr)
 }
 
 // subsonicRestoreBlocked reports whether a Subsonic /rest/ request must be

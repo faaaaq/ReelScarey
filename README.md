@@ -107,7 +107,11 @@ run a build from this checkout instead: `docker build -t reelscarey:local .`,
 then set `REELSCAREY_IMAGE=reelscarey:local` in `.env` and run `up -d` again.
 
 On PowerShell, use `Copy-Item .env.example .env` for the first command.
-Open [ReelScarey](http://localhost:8787). The port is published on loopback only.
+Open [ReelScarey](http://localhost:8787). The port is published on loopback only,
+and browsing that address from the host works without `REELSCAREY_PUBLIC_URL`:
+inside the container the request arrives from the Docker bridge gateway, so the
+host guard accepts loopback Host names whenever the configured listen address
+accepts non-loopback connections (the container's `0.0.0.0:8787`).
 The optional Subsonic-compatible music server uses this same address and port;
 it does not add a listener. If you expose ReelScarey through a reverse proxy or
 firewall, expose only this existing port. Retrieve your one-time setup code with `docker compose exec reelscarey reelscarey
