@@ -129,9 +129,15 @@ or manual flows. Each `(indexer, feed identity)` pair is processed once; seen
 keys are retained for 180 days and the newest 2,000 result rows are kept.
 
 An entry whose release matches a monitored episode that has not aired yet is
-recorded once with outcome `not_aired`; the episode's automatic grabbing begins
-on its listed air date, when the scheduled search or a later feed entry can
-grab it.
+recorded once with outcome `not_aired`. When the release would satisfy the
+episode's saved profile, it is also kept for a durable deferral: at the
+episode's listed air date (local midnight, like the announce deferral) the
+saved release is reconsidered and grabbed through the same guarded reservation
+path, even if the feed no longer carries the entry or the application
+restarted. The deferral follows air-date changes (it reschedules to the new
+local midnight, never grabbing early), expires explicitly past 30 days or
+eight wake attempts, and records every terminal outcome in the feed log next
+to the original `not_aired` row.
 
 Indexer errors are per source: one failing feed does not stop the others and the
 next cycle retries it. A temporary client or storage failure leaves the entry

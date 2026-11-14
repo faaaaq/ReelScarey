@@ -641,8 +641,9 @@ func (s *Service) handleRSS(ctx context.Context, c rssClaim, src transfer.Recent
 	if len(matches) == 0 {
 		// An entry can fail to match today because its monitored episode has
 		// not aired yet. Record that explicitly instead of silently skipping
-		// it: feed entries are seen once, so this row is the owner's only
-		// trace of why an early release was not grabbed automatically.
+		// it, and keep an eligible release for a durable deferral to the air
+		// date so a feed-only release is not lost when the feed rotates the
+		// entry out before the episode airs.
 		if f, e := future.get(ctx); e != nil {
 			return false, false, e
 		} else if fm := f.match(item.Title); len(fm) > 0 {
@@ -678,8 +679,19 @@ func (s *Service) handleRSS(ctx context.Context, c rssClaim, src transfer.Recent
 					if e := s.recordRSS(ctx, c, src, item, searchTarget{}, "rejected", "No feed candidate satisfies this title's quality profile, seed, size or identity rules.", ""); e != nil {
 						return false, false, e
 					}
-				} else if e := s.recordRSS(ctx, c, src, item, searchTarget{}, "not_aired", "The release matches a monitored episode whose listed air date has not arrived. Automatic grabbing for that episode begins on its air date.", ""); e != nil {
-					return false, false, e
+				} else {
+					// The feed sees each entry once and feed pages rotate, so
+					// the release is also kept for a durable deferral to the
+					// air date — the same architecture the announce path uses.
+					// Without it an early release found only by the feed check
+					// would be permanently lost.
+					message, e := s.deferRSSFeed(ctx, src, item, t)
+					if e != nil {
+						return false, false, e
+					}
+					if e := s.recordRSS(ctx, c, src, item, searchTarget{}, "not_aired", message, ""); e != nil {
+						return false, false, e
+					}
 				}
 			}
 		}

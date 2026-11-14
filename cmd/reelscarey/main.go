@@ -468,6 +468,13 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		}
 	})
 	defer workers.join(announceAutomationDone, "announceAutomation")
+	rssDeferralDone := make(chan struct{})
+	go guardWorker(logger, "rssDeferrals", rssDeferralDone, func() {
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			automationService.RunRSSDeferrals(workerCtx, logger)
+		}
+	})
+	defer workers.join(rssDeferralDone, "rssDeferrals")
 	subtitleDone := make(chan struct{})
 	go guardWorker(logger, "subtitle", subtitleDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
