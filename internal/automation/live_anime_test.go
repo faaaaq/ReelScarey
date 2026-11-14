@@ -254,7 +254,24 @@ func TestRealAnimeAutomaticDownloadAndReviewedImport(t *testing.T) {
 		}
 		if current.State == "completed" {
 			if !reviewed {
-				t.Fatal("Anime automatically imported without a confirmed episode mapping")
+				// The 0.42.0 owner decision (commit 3c06a79) imports a
+				// single-episode TV/Anime download without review when the
+				// completed file's parsed label names the one reserved
+				// episode. This fixture is exactly that case, so verify the
+				// automatic path's durable evidence instead of failing: the
+				// confirmed mapping flag, the journaled automatic-import
+				// event, and (below) that the registered episode is still
+				// the explicitly queued alias. An ambiguous fixture still
+				// takes the review branch below.
+				var confirmed int
+				var journaled string
+				if err = db.QueryRow(`SELECT mapping_confirmed FROM download_tv WHERE download_id=?`, job.ID).Scan(&confirmed); err != nil || confirmed != 1 {
+					t.Fatal("automatic Anime import did not record a confirmed mapping", err)
+				}
+				if err = db.QueryRow(`SELECT state FROM activity_events WHERE kind='download' AND object_id=? AND state LIKE 'imported automatically%' ORDER BY id DESC LIMIT 1`, job.ID).Scan(&journaled); err != nil {
+					t.Fatal("automatic Anime import was not journaled", err)
+				}
+				t.Log("PASS: automatic Anime import journaled:", journaled)
 			}
 			break
 		}
@@ -314,7 +331,7 @@ func TestRealAnimeAutomaticDownloadAndReviewedImport(t *testing.T) {
 	if err != nil || current.AnimeSearch == nil || current.AnimeSearch.Mode != "absolute" || current.AnimeSearch.PolicyRevision != policy.Revision || current.AnimeSearch.AbsoluteNumber == nil || *current.AnimeSearch.AbsoluteNumber != 25 {
 		t.Fatal("approved policy snapshot did not survive opt-out and reopen", current, err)
 	}
-	t.Log("PASS: scheduler matched explicit Anime absolute alias through bounded real Torznab HTTP queries, queued to isolated authenticated qBittorrent, survived opt-out/alias edits and restart, required reviewed canonical mapping, and FFprobe-verified generated media under Anime while preserving seeding bytes")
+	t.Log("PASS: scheduler matched explicit Anime absolute alias through bounded real Torznab HTTP queries, queued to isolated authenticated qBittorrent, survived opt-out/alias edits and restart, imported through the automatic or reviewed mapping path, and FFprobe-verified generated media under Anime while preserving seeding bytes")
 }
 
 // This separate acceptance exercises mapped automation itself rather than the
