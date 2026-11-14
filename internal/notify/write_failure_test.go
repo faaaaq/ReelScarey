@@ -7,12 +7,34 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/database"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 )
+
+// syncBuffer is a mutex-guarded strings.Builder so the Run-loop goroutine can
+// log into it while the test polls and finally reads the captured output
+// (a plain strings.Builder races under -race: observed in
+// TestRunLogsFailedStateWrites during the release-campaign race run).
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
+}
 
 func outboxFixture(t *testing.T) (*Store, *sql.DB) {
 	t.Helper()
@@ -102,7 +124,7 @@ func TestRunLogsFailedStateWrites(t *testing.T) {
 	if _, err := db.Exec(`CREATE TRIGGER fail_outbox_update BEFORE UPDATE ON notification_outbox WHEN NEW.state<>'sending' BEGIN SELECT RAISE(ABORT, 'injected write failure'); END;`); err != nil {
 		t.Fatal(err)
 	}
-	var logged strings.Builder
+	var logged syncBuffer
 	logger := slog.New(slog.NewTextHandler(&logged, nil))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

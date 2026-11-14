@@ -114,6 +114,17 @@ func TestBrowseTitleSortQueryPlanAndBudget(t *testing.T) {
 	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
 	median := samples[len(samples)/2]
 	t.Logf("browse 10k titles: median page view %v (min %v, max %v)", median, samples[0], samples[len(samples)-1])
+	if raceInstrumented {
+		// The race detector multiplies execution cost by an unbounded,
+		// machine-dependent factor, so an absolute latency budget is not
+		// meaningful under -race (observed: ~2x here, and CI's shared
+		// nightly runner is slower still). The index-plan and ordering
+		// assertions above remain enforced; the latency budget itself is
+		// enforced on every non-race run (ci.yml's test job runs
+		// `go test ./...` without instrumentation).
+		t.Log("latency budget skipped under race instrumentation")
+		return
+	}
 	if median > 50*time.Millisecond {
 		t.Fatalf("browse page view too slow at 10k titles: median %v", median)
 	}
