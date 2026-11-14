@@ -327,7 +327,9 @@ jobs:
               *) echo "invalid digest content in $f: $d" >&2; exit 1 ;;
             esac
           done
+          set -x
           docker buildx imagetools create $tag_args $sources
+          set +x
           digest=$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}')
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           platforms=$(docker buildx imagetools inspect "$image:latest" \
