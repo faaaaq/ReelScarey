@@ -386,7 +386,24 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 		}
 		if current.State == "completed" {
 			if tv && !reviewed {
-				t.Fatal("TV/Anime pack imported without a confirmed file mapping")
+				// The 0.42.0 owner decision (commit 3c06a79) imports a TV
+				// download without review when every reserved episode has
+				// exactly one completed file whose parsed label names it,
+				// including shared range files. This fixture (a shared
+				// S01E01-E02 range file plus a named E03 file) is exactly
+				// that case, so verify the automatic path's durable evidence
+				// instead of failing: the confirmed mapping flag and the
+				// journaled automatic-import event. An ambiguous fixture
+				// still takes the review branch below.
+				var confirmed int
+				var journaled string
+				if e = db.QueryRow(`SELECT mapping_confirmed FROM download_tv WHERE download_id=?`, job.ID).Scan(&confirmed); e != nil || confirmed != 1 {
+					t.Fatal("automatic TV import did not record a confirmed mapping", e)
+				}
+				if e = db.QueryRow(`SELECT state FROM activity_events WHERE kind='download' AND object_id=? AND state LIKE 'imported automatically%' ORDER BY id DESC LIMIT 1`, job.ID).Scan(&journaled); e != nil {
+					t.Fatal("automatic TV import was not journaled", e)
+				}
+				t.Log("PASS: automatic TV import journaled:", journaled)
 			}
 			break
 		}
@@ -498,7 +515,7 @@ func runRealQBittorrent(t *testing.T, tv bool, providerOrder ...bool) {
 		if e != nil || season.Season.AvailableEpisodes != 3 || season.Episodes[0].FilePath != season.Episodes[1].FilePath || season.Episodes[1].FilePath == season.Episodes[2].FilePath {
 			t.Fatal("live episode registration incorrect", e)
 		}
-		t.Log("PASS:", kind, "downloaded a generated season pack; review confirmation survived reopen; two FFprobe-verified files registered three episodes and preserved seeding sources")
+		t.Log("PASS:", kind, "downloaded a generated TV pack; automatic or reviewed mapping registered three episodes from two FFprobe-verified files and preserved seeding sources")
 		return
 	}
 	t.Log("PASS:", kind, "downloaded owned video via localhost web seed; app restart reconciled it and FFprobe-verified import preserved the source")
