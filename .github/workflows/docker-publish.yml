@@ -104,7 +104,7 @@ jobs:
       - name: Export amd64 digest for the manifest merge
         run: |
           mkdir -p "${{ runner.temp }}/digests"
-          printf '%s' "${{ steps.build.outputs.digest }}" > "${{ runner.temp }}/digests/amd64"
+          printf '%s\n' "${{ steps.build.outputs.digest }}" > "${{ runner.temp }}/digests/amd64"
 
       - name: Upload amd64 digest
         uses: actions/upload-artifact@v4
@@ -245,7 +245,7 @@ jobs:
       - name: Export arm64 digest for the manifest merge
         run: |
           mkdir -p "${{ runner.temp }}/digests"
-          printf '%s' "${{ steps.build.outputs.digest }}" > "${{ runner.temp }}/digests/arm64"
+          printf '%s\n' "${{ steps.build.outputs.digest }}" > "${{ runner.temp }}/digests/arm64"
 
       - name: Upload arm64 digest
         uses: actions/upload-artifact@v4
