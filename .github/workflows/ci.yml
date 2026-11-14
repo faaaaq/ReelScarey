@@ -100,8 +100,24 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Build the embedded frontend
+        # web/embed.go declares //go:embed all:dist and web/dist/ is
+        # gitignored, so every Go compile in this job fails with
+        # "pattern all:dist: no matching files found" until the frontend is
+        # built (observed on run 42449545070).
+        run: npm ci && npm run build
+        working-directory: web
       - name: Race-enabled full test suite
-        run: go test -race ./...
+        # Explicit timeout instead of the 10m per-package default: on this
+        # runner the much smaller race subset (internal/organization +
+        # internal/metadata, ~40s without -race) already exceeded 10m under
+        # -race (run 43513383237), because race instrumentation multiplies
+        # the cost of the pure-Go modernc.org/sqlite driver and the
+        # first-time race build of that dependency chain. The full suite is
+        # 3m04s without -race here, so 60m bounds the extrapolated
+        # 20-60m race runtime without silently hiding a hang: per-test
+        # timings show no single pathological test (max 1.5s without -race).
+        run: go test -race ./... -timeout=60m
       - name: Public AniList identity and title-search acceptance
         run: go test -race ./internal/metadata -run TestLiveAniListIdentity -count=1 -v -timeout=30s
         env:
@@ -245,6 +261,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Build the embedded frontend
+        # web/embed.go declares //go:embed all:dist and web/dist/ is
+        # gitignored; cmd/reelscarey embeds it, so the binary build below
+        # fails with "pattern all:dist: no matching files found" until the
+        # frontend is built.
+        run: npm ci && npm run build
+        working-directory: web
       - name: Build the Windows binary
         run: go build -o bin/reelscarey.exe ./cmd/reelscarey
       - name: Route-level package tests on Windows path semantics
