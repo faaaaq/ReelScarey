@@ -26,7 +26,7 @@ func TestStorageBrowserRejectsEncodedTraversalWithoutPathDisclosure(t *testing.T
 	if e != nil {
 		t.Fatal(e)
 	}
-	base := t.TempDir()
+	base := testDir(t)
 	cfg := config.Config{ConfigDir: filepath.Join(base, "config"), MediaDir: filepath.Join(base, "media"), DownloadsDir: filepath.Join(base, "downloads"), BackupsDir: filepath.Join(base, "backups"), PublicURL: "http://example.com"}
 	for _, dir := range []string{cfg.ConfigDir, cfg.MediaDir, cfg.DownloadsDir, cfg.BackupsDir} {
 		os.Mkdir(dir, 0700)

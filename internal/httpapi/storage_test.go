@@ -13,6 +13,19 @@ import (
 	"testing/fstest"
 )
 
+// testDir returns the temp directory in its canonical (symlink-resolved) form
+// so configured media roots pass the storage browser's strict link check on
+// every platform: Windows t.TempDir can return an 8.3 short path, which
+// filepath.EvalSymlinks expands, making the browser reject the raw form.
+func testDir(t *testing.T) string {
+	t.Helper()
+	dir, e := filepath.EvalSymlinks(t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	return dir
+}
+
 func TestStorageRoutesAreAdminOnlyBoundedAndReadOnly(t *testing.T) {
 	_, db, accounts, code := rawFixture(t, nil)
 	ctx := context.Background()
@@ -27,7 +40,7 @@ func TestStorageRoutesAreAdminOnlyBoundedAndReadOnly(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	base := t.TempDir()
+	base := testDir(t)
 	cfg := config.Config{ConfigDir: filepath.Join(base, "config"), MediaDir: filepath.Join(base, "media"), DownloadsDir: filepath.Join(base, "downloads"), BackupsDir: filepath.Join(base, "backups"), PublicURL: "http://example.com"}
 	for _, dir := range []string{cfg.ConfigDir, cfg.MediaDir, cfg.DownloadsDir, cfg.BackupsDir} {
 		os.Mkdir(dir, 0700)

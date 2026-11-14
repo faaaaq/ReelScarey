@@ -9,8 +9,21 @@ import (
 	"testing"
 )
 
+// testDir returns the temp directory in its canonical (symlink-resolved) form
+// so roots configured from it pass the browser's strict link check on every
+// platform: Windows t.TempDir can return an 8.3 short path, which
+// filepath.EvalSymlinks expands, making canonical() reject the raw form.
+func testDir(t *testing.T) string {
+	t.Helper()
+	dir, e := filepath.EvalSymlinks(t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	return dir
+}
+
 func TestBrowserMountedScopesPaginationAndLinks(t *testing.T) {
-	base := t.TempDir()
+	base := testDir(t)
 	cfg := config.Config{MediaDir: filepath.Join(base, "media"), DownloadsDir: filepath.Join(base, "downloads"), ConfigDir: filepath.Join(base, "config"), BackupsDir: filepath.Join(base, "backups"), BrowseRoots: map[string]string{"archive": filepath.Join(base, "archive")}}
 	for _, dir := range []string{cfg.MediaDir, cfg.DownloadsDir, cfg.ConfigDir, cfg.BackupsDir, cfg.BrowseRoots["archive"], filepath.Join(cfg.MediaDir, "Series")} {
 		os.MkdirAll(dir, 0700)
@@ -61,7 +74,7 @@ func TestBrowserMountedScopesPaginationAndLinks(t *testing.T) {
 	}
 }
 func TestBrowserBoundAndCancellation(t *testing.T) {
-	dir := t.TempDir()
+	dir := testDir(t)
 	for n := 0; n < 10001; n++ {
 		os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%d", n)), nil, 0600)
 	}

@@ -26,7 +26,7 @@ jobs:
     # machine. Push/schedule/dispatch jobs use the configured runner label;
     # the default stays the existing self-hosted Linux x64 runner.
     runs-on: ${{ (github.event_name == 'pull_request' && 'ubuntu-latest') || vars.REELSCAREY_RUNNER || 'reelscarey-ci' }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,8 +61,13 @@ jobs:
         # organization reviews, metadata provider clients, the database WAL
         # pool under sustained load, and transfer lease/claim/reservation
         # fences. The full -race suite stays nightly-only (acceptance job).
+        # organization + metadata under -race measured 600s+ on the
+        # self-hosted runner (runs 43513383237 and 43565762772 both hit the
+        # former 10m test alarm mid-package with no failure and no race), so
+        # the first command gets a 30m bound; the job timeout rises to 45m to
+        # match. The tests themselves are unchanged.
         run: |
-          go test -race ./internal/organization ./internal/metadata -count=1 -timeout=10m
+          go test -race ./internal/organization ./internal/metadata -count=1 -timeout=30m
           go test -race ./internal/database -run '^TestWALStaysBoundedUnderSustainedLoad$' -count=1 -timeout=10m
           go test -race ./internal/transfer -run 'TestLeaseExpiryRefusesTorrentWrites|TestLeaseExpiryRefusesMusicWrites|TestLeaseFencesStaleWorker|TestTVReservationsSkipAndDuplicateProtection|TestTVActiveReservationsAndCancelledResumeConflicts|TestQueueManualTorrentTargetsMovieAndDeduplicatesByHash|TestMusicSubmissionIsReservedBeforeClientAndSurvivesCancellation|TestMatchingQueueDoesNotWaitForDiskInspection|TestQBittorrentLoginsDoNotSerializeAcrossClients' -count=1 -timeout=10m
       - run: go vet ./...
