@@ -263,6 +263,11 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Checkout repository
+        # Only the version read (for the v* tag naming) needs the repo; it
+        # also fixes the missing-file failure observed on run 43592934788.
+        uses: actions/checkout@v6
+
       - name: Download per-architecture digests
         uses: actions/download-artifact@v4
         with:
