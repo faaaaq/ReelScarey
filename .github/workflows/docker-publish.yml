@@ -18,6 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ---- amd64 leg (existing self-hosted runner; behavior preserved) ----
   publish:
     if: github.ref == 'refs/heads/codex/foundation' || startsWith(github.ref, 'refs/tags/v')
     # Publish runs on every primary-branch push, on a v* tag or on an explicit
@@ -44,16 +45,6 @@ jobs:
             exit 1
           fi
           echo "value=$value" >> "$GITHUB_OUTPUT"
-
-      - name: Compose image tags
-        id: tags
-        run: |
-          tags="${{ vars.DOCKERHUB_USERNAME }}/reelscarey:latest"
-          tags="$tags,${{ vars.DOCKERHUB_USERNAME }}/reelscarey:sha-${{ github.sha }}"
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            tags="$tags,${{ vars.DOCKERHUB_USERNAME }}/reelscarey:${{ steps.version.outputs.value }}"
-          fi
-          echo "value=$tags" >> "$GITHUB_OUTPUT"
 
       - name: Login to Docker Hub
         uses: docker/login-action@v4
@@ -88,20 +79,16 @@ jobs:
           bash scripts/automatic-library-container-smoke.sh reelscarey:release-test
           bash scripts/storage-container-smoke.sh reelscarey:release-test
 
-      - name: Build and push ReelScarey
+      - name: Build and push the amd64 image (digest)
         id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           push: true
-          # linux/arm64 is published config-only: the release-candidate build,
-          # startup/backup/storage smokes and the acceptance job's container
-          # smokes all execute on the amd64 image, so arm64 is never run in
-          # CI. Native arm64 runtime coverage remains an open gap.
-          # A Windows smoke job now exists in ci.yml (windows-smoke); it does
-          # not gate publication until its first green runs.
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.tags.outputs.value }}
+          platforms: linux/amd64
+          # Push by digest only; the shared tags are applied once by the
+          # `manifest` job after both architectures pass their gates.
+          outputs: type=image,name=docker.io/${{ vars.DOCKERHUB_USERNAME }}/reelscarey,push-by-digest=true
           build-args: |
             VERSION=${{ steps.version.outputs.value }}
             RUN_GO_TESTS=${{ startsWith(github.ref, 'refs/tags/v') && '0' || '1' }}
@@ -114,6 +101,19 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.version.outputs.value }}
 
+      - name: Export amd64 digest for the manifest merge
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          printf '%s' "${{ steps.build.outputs.digest }}" > "${{ runner.temp }}/digests/amd64"
+
+      - name: Upload amd64 digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-amd64
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Pull and verify the published image
         env:
           RELEASE_IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/reelscarey@${{ steps.build.outputs.digest }}
@@ -124,13 +124,205 @@ jobs:
           bash scripts/backup-container-smoke.sh "$RELEASE_IMAGE"
           printf 'Verified published image: `%s`\n' "$RELEASE_IMAGE" >> "$GITHUB_STEP_SUMMARY"
 
+  # ---- arm64 leg (GitHub-hosted native runner; public repo = free) ----
+  publish-arm64:
+    if: github.ref == 'refs/heads/codex/foundation' || startsWith(github.ref, 'refs/tags/v')
+    # Native arm64 build and runtime acceptance on a hosted ARM runner.
+    # No QEMU/binfmt is involved anywhere: each architecture builds natively,
+    # so the former "arm64 was never executed in CI" gap is closed.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Read application version
+        id: version
+        run: |
+          value=$(grep -m1 '"version"' web/package.json | sed -E 's/.*"version": *"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+          if ! printf '%s' "$value" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Invalid application version: ${value:-<empty>}" >&2
+            exit 1
+          fi
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build the arm64 release candidate
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          platforms: linux/arm64
+          tags: reelscarey:arm-release-test
+          # Branch pushes skip the Go suite here: the same commit already ran
+          # the full suite natively on amd64 (this workflow's candidate build
+          # with RUN_GO_TESTS=1, plus checks CI including -race). On v* tags
+          # the suite runs once natively on arm64 as release evidence. The
+          # binary itself is identical either way.
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+            RUN_GO_TESTS=${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=reelscarey-publish-arm64
+          cache-to: type=gha,mode=max,scope=reelscarey-publish-arm64,ignore-error=true
+
+      - name: Arm64 runtime acceptance battery
+        run: |
+          set -euo pipefail
+          image=reelscarey:arm-release-test
+          expected=${{ steps.version.outputs.value }}
+          test "$(docker run --rm --network none --entrypoint uname "$image" -m)" = "aarch64"
+          bash scripts/container-init-smoke.sh "$image"
+          fixture=$(mktemp -d "${TMPDIR:-/tmp}/reelscarey-arm64-accept.XXXXXX")
+          name="reelscarey-arm64-accept-$$"
+          cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; rm -rf "$fixture"; }
+          trap cleanup EXIT
+          mkdir -p "$fixture/config" "$fixture/media" "$fixture/downloads"
+          docker run -d --name "$name" -p 127.0.0.1:18787:8787 \
+            -v "$fixture/config:/config" -v "$fixture/media:/media" -v "$fixture/downloads:/downloads" \
+            "$image" >/dev/null
+          ready() {
+            for attempt in $(seq 1 90); do
+              if curl --fail --silent http://127.0.0.1:18787/readyz >/dev/null 2>&1; then return 0; fi
+              sleep 1
+            done
+            echo 'arm64 container failed to become ready' >&2
+            docker logs --tail 40 "$name" >&2 || true
+            return 1
+          }
+          ready
+          curl --fail --silent http://127.0.0.1:18787/readyz >/dev/null
+          if ! test "$(docker exec "$name" /usr/local/bin/reelscarey version)" = "ReelScarey $expected"; then
+            docker exec "$name" /usr/local/bin/reelscarey version | grep -F "$expected"
+          fi
+          test -f "$fixture/config/reelscarey.db"
+          # Restart and confirm clean shutdown and durable state.
+          key_before=$(docker exec "$name" sha256sum /config/secrets.key)
+          docker stop --time 30 "$name" >/dev/null
+          test "$(docker inspect -f '{{.State.Status}}' "$name")" = "exited"
+          test "$(docker inspect -f '{{.State.ExitCode}}' "$name")" = "0"
+          docker start "$name" >/dev/null
+          ready
+          test "$key_before" = "$(docker exec "$name" sha256sum /config/secrets.key)"
+          echo "Arm64 runtime acceptance passed (aarch64, version $expected, restart + clean shutdown)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build and push the arm64 image (digest)
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          platforms: linux/arm64
+          outputs: type=image,name=docker.io/${{ vars.DOCKERHUB_USERNAME }}/reelscarey,push-by-digest=true
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+            RUN_GO_TESTS=${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+          cache-from: type=gha,scope=reelscarey-publish-arm64
+          cache-to: type=gha,mode=max,scope=reelscarey-publish-arm64,ignore-error=true
+          provenance: mode=max
+          sbom: true
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.value }}
+
+      - name: Export arm64 digest for the manifest merge
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          printf '%s' "${{ steps.build.outputs.digest }}" > "${{ runner.temp }}/digests/arm64"
+
+      - name: Upload arm64 digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-arm64
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---- merge: same tags now resolve to both architectures ----
+  manifest:
+    if: github.ref == 'refs/heads/codex/foundation' || startsWith(github.ref, 'refs/tags/v')
+    needs: [publish, publish-arm64]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Download per-architecture digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digests-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Read application version
+        id: version
+        run: |
+          value=$(grep -m1 '"version"' web/package.json | sed -E 's/.*"version": *"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+          if ! printf '%s' "$value" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Invalid application version: ${value:-<empty>}" >&2
+            exit 1
+          fi
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+      - name: Compose image tags
+        id: tags
+        run: |
+          tags="${{ vars.DOCKERHUB_USERNAME }}/reelscarey:latest"
+          tags="$tags,${{ vars.DOCKERHUB_USERNAME }}/reelscarey:sha-${{ github.sha }}"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            tags="$tags,${{ vars.DOCKERHUB_USERNAME }}/reelscarey:${{ steps.version.outputs.value }}"
+          fi
+          echo "value=$tags" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push the multi-architecture manifest
+        id: merge
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          image="${{ vars.DOCKERHUB_USERNAME }}/reelscarey"
+          tag_args=""
+          oldIFS=$IFS; IFS=','
+          for tag in ${{ steps.tags.outputs.value }}; do tag_args="$tag_args -t $tag"; done
+          IFS=$oldIFS
+          # Merge both per-architecture manifests under the SAME tags.
+          docker buildx imagetools create $tag_args $(printf "$image@%s " *)
+          digest=$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}')
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          platforms=$(docker buildx imagetools inspect "$image:latest" \
+            --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')
+          case "$platforms" in *linux/amd64*) ;; *) echo "missing linux/amd64: $platforms" >&2; exit 1 ;; esac
+          case "$platforms" in *linux/arm64*) ;; *) echo "missing linux/arm64: $platforms" >&2; exit 1 ;; esac
+          printf 'Published multi-arch manifest `%s` @ `%s` (%s)\n' "$image" "$digest" "$platforms" >> "$GITHUB_STEP_SUMMARY"
+
       # Private repositories require Enterprise Cloud for GitHub attestations.
+      # The attestation signs the MERGED manifest digest — the object the tags
+      # resolve to — not a per-architecture digest. The merged index carries no
+      # index-level BuildKit provenance/SBOM by construction; each per-arch
+      # manifest retains its own provenance (mode=max) and SBOM.
       - name: Sign container build provenance
         if: github.event.repository.private == false || vars.ENABLE_PRIVATE_ATTESTATIONS == 'true'
         uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
         with:
           subject-name: docker.io/${{ vars.DOCKERHUB_USERNAME }}/reelscarey
-          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-digest: ${{ steps.merge.outputs.digest }}
           push-to-registry: true
           create-storage-record: false
 

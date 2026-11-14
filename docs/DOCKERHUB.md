@@ -24,7 +24,7 @@ seeding.
 | Image | `faaaaq/reelscarey:latest` |
 | Web UI / API | `8787/tcp` |
 | Optional music server | Same host and `8787/tcp`; no separate port |
-| Platform | `linux/amd64` |
+| Platform | `linux/amd64`, `linux/arm64` |
 | Database | SQLite on local disk - no Redis, no external DB |
 | Runtime | One container; FFmpeg/FFprobe and a supervised qBittorrent included, SABnzbd optional |
 
@@ -138,8 +138,9 @@ additional music port.
 
 ### Before you begin
 
-- A Linux x86-64 host with Docker Engine and Compose v2. Published images are
-  **linux/amd64 only**. Docker is the only supported deployment target.
+- A Linux host with Docker Engine and Compose v2. Published images are
+  **multi-architecture** (`linux/amd64`, `linux/arm64`). Docker is the only
+  supported deployment target.
 - Local disk for the config directory. Do not put SQLite on NFS, SMB or another
   network filesystem.
 - A TMDb **API Read Access Token** (free from TMDb).
@@ -406,11 +407,11 @@ image; in-place downgrades are not supported, restore a backup instead.
 | Tag | Meaning |
 | --- | --- |
 | `latest` | Newest successful primary-branch build or release; moves on each publication |
-| `0.54.10` | Immutable application version |
+| `0.54.12` | Immutable application version |
 | `sha-<commit>` | Exact source commit |
 
-Published images target **linux/amd64**. Pin a version tag or digest if you
-need reproducible deploys and controlled rollback.
+Published images target **linux/amd64 and linux/arm64**. Pin a version tag or
+digest if you need reproducible deploys and controlled rollback.
 
 ---
 

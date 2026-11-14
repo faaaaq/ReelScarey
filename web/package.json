@@ -1,7 +1,7 @@
 {
   "name": "reelscarey-web",
   "private": true,
-  "version": "0.54.11",
+  "version": "0.54.12",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
