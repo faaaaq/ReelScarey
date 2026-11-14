@@ -277,6 +277,11 @@ jobs:
         run: go build -o bin/reelscarey.exe ./cmd/reelscarey
       - name: Route-level package tests on Windows path semantics
         run: go test ./internal/httpapi ./internal/storage ./internal/backups -count=1 -timeout=15m
+      - name: Install FFmpeg for the system-check smoke
+        # The smoke asserts every system check is green; the video-inspection
+        # check requires ffprobe, which hosted Windows runners do not
+        # preinstall (observed on run 43568253847).
+        run: choco install ffmpeg -y --no-progress
       - name: Windows startup and route smoke
         run: node scripts/smoke.mjs
 
