@@ -157,6 +157,12 @@ func (s *Store) ApproveImport(ctx context.Context, cfg config.Config, review Imp
 	if fresh.Size != review.Size || fresh.SHA256 != review.SHA256 || fresh.Destination != review.Destination || fresh.Probe != review.Probe || fresh.TargetLabel != review.TargetLabel || !reflect.DeepEqual(fresh.Subtitles, review.Subtitles) {
 		return ErrChanged
 	}
+	// English-subtitle policy: a YouTube item is never reported as acquired
+	// without its English captions. The verified video and every requested
+	// track must already be present as reviewed evidence.
+	if !hasEnglishSubtitle(fresh.Subtitles) {
+		return ErrEnglishSubtitles
+	}
 	var source string
 	var mtime int64
 	if e = tx.QueryRowContext(ctx, `SELECT source_path,source_mtime FROM youtube_jobs WHERE id=?`, review.JobID).Scan(&source, &mtime); e != nil {

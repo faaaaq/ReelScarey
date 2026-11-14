@@ -65,6 +65,11 @@ type Job struct {
 	SeriesSourceID string  `json:"series_source_id,omitempty"`
 	CreatedAt      int64   `json:"created_at"`
 	UpdatedAt      int64   `json:"updated_at"`
+	// Subtitle evidence actually downloaded for the job. A completed or
+	// reviewable item without an English entry failed the subtitle
+	// requirement; import stays blocked until it is retried.
+	SubtitleLanguages []string `json:"subtitle_languages,omitempty"`
+	EnglishSubtitles  bool     `json:"english_subtitles"`
 }
 type File struct {
 	JobID        string `json:"job_id"`
@@ -364,7 +369,37 @@ func (s *Store) Jobs(ctx context.Context) ([]Job, error) {
 		}
 		out = append(out, j)
 	}
-	return out, rows.Err()
+	if e = rows.Err(); e != nil {
+		return nil, e
+	}
+	// Expose per-job subtitle evidence so the queue can honestly show which
+	// items satisfy the English-subtitle requirement.
+	subs, e := s.db.QueryContext(ctx, `SELECT job_id,language FROM youtube_subtitle_sources WHERE job_id IN (SELECT id FROM youtube_jobs) ORDER BY job_id,language`)
+	if e != nil {
+		return nil, e
+	}
+	defer subs.Close()
+	byJob := map[string][]string{}
+	for subs.Next() {
+		var jobID, language string
+		if e = subs.Scan(&jobID, &language); e != nil {
+			return nil, e
+		}
+		byJob[jobID] = append(byJob[jobID], language)
+	}
+	if e = subs.Err(); e != nil {
+		return nil, e
+	}
+	for i := range out {
+		out[i].SubtitleLanguages = byJob[out[i].ID]
+		for _, language := range out[i].SubtitleLanguages {
+			if isEnglishSubtitle(language) {
+				out[i].EnglishSubtitles = true
+				break
+			}
+		}
+	}
+	return out, nil
 }
 
 // Cancel releases a target only before publication starts. Partial downloaded

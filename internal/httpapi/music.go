@@ -443,6 +443,40 @@ func (s *Server) musicAcquisition(w http.ResponseWriter, r *http.Request) {
 	send(w, 200, job)
 }
 
+func (s *Server) musicAcquisitionAcknowledge(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	job, err := s.music.AcknowledgeAcquisition(r.Context(), id)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, job)
+}
+
+func (s *Server) musicAcquisitionRetry(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	job, err := s.music.RetryAcquisitionTracks(r.Context(), id)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, job)
+}
+
 func (s *Server) musicLinkPreview(w http.ResponseWriter, r *http.Request) {
 	if s.music == nil {
 		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")

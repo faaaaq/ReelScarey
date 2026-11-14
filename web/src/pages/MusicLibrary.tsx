@@ -213,14 +213,10 @@ export function MusicLibrary() {
   );
   const noun =
     view === "albums" ? "albums" : view === "artists" ? "artists" : "tracks";
-  const activeJobs =
-    downloads.data?.items.filter(
-      (job) => job.state === "queued" || job.state === "running",
-    ) ?? [];
-  const attentionJobs =
-    downloads.data?.items.filter(
-      (job) => job.state === "failed" || !!job.error,
-    ) ?? [];
+  // Counts come from the backend across every acquisition job, not just the
+  // newest page, so the banners never under-report.
+  const activeJobs = downloads.data?.active ?? 0;
+  const attentionJobs = downloads.data?.issues ?? 0;
 
   return (
     <>
@@ -302,19 +298,23 @@ export function MusicLibrary() {
           </form>
         </div>
 
-        {activeJobs.length > 0 && (
+        {activeJobs > 0 && (
           <Alert kind="info" title="Music downloads running">
-            {activeJobs.length}{" "}
-            {activeJobs.length === 1 ? "job is" : "jobs are"} being processed
-            automatically.{" "}
-            <Link to="/music/discover">View the download queue</Link>.
+            <p>
+              {activeJobs} {activeJobs === 1 ? "job is" : "jobs are"} being
+              processed automatically.{" "}
+              <Link to="/music/discover">View the download queue</Link>.
+            </p>
           </Alert>
         )}
-        {attentionJobs.length > 0 && (
+        {attentionJobs > 0 && (
           <Alert kind="warning" title="Music downloads need attention">
-            {attentionJobs.length}{" "}
-            {attentionJobs.length === 1 ? "job has" : "jobs have"} an issue.{" "}
-            <Link to="/music/discover">Review the queue</Link>.
+            <p>
+              {attentionJobs} {attentionJobs === 1 ? "job has" : "jobs have"}{" "}
+              failed or incomplete tracks.{" "}
+              <Link to="/music/discover">Review the download queue</Link> to
+              retry failed tracks or clear resolved jobs.
+            </p>
           </Alert>
         )}
 

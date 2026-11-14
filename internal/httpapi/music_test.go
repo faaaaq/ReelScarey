@@ -132,6 +132,12 @@ func (f *fakeMusic) Acquisition(context.Context, int64) (music.AcquisitionJob, e
 func (f *fakeMusic) ListAcquisitions(context.Context, int) (music.AcquisitionJobList, error) {
 	return music.AcquisitionJobList{Items: []music.AcquisitionJob{}, Page: 1, Limit: 20}, f.err
 }
+func (f *fakeMusic) AcknowledgeAcquisition(context.Context, int64) (music.AcquisitionJob, error) {
+	return music.AcquisitionJob{ID: 1, State: "failed", Tracks: []music.AcquisitionTrack{}}, f.err
+}
+func (f *fakeMusic) RetryAcquisitionTracks(context.Context, int64) (music.AcquisitionJob, error) {
+	return music.AcquisitionJob{ID: 1, State: "running", Tracks: []music.AcquisitionTrack{}}, f.err
+}
 func (f *fakeMusic) ServerAlbum(context.Context, int64) (music.AlbumDetails, error) {
 	if f.serverAlbumDetail.Album.Title != "" {
 		return f.serverAlbumDetail, f.err

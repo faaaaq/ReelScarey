@@ -165,7 +165,14 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	var opts DownloadOptions
 	opts.Automatic = automatic
 	opts.Quality = quality
-	if e = json.Unmarshal([]byte(rawLanguages), &opts.Languages); e != nil || !validSubtitleOptions(opts) {
+	if e = json.Unmarshal([]byte(rawLanguages), &opts.Languages); e != nil {
+		return fail(ErrInput)
+	}
+	// English-subtitle policy: every YouTube download must produce English
+	// subtitles, so English is always part of the requested set even when the
+	// saved options omitted it.
+	opts.Languages = requiredLanguages(opts.Languages)
+	if !validSubtitleOptions(opts) {
 		return fail(ErrInput)
 	}
 	lastProgress := time.Time{}
@@ -290,9 +297,22 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 			missing = append(missing, lang)
 		}
 	}
+	englishMissing := true
+	for _, sub := range subtitleResults {
+		if isEnglishSubtitle(sub.Language) {
+			englishMissing = false
+			break
+		}
+	}
 	message := "Download verified. Review the file and target before import."
 	if len(missing) > 0 {
 		message += " Requested subtitles unavailable: " + strings.Join(missing, ", ") + "."
+	}
+	if englishMissing {
+		// A video without English subtitles is never reported as a complete,
+		// importable acquisition: the download is verified but the required
+		// language evidence is missing and import stays blocked.
+		message = "Download verified, but required English subtitles are unavailable. Use Retry subtitles to fetch them; import stays blocked until they are acquired."
 	}
 	tx, e = db.BeginTx(work, nil)
 	if e != nil {
@@ -317,7 +337,7 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	if e = tx.Commit(); e != nil {
 		return fail(e)
 	}
-	if target.Kind == "episode" {
+	if !englishMissing && target.Kind == "episode" {
 		var auto bool
 		if e = db.QueryRowContext(work, `SELECT auto_import FROM youtube_jobs WHERE id=?`, jobID).Scan(&auto); e == nil && auto && w.Config.ConfigDir != "" {
 			review, reviewErr := w.Store.ReviewImport(work, w.Config, jobID)

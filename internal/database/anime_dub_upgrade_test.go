@@ -54,7 +54,9 @@ func TestAnimeDubExclusionUpgrade(t *testing.T) {
 	if err := Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow(`SELECT dub_rule,revision FROM anime_preferences WHERE id=1`).Scan(&rule, &revision); err != nil || rule != quality.DefaultDubRule || revision != 2 {
+	// 093 bumps the revision to 2 and 102 (the English-audio evidence
+	// upgrade) bumps it to 3; the final stored rule is the current default.
+	if err := db.QueryRow(`SELECT dub_rule,revision FROM anime_preferences WHERE id=1`).Scan(&rule, &revision); err != nil || rule != quality.DefaultDubRule || revision != 3 {
 		t.Fatal("seeded default rule not upgraded", revision, err)
 	}
 	if version, err := Version(ctx, db); err != nil || version != len(names) {

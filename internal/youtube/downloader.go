@@ -19,6 +19,9 @@ type DownloadOptions struct {
 	Languages []string `json:"languages"`
 	Automatic bool     `json:"automatic"`
 	Quality   string   `json:"quality,omitempty"`
+	// SkipDownload fetches captions only (yt-dlp --skip-download). It is an
+	// internal retry flag and is never serialized to or accepted from the API.
+	SkipDownload bool `json:"-"`
 	// Progress is a live yt-dlp progress callback and is never serialized.
 	Progress func(downloaded, total, speed, eta int64) `json:"-"`
 }
@@ -136,16 +139,19 @@ func (i *Inspector) DownloadWithSubtitles(ctx context.Context, id, directory str
 	if len(options.Languages) == 0 {
 		args = append(args, "--no-write-subs", "--no-write-auto-subs")
 	} else {
-		if options.Automatic {
-			args = append(args, "--no-write-subs", "--write-auto-subs")
-		} else {
-			args = append(args, "--write-subs", "--no-write-auto-subs")
-		}
+		// English-subtitle policy: request human-uploaded captions first and
+		// fall back to auto-generated ones in the same pass. Writing only one
+		// kind meant a video with manual English subs could be denied its
+		// subtitles while the auto track existed (and vice versa).
+		args = append(args, "--write-subs", "--write-auto-subs")
 		patterns := make([]string, 0, len(options.Languages))
 		for _, language := range options.Languages {
 			patterns = append(patterns, "^"+regexp.QuoteMeta(language)+"$")
 		}
 		args = append(args, "--sub-langs", strings.Join(patterns, ","), "--sub-format", "vtt")
+	}
+	if options.SkipDownload {
+		args = append(args, "--skip-download")
 	}
 	args = append(args, "--", source("video", id).URL)
 	cmd := i.command(ctx, i.executable, args...)
@@ -172,7 +178,15 @@ func (i *Inspector) DownloadWithSubtitles(ctx context.Context, id, directory str
 		return result, ErrDownload
 	}
 	files, err = os.ReadDir(dir)
-	if err != nil || len(files) < 1 || len(files) > 1+len(options.Languages) {
+	if err != nil {
+		return result, ErrDownload
+	}
+	if options.SkipDownload {
+		// Subtitle-only retry: exactly the requested caption files, no video.
+		if len(files) < 1 || len(files) > len(options.Languages) {
+			return result, ErrDownload
+		}
+	} else if len(files) < 1 || len(files) > 1+len(options.Languages) {
 		return result, ErrDownload
 	}
 	found := map[string]bool{}
@@ -184,7 +198,7 @@ func (i *Inspector) DownloadWithSubtitles(ctx context.Context, id, directory str
 			return result, ErrDownload
 		}
 		if name == id+ext && (ext == ".mkv" || ext == ".mp4" || ext == ".webm" || ext == ".mov" || ext == ".m4v") {
-			if result.Video != "" {
+			if options.SkipDownload || result.Video != "" {
 				return result, ErrDownload
 			}
 			result.Video = name
@@ -201,7 +215,7 @@ func (i *Inspector) DownloadWithSubtitles(ctx context.Context, id, directory str
 		found[key] = true
 		result.Subtitles = append(result.Subtitles, SubtitleFile{Language: lang, Name: name})
 	}
-	if result.Video == "" {
+	if result.Video == "" && !options.SkipDownload {
 		return result, ErrDownload
 	}
 	for _, lang := range options.Languages {

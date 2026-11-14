@@ -84,18 +84,21 @@ type AcquisitionTrack struct {
 }
 
 type AcquisitionJob struct {
-	ID             int64              `json:"id"`
-	SourceURL      string             `json:"source_url"`
-	SourceKind     string             `json:"source_kind"`
-	Title          string             `json:"title"`
-	Root           string             `json:"root"`
-	Format         string             `json:"format"`
-	State          string             `json:"state"`
-	TrackCount     int                `json:"track_count"`
-	CompletedCount int                `json:"completed_count"`
-	Error          string             `json:"error"`
-	CreatedAt      int64              `json:"created_at"`
-	UpdatedAt      int64              `json:"updated_at"`
+	ID             int64  `json:"id"`
+	SourceURL      string `json:"source_url"`
+	SourceKind     string `json:"source_kind"`
+	Title          string `json:"title"`
+	Root           string `json:"root"`
+	Format         string `json:"format"`
+	State          string `json:"state"`
+	TrackCount     int    `json:"track_count"`
+	CompletedCount int    `json:"completed_count"`
+	Error          string `json:"error"`
+	CreatedAt      int64  `json:"created_at"`
+	UpdatedAt      int64  `json:"updated_at"`
+	// AcknowledgedAt is a unix timestamp once the owner cleared the job's
+	// attention state; 0 means it still needs attention.
+	AcknowledgedAt int64              `json:"acknowledged_at"`
 	Tracks         []AcquisitionTrack `json:"tracks,omitempty"`
 }
 
@@ -104,6 +107,13 @@ type AcquisitionJobList struct {
 	Page  int              `json:"page"`
 	Total int              `json:"total"`
 	Limit int              `json:"limit"`
+	// Active counts queued/running jobs across every page, not just this
+	// page's items, so status banners never under-report.
+	Active int `json:"active"`
+	// Issues counts jobs that still need attention across every page:
+	// failed jobs, or jobs whose tracks did not all complete. Acknowledged
+	// jobs are excluded so a resolved warning stays resolved.
+	Issues int `json:"issues"`
 }
 
 func (s *Service) SetAudioSource(source AudioSource) { s.audio = source }
@@ -297,8 +307,8 @@ func nullableText(value string) any {
 
 func (s *Service) Acquisition(ctx context.Context, id int64) (AcquisitionJob, error) {
 	var job AcquisitionJob
-	err := s.store.db.QueryRowContext(ctx, `SELECT id,source_url,source_kind,title,root,format,state,track_count,completed_count,error,created_at,updated_at FROM music_acquisition_jobs WHERE id=?`, id).
-		Scan(&job.ID, &job.SourceURL, &job.SourceKind, &job.Title, &job.Root, &job.Format, &job.State, &job.TrackCount, &job.CompletedCount, &job.Error, &job.CreatedAt, &job.UpdatedAt)
+	err := s.store.db.QueryRowContext(ctx, `SELECT id,source_url,source_kind,title,root,format,state,track_count,completed_count,error,created_at,updated_at,acknowledged_at FROM music_acquisition_jobs WHERE id=?`, id).
+		Scan(&job.ID, &job.SourceURL, &job.SourceKind, &job.Title, &job.Root, &job.Format, &job.State, &job.TrackCount, &job.CompletedCount, &job.Error, &job.CreatedAt, &job.UpdatedAt, &job.AcknowledgedAt)
 	if err != nil {
 		return AcquisitionJob{}, err
 	}
@@ -338,7 +348,10 @@ func (s *Service) ListAcquisitions(ctx context.Context, page int) (AcquisitionJo
 	}
 	const limit = 20
 	out := AcquisitionJobList{Items: []AcquisitionJob{}, Page: page, Limit: limit}
-	if err := s.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_acquisition_jobs`).Scan(&out.Total); err != nil {
+	if err := s.store.db.QueryRowContext(ctx, `SELECT COUNT(*),
+		COALESCE(SUM(CASE WHEN state IN ('queued','running') THEN 1 ELSE 0 END),0),
+		COALESCE(SUM(CASE WHEN (state='failed' OR (state='completed' AND completed_count<track_count)) AND acknowledged_at=0 THEN 1 ELSE 0 END),0)
+		FROM music_acquisition_jobs`).Scan(&out.Total, &out.Active, &out.Issues); err != nil {
 		return AcquisitionJobList{}, err
 	}
 	rows, err := s.store.db.QueryContext(ctx, `SELECT id FROM music_acquisition_jobs ORDER BY id DESC LIMIT ? OFFSET ?`, limit, (page-1)*limit)
@@ -358,6 +371,83 @@ func (s *Service) ListAcquisitions(ctx context.Context, page int) (AcquisitionJo
 		out.Items = append(out.Items, job)
 	}
 	return out, rows.Err()
+}
+
+// AcknowledgeAcquisition clears a finished job's attention state without
+// deleting the job or its diagnostic history. Acknowledged jobs stop counting
+// as issues (see ListAcquisitions.Issues) and the banner clears on the next
+// poll. A new failure creates a new unacknowledged job, so dismissing a past
+// problem never hides a fresh one.
+func (s *Service) AcknowledgeAcquisition(ctx context.Context, id int64) (AcquisitionJob, error) {
+	if id < 1 {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	result, err := s.store.db.ExecContext(ctx, `UPDATE music_acquisition_jobs
+		SET acknowledged_at=unixepoch(), updated_at=unixepoch()
+		WHERE id=? AND state IN ('failed','completed')`, id)
+	if err != nil {
+		return AcquisitionJob{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return AcquisitionJob{}, err
+	}
+	if affected == 0 {
+		var exists int
+		if err := s.store.db.QueryRowContext(ctx, `SELECT 1 FROM music_acquisition_jobs WHERE id=?`, id).Scan(&exists); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return AcquisitionJob{}, ErrNotFound
+			}
+			return AcquisitionJob{}, err
+		}
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	return s.Acquisition(ctx, id)
+}
+
+// RetryAcquisitionTracks requeues every failed track of an acquisition job
+// with fresh attempt state and clears the job error. The existing worker loop
+// picks the tracks up; no separate job is created, so dedup and history are
+// preserved.
+func (s *Service) RetryAcquisitionTracks(ctx context.Context, id int64) (AcquisitionJob, error) {
+	if id < 1 {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	tx, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return AcquisitionJob{}, err
+	}
+	defer tx.Rollback()
+	var jobState string
+	if err := tx.QueryRowContext(ctx, `SELECT state FROM music_acquisition_jobs WHERE id=?`, id).Scan(&jobState); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return AcquisitionJob{}, ErrNotFound
+		}
+		return AcquisitionJob{}, err
+	}
+	if jobState == "queued" || jobState == "running" {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE music_acquisition_tracks
+		SET state='queued',error='',updated_at=unixepoch()
+		WHERE job_id=? AND state='failed'`, id)
+	if err != nil {
+		return AcquisitionJob{}, err
+	}
+	retried, err := result.RowsAffected()
+	if err != nil {
+		return AcquisitionJob{}, err
+	}
+	if retried == 0 {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	if err := tx.Commit(); err != nil {
+		return AcquisitionJob{}, err
+	}
+	if err := s.refreshAcquisitionJob(ctx, id); err != nil {
+		return AcquisitionJob{}, err
+	}
+	return s.Acquisition(ctx, id)
 }
 
 // RunAcquisitions processes durable acquisition work. Downloads are never
@@ -716,7 +806,7 @@ func (s *Service) reconcileAcquisitions(ctx context.Context) {
 			return
 		}
 		for _, item := range stuck {
-			if err := s.setAcquisitionTrackState(ctx, item.id, "failed", "The download did not finish. Try this track again."); err != nil {
+			if err := s.setAcquisitionTrackState(ctx, item.id, "failed", "The download did not finish. Use Retry failed tracks in the download queue."); err != nil {
 				s.journalAcquisitionWriteFailure(ctx, item.jobID, "a stuck download could not be marked failed", err)
 				continue
 			}
@@ -788,8 +878,11 @@ func (s *Service) refreshAcquisitionJob(ctx context.Context, jobID int64) error 
 	} else if completed == total {
 		state = "completed"
 	} else if completed > 0 {
-		state = "completed"
-		message = fmt.Sprintf("%d of %d tracks completed. Review failed tracks and retry if needed.", completed, total)
+		// A partial completion still has failed tracks, so the job stays in
+		// an attention state. Reporting it as "completed" while the banner
+		// counts it as an issue was misleading.
+		state = "failed"
+		message = fmt.Sprintf("%d of %d tracks completed. Retry the failed tracks.", completed, total)
 	} else {
 		state = "failed"
 		message = "No tracks completed."

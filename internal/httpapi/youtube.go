@@ -20,7 +20,7 @@ func (s *Server) youtubeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, youtube.ErrInput), errors.Is(err, youtube.ErrInvalidURL):
 		fail(w, 400, "invalid_youtube_source", err.Error())
-	case errors.Is(err, youtube.ErrChanged), errors.Is(err, youtube.ErrBusy):
+	case errors.Is(err, youtube.ErrChanged), errors.Is(err, youtube.ErrBusy), errors.Is(err, youtube.ErrEnglishSubtitles):
 		fail(w, 409, "youtube_changed", err.Error())
 	case errors.Is(err, sql.ErrNoRows):
 		fail(w, 404, "not_found", "YouTube item was not found.")
@@ -160,6 +160,33 @@ func (s *Server) youtubeCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, map[string]string{"status": "cancelled"})
+}
+
+// youtubeRetrySubtitles re-fetches captions for a verified download without
+// redownloading the video. The retry is idempotent: an unknown or non-reviewable
+// job reports 409 instead of fabricating success.
+func (s *Server) youtubeRetrySubtitles(w http.ResponseWriter, r *http.Request) {
+	if !s.youtubeReady(w) {
+		return
+	}
+	if s.youtubeSubtitles == nil {
+		fail(w, 503, "youtube_unavailable", "Subtitle retries are unavailable until the download worker is running.")
+		return
+	}
+	var in struct{}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	retried, err := s.youtubeSubtitles.RetrySubtitles(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.youtubeError(w, err)
+		return
+	}
+	if !retried {
+		s.youtubeError(w, youtube.ErrChanged)
+		return
+	}
+	send(w, 200, map[string]string{"status": "retrying"})
 }
 func (s *Server) youtubeImportReview(w http.ResponseWriter, r *http.Request) {
 	out, err := s.youtube.ReviewImport(r.Context(), s.config, r.PathValue("id"))

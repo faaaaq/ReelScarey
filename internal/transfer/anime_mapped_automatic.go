@@ -121,6 +121,23 @@ func (s *Service) SearchAutomaticAnimeOrder(ctx context.Context, seriesID int64,
 			}
 		}
 	}
+	// An English-dub-only mapped cohort must rank only releases that prove
+	// English audio. Without this filter the best-ranked Japanese-only or
+	// bare-"Dual Audio" pack was selected first and only failed at queue
+	// time, never falling back to a lower-ranked genuine dub.
+	if a.EnglishDubOnly {
+		rule, e := quality.ParseDubRule(a.DubRuleText)
+		if e != nil {
+			return nil, problem("anime_dub_rule_invalid", "The English-dub rule is invalid. Fix it in the Anime settings before searching.")
+		}
+		filtered := []Candidate{}
+		for _, item := range candidates {
+			if rule.Qualifies(item.Title) {
+				filtered = append(filtered, item)
+			}
+		}
+		candidates = filtered
+	}
 	tx, e = s.db.BeginTx(ctx, nil)
 	if e != nil {
 		return nil, e

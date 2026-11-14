@@ -155,6 +155,7 @@ export function MusicDiscover() {
   const [sourceError, setSourceError] = useState("");
   const [chartDownloadID, setChartDownloadID] = useState<number | null>(null);
   const [chartError, setChartError] = useState("");
+  const [jobActionError, setJobActionError] = useState("");
   const job = useLiveResource<MusicAcquisitionJob>(
     jobID ? `/library/music/acquisitions/${jobID}` : null,
     2000,
@@ -250,6 +251,32 @@ export function MusicDiscover() {
       jobs.reload();
     } catch (e) {
       setChartError(messageFor(e));
+    }
+  }
+
+  /** Failed tracks requeue in the same job; history and dedup stay intact. */
+  async function retryJobTracks(item: MusicAcquisitionJob) {
+    setJobActionError("");
+    try {
+      await api(`/library/music/acquisitions/${item.id}/retry`, {
+        method: "POST",
+      });
+      jobs.reload();
+    } catch (e) {
+      setJobActionError(messageFor(e));
+    }
+  }
+
+  /** Clears the job's attention state without deleting the job or its error history. */
+  async function acknowledgeJob(item: MusicAcquisitionJob) {
+    setJobActionError("");
+    try {
+      await api(`/library/music/acquisitions/${item.id}/acknowledge`, {
+        method: "POST",
+      });
+      jobs.reload();
+    } catch (e) {
+      setJobActionError(messageFor(e));
     }
   }
 
@@ -699,6 +726,7 @@ export function MusicDiscover() {
             code={jobs.code}
             retry={jobs.reload}
           />
+          {jobActionError && <Alert kind="danger">{jobActionError}</Alert>}
           {jobs.data && jobs.data.items.length === 0 && (
             <p className="rs-muted">No link or chart downloads yet.</p>
           )}
@@ -711,32 +739,62 @@ export function MusicDiscover() {
                   <th scope="col">State</th>
                   <th scope="col">Progress</th>
                   <th scope="col">Error</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {jobs.data.items.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.id}</td>
-                    <td>{item.title || item.source_url || "—"}</td>
-                    <td>
-                      <Label
-                        kind={
-                          item.state === "completed"
-                            ? "success"
-                            : item.state === "failed"
-                              ? "danger"
-                              : "info"
-                        }
-                      >
-                        {item.state}
-                      </Label>
-                    </td>
-                    <td>
-                      {item.completed_count}/{item.track_count}
-                    </td>
-                    <td>{item.error || "—"}</td>
-                  </tr>
-                ))}
+                {jobs.data.items.map((item) => {
+                  const retryable =
+                    ["failed", "completed"].includes(item.state) &&
+                    item.completed_count < item.track_count;
+                  const acknowledged = item.acknowledged_at > 0;
+                  return (
+                    <tr key={item.id}>
+                      <td>{item.id}</td>
+                      <td>{item.title || item.source_url || "—"}</td>
+                      <td>
+                        <Label
+                          kind={
+                            item.state === "completed"
+                              ? "success"
+                              : item.state === "failed"
+                                ? "danger"
+                                : "info"
+                          }
+                        >
+                          {item.state}
+                          {acknowledged ? " (acknowledged)" : ""}
+                        </Label>
+                      </td>
+                      <td>
+                        {item.completed_count}/{item.track_count}
+                      </td>
+                      <td>{item.error || "—"}</td>
+                      <td>
+                        {retryable && (
+                          <Button
+                            size="1"
+                            variant="soft"
+                            onClick={() => retryJobTracks(item)}
+                          >
+                            Retry failed tracks
+                          </Button>
+                        )}
+                        {["failed", "completed"].includes(item.state) &&
+                          !acknowledged && (
+                            <Button
+                              size="1"
+                              variant="soft"
+                              color="gray"
+                              onClick={() => acknowledgeJob(item)}
+                            >
+                              Clear
+                            </Button>
+                          )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </Table>
           )}

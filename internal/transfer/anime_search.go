@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/quality"
 	"reflect"
@@ -105,9 +107,11 @@ func (s *Service) animeCandidates(ctx context.Context, snap *AnimeSearchSnapshot
 		if e != nil {
 			return nil, problem("anime_dub_rule_invalid", "The English-dub rule is invalid. Fix it in the Anime settings before searching.")
 		}
+		// Qualifies requires the rule to match AND the title to explicitly
+		// name English audio: a bare "Dual Audio" label is not proof.
 		filtered := out[:0]
 		for _, candidate := range out {
-			if rule.Matches(candidate.Title) {
+			if rule.Qualifies(candidate.Title) {
 				filtered = append(filtered, candidate)
 			}
 		}
@@ -117,7 +121,7 @@ func (s *Service) animeCandidates(ctx context.Context, snap *AnimeSearchSnapshot
 }
 func validateAnimeSnapshot(ctx context.Context, tx *sql.Tx, v Candidate) error {
 	if v.AnimeSearch == nil {
-		return nil
+		return validateAnimeDubRequirement(ctx, tx, v)
 	}
 	a := v.AnimeSearch
 	if a.Mode == "mapped" {
@@ -146,21 +150,59 @@ func validateAnimeSnapshot(ctx context.Context, tx *sql.Tx, v Candidate) error {
 }
 
 // validateAnimeDubRelease rechecks the current rule so editing it fences a
-// release that was selected under an older rule.
+// release that was selected under an older rule. Qualifies requires explicit
+// English-audio evidence, not just a rule match.
 func validateAnimeDubRelease(ctx context.Context, tx *sql.Tx, v Candidate) error {
 	if v.AnimeSearch == nil || !v.AnimeSearch.EnglishDubOnly {
 		return nil
 	}
-	ruleText, e := library.AnimePreferencesInTx(ctx, tx)
+	rule, e := currentDubRule(ctx, tx)
 	if e != nil {
 		return e
 	}
+	if !rule.Qualifies(v.Title) {
+		return problem("anime_dub_changed", quality.DubRejectionMessage)
+	}
+	return nil
+}
+
+// currentDubRule loads the current global rule inside the reservation
+// transaction.
+func currentDubRule(ctx context.Context, tx *sql.Tx) (*quality.DubRule, error) {
+	ruleText, e := library.AnimePreferencesInTx(ctx, tx)
+	if e != nil {
+		return nil, e
+	}
 	rule, e := quality.ParseDubRule(ruleText)
 	if e != nil {
-		return problem("anime_dub_rule_invalid", "The English-dub rule is invalid. Fix it in the Anime settings before downloading.")
+		return nil, problem("anime_dub_rule_invalid", "The English-dub rule is invalid. Fix it in the Anime settings before downloading.")
 	}
-	if !rule.Matches(v.Title) {
-		return problem("anime_dub_changed", "This release is not labeled as an English dub under the current rule. Search again.")
+	return rule, nil
+}
+
+// validateAnimeDubRequirement fences every queue path that does not carry an
+// AnimeSearch snapshot — manual interactive queues, RSS/feed candidates and
+// reviewed mapped pack selections. A show flagged English-dub-only can never
+// be queued with a release that does not prove English audio, no matter which
+// path selected it.
+func validateAnimeDubRequirement(ctx context.Context, tx *sql.Tx, v Candidate) error {
+	var dubOnly int
+	e := tx.QueryRowContext(ctx, `SELECT COALESCE(a.english_dub_only,0) FROM media_items m LEFT JOIN anime_search_settings a ON a.media_id=m.id WHERE m.id=? AND m.kind='series'`, v.MovieID).Scan(&dubOnly)
+	if e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			return nil
+		}
+		return e
+	}
+	if dubOnly == 0 {
+		return nil
+	}
+	rule, e := currentDubRule(ctx, tx)
+	if e != nil {
+		return e
+	}
+	if !rule.Qualifies(v.Title) {
+		return problem("anime_dub_changed", quality.DubRejectionMessage)
 	}
 	return nil
 }

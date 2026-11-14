@@ -66,6 +66,10 @@ type Job = {
   speed_bps: number;
   eta_seconds: number;
   created_at: number;
+  /** Captions actually downloaded for this job. */
+  subtitle_languages?: string[];
+  /** False means the required English captions are missing; import is blocked. */
+  english_subtitles: boolean;
 };
 type CustomFile = {
   job_id: string;
@@ -175,7 +179,7 @@ function stateLabel(state: string) {
   const labels: Record<string, string> = {
     queued: "Queued",
     downloading: "Downloading",
-    awaiting_review: "Ready",
+    awaiting_review: "Review needed",
     importing: "Importing",
     completed: "Imported",
     failed: "Failed",
@@ -379,6 +383,21 @@ export function YouTube() {
       setImportReview,
     );
   }
+  /** Subtitle-only retry: the verified video is never redownloaded. */
+  function retrySubtitles(job: Job) {
+    void run(
+      `subtitles-${job.id}`,
+      () =>
+        api<{ status: string }>(
+          `/youtube/jobs/${encodeURIComponent(job.id)}/subtitles`,
+          { method: "POST", body: "{}" },
+        ),
+      () => {
+        setNotice("Subtitle retry started. The video is not downloaded again.");
+        jobs.reload();
+      },
+    );
+  }
   function cancelJob(job: Job) {
     void run(
       job.id,
@@ -486,8 +505,10 @@ export function YouTube() {
             season_number: batchSeason,
             quality: batchQuality,
             subtitles: {
-              languages: [],
-              automatic: false,
+              // English subtitles are mandatory for every YouTube download;
+              // the playlist-to-series path requests them explicitly.
+              languages: ["en"],
+              automatic: true,
               quality: batchQuality,
             },
             entries: chosenEntries.map((entry) => entry.video_id),
@@ -1201,6 +1222,7 @@ export function YouTube() {
                 busy={!!busy}
                 reviewImport={reviewImport}
                 cancelJob={cancelJob}
+                retrySubtitles={retrySubtitles}
               />
             ))}
           </ul>
@@ -1503,16 +1525,23 @@ function JobCard({
   busy,
   reviewImport,
   cancelJob,
+  retrySubtitles,
 }: {
   job: Job;
   busy: boolean;
   reviewImport: (job: Job) => void;
   cancelJob: (job: Job) => void;
+  retrySubtitles: (job: Job) => void;
 }) {
   const percent = Math.min(100, Math.max(0, Math.round(job.progress * 100)));
   const replacement =
     job.state === "awaiting_review" &&
     job.message.includes("Review replacement");
+  // A verified video without English captions is not a usable acquisition.
+  const needsSubtitles =
+    (job.state === "awaiting_review" || job.state === "completed") &&
+    !job.english_subtitles &&
+    job.message.includes("English subtitles");
   return (
     <li className="yt-job">
       <img src={thumb(job.video.id)} alt="" loading="lazy" />
@@ -1545,6 +1574,20 @@ function JobCard({
           </div>
         )}
         {job.message && <span className="yt-job-message">{job.message}</span>}
+        {job.state !== "queued" && job.state !== "downloading" && (
+          <span className="yt-job-subtitles">
+            {job.english_subtitles ? (
+              <Badge color="green">
+                English subs
+                {job.subtitle_languages?.length
+                  ? ` · ${job.subtitle_languages.join(", ")}`
+                  : ""}
+              </Badge>
+            ) : (
+              <Badge color="red">English subs missing</Badge>
+            )}
+          </span>
+        )}
         <div className="rs-form-actions">
           {replacement && (
             <Button asChild size="1" variant="soft">
@@ -1553,6 +1596,16 @@ function JobCard({
               >
                 Review replacement
               </Link>
+            </Button>
+          )}
+          {needsSubtitles && (
+            <Button
+              size="1"
+              variant="soft"
+              disabled={busy}
+              onClick={() => retrySubtitles(job)}
+            >
+              Retry subtitles
             </Button>
           )}
           {job.state === "awaiting_review" && !replacement && (

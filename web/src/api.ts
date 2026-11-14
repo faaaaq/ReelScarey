@@ -238,6 +238,8 @@ export type MusicAcquisitionJob = {
   error: string;
   created_at: number;
   updated_at: number;
+  /** Unix timestamp once the owner cleared the job's attention state; 0 = needs attention. */
+  acknowledged_at: number;
   tracks?: MusicAcquisitionTrack[];
 };
 
@@ -246,6 +248,10 @@ export type MusicAcquisitionJobList = {
   page: number;
   total: number;
   limit: number;
+  /** Queued/running jobs across every page. */
+  active: number;
+  /** Jobs that still need attention across every page (acknowledged excluded). */
+  issues: number;
 };
 
 export type MusicLinkTrack = {

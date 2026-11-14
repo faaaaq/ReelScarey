@@ -252,8 +252,12 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		youtubeStaging = filepath.Join(filepath.Dir(cfg.ConfigDir), "youtube-staging", "work")
 	}
 	var httpYouTubeInspector httpapi.YouTubeInspector
+	var httpYouTubeSubtitles httpapi.YouTubeSubtitleRetrier
 	if youtubeInspector != nil {
 		httpYouTubeInspector = youtubeInspector
+		// The subtitle retry needs the worker's staged-download capabilities,
+		// not the import loop; the acquisition goroutine keeps its own worker.
+		httpYouTubeSubtitles = &youtube.Worker{Store: youtube.NewStore(db), Downloader: youtubeInspector, Prober: transfer.FFprobe{}, StagingRoot: youtubeStaging, MediaRoot: cfg.MediaDir, ConfigRoot: cfg.ConfigDir, Config: cfg}
 	}
 	assets, err := web.Assets()
 	if err != nil {
@@ -269,7 +273,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if err != nil {
 		return false, err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Music: musicService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, Secrets: secretStore, Notify: notifyService, TOTP: totpStore, Emby: embyService, EmbyMonitor: embyMonitor, Jellyfin: jellyfinService, Plex: plexService, VPN: vpnService, Announce: announceService, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Music: musicService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, YouTubeSubtitles: httpYouTubeSubtitles, Secrets: secretStore, Notify: notifyService, TOTP: totpStore, Emby: embyService, EmbyMonitor: embyMonitor, Jellyfin: jellyfinService, Plex: plexService, VPN: vpnService, Announce: announceService, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return false, fmt.Errorf("listen: %w", err)

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/quality"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
 )
@@ -590,6 +591,9 @@ func (s *Service) rssPass(ctx context.Context, c rssClaim) (checked, queued, fai
 	// the whole pass.
 	future := futureRef{service: s, present: idx}
 	profiles := map[int64]quality.Profile{}
+	// Parsed English-dub rules per show, loaded lazily and cached for the
+	// pass so every feed entry of a dub-only show is fenced consistently.
+	dubs := map[int64]*quality.DubRule{}
 	store := quality.New(s.db)
 	for _, src := range feeds {
 		attempted++
@@ -609,7 +613,7 @@ func (s *Service) rssPass(ctx context.Context, c rssClaim) (checked, queued, fai
 				continue
 			}
 			checked++
-			q, retry, e := s.handleRSS(ctx, c, src, item, idx, &future, store, profiles)
+			q, retry, e := s.handleRSS(ctx, c, src, item, idx, &future, store, profiles, dubs)
 			if errors.Is(e, ErrLease) {
 				if fence := s.rssFence(ctx, c); fence != nil {
 					return checked, queued, failures, attempted, fence
@@ -636,7 +640,7 @@ func (s *Service) rssPass(ctx context.Context, c rssClaim) (checked, queued, fai
 
 // handleRSS returns (queued, retry, error). retry keeps the feed entry unseen
 // so a lost lease or a temporary client failure can be tried again.
-func (s *Service) handleRSS(ctx context.Context, c rssClaim, src transfer.RecentFeed, item transfer.RecentItem, idx rssIndex, future *futureRef, store *quality.Store, profiles map[int64]quality.Profile) (bool, bool, error) {
+func (s *Service) handleRSS(ctx context.Context, c rssClaim, src transfer.RecentFeed, item transfer.RecentItem, idx rssIndex, future *futureRef, store *quality.Store, profiles map[int64]quality.Profile, dubs map[int64]*quality.DubRule) (bool, bool, error) {
 	matches := idx.match(item.Title)
 	if len(matches) == 0 {
 		// An entry can fail to match today because its monitored episode has
@@ -701,6 +705,8 @@ func (s *Service) handleRSS(ctx context.Context, c rssClaim, src transfer.Recent
 	var bestProfile quality.Profile
 	bestScore, bestQuality := -1, 0
 	evaluated := false
+	evaluatedCount := 0
+	dubRejected := 0
 	for i := range matches {
 		t := matches[i]
 		if idx.hasFile(t) {
@@ -709,6 +715,17 @@ func (s *Service) handleRSS(ctx context.Context, c rssClaim, src transfer.Recent
 			continue
 		}
 		evaluated = true
+		evaluatedCount++
+		if t.Anime {
+			rule, e := s.animeDubRule(ctx, dubs, t.MediaID)
+			if e != nil {
+				return false, false, e
+			}
+			if rule != nil && !rule.Qualifies(item.Title) {
+				dubRejected++
+				continue
+			}
+		}
 		p, ok := profiles[t.ProfileID]
 		if !ok {
 			var e error
@@ -737,7 +754,13 @@ func (s *Service) handleRSS(ctx context.Context, c rssClaim, src transfer.Recent
 		}
 		// The title matched but no candidate passed the saved profile. Keep one
 		// honest row so the owner can see why a feed entry was not grabbed.
-		if e := s.recordRSS(ctx, c, src, item, searchTarget{}, "rejected", "No feed candidate satisfies this title's quality profile, seed, size or identity rules.", ""); e != nil {
+		message := "No feed candidate satisfies this title's quality profile, seed, size or identity rules."
+		if evaluatedCount > 0 && dubRejected == evaluatedCount {
+			// Every candidate was rejected by the English-audio requirement,
+			// so the owner sees the language reason, not a generic one.
+			message = quality.DubRejectionMessage
+		}
+		if e := s.recordRSS(ctx, c, src, item, searchTarget{}, "rejected", message, ""); e != nil {
 			return false, false, e
 		}
 		return false, false, nil
@@ -769,6 +792,33 @@ func (s *Service) handleRSS(ctx context.Context, c rssClaim, src transfer.Recent
 		return false, false, e
 	}
 	return created, false, nil
+}
+
+// animeDubRule returns the parsed English-dub rule for a show, or nil when the
+// show is not flagged English-dub-only. Results are cached per media for the
+// pass; the anime policy revision fences a change made mid-pass.
+func (s *Service) animeDubRule(ctx context.Context, dubs map[int64]*quality.DubRule, mediaID int64) (*quality.DubRule, error) {
+	if rule, ok := dubs[mediaID]; ok {
+		return rule, nil
+	}
+	policy, e := library.New(s.db).AnimeSearch(ctx, mediaID)
+	if e != nil {
+		return nil, e
+	}
+	if policy.Category != "anime" || !policy.EnglishDubOnly {
+		dubs[mediaID] = nil
+		return nil, nil
+	}
+	prefs, e := library.New(s.db).AnimePreferences(ctx)
+	if e != nil {
+		return nil, e
+	}
+	rule, e := quality.ParseDubRule(prefs.DubRule)
+	if e != nil {
+		return nil, e
+	}
+	dubs[mediaID] = rule
+	return rule, nil
 }
 
 func transferMessage(e error) string {

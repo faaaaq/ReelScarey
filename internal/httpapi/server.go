@@ -79,6 +79,7 @@ type Server struct {
 	kitsuProvider    metadata.AnimeProvider
 	youtube          *youtube.Store
 	youtubeInspector YouTubeInspector
+	youtubeSubtitles YouTubeSubtitleRetrier
 	backups          *backups.Service
 	metadataRefresh  *automation.MetadataRefresher
 	totp             *auth.TOTPStore
@@ -97,6 +98,10 @@ type Dependencies struct {
 	AnimeProvider    metadata.AnimeProvider
 	KitsuProvider    metadata.AnimeProvider
 	YouTubeInspector YouTubeInspector
+	// YouTubeSubtitles re-fetches captions for a verified YouTube download
+	// without redownloading the video. Wired from the composition root with
+	// the live worker; nil disables the retry route.
+	YouTubeSubtitles YouTubeSubtitleRetrier
 	Secrets          *securestore.Store
 	Notify           *notify.Store
 	Emby             *emby.Service
@@ -114,6 +119,12 @@ type Dependencies struct {
 
 type YouTubeInspector interface {
 	Inspect(context.Context, string) (youtube.Inspection, error)
+}
+
+// YouTubeSubtitleRetrier is the narrow worker capability the retry route
+// needs; the rest of the download worker stays outside the HTTP boundary.
+type YouTubeSubtitleRetrier interface {
+	RetrySubtitles(context.Context, string) (bool, error)
 }
 
 type MusicService interface {
@@ -134,6 +145,8 @@ type MusicService interface {
 	StartAcquisition(context.Context, string, string, string, string, string, []music.AcquisitionTrackInput) (music.AcquisitionJob, error)
 	Acquisition(context.Context, int64) (music.AcquisitionJob, error)
 	ListAcquisitions(context.Context, int) (music.AcquisitionJobList, error)
+	AcknowledgeAcquisition(context.Context, int64) (music.AcquisitionJob, error)
+	RetryAcquisitionTracks(context.Context, int64) (music.AcquisitionJob, error)
 	MonitorSettings(context.Context) (music.MusicMonitorSettings, error)
 	SaveMonitorSettings(context.Context, bool, int, int) (music.MusicMonitorSettings, error)
 	ListMonitorSources(context.Context) (music.MusicMonitorSourceList, error)
@@ -225,6 +238,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 		s.metadataRefresh = automation.NewMetadataRefresher(db, deps.Metadata)
 	}
 	s.youtubeInspector = deps.YouTubeInspector
+	s.youtubeSubtitles = deps.YouTubeSubtitles
 	s.bot = deps.Bot
 	s.franchises = deps.Franchises
 	if s.franchises == nil {
@@ -414,6 +428,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/youtube/reviews/{id}/queue", method(http.MethodPost, s.youtubeQueue))
 	mux.HandleFunc("/api/v1/youtube/jobs", method(http.MethodGet, s.youtubeJobs))
 	mux.HandleFunc("/api/v1/youtube/jobs/{id}/import-review", method(http.MethodGet, s.youtubeImportReview))
+	mux.HandleFunc("/api/v1/youtube/jobs/{id}/subtitles", method(http.MethodPost, s.youtubeRetrySubtitles))
 	mux.HandleFunc("/api/v1/youtube/jobs/{id}/import", method(http.MethodPost, s.youtubeImport))
 	mux.HandleFunc("/api/v1/youtube/jobs/{id}/cancel", method(http.MethodPost, s.youtubeCancel))
 	mux.HandleFunc("/api/v1/youtube/files", method(http.MethodGet, s.youtubeFiles))
@@ -495,6 +510,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/artists/{id}/image", method(http.MethodGet, s.musicArtistImage))
 	mux.HandleFunc("/api/v1/library/music/acquisitions", s.musicAcquisitions)
 	mux.HandleFunc("/api/v1/library/music/acquisitions/{id}", method(http.MethodGet, s.musicAcquisition))
+	mux.HandleFunc("/api/v1/library/music/acquisitions/{id}/acknowledge", method(http.MethodPost, s.musicAcquisitionAcknowledge))
+	mux.HandleFunc("/api/v1/library/music/acquisitions/{id}/retry", method(http.MethodPost, s.musicAcquisitionRetry))
 	mux.HandleFunc("/api/v1/library/music/links/preview", method(http.MethodPost, s.musicLinkPreview))
 	mux.HandleFunc("/api/v1/library/music/links", method(http.MethodPost, s.musicLinkAcquire))
 	mux.HandleFunc("/api/v1/library/music/charts", method(http.MethodGet, s.musicCharts))

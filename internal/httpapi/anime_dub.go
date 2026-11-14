@@ -77,7 +77,10 @@ func (s *Server) animeDubTest(w http.ResponseWriter, r *http.Request) {
 		s.animeDubError(w, err)
 		return
 	}
-	send(w, 200, map[string]bool{"matches": rule.Matches(title)})
+	// Report both layers so the owner can see the difference between a rule
+	// match and the structural English-audio requirement: a bare "Dual
+	// Audio" label matches many rules but never qualifies.
+	send(w, 200, map[string]bool{"matches": rule.Matches(title), "qualifies": rule.Qualifies(title)})
 }
 
 func (s *Server) animeEnglishDubAll(w http.ResponseWriter, r *http.Request) {

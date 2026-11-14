@@ -46,6 +46,82 @@ func TestDefaultDubRuleMatches(t *testing.T) {
 	}
 }
 
+// Qualifies is the gate every acquisition path uses for an English-dub-only
+// show: the rule must match AND the title must explicitly name English audio.
+// A bare "Dual Audio" claim, a Japanese-only dual audio release, or subtitle
+// evidence can never satisfy the requirement.
+func TestDefaultDubRuleQualifies(t *testing.T) {
+	rule, err := ParseDubRule(DefaultDubRule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{
+		// Explicit English audio evidence.
+		"[English Dub] Show - 01 [1080p]",
+		"[Eng Dub] Show - 01",
+		"Show - 01 English-Dub",
+		"Show - 01 FuniDub",
+		"Show Y S01E01 - Dual Audio ENG/JPN",
+		"Show Y S01E01 - Dual Audio JPN/ENG",
+		"Show Y S01E01 - Dual Audio [Eng,Jap]",
+		"Show S01E01 Dual Audio (English, Japanese)",
+		"Show - 01 [Dual] [English]",
+		"Show - 01 [English Audio] [1080p]",
+		"Show - 01 Eng Audio",
+	} {
+		if !rule.Qualifies(title) {
+			t.Fatal("expected English-audio qualification", title)
+		}
+	}
+	for _, title := range []string{
+		// Ambiguous or non-English: never qualify.
+		"Show Y S01E01 - Dual Audio",
+		"Show Y S01E01 - Dual Audio - Japanese",
+		"Show S01E01 - Dual Audio JPN",
+		"Show S01E01 - Dual Audio Hindi",
+		"Show - 01 Multi Audio",
+		// Subtitles alone are never English audio.
+		"Show - 01 [Japanese] [English Subs]",
+		"[SubsPlease] Show - 01 [1080p] [Eng Sub]",
+		"Show Y S01E01 - Dual Audio Eng Sub",
+		// No language information at all.
+		"Show - 01 [1080p]",
+		// RAW and Japanese-only.
+		"Show - 01 [RAW]",
+		"Show - 01 [Japanese]",
+		// "Dubbed" without a language does not prove English.
+		"Show - 01 DUBBED",
+	} {
+		if rule.Qualifies(title) {
+			t.Fatal("unexpected qualification without English-audio proof", title)
+		}
+	}
+	// The evidence helper itself is word-bounded and subtitle-aware.
+	for _, title := range []string{
+		"Dual Audio ENG/JPN",
+		"jpn/eng",
+		"[eng] Show - 01",
+		"English Dub",
+		"FuniDub",
+	} {
+		if !EnglishAudioEvidence(title) {
+			t.Fatal("expected English-audio evidence", title)
+		}
+	}
+	for _, title := range []string{
+		"Dual Audio JPN",
+		"Dual Audio",
+		"Japan Engineering 1080p",
+		"Dual Audio Eng Sub",
+		"Show - 01 English Subs",
+		"Show - 01 [1080p]",
+	} {
+		if EnglishAudioEvidence(title) {
+			t.Fatal("unexpected English-audio evidence", title)
+		}
+	}
+}
+
 func TestParseDubRuleValidationAndCustomPhrases(t *testing.T) {
 	if _, err := ParseDubRule(""); err == nil {
 		t.Fatal("empty rule accepted")
