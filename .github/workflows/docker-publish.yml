@@ -185,7 +185,11 @@ jobs:
           bash scripts/container-init-smoke.sh "$image"
           fixture=$(mktemp -d "${TMPDIR:-/tmp}/reelscarey-arm64-accept.XXXXXX")
           name="reelscarey-arm64-accept-$$"
-          cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; rm -rf "$fixture"; }
+          # The fixture bind mount is owned by the container's runtime user,
+          # so the runner account cannot always delete it; hosted runners are
+          # ephemeral, so tolerate the leftover instead of failing a battery
+          # that already passed (observed on run 43590470304).
+          cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; rm -rf "$fixture" 2>/dev/null || true; }
           trap cleanup EXIT
           mkdir -p "$fixture/config" "$fixture/media" "$fixture/downloads"
           docker run -d --name "$name" -p 127.0.0.1:18787:8787 \
