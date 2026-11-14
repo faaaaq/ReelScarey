@@ -206,10 +206,12 @@ jobs:
           }
           ready
           curl --fail --silent http://127.0.0.1:18787/readyz >/dev/null
-          if ! test "$(docker exec "$name" /usr/local/bin/reelscarey version)" = "ReelScarey $expected"; then
-            docker exec "$name" /usr/local/bin/reelscarey version | grep -F "$expected"
-          fi
-          test -f "$fixture/config/reelscarey.db"
+          version_out=$(docker exec "$name" /usr/local/bin/reelscarey version)
+          case "$version_out" in *"$expected"*) ;; *) echo "unexpected version: $version_out" >&2; exit 1 ;; esac
+          # The init makes /config private (0700, container UID), so the
+          # runner user cannot stat through the bind mount; check inside
+          # the container (observed on runs 43590470304/43591353318).
+          docker exec "$name" test -f /config/reelscarey.db
           # Restart and confirm clean shutdown and durable state.
           key_before=$(docker exec "$name" sha256sum /config/secrets.key)
           docker stop --time 30 "$name" >/dev/null
