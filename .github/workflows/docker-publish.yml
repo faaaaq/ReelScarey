@@ -309,9 +309,13 @@ jobs:
         working-directory: ${{ runner.temp }}/digests
         run: |
           image="${{ vars.DOCKERHUB_USERNAME }}/reelscarey"
+          # Route the comma-separated tag list through a variable: IFS field
+          # splitting applies to expansions, not to literal for-list words
+          # (the inline form kept the comma inside one tag — run 43609480893).
+          tag_list="${{ steps.tags.outputs.value }}"
           tag_args=""
           oldIFS=$IFS; IFS=','
-          for tag in ${{ steps.tags.outputs.value }}; do tag_args="$tag_args -t $tag"; done
+          for tag in $tag_list; do tag_args="$tag_args -t $tag"; done
           IFS=$oldIFS
           # Merge both per-architecture manifests under the SAME tags. Each
           # digest file must contain exactly one full sha256:... reference;
