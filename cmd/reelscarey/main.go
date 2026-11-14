@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -232,7 +233,17 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if youtubePath == "" {
 		youtubePath = "yt-dlp"
 	}
-	youtubeInspector, _ := youtube.NewInspector(youtubePath)
+	youtubeInspector, youtubeInspectorErr := youtube.NewInspector(youtubePath)
+	if youtubeInspectorErr != nil {
+		// The YouTube subsystem failing to start (for example a missing
+		// yt-dlp executable) must be visible, not silently swallowed. The
+		// executable path is local configuration, not a secret; the API layer
+		// already answers YouTube requests with a 503 youtube_unavailable
+		// notice while the inspector is nil.
+		logger.Warn("YouTube subsystem failed to start; YouTube sourcing is unavailable",
+			"error", youtubeInspectorErr,
+			"executable", youtubePath)
+	}
 	if youtubeInspector != nil {
 		musicService.SetAudioSource(youtubeAudioSource{inspector: youtubeInspector})
 	}
@@ -268,108 +279,95 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	defer workers.report()
 
 	notifyDone := make(chan struct{})
-	go func() {
-		defer close(notifyDone)
+	go guardWorker(logger, "notify", notifyDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			notifyService.Run(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(notifyDone, "notify")
 
 	musicImportsDone := make(chan struct{})
-	go func() {
-		defer close(musicImportsDone)
+	go guardWorker(logger, "musicImports", musicImportsDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			musicService.RunImports(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(musicImportsDone, "musicImports")
 	musicAcquisitionsDone := make(chan struct{})
-	go func() {
-		defer close(musicAcquisitionsDone)
+	go guardWorker(logger, "musicAcquisitions", musicAcquisitionsDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			musicService.RunAcquisitions(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(musicAcquisitionsDone, "musicAcquisitions")
 	musicMonitorDone := make(chan struct{})
-	go func() {
-		defer close(musicMonitorDone)
+	go guardWorker(logger, "musicMonitor", musicMonitorDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			musicService.RunMonitorLoop(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(musicMonitorDone, "musicMonitor")
 	musicScheduleDone := make(chan struct{})
-	go func() {
-		defer close(musicScheduleDone)
+	go guardWorker(logger, "musicSchedule", musicScheduleDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			musicService.RunScheduleLoop(workerCtx)
 		}
-	}()
+	})
 	defer workers.join(musicScheduleDone, "musicSchedule")
 	musicWorkflowDone := make(chan struct{})
-	go func() {
-		defer close(musicWorkflowDone)
+	go guardWorker(logger, "musicWorkflow", musicWorkflowDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			musicService.RunWorkflow(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(musicWorkflowDone, "musicWorkflow")
 	subscriptionsDone := make(chan struct{})
-	go func() {
-		defer close(subscriptionsDone)
+	go guardWorker(logger, "subscriptions", subscriptionsDone, func() {
 		if youtubeInspector != nil && waitRecovery(workerCtx, cfg.ConfigDir) {
 			youtube.NewStore(db).RunSubscriptions(workerCtx, youtubeInspector, logger)
 		}
-	}()
+	})
 	defer workers.join(subscriptionsDone, "subscriptions")
 	seriesSourcesDone := make(chan struct{})
-	go func() {
-		defer close(seriesSourcesDone)
+	go guardWorker(logger, "seriesSources", seriesSourcesDone, func() {
 		if youtubeInspector != nil && waitRecovery(workerCtx, cfg.ConfigDir) {
 			youtube.NewStore(db).RunSeriesSources(workerCtx, youtubeInspector, logger)
 		}
-	}()
+	})
 	defer workers.join(seriesSourcesDone, "seriesSources")
 	metadataDone := make(chan struct{})
-	go func() {
-		defer close(metadataDone)
+	go guardWorker(logger, "metadata", metadataDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			metadataRefresh.Run(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(metadataDone, "metadata")
 	backupDone := make(chan struct{})
-	go func() { defer close(backupDone); backupService.Run(workerCtx, logger) }()
+	go guardWorker(logger, "backup", backupDone, func() { backupService.Run(workerCtx, logger) })
 	defer workers.join(backupDone, "backup")
 	botDone := make(chan struct{})
-	go func() {
-		defer close(botDone)
+	go guardWorker(logger, "bot", botDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			botService.Run(workerCtx)
 		}
-	}()
+	})
 	defer workers.join(botDone, "bot")
 	listsDone := make(chan struct{})
-	go func() {
-		defer close(listsDone)
+	go guardWorker(logger, "lists", listsDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			requests.NewLists(db, secretStore).Run(workerCtx)
 		}
-	}()
+	})
 	defer workers.join(listsDone, "lists")
 	discordDone := make(chan struct{})
-	go func() {
-		defer close(discordDone)
+	go guardWorker(logger, "discord", discordDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			requests.NewDiscord(db, secretStore).Run(workerCtx)
 		}
-	}()
+	})
 	defer workers.join(discordDone, "discord")
 	youtubeDone := make(chan struct{})
-	go func() {
-		defer close(youtubeDone)
+	go guardWorker(logger, "youtube", youtubeDone, func() {
 		if youtubeInspector == nil || !waitRecovery(workerCtx, cfg.ConfigDir) {
 			return
 		}
@@ -394,18 +392,16 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 				}
 			}
 		}
-	}()
+	})
 	defer workers.join(youtubeDone, "youtube")
 	workerDone := make(chan struct{})
-	go func() {
-		defer close(workerDone)
+	go guardWorker(logger, "worker", workerDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			transferService.Run(workerCtx, logger)
 		}
-	}()
+	})
 	analysisDone := make(chan struct{})
-	go func() {
-		defer close(analysisDone)
+	go guardWorker(logger, "analysis", analysisDone, func() {
 		if !waitRecovery(workerCtx, cfg.ConfigDir) {
 			return
 		}
@@ -415,111 +411,98 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		}
 		worker := &mediaanalysis.Worker{DB: db, MediaRoot: cfg.MediaDir, Binary: probe}
 		worker.Run(workerCtx, logger)
-	}()
+	})
 	defer workers.join(analysisDone, "analysis")
 	nfoDone := make(chan struct{})
-	go func() {
-		defer close(nfoDone)
+	go guardWorker(logger, "nfo", nfoDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			(&nfoexport.Worker{DB: db, MediaRoot: cfg.MediaDir}).Run(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(nfoDone, "nfo")
 	artworkDone := make(chan struct{})
-	go func() {
-		defer close(artworkDone)
+	go guardWorker(logger, "artwork", artworkDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			(&artworkexport.Worker{DB: db, MediaRoot: cfg.MediaDir}).Run(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(artworkDone, "artwork")
 	bundledDone := make(chan struct{})
-	go func() {
-		defer close(bundledDone)
+	go guardWorker(logger, "bundled", bundledDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			transferService.SuperviseBundled(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(bundledDone, "bundled")
 	usenetBuiltinDone := make(chan struct{})
-	go func() {
-		defer close(usenetBuiltinDone)
+	go guardWorker(logger, "usenetBuiltin", usenetBuiltinDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			transferService.SuperviseBundledUsenet(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(usenetBuiltinDone, "usenetBuiltin")
 	seedingDone := make(chan struct{})
-	go func() {
-		defer close(seedingDone)
+	go guardWorker(logger, "seeding", seedingDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			transferService.SuperviseTorrentPolicies(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(seedingDone, "seeding")
 	automationDone := make(chan struct{})
-	go func() {
-		defer close(automationDone)
+	go guardWorker(logger, "automation", automationDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			automationService.Run(workerCtx, logger)
 		}
-	}()
+	})
 	rssDone := make(chan struct{})
-	go func() {
-		defer close(rssDone)
+	go guardWorker(logger, "rss", rssDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			automationService.RunRSS(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(rssDone, "rss")
 	announceAutomationDone := make(chan struct{})
-	go func() {
-		defer close(announceAutomationDone)
+	go guardWorker(logger, "announceAutomation", announceAutomationDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			automationService.RunAnnounces(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(announceAutomationDone, "announceAutomation")
 	subtitleDone := make(chan struct{})
-	go func() {
-		defer close(subtitleDone)
+	go guardWorker(logger, "subtitle", subtitleDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			subtitleService.Run(workerCtx, logger)
 		}
-	}()
+	})
 	vpnDone := make(chan struct{})
-	go func() {
-		defer close(vpnDone)
+	go guardWorker(logger, "vpn", vpnDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			vpnService.Supervise(workerCtx, logger)
 		}
-	}()
+	})
 	defer workers.join(subtitleDone, "subtitle")
 	defer workers.join(vpnDone, "vpn")
 	announceDone := make(chan struct{})
-	go func() {
-		defer close(announceDone)
+	go guardWorker(logger, "announce", announceDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			announceService.Run(workerCtx)
 		}
-	}()
+	})
 	defer workers.join(announceDone, "announce")
 
 	embyDone := make(chan struct{})
-	go func() {
-		defer close(embyDone)
+	go guardWorker(logger, "emby", embyDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			embyMonitor.Run(workerCtx)
 		}
-	}()
+	})
 	defer workers.join(embyDone, "emby")
 	organizationDone := make(chan struct{})
-	go func() {
-		defer close(organizationDone)
+	go guardWorker(logger, "organization", organizationDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
 			organizationService.Run(workerCtx)
 		}
-	}()
+	})
 	defer workers.join(organizationDone, "organization")
 	defer workers.join(automationDone, "automation")
 	defer workers.join(workerDone, "worker")
@@ -552,6 +535,23 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		}
 		return false, nil
 	}
+}
+
+// guardWorker contains a panic in one boot worker so a defect in a single
+// background feature cannot take the HTTP server and every other worker down
+// with it. The panic is logged with the worker name and the goroutine stack,
+// the done channel is still closed so the shutdown drain joins cleanly, and
+// the worker stays stopped: recovery bounds the blast radius, it does not
+// resume the failed feature or conceal the defect. Durable leases and
+// recovery journals reconcile the interrupted work on the next start.
+func guardWorker(logger *slog.Logger, name string, done chan struct{}, run func()) {
+	defer close(done)
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("background worker panicked and stopped; its durable state will be reconciled on the next start", "worker", name, "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
+		}
+	}()
+	run()
 }
 
 func waitRecovery(ctx context.Context, dir string) bool {

@@ -13,7 +13,12 @@ import (
 var standardLabel = regexp.MustCompile(`(?i)(?:s(?:eason)?[ ._-]*([0-9]{1,4})[ ._-]*e(?:p(?:isode)?s?)?[ ._-]*([0-9]{1,5})|([0-9]{1,4})x([0-9]{1,5}))`)
 var chainLabel = regexp.MustCompile(`(?i)^[ ._]*e(?:p(?:isode)?s?)?[ ._-]*([0-9]{1,5})`)
 var rangeLabel = regexp.MustCompile(`(?i)^[ ._]*-[ ._]*(?:(e(?:p(?:isode)?s?)?)[ ._-]*)?([0-9]{1,5})`)
-var extraStandardLabel = regexp.MustCompile(`(?i)^[ ._,+&/\-]*(?:s(?:eason)?[ ._-]*[0-9]|e(?:p(?:isode)?s?)?[ ._-]*[0-9]|x[0-9]|(?:and|to)[ ._-]+[0-9])`)
+
+// The x-form alternative requires a non-digit boundary after one or two
+// digits so codec tokens (x264, x265, x266, x265-10bit) after an episode
+// label never read as a second episode label; genuine extra labels such as
+// "x03" or "x2" still match.
+var extraStandardLabel = regexp.MustCompile(`(?i)^[ ._,+&/\-]*(?:s(?:eason)?[ ._-]*[0-9]|e(?:p(?:isode)?s?)?[ ._-]*[0-9]|x[0-9]{1,2}(?:[^0-9]|$)|(?:and|to)[ ._-]+[0-9])`)
 var remainingEpisodeLabel = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:s(?:eason)?[ ._-]*[0-9]{1,4}|e(?:p(?:isode)?s?)?[ ._-]*[0-9]{1,5}|x[0-9]{1,2})(?:$|[^a-z0-9])`)
 var numericTitleTail = regexp.MustCompile(`(?i)^[ ._]*[-–—][ ._]*[0-9]{1,5}(?:[^a-z0-9]|$)`)
 

@@ -34,6 +34,44 @@ func TestExpandedTVLabelsRemainExactSingleEpisodeEvidence(t *testing.T) {
 	}
 }
 
+// Codec tokens after an episode label must not read as a second episode
+// label: "S01E02.x264" is one episode with an x264 codec, not an ambiguous
+// span. The x-form second-label alternative must keep matching genuine
+// extra labels ("S01E02 x03", "1x02x03") while never matching a codec token.
+func TestCodecTokensAfterEpisodeLabelsDoNotHideTheEpisode(t *testing.T) {
+	for _, title := range []string{
+		"Show S01E02.x264",
+		"Show S01E02 x264",
+		"Show S01E02.x265",
+		"Show S01E02 x265",
+		"Show S01E02 x265-10bit",
+		"Show S01E02.h264",
+		"Show S01E02 x266",
+		"Show 1x02.x264",
+		"Show 1x02 x264",
+	} {
+		season, numbers, _, _, ok := EpisodeSpan(title)
+		if !ok || season != 1 || !reflect.DeepEqual(numbers, []int{2}) {
+			t.Fatalf("codec token after the episode label rejected the release: %q => %d %v %v", title, season, numbers, ok)
+		}
+	}
+	for _, title := range []string{
+		"Show S01E02 x03",
+		"Show S01E02x03",
+		"Show 1x02x03",
+		"Show S01E02 x2",
+		"Show S01E02 x265.E01",
+		"Show S01E02.x264.E02",
+		// Run-together tokens stay rejected by the existing word-boundary
+		// guard, never by the codec-aware x alternative.
+		"Show S01E02x265",
+	} {
+		if _, numbers, _, _, ok := EpisodeSpan(title); ok {
+			t.Fatalf("ambiguous second episode label accepted: %q => %v", title, numbers)
+		}
+	}
+}
+
 func TestNumericEpisodeTitlesAreNotTreatedAsRanges(t *testing.T) {
 	single := []struct {
 		title  string
