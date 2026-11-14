@@ -36,6 +36,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  // Last known session, kept separately from `status` so the app can stay
+  // mounted (preserving in-progress work) while a re-authentication overlay
+  // is shown after a 401.
+  const [session, setSession] = useState<Session>();
+  // Whether an authenticated session was ever established in this page load.
+  // Once true, a later 401 shows the sign-in form as an overlay instead of
+  // replacing the whole app, which would destroy unsaved work.
+  const [hadSession, setHadSession] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -46,6 +54,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
       .then((result) => {
         if (!controller.signal.aborted) {
           setCSRFToken(result.session?.csrf_token ?? "");
+          if (result.authenticated && result.session) {
+            setSession(result.session);
+            setHadSession(true);
+          }
           setStatus(result);
         }
       })
@@ -60,7 +72,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     function expired() {
       setCSRFToken("");
-      setStatus({ authenticated: false, setup_required: false });
+      // Only clear the status when a session was actually active; repeated
+      // 401s while the re-authentication overlay is already up must not
+      // re-render the whole tree.
+      setStatus((prev) =>
+        prev?.authenticated
+          ? { authenticated: false, setup_required: false }
+          : prev,
+      );
     }
     window.addEventListener("reelscarey:unauthorized", expired);
     return () => window.removeEventListener("reelscarey:unauthorized", expired);
@@ -68,6 +87,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     await api("/auth/logout", { method: "POST", body: "{}" });
     setCSRFToken("");
+    setSession(undefined);
+    setHadSession(false);
     setStatus({ authenticated: false, setup_required: false });
   }, []);
   if (loading || error)
@@ -84,17 +105,50 @@ export function AuthGate({ children }: { children: ReactNode }) {
         </div>
       </div>
     );
-  if (!status?.authenticated || !status.session)
-    return (
+  if (!status?.authenticated || !status.session) {
+    const form = (
       <AuthForm
         setup={status?.setup_required ?? false}
-        onSignedIn={(session) => {
+        onSignedIn={(next) => {
           if (status?.setup_required) navigate("/setup", { replace: true });
-          setCSRFToken(session.csrf_token);
-          setStatus({ authenticated: true, setup_required: false, session });
+          setCSRFToken(next.csrf_token);
+          setSession(next);
+          setHadSession(true);
+          setStatus({
+            authenticated: true,
+            setup_required: false,
+            session: next,
+          });
         }}
       />
     );
+    if (hadSession && session) {
+      // The session expired mid-use. Keep the app mounted underneath so
+      // unsaved work (forms, drafts, pending edits) survives, and collect a
+      // fresh sign-in on top. Authentication is not weakened: every API call
+      // still fails with 401 until the user signs in again, and no route
+      // change happens behind the user's back.
+      return (
+        <AuthContext.Provider value={{ session, signOut }}>
+          {children}
+          <div
+            className="rs-auth rs-auth-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Session expired"
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1000,
+            }}
+          >
+            {form}
+          </div>
+        </AuthContext.Provider>
+      );
+    }
+    return form;
+  }
   return (
     <AuthContext.Provider value={{ session: status.session, signOut }}>
       {children}
