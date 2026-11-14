@@ -350,7 +350,8 @@ func TestAnnounceDeferralFollowsAirDateChange(t *testing.T) {
 	}
 }
 
-func insertAnnounceEvent(t *testing.T, f fixture, releaseName string, attempts int) {	t.Helper()
+func insertAnnounceEvent(t *testing.T, f fixture, releaseName string, attempts int) {
+	t.Helper()
 	sealed, err := f.secrets.Seal("announce:announce-fixture", []byte(`{"nick":"e2e-bot","key":"e2e-passkey"}`))
 	if err != nil {
 		t.Fatal(err)
