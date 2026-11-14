@@ -340,6 +340,23 @@ func (s *Service) ProcessRSS(ctx context.Context) (bool, error) {
 
 type rssEpisodeKey struct{ season, episode int }
 
+// futureRef builds the not-yet-aired target index at most once per feed pass.
+type futureRef struct {
+	service *Service
+	present rssIndex
+	once    bool
+	idx     rssIndex
+	err     error
+}
+
+func (f *futureRef) get(ctx context.Context) (rssIndex, error) {
+	if !f.once {
+		f.once = true
+		f.idx, f.err = f.service.futureIndex(ctx, f.present, rssTargetLimit)
+	}
+	return f.idx, f.err
+}
+
 type rssIndex struct {
 	byEpisode    map[rssEpisodeKey][]searchTarget
 	byYear       map[int][]searchTarget
@@ -475,6 +492,41 @@ func (s *Service) rssTargets(ctx context.Context) (rssIndex, error) {
 	return idx, rows.Close()
 }
 
+// futureIndex builds the not-yet-aired companion of rssTargets: the identical
+// eligibility query with the air-date window inverted, so an unmatched feed
+// entry or announce can be told apart from a genuine title mismatch when the
+// only failing condition is that the episode has not aired yet. The window
+// contains future-dated TV episodes only — movie targets are skipped here
+// because a movie has no date gate and can never be deferred on one. The
+// registered file maps are shared with the present index so hasFile stays
+// consistent.
+func (s *Service) futureIndex(ctx context.Context, present rssIndex, limit int) (rssIndex, error) {
+	date := s.now().Format("2006-01-02")
+	rows, e := s.db.QueryContext(ctx, `SELECT * FROM (`+futureTargetSQL+`) WHERE 1=1 ORDER BY key LIMIT ?`, date, 1, limit)
+	if e != nil {
+		return rssIndex{}, e
+	}
+	idx := rssIndex{
+		byEpisode:    map[rssEpisodeKey][]searchTarget{},
+		byYear:       map[int][]searchTarget{},
+		movieFiles:   present.movieFiles,
+		episodeFiles: present.episodeFiles,
+	}
+	for rows.Next() {
+		t, e := scanTarget(rows)
+		if e != nil {
+			rows.Close()
+			return rssIndex{}, e
+		}
+		if !t.TV {
+			// Movie targets carry no date and are never deferred.
+			continue
+		}
+		idx.byEpisode[rssEpisodeKey{t.Season, t.Episode}] = append(idx.byEpisode[rssEpisodeKey{t.Season, t.Episode}], t)
+	}
+	return idx, rows.Err()
+}
+
 func (s *Service) rssSeen(ctx context.Context, indexer, key string) (bool, error) {
 	var n int
 	e := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM rss_seen WHERE indexer_id=? AND release_key=?`, indexer, key).Scan(&n)
@@ -533,6 +585,10 @@ func (s *Service) rssPass(ctx context.Context, c rssClaim) (checked, queued, fai
 	if e != nil {
 		return 0, 0, 0, 0, e
 	}
+	// The not-yet-aired companion index is built lazily: only a pass that
+	// meets an unmatched entry pays for the extra query, and one build serves
+	// the whole pass.
+	future := futureRef{service: s, present: idx}
 	profiles := map[int64]quality.Profile{}
 	store := quality.New(s.db)
 	for _, src := range feeds {
@@ -553,7 +609,7 @@ func (s *Service) rssPass(ctx context.Context, c rssClaim) (checked, queued, fai
 				continue
 			}
 			checked++
-			q, retry, e := s.handleRSS(ctx, c, src, item, idx, store, profiles)
+			q, retry, e := s.handleRSS(ctx, c, src, item, idx, &future, store, profiles)
 			if errors.Is(e, ErrLease) {
 				if fence := s.rssFence(ctx, c); fence != nil {
 					return checked, queued, failures, attempted, fence
@@ -580,9 +636,53 @@ func (s *Service) rssPass(ctx context.Context, c rssClaim) (checked, queued, fai
 
 // handleRSS returns (queued, retry, error). retry keeps the feed entry unseen
 // so a lost lease or a temporary client failure can be tried again.
-func (s *Service) handleRSS(ctx context.Context, c rssClaim, src transfer.RecentFeed, item transfer.RecentItem, idx rssIndex, store *quality.Store, profiles map[int64]quality.Profile) (bool, bool, error) {
+func (s *Service) handleRSS(ctx context.Context, c rssClaim, src transfer.RecentFeed, item transfer.RecentItem, idx rssIndex, future *futureRef, store *quality.Store, profiles map[int64]quality.Profile) (bool, bool, error) {
 	matches := idx.match(item.Title)
 	if len(matches) == 0 {
+		// An entry can fail to match today because its monitored episode has
+		// not aired yet. Record that explicitly instead of silently skipping
+		// it: feed entries are seen once, so this row is the owner's only
+		// trace of why an early release was not grabbed automatically.
+		if f, e := future.get(ctx); e != nil {
+			return false, false, e
+		} else if fm := f.match(item.Title); len(fm) > 0 {
+			distinct := map[int64]bool{}
+			notAired := []searchTarget{}
+			for _, t := range fm {
+				if t.Anime || t.Season <= 0 || idx.hasFile(t) {
+					continue
+				}
+				distinct[t.MediaID] = true
+				notAired = append(notAired, t)
+			}
+			if len(distinct) > 1 {
+				if e := s.recordRSS(ctx, c, src, item, searchTarget{}, "ambiguous", "This release matches more than one monitored future episode, so it was not grabbed automatically.", ""); e != nil {
+					return false, false, e
+				}
+			} else if len(notAired) == 1 {
+				// The same honesty rule as the announce path: record the
+				// deferral only when the release would actually satisfy the
+				// target's saved profile; otherwise the profile rejection is
+				// the owner-visible outcome.
+				t := notAired[0]
+				p, ok := profiles[t.ProfileID]
+				if !ok {
+					p, e = store.Get(ctx, t.ProfileID)
+					if e != nil {
+						return false, false, e
+					}
+					profiles[t.ProfileID] = p
+				}
+				d := quality.Evaluate(p, t.Target, quality.Release{ID: item.Key, Title: item.Title, Size: item.Size, Seeders: item.Seeders, Protocol: item.Protocol, Published: item.Published, Now: s.now().Unix()})
+				if !d.Eligible {
+					if e := s.recordRSS(ctx, c, src, item, searchTarget{}, "rejected", "No feed candidate satisfies this title's quality profile, seed, size or identity rules.", ""); e != nil {
+						return false, false, e
+					}
+				} else if e := s.recordRSS(ctx, c, src, item, searchTarget{}, "not_aired", "The release matches a monitored episode whose listed air date has not arrived. Automatic grabbing for that episode begins on its air date.", ""); e != nil {
+					return false, false, e
+				}
+			}
+		}
 		return false, false, nil
 	}
 	var best *searchTarget

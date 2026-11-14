@@ -128,6 +128,11 @@ standard `SxxEyy` token, and titles without an exact year stay with the schedule
 or manual flows. Each `(indexer, feed identity)` pair is processed once; seen
 keys are retained for 180 days and the newest 2,000 result rows are kept.
 
+An entry whose release matches a monitored episode that has not aired yet is
+recorded once with outcome `not_aired`; the episode's automatic grabbing begins
+on its listed air date, when the scheduled search or a later feed entry can
+grab it.
+
 Indexer errors are per source: one failing feed does not stop the others and the
 next cycle retries it. A temporary client or storage failure leaves the entry
 unseen for the next check; a profile rejection is recorded once. The interval

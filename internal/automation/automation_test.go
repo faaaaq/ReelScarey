@@ -178,6 +178,14 @@ type fixture struct {
 
 func setup(t *testing.T) fixture {
 	t.Helper()
+	return setupFixture(t, &client{})
+}
+
+// setupFixture is setup with an injectable download client so announce
+// end-to-end tests can record submissions and failures at the client
+// boundary while the whole real pipeline still runs.
+func setupFixture(t *testing.T, cl transfer.Client) fixture {
+	t.Helper()
 	ctx := context.Background()
 	dir := t.TempDir()
 	db, e := database.Open(ctx, dir)
@@ -191,7 +199,7 @@ func setup(t *testing.T) fixture {
 	}
 	i := &indexer{title: "A.Test.Movie.2020.1080p.English.WEB"}
 	cfg := config.Config{ConfigDir: dir, DownloadsDir: filepath.Join(dir, "downloads"), MediaDir: filepath.Join(dir, "media")}
-	w := transfer.New(db, secrets, cfg, &client{}, i)
+	w := transfer.New(db, secrets, cfg, cl, i)
 	key, password := "test-api-key", "test-password"
 	if e = w.ConfigureIndexer(ctx, transfer.IndexerUpdate{URL: "http://indexer.invalid", APIKey: &key}); e != nil {
 		t.Fatal(e)

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/quality"
@@ -30,6 +31,16 @@ type searchTarget struct {
 	VersionRevision    int
 	NumberingRevision  int64
 }
+
+// futureTargetSQL selects the same eligible targets with the TV air-date
+// window inverted: only ordinary episodes whose valid air date is strictly
+// after today's server-local date. The movie branch has no date predicate,
+// so futureTargetSQL also yields movies; the futureIndex builder below keeps
+// episode targets only, because a movie can never be deferred on its date.
+// It lets automation answer "this release matches a monitored episode that
+// has not aired yet" instead of collapsing an early release into a generic
+// title mismatch.
+var futureTargetSQL = strings.Replace(targetSQL, `e.air_date<=?`, `e.air_date>?`, 1)
 
 // Monitored titles with no active reservation qualify. Movies are searched
 // regardless of their saved release date so a release that lands earlier than

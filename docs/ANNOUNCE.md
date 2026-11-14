@@ -222,6 +222,8 @@ Opted-in announces create durable work rather than being downloaded inline:
   - `queued` — a matching announce was queued automatically.
   - `already_tracked` — the announce already has a download record.
   - `unmatched` — no monitored missing movie or ordinary episode matched.
+  - `not_aired` — the release matches a monitored episode whose listed air
+    date has not arrived (see **Not-yet-aired episodes** below).
   - `ambiguous` — the title matches more than one saved title.
   - `rejected` — no candidate satisfies the profile's rules.
   - `stale_policy` / `stale_source` — the saved target, profile, source or
@@ -230,6 +232,18 @@ Opted-in announces create durable work rather than being downloaded inline:
   - `capture_only` — the tracker, the source, or the release was not eligible
     for automatic grabbing.
 
+
+### Not-yet-aired episodes
+
+TV episodes are grabbed on or after their listed air date (see
+[automation](AUTOMATION.md)). A valid announce that arrives before that date is
+therefore not a title mismatch. The processor records the explicit
+`not_aired` outcome naming the listed date and defers the event to the
+air-date local midnight (at most 30 days ahead), when the ordinary match runs
+again and the same release is grabbed if it still satisfies the profile. A
+deferral that outlives its attempt limit, or an air date more than 30 days
+away, is completed as `not_aired` with an actionable message instead of being
+parked forever.
 ### How the download URL is built
 
 Automatic grabbing does **not** trust the announce link or any indexer

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
 	"path"
 	"strings"
 	"sync"
@@ -72,6 +73,22 @@ func New(db *sql.DB, secrets *securestore.Store, cfg config.Config, client Clien
 	s.usenet.notify = make(chan struct{}, 1)
 	s.usenet.label = "built-in Usenet client"
 	return s
+}
+
+// SetDirectHTTPClient replaces the HTTP client of one built-in Direct adapter
+// ("iptorrents", "xspeeds", "nyaa" or "rss") so isolated tests can serve the
+// adapter's fixed origins locally. The application never calls it; these
+// adapters are the one network boundary the constructor cannot inject. It
+// reports false when the kind is not a built-in Direct adapter.
+func (s *Service) SetDirectHTTPClient(kind string, client *http.Client) bool {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	d, ok := s.adapters[kind].(*Direct)
+	if !ok || d == nil {
+		return false
+	}
+	d.HTTP = client
+	return true
 }
 
 // SetLogger records the process logger used by best-effort side effects that

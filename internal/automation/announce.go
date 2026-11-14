@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"time"
@@ -32,6 +33,10 @@ const (
 	// that keeps failing is surfaced for review instead of retrying forever.
 	announceMaxAttempts = 8
 	announceMaxAge      = int64(24 * 3600)
+	// announceDeferHorizon bounds how far in the future an unaired episode's
+	// announce is rescheduled. Beyond it the event is completed with an
+	// explicit reason instead of parking durable work for months.
+	announceDeferHorizon = int64(30 * 86400)
 	// announceBackoff is the first retry delay; it doubles per attempt up to the
 	// cap.
 	announceBackoff    = int64(30)
@@ -253,7 +258,7 @@ func (s *Service) handleAnnounce(ctx context.Context, owner string, ev announceE
 		distinct[t.MediaID] = true
 	}
 	if len(eligible) == 0 {
-		return false, s.completeAnnounce(ctx, owner, ev, "done", "unmatched", "No monitored missing movie or ordinary single episode matched this announce title.", "", nil)
+		return false, s.unmatchedAnnounce(ctx, owner, ev, idx, store, profiles)
 	}
 	if len(distinct) > 1 {
 		// A title that resolves to more than one canonical title is ambiguous
@@ -332,6 +337,85 @@ func (s *Service) handleAnnounce(ctx context.Context, owner string, ev announceE
 		message = "This announce already has a download record. Review its state in Activity."
 	}
 	return created, s.completeAnnounce(ctx, owner, ev, "done", outcome, message, job.ID, nil)
+}
+
+// unmatchedAnnounce resolves an announce that matched no currently eligible
+// target. A release for a monitored ordinary episode whose valid air date is
+// still in the future is not a title mismatch: the documented policy grabs TV
+// episodes on or after their listed air date, so the announce is deferred to
+// that date (bounded by announceDeferHorizon and the attempt limit) with the
+// explicit outcome not_aired. Everything else stays unmatched.
+func (s *Service) unmatchedAnnounce(ctx context.Context, owner string, ev announceEvent, idx rssIndex, store *quality.Store, profiles map[int64]quality.Profile) error {
+	future, e := s.futureIndex(ctx, idx, rssTargetLimit)
+	if e != nil {
+		return e
+	}
+	matches := future.match(ev.ReleaseName)
+	candidates := []searchTarget{}
+	distinct := map[int64]bool{}
+	for _, t := range matches {
+		// The same target rules as handleAnnounce: Anime, specials and
+		// registered files are never auto-grabbed, present or future.
+		if t.Anime || t.Season <= 0 || idx.hasFile(t) {
+			continue
+		}
+		candidates = append(candidates, t)
+		distinct[t.MediaID] = true
+	}
+	if len(candidates) == 0 {
+		return s.completeAnnounce(ctx, owner, ev, "done", "unmatched", "No monitored missing movie or ordinary single episode matched this announce title.", "", nil)
+	}
+	if len(distinct) > 1 {
+		return s.completeAnnounce(ctx, owner, ev, "done", "ambiguous", "This announce title matches more than one saved title, so it was not grabbed automatically.", "", nil)
+	}
+	t := candidates[0]
+	p, ok := profiles[t.ProfileID]
+	if !ok {
+		var e error
+		p, e = store.Get(ctx, t.ProfileID)
+		if e != nil {
+			return e
+		}
+		profiles[t.ProfileID] = p
+	}
+	release := quality.Release{ID: ev.ReleaseName, Title: ev.ReleaseName, Size: ev.SizeBytes, Protocol: "torrent", Now: s.now().Unix()}
+	if ev.ReceivedAt > 0 {
+		release.Published = time.Unix(ev.ReceivedAt, 0).UTC().Format(time.RFC3339)
+	}
+	if d := quality.EvaluateWithOptions(p, t.Target, release, quality.EvaluateOptions{AllowUnknownSeeders: true}); !d.Eligible {
+		// The release would fail the profile on its air date too; record that
+		// rejection now instead of deferring a decision that cannot change.
+		return s.completeAnnounce(ctx, owner, ev, "done", "rejected", "No announce candidate satisfies this title's quality profile, seed, size or identity rules.", "", nil)
+	}
+	if t.EpisodeID == nil {
+		// futureTargetSQL only produces episode targets; this cannot happen.
+		return s.completeAnnounce(ctx, owner, ev, "done", "unmatched", "No monitored missing movie or ordinary single episode matched this announce title.", "", nil)
+	}
+	var airDate string
+	if e := s.db.QueryRowContext(ctx, `SELECT air_date FROM episodes WHERE id=?`, *t.EpisodeID).Scan(&airDate); e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			return s.completeAnnounce(ctx, owner, ev, "done", "unmatched", "No monitored missing movie or ordinary single episode matched this announce title.", "", nil)
+		}
+		return e
+	}
+	air, e := time.ParseInLocation("2006-01-02", airDate, s.now().Location())
+	if e != nil {
+		return s.completeAnnounce(ctx, owner, ev, "done", "unmatched", "No monitored missing movie or ordinary single episode matched this announce title.", "", nil)
+	}
+	until := int64(air.Sub(s.now()).Seconds())
+	if until < 0 {
+		until = 0
+	}
+	if ev.Attempts >= announceMaxAttempts || until > announceDeferHorizon {
+		return s.completeAnnounce(ctx, owner, ev, "done", "not_aired",
+			fmt.Sprintf("The episode airs %s, before which automatic grabbing waits. The announce was not kept for a later automatic grab; use a manual or scheduled search on or after the air date.", airDate), "", nil)
+	}
+	// Air-date local midnight is the first moment the episode satisfies the
+	// documented on-or-before-today rule, so the deferred claim re-runs the
+	// ordinary match and grabs the exact same release then.
+	next := air.Unix()
+	return s.completeAnnounce(ctx, owner, ev, "retry", "not_aired",
+		fmt.Sprintf("The episode airs %s. The announce was deferred to the listed air date, when automatic grabbing for this episode begins.", airDate), "", &next)
 }
 
 // retryAnnounce reschedules a transient failure with bounded exponential
