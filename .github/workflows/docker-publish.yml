@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -135,7 +135,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -266,7 +266,7 @@ jobs:
       - name: Checkout repository
         # Only the version read (for the v* tag naming) needs the repo; it
         # also fixes the missing-file failure observed on run 43592934788.
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download per-architecture digests
         uses: actions/download-artifact@v4
