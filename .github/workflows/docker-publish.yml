@@ -313,8 +313,10 @@ jobs:
           oldIFS=$IFS; IFS=','
           for tag in ${{ steps.tags.outputs.value }}; do tag_args="$tag_args -t $tag"; done
           IFS=$oldIFS
-          # Merge both per-architecture manifests under the SAME tags.
-          docker buildx imagetools create $tag_args $(printf "$image@%s " *)
+          # Merge both per-architecture manifests under the SAME tags; the
+          # digest files contain full sha256:... digests, so cat them (the
+          # bare-glob form passed filenames instead — run 43597792792).
+          docker buildx imagetools create $tag_args $(printf "$image@%s " $(cat *))
           digest=$(docker buildx imagetools inspect "$image:latest" --format '{{.Manifest.Digest}}')
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           platforms=$(docker buildx imagetools inspect "$image:latest" \
