@@ -54,8 +54,9 @@ docker exec -i "$name" python3 <<'PY'
 import sqlite3, sys
 db = sqlite3.connect("/config/reelscarey.db")
 version, count = db.execute(
-    "SELECT COALESCE(MAX(version),0),"
-    " (SELECT COUNT(*) FROM schema_migrations WHERE version=103 AND name='music_transcoding')"
+    "SELECT COALESCE((SELECT MAX(version) FROM schema_migrations),0),"
+    " (SELECT COUNT(*) FROM schema_migrations"
+    "  WHERE version=103 AND name='migrations/103_music_transcoding.sql')"
 ).fetchone()
 if version < 103 or count != 1:
     sys.exit(f"schema version {version} does not include migration 103")
@@ -99,8 +100,8 @@ test "$(curl -sS -o /dev/null -w '%{http_code}' "$base/api/v1/library/music/file
 # profiles decoded by migration 103 are visible.
 profiles_json="$fixture/profiles.json"
 api "$base/api/v1/library/music/profiles" > "$profiles_json"
-printf '%s' "$(cat "$profiles_json")" | jq -e '.items[] | select(.key=="opus-balanced" and .codec=="opus")' >/dev/null
-printf '%s' "$(cat "$profiles_json")" | jq -e '.items[] | select(.key=="opus-economy" and .codec=="opus")' >/dev/null
+printf '%s' "$(cat "$profiles_json")" | jq -e '.profiles[] | select(.key=="opus-balanced" and .codec=="opus")' >/dev/null
+printf '%s' "$(cat "$profiles_json")" | jq -e '.profiles[] | select(.key=="opus-economy" and .codec=="opus")' >/dev/null
 
 # Register one generated FLAC directly in the catalog. The audio tags match
 # the catalog rows, so a later stream/export proves conversion of real audio,

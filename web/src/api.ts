@@ -1384,7 +1384,7 @@ export async function previewOptimization(profile: string, fileIDs?: number[]) {
 }
 
 export async function applyOptimization(profile: string, fileIDs: number[]) {
-  return api<{ queued?: number }>("/library/music/optimize/apply", {
+  return api<{ enqueued?: number }>("/library/music/optimize/apply", {
     method: "POST",
     body: JSON.stringify({ profile, file_ids: fileIDs }),
   });
