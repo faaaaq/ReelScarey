@@ -246,6 +246,8 @@ jobs:
         run: bash scripts/storage-container-smoke.sh reelscarey:ci
       - name: Music container catalog, scan and tag-write smoke
         run: bash scripts/music-container-smoke.sh reelscarey:ci
+      - name: Music container transcoding, stream cache, export ranges and restart recovery smoke
+        run: bash scripts/music-transcode-container-smoke.sh reelscarey:ci
       - name: Constrained container read and write budget
         run: bash scripts/container-workload.sh reelscarey:ci 60
 

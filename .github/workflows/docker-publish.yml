@@ -9,9 +9,11 @@ on:
   workflow_dispatch:
 
 permissions:
+  # Least privilege: only the `manifest` job mints a signed attestation, so
+  # it holds id-token/attestations at the job level; the per-architecture
+  # build/push legs run with contents: read and never receive an OIDC
+  # capability.
   contents: read
-  id-token: write
-  attestations: write
 
 concurrency:
   group: dockerhub-primary
@@ -259,6 +261,13 @@ jobs:
   manifest:
     if: github.ref == 'refs/heads/codex/foundation' || startsWith(github.ref, 'refs/tags/v')
     needs: [publish, publish-arm64]
+    # The actions/attest step below signs against the registry, which requires
+    # an OIDC token and the attestations permission; no other job in this
+    # workflow needs either.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
