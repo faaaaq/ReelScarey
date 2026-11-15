@@ -17,6 +17,7 @@ import {
 import { PageHeading, RequestState } from "../components";
 import { EventRow, type EventPage } from "../components/EventRow";
 import {
+  Alert,
   Label,
   PageBody,
   PageToolbar,
@@ -153,6 +154,16 @@ export function Dashboard() {
   const active = downloads.data?.items ?? [];
   const activeTotal = downloads.data?.total ?? active.length;
   const missing = wanted.data?.counts?.missing;
+  // Exception-first: blocked and failed jobs lead the queue list and get a
+  // strip above the panels so recovery is reachable from the dashboard.
+  const attentionJobs = active.filter(
+    (job) => job.state === "blocked" || job.state === "failed",
+  );
+  const queueItems = [...active].sort(
+    (a, b) =>
+      Number(b.state === "blocked" || b.state === "failed") -
+      Number(a.state === "blocked" || a.state === "failed"),
+  );
   const asOf = upcoming.data?.as_of_date ?? "";
   const weekEnd = dayShift(asOf, 7);
   const upcomingItems = upcoming.data?.items ?? [];
@@ -237,6 +248,21 @@ export function Dashboard() {
               </Link>
             </section>
 
+            {attentionJobs.length > 0 && (
+              <Alert kind="warning">
+                <span className="rs-alert-title">
+                  {attentionJobs.length} download
+                  {attentionJobs.length === 1 ? " needs" : "s need"} attention
+                </span>{" "}
+                <Link to="/activity?state=attention">
+                  Review the blocked queue
+                </Link>{" "}
+                <span className="rs-muted rs-small">
+                  each row shows the reason and its recovery action.
+                </span>
+              </Alert>
+            )}
+
             <div className="dash-columns">
               <Panel
                 title="Activity"
@@ -260,7 +286,7 @@ export function Dashboard() {
                           className="dash-queue"
                           aria-label="Active downloads"
                         >
-                          {active.slice(0, 5).map((job) => (
+                          {queueItems.slice(0, 5).map((job) => (
                             <li key={job.id}>
                               <div className="dash-queue-head">
                                 <Link

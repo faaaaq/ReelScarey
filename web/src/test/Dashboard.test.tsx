@@ -211,4 +211,42 @@ describe("dashboard overview", () => {
       "/timeline",
     );
   });
+
+  it("leads with blocked downloads and links straight to the recovery queue", async () => {
+    const blocked = {
+      id: "job-blocked",
+      movie_title: "Stuck download",
+      title: "Stuck.Movie.2026.1080p",
+      state: "blocked",
+      progress: 0.9,
+      downloaded_bytes: 1024,
+      total_bytes: 2048,
+      error_message: "Waiting for mapping review",
+    };
+    setup({
+      items: [
+        {
+          id: "job-ok",
+          movie_title: "Healthy download",
+          title: "Healthy.Movie.2026.1080p",
+          state: "downloading",
+          progress: 0.2,
+          downloaded_bytes: 100,
+          total_bytes: 2048,
+        },
+        blocked,
+      ],
+      total: 2,
+    });
+    mount();
+    await screen.findByRole("heading", { name: "Test library" });
+    expect(await screen.findByText(/1 download needs attention/)).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: /Review the blocked queue/ }),
+    ).toHaveAttribute("href", "/activity?state=attention");
+    // The blocked job leads the visible queue even though it was listed second.
+    const queue = screen.getByRole("list", { name: "Active downloads" });
+    const first = within(queue).getAllByRole("listitem")[0];
+    expect(within(first).getByText("Stuck download")).toBeVisible();
+  });
 });
