@@ -36,8 +36,8 @@ export function profileSummary(profile: QualityProfile) {
 
 /**
  * Selectable identifier for a profile. Builtin profiles use their stable
- * key; a custom profile is only selectable once it has a key. (Contract
- * gap: the backend migration defaults custom keys to empty.)
+ * key; the backend also assigns every saved custom profile a stable
+ * `custom-<id>` key, so every listed profile is selectable.
  */
 export function profileKeyOf(profile: QualityProfile) {
   return profile.key || "";

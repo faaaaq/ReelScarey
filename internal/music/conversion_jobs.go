@@ -469,7 +469,8 @@ func (s *Service) finishConversionFailure(ctx context.Context, job ConversionJob
 }
 
 // conversionFailureMessage keeps provider/engine messages intact; ConvertFile
-// already redacts paths from ffmpeg output.
+// already redacts paths from ffmpeg output, and raw OS errors are scrubbed
+// below so no absolute path is stored in the queue.
 func conversionFailureMessage(err error) string {
 	var musicErr *Error
 	if errors.As(err, &musicErr) && strings.TrimSpace(musicErr.Message) != "" {
@@ -478,7 +479,9 @@ func conversionFailureMessage(err error) string {
 	if err == nil {
 		return "The conversion stopped unexpectedly."
 	}
-	return err.Error()
+	// Raw OS/filesystem errors (mkdir, rename, open) can embed absolute
+	// paths; scrub them so the queue page never leaks the server layout.
+	return redactPaths(err.Error())
 }
 
 // RecoverConversions requeues conversions that were running when the process

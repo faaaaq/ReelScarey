@@ -2075,10 +2075,9 @@ func (s *Server) musicCache(w http.ResponseWriter, r *http.Request) {
 
 // musicFileExport serves GET /api/v1/library/music/files/{id}/export?profile=KEY.
 // Profiles with the "original" codec stream the registered file directly with
-// byte-range support. A converting profile currently enqueues an export
-// conversion job and answers 409 music_export_pending: serving the converted
-// bytes from the stream cache needs an ExportAudio-style MusicService method
-// the music package does not expose yet (recorded in audit/music-transcode).
+// byte-range support. A converting profile streams the converted audio through
+// the same OpenPlayback path the players use, so the export reuses the stream
+// cache (no second conversion) and never writes to the media root.
 func (s *Server) musicFileExport(w http.ResponseWriter, r *http.Request) {
 	if s.music == nil {
 		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
