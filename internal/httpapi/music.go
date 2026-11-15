@@ -2112,11 +2112,37 @@ func (s *Server) musicFileExport(w http.ResponseWriter, r *http.Request) {
 		http.ServeContent(w, r, stream.Name, stream.ModTime, stream.File)
 		return
 	}
-	// Custom rows resolve by name and carry an empty key column, so the queued
-	// profile is the key the caller used, not the resolved row's Key.
-	if _, err := s.music.EnqueueConversion(r.Context(), "export", id, profileKey, 3); err != nil {
+	// A converting profile streams the converted audio through the same
+	// OpenPlayback path the players use, so the export reuses the stream
+	// cache (no second conversion) and never writes to the media root.
+	playback, err := s.music.OpenPlayback(r.Context(), id, exportFormat(profile.Codec), profile.BitrateKbps, 0)
+	if err != nil {
 		s.musicError(w, err)
 		return
 	}
-	fail(w, http.StatusConflict, "music_export_pending", "The export conversion is queued. Download the converted file once the conversion worker completes it.")
+	defer playback.Close()
+	w.Header().Set("Content-Type", playback.ContentType)
+	w.Header().Set("Content-Disposition", "attachment")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if playback.Body != nil {
+		// An on-the-fly conversion has no known length; stream it as it is
+		// produced. Cache hits and unconverted files take the ServeContent
+		// path below and keep byte-range support.
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = io.Copy(w, playback.Body)
+		return
+	}
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	http.ServeContent(w, r, playback.Name, playback.ModTime, playback.File)
+}
+
+// exportFormat maps a profile codec to the requested-format value OpenPlayback
+// understands. Empty means the profile already matched the source and the
+// planner passes it through unchanged.
+func exportFormat(codec string) string {
+	switch strings.ToLower(strings.TrimSpace(codec)) {
+	case "mp3", "flac", "aac", "opus":
+		return strings.ToLower(strings.TrimSpace(codec))
+	}
+	return ""
 }

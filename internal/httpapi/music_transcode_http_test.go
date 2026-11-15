@@ -273,16 +273,15 @@ func TestMusicFileExportRoutes(t *testing.T) {
 	if out := request(handler, "GET", "/api/v1/library/music/files/7/export?profile=opus-999", "", session, false); out.Code != 400 {
 		t.Fatal("unknown profile", out.Code, out.Body.String())
 	}
+	// A converting profile streams the converted audio through OpenPlayback
+	// (the fake serves the registered file directly).
 	out := request(handler, "GET", "/api/v1/library/music/files/7/export?profile=opus-high", "", session, false)
-	if out.Code != 409 || !strings.Contains(out.Body.String(), "music_export_pending") {
-		t.Fatal("pending export", out.Code, out.Body.String())
-	}
-	if service.exportKind != "export" || service.exportFileID != 7 || service.exportProfile != "opus-high" || service.exportPriority != 3 {
-		t.Fatal("enqueue shape", service.exportKind, service.exportFileID, service.exportProfile, service.exportPriority)
+	if out.Code != 200 || out.Body.String() != "fake audio bytes" || out.Header().Get("Content-Disposition") != "attachment" {
+		t.Fatal("converted export", out.Code, out.Body.String(), out.Header().Get("Content-Disposition"))
 	}
 	out = request(handler, "GET", "/api/v1/library/music/files/7/export?profile=Custom%20Mix", "", session, false)
-	if out.Code != 409 || service.exportProfile != "Custom Mix" {
-		t.Fatal("custom profile export", out.Code, service.exportProfile)
+	if out.Code != 200 {
+		t.Fatal("custom profile export", out.Code, out.Body.String())
 	}
 	// Original codec streams the registered file directly with range support.
 	out = request(handler, "GET", "/api/v1/library/music/files/7/export?profile=original", "", session, false)

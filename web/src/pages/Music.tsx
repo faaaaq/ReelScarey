@@ -58,6 +58,7 @@ import {
   MusicExportMenu,
   type AlbumDownloadTarget,
 } from "../musicDownload";
+import { useMusicProfiles } from "../musicProfiles";
 import "./Library.css";
 import "./Music.css";
 import { formatBytes, formatTrackDuration } from "../ui/format";
@@ -1159,6 +1160,8 @@ export function MusicAlbumPage() {
   const [allowLossless, setAllowLossless] = useState(true);
   const [minBitrate, setMinBitrate] = useState("0");
   const [formats, setFormats] = useState("");
+  const [albumProfile, setAlbumProfile] = useState("");
+  const { profiles: albumProfileChoices } = useMusicProfiles();
   const [prefsPending, setPrefsPending] = useState(false);
   const [albumDownload, setAlbumDownload] =
     useState<AlbumDownloadTarget | null>(null);
@@ -1182,6 +1185,7 @@ export function MusicAlbumPage() {
     setAllowLossless(albumPrefs.data.preferences.allow_lossless);
     setMinBitrate(String(albumPrefs.data.preferences.min_bitrate));
     setFormats(albumPrefs.data.preferences.preferred_formats.join(","));
+    setAlbumProfile(albumPrefs.data.preferences.download_profile || "");
   }, [albumPrefs.data]);
 
   useEffect(() => {
@@ -1267,6 +1271,7 @@ export function MusicAlbumPage() {
           ...albumPrefs.data.preferences,
           allow_lossless: allowLossless,
           min_bitrate: Number(minBitrate) || 0,
+          download_profile: albumProfile,
           preferred_formats: formats
             .split(",")
             .map((value) => value.trim())
@@ -1568,6 +1573,21 @@ export function MusicAlbumPage() {
                   value={formats}
                   onChange={(e) => setFormats(e.target.value)}
                 />
+              </label>
+              <label>
+                Download profile{" "}
+                <select
+                  aria-label="Album download profile"
+                  value={albumProfile}
+                  onChange={(e) => setAlbumProfile(e.target.value)}
+                >
+                  <option value="">Use global default</option>
+                  {albumProfileChoices.map((profile) => (
+                    <option key={profile.key || profile.name} value={profile.key || profile.name}>
+                      {profile.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <Button type="submit" disabled={prefsPending}>
                 Save

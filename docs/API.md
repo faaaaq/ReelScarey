@@ -250,7 +250,90 @@ and queues the candidate through the selected download client. GET
 `/downloads/{id}/files` probes the completed folder and POST
 `/downloads/{id}/mapping` accepts `{mappings:[{file_index,track_id}]}` to
 resume a blocked import with explicit track assignments. GET/PUT `/preferences` manages
-lossless, minimum-bitrate and preferred-format rules. GET `/wanted?page=` lists
+lossless, minimum-bitrate and preferred-format rules plus the music quality
+settings. GET and PUT use the same JSON object:
+`{allow_lossless, min_bitrate, preferred_formats, download_profile,
+streaming_quality, original_retention, fallback_policy, transcoding_enabled,
+cache_limit_mb, max_conversions, revision}`. PUT validates the whole set:
+
+- `download_profile` is empty or a builtin profile key; custom profiles are
+  resolved at use time, not when the preference is saved.
+- `streaming_quality` accepts `auto`, `data-saver`, `balanced`, `high`,
+  `premium` or `original`; empty normalizes to `balanced`.
+- `original_retention` accepts `keep` (empty normalizes to `keep`), `delete`
+  or `ask`; `fallback_policy` accepts `best` (empty normalizes to `best`),
+  `skip` or `approve`.
+- `cache_limit_mb` accepts 64-4096 (0 normalizes to 512) and
+  `max_conversions` accepts 1-4 (0 normalizes to 2); out-of-range values are
+  rejected. `min_bitrate` accepts 0-320.
+- `preferred_formats` accepts duplicates-free entries from
+  FLAC/ALAC/MP3/AAC/OGG/OPUS/WAV.
+- `revision` must match the stored value; a stale revision is reported as a
+  revision conflict.
+
+### Profiles
+
+GET `/profiles` returns `{profiles: [...]}`, the twelve builtin profiles
+followed by saved custom rows. POST `/profiles` creates a custom profile
+(body: `name`, `codec` `original`/`flac`/`mp3`/`aac`/`opus`, optional
+`container`, `bitrate_kbps`, `vbr`, `compression_level`, `require_lossless`,
+`keep_original`) and returns the saved row with its generated `custom-<id>`
+key; a posted `id` is ignored so creation never rewrites an existing row.
+PUT `/profiles/{id}` updates and DELETE `/profiles/{id}` removes a custom
+profile; a missing or builtin ID is rejected. Custom validation: name
+1-100 characters, `original` without a bitrate, `flac` with compression
+level 0-8 and no bitrate, or `mp3`/`aac`/`opus` with a 1-320 kbps bitrate.
+
+### Conversions
+
+GET `/conversions?page=` returns one bounded page `{items, page, total,
+limit}` (100 rows per call, newest first) of the conversion queue. POST
+`/conversions/{id}/cancel` and `/conversions/{id}/retry` take an empty JSON
+body and return `{cancelled: true}` / `{retried: true}`; cancelling a
+finished conversion and retrying one that is queued or processing report a
+`music_conversion_state` error, and an unknown ID is `not_found`.
+
+### Library optimization
+
+POST `/optimize/preview` accepts `{profile, file_ids}` and returns the
+dry-run preview: `{profile, items, total_current_bytes, total_estimated_bytes,
+estimated_savings, eligible_count, total_count}` where each item is
+`{file_id, relative_path, format, bitrate, size_bytes, lossless, eligible,
+not_eligible_reason, estimated_bytes}`. `file_ids` is optional (the whole
+library, still bounded) and at most 500 IDs may be listed; the dry run never
+writes anything. POST `/optimize/apply` requires `profile` and 1-500
+`file_ids`, enqueues a conversion job for each eligible file and answers 202
+`{enqueued: N}`; it never replaces files itself. Unknown profiles are
+rejected with 400 `invalid_music`.
+
+### Stream cache
+
+GET `/cache` returns `{entries, size_bytes, limit_bytes, hits, misses}`; the
+hit/miss counters cover the process lifetime and reset on restart. DELETE
+`/cache` removes every cached transcoding file and row and returns
+`{cleared: true}`. Cached streams live in `.reelscarey-stream-cache` inside
+the media root; clearing never touches registered music content.
+
+### Export
+
+GET `/files/{id}/export?profile=KEY` downloads one registered file in a
+chosen quality. The `original` profile streams the registered file directly
+with byte-range support; a converting profile streams converted audio
+through the same playback path players use (an on-the-fly conversion is
+streamed without a length; cached and pass-through results keep byte
+ranges). A missing `profile` value is 400 `invalid_music`; an unknown
+profile or a missing file is rejected as `invalid_music` / `not_found`.
+
+### Per-user Subsonic quality
+
+Music server accounts accept optional `stream_quality` and
+`download_profile` fields in the users payload: an omitted field keeps the
+stored value and an explicit `""` clears the override so the account follows
+global again. `stream_quality` accepts the same quality names as the global
+preference and `download_profile` accepts empty or a builtin profile key. At
+stream time an explicit client `format`/`maxBitRate` request still wins,
+then the account's `stream_quality`, then the global preference, then
+`balanced`. GET `/wanted?page=` lists
 monitored albums with no registered files. GET/PUT `/schedule` manages the
 wanted-album schedule and POST `/schedule/run` performs one bounded run.
 GET/PUT/DELETE `/albums/{id}/preferences` reads, saves or resets a per-album

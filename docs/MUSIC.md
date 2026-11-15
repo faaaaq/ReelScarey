@@ -464,6 +464,176 @@ one durable background worker; the browser's HTTP request never owns the work.
   the previous catalog path and the previous tag record, and marks the job
   `rolled_back`.
 
+## Music quality profiles, conversion and streaming
+
+Music downloads and streams can be transcoded through quality profiles. Twelve
+builtin profiles are code and are never stored in the database; custom profiles
+are saved rows. Download and import conversion is gated by the
+`transcoding_enabled` preference (on by default) and only applies when a
+profile with a real codec target resolves. Streaming and export conversions
+run regardless of that flag.
+
+### Download quality profiles
+
+The twelve builtin profiles, in the fixed order they are listed everywhere:
+
+| Key | Name | Codec | Container | Bitrate | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `original` | Original | original | source | - | no conversion |
+| `lossless-archive` | Lossless Archive | FLAC | .flac | - | compression level 8; keeps the original |
+| `lossless-opus` | Lossless Opus | Opus | .opus | 128 kbps | keeps the original |
+| `opus-economy` | Opus Economy | Opus | .opus | 64 kbps | |
+| `opus-balanced` | Opus Balanced | Opus | .opus | 96 kbps | |
+| `opus-high` | Opus High | Opus | .opus | 128 kbps | |
+| `opus-premium` | Opus Premium | Opus | .opus | 160 kbps | |
+| `opus-maximum` | Opus Maximum | Opus | .opus | 192 kbps | |
+| `mp3-compatible` | MP3 Compatible | MP3 | .mp3 | 192 kbps | CBR |
+| `mp3-maximum` | MP3 Maximum | MP3 | .mp3 | 320 kbps | CBR |
+| `aac-compatible` | AAC Compatible | AAC | .m4a | 128 kbps | CBR (native AAC encoder has no stable VBR mode) |
+| `aac-high` | AAC High | AAC | .m4a | 256 kbps | CBR (the profile's VBR flag is ignored for AAC) |
+
+- Resolution order everywhere a profile is used: an explicit key wins, then the
+  per-album override (`music_albums.download_profile`), then the global
+  preference (`music_preferences.download_profile`, whose migration default is
+  `original`, i.e. no transcoding). An empty value at every level means no
+  transcoding on downloads and imports; endpoints that require an explicit
+  profile (library optimization, export) reject an empty key. There is
+  currently no API that writes the per-album override, so it stays empty and
+  defers to the global preference unless written directly.
+- Custom profiles are created through the API, get a stable `custom-<id>` key
+  and are matched by name or key. They accept codec `original` (no bitrate), or
+  FLAC with compression level 0-8, or MP3/AAC/Opus with a 1-320 kbps bitrate.
+  A custom profile may also declare `require_lossless`: such a profile fails
+  closed on a lossy source instead of transcoding it.
+- The download `format` value of an acquisition job still accepts the legacy
+  yt-dlp values: `mp3` -> `mp3-maximum`, `flac` -> `lossless-archive`,
+  `m4a` -> `aac-high`, `opus` -> `opus-maximum`; `source` means the original
+  profile and an empty value defers to the per-album override and the global
+  preference.
+
+### Post-download conversion on import
+
+When a non-original profile resolves and a conversion is needed, the reviewed
+import worker converts the staged copy before it is published. The source file
+is never modified.
+
+- The conversion engine probes the staged file and decides honestly whether a
+  conversion is needed. A source that already satisfies the profile is copied
+  unchanged and its quality is kept: re-encoding could only lose it.
+- Transcoding a lossy source to FLAC wraps the source quality in a lossless
+  container; it does not restore detail the lossy encode already discarded.
+- A failed conversion never aborts the import: the original file is imported
+  unchanged and the job records why. A lossless-only profile against a lossy
+  source follows the saved fallback policy (`best` keeps the best available
+  source, `skip` does not import it, `approve` retains it for review).
+- File conversions preserve tags. MP3 and FLAC outputs keep embedded artwork;
+  Opus/ogg and AAC/M4A outputs drop the artwork stream.
+- The staged original follows the effective retention policy when a conversion
+  happened: `keep` (and profiles that keep the original) publishes it as an
+  archive variant (registered with the `archive` variant role) beside the
+  converted file; `ask` does the same plus a "pending review" note on the
+  import job; `delete` records the staged original and removes it only after
+  the converted file is verified in place.
+
+### Conversion queue
+
+Conversion jobs are durable rows (`music_conversion_jobs`) processed by one
+worker. A job converts one registered catalog file into another quality profile
+and publishes the result as a variant of the same track.
+
+- Kinds are `download`, `library` and `export`. Today the library bulk
+  optimization enqueues `library` jobs at priority 8; the export endpoint
+  streams converted audio directly instead of enqueuing, and no flow enqueues
+  `download` yet.
+- States: `queued` -> `processing` -> `completed`, `failed` or `cancelled`. The
+  worker claims the lowest priority number first (1-9), takes a five-minute
+  lease it renews while the conversion runs, and reports progress at fixed
+  stages.
+- An active job for the same (kind, file, profile) is deduplicated instead of
+  queued twice. Cancelling a `queued` job stops it outright; cancelling a
+  `processing` job discards its staged output when the conversion returns.
+  A failed job is retried with a durable backoff (attempts x 5 minutes) up to
+  three attempts (including runs interrupted by a restart); a shutdown without
+  a crash requeues the job without counting the run. Retry is explicit and
+  preserves the attempt count.
+- The converted file is published as `NN Title [<profile>].<ext>` in the same
+  directory as the primary file, registered with `origin: 'conversion'` and the
+  `variant` role. There is never a second row for one (track, profile): an
+  existing variant of that profile is replaced in place. If the destination is
+  occupied by different bytes, nothing is overwritten and the job reports the
+  conflict.
+- The original file is deleted only when the profile drops originals, the
+  saved retention preference is `delete`, the variant row is committed and the
+  converted file is verified on disk, and the original row still describes
+  exactly the bytes that were converted; the variant is then promoted to the
+  track's primary file in the same transaction. Any other case keeps both
+  files.
+- File conversions run under a shared bounded semaphore sized from the
+  `max_conversions` preference (1-4, default 2), and each conversion is bounded
+  to 15 minutes (60 minutes hard cap).
+
+### Library optimization
+
+- The dry run (`optimize/preview`) probes the selected files and reports, per
+  file, whether the profile would convert it and an estimated output size. It
+  never writes anything. At most 500 explicit files (or 1000 when the whole
+  library is previewed) are inspected.
+- Eligibility follows the profile's honest conversion decision; files that are
+  already variant copies from an earlier conversion are never re-converted.
+  Lossless estimates reuse the source size, so the preview never claims savings
+  that a FLAC conversion cannot deliver.
+- Apply (`optimize/apply`) enqueues a `library` conversion job for each
+  eligible file (bounded to 500 per call) and returns the queued count. The
+  queue owns the conversion, publication and retention; apply itself never
+  replaces files.
+
+### Stream cache
+
+Full-file converted streams are cached in `.reelscarey-stream-cache` inside the
+media root (a dotted directory that scans never walk).
+
+- A cached entry is keyed by (file, codec, bitrate) and invalidated when the
+  source file's SHA-256 changes. Cache misses encode into the cache; a cache
+  hit serves the encoded bytes with byte-range support. Offset/Range seeking
+  within a response that is still being transcoded keeps the existing
+  decode-and-discard path: a cached encode covers only the whole track.
+- Entries are evicted least-recently-used until the cache fits the
+  `cache_limit_mb` preference (64-4096 MB, default 512). A cache miss or
+  failure never fails the stream: the request falls back to on-the-fly piping.
+- Stats report entry count, total size, the configured limit and process
+  hit/miss counters. The counters reset on restart. Deleting the cache removes
+  only cached files and their rows, never registered music content.
+
+### Streaming quality
+
+The streaming quality preference maps onto the Opus targets the stream
+planner uses:
+
+| Mode | Target |
+| --- | --- |
+| `auto` | Opus 96 kbps - currently the same as `balanced`; there is no client bandwidth detection |
+| `data-saver` | Opus 64 kbps |
+| `balanced` | Opus 96 kbps |
+| `high` | Opus 128 kbps |
+| `premium` | Opus 160 kbps |
+| `original` | no conversion: playable files are served byte-for-byte |
+
+Resolution: an explicit client `format`/`maxBitRate` request wins, then the
+per-user streaming quality of the music-server account (empty = follow
+global), then the global streaming quality preference, then the `balanced`
+default. Converted streams strip tags and artwork; only file conversions
+preserve tags.
+
+### Export
+
+`GET /api/v1/library/music/files/{id}/export?profile=` downloads one registered
+file in a chosen quality profile. The `original` profile streams the registered
+file directly with byte-range support. A converting profile streams the
+converted audio through the same playback path players use, so the export
+reuses the stream cache and never writes to the media root. Converted exports
+carry no tags (the stream pipeline strips metadata); the original file keeps
+its tags.
+
 ## Limits
 
 - AcoustID matching requires the bundled `fpcalc` and an owner-supplied

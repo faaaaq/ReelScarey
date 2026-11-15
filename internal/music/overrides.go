@@ -55,12 +55,12 @@ func (s *Service) AlbumPreferences(ctx context.Context, albumID int64) (AlbumPre
 		return AlbumPreferences{}, err
 	}
 	var allow, minimum sql.NullInt64
-	var formats string
+	var formats, override string
 	var revision int
-	if err := s.store.db.QueryRowContext(ctx, `SELECT allow_lossless,min_bitrate,preferred_formats,revision FROM music_albums WHERE id=?`, albumID).Scan(&allow, &minimum, &formats, &revision); err != nil {
+	if err := s.store.db.QueryRowContext(ctx, `SELECT allow_lossless,min_bitrate,preferred_formats,download_profile,revision FROM music_albums WHERE id=?`, albumID).Scan(&allow, &minimum, &formats, &override, &revision); err != nil {
 		return AlbumPreferences{}, err
 	}
-	if !allow.Valid && !minimum.Valid && strings.TrimSpace(formats) == "" {
+	if !allow.Valid && !minimum.Valid && strings.TrimSpace(formats) == "" && strings.TrimSpace(override) == "" {
 		return AlbumPreferences{Preferences: global, Inherited: true, Revision: revision}, nil
 	}
 	out := global
@@ -72,6 +72,9 @@ func (s *Service) AlbumPreferences(ctx context.Context, albumID int64) (AlbumPre
 	}
 	if strings.TrimSpace(formats) != "" {
 		out.PreferredFormats = splitFormats(formats)
+	}
+	if strings.TrimSpace(override) != "" {
+		out.DownloadProfile = strings.TrimSpace(override)
 	}
 	return AlbumPreferences{Preferences: out, Inherited: false, Revision: revision}, nil
 }
@@ -93,8 +96,8 @@ func (s *Service) SaveAlbumPreferences(ctx context.Context, albumID int64, in Mu
 	if current != in.Revision {
 		return AlbumPreferences{}, ErrRevisionConflict
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET allow_lossless=?,min_bitrate=?,preferred_formats=?,revision=revision+1,updated_at=unixepoch() WHERE id=? AND revision=?`,
-		boolInt(clean.AllowLossless), clean.MinBitrate, strings.Join(clean.PreferredFormats, ","), albumID, in.Revision); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET allow_lossless=?,min_bitrate=?,preferred_formats=?,download_profile=?,revision=revision+1,updated_at=unixepoch() WHERE id=? AND revision=?`,
+		boolInt(clean.AllowLossless), clean.MinBitrate, strings.Join(clean.PreferredFormats, ","), clean.DownloadProfile, albumID, in.Revision); err != nil {
 		return AlbumPreferences{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -110,7 +113,7 @@ func (s *Service) ResetAlbumPreferences(ctx context.Context, albumID int64) (Alb
 		return AlbumPreferences{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET allow_lossless=NULL,min_bitrate=NULL,preferred_formats='',revision=revision+1,updated_at=unixepoch() WHERE id=?`, albumID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET allow_lossless=NULL,min_bitrate=NULL,preferred_formats='',download_profile='',revision=revision+1,updated_at=unixepoch() WHERE id=?`, albumID); err != nil {
 		return AlbumPreferences{}, err
 	}
 	if err := tx.Commit(); err != nil {
