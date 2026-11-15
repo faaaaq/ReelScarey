@@ -282,12 +282,35 @@ running download. GET `/api/v1/youtube/jobs/{id}/import-review` returns the
 verified media and subtitle evidence and destinations; POST `.../import` submits
 that exact review. GET `/api/v1/youtube/files` lists custom-library files.
 
+GET `/api/v1/youtube/sources` lists every per-show YouTube source across all
+shows (bounded to 500), with the show title and per-source counts (`entries`,
+`queued`, `downloading`, `awaiting_review`, `completed`, `downloaded`,
+`missing`) for the monitored-shows overview; it is a read-only catalog query and
+works without yt-dlp installed. GET
+`/api/v1/youtube/sources/{source}/episodes` derives per-episode download states
+(`missing`, `queued`, `downloading`, `awaiting_review`, `importing`,
+`downloaded`, `failed`, `skipped`) from jobs, registered files and subtitle
+evidence, including a nullable `english_subtitles` field (`null` = never
+attempted). POST `/api/v1/youtube/sources/{source}/episodes/queue` with
+`{revision, selections: [{video_id, episode_id}] (≤25), reviewed: true}` queues
+reviewed per-episode downloads atomically with revision fencing, monitored
+fencing for automatic mappings and the usual duplicate protection. GET
+`/api/v1/youtube/jobs` additionally accepts optional `state` (comma list),
+`media_id` and `series_source_id` filters and returns a `counts` summary; with
+no parameters it behaves exactly as before.
+
 Per-show sources use GET/POST
 `/api/v1/library/series/{id}/youtube-sources` (create/update requires
 `reviewed: true`; new sources start paused), POST `.../youtube-sources/preview`
 for the explicit video-to-episode mapping, and POST/DELETE
 `.../youtube-sources/{source}` for a fenced check, an explicit baseline
-backfill (`{"action":"backfill"}`) or removal. A source with
+backfill (`{"action":"backfill"}`) or removal. Automatic `mapping: "episode"`
+sources also map numbered titles of the form `#NN` (for example `XTRA XG #89`
+or `XG DAYS #34`) to the matching loaded episode of that show, falling back to
+the source's `season_number`; channel videos belonging to a different show on
+the same channel are recorded as honestly skipped entries. The GET branch of
+`/api/v1/library/series/{id}/youtube-sources` is a pure catalog read and does
+not require yt-dlp. A source with
 `mapping: "manual"` stores explicit video-to-episode bindings: GET
 `.../youtube-sources/{source}/matches` lists the source's videos beside the
 show's loaded episodes, and PUT the same path with
@@ -1553,3 +1576,26 @@ settings and applies them to a running client. The body accepts
 revision}`; each limit is 1-100. A stale revision returns
 `revision_conflict`. The same values are returned in the `queue` object from
 `GET /api/v1/torrents` and are persisted across supervised restarts.
+
+# Anime post-download audio verification
+
+Downloads for shows flagged `english_dub_only` in Anime search settings verify
+the completed file's actual audio at import planning, after FFprobe inspection
+and before anything is written. The classification is recorded inside the
+existing `probe_json` (import journal and registered `media_files`) as
+`audio_verification` with `state` `verified_english`, `verified_no_english` or
+`unverified`, plus `reason` and the normalized `languages` when applicable.
+Subtitle tracks are never evidence of spoken audio. When no audio track is
+tagged English and at least one track names another language, the import is
+rejected with download error code `anime_audio_mismatch`: the job is blocked
+(no automatic retry), nothing is imported or deleted, the source file stays in
+the download folder for seeding, and the episode stays wanted. The error
+message names the affected file and the owner paths: change the show's dub
+requirement, pick another release, or remove the download, then retry. The
+rejected release is also blacklisted for seven days with reason
+`anime_audio_mismatch: <languages>` and can be removed from the release
+blacklist review (`DELETE /api/v1/releases/blacklist/{id}`); removing it does
+not delete the file or retry the download automatically. Files whose audio
+tracks carry no usable language tags import fail-open as `unverified` with an
+honest activity note, since a legitimate dub with stripped tags must not wedge
+forever.

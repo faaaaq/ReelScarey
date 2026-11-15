@@ -13,16 +13,63 @@ type seriesSourceItem struct {
 	Matches []youtube.SeriesMatch `json:"matches"`
 }
 
-func (s *Server) seriesYouTubeSources(w http.ResponseWriter, r *http.Request) {
-	if !s.youtubeReady(w) {
+// youtubeSourcesOverview is the shows-overview feed. It is a pure database
+// read, so it works even when yt-dlp is not installed on the server.
+func (s *Server) youtubeSourcesOverview(w http.ResponseWriter, r *http.Request) {
+	out, err := s.youtube.SeriesSourceSummaries(r.Context())
+	if err != nil {
+		s.youtubeError(w, err)
 		return
 	}
+	send(w, 200, map[string]any{"items": out})
+}
+
+// youtubeSourceEpisodes serves the per-episode status table for one source.
+// The state is derived from jobs, registered files and subtitle evidence; the
+// read never mutates anything and works without yt-dlp.
+func (s *Server) youtubeSourceEpisodes(w http.ResponseWriter, r *http.Request) {
+	out, err := s.youtube.SeriesEpisodeStatuses(r.Context(), r.PathValue("id"), 500)
+	if err != nil {
+		s.youtubeError(w, err)
+		return
+	}
+	send(w, 200, map[string]any{"items": out})
+}
+
+// youtubeSourceEpisodesQueue applies a bounded, reviewed batch of episode
+// selections. The source revision fences the write; a stale revision is a 409.
+func (s *Server) youtubeSourceEpisodesQueue(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Revision   int                              `json:"revision"`
+		Selections []youtube.SeriesEpisodeSelection `json:"selections"`
+		Reviewed   bool                             `json:"reviewed"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	if !in.Reviewed {
+		fail(w, 400, "review_required", "Review every selected episode before queuing.")
+		return
+	}
+	out, err := s.youtube.QueueSeriesEpisodes(r.Context(), r.PathValue("id"), in.Revision, in.Reviewed, in.Selections)
+	if err != nil {
+		s.youtubeError(w, err)
+		return
+	}
+	send(w, 200, map[string]any{"items": out})
+}
+
+func (s *Server) seriesYouTubeSources(w http.ResponseWriter, r *http.Request) {
 	id, ok := tvID(w, r)
 	if !ok {
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
+		// A pure catalog read: registered sources and their entries exist in
+		// the database even when yt-dlp is not installed, so this branch never
+		// depends on the inspector. Preview/check/queue actions below and in
+		// the sibling handlers stay gated on yt-dlp availability.
 		sources, err := s.youtube.SeriesSources(r.Context(), id)
 		if err != nil {
 			s.youtubeError(w, err)
@@ -44,6 +91,9 @@ func (s *Server) seriesYouTubeSources(w http.ResponseWriter, r *http.Request) {
 		}
 		send(w, 200, map[string]any{"items": items})
 	case http.MethodPost:
+		if !s.youtubeReady(w) {
+			return
+		}
 		var in youtube.SeriesSourceInput
 		if !decodeJSON(w, r, &in) {
 			return

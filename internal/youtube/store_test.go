@@ -3,6 +3,7 @@ package youtube
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/faaaaq/ReelScarey/internal/database"
@@ -80,6 +81,76 @@ func TestStaleAndUnavailableTargets(t *testing.T) {
 	}
 	if _, e = s.Preview(ctx, v, Target{Kind: "movie", MediaID: 999}); !errors.Is(e, ErrChanged) {
 		t.Fatalf("missing target: %v", e)
+	}
+}
+
+func TestJobsFiltersAndCounts(t *testing.T) {
+	ctx := context.Background()
+	db, e := database.Open(ctx, t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	s := NewStore(db)
+	c, e := s.CreateCollection(ctx, "XG")
+	if e != nil {
+		t.Fatal(e)
+	}
+	ids := []string{"abcdefghijk", "bcdefghijkl", "cdefghijklm"}
+	for n, id := range ids {
+		r, e := s.Preview(ctx, Video{ID: id, Title: fmt.Sprintf("Video %d", n), Channel: "XG"}, Target{Kind: "custom", CollectionID: c.ID})
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = s.Queue(ctx, r.ID); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if _, e = db.Exec(`UPDATE youtube_jobs SET state='downloading' WHERE video_id='abcdefghijk'`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`UPDATE youtube_jobs SET state='failed' WHERE video_id='cdefghijklm'`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = db.Exec(`UPDATE youtube_jobs SET series_source_id='src-1' WHERE video_id='bcdefghijkl'`); e != nil {
+		t.Fatal(e)
+	}
+	items, counts, e := s.JobsFiltered(ctx, JobsFilter{})
+	if e != nil || len(items) != 3 {
+		t.Fatal(items, counts, e)
+	}
+	if counts.Queued != 1 || counts.Downloading != 1 || counts.Failed != 1 || counts.AwaitingReview != 0 || counts.Completed != 0 {
+		t.Fatal("default counts are wrong", counts)
+	}
+	items, counts, e = s.JobsFiltered(ctx, JobsFilter{States: []string{"failed", "queued"}})
+	if e != nil || len(items) != 2 {
+		t.Fatal(items, counts, e)
+	}
+	if counts.Queued != 1 || counts.Failed != 1 || counts.Downloading != 0 {
+		t.Fatal("state counts are wrong", counts)
+	}
+	items, _, e = s.JobsFiltered(ctx, JobsFilter{SeriesSourceID: "src-1"})
+	if e != nil || len(items) != 1 || items[0].Video.ID != "bcdefghijkl" {
+		t.Fatal(items, e)
+	}
+	items, counts, e = s.JobsFiltered(ctx, JobsFilter{States: []string{"queued"}, SeriesSourceID: "src-1"})
+	if e != nil || len(items) != 1 || counts.Queued != 1 || counts.Failed != 0 {
+		t.Fatal("filters must combine", items, counts, e)
+	}
+	if _, e = db.Exec(`UPDATE youtube_jobs SET state='completed' WHERE video_id='cdefghijklm'`); e != nil {
+		t.Fatal(e)
+	}
+	items, counts, e = s.JobsFiltered(ctx, JobsFilter{})
+	if e != nil || counts.Completed != 1 || counts.Failed != 0 {
+		t.Fatal("completed counts are wrong", counts, e)
+	}
+	if _, _, e = s.JobsFiltered(ctx, JobsFilter{States: []string{"bogus"}}); !errors.Is(e, ErrInput) {
+		t.Fatal("an unknown state must be refused", e)
+	}
+	// The unfiltered feed is unchanged.
+	feed, e := s.Jobs(ctx)
+	if e != nil || len(feed) != 3 {
+		t.Fatal(feed, e)
 	}
 }
 

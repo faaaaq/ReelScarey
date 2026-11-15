@@ -13,10 +13,13 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/faaaaq/ReelScarey/internal/organization"
 )
 
 var episodeNumberRE = regexp.MustCompile(`(?i)\bS(\d{1,2})[ ._-]?E(\d{1,3})\b`)
 var episodeCrossRE = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{1,3})\b`)
+var seriesHashRE = regexp.MustCompile(`(?i)(?:^|\s)#(\d{1,3})\b`)
 
 type SeriesSource struct {
 	ID           string          `json:"id"`
@@ -402,6 +405,16 @@ func mapEpisodeNumber(in SeriesSourceInput, title string, position int) (int, in
 		s, _ := strconv.Atoi(m[1])
 		e, _ := strconv.Atoi(m[2])
 		return s, e, true
+	}
+	if m := seriesHashRE.FindStringSubmatch(title); len(m) == 2 {
+		n, _ := strconv.Atoi(m[1])
+		// A "#NN" title carries no season of its own; the source's season
+		// is authoritative when set, so two shows sharing one channel map
+		// "#NN" against their own season independently.
+		if in.Season > 0 {
+			return in.Season, n, true
+		}
+		return 0, n, true
 	}
 	return 0, 0, false
 }
@@ -835,4 +848,409 @@ func (s *Store) SaveSeriesMatches(ctx context.Context, mediaID int64, sourceID s
 		return 0, e
 	}
 	return len(clean), nil
+}
+
+// ----- Sources overview and per-episode status (read-only projections) -----
+//
+// These projections derive their state from existing tables: youtube_jobs for
+// download progress, episode_files for registered media and
+// youtube_subtitle_sources for English-subtitle evidence. They never scan disk,
+// contact providers or mutate anything.
+
+// SeriesSourceCounts aggregates per-source activity for the shows overview.
+// downloaded counts the bound episodes that already have a registered file;
+// missing counts the bound episodes without one.
+type SeriesSourceCounts struct {
+	Entries        int64 `json:"entries"`
+	Queued         int64 `json:"queued"`
+	Downloading    int64 `json:"downloading"`
+	AwaitingReview int64 `json:"awaiting_review"`
+	Completed      int64 `json:"completed"`
+	Downloaded     int64 `json:"downloaded"`
+	Missing        int64 `json:"missing"`
+}
+
+type SeriesSourceShow struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+}
+
+type SeriesSourceSummary struct {
+	ID          string             `json:"id"`
+	MediaID     int64              `json:"media_id"`
+	ShowTitle   string             `json:"show_title"`
+	SourceURL   string             `json:"source_url"`
+	Mapping     string             `json:"mapping"`
+	Season      int                `json:"season_number"`
+	Quality     string             `json:"quality"`
+	AutoImport  bool               `json:"auto_import"`
+	Enabled     bool               `json:"enabled"`
+	Initialized bool               `json:"initialized"`
+	Revision    int                `json:"revision"`
+	State       string             `json:"state"`
+	Message     string             `json:"message"`
+	NextRun     int64              `json:"next_run"`
+	LastChecked int64              `json:"last_checked"`
+	Counts      SeriesSourceCounts `json:"counts"`
+	Show        SeriesSourceShow   `json:"show"`
+}
+
+const seriesSummaryBoundSet = `(SELECT episode_id FROM youtube_series_entries WHERE source_id=s.id AND episode_id IS NOT NULL UNION SELECT episode_id FROM youtube_series_matches WHERE source_id=s.id)`
+
+// SeriesSourceSummaries lists every monitored YouTube source with derived
+// activity counts, bounded to the newest 500 sources. It is a pure read and
+// works without yt-dlp installed.
+func (s *Store) SeriesSourceSummaries(ctx context.Context) ([]SeriesSourceSummary, error) {
+	rows, e := s.db.QueryContext(ctx, `SELECT s.id,s.media_id,m.title,s.source_url,s.mapping,s.season_number,s.quality,s.auto_import,s.enabled,s.initialized,s.revision,s.state,s.message,s.next_run,s.last_checked,
+(SELECT COUNT(*) FROM youtube_series_entries e WHERE e.source_id=s.id),
+(SELECT COUNT(*) FROM youtube_jobs j WHERE j.series_source_id=s.id AND j.state='queued'),
+(SELECT COUNT(*) FROM youtube_jobs j WHERE j.series_source_id=s.id AND j.state='downloading'),
+(SELECT COUNT(*) FROM youtube_jobs j WHERE j.series_source_id=s.id AND j.state='awaiting_review'),
+(SELECT COUNT(*) FROM youtube_jobs j WHERE j.series_source_id=s.id AND j.state='completed'),
+(SELECT COUNT(*) FROM `+seriesSummaryBoundSet+` b JOIN episode_files f ON f.episode_id=b.episode_id),
+(SELECT COUNT(*) FROM `+seriesSummaryBoundSet+` b WHERE NOT EXISTS(SELECT 1 FROM episode_files f WHERE f.episode_id=b.episode_id))
+FROM youtube_series_sources s JOIN media_items m ON m.id=s.media_id AND m.kind='series'
+ORDER BY m.title COLLATE NOCASE,s.created_at,s.id LIMIT 500`)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []SeriesSourceSummary{}
+	for rows.Next() {
+		var v SeriesSourceSummary
+		if e = rows.Scan(&v.ID, &v.MediaID, &v.ShowTitle, &v.SourceURL, &v.Mapping, &v.Season, &v.Quality, &v.AutoImport, &v.Enabled, &v.Initialized, &v.Revision, &v.State, &v.Message, &v.NextRun, &v.LastChecked,
+			&v.Counts.Entries, &v.Counts.Queued, &v.Counts.Downloading, &v.Counts.AwaitingReview, &v.Counts.Completed, &v.Counts.Downloaded, &v.Counts.Missing); e != nil {
+			return nil, e
+		}
+		if v.Quality == "" {
+			v.Quality = "best"
+		}
+		v.Show = SeriesSourceShow{ID: v.MediaID, Title: v.ShowTitle}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// SeriesEpisodeVideo is one bound video of an episode as seen by the source.
+type SeriesEpisodeVideo struct {
+	VideoID  string `json:"video_id"`
+	Title    string `json:"title"`
+	Position int    `json:"position"`
+	State    string `json:"state"`
+	JobID    string `json:"job_id,omitempty"`
+}
+
+// SeriesEpisodeStatus derives one episode's state from its job, its registered
+// file and its subtitle evidence. english_subtitles is nil while no download
+// attempt has produced evidence; false means captions were fetched but no
+// English track appeared; true means an English track is on record.
+type SeriesEpisodeStatus struct {
+	EpisodeID        int64                `json:"episode_id"`
+	SeasonNumber     int                  `json:"season_number"`
+	EpisodeNumber    int                  `json:"episode_number"`
+	Title            string               `json:"title"`
+	Monitored        bool                 `json:"monitored"`
+	FileCount        int                  `json:"file_count"`
+	State            string               `json:"state"`
+	Note             string               `json:"note"`
+	EnglishSubtitles *bool                `json:"english_subtitles"`
+	Videos           []SeriesEpisodeVideo `json:"videos"`
+}
+
+type seriesEpisodeJob struct {
+	id      string
+	state   string
+	message string
+}
+
+// SeriesEpisodeStatuses reports the derived state of every episode bound to a
+// source, ordered by season and episode and bounded to 500 rows. Unknown
+// sources surface as sql.ErrNoRows so the transport can answer 404.
+func (s *Store) SeriesEpisodeStatuses(ctx context.Context, sourceID string, limit int) ([]SeriesEpisodeStatus, error) {
+	src, e := scanSeriesSource(s.db.QueryRowContext(ctx, `SELECT `+seriesSourceColumns+` FROM youtube_series_sources WHERE id=?`, sourceID))
+	if e != nil {
+		return nil, e
+	}
+	if limit < 1 || limit > 500 {
+		limit = 500
+	}
+	episodes, e := s.db.QueryContext(ctx, `SELECT b.episode_id,e.number,se.number,e.title,(e.monitored=1 AND se.monitored=1 AND mi.monitored=1),
+(SELECT COUNT(*) FROM episode_files f WHERE f.episode_id=b.episode_id)
+FROM (SELECT episode_id FROM youtube_series_entries WHERE source_id=? AND episode_id IS NOT NULL
+      UNION SELECT episode_id FROM youtube_series_matches WHERE source_id=?) b
+JOIN episodes e ON e.id=b.episode_id
+JOIN seasons se ON se.id=e.season_id
+JOIN media_items mi ON mi.id=se.series_id
+ORDER BY se.number,e.number LIMIT ?`, src.ID, src.ID, limit)
+	if e != nil {
+		return nil, e
+	}
+	defer episodes.Close()
+	items := []SeriesEpisodeStatus{}
+	byEpisode := map[int64]*SeriesEpisodeStatus{}
+	order := []int64{}
+	for episodes.Next() {
+		var item SeriesEpisodeStatus
+		if e = episodes.Scan(&item.EpisodeID, &item.EpisodeNumber, &item.SeasonNumber, &item.Title, &item.Monitored, &item.FileCount); e != nil {
+			return nil, e
+		}
+		item.Videos = []SeriesEpisodeVideo{}
+		items = append(items, item)
+		order = append(order, item.EpisodeID)
+	}
+	if e = episodes.Err(); e != nil {
+		return nil, e
+	}
+	// Index the finished slice so the pointers survive reallocation.
+	for i := range items {
+		byEpisode[items[i].EpisodeID] = &items[i]
+	}
+	videos, e := s.db.QueryContext(ctx, `SELECT episode_id,video_id,title,position,state,COALESCE(job_id,''),note FROM youtube_series_entries WHERE source_id=? AND episode_id IS NOT NULL ORDER BY position,discovered_at,video_id`, src.ID)
+	if e != nil {
+		return nil, e
+	}
+	defer videos.Close()
+	entryNotes := map[int64]string{}
+	for videos.Next() {
+		var episodeID int64
+		var v SeriesEpisodeVideo
+		var note string
+		if e = videos.Scan(&episodeID, &v.VideoID, &v.Title, &v.Position, &v.State, &v.JobID, &note); e != nil {
+			return nil, e
+		}
+		if item, ok := byEpisode[episodeID]; ok {
+			item.Videos = append(item.Videos, v)
+		}
+		if note != "" {
+			entryNotes[episodeID] = note
+		}
+	}
+	if e = videos.Err(); e != nil {
+		return nil, e
+	}
+	jobs, e := s.db.QueryContext(ctx, `SELECT id,episode_id,state,message FROM youtube_jobs WHERE series_source_id=? AND episode_id IS NOT NULL ORDER BY created_at DESC,id DESC`, src.ID)
+	if e != nil {
+		return nil, e
+	}
+	defer jobs.Close()
+	jobsByEpisode := map[int64][]seriesEpisodeJob{}
+	for jobs.Next() {
+		var episodeID int64
+		var j seriesEpisodeJob
+		if e = jobs.Scan(&j.id, &episodeID, &j.state, &j.message); e != nil {
+			return nil, e
+		}
+		jobsByEpisode[episodeID] = append(jobsByEpisode[episodeID], j)
+	}
+	if e = jobs.Err(); e != nil {
+		return nil, e
+	}
+	subs, e := s.db.QueryContext(ctx, `SELECT job_id,language FROM youtube_subtitle_sources WHERE job_id IN (SELECT id FROM youtube_jobs WHERE series_source_id=?) ORDER BY job_id,language`, src.ID)
+	if e != nil {
+		return nil, e
+	}
+	defer subs.Close()
+	englishByJob := map[string]bool{}
+	for subs.Next() {
+		var jobID, language string
+		if e = subs.Scan(&jobID, &language); e != nil {
+			return nil, e
+		}
+		if isEnglishSubtitle(language) {
+			englishByJob[jobID] = true
+		}
+	}
+	if e = subs.Err(); e != nil {
+		return nil, e
+	}
+	for _, episodeID := range order {
+		item := byEpisode[episodeID]
+		jobsFor := jobsByEpisode[episodeID]
+		if len(jobsFor) > 0 {
+			latest := jobsFor[0]
+			if _, evidenced := englishByJob[latest.id]; evidenced {
+				value := englishByJob[latest.id]
+				item.EnglishSubtitles = &value
+			} else if latest.state == "awaiting_review" || latest.state == "completed" || latest.state == "importing" {
+				// The attempt finished its subtitle stage without an English
+				// track; that is a checked negative, not an unchecked one.
+				value := false
+				item.EnglishSubtitles = &value
+			}
+		}
+		item.State, item.Note = "missing", ""
+		if item.FileCount > 0 {
+			item.State = "downloaded"
+		} else {
+			for _, j := range jobsFor {
+				if j.state == "queued" || j.state == "downloading" || j.state == "awaiting_review" || j.state == "importing" {
+					item.State, item.Note = j.state, j.message
+					break
+				}
+			}
+			if item.State == "missing" && len(jobsFor) > 0 && jobsFor[0].state == "failed" {
+				item.State, item.Note = "failed", jobsFor[0].message
+			}
+			if item.State == "missing" && entryNotes[episodeID] != "" {
+				item.State, item.Note = "skipped", entryNotes[episodeID]
+			}
+		}
+	}
+	return items, nil
+}
+
+// ----- Bounded episode-table queueing --------------------------------------
+
+// SeriesEpisodeSelection queues one video of a source against one episode of
+// the source's show.
+type SeriesEpisodeSelection struct {
+	VideoID   string `json:"video_id"`
+	EpisodeID int64  `json:"episode_id"`
+}
+
+type SeriesQueueResult struct {
+	VideoID   string `json:"video_id"`
+	EpisodeID int64  `json:"episode_id"`
+	JobID     string `json:"job_id,omitempty"`
+	State     string `json:"state"`
+	Message   string `json:"message"`
+}
+
+// QueueSeriesEpisodes applies the complete reviewed selection or none of it,
+// like QueueBulk. The source revision fences the write against concurrent
+// owner edits. Manual sources resolve through their saved bindings — a
+// missing binding may be supplied in the selection and is persisted with the
+// same ownership check SaveSeriesMatches uses — and queue as explicit picks
+// (monitoring and existing files are overridden through the reviewed
+// replacement flow). Automatic sources resolve through the entry's mapped
+// title and refuse anything ambiguous, keeping the monitored fencing. The
+// unique active-episode index refuses duplicates for any mapping.
+func (s *Store) QueueSeriesEpisodes(ctx context.Context, sourceID string, revision int, reviewed bool, selections []SeriesEpisodeSelection) ([]SeriesQueueResult, error) {
+	if !reviewed || revision < 1 || len(selections) < 1 || len(selections) > 25 {
+		return nil, ErrInput
+	}
+	seen := map[string]bool{}
+	for _, sel := range selections {
+		if !storeVideoID.MatchString(sel.VideoID) || seen[sel.VideoID] {
+			return nil, ErrInput
+		}
+		seen[sel.VideoID] = true
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return nil, e
+	}
+	defer tx.Rollback()
+	p, e := scanSeriesSource(tx.QueryRowContext(ctx, `SELECT `+seriesSourceColumns+` FROM youtube_series_sources WHERE id=? AND revision=?`, sourceID, revision))
+	if e != nil {
+		return nil, ErrChanged
+	}
+	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+		return nil, e
+	}
+	bindings, e := seriesMatchIndex(ctx, tx, p.ID)
+	if e != nil {
+		return nil, e
+	}
+	results := []SeriesQueueResult{}
+	for _, sel := range selections {
+		episodeID, override, title, channel, ok, e := s.resolveSeriesSelection(ctx, tx, p, bindings, sel)
+		if e != nil {
+			return nil, e
+		}
+		if !ok {
+			return nil, ErrInput
+		}
+		jobID, e := s.queueSeriesEntry(ctx, tx, p, Entry{ID: sel.VideoID, Title: title, Channel: channel}, episodeID, override)
+		if e != nil {
+			// QueueBulk precedent: any failed row rolls back the whole batch.
+			return nil, e
+		}
+		var existing string
+		if e = tx.QueryRowContext(ctx, `SELECT state FROM youtube_series_entries WHERE source_id=? AND video_id=?`, p.ID, sel.VideoID).Scan(&existing); e == nil {
+			if _, e = tx.ExecContext(ctx, `UPDATE youtube_series_entries SET state='queued',episode_id=?,job_id=? WHERE source_id=? AND video_id=?`, episodeID, jobID, p.ID, sel.VideoID); e != nil {
+				return nil, e
+			}
+		} else if errors.Is(e, sql.ErrNoRows) {
+			// Record the entry so a later source check never requeues this
+			// video, exactly like a poller-queued entry.
+			if _, e = tx.ExecContext(ctx, `INSERT INTO youtube_series_entries(source_id,video_id,position,title,channel,state,episode_id,job_id,note,discovered_at) VALUES(?,?,0,?,?,'queued',?,?,?,unixepoch())`, p.ID, sel.VideoID, title, channel, episodeID, jobID, "Queued from the episode table."); e != nil {
+				return nil, e
+			}
+		} else {
+			return nil, e
+		}
+		results = append(results, SeriesQueueResult{VideoID: sel.VideoID, EpisodeID: episodeID, JobID: jobID, State: "queued"})
+	}
+	if e = tx.Commit(); e != nil {
+		return nil, e
+	}
+	return results, nil
+}
+
+// resolveSeriesSelection resolves one selection against the source's mapping.
+// The bool result reports whether the selection is usable at all; an error
+// (rather than false) reports a database failure or a hard conflict.
+func (s *Store) resolveSeriesSelection(ctx context.Context, tx *sql.Tx, p SeriesSource, bindings map[string]int64, sel SeriesEpisodeSelection) (episodeID int64, override bool, title, channel string, ok bool, err error) {
+	var position int
+	var entryEpisode int64
+	var entryJob string
+	entryErr := tx.QueryRowContext(ctx, `SELECT title,channel,position,COALESCE(episode_id,0),COALESCE(job_id,'') FROM youtube_series_entries WHERE source_id=? AND video_id=?`, p.ID, sel.VideoID).Scan(&title, &channel, &position, &entryEpisode, &entryJob)
+	if entryErr != nil && !errors.Is(entryErr, sql.ErrNoRows) {
+		return 0, false, "", "", false, entryErr
+	}
+	hasEntry := entryErr == nil
+	switch p.Mapping {
+	case "manual":
+		bound, boundOK := bindings[sel.VideoID]
+		switch {
+		case boundOK && sel.EpisodeID > 0 && bound != sel.EpisodeID:
+			// The selection contradicts the saved binding.
+			return 0, false, "", "", false, nil
+		case boundOK:
+			episodeID = bound
+		case sel.EpisodeID > 0:
+			// Persist the supplied binding through the SaveSeriesMatches
+			// semantics: the episode must belong to this show.
+			var owned int
+			if e := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE e.id=? AND s.series_id=?`, sel.EpisodeID, p.MediaID).Scan(&owned); e != nil {
+				return 0, false, "", "", false, e
+			}
+			if owned != 1 {
+				return 0, false, "", "", false, nil
+			}
+			if !hasEntry {
+				// Keep the stored title/channel when the source has been checked.
+				title, channel = "", ""
+			}
+			if _, e := tx.ExecContext(ctx, `INSERT INTO youtube_series_matches(source_id,video_id,episode_id,position,title,channel,created_at) VALUES(?,?,?,?,?,?,unixepoch())`, p.ID, sel.VideoID, sel.EpisodeID, position, title, channel); e != nil {
+				return 0, false, "", "", false, e
+			}
+			episodeID = sel.EpisodeID
+		default:
+			return 0, false, "", "", false, nil
+		}
+		return episodeID, true, title, channel, true, nil
+	case "episode", "order":
+		if !hasEntry {
+			// Automatic mappings need the video's title; an unchecked source
+			// has nothing to resolve from.
+			return 0, false, "", "", false, nil
+		}
+		season, number, mappable := mapEpisodeNumber(SeriesSourceInput{Mapping: p.Mapping, Season: p.Season, StartEpisode: p.StartEpisode}, title, position)
+		if !mappable || (p.Season > 0 && season != p.Season) {
+			return 0, false, "", "", false, nil
+		}
+		if e := tx.QueryRowContext(ctx, `SELECT e.id FROM episodes e JOIN seasons s ON s.id=e.season_id WHERE s.series_id=? AND s.number=? AND e.number=?`, p.MediaID, season, number).Scan(&episodeID); e != nil {
+			if errors.Is(e, sql.ErrNoRows) {
+				return 0, false, "", "", false, nil
+			}
+			return 0, false, "", "", false, e
+		}
+		if sel.EpisodeID > 0 && episodeID != sel.EpisodeID {
+			return 0, false, "", "", false, nil
+		}
+		return episodeID, false, title, channel, true, nil
+	}
+	return 0, false, "", "", false, nil
 }

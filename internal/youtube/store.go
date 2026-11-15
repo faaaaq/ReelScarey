@@ -355,40 +355,133 @@ const jobFields = `id,video_id,video_title,channel,target_kind,COALESCE(collecti
 func (s *Store) Job(ctx context.Context, id string) (Job, error) {
 	return scanJob(s.db.QueryRowContext(ctx, `SELECT `+jobFields+` FROM youtube_jobs WHERE id=?`, id))
 }
+
+// Jobs is the default feed: the latest 200 jobs, exactly as before filters
+// existed. It shares one code path with JobsFiltered so the unfiltered feed
+// stays byte-identical.
 func (s *Store) Jobs(ctx context.Context) ([]Job, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT `+jobFields+` FROM youtube_jobs ORDER BY created_at DESC,id DESC LIMIT 200`)
+	jobs, _, e := s.JobsFiltered(ctx, JobsFilter{})
+	return jobs, e
+}
+
+// JobsFilter narrows the job feed. A zero filter returns the latest 200 jobs
+// exactly like Jobs.
+type JobsFilter struct {
+	States         []string
+	MediaID        int64
+	SeriesSourceID string
+}
+
+// JobCounts aggregates the whole filtered set (not only the latest 200 rows
+// returned). importing and cancelled jobs are intentionally not counted; the
+// five fields mirror the feed vocabulary the UI needs.
+type JobCounts struct {
+	Queued         int64 `json:"queued"`
+	Downloading    int64 `json:"downloading"`
+	AwaitingReview int64 `json:"awaiting_review"`
+	Failed         int64 `json:"failed"`
+	Completed      int64 `json:"completed"`
+}
+
+var jobStates = map[string]bool{
+	"queued": true, "downloading": true, "awaiting_review": true, "importing": true,
+	"completed": true, "failed": true, "cancelled": true,
+}
+
+func jobsWhere(filter JobsFilter) (string, []any, error) {
+	conditions := []string{"1=1"}
+	args := []any{}
+	if len(filter.States) > 0 {
+		states := []string{}
+		for _, state := range filter.States {
+			if !jobStates[state] {
+				return "", nil, ErrInput
+			}
+			states = append(states, "state=?")
+			args = append(args, state)
+		}
+		conditions = append(conditions, "("+strings.Join(states, " OR ")+")")
+	}
+	if filter.MediaID > 0 {
+		conditions = append(conditions, "media_id=?")
+		args = append(args, filter.MediaID)
+	}
+	if filter.SeriesSourceID != "" {
+		conditions = append(conditions, "series_source_id=?")
+		args = append(args, filter.SeriesSourceID)
+	}
+	return " WHERE " + strings.Join(conditions, " AND "), args, nil
+}
+
+// JobsFiltered applies the optional state/media/source filters, keeps the
+// latest-200 ordering and additionally counts every state across the whole
+// filtered set.
+func (s *Store) JobsFiltered(ctx context.Context, filter JobsFilter) ([]Job, JobCounts, error) {
+	condition, args, e := jobsWhere(filter)
 	if e != nil {
-		return nil, e
+		return nil, JobCounts{}, e
+	}
+	rows, e := s.db.QueryContext(ctx, `SELECT `+jobFields+` FROM youtube_jobs`+condition+` ORDER BY created_at DESC,id DESC LIMIT 200`, args...)
+	if e != nil {
+		return nil, JobCounts{}, e
 	}
 	defer rows.Close()
 	out := []Job{}
 	for rows.Next() {
 		j, e := scanJob(rows)
 		if e != nil {
-			return nil, e
+			return nil, JobCounts{}, e
 		}
 		out = append(out, j)
 	}
 	if e = rows.Err(); e != nil {
-		return nil, e
+		return nil, JobCounts{}, e
+	}
+	counts := JobCounts{}
+	countRows, e := s.db.QueryContext(ctx, `SELECT state,COUNT(*) FROM youtube_jobs`+condition+` GROUP BY state`, args...)
+	if e != nil {
+		return nil, JobCounts{}, e
+	}
+	defer countRows.Close()
+	for countRows.Next() {
+		var state string
+		var n int64
+		if e = countRows.Scan(&state, &n); e != nil {
+			return nil, JobCounts{}, e
+		}
+		switch state {
+		case "queued":
+			counts.Queued = n
+		case "downloading":
+			counts.Downloading = n
+		case "awaiting_review":
+			counts.AwaitingReview = n
+		case "failed":
+			counts.Failed = n
+		case "completed":
+			counts.Completed = n
+		}
+	}
+	if e = countRows.Err(); e != nil {
+		return nil, JobCounts{}, e
 	}
 	// Expose per-job subtitle evidence so the queue can honestly show which
 	// items satisfy the English-subtitle requirement.
-	subs, e := s.db.QueryContext(ctx, `SELECT job_id,language FROM youtube_subtitle_sources WHERE job_id IN (SELECT id FROM youtube_jobs) ORDER BY job_id,language`)
+	subs, e := s.db.QueryContext(ctx, `SELECT job_id,language FROM youtube_subtitle_sources WHERE job_id IN (SELECT id FROM youtube_jobs`+condition+`) ORDER BY job_id,language`, args...)
 	if e != nil {
-		return nil, e
+		return nil, JobCounts{}, e
 	}
 	defer subs.Close()
 	byJob := map[string][]string{}
 	for subs.Next() {
 		var jobID, language string
 		if e = subs.Scan(&jobID, &language); e != nil {
-			return nil, e
+			return nil, JobCounts{}, e
 		}
 		byJob[jobID] = append(byJob[jobID], language)
 	}
 	if e = subs.Err(); e != nil {
-		return nil, e
+		return nil, JobCounts{}, e
 	}
 	for i := range out {
 		out[i].SubtitleLanguages = byJob[out[i].ID]
@@ -399,7 +492,7 @@ func (s *Store) Jobs(ctx context.Context) ([]Job, error) {
 			}
 		}
 	}
-	return out, nil
+	return out, counts, nil
 }
 
 // Cancel releases a target only before publication starts. Partial downloaded

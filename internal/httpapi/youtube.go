@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/organization"
@@ -135,12 +137,29 @@ func (s *Server) youtubeQueue(w http.ResponseWriter, r *http.Request) {
 	send(w, 201, out)
 }
 func (s *Server) youtubeJobs(w http.ResponseWriter, r *http.Request) {
-	out, err := s.youtube.Jobs(r.Context())
+	filter := youtube.JobsFilter{}
+	if raw := r.URL.Query().Get("state"); raw != "" {
+		for _, part := range strings.Split(raw, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				filter.States = append(filter.States, part)
+			}
+		}
+	}
+	if raw := r.URL.Query().Get("media_id"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id < 1 {
+			fail(w, 400, "invalid_selection", "Choose a valid show filter.")
+			return
+		}
+		filter.MediaID = id
+	}
+	filter.SeriesSourceID = r.URL.Query().Get("series_source_id")
+	items, counts, err := s.youtube.JobsFiltered(r.Context(), filter)
 	if err != nil {
 		s.youtubeError(w, err)
 		return
 	}
-	send(w, 200, map[string]any{"items": out})
+	send(w, 200, map[string]any{"items": items, "counts": counts})
 }
 func (s *Server) youtubeFiles(w http.ResponseWriter, r *http.Request) {
 	out, err := s.youtube.Files(r.Context())
