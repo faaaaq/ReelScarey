@@ -76,6 +76,9 @@ jobs:
           go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
           npm audit --audit-level=high --prefix web
       - run: go build -o bin/reelscarey ./cmd/reelscarey
+      - name: Install FFmpeg for the Linux system-check smoke
+        if: github.event_name == 'pull_request'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - run: node scripts/smoke.mjs
 
   # Live acceptance is intentionally out of the push/PR path: it starts
