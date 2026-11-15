@@ -123,6 +123,11 @@ const groups: { name: string; items: Area[] }[] = [
         to: "/subtitles",
         description: "OpenSubtitles and SubDL, languages and downloads.",
       },
+      {
+        title: "Language Profiles",
+        to: "/language-profiles",
+        description: "Default subtitle language choices per show.",
+      },
     ],
   },
   {
@@ -132,6 +137,21 @@ const groups: { name: string; items: Area[] }[] = [
         title: "Connect",
         to: "/settings/connect",
         description: "TMDb, requests, Discord and Emby.",
+      },
+      {
+        title: "Notifications",
+        to: "/notifications",
+        description: "Discord alerts for requests and library events.",
+      },
+      {
+        title: "API Keys",
+        to: "/api-keys",
+        description: "Keys for external tools that call the ReelScarey API.",
+      },
+      {
+        title: "Media Servers",
+        to: "/media-servers",
+        description: "Emby connection and observed playback.",
       },
       {
         title: "General",

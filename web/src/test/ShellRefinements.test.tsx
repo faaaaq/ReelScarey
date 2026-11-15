@@ -6,6 +6,7 @@ import { Theme } from "@radix-ui/themes";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 import { Library } from "../pages/Library";
+import { navigation } from "../navigation";
 
 vi.mock("../auth", () => ({
   AuthGate: ({ children }: { children: ReactNode }) => children,
@@ -149,6 +150,32 @@ describe("shell and library workflow refinements", () => {
 });
 
 describe("navigation groups the settings and library tasks", () => {
+  it("lists every settings area on the settings index", async () => {
+    const settingsChildren = navigation
+      .find((item) => item.label === "Settings")!
+      .children!.map((child) => child.to);
+    const areaChildren = settingsChildren.filter(
+      (to) => !to.startsWith("/system"),
+    );
+    const { Settings: RealSettings } = (await vi.importActual(
+      "../pages/Settings",
+    )) as { Settings: () => ReactNode };
+    render(
+      <Theme>
+        <MemoryRouter initialEntries={["/settings"]}>
+          <RealSettings />
+        </MemoryRouter>
+      </Theme>,
+    );
+    const index = new Set(
+      Array.from(document.querySelectorAll("a")).map((a) =>
+        a.getAttribute("href"),
+      ),
+    );
+    for (const to of areaChildren)
+      expect(index, `${to} is missing from the settings index`).toContain(to);
+  });
+
   it("marks the primary connections child as the current page", async () => {
     render(
       <Theme>
