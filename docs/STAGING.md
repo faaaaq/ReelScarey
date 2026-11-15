@@ -31,6 +31,12 @@ docker pull <registry>/reelscarey@<digest>   # or the sha-<commit> tag
 REELSCAREY_IMAGE=<pinned tag> docker compose up -d
 ```
 
+The production compose file pins the image line directly; the established
+deploy procedure edits that line to the version tag (with a timestamped
+`config-backup-<ts>` and `compose.yml.bak-<ts>` copy first), runs
+`docker compose up -d --force-recreate`, then healthchecks and records the
+post-deploy schema version.
+
 Migration `103_music_transcoding` runs automatically at container startup
 (entrypoint runs migrations before exec'ing the binary). It is additive: new
 tables (`music_quality_profiles`, `music_conversion_jobs`,
@@ -58,12 +64,25 @@ rows keep their values; nothing is rewritten.
 **Application rollback.** Redeploy the previous image tag and restart:
 
 ```bash
-REELSCAREY_IMAGE=<previous pinned tag> docker compose up -d
+docker compose stop          # keep the container definition; never down -v
+REELSCAREY_IMAGE=<previous pinned tag> docker compose up -d --force-recreate
 ```
 
 Migrations are append-only. Rolling the binary back does **not** reverse
 database changes, and the previous binary version may refuse to start against
-a newer schema (fail closed). Verify in staging — never assume.
+a newer schema (fail closed). Verify in staging — never assume. This has a
+real, observed failure mode: a compose file pointing at a moving `:latest`
+tag can resolve to an older published binary than the database's schema
+(incident 2026-11-15: a recreated live container crash-looped with
+"database schema is newer than this application" until the compose file was
+re-pinned to the version the database was actually migrated by). Therefore:
+
+- **Production and staging compose files must always pin an explicit version
+  tag (`faaaaq/reelscarey:X.Y.Z`), never `:latest`.**
+- To restore an older binary against an unchanged database, use the version
+  tag whose migration chain matches the database's `MAX(schema_migrations.version)`
+  (probe with `grep -ac "NNN_<migration>"` on the candidate binary, or read
+  the deploy history), then re-pin the compose file.
 
 **Database rollback (required when the older binary refuses the schema, or
 data must be returned to the pre-deployment state):**
