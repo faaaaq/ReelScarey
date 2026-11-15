@@ -72,8 +72,13 @@ them. Automatic subtitle timing correction is not provided.
 A saved show can have an explicit YouTube playlist or channel source on its
 detail page. The mapping is never a title search:
 
-- **Episode number in title** reads an explicit `S01E02` or `1x02` token from
-  the video title and maps it to the loaded, monitored episode.
+- **Episode number in title** reads an explicit `S01E02` or `1x02` token, or a
+  trailing `#NN` counter (for example `XTRA XG #89` or `XG DAYS #34`), from the
+  video title and maps it to the loaded, monitored episode. `#NN` titles fall
+  back to the source's configured season number. A channel can be attached to
+  two different shows at once; each show only maps and queues videos whose
+  number resolves against its own catalog, and everything else is recorded as a
+  skipped entry with a reason.
 - **Playlist order** maps the Nth video to `First episode + N - 1` in the
   configured season. It requires a playlist and an explicit season.
 - **Pick each video to an episode** stores an explicit binding per video for
@@ -94,9 +99,31 @@ paused. The first check records the current videos as a baseline; **Fill
 missing** explicitly clears that baseline and requests the mapped missing
 episodes. Future videos are checked on the source interval.
 
+## Pages
+
+The YouTube area is organized around shows and episodes:
+
+- **YouTube** (`/youtube`) — discovery: paste a video, playlist or channel URL
+  and choose either **Download now** (single video, bulk-to-collection, or the
+  playlist-to-series batch) or **Add to a show** (create a per-show source with
+  a mapping preview; sources start paused).
+- **Shows** (`/youtube/shows`) — every per-show source with its state
+  (active/paused/attention), last check and next run, and per-source counts
+  (missing, queued, downloading, review needed, downloaded). Enable, pause and
+  request a check from here; the show link opens the full source management.
+- **Downloads** (`/youtube/downloads`) — the jobs queue with filters (review
+  needed, missing English subtitles, failed, active), per-job progress and
+  subtitle evidence, reviewed import, subtitle-only retry and cancel.
+- **Show detail → YouTube tab** — source cards plus the per-episode table with
+  derived states, English-subtitle indicators, per-row and batch (≤25) reviewed
+  downloading.
+- **Subscriptions** (`/youtube/subscriptions`) — unchanged: channel/playlist
+  watchers that fill a named custom collection.
+
 ## Playlist to series
 
-Use the **Playlist to series** tab for a one-time batch. Paste a playlist, then
+Use the **Playlist to series** flow (in Discover: paste a playlist and choose
+**Download now**) for a one-time batch. Paste a playlist, then
 confirm the saved show and season that ReelScarey identifies from the playlist
 title. If several shows match, choose one; if none match, search the TV library.
 Episode matching uses an explicit `S01E05`, `Ep.5`, `E5` or `#5` token, with an
