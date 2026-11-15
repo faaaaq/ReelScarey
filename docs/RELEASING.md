@@ -8,11 +8,12 @@ change repository visibility. Manual dispatch is restricted to the primary ref.
 The workflow runs on every push to `codex/foundation`, on `v*` tags and on a
 manual dispatch from the primary ref. It reads the application version from
 web/package.json and embeds it in the binary and OCI labels. Branch pushes
-publish `latest` and `sha-<full commit>`; a `v*` tag also publishes the version
-tag. BuildKit attaches maximal build provenance and an SBOM. Use the digest or
-commit tag for review and rollback; `latest` moves on every successful
-publication, including each primary-branch push. The release-candidate smoke
-suite therefore runs on every primary-branch push, so keep that branch
+publish the immutable `sha-<full commit>` candidate tag; `latest` (the
+compose.yaml default) moves only on an explicit release event — a `v*` tag
+or a manual dispatch. BuildKit attaches maximal build provenance and an SBOM.
+Use the digest or commit tag for review and rollback; `latest` moves only on
+successful release publication (a `v*` tag or dispatch). The release-candidate
+smoke suite therefore runs on every primary-branch push, so keep that branch
 releasable; a failed run blocks that publication and leaves the previous
 `latest` in place.
 

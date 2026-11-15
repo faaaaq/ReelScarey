@@ -49,10 +49,45 @@ setup=$(curl -fsS -c "$cookies" -X POST "$base/api/v1/auth/setup" \
 csrf=$(printf '%s' "$setup" | jq -r .csrf_token)
 test -n "$csrf"
 api() { curl -fsS -b "$cookies" -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' "$@"; }
+# retry_api bounds its own provider interaction: the application already paces
+# MusicBrainz to the documented limit, but a runner IP shared with other
+# MusicBrainz consumers can still be throttled. Each failed attempt honors the
+# app's provider Retry-After header (capped at 60s) or falls back to a fixed
+# pace, and exhausting the bounded budget reports an explicit ENVIRONMENTAL
+# outcome for provider throttling instead of an anonymous failure, so a shared
+# CI host never mistakes MusicBrainz availability for application correctness.
+# It never bypasses the provider's limits: fewer requests go out, further apart.
+api_full() {
+  curl -sS -D "$fixture/last-headers" -b "$cookies" -H "X-CSRF-Token: $csrf" \
+    -H 'Content-Type: application/json' -w '\n%{http_code}' "$@"
+}
 retry_api() {
-  for _ in $(seq 1 8); do
-    if out=$("$@"); then printf '%s' "$out"; return 0; fi
-    sleep 15
+  local attempt out code body wait_seconds retry_after
+  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    out=$(api_full "$@") || true
+    code=${out##*$'\n'}
+    body=${out%$'\n'*}
+    case "$code" in
+      2*) printf '%s' "$body"; return 0 ;;
+    esac
+    if [ "$attempt" -ge 12 ]; then
+      case "$body" in
+        *music_rate_limited*|*music_musicbrainz_unavailable*|*music_unavailable*)
+          echo "ENVIRONMENTAL: the public MusicBrainz service is rate-limiting or" >&2
+          echo "unavailable for this runner IP (HTTP ${code:-connection-failure} after 12" >&2
+          echo "bounded retries). Application correctness is not established by this" >&2
+          echo "run; re-run when the shared IP is not throttled. No provider limit" >&2
+          echo "was bypassed." >&2 ;;
+      esac
+      return 1
+    fi
+    wait_seconds=15
+    retry_after=$(grep -i '^retry-after:' "$fixture/last-headers" 2>/dev/null | tail -1 | tr -dc '0-9')
+    if [ -n "$retry_after" ] && [ "$retry_after" -gt 0 ] 2>/dev/null; then
+      if [ "$retry_after" -gt 60 ]; then retry_after=60; fi
+      wait_seconds=$retry_after
+    fi
+    sleep "$wait_seconds"
   done
   return 1
 }

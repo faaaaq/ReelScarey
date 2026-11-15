@@ -406,7 +406,7 @@ image; in-place downgrades are not supported, restore a backup instead.
 
 | Tag | Meaning |
 | --- | --- |
-| `latest` | Newest successful primary-branch build or release; moves on each publication |
+| `latest` | Newest successful release (`v*` tag) or manual-dispatch publication; not moved by ordinary primary-branch pushes (those publish immutable `sha-<commit>` candidates) |
 | `0.54.12` | Immutable application version |
 | `sha-<commit>` | Exact source commit |
 
