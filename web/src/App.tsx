@@ -16,6 +16,7 @@ import { ThemeToggle } from "./components/ThemeToggle";
 import { MusicPlayerBar, MusicPlayerProvider } from "./musicPlayer";
 import { AuthGate, useAuth } from "./auth";
 import { childActive, navigation, pageTitle, type Place } from "./navigation";
+import { YouTubeReviewBadge } from "./pages/youtube/ReviewBadge";
 import { Alert, EmptyState, LoadingIndicator, PageBody } from "./ui";
 
 const Dashboard = lazy(() =>
@@ -130,6 +131,19 @@ const Organization = lazy(() =>
 );
 const YouTube = lazy(() =>
   import("./pages/YouTube").then((m) => ({ default: m.YouTube })),
+);
+const YouTubeDownloads = lazy(() =>
+  import("./pages/youtube/Downloads").then((m) => ({ default: m.Downloads })),
+);
+const YouTubeShows = lazy(() =>
+  import("./pages/youtube/ShowsOverview").then((m) => ({
+    default: m.ShowsOverview,
+  })),
+);
+const YouTubeLibrary = lazy(() =>
+  import("./pages/youtube/LibraryFiles").then((m) => ({
+    default: m.LibraryFiles,
+  })),
 );
 const AdminRequests = lazy(() =>
   import("./pages/Requests").then((m) => ({ default: m.AdminRequests })),
@@ -248,6 +262,7 @@ function Sidebar({ place, open }: { place: Place; open: boolean }) {
               >
                 <Icon aria-hidden="true" />
                 <span>{item.label}</span>
+                {item.to === "/youtube" && <YouTubeReviewBadge />}
               </Link>
               {active && item.children && (
                 <div className="rs-nav-children">
@@ -371,6 +386,9 @@ function AppShell() {
               <Route path="/login" element={<Navigate to="/" replace />} />
               <Route path="/" element={<Dashboard />} />
               <Route path="/youtube" element={<YouTube />} />
+              <Route path="/youtube/shows" element={<YouTubeShows />} />
+              <Route path="/youtube/downloads" element={<YouTubeDownloads />} />
+              <Route path="/youtube/library" element={<YouTubeLibrary />} />
               <Route
                 path="/youtube/subscriptions"
                 element={<YouTubeSubscriptions />}

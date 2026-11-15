@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { YouTube } from "../pages/YouTube";
+import { Downloads as YouTube } from "../pages/youtube/Downloads";
 
 const jobs = [
   {

@@ -135,80 +135,24 @@ describe("YouTube source review", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows subtitle evidence before approving import", async () => {
-    const evidence = {
-      job_id: "job123",
-      size_bytes: 12,
-      sha256: "video-hash",
-      probe_json: "{}",
-      destination: "YouTube/video.mp4",
-      target_label: "XG Days",
-      subtitles: [
-        {
-          language: "en",
-          size_bytes: 20,
-          sha256: "subtitle-hash",
-          destination: "YouTube/video.en.vtt",
-        },
-      ],
-    };
-    const fetch = vi.fn(async (url: string, _options?: RequestInit) => {
-      if (url.endsWith("/youtube/collections"))
-        return Response.json({ items: [] });
-      if (url.endsWith("/youtube/files")) return Response.json({ items: [] });
-      if (url.endsWith("/youtube/jobs"))
-        return Response.json({
-          items: [
-            {
-              id: "job123",
-              video: { id: "limOfz2srCk", title: "XG DAYS", channel: "XG" },
-              state: "awaiting_review",
-              message: "Ready",
-            },
-          ],
-        });
-      if (url.endsWith("/youtube/jobs/job123/import-review"))
-        return Response.json(evidence);
-      if (url.endsWith("/youtube/jobs/job123/import"))
-        return Response.json({ status: "queued" });
-      return Response.json(
-        { error: { message: "Unexpected request" } },
-        { status: 404 },
-      );
-    });
-    vi.stubGlobal("fetch", fetch);
-    window.localStorage.setItem(
-      "reelscarey-notice:work-in-progress:youtube",
-      "hidden",
-    );
-    render(
-      <Theme>
-        <MemoryRouter>
-          <YouTube />
-        </MemoryRouter>
-      </Theme>,
-    );
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Review import" }),
-    );
-    const review = await screen.findByLabelText("Import review");
-    expect(review).toHaveTextContent("YouTube/video.en.vtt");
-    expect(review).toHaveTextContent("subtitle-hash");
-    await userEvent.click(
-      within(review).getByRole("button", { name: "Import" }),
-    );
-    const request = fetch.mock.calls.find(([url]) =>
-      url.endsWith("/youtube/jobs/job123/import"),
-    );
-    expect(JSON.parse(String(request?.[1]?.body))).toEqual(evidence);
-  });
-
   it("matches a playlist to a saved show and queues selected episodes", async () => {
     const fetch = vi.fn(async (url: string, _options?: RequestInit) => {
       if (url.endsWith("/youtube/collections"))
         return Response.json({ items: [] });
       if (url.endsWith("/youtube/files")) return Response.json({ items: [] });
       if (url.endsWith("/youtube/jobs")) return Response.json({ items: [] });
+      if (url.endsWith("/youtube/inspect"))
+        return Response.json({
+          source: {
+            kind: "playlist",
+            id: "PLohGMC3h97JT6mdbfBiriHz4aVx6XdZUF",
+            url: "https://www.youtube.com/playlist?list=PLohGMC3h97JT6mdbfBiriHz4aVx6XdZUF",
+          },
+          title: "X or GO Full Episodes",
+          channel: "Vaff angool",
+          truncated: false,
+          entries: [],
+        });
       if (url.endsWith("/youtube/playlist/preview"))
         return Response.json({
           source_url:
@@ -299,15 +243,13 @@ describe("YouTube source review", () => {
         </MemoryRouter>
       </Theme>,
     );
-    await userEvent.click(
-      screen.getByRole("tab", { name: "Playlist to series" }),
-    );
     await userEvent.type(
-      screen.getByLabelText("Playlist URL"),
+      screen.getByLabelText("YouTube URL"),
       "https://www.youtube.com/playlist?list=PLohGMC3h97JT6mdbfBiriHz4aVx6XdZUF",
     );
+    await userEvent.click(screen.getByRole("button", { name: "Load" }));
     await userEvent.click(
-      screen.getByRole("button", { name: "Load playlist" }),
+      await screen.findByRole("button", { name: /Download now/ }),
     );
     expect(await screen.findByText("X or Go")).toBeVisible();
     expect(

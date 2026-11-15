@@ -398,6 +398,8 @@ describe("TV catalog and monitoring", () => {
     expect(
       await screen.findByRole("button", { name: "Edit release rules" }),
     ).toBeVisible();
+    // The YouTube source section moved to its own tab: it mounts there.
+    await userEvent.click(screen.getByRole("tab", { name: /^YouTube/ }));
     await waitFor(() =>
       expect(
         fetch.mock.calls.some(([url]) =>

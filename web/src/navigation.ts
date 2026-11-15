@@ -143,6 +143,8 @@ export const navigation: NavItem[] = [
     match: (p) => starts(p, "/youtube"),
     children: [
       { label: "Library", to: "/youtube" },
+      { label: "Shows", to: "/youtube/shows" },
+      { label: "Downloads", to: "/youtube/downloads" },
       { label: "Subscriptions", to: "/youtube/subscriptions" },
     ],
   },
@@ -264,6 +266,9 @@ const titles: Record<string, string> = {
   "/music/server": "Music server",
   "/youtube": "YouTube",
   "/youtube/subscriptions": "YouTube subscriptions",
+  "/youtube/shows": "YouTube shows",
+  "/youtube/downloads": "YouTube downloads",
+  "/youtube/library": "YouTube library",
   "/search": "Add new",
   "/import": "Library import",
   "/calendar": "Calendar",

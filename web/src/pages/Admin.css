@@ -1041,3 +1041,135 @@ a.scan-metric:hover {
 .storage-insight-grid strong {
   font-size: 18px;
 }
+
+/* YouTube Experience 2.0: outcome paths, filter chips, overview cards,
+   episode table and the navigation review badge. Tokens only, no new palettes. */
+.yt-outcomes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.yt-outcome {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 260px;
+  padding: 12px 14px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-2);
+  color: var(--rs-text);
+  text-align: left;
+  cursor: pointer;
+}
+.yt-outcome:hover {
+  border-color: var(--rs-border-strong);
+  background: var(--rs-hover);
+}
+.yt-outcome strong {
+  color: var(--rs-text-strong);
+}
+.yt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.yt-chip {
+  border: 1px solid var(--rs-border);
+  border-radius: 999px;
+  background: var(--rs-surface-2);
+  color: var(--rs-text);
+  padding: 3px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.yt-chip[aria-pressed="true"] {
+  border-color: var(--rs-primary);
+  background: var(--rs-selected);
+  color: var(--rs-text-strong);
+}
+.yt-job-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.yt-job-group h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--rs-text-strong);
+}
+.yt-group-link {
+  font-weight: 400;
+  font-size: 13px;
+}
+.yt-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.yt-overview-card,
+.yt-episodes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.yt-overview-card {
+  padding: 14px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface);
+}
+.yt-overview-meta {
+  color: var(--rs-muted);
+  font-size: 13px;
+}
+.yt-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.yt-count-chip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--rs-surface-3);
+  color: var(--rs-text);
+  font-size: 12px;
+}
+.yt-episode-video {
+  display: block;
+}
+.yt-row-actions {
+  flex-wrap: wrap;
+}
+.yt-nav-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--rs-warning);
+  color: #202020;
+  font-size: 11px;
+  font-weight: 700;
+}
+@media (max-width: 767px) {
+  /* Episode table and grouped job lists scroll instead of squeezing. */
+  .yt-episodes .rs-table-wrap,
+  .yt-job-group .yt-jobs {
+    overflow-x: auto;
+  }
+  .yt-outcomes,
+  .yt-chips,
+  .yt-row-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

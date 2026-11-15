@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { APIError, api, messageFor } from "./api";
 
-export function useResource<T>(path: string | null) {
+export function useResource<T>(
+  path: string | null,
+  options?: { retain?: boolean },
+) {
+  // `retain` keeps the previous data on the screen while a reload is in
+  // flight (background-refresh semantics, like useLiveResource) so callers
+  // whose subtree would otherwise remount — and lose local UI state such as
+  // action notices — stay stable.
+  const retainRef = useRef(options?.retain ?? false);
+  retainRef.current = options?.retain ?? false;
   const [data, setData] = useState<T>();
   const [error, setError] = useState("");
   const [code, setCode] = useState("");
@@ -21,7 +30,7 @@ export function useResource<T>(path: string | null) {
     setLoading(true);
     setError("");
     setCode("");
-    setData(undefined);
+    setData((current) => (retainRef.current ? current : undefined));
     api<T>(path, {
       // Matches api()'s default read timeout.
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]),

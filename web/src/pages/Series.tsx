@@ -51,7 +51,7 @@ import { ItemOrganization } from "./Organization";
 import { AutomaticFranchise } from "./AutomaticFranchise";
 import { RelatedTitles } from "./RelatedTitles";
 import { SeriesReleaseRules } from "./SeriesReleaseRules";
-import { SeriesYouTubeSource } from "./SeriesYouTubeSource";
+import { SeriesSources } from "./youtube/SourceCard";
 import { ShowSubtitlePreferences } from "./ShowSubtitlePreferences";
 import {
   CreditsSection,
@@ -570,6 +570,19 @@ function SeriesView({ initial }: { initial: TVSeries }) {
               ),
             },
             {
+              value: "youtube",
+              label: "YouTube",
+              content: (
+                <>
+                  <SeriesSources id={show.id} />
+                  <p className="rs-form-help">
+                    Downloads for these sources are managed on the YouTube
+                    downloads page.
+                  </p>
+                </>
+              ),
+            },
+            {
               value: "settings",
               label: "Settings",
               content: (
@@ -583,7 +596,6 @@ function SeriesView({ initial }: { initial: TVSeries }) {
                   />
                   <SeriesReleaseRules id={show.id} />
                   <ShowSubtitlePreferences id={show.id} />
-                  <SeriesYouTubeSource id={show.id} />
                   <AnimeSettings
                     id={show.id}
                     onSaved={() => {
