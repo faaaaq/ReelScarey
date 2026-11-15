@@ -565,7 +565,15 @@ func (s *Service) runFFmpegConvert(ctx context.Context, profile QualityProfile, 
 // verifyConvertOutput validates the staged output: the probed codec family
 // must match the profile, the duration must stay within 2% of a known source
 // duration, and the file must be non-empty and stable while it is digested.
+// A caller whose deadline expired while the conversion ran receives the
+// context error, never an output-verification failure: the staged bytes may
+// even be complete, but the bounded operation did not finish in time, and
+// callers (the conversion queue) must be able to distinguish a timeout from
+// a broken conversion.
 func (s *Service) verifyConvertOutput(ctx context.Context, partPath string, source AudioTags, profile QualityProfile) (ConvertResult, error) {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ConvertResult{}, ctxErr
+	}
 	tags, err := s.prober.ProbeAudio(ctx, partPath)
 	if err != nil {
 		return ConvertResult{}, &Error{Code: "music_output_invalid", Message: "The converted audio file is not decodable, so it was discarded."}

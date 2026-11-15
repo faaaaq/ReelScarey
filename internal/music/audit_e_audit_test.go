@@ -547,7 +547,11 @@ func TestAuditEConvertTimeoutTypedError(t *testing.T) {
 		SourcePath: srcPath,
 		OutputPath: filepath.Join(dir, "out.ogg"),
 		Profile:    mustProfile("opus-high"),
-		Timeout:    200 * time.Millisecond,
+		// 50ms: far below the 64 MiB 512-byte-read replay's runtime even on
+		// the fastest hardware, so the fake ffmpeg can never legitimately
+		// finish within the deadline; together with verifyConvertOutput's
+		// expired-context guard the typed timeout error is deterministic.
+		Timeout: 50 * time.Millisecond,
 	})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected a typed timeout error, got %v", err)
