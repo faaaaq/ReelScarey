@@ -68,6 +68,10 @@ func (s *Server) musicError(w http.ResponseWriter, err error) {
 		fail(w, 409, "plan_changed", err.Error())
 		return
 	}
+	if errors.Is(err, music.ErrNotFound) {
+		fail(w, 404, "not_found", err.Error())
+		return
+	}
 	if errors.Is(err, music.ErrInvalidInput) {
 		fail(w, 400, "invalid_music", err.Error())
 		return

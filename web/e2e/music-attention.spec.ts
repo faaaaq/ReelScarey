@@ -85,4 +85,42 @@ test.describe.serial("Music download attention", () => {
       page.getByText("Music downloads need attention"),
     ).toHaveCount(0);
   });
+
+  // Criterion 9 at the browser level: the acknowledgment lives in the
+  // database, so a real process stop/start (not just a reload) must keep the
+  // warning cleared while the acknowledged history stays visible.
+  test("the acknowledgment survives a full server restart", async ({
+    page,
+  }) => {
+    await login(page, server);
+    await page.goto(server.url("/music"));
+    await expect(
+      page.getByText("Music downloads need attention"),
+    ).toHaveCount(0);
+    await server.stop();
+    await server.start();
+    await page.goto(server.url("/"));
+    // The session cookie is still valid after restart; sign in again only if
+    // the browser was sent back to the auth screen.
+    const username = page.getByLabel("Username");
+    if (await username.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await username.fill(server.session!.username);
+      await page.getByLabel("Password").fill(server.session!.password);
+      await page.getByRole("button", { name: "Sign in" }).click();
+      await page
+        .getByRole("navigation")
+        .first()
+        .getByRole("link", { name: "Dashboard" })
+        .waitFor({ timeout: 20000 });
+    }
+    await page.goto(server.url("/music"));
+    await expect(
+      page.getByText("Music downloads need attention"),
+    ).toHaveCount(0);
+    // The acknowledged job's history is intact on the queue page.
+    await page.goto(server.url("/music/discover"));
+    const table = page.getByRole("table", { name: "Recent music downloads" });
+    const row = table.getByRole("row").filter({ hasText: "Generated album" });
+    await expect(row).toContainText("acknowledged");
+  });
 });

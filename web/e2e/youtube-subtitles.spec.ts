@@ -72,15 +72,7 @@ test.describe.serial("YouTube English subtitles", () => {
     page,
   }) => {
     await login(page, server);
-    await page.goto(server.url("/youtube"));
-    try {
-      await page
-        .getByRole("dialog")
-        .getByRole("button", { name: "Don't show again" })
-        .click({ timeout: 5000 });
-    } catch {
-      // The first-visit notice was already dismissed in this context.
-    }
+    await page.goto(server.url("/youtube/downloads"));
     const missing = page
       .getByRole("listitem")
       .filter({ hasText: "XG DAYS #01" });
