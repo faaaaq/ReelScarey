@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,22 @@ import (
 // keeps every test hermetic: no real ffmpeg, no network, no media workload.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "-hide_banner" {
+		// File-output mode (stream cache encodes): the stream concurrency
+		// tests set streamTestFFmpegFileOutEnv so the fake ffmpeg writes its
+		// stdin to the trailing destination argument, the way real ffmpeg's
+		// "-y <dest>" would. Unset everywhere else, so the pipe mode below
+		// (and every test that depends on a failed publish) is unchanged.
+		if os.Getenv(streamTestFFmpegFileOutEnv) != "" {
+			dest := os.Args[len(os.Args)-1]
+			if dest != "pipe:1" {
+				file, err := os.Create(dest)
+				if err == nil {
+					_, _ = io.Copy(file, os.Stdin)
+					_ = file.Close()
+				}
+				os.Exit(0)
+			}
+		}
 		buf := make([]byte, 512)
 		for {
 			n, err := os.Stdin.Read(buf)

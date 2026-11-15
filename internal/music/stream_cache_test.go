@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -544,8 +545,13 @@ func TestOpenCachedStreamEncodeFailureCleansUp(t *testing.T) {
 		t.Fatal("stats after failure", stats)
 	}
 
-	// A retry after the failure can still succeed.
+	// A retry after the failure can still succeed once the short-lived
+	// failure memo for the key expires; a successful encode also clears it.
+	previousTTL := cacheFailureMemoTTL
+	cacheFailureMemoTTL = 30 * time.Millisecond
+	t.Cleanup(func() { cacheFailureMemoTTL = previousTTL })
 	enc.fail = false
+	time.Sleep(2 * cacheFailureMemoTTL)
 	file, _, key, err := service.OpenCachedStream(ctx, fileID, "opus", 128, "sha-a", enc.encode)
 	if err != nil {
 		t.Fatal(err)
@@ -641,5 +647,63 @@ func TestOpenCachedStreamRejectsInvalidKeys(t *testing.T) {
 	}
 	if count := cacheRowCount(t, db); count != 0 {
 		t.Fatal("invalid key inserted a row", count)
+	}
+}
+
+// TestOpenCachedStreamRejectsCrossKeyCachePath covers the deterministic-path
+// fence on open: a tampered row whose stored path stays inside the cache dir
+// but names another key's published file must never be served as this key's
+// bytes. deleteCacheEntry already enforced cachePathAllowed; openCacheFile
+// now enforces the same exact-path rule.
+func TestOpenCachedStreamRejectsCrossKeyCachePath(t *testing.T) {
+	ctx := context.Background()
+	service, db, _ := cacheTestService(t)
+	first := registerCacheFile(t, db, "Music/Artist/Album/01 Song.flac", "sha-a")
+	second := registerCacheFile(t, db, "Music/Artist/Album/02 Song.flac", "sha-b")
+	for id, payload := range map[int64]string{first: "one", second: "two"} {
+		enc := &cacheTestEncoder{payload: []byte(payload)}
+		file, _, _, err := service.OpenCachedStream(ctx, id, "opus", 128, map[int64]string{first: "sha-a", second: "sha-b"}[id], enc.encode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Point the first row at the second file's published cache bytes: a valid
+	// in-cache path, but for the wrong key.
+	if _, err := db.Exec(`UPDATE music_stream_cache SET relative_path=? WHERE file_id=?`,
+		strconv.FormatInt(second, 10)+"/opus-128", first); err != nil {
+		t.Fatal(err)
+	}
+	enc := &cacheTestEncoder{payload: []byte("fresh-encode")}
+	file, _, _, err := service.OpenCachedStream(ctx, first, "opus", 128, "sha-a", enc.encode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "fresh-encode" {
+		t.Fatalf("cross-key cache bytes were served: %q", string(body))
+	}
+	if enc.calls.Load() != 1 {
+		t.Fatalf("expected exactly one re-encode, got %d", enc.calls.Load())
+	}
+	// The tampered row is forgotten; the honest row for the second file stays.
+	var rows int64
+	if err := db.QueryRow(`SELECT COUNT(*) FROM music_stream_cache WHERE file_id=?`, second).Scan(&rows); err != nil || rows != 1 {
+		t.Fatalf("untampered row was disturbed: %d (err %v)", rows, err)
+	}
+	if rows, err := func() (int64, error) {
+		var n int64
+		err := db.QueryRow(`SELECT COUNT(*) FROM music_stream_cache WHERE file_id=?`, first).Scan(&n)
+		return n, err
+	}(); err != nil || rows != 1 {
+		t.Fatalf("re-encoded row not published exactly once: %d (err %v)", rows, err)
 	}
 }

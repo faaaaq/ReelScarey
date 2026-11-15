@@ -48,6 +48,33 @@ var ErrCacheMiss = &Error{Code: "music_cache_miss", Message: "This stream is not
 // cause stays wrapped for logs.
 var ErrCacheEncodeFailed = &Error{Code: "music_cache_encode_failed", Message: "The server could not prepare this cached stream."}
 
+// ErrCacheBusy is the sentinel acquire returns when the per-key grace period
+// expires. As a package-level sentinel the caller can distinguish "another
+// encode is still running" from a canceled context and make one final cache
+// check before giving up.
+var ErrCacheBusy = &Error{Code: "music_cache_busy", Message: "The server is already preparing this stream. Wait a moment and try again."}
+
+// ErrCacheRecentlyFailed is returned to a caller whose (file, profile) encode
+// failed moments ago. It is a short-lived failure memo, not a cached failure:
+// after cacheFailureMemoTTL the next caller re-attempts the encode, and a
+// successful encode anywhere clears the memo immediately. OpenPlayback treats
+// it like every other cache error and falls back to on-the-fly piping, so a
+// permanently failing source costs concurrent listeners one bounded pipe
+// attempt each instead of a sequential encode attempt per waiter.
+var ErrCacheRecentlyFailed = &Error{Code: "music_cache_recent_failure", Message: "The server could not prepare this stream just now. Wait a moment and try again."}
+
+// cacheFailureMemoTTL is how long a failed encode for a key deters
+// immediately-retried encodes for the same key. It must stay short: the memo
+// only stops N concurrent waiters from re-running a just-failed ffmpeg one
+// after another, never a genuine retry minutes later.
+var cacheFailureMemoTTL = 5 * time.Second
+
+// maxEncodeFailureMemos bounds the failure memo map. The memo keys are the
+// same bounded profile keys as the dedup locks, and entries also expire by
+// TTL, so the cap is a belt-and-braces bound against a pathological burst of
+// distinct failing keys.
+const maxEncodeFailureMemos = 1024
+
 // StreamCacheStats is a snapshot of the persistent transcoding stream cache.
 // Hits/Misses are in-memory atomic counters for the process lifetime; they
 // reset on restart and are best-effort observability, never a source of
@@ -71,6 +98,12 @@ type streamCacheRuntime struct {
 	holds  map[string]int
 	hits   atomic.Int64
 	misses atomic.Int64
+
+	// failMu guards the short-lived per-key encode-failure memo. Entries
+	// expire after cacheFailureMemoTTL and disappear when a later encode
+	// for the same key succeeds, so failures are never cached indefinitely.
+	failMu      sync.Mutex
+	recentFails map[string]time.Time
 }
 
 var streamCacheRuntimes sync.Map // *Service -> *streamCacheRuntime
@@ -162,17 +195,19 @@ func (s *Service) cacheRow(ctx context.Context, fileID int64, profileKey string)
 }
 
 // openCacheFile opens a cached file for streaming. The stored path must match
-// the deterministic name for its key and is opened through os.Root around the
-// cache dir, mirroring OpenAudioFile's containment, so a stale or tampered
-// path can never escape that root.
-func (s *Service) openCacheFile(relative string) (*os.File, os.FileInfo, error) {
+// the deterministic name for its key exactly (cachePathAllowed, the same fence
+// deleteCacheEntry applies) and is opened through os.Root around the cache
+// dir, mirroring OpenAudioFile's containment, so a stale or tampered path can
+// never escape that root — and a tampered row can never make one key's open
+// serve another key's cached bytes.
+func (s *Service) openCacheFile(fileID int64, profileKey, relative string) (*os.File, os.FileInfo, error) {
 	if s.mediaDir == "" {
 		return nil, nil, &Error{Code: "music_file_missing", Message: "This registered music file is not available on the server."}
 	}
-	name, ok := cleanCacheRelative(relative)
-	if !ok {
+	if !cachePathAllowed(fileID, profileKey, relative) {
 		return nil, nil, ErrInvalidInput
 	}
+	name, _ := cleanCacheRelative(relative)
 	root, err := os.OpenRoot(streamCacheDir(s.mediaDir))
 	if err != nil {
 		return nil, nil, err
@@ -254,7 +289,7 @@ func (rt *streamCacheRuntime) acquire(ctx context.Context, key string) (func(), 
 		return nil, ctx.Err()
 	case <-time.After(cacheEncodeGrace):
 		rt.dropHold(key)
-		return nil, &Error{Code: "music_cache_busy", Message: "The server is already preparing this stream. Wait a moment and try again."}
+		return nil, ErrCacheBusy
 	}
 }
 
@@ -280,6 +315,78 @@ func (rt *streamCacheRuntime) release(ch chan struct{}) {
 	case <-ch:
 	default:
 	}
+}
+
+// noteEncodeFailure records a just-failed encode for key at now, pruning
+// expired entries first and shedding arbitrary entries at the cap so the
+// memo map can never grow without bound.
+func (rt *streamCacheRuntime) noteEncodeFailure(key string, now time.Time) {
+	rt.failMu.Lock()
+	defer rt.failMu.Unlock()
+	if rt.recentFails == nil {
+		rt.recentFails = make(map[string]time.Time)
+	}
+	rt.pruneEncodeFailuresLocked(now)
+	if len(rt.recentFails) >= maxEncodeFailureMemos {
+		for k := range rt.recentFails {
+			delete(rt.recentFails, k)
+			break
+		}
+	}
+	rt.recentFails[key] = now
+}
+
+// clearEncodeFailure forgets the memo for key; called when a later encode
+// for the same key succeeds so recovery is immediate, not TTL-bound.
+func (rt *streamCacheRuntime) clearEncodeFailure(key string) {
+	rt.failMu.Lock()
+	delete(rt.recentFails, key)
+	rt.failMu.Unlock()
+}
+
+// recentEncodeFailure reports whether key failed within cacheFailureMemoTTL.
+// Expired entries are dropped on read.
+func (rt *streamCacheRuntime) recentEncodeFailure(key string, now time.Time) bool {
+	rt.failMu.Lock()
+	defer rt.failMu.Unlock()
+	at, ok := rt.recentFails[key]
+	if !ok {
+		return false
+	}
+	if now.Sub(at) >= cacheFailureMemoTTL {
+		delete(rt.recentFails, key)
+		return false
+	}
+	return true
+}
+
+func (rt *streamCacheRuntime) pruneEncodeFailuresLocked(now time.Time) {
+	for k, at := range rt.recentFails {
+		if now.Sub(at) >= cacheFailureMemoTTL {
+			delete(rt.recentFails, k)
+		}
+	}
+}
+
+// encodeFailureMemoizable reports whether a failed cache encode should feed
+// the short-lived failure memo. Context cancellation (a listener going away
+// or a request timing out) and a saturated transcode slot are transient by
+// definition: the next waiter must transparently re-encode with its own
+// context instead of being bounced to the pipe for the memo's lifetime.
+// Everything else — a real ffmpeg failure, an unwritable cache dir — is what
+// the memo exists for.
+func encodeFailureMemoizable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var musicErr *Error
+	if errors.As(err, &musicErr) && musicErr.Code == "music_transcode_busy" {
+		return false
+	}
+	return true
 }
 
 // OpenCachedStream returns the cached transcoded stream for
@@ -312,7 +419,7 @@ func (s *Service) OpenCachedStream(ctx context.Context, fileID int64, codec stri
 		if row.SourceSHA != sourceSHA {
 			// The source changed, so the cached bytes are stale.
 			_ = s.deleteCacheEntry(ctx, fileID, profileKey, row.RelativePath)
-		} else if file, info, err := s.openCacheFile(row.RelativePath); err == nil {
+		} else if file, info, err := s.openCacheFile(fileID, profileKey, row.RelativePath); err == nil {
 			s.streamCache().hits.Add(1)
 			s.touchCache(ctx, row.ID)
 			return file, info, profileKey, nil
@@ -335,13 +442,28 @@ func (s *Service) OpenCachedStream(ctx context.Context, fileID int64, codec stri
 		defer release()
 	}
 	if err != nil {
+		// Grace expiry: one final cache check before giving up. The encode
+		// may have finished publishing in the instant between the waiter's
+		// timer firing and this check; serving the fresh entry here keeps
+		// the listener on the shared cached bytes instead of a duplicate
+		// on-the-fly conversion competing for a transcode slot. A canceled
+		// context is returned untouched.
+		if errors.Is(err, ErrCacheBusy) {
+			if row, cached, rowErr := s.cacheRow(ctx, fileID, profileKey); rowErr == nil && cached && row.SourceSHA == sourceSHA {
+				if file, info, openErr := s.openCacheFile(fileID, profileKey, row.RelativePath); openErr == nil {
+					s.streamCache().hits.Add(1)
+					s.touchCache(ctx, row.ID)
+					return file, info, profileKey, nil
+				}
+			}
+		}
 		return nil, nil, "", err
 	}
 
 	// Another caller may have finished the encode while we waited.
 	if row, cached, err := s.cacheRow(ctx, fileID, profileKey); err == nil && cached {
 		if row.SourceSHA == sourceSHA {
-			if file, info, err := s.openCacheFile(row.RelativePath); err == nil {
+			if file, info, err := s.openCacheFile(fileID, profileKey, row.RelativePath); err == nil {
 				s.streamCache().hits.Add(1)
 				s.touchCache(ctx, row.ID)
 				return file, info, profileKey, nil
@@ -351,6 +473,15 @@ func (s *Service) OpenCachedStream(ctx context.Context, fileID int64, codec stri
 		}
 	}
 	s.streamCache().misses.Add(1)
+
+	// A very recent encode failure for this key short-circuits the retry so
+	// N concurrent waiters of a failing source do not each re-run ffmpeg one
+	// after another. The memo is short-lived (cacheFailureMemoTTL) and is
+	// cleared by any successful encode, so this never caches a failure
+	// indefinitely; the caller falls back to on-the-fly piping.
+	if rt.recentEncodeFailure(expected, time.Now()) {
+		return nil, nil, "", ErrCacheRecentlyFailed
+	}
 
 	// Encode into a .part file, fsync-rename it to the final name, INSERT the
 	// row, then open+stat+return. The cache dir and the per-file directory
@@ -367,11 +498,17 @@ func (s *Service) OpenCachedStream(ctx context.Context, fileID int64, codec stri
 	defer root.Close()
 	if err := encode(ctx, dest); err != nil {
 		// Remove the in-flight entry and delete the partial temp file, then
-		// return the typed encode failure with the cause attached.
+		// return the typed encode failure with the cause attached. Transient
+		// failures (context cancellation, a saturated transcode slot) do not
+		// feed the failure memo, so the next waiter re-encodes transparently.
 		_ = root.Remove(part)
 		_ = root.Remove(strconv.FormatInt(fileID, 10))
+		if encodeFailureMemoizable(err) {
+			rt.noteEncodeFailure(expected, time.Now())
+		}
 		return nil, nil, "", fmt.Errorf("%w: %w", ErrCacheEncodeFailed, err)
 	}
+	rt.clearEncodeFailure(expected)
 	file, err := root.OpenFile(part, os.O_RDWR, 0)
 	if err != nil {
 		return nil, nil, "", err
@@ -403,7 +540,7 @@ func (s *Service) OpenCachedStream(ctx context.Context, fileID int64, codec stri
 	}
 	s.evictStreamCache(ctx, fileID, profileKey)
 
-	file, info, err = s.openCacheFile(expected)
+	file, info, err = s.openCacheFile(fileID, profileKey, expected)
 	if err != nil {
 		return nil, nil, "", err
 	}
