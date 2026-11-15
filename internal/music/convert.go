@@ -45,6 +45,12 @@ type ConvertRequest struct {
 	OutputPath string // absolute staged output; caller owns publishing
 	Profile    QualityProfile
 	Timeout    time.Duration // default 15m, hard cap 60m
+	// EmbedArtwork requests attached-picture mapping for containers that do
+	// not embed artwork by default (AAC/M4A via the covr atom). MP3 and FLAC
+	// outputs always carry mapped attached pictures and Opus/ADTS can never
+	// carry them, so this flag only changes the AAC/M4A argument set; the
+	// conversion queue leaves it false and keeps its historical output.
+	EmbedArtwork bool
 }
 
 // ConvertResult reports the verified published output. SHA256 and SizeBytes
@@ -310,7 +316,18 @@ func mp3VBRQuality(kbps int) int {
 // stable VBR mode across ffmpeg versions, so aac profiles always use -b:a
 // and the VBR flag is ignored. Opus is inherently VBR: -b:a is a ceiling per
 // channel that libopus adapts around, and there is no CBR mode to select.
+// convertArgs is the historical three-argument form used by the conversion
+// queue and its tests: no artwork embedding beyond the containers that always
+// carry it (MP3/FLAC).
 func convertArgs(profile QualityProfile, source, output string) []string {
+	return convertArgsWithArt(profile, source, output, false)
+}
+
+// convertArgsWithArt builds the ffmpeg argv for one file-to-file conversion,
+// optionally embedding attached artwork into the AAC/M4A covr atom for the
+// finished-file export path. Audio and metadata arguments are identical in
+// both forms: metadata always comes from the source via -map_metadata 0.
+func convertArgsWithArt(profile QualityProfile, source, output string, embedArt bool) []string {
 	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-y",
 		"-i", source, "-sn", "-dn", "-map_metadata", "0"}
 	switch profile.Codec {
@@ -331,7 +348,15 @@ func convertArgs(profile QualityProfile, source, output string) []string {
 		}
 		args = append(args, "-f", "flac", output)
 	case "aac":
-		args = append(args, "-vn", "-c:a", "aac", "-b:a", strconv.Itoa(profile.BitrateKbps)+"k")
+		if embedArt {
+			// The export path maps the attached picture so the MP4 muxer
+			// writes it into the covr atom, exactly like the MP3/FLAC branch
+			// above. Raw ADTS has no covr support and is unaffected.
+			args = append(args, "-map", "0:a", "-map", "0:v?", "-c:v", "copy",
+				"-disposition:v", "attached_pic", "-c:a", "aac", "-b:a", strconv.Itoa(profile.BitrateKbps)+"k")
+		} else {
+			args = append(args, "-vn", "-c:a", "aac", "-b:a", strconv.Itoa(profile.BitrateKbps)+"k")
+		}
 		if profile.Container == "adts" || profile.Container == "aac" {
 			args = append(args, "-f", "adts", output)
 		} else {
@@ -483,7 +508,7 @@ func (s *Service) ConvertFile(ctx context.Context, req ConvertRequest) (ConvertR
 
 	var result ConvertResult
 	if needed {
-		result, err = s.runFFmpegConvert(ctx, profile, req.SourcePath, partPath, source, srcFile)
+		result, err = s.runFFmpegConvert(ctx, profile, req.SourcePath, partPath, source, srcFile, req.EmbedArtwork)
 	} else {
 		result, err = s.copyVerified(ctx, srcFile, partPath)
 	}
@@ -503,9 +528,9 @@ func (s *Service) ConvertFile(ctx context.Context, req ConvertRequest) (ConvertR
 // CommandContext: when the caller's timeout expires, the child is killed
 // explicitly and reaped by Wait, and the partial stage is removed by the
 // caller.
-func (s *Service) runFFmpegConvert(ctx context.Context, profile QualityProfile, sourcePath, partPath string, source AudioTags, srcFile *os.File) (ConvertResult, error) {
+func (s *Service) runFFmpegConvert(ctx context.Context, profile QualityProfile, sourcePath, partPath string, source AudioTags, srcFile *os.File, embedArt bool) (ConvertResult, error) {
 	ffmpeg := ffmpegPath()
-	args := convertArgs(profile, sourcePath, partPath)
+	args := convertArgsWithArt(profile, sourcePath, partPath, embedArt)
 	part, err := os.OpenFile(partPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
 		return ConvertResult{}, err

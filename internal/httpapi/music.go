@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -45,6 +46,8 @@ func (s *Server) musicError(w http.ResponseWriter, err error) {
 			"music_import_unmatched", "music_import_duplicate", "music_import_missing", "music_scan_root":
 			status = http.StatusBadRequest
 		case "music_import_missing_source":
+			status = http.StatusConflict
+		case "music_profile_name_taken":
 			status = http.StatusConflict
 		}
 		if provider.RetryAfter > 0 {
@@ -2080,9 +2083,12 @@ func (s *Server) musicCache(w http.ResponseWriter, r *http.Request) {
 
 // musicFileExport serves GET /api/v1/library/music/files/{id}/export?profile=KEY.
 // Profiles with the "original" codec stream the registered file directly with
-// byte-range support. A converting profile streams the converted audio through
-// the same OpenPlayback path the players use, so the export reuses the stream
-// cache (no second conversion) and never writes to the media root.
+// byte-range support. A converting profile serves a finished, self-contained
+// audio file (metadata and artwork intact) from a validated library variant
+// or a fresh conversion into an isolated temporary directory; the stream
+// cache is never used because its encodes strip metadata. The route sits
+// behind the same auth/CSRF middleware as every other music API; nothing in
+// this handler weakens that.
 func (s *Server) musicFileExport(w http.ResponseWriter, r *http.Request) {
 	if s.music == nil {
 		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
@@ -2116,28 +2122,104 @@ func (s *Server) musicFileExport(w http.ResponseWriter, r *http.Request) {
 		http.ServeContent(w, r, stream.Name, stream.ModTime, stream.File)
 		return
 	}
-	// A converting profile streams the converted audio through the same
-	// OpenPlayback path the players use, so the export reuses the stream
-	// cache (no second conversion) and never writes to the media root.
-	playback, err := s.music.OpenPlayback(r.Context(), id, exportFormat(profile.Codec), profile.BitrateKbps, 0)
+	// exportOpener is the optional finished-file export capability of the
+	// music service. The concrete music.Service always implements it; test
+	// doubles that predate finished-file exports keep the legacy
+	// playback-stream path below, so the MusicService interface and the
+	// existing handler tests stay unchanged.
+	opener, ok := s.music.(exportOpener)
+	if !ok {
+		playback, err := s.music.OpenPlayback(r.Context(), id, exportFormat(profile.Codec), profile.BitrateKbps, 0)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		defer playback.Close()
+		w.Header().Set("Content-Type", playback.ContentType)
+		w.Header().Set("Content-Disposition", "attachment")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if playback.Body != nil {
+			// An on-the-fly conversion has no known length; stream it as it is
+			// produced. Cache hits and unconverted files take the ServeContent
+			// path below and keep byte-range support.
+			w.Header().Set("Cache-Control", "no-store")
+			_, _ = io.Copy(w, playback.Body)
+			return
+		}
+		w.Header().Set("Cache-Control", "private, max-age=3600")
+		http.ServeContent(w, r, playback.Name, playback.ModTime, playback.File)
+		return
+	}
+	// A converting profile serves a finished, self-contained audio file with
+	// its metadata and artwork intact: either a validated library variant or
+	// a fresh metadata-preserving conversion into an isolated temporary
+	// directory. The stream cache is never used here because its encodes
+	// strip metadata with -map_metadata -1.
+	export, err := opener.OpenExportStream(r.Context(), id, profile)
 	if err != nil {
 		s.musicError(w, err)
 		return
 	}
-	defer playback.Close()
-	w.Header().Set("Content-Type", playback.ContentType)
-	w.Header().Set("Content-Disposition", "attachment")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if playback.Body != nil {
-		// An on-the-fly conversion has no known length; stream it as it is
-		// produced. Cache hits and unconverted files take the ServeContent
-		// path below and keep byte-range support.
-		w.Header().Set("Cache-Control", "no-store")
-		_, _ = io.Copy(w, playback.Body)
-		return
-	}
+	// Cleanup contract: Cleanup removes the export's temporary directory and
+	// must run only after File is closed (an open file cannot be removed on
+	// Windows), so Close is registered as the inner defer. Cleanup is
+	// idempotent and best-effort.
+	defer export.Cleanup()
+	defer export.File.Close()
+	w.Header().Set("Content-Type", export.ContentType)
+	w.Header().Set("Content-Disposition", exportAttachmentDisposition(export.Name))
 	w.Header().Set("Cache-Control", "private, max-age=3600")
-	http.ServeContent(w, r, playback.Name, playback.ModTime, playback.File)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(w, r, export.Name, export.ModTime, export.File)
+}
+
+// exportOpener is implemented by music.Service for finished-file exports.
+type exportOpener interface {
+	OpenExportStream(context.Context, int64, music.QualityProfile) (music.ExportStream, error)
+}
+
+// exportAttachmentDisposition builds an RFC 6266/RFC 5987 attachment header
+// for a download filename. It contains only the base file name, never a
+// filesystem path: an ASCII-safe quoted filename always travels first, and
+// when the name is not pure ASCII a UTF-8 filename* parameter carries the
+// exact name percent-encoded per RFC 5987's attr-char rules.
+func exportAttachmentDisposition(name string) string {
+	ascii := strings.Map(func(r rune) rune {
+		switch {
+		case r < 32 || r == 127 || r == '"' || r == '\\':
+			return -1
+		case r > 126:
+			return '_'
+		default:
+			return r
+		}
+	}, name)
+	if ascii == "" {
+		ascii = "audio"
+	}
+	disposition := `attachment; filename="` + ascii + `"`
+	if ascii != name {
+		disposition += `; filename*=UTF-8''` + exportRFC5987Value(name)
+	}
+	return disposition
+}
+
+// exportRFC5987Value percent-encodes a filename* parameter value exactly per
+// RFC 5987: unreserved and attribute characters stay literal, every other
+// character is UTF-8 encoded and percent-escaped byte by byte.
+func exportRFC5987Value(name string) string {
+	var encoded strings.Builder
+	for _, char := range name {
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' ||
+			strings.ContainsRune("!#$&+-.^_`|~", char) {
+			encoded.WriteRune(char)
+			continue
+		}
+		for _, byteValue := range []byte(string(char)) {
+			encoded.WriteString(fmt.Sprintf("%%%02X", byteValue))
+		}
+	}
+	return encoded.String()
 }
 
 // exportFormat maps a profile codec to the requested-format value OpenPlayback
