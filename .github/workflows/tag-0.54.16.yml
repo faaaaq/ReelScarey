@@ -1,0 +1,52 @@
+name: Tag verified ReelScarey v0.54.16
+on:
+  push:
+    branches: [codex/tag-reelscarey-0.54.16]
+    paths: [.github/workflows/tag-0.54.16.yml]
+
+permissions: {}
+
+concurrency:
+  group: dockerhub-primary
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    if: github.ref == 'refs/heads/codex/tag-reelscarey-0.54.16' && github.repository == 'faaaaq/ReelScarey'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Tag and verify the published image index
+        shell: bash
+        env:
+          IMAGE: docker.io/faaaaq/reelscarey
+          VERSION: '0.54.16'
+          SOURCE_TAG: sha-d39ae65fa965aa338428e85fa4fecadc9a5d406b
+          EXPECTED: sha256:247cc17d4e23588f63692d389ccb3f1b9d1666b64b4ce68dd15f5e398653630e
+        run: |
+          set -euo pipefail
+          digest() {
+            docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}'
+          }
+
+          test "$(digest "$IMAGE:$SOURCE_TAG")" = "$EXPECTED"
+          if current=$(digest "$IMAGE:$VERSION" 2>inspect-error.log); then
+            if [[ "$current" != "$EXPECTED" ]]; then
+              echo "::error::The version tag already points to $current."
+              exit 1
+            fi
+          elif grep -Eiq 'not found|manifest unknown' inspect-error.log; then
+            docker buildx imagetools create --tag "$IMAGE:$VERSION" "$IMAGE@$EXPECTED"
+          else
+            cat inspect-error.log >&2
+            exit 1
+          fi
+
+          actual=$(digest "$IMAGE:$VERSION")
+          test "$actual" = "$EXPECTED"
+          printf 'Verified %s:%s @ %s\n' "$IMAGE" "$VERSION" "$actual" | tee -a "$GITHUB_STEP_SUMMARY"
