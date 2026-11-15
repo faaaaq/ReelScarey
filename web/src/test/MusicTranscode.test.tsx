@@ -2,10 +2,15 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MusicSettings } from "../pages/MusicSettings";
 import { MusicOrganize } from "../pages/MusicOrganize";
-import { AlbumDownloadModal } from "../musicDownload";
+import { AlbumDownloadModal, MusicExportMenu } from "../musicDownload";
+import {
+  MusicPlayerBar,
+  MusicPlayerProvider,
+  useMusicPlayer,
+} from "../musicPlayer";
 
 const profiles = [
   {
@@ -78,6 +83,26 @@ function bodiesFor(
         String(url).startsWith(path) && options?.method === method,
     )
     .map(([, options]) => JSON.parse(String(options?.body)));
+}
+
+/** Starts playback so the player bar (with the quality control) mounts. */
+function Harness() {
+  const player = useMusicPlayer();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        player.play({
+          fileID: 7,
+          title: "Airbag",
+          artist: "Radiohead",
+          album: "OK Computer",
+        })
+      }
+    >
+      Start
+    </button>
+  );
 }
 
 describe("music transcoding settings", () => {
@@ -514,5 +539,233 @@ describe("library optimization", () => {
       profile: "opus-balanced",
       file_ids: [1],
     });
+  });
+
+  it("caps one apply at the backend limit and says so", async () => {
+    const file = {
+      id: 1,
+      artist_id: 1,
+      album_id: 2,
+      track_id: 3,
+      artist_name: "Artist",
+      album_title: "Album",
+      track_title: "Song",
+      disc: 1,
+      number: 1,
+      relative_path: "Music/Artist/Album/Song.flac",
+      format: "flac",
+      duration_ms: 1000,
+      size_bytes: 7,
+    };
+    const items = Array.from({ length: 510 }, (_, index) => ({
+      file_id: index + 1,
+      eligible: true,
+      reason: "",
+      current_bytes: 1000,
+      estimated_bytes: 100,
+      saved_bytes: 900,
+    }));
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/files?page=1" && !options?.method) {
+        return Response.json({ items: [file], page: 1, total: 1, limit: 100 });
+      }
+      if (path === "/api/v1/library/music/edits" && !options?.method) {
+        return Response.json({ items: [], page: 1, total: 0, limit: 20 });
+      }
+      if (path === "/api/v1/library/music/conversions?page=1") {
+        return Response.json({ items: [], page: 1, total: 0, limit: 20 });
+      }
+      if (path === "/api/v1/library/music/profiles") {
+        return Response.json(profiles);
+      }
+      if (
+        path === "/api/v1/library/music/optimize/preview" &&
+        options?.method === "POST"
+      ) {
+        return Response.json({ profile: "opus-balanced", items });
+      }
+      if (
+        path === "/api/v1/library/music/optimize/apply" &&
+        options?.method === "POST"
+      ) {
+        return Response.json({ queued: 500 });
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MemoryRouter initialEntries={["/music/organize"]}>
+          <MusicOrganize />
+        </MemoryRouter>
+      </Theme>,
+    );
+
+    await screen.findByRole("table", { name: "Registered music files" });
+    await userEvent.selectOptions(
+      screen.getByLabelText("Optimize target profile"),
+      "opus-balanced",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Preview savings" }),
+    );
+    const convert = await screen.findByRole("button", {
+      name: "Convert 510 files",
+    });
+    await userEvent.click(convert);
+    await screen.findByText(/more eligible files than one apply allows/);
+    const applies = bodiesFor(
+      fetch,
+      "/api/v1/library/music/optimize/apply",
+      "POST",
+    );
+    expect(applies[0].file_ids).toHaveLength(500);
+    expect(applies[0].profile).toBe("opus-balanced");
+  });
+});
+
+describe("file export menu", () => {
+  it("links to implemented builtin profile keys", async () => {
+    render(
+      <Theme>
+        <MusicExportMenu fileID={7} title="Airbag" />
+      </Theme>,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Export Airbag" }),
+    );
+    const menu = await screen.findByRole("menu");
+    const original = within(menu).getByRole("menuitem", { name: "Original" });
+    const opus = within(menu).getByRole("menuitem", { name: "Opus 128" });
+    const mp3 = within(menu).getByRole("menuitem", { name: "MP3 192" });
+    // The profile query value must be a key the backend resolves; unknown
+    // keys would make export fail with a 400.
+    expect(original).toHaveAttribute(
+      "href",
+      "/api/v1/library/music/files/7/export?profile=original",
+    );
+    expect(opus).toHaveAttribute(
+      "href",
+      "/api/v1/library/music/files/7/export?profile=opus-high",
+    );
+    expect(mp3).toHaveAttribute(
+      "href",
+      "/api/v1/library/music/files/7/export?profile=mp3-compatible",
+    );
+  });
+});
+
+describe("player streaming quality", () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  });
+
+  it("persists the chosen quality through the preferences revision fence", async () => {
+    let reads = 0;
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/preferences" && !options?.method) {
+        reads += 1;
+        // The first read is the pre-save state; the reload after the save
+        // returns the server's new quality.
+        return Response.json(
+          reads === 1
+            ? preferences
+            : { ...preferences, streaming_quality: "premium", revision: 4 },
+        );
+      }
+      if (
+        path === "/api/v1/library/music/preferences" &&
+        options?.method === "PUT"
+      ) {
+        return Response.json({
+          ...preferences,
+          streaming_quality: "premium",
+          revision: 4,
+        });
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MemoryRouter>
+          <MusicPlayerProvider>
+            <Harness />
+            <MusicPlayerBar />
+          </MusicPlayerProvider>
+        </MemoryRouter>
+      </Theme>,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const quality = (await screen.findByLabelText(
+      "Streaming quality",
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(quality.disabled).toBe(false));
+    await userEvent.selectOptions(quality, "premium");
+    await waitFor(() => {
+      const bodies = bodiesFor(
+        fetch,
+        "/api/v1/library/music/preferences",
+        "PUT",
+      );
+      expect(bodies[0]).toMatchObject({
+        streaming_quality: "premium",
+        revision: 3,
+      });
+    });
+    // The selector settled on the saved server value.
+    await waitFor(() => expect(quality.value).toBe("premium"));
+    expect(reads).toBeGreaterThan(1);
+  });
+
+  it("rebases and reports when the quality changed elsewhere", async () => {
+    let reads = 0;
+    mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/preferences" && !options?.method) {
+        reads += 1;
+        return Response.json(preferences);
+      }
+      if (
+        path === "/api/v1/library/music/preferences" &&
+        options?.method === "PUT"
+      ) {
+        return Response.json(
+          {
+            error: {
+              message: "The music settings changed.",
+              code: "music_revision_conflict",
+            },
+          },
+          { status: 409 },
+        );
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MemoryRouter>
+          <MusicPlayerProvider>
+            <Harness />
+            <MusicPlayerBar />
+          </MusicPlayerProvider>
+        </MemoryRouter>
+      </Theme>,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const quality = (await screen.findByLabelText(
+      "Streaming quality",
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(quality.disabled).toBe(false));
+    await userEvent.selectOptions(quality, "high");
+    expect(await screen.findByText(/changed elsewhere/)).toBeVisible();
+    // The control rebased onto the saved server value instead of keeping
+    // the rejected selection.
+    await waitFor(() => expect(quality.value).toBe("balanced"));
+    expect(reads).toBeGreaterThan(1);
   });
 });

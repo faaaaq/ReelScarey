@@ -64,9 +64,11 @@ func (s *Service) SavePreferences(ctx context.Context, in MusicPreferences) (Mus
 	if in.MinBitrate < 0 || in.MinBitrate > 320 {
 		return MusicPreferences{}, ErrInvalidInput
 	}
-	if err := validatePreferenceKey(in.DownloadProfile); err != nil {
+	downloadProfile, err := s.resolveStoredDownloadProfile(ctx, in.DownloadProfile)
+	if err != nil {
 		return MusicPreferences{}, err
 	}
+	in.DownloadProfile = downloadProfile
 	if in.StreamingQuality == "" {
 		in.StreamingQuality = defaultStreamingQuality
 	}

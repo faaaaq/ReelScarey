@@ -84,6 +84,15 @@ func (s *Service) SaveAlbumPreferences(ctx context.Context, albumID int64, in Mu
 	if err != nil {
 		return AlbumPreferences{}, err
 	}
+	// The stored override must resolve to a real profile (builtin key,
+	// custom-<id> key or custom profile name) or stay empty ("follow
+	// global"). Unresolvable values are rejected here so the album override
+	// can never store a key that silently resolves to no conversion later.
+	downloadProfile, err := s.resolveStoredDownloadProfile(ctx, in.DownloadProfile)
+	if err != nil {
+		return AlbumPreferences{}, err
+	}
+	clean.DownloadProfile = downloadProfile
 	tx, err := s.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return AlbumPreferences{}, err

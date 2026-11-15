@@ -266,10 +266,14 @@ export function MusicOrganize() {
 
   async function applyOptimize() {
     if (!optimizePreview || pending) return;
-    const fileIDs = optimizePreview.items
+    const eligibleIDs = optimizePreview.items
       .filter((item) => item.eligible)
       .map((item) => item.file_id);
-    if (fileIDs.length === 0) return;
+    if (eligibleIDs.length === 0) return;
+    // The backend caps one apply at 500 files; a larger library needs
+    // multiple passes, so queue the first bounded batch and say so.
+    const capped = eligibleIDs.length > 500;
+    const fileIDs = capped ? eligibleIDs.slice(0, 500) : eligibleIDs;
     setPending(true);
     setError("");
     try {
@@ -278,7 +282,11 @@ export function MusicOrganize() {
       setOptimizeMessage(
         `Queued ${fileIDs.length} file${
           fileIDs.length === 1 ? "" : "s"
-        } for conversion. Originals are kept or deleted according to the original-file retention setting.`,
+        } for conversion. Originals are kept or deleted according to the original-file retention setting.${
+          capped
+            ? ` The library has more eligible files than one apply allows (500); preview again to queue the rest.`
+            : ""
+        }`,
       );
       conversions.reload();
     } catch (e) {

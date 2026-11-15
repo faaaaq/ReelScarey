@@ -2,6 +2,8 @@ package music
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -177,10 +179,26 @@ func (s *Service) SaveCustomProfile(ctx context.Context, in QualityProfile) (Qua
 	return s.customProfile(ctx, in.ID)
 }
 
-// DeleteCustomProfile removes a custom profile row. Builtin profiles are code
-// and are never stored in the database.
+// DeleteCustomProfile removes a custom profile row and clears references to
+// it: the global download-profile preference and any album override are reset
+// to inheritance in the same transaction, so a deleted profile can never
+// leave a dangling key that silently disables conversion for later downloads.
+// Builtin profiles are code and are never stored in the database.
 func (s *Service) DeleteCustomProfile(ctx context.Context, id int64) error {
-	result, err := s.store.db.ExecContext(ctx, `DELETE FROM music_quality_profiles WHERE id=? AND custom=1`, id)
+	tx, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var profile QualityProfile
+	if err := tx.QueryRowContext(ctx, `SELECT id, name, key FROM music_quality_profiles WHERE id=? AND custom=1`, id).
+		Scan(&profile.ID, &profile.Name, &profile.Key); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrInvalidInput
+		}
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM music_quality_profiles WHERE id=? AND custom=1`, id)
 	if err != nil {
 		return err
 	}
@@ -189,7 +207,15 @@ func (s *Service) DeleteCustomProfile(ctx context.Context, id int64) error {
 	} else if affected != 1 {
 		return ErrInvalidInput
 	}
-	return nil
+	if _, err := tx.ExecContext(ctx, `UPDATE music_preferences SET download_profile='', revision=revision+1, updated_at=unixepoch()
+		WHERE id=1 AND (download_profile=? OR download_profile=?)`, profile.Key, profile.Name); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET download_profile='', revision=revision+1, updated_at=unixepoch()
+		WHERE download_profile IN (?,?)`, profile.Key, profile.Name); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Service) customProfile(ctx context.Context, id int64) (QualityProfile, error) {
@@ -270,4 +296,27 @@ func validatePreferenceKey(key string) error {
 		return nil
 	}
 	return ErrInvalidInput
+}
+
+// resolveStoredDownloadProfile normalizes a saved download profile value.
+// Empty stays empty (follow the global default), builtin keys are stored
+// verbatim, and a custom profile is resolved through the database so the
+// stored value is the stable custom-<id> key the UI sends. Unresolvable
+// values are ErrInvalidInput.
+func (s *Service) resolveStoredDownloadProfile(ctx context.Context, value string) (string, error) {
+	key := strings.TrimSpace(value)
+	if key == "" {
+		return "", nil
+	}
+	if _, ok := ProfileByKey(key); ok {
+		return key, nil
+	}
+	profile, err := s.ResolveProfileKey(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	if profile.Key != "" {
+		return profile.Key, nil
+	}
+	return profile.Name, nil
 }

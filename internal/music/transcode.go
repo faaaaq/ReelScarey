@@ -231,11 +231,13 @@ func transcodeArgs(codec string, bitRate, timeOffset int) []string {
 // transcodeFileArgs is the file-output variant used by the stream cache: the
 // encoded audio is written to dest (the .part staging path inside the cache
 // dir) instead of stdout. The dest path is the only path in the arguments and
-// stays inside the cache dir; the source still travels on stdin. -y makes
-// ffmpeg overwrite a stale .part file left by an interrupted encode instead
-// of prompting on the piped input.
+// stays inside the cache dir; the source still travels on stdin. -hide_banner
+// stays the leading argument, matching the pipe variant, so the hermetic test
+// helper that re-executes the test binary as "ffmpeg" sees the same first
+// flag on both paths. -y makes ffmpeg overwrite a stale .part file left by an
+// interrupted encode instead of prompting on the piped input.
 func transcodeFileArgs(codec string, bitRate, timeOffset int, dest string) []string {
-	return append(append([]string{"-y"}, transcodeCodecArgs(codec, bitRate, timeOffset)...), dest)
+	return append(transcodeCodecArgs(codec, bitRate, timeOffset), "-y", dest)
 }
 
 // transcodeCodecArgs builds the shared conversion options: input on stdin,
@@ -263,6 +265,14 @@ func transcodeCodecArgs(codec string, bitRate, timeOffset int) []string {
 		args = append(args, "-c:a", "pcm_s16le", "-f", "wav")
 	}
 	return args
+}
+
+// NormalizeStreamFormat validates a client-supplied stream format and returns
+// the canonical output codec, or "" when the value is not a streamable format.
+// It is exported for the HTTP layer so browser capability negotiation can
+// request a compatible container without reaching into ffmpeg internals.
+func NormalizeStreamFormat(requested string) string {
+	return outputCodec(requested)
 }
 
 // PlaybackStream is one audio response for a client. Body is set when ffmpeg is
@@ -349,6 +359,13 @@ func (s *Service) OpenPlayback(ctx context.Context, id int64, requestedFormat st
 				Codec:       codec,
 			}, nil
 		}
+		// The cache encode above reads the registered file on stdin, and the
+		// two processes share the open file description: a cache attempt that
+		// got as far as running ffmpeg and then failed to publish has already
+		// advanced the file offset, possibly to EOF. Rewind it so the
+		// on-the-fly pipe below converts the whole file instead of encoding
+		// silence from an exhausted handle.
+		_, _ = native.File.Seek(0, io.SeekStart)
 	}
 
 	// NEW-A1: bound simultaneous ffmpeg conversions. The slot is taken only

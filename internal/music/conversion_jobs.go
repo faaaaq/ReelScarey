@@ -136,6 +136,22 @@ func (s *Service) EnqueueConversion(ctx context.Context, kind string, fileID int
 	if _, err := s.ResolveProfileKey(ctx, profile); err != nil {
 		return 0, err
 	}
+	// Only the primary file of a track can be converted: a variant or archive
+	// file id has no original left to convert, and with retention='delete'
+	// converting it would duplicate the primary or delete the only copy. The
+	// row must also exist here, so a deleted file never burns a job's three
+	// failed attempts on a ghost job.
+	var role string
+	err := s.store.db.QueryRowContext(ctx, `SELECT variant_role FROM music_files WHERE id=?`, fileID).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, &Error{Code: "music_file_missing", Message: "The registered music file for this conversion is no longer in the catalog."}
+	}
+	if err != nil {
+		return 0, err
+	}
+	if role != "primary" {
+		return 0, &Error{Code: "music_conversion_source", Message: "Only the primary file of a track can be converted; variants and archives are already conversion outputs."}
+	}
 	result, err := s.store.db.ExecContext(ctx, `INSERT INTO music_conversion_jobs(kind,file_id,profile,state,priority,created_at,updated_at)
 		SELECT ?,?,?, 'queued', ?, unixepoch(), unixepoch()
 		WHERE NOT EXISTS(SELECT 1 FROM music_conversion_jobs WHERE kind=? AND file_id=? AND profile=? AND state IN ('queued','processing'))`,

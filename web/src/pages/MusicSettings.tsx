@@ -254,28 +254,34 @@ export function MusicSettings() {
     setMaxConversions(String(prefs.data.max_conversions));
   }, [prefs.data]);
 
+  function preferencesBody(downloadProfile: string) {
+    if (!prefs.data) return null;
+    return {
+      allow_lossless: prefs.data.allow_lossless,
+      min_bitrate: prefs.data.min_bitrate,
+      preferred_formats: prefs.data.preferred_formats,
+      download_profile: downloadProfile,
+      streaming_quality: streamingQuality,
+      original_retention: retention,
+      fallback_policy: fallback,
+      transcoding_enabled: transcodingEnabled,
+      cache_limit_mb: clampInt(Number.parseInt(cacheLimit, 10), 64, 4096),
+      max_conversions: clampInt(Number.parseInt(maxConversions, 10), 1, 4),
+      revision: prefs.data.revision,
+    };
+  }
+
   async function savePreferences(e: FormEvent) {
     e.preventDefault();
-    if (!prefs.data || pending) return;
+    const body = preferencesBody(downloadProfile);
+    if (!body || pending) return;
     setPending(true);
     setError("");
     setMessage("");
     try {
       await api("/library/music/preferences", {
         method: "PUT",
-        body: JSON.stringify({
-          allow_lossless: prefs.data.allow_lossless,
-          min_bitrate: prefs.data.min_bitrate,
-          preferred_formats: prefs.data.preferred_formats,
-          download_profile: downloadProfile,
-          streaming_quality: streamingQuality,
-          original_retention: retention,
-          fallback_policy: fallback,
-          transcoding_enabled: transcodingEnabled,
-          cache_limit_mb: clampInt(Number.parseInt(cacheLimit, 10), 64, 4096),
-          max_conversions: clampInt(Number.parseInt(maxConversions, 10), 1, 4),
-          revision: prefs.data.revision,
-        }),
+        body: JSON.stringify(body),
       });
       prefs.reload();
       setMessage("Transcoding settings saved.");
@@ -520,6 +526,18 @@ export function MusicSettings() {
                               await deleteCustomProfile(profile.id);
                               profiles.reload();
                               if (downloadProfile === (profile.key ?? "")) {
+                                // Persist the reset instead of only
+                                // changing the local select: a deleted
+                                // profile key left as the stored default
+                                // would fail to resolve on the server.
+                                const body = preferencesBody("original");
+                                if (body) {
+                                  await api("/library/music/preferences", {
+                                    method: "PUT",
+                                    body: JSON.stringify(body),
+                                  });
+                                  prefs.reload();
+                                }
                                 setDownloadProfile("original");
                               }
                             }}

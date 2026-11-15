@@ -157,6 +157,13 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if err := musicService.RecoverConversions(ctx); err != nil {
 		return false, err
 	}
+	// The stream cache is a disposable optimization: prune entries whose
+	// source row is gone and crash-orphaned staging files so the cache
+	// folder cannot grow without bound across restarts. A failure is not
+	// fatal - the cache still works and manual clearing remains available.
+	if err := musicService.PruneStreamCache(ctx, time.Hour); err != nil {
+		logger.Warn("stream cache prune failed", "error", err)
+	}
 	transferService := transfer.New(db, secretStore, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
 	transferService.SetLogger(logger)
 	transferService.SetAutomaticMetadata(metadataService)

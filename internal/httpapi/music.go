@@ -703,8 +703,13 @@ func (s *Server) musicFileStream(w http.ResponseWriter, r *http.Request) {
 	// The browser player defaults to the saved streaming quality (the
 	// webPlayerStream helper in subsonic.go shares the conversion planner
 	// with the Subsonic endpoint); "original" or unreadable preferences
-	// stream the pristine file byte-for-byte as before.
-	playback, err := s.webPlayerStream(r.Context(), id)
+	// stream the pristine file byte-for-byte as before. A client that
+	// cannot decode the default container may request a compatible format
+	// explicitly (capability negotiation); the params are validated and
+	// clamped before they reach the planner.
+	playback, err := s.webPlayerStream(r.Context(), id,
+		music.NormalizeStreamFormat(r.URL.Query().Get("format")),
+		clampStreamBitRate(r.URL.Query().Get("maxBitRate")))
 	if err != nil {
 		s.musicError(w, err)
 		return

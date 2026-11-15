@@ -29,9 +29,10 @@ const defaultStreamCacheLimitMB = 512
 // cacheEncodeGrace is how long a stream request that finds another caller
 // already encoding the same (file, profile) may wait for that encode to land
 // before failing with a busy error. Encodes run longer than streams, so this
-// is far longer than transcodeGracePeriod; it is a separate constant and
-// transcodeGracePeriod is never mutated for cache waits.
-const cacheEncodeGrace = 2 * time.Minute
+// is far longer than transcodeGracePeriod; it is a separate variable and
+// transcodeGracePeriod is never mutated for cache waits. Tests in this
+// package shorten it so busy paths finish quickly.
+var cacheEncodeGrace = 2 * time.Minute
 
 // maxCacheBitrate bounds the bitrate component of a profile key. The key is
 // part of the cache file name, so it must stay a bounded, path-safe value.
@@ -67,6 +68,7 @@ type StreamCacheStats struct {
 type streamCacheRuntime struct {
 	mu     sync.Mutex
 	locks  map[string]chan struct{}
+	holds  map[string]int
 	hits   atomic.Int64
 	misses atomic.Int64
 }
@@ -77,7 +79,7 @@ func (s *Service) streamCache() *streamCacheRuntime {
 	if rt, ok := streamCacheRuntimes.Load(s); ok {
 		return rt.(*streamCacheRuntime)
 	}
-	rt := &streamCacheRuntime{locks: map[string]chan struct{}{}}
+	rt := &streamCacheRuntime{locks: map[string]chan struct{}{}, holds: map[string]int{}}
 	actual, _ := streamCacheRuntimes.LoadOrStore(s, rt)
 	return actual.(*streamCacheRuntime)
 }
@@ -219,12 +221,19 @@ func (s *Service) touchCache(ctx context.Context, id int64) {
 	_, _ = s.store.db.ExecContext(ctx, `UPDATE music_stream_cache SET last_used_at=unixepoch() WHERE id=?`, id)
 }
 
-// acquireCacheLock takes the per-key in-flight dedup slot with a bounded,
-// ctx-aware wait (cacheEncodeGrace). A caller whose encode outlives the grace
+// acquire takes the per-key in-flight dedup slot with a bounded, ctx-aware
+// wait (cacheEncodeGrace). A caller whose encode outlives the grace
 // period lets the waiter fail with a busy error instead of queueing
 // unbounded work, mirroring acquireTranscodeSlot.
-func (rt *streamCacheRuntime) acquire(ctx context.Context, key string) (chan struct{}, error) {
+//
+// On success the returned release func must be called exactly once; it hands
+// the slot to the next waiter and drops this caller's hold. A caller that
+// loses the wait gets a nil release — acquire has already dropped its hold —
+// so the per-key state disappears as soon as the last interested caller
+// leaves instead of accumulating one map entry per (file, profile) forever.
+func (rt *streamCacheRuntime) acquire(ctx context.Context, key string) (func(), error) {
 	rt.mu.Lock()
+	rt.holds[key]++
 	ch, ok := rt.locks[key]
 	if !ok {
 		ch = make(chan struct{}, 1)
@@ -233,12 +242,37 @@ func (rt *streamCacheRuntime) acquire(ctx context.Context, key string) (chan str
 	rt.mu.Unlock()
 	select {
 	case ch <- struct{}{}:
-		return ch, nil
+		return func() {
+			select {
+			case <-ch:
+			default:
+			}
+			rt.dropHold(key)
+		}, nil
 	case <-ctx.Done():
+		rt.dropHold(key)
 		return nil, ctx.Err()
 	case <-time.After(cacheEncodeGrace):
+		rt.dropHold(key)
 		return nil, &Error{Code: "music_cache_busy", Message: "The server is already preparing this stream. Wait a moment and try again."}
 	}
+}
+
+// dropHold removes one hold on key and deletes the per-key state when the
+// last hold leaves. Holds are counted under the runtime mutex, so a new
+// caller either observes the entry before the last hold drops (and keeps it
+// alive) or creates a fresh one afterwards; no waiter is ever stranded on a
+// deleted channel.
+func (rt *streamCacheRuntime) dropHold(key string) {
+	rt.mu.Lock()
+	remaining := rt.holds[key] - 1
+	if remaining <= 0 {
+		delete(rt.holds, key)
+		delete(rt.locks, key)
+	} else {
+		rt.holds[key] = remaining
+	}
+	rt.mu.Unlock()
 }
 
 func (rt *streamCacheRuntime) release(ch chan struct{}) {
@@ -296,11 +330,13 @@ func (s *Service) OpenCachedStream(ctx context.Context, fileID int64, codec stri
 	// In-flight dedup: concurrent callers for the same key wait on the same
 	// encode call with a bounded wait.
 	rt := s.streamCache()
-	lock, err := rt.acquire(ctx, expected)
+	release, err := rt.acquire(ctx, expected)
+	if release != nil {
+		defer release()
+	}
 	if err != nil {
 		return nil, nil, "", err
 	}
-	defer rt.release(lock)
 
 	// Another caller may have finished the encode while we waited.
 	if row, cached, err := s.cacheRow(ctx, fileID, profileKey); err == nil && cached {
@@ -461,27 +497,38 @@ func (s *Service) ClearStreamCache(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// The rows are already gone, so the clear must reclaim as much of the
+	// cache dir as it can instead of stopping at the first failure: a file an
+	// in-flight encode is still writing cannot be removed on every platform,
+	// and a single such file must not leave the rest of the cache behind.
+	var lastErr error
 	for _, dir := range dirs {
 		if !dir.IsDir() {
 			continue
 		}
 		files, err := listRootDir(root, dir.Name())
 		if err != nil {
-			return err
+			if lastErr == nil {
+				lastErr = err
+			}
+			continue
 		}
 		for _, f := range files {
 			if !f.Type().IsRegular() {
 				continue
 			}
 			if err := root.Remove(path.Join(dir.Name(), f.Name())); err != nil {
-				return err
+				if lastErr == nil {
+					lastErr = err
+				}
+				continue
 			}
 		}
-		if err := root.Remove(dir.Name()); err != nil {
-			return err
+		if err := root.Remove(dir.Name()); err != nil && lastErr == nil {
+			lastErr = err
 		}
 	}
-	return nil
+	return lastErr
 }
 
 // listRootDir lists one directory inside an os.Root without following
@@ -493,4 +540,129 @@ func listRootDir(root *os.Root, name string) ([]os.DirEntry, error) {
 	}
 	defer file.Close()
 	return file.ReadDir(-1)
+}
+
+// PruneStreamCache reclaims cache storage no request can ever serve again:
+// rows whose registered music_files row is gone (a converted-over original, a
+// removed file or a rolled-back import leaves the id dangling) and the
+// .part staging files a crash or kill leaves behind. Nothing scans or walks
+// catalog media; only the cache dir inside the media root is touched, always
+// through os.Root.
+//
+// stale bounds how old an orphaned .part file must be before it is removed,
+// so a prune that races a live encode never deletes the .part that encode is
+// still writing. Published cache files that no row references are removed
+// unconditionally: a file between its rename and its INSERT can be caught by
+// this window, and the affected request then simply re-encodes on its next
+// attempt, so pruning stays safe to run while streams are being served.
+//
+// The rows whose file_id still exists are kept untouched; a reused file id
+// with different bytes is invalidated by the source_sha256 check at open
+// time, so pruning never has to guess about content identity.
+func (s *Service) PruneStreamCache(ctx context.Context, stale time.Duration) error {
+	rows, err := s.store.db.QueryContext(ctx, `SELECT file_id, profile_key, relative_path
+		FROM music_stream_cache
+		WHERE NOT EXISTS(SELECT 1 FROM music_files f WHERE f.id=music_stream_cache.file_id)`)
+	if err != nil {
+		return err
+	}
+	type orphan struct {
+		fileID   int64
+		profile  string
+		relative string
+	}
+	var orphans []orphan
+	for rows.Next() {
+		var o orphan
+		if err := rows.Scan(&o.fileID, &o.profile, &o.relative); err != nil {
+			rows.Close()
+			return err
+		}
+		orphans = append(orphans, o)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, o := range orphans {
+		if err := s.deleteCacheEntry(ctx, o.fileID, o.profile, o.relative); err != nil {
+			return err
+		}
+	}
+	if s.mediaDir == "" {
+		return nil
+	}
+	root, err := os.OpenRoot(streamCacheDir(s.mediaDir))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer root.Close()
+	dirs, err := listRootDir(root, ".")
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	// referenced holds every relative path a row still owns; anything else on
+	// disk is unreachable garbage.
+	referenced := make(map[string]bool)
+	refRows, err := s.store.db.QueryContext(ctx, `SELECT relative_path FROM music_stream_cache`)
+	if err != nil {
+		return err
+	}
+	for refRows.Next() {
+		var relative string
+		if err := refRows.Scan(&relative); err != nil {
+			refRows.Close()
+			return err
+		}
+		if name, ok := cleanCacheRelative(relative); ok {
+			referenced[name] = true
+		}
+	}
+	if err := refRows.Err(); err != nil {
+		refRows.Close()
+		return err
+	}
+	refRows.Close()
+	deadline := time.Now().Add(-stale)
+	for _, dir := range dirs {
+		if !dir.IsDir() {
+			continue
+		}
+		files, err := listRootDir(root, dir.Name())
+		if err != nil {
+			continue
+		}
+		empty := true
+		for _, f := range files {
+			if !f.Type().IsRegular() {
+				empty = false
+				continue
+			}
+			relative := dir.Name() + "/" + f.Name()
+			if referenced[relative] {
+				empty = false
+				continue
+			}
+			if strings.HasSuffix(f.Name(), ".part") {
+				// Staging garbage: only old enough files, so an encode that
+				// is writing its .part right now keeps it.
+				if info, err := f.Info(); err != nil || info.ModTime().After(deadline) {
+					empty = false
+					continue
+				}
+			}
+			_ = root.Remove(relative)
+		}
+		if empty {
+			_ = root.Remove(dir.Name())
+		}
+	}
+	return nil
 }

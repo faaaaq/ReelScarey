@@ -430,7 +430,12 @@ func (s *Server) globalStreamingQuality(ctx context.Context) string {
 // pristine file byte-for-byte exactly as the player always did. The
 // compatibility fallback for containers browsers cannot decode keeps working
 // underneath via the same planner the Subsonic endpoint uses.
-func (s *Server) webPlayerStream(ctx context.Context, id int64) (music.PlaybackStream, error) {
+// explicitFormat (capability negotiation from the player) overrides the
+// quality-derived codec; explicitRate clamps the conversion bitrate.
+func (s *Server) webPlayerStream(ctx context.Context, id int64, explicitFormat string, explicitRate int) (music.PlaybackStream, error) {
+	if explicitFormat != "" {
+		return s.music.OpenPlayback(ctx, id, explicitFormat, explicitRate, 0)
+	}
 	if svc, ok := s.musicPreferenceReader(); ok {
 		prefs, err := svc.GetPreferences(ctx)
 		if err == nil && !strings.EqualFold(strings.TrimSpace(prefs.StreamingQuality), "original") {
@@ -449,6 +454,22 @@ func (s *Server) webPlayerStream(ctx context.Context, id int64) (music.PlaybackS
 		ModTime:     stream.ModTime,
 		File:        stream.File,
 	}, nil
+}
+
+// clampStreamBitRate parses a client-supplied stream bitrate, falling back to
+// the planner default (0) for absent or invalid values.
+func clampStreamBitRate(value string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || n <= 0 {
+		return 0
+	}
+	if n < 32 {
+		return 32
+	}
+	if n > 320 {
+		return 320
+	}
+	return n
 }
 
 func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {

@@ -27,6 +27,7 @@ import {
 import { PageHeading, RequestState } from "../components";
 import { Pagination } from "../movieComponents";
 import {
+  APIError,
   api,
   messageFor,
   type MusicAlbum,
@@ -1280,8 +1281,21 @@ export function MusicAlbumPage() {
         }),
       });
       albumPrefs.reload();
+      setError("");
     } catch (e) {
-      setError(messageFor(e));
+      if (
+        e instanceof APIError &&
+        (e.status === 409 || e.code === "music_revision_conflict")
+      ) {
+        // Another save won the revision fence. Rebase the form from the
+        // server so the conflict loop ends; the current edit is discarded.
+        albumPrefs.reload();
+        setError(
+          "The album preferences changed while you were working. The saved preferences have been reloaded — review them and apply your changes again.",
+        );
+      } else {
+        setError(messageFor(e));
+      }
     } finally {
       setPrefsPending(false);
     }
@@ -1583,7 +1597,10 @@ export function MusicAlbumPage() {
                 >
                   <option value="">Use global default</option>
                   {albumProfileChoices.map((profile) => (
-                    <option key={profile.key || profile.name} value={profile.key || profile.name}>
+                    <option
+                      key={profile.key || profile.name}
+                      value={profile.key || profile.name}
+                    >
                       {profile.name}
                     </option>
                   ))}

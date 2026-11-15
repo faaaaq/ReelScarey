@@ -1,10 +1,13 @@
 import { useResource } from "./useResource";
 import type { MusicStreamingQuality, QualityProfile } from "./api";
 
-/** Profile keys used by the export menu on album and track file actions. */
+/** Profile keys used by the export menu on album and track file actions.
+ * These must be builtin profile keys the backend can resolve
+ * (music.ResolveProfileKey); Opus High is the builtin 128 kbps Opus target
+ * and MP3 Compatible the builtin 192 kbps MP3 target. */
 export const EXPORT_ORIGINAL_KEY = "original";
-export const EXPORT_OPUS_128_KEY = "opus-128";
-export const EXPORT_MP3_192_KEY = "mp3-192";
+export const EXPORT_OPUS_128_KEY = "opus-high";
+export const EXPORT_MP3_192_KEY = "mp3-compatible";
 
 export const STREAMING_QUALITY_OPTIONS: {
   value: MusicStreamingQuality;

@@ -187,7 +187,11 @@ func (s *Service) optimizeItem(ctx context.Context, file MusicFile, profile Qual
 		return item
 	}
 	if file.VariantRole != "" && file.VariantRole != "primary" {
-		item.NotEligibleReason = "the file is a variant copy produced by an earlier conversion and is never re-converted"
+		if file.VariantRole == "archive" {
+			item.NotEligibleReason = "the file is a retained archive copy and is never re-converted"
+		} else {
+			item.NotEligibleReason = "the file is a variant copy produced by an earlier conversion and is never re-converted"
+		}
 		return item
 	}
 	if s.prober == nil {

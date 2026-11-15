@@ -501,10 +501,13 @@ The twelve builtin profiles, in the fixed order they are listed everywhere:
   currently no API that writes the per-album override, so it stays empty and
   defers to the global preference unless written directly.
 - Custom profiles are created through the API, get a stable `custom-<id>` key
-  and are matched by name or key. They accept codec `original` (no bitrate), or
-  FLAC with compression level 0-8, or MP3/AAC/Opus with a 1-320 kbps bitrate.
-  A custom profile may also declare `require_lossless`: such a profile fails
-  closed on a lossy source instead of transcoding it.
+  and are matched by name or key. Names are unique (case-insensitive). They
+  accept codec `original` (no bitrate), or FLAC with compression level 0-8, or
+  MP3/AAC/Opus with a 1-320 kbps bitrate. A custom profile may also declare
+  `require_lossless`: such a profile fails closed on a lossy source instead of
+  transcoding it. Deleting a custom profile clears the global download-profile
+  preference and any album override that referenced it in the same
+  transaction, so downloads never silently stop converting.
 - The download `format` value of an acquisition job still accepts the legacy
   yt-dlp values: `mp3` -> `mp3-maximum`, `flac` -> `lossless-archive`,
   `m4a` -> `aac-high`, `opus` -> `opus-maximum`; `source` means the original
@@ -621,8 +624,11 @@ planner uses:
 Resolution: an explicit client `format`/`maxBitRate` request wins, then the
 per-user streaming quality of the music-server account (empty = follow
 global), then the global streaming quality preference, then the `balanced`
-default. Converted streams strip tags and artwork; only file conversions
-preserve tags.
+default. The authenticated web player uses the same resolution; it
+additionally negotiates capability when the browser reports no Ogg/Opus
+support (`canPlayType`), requesting an MP3 stream from the same endpoint so
+incompatible browsers never receive audio they cannot decode. Converted
+streams strip tags and artwork; only file conversions preserve tags.
 
 ### Export
 

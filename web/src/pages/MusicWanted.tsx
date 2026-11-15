@@ -16,6 +16,7 @@ import {
 } from "../ui";
 import { PageHeading, RequestState } from "../components";
 import {
+  APIError,
   api,
   messageFor,
   type ConversionJobPage,
@@ -117,7 +118,19 @@ export function MusicWanted() {
       prefs.reload();
       setMessage("Download preferences saved.");
     } catch (e) {
-      setError(messageFor(e));
+      if (
+        e instanceof APIError &&
+        (e.status === 409 || e.code === "music_revision_conflict")
+      ) {
+        // Someone else saved music settings first. Rebase the form from the
+        // server so the conflict loop ends; the current edit is discarded.
+        prefs.reload();
+        setError(
+          "The music settings changed while you were working. The saved settings have been reloaded — review them and apply your changes again.",
+        );
+      } else {
+        setError(messageFor(e));
+      }
     } finally {
       setPending(false);
     }
@@ -142,7 +155,17 @@ export function MusicWanted() {
       schedule.reload();
       setMessage("Music schedule saved.");
     } catch (e) {
-      setError(messageFor(e));
+      if (
+        e instanceof APIError &&
+        (e.status === 409 || e.code === "music_revision_conflict")
+      ) {
+        schedule.reload();
+        setError(
+          "The music schedule changed while you were working. The saved schedule has been reloaded — review it and apply your changes again.",
+        );
+      } else {
+        setError(messageFor(e));
+      }
     } finally {
       setPending(false);
     }

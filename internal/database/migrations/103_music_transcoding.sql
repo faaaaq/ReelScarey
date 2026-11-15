@@ -9,7 +9,10 @@ ALTER TABLE music_preferences ADD COLUMN max_conversions INTEGER NOT NULL DEFAUL
 
 CREATE TABLE music_quality_profiles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
+  -- UNIQUE: a custom profile name must resolve to exactly one row
+  -- (ResolveProfileKey matches custom profiles by name); duplicates would
+  -- silently resolve to the oldest row and mislabel published variants.
+  name TEXT NOT NULL COLLATE NOCASE UNIQUE,
   key TEXT NOT NULL DEFAULT '',            -- builtin key or '' for custom
   codec TEXT NOT NULL,                     -- original|flac|mp3|aac|opus
   container TEXT NOT NULL DEFAULT '',

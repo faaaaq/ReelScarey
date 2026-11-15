@@ -804,4 +804,144 @@ describe("music", () => {
       screen.getByText(/Downloading 2 of 2 . Paranoid Android/),
     ).toBeVisible();
   });
+
+  it("saves the album download profile override and rebases on conflict", async () => {
+    let prefReads = 0;
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/albums/2" && !options?.method) {
+        return Response.json({
+          album: {
+            id: 2,
+            artist_id: 1,
+            artist_name: "Radiohead",
+            title: "OK Computer",
+            year: 1997,
+            primary_type: "Album",
+            track_count: 1,
+            status: "available",
+          },
+          tracks: [
+            {
+              disc: 1,
+              number: 1,
+              title: "Airbag",
+              duration_ms: 284000,
+              file_id: 9,
+            },
+          ],
+        });
+      }
+      if (path === "/api/v1/library/music/profiles") {
+        return Response.json([
+          {
+            id: 1,
+            name: "Original",
+            key: "original",
+            codec: "original",
+            bitrate_kbps: 0,
+            vbr: false,
+            require_lossless: false,
+            keep_original: false,
+          },
+          {
+            id: 2,
+            name: "MP3 compatible",
+            key: "mp3-compatible",
+            codec: "mp3",
+            bitrate_kbps: 192,
+            vbr: false,
+            require_lossless: false,
+            keep_original: false,
+          },
+        ]);
+      }
+      if (
+        path === "/api/v1/library/music/albums/2/preferences" &&
+        !options?.method
+      ) {
+        prefReads += 1;
+        return Response.json({
+          preferences: {
+            allow_lossless: true,
+            min_bitrate: 0,
+            preferred_formats: ["FLAC"],
+            download_profile: "",
+            streaming_quality: "high",
+            original_retention: "delete",
+            fallback_policy: "skip",
+            transcoding_enabled: true,
+            cache_limit_mb: 512,
+            max_conversions: 2,
+            revision: 5,
+          },
+          inherited: prefReads === 1,
+          revision: 2,
+        });
+      }
+      if (
+        path === "/api/v1/library/music/albums/2/preferences" &&
+        options?.method === "PUT"
+      ) {
+        return Response.json(
+          {
+            error: {
+              message: "These music settings changed after they were loaded.",
+              code: "music_revision_conflict",
+            },
+          },
+          { status: 409 },
+        );
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MusicPlayerProvider>
+          <MemoryRouter initialEntries={["/music/albums/2"]}>
+            <Routes>
+              <Route path="/music/albums/:id" element={<MusicAlbumPage />} />
+            </Routes>
+          </MemoryRouter>
+        </MusicPlayerProvider>
+      </Theme>,
+    );
+
+    expect(
+      await screen.findByText("Inheriting the global music preferences."),
+    ).toBeVisible();
+    const profile = screen.getByLabelText(
+      "Album download profile",
+    ) as HTMLSelectElement;
+    await userEvent.selectOptions(profile, "mp3-compatible");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      const bodies = fetch.mock.calls
+        .filter(
+          ([url, options]) =>
+            String(new URL(url, "http://local").pathname) ===
+              "/api/v1/library/music/albums/2/preferences" &&
+            options?.method === "PUT",
+        )
+        .map(([, options]) => JSON.parse(String(options?.body)));
+      expect(bodies.length).toBe(1);
+      // The chosen override is sent while every field managed on the Music
+      // settings page is forwarded unchanged, and the fence uses the
+      // album-level revision.
+      expect(bodies[0]).toMatchObject({
+        download_profile: "mp3-compatible",
+        streaming_quality: "high",
+        original_retention: "delete",
+        fallback_policy: "skip",
+        transcoding_enabled: true,
+        revision: 2,
+      });
+    });
+    expect(
+      await screen.findByText(/The saved preferences have been reloaded/),
+    ).toBeVisible();
+    // The form rebased from the server instead of keeping the edit.
+    await waitFor(() => expect(profile.value).toBe(""));
+  });
 });

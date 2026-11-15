@@ -73,6 +73,19 @@ export function musicStreamURL(fileID: number) {
   return `/api/v1/library/music/files/${fileID}/stream`;
 }
 
+/**
+ * Capability negotiation for browsers that cannot decode the server's default
+ * streaming container (Ogg Opus). canPlayType("") means the browser reports no
+ * support, so the player requests an MP3 stream the server converts on the
+ * fly; browsers with Opus support keep the server's quality-driven default.
+ */
+export function browserStreamSuffix(audio: HTMLAudioElement | null) {
+  if (!audio || typeof audio.canPlayType !== "function") return "";
+  if (audio.canPlayType('audio/ogg; codecs="opus"') === "")
+    return "?format=mp3&maxBitRate=192";
+  return "";
+}
+
 function clock(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
   const whole = Math.floor(seconds);
@@ -103,7 +116,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     setPosition(0);
     setDuration(track.durationMS ? track.durationMS / 1000 : 0);
     setError("");
-    audio.src = musicStreamURL(track.fileID);
+    audio.src = musicStreamURL(track.fileID) + browserStreamSuffix(audio);
     audio.load();
     void audio
       .play()
@@ -340,8 +353,14 @@ function PlayerQualityControl() {
   }, [prefs.data]);
 
   async function change(next: MusicStreamingQuality) {
+    if (!prefs.data || saving) {
+      // Never show a selection that was not attempted: while a save is in
+      // flight the select is disabled, and without loaded preferences there
+      // is no revision to fence the save with.
+      if (prefs.data) setValue(prefs.data.streaming_quality);
+      return;
+    }
     setValue(next);
-    if (!prefs.data || saving) return;
     setSaving(true);
     setSaveError("");
     try {

@@ -525,7 +525,19 @@ func (s *Service) importProfilePlan(ctx context.Context, jobID, albumID int64) *
 	if err != nil {
 		override = ""
 	}
-	profile, err := s.resolveStoredProfile(ctx, prefs, resolveImportProfileKey(explicit), strings.TrimSpace(override))
+	explicitKey := resolveImportProfileKey(explicit)
+	if explicitKey == "" && strings.TrimSpace(explicit) != "" {
+		// The stored value may be a custom profile name: custom rows have no
+		// builtin key and are stored under their own name, so the legacy
+		// mapping above cannot resolve them. Resolve through the same path
+		// the acquisition job used so the explicit per-download choice is
+		// never silently dropped. Unknown values stay "" so a stale row falls
+		// back to the per-album override or the global preference.
+		if resolved, resolveErr := s.resolveStoredDownloadProfile(ctx, explicit); resolveErr == nil {
+			explicitKey = resolved
+		}
+	}
+	profile, err := s.resolveStoredProfile(ctx, prefs, explicitKey, strings.TrimSpace(override))
 	if err != nil || profile.Codec == "original" {
 		return nil
 	}
@@ -719,7 +731,7 @@ func (s *Service) importFile(ctx context.Context, media *os.Root, album importAl
 		if slash := strings.IndexByte(aside, '/'); slash > 0 {
 			asideRoot = aside[:slash]
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=? WHERE relative_path=?`, aside, asideRoot, p.Destination); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=?,variant_role=CASE WHEN variant_role='primary' THEN 'archive' ELSE variant_role END WHERE relative_path=?`, aside, asideRoot, p.Destination); err != nil {
 			return err
 		}
 	}
@@ -1009,7 +1021,13 @@ func (s *Service) publishImportArchive(ctx context.Context, media *os.Root, albu
 		if slash := strings.IndexByte(aside, '/'); slash > 0 {
 			asideRoot = aside[:slash]
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=? WHERE relative_path=?`, aside, asideRoot, archive.Destination); err != nil {
+		// The aside occupant was a primary row sitting at the archive
+		// destination path; it was renamed aside to make room for the
+		// retained original, so it must not keep competing as a primary.
+		// Demote it to the archive role it now holds, otherwise the track
+		// ends up with two primaries and the aside copy is preferred over
+		// the newly imported primary.
+		if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=?,variant_role=CASE WHEN variant_role='primary' THEN 'archive' ELSE variant_role END WHERE relative_path=?`, aside, asideRoot, archive.Destination); err != nil {
 			return err
 		}
 	}
