@@ -305,8 +305,14 @@ func exportTaggedSourceFixture(t *testing.T, db *sql.DB, mediaDir string, ids ex
 		"-f", "lavfi", "-i", "color=c=red:s=8x8", "-frames:v", "1", art).CombinedOutput(); err != nil {
 		t.Fatalf("generate cover art: %v: %s", err, out)
 	}
+	// The sine source is 30 seconds: a 1-second fixture makes the MP3
+	// encoder's ~45ms padding dominate the conversion engine's 2% duration
+	// tolerance on older ffmpeg builds (5.x/6.x report the padded source
+	// duration while the decoded length is 1s), failing otherwise-correct
+	// conversions. Thirty seconds keeps the truncation guard meaningful while
+	// absorbing encoder padding on every ffmpeg the CI matrix can produce.
 	if out, err := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-		"-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-i", art,
+		"-f", "lavfi", "-i", "sine=frequency=440:duration=30", "-i", art,
 		"-map", "0:a", "-map", "1", "-c:a", "libmp3lame", "-b:a", "64k",
 		"-c:v", "copy", "-disposition:v", "attached_pic",
 		"-metadata", "title=Export Song", "-metadata", "artist=Export Artist",

@@ -310,6 +310,9 @@ jobs:
           cache: true
       - run: npm ci
         working-directory: web
+      # The music playback spec generates real fixtures with ffmpeg and the
+      # server transcodes them; the hosted runner has no ffmpeg by default.
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - run: npx playwright install --with-deps chromium
         working-directory: web
       - run: npx playwright test
