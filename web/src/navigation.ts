@@ -271,7 +271,7 @@ const titles: Record<string, string> = {
   "/music/settings": "Music settings",
   "/music/discover": "Music discover",
   "/music/server": "Music server",
-  "/youtube": "YouTube",
+  "/youtube": "YouTube discover",
   "/youtube/subscriptions": "YouTube subscriptions",
   "/youtube/shows": "YouTube shows",
   "/youtube/downloads": "YouTube downloads",

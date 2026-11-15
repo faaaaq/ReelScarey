@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import { Inbox, LogOut, RefreshCw, UserPlus, Clock } from "lucide-react";
 import {
@@ -66,6 +66,11 @@ export function RequesterHome() {
     "/requester/requests",
     15000,
   );
+  const mainRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    // Keyboard users start inside the content, matching the main shell.
+    mainRef.current?.focus();
+  }, []);
   const [kind, setKind] = useState<"movie" | "series">("movie"),
     [query, setQuery] = useState(""),
     [page, setPage] = useState(1),
@@ -156,7 +161,12 @@ export function RequesterHome() {
           </Button>
         </div>
       </header>
-      <main id="main-content" className="adm-requester-main" tabIndex={-1}>
+      <main
+        id="main-content"
+        ref={mainRef}
+        className="adm-requester-main"
+        tabIndex={-1}
+      >
         <PageBody>
           <PageHeading
             title="My requests"
