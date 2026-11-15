@@ -201,12 +201,13 @@ describe("catalog browsing", () => {
       screen.queryByRole("region", { name: "Library filters" }),
     ).not.toBeInTheDocument();
   });
-  it("groups titles by first letter, ignoring The, with an A–Z jump bar", async () => {
+  it("keeps a continuous poster grid in API order with A–Z jump targets", async () => {
     const items = [
       { ...item, id: 1, title: "The Alpha" },
       { ...item, id: 2, title: "Beta" },
       { ...item, id: 3, title: "42" },
       { ...item, id: 4, title: "the zeta" },
+      { ...item, id: 5, title: "Another Alpha" },
     ];
     mock(() =>
       Response.json({
@@ -229,14 +230,23 @@ describe("catalog browsing", () => {
           ),
         }),
       ).toBeVisible();
-    for (const letter of ["A", "B", "Z", "#"])
-      expect(
-        screen.getByRole("heading", { name: letter === "#" ? "#" : letter }),
-      ).toBeVisible();
+    const posters = screen.getByRole("list", { name: "Movies posters" });
+    expect(
+      within(posters)
+        .getAllByRole("heading")
+        .map((heading) => heading.textContent),
+    ).toEqual(items.map(({ title }) => title));
+    expect(posters.querySelectorAll("#lib-letter-a")).toHaveLength(1);
+    expect(posters.querySelector("#lib-letter-a")).toHaveTextContent(
+      "The Alpha",
+    );
     await userEvent.click(
       within(jump).getByRole("button", { name: "Jump to Z" }),
     );
     expect(scroll).toHaveBeenCalledWith({ block: "start" });
+    expect(scroll.mock.contexts.at(-1)).toBe(
+      posters.querySelector("#lib-letter-z"),
+    );
   });
   it("falls back to pages with a clear note when the server ignores page=all", async () => {
     const items = Array.from({ length: 60 }, (_, index) => ({

@@ -40,7 +40,7 @@
 .lib-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(162px, 1fr));
-  gap: 18px 14px;
+  gap: 22px 16px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -50,12 +50,13 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: var(--rs-surface);
   border-radius: var(--rs-radius);
-  border: 1px solid var(--rs-border);
-  overflow: hidden;
+  scroll-margin-top: calc(
+    var(--rs-header-height) + var(--rs-toolbar-height) + 12px
+  );
 }
 .lib-card.is-selected {
+  background: var(--rs-selected);
   outline: 2px solid var(--rs-brand);
 }
 .lib-card-art {
@@ -63,7 +64,7 @@
   position: relative;
 }
 .lib-card-art .lib-poster {
-  border-radius: 0;
+  border-radius: var(--rs-radius) var(--rs-radius) 0 0;
 }
 .lib-card-art::after {
   content: "";
@@ -72,6 +73,10 @@
   background: var(--rs-hover);
   opacity: 0;
   transition: opacity 0.15s ease;
+}
+.lib-card-art:focus-visible {
+  outline: 2px solid var(--rs-link);
+  outline-offset: 2px;
 }
 .lib-card-art:hover::after,
 .lib-card-art:focus-visible::after {
@@ -96,7 +101,7 @@
 }
 .lib-status-bar {
   display: block;
-  height: 5px;
+  height: 3px;
   background: var(--rs-disabled);
 }
 .lib-status-bar.is-success {
@@ -112,7 +117,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px 8px 8px;
+  padding: 9px 4px 5px;
   min-width: 0;
 }
 .lib-card-line {
@@ -124,10 +129,12 @@
   flex: 1;
   min-width: 0;
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 650;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .lib-card-title a {
   color: var(--rs-text-strong);
@@ -137,10 +144,10 @@
 }
 .lib-card-meta {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 0 8px;
   color: var(--rs-muted);
   font-size: 12.5px;
-  overflow: hidden;
 }
 .lib-card-status {
   color: var(--rs-muted);
@@ -302,14 +309,14 @@
 }
 /* Keep the fixed jump rail from covering poster titles and table edges. */
 .lib-with-az {
-  padding-right: 40px;
+  padding-right: max(var(--rs-content-gutter), 50px);
 }
 .has-music-player .lib-az {
   max-height: calc(78vh - 150px);
 }
 @media (max-width: 768px) {
   .lib-with-az {
-    padding-right: 34px;
+    padding-right: 38px;
   }
 }
 .lib-group-heading {
@@ -319,16 +326,9 @@
   color: var(--rs-muted);
   text-transform: uppercase;
 }
-.lib-grid > .lib-group-row,
 .lib-overview > .lib-group-row {
   margin: 0;
   list-style: none;
-}
-.lib-grid > .lib-group-row {
-  grid-column: 1 / -1;
-  padding-top: 4px;
-}
-.lib-overview > .lib-group-row {
   padding-top: 6px;
 }
 .lib-group-row th {
@@ -348,7 +348,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px 20px;
-  margin: 0 -20px -28px;
+  margin: 0 calc(-1 * var(--rs-content-gutter)) -28px;
   padding: 10px 20px;
   background: var(--rs-toolbar-bg);
   border-top: 1px solid var(--rs-toolbar-border);
@@ -420,9 +420,6 @@
   }
   .lib-filter select {
     min-width: 140px;
-  }
-  .lib-select-bar {
-    margin: 0 -20px -28px;
   }
   .lib-select-editors {
     align-items: stretch;

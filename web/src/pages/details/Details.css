@@ -12,14 +12,14 @@
   background-size: cover;
   background-position: center 30%;
   filter: blur(28px);
-  opacity: 0.22;
+  opacity: 0.13;
 }
 .det-header-inner {
   position: relative;
   display: grid;
   grid-template-columns: 210px minmax(0, 1fr);
-  gap: 28px;
-  padding: 24px 20px;
+  gap: clamp(16px, 2.4vw, 36px);
+  padding: clamp(20px, 3vw, 40px) var(--rs-content-gutter);
 }
 .det-poster {
   width: 210px;
@@ -38,8 +38,9 @@
   min-width: 0;
 }
 .det-title {
-  font-size: 32px;
-  font-weight: 300;
+  font-size: clamp(1.5rem, 1rem + 2.1vw, 2.75rem);
+  font-weight: 650;
+  letter-spacing: -0.025em;
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
@@ -72,8 +73,9 @@
   overflow-wrap: anywhere;
 }
 .det-overview {
-  max-width: 920px;
+  max-width: 65ch;
   color: var(--rs-text);
+  line-height: 1.65;
 }
 .det-links {
   display: flex;
@@ -446,5 +448,29 @@
   }
   .det-season-actions {
     margin-left: 0;
+  }
+}
+
+@media (max-width: 540px) {
+  .det-header-inner {
+    row-gap: 10px;
+  }
+  .det-poster {
+    grid-area: 1 / 1 / 4 / 2;
+    align-self: start;
+  }
+  .det-header-copy {
+    display: contents;
+  }
+  .det-title-row,
+  .det-facts,
+  .det-labels {
+    grid-column: 2;
+    align-self: start;
+  }
+  .det-details,
+  .det-overview,
+  .det-links {
+    grid-column: 1 / -1;
   }
 }

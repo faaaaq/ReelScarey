@@ -41,7 +41,12 @@ import {
   type Kind,
 } from "../ui";
 import { useResource } from "../useResource";
-import { groupID, groupedTitles, sortLetters } from "../libraryGroups";
+import {
+  firstLetter,
+  groupID,
+  groupedTitles,
+  sortLetters,
+} from "../libraryGroups";
 import { BulkMonitoring } from "./BulkMonitoring";
 import { BulkProfiles } from "./BulkProfiles";
 import "./Library.css";
@@ -321,6 +326,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const page = capped ? (data?.page ?? requestedPage) : 1;
   const groups = groupedTitles(items);
   const letters = sortLetters(groups.map(([letter]) => letter));
+  const posterAnchors = new Set(groups.map(([, rows]) => rows[0]));
   // The server accepts up to 5,000 explicit IDs in one reviewed write, so
   // "Select all shown" covers everything currently rendered. In the paginated
   // fallback that is exactly the current page; changing pages clears it.
@@ -353,7 +359,12 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
     <>
       <PageToolbar label={`${title} actions`}>
         <ToolbarSection>
-          <ToolbarButton icon={Plus} label="Add New" to={searchPath} />
+          <ToolbarButton
+            icon={Plus}
+            label="Add New"
+            to={searchPath}
+            className="is-primary"
+          />
           <ToolbarButton
             icon={FolderInput}
             label="Library Import"
@@ -748,63 +759,57 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
               </ul>
             ) : (
               <ul className="lib-grid" aria-label={`${title} posters`}>
-                {groups.map(([letter, rows]) => (
-                  <Fragment key={letter}>
-                    <li className="lib-group-row">
-                      <h2 className="lib-group-heading" id={groupID(letter)}>
-                        {letter}
-                      </h2>
-                    </li>
-                    {rows.map((item) => (
-                      <li
-                        className={
-                          canSelect && selected.includes(item.id)
-                            ? "lib-card is-selected"
-                            : "lib-card"
-                        }
-                        key={item.id}
-                      >
-                        {canSelect && (
-                          <span className="lib-card-select">
-                            {selectBox(item)}
+                {items.map((item) => (
+                  <li
+                    id={
+                      posterAnchors.has(item)
+                        ? groupID(firstLetter(item.title))
+                        : undefined
+                    }
+                    className={
+                      canSelect && selected.includes(item.id)
+                        ? "lib-card is-selected"
+                        : "lib-card"
+                    }
+                    key={item.id}
+                  >
+                    {canSelect && (
+                      <span className="lib-card-select">{selectBox(item)}</span>
+                    )}
+                    <Link
+                      className="lib-card-art"
+                      to={detailsPath(item)}
+                      aria-label={`Open ${item.title} details`}
+                    >
+                      <Poster movie={item} />
+                    </Link>
+                    <span
+                      className={`lib-status-bar is-${statusKind(item)}`}
+                      title={statusLabel(item)}
+                    />
+                    <div className="lib-card-info">
+                      <div className="lib-card-line">
+                        <h2 className="lib-card-title">
+                          <Link to={detailsPath(item)} title={item.title}>
+                            {item.title}
+                          </Link>
+                        </h2>
+                        <MonitorIcon monitored={item.monitored} />
+                      </div>
+                      <div className="lib-card-meta">
+                        <span>{item.year ?? "Year unknown"}</span>
+                        {anime && (
+                          <span>
+                            {item.kind === "movie" ? "Movie" : "Show"}
                           </span>
                         )}
-                        <Link
-                          className="lib-card-art"
-                          to={detailsPath(item)}
-                          aria-label={`Open ${item.title} details`}
-                        >
-                          <Poster movie={item} />
-                        </Link>
-                        <span
-                          className={`lib-status-bar is-${statusKind(item)}`}
-                          title={statusLabel(item)}
-                        />
-                        <div className="lib-card-info">
-                          <div className="lib-card-line">
-                            <h2 className="lib-card-title">
-                              <Link to={detailsPath(item)} title={item.title}>
-                                {item.title}
-                              </Link>
-                            </h2>
-                            <MonitorIcon monitored={item.monitored} />
-                          </div>
-                          <div className="lib-card-meta">
-                            <span>{item.year ?? "Year unknown"}</span>
-                            {anime && (
-                              <span>
-                                {item.kind === "movie" ? "Movie" : "Show"}
-                              </span>
-                            )}
-                            <span className="lib-card-status">
-                              {statusLabel(item)}
-                            </span>
-                          </div>
-                          <ProfileLabel item={item} />
-                        </div>
-                      </li>
-                    ))}
-                  </Fragment>
+                        <span className="lib-card-status">
+                          {statusLabel(item)}
+                        </span>
+                      </div>
+                      <ProfileLabel item={item} />
+                    </div>
+                  </li>
                 ))}
               </ul>
             )
