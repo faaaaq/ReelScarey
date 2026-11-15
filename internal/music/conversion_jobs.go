@@ -261,10 +261,22 @@ func (s *Service) processConversion(ctx context.Context) (bool, error) {
 // processing state and takes a work lease. work_until doubles as the
 // not-before time of queued jobs: a failed attempt requeues the row with a
 // future work_until so the backoff is durable across restarts.
+//
+// A 'processing' row whose lease has expired is also claimable: a worker that
+// died, or whose lease-renewal or checked progress writes hit a persistent
+// database error, would otherwise leave the job wedged in 'processing' until
+// the next restart (claimConversion only claims 'queued', and
+// RecoverConversions runs only at startup). A live worker renews its lease
+// every conversionLeaseSeconds/3, so its work_until is always in the future;
+// reclaiming an expired lease counts the interrupted run as an attempt, and
+// the old worker's owner-guarded writes stop matching, so it can never
+// publish on behalf of a claim it lost.
 func (s *Service) claimConversion(ctx context.Context) (ConversionJob, string, bool, error) {
 	var id int64
 	err := s.store.db.QueryRowContext(ctx, `SELECT id FROM music_conversion_jobs
-		WHERE state='queued' AND work_until<=unixepoch() ORDER BY priority,id LIMIT 1`).Scan(&id)
+		WHERE (state='queued' AND work_until<=unixepoch())
+		   OR (state='processing' AND work_until<=unixepoch())
+		ORDER BY priority,id LIMIT 1`).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ConversionJob{}, "", false, nil
 	}
@@ -276,7 +288,7 @@ func (s *Service) claimConversion(ctx context.Context) (ConversionJob, string, b
 		SET state='processing', work_owner=?, work_until=unixepoch()+?, attempts=attempts+1, progress=10, error='',
 			source_path=COALESCE((SELECT relative_path FROM music_files WHERE id=music_conversion_jobs.file_id),''),
 			updated_at=unixepoch()
-		WHERE id=? AND state='queued' AND work_until<=unixepoch()`,
+		WHERE id=? AND ((state='queued' AND work_until<=unixepoch()) OR (state='processing' AND work_until<=unixepoch()))`,
 		owner, conversionLeaseSeconds, id)
 	if err != nil {
 		return ConversionJob{}, "", false, err

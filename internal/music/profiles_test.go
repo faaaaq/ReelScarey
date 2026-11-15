@@ -390,3 +390,42 @@ func TestPreferencesTranscodingFieldsValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestCustomProfileNameCollisionsRejected(t *testing.T) {
+	service, _, ctx, _ := profilesFixture(t)
+	// A builtin key can never be a custom name: ResolveProfileKey checks
+	// builtins first, so such a row would be unreachable by name.
+	if _, err := service.SaveCustomProfile(ctx, QualityProfile{Name: "original", Codec: "opus", Container: "opus", BitrateKbps: 96}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("builtin-key name accepted: %v", err)
+	}
+	if _, err := service.SaveCustomProfile(ctx, QualityProfile{Name: "Original", Codec: "opus", Container: "opus", BitrateKbps: 96}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("builtin-key name accepted: %v", err)
+	}
+	// The generated custom-<id> namespace is reserved.
+	if _, err := service.SaveCustomProfile(ctx, QualityProfile{Name: "custom-5", Codec: "opus", Container: "opus", BitrateKbps: 96}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("generated-key namespace name accepted: %v", err)
+	}
+	// Names that merely start with custom- stay allowed.
+	saved, err := service.SaveCustomProfile(ctx, QualityProfile{Name: "custom-lossless", Codec: "flac"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Key != fmt.Sprintf("custom-%d", saved.ID) {
+		t.Fatalf("allowed custom- prefixed name lost its generated key: %+v", saved)
+	}
+	// Duplicate names are a typed conflict (the name column is UNIQUE).
+	if _, err := service.SaveCustomProfile(ctx, QualityProfile{Name: "Custom-Lossless", Codec: "opus", Container: "opus", BitrateKbps: 96}); !errors.Is(err, ErrProfileNameTaken) {
+		t.Fatalf("duplicate name not a conflict: %v", err)
+	}
+	// Renaming a row onto another row's name is also a conflict.
+	other, err := service.SaveCustomProfile(ctx, QualityProfile{Name: "Second Profile", Codec: "opus", Container: "opus", BitrateKbps: 128})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SaveCustomProfile(ctx, QualityProfile{ID: other.ID, Name: "custom-lossless", Codec: "opus", Container: "opus", BitrateKbps: 128}); !errors.Is(err, ErrProfileNameTaken) {
+		t.Fatalf("rename onto taken name not a conflict: %v", err)
+	}
+	if _, err := service.SaveCustomProfile(ctx, QualityProfile{ID: other.ID, Name: "Second Profile", Codec: "opus", Container: "opus", BitrateKbps: 128}); err != nil {
+		t.Fatalf("unchanged update wrongly rejected: %v", err)
+	}
+}

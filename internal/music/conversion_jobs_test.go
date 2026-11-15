@@ -735,3 +735,56 @@ func TestListConversionsBoundedPage(t *testing.T) {
 		t.Fatalf("listed job wrong: %+v", page.Items[0])
 	}
 }
+
+// TestClaimConversionReclaimsExpiredProcessingLease covers the stuck-job fix:
+// a 'processing' row whose lease expired (a worker that died, or whose lease
+// renewal or checked writes hit a persistent database error) must be
+// reclaimable without waiting for a restart, with the interrupted run counted
+// as an attempt and the old owner's claim lost.
+func TestClaimConversionReclaimsExpiredProcessingLease(t *testing.T) {
+	s, db, _, _, fileID := conversionFixture(t)
+	ctx := context.Background()
+	id, err := s.EnqueueConversion(ctx, "library", fileID, "opus-high", 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, firstOwner, claimed, err := s.claimConversion(ctx)
+	if err != nil || !claimed || job.ID != id {
+		t.Fatal("initial claim failed", err, claimed)
+	}
+	if job.Attempts != 1 {
+		t.Fatalf("first claim attempts = %d", job.Attempts)
+	}
+	// The lease is alive, so the same processing job is never double-claimed.
+	if _, err := db.Exec(`UPDATE music_conversion_jobs SET work_until=unixepoch()+3600 WHERE id=?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, claimed, err = s.claimConversion(ctx); err != nil || claimed {
+		t.Fatalf("live lease was reclaimed: %v (err %v)", claimed, err)
+	}
+	// Expire the lease: the wedged job must be claimable again.
+	if _, err := db.Exec(`UPDATE music_conversion_jobs SET work_until=unixepoch()-1 WHERE id=?`, id); err != nil {
+		t.Fatal(err)
+	}
+	job, _, claimed, err = s.claimConversion(ctx)
+	if err != nil || !claimed || job.ID != id {
+		t.Fatal("expired processing lease not reclaimed", err, claimed)
+	}
+	if job.Attempts != 2 {
+		t.Fatalf("reclaim did not count the interrupted run: attempts=%d", job.Attempts)
+	}
+	if job.State != "processing" || job.Attempts != 2 {
+		t.Fatalf("reclaimed job not leased honestly: %+v", job)
+	}
+	var newOwner string
+	if err := db.QueryRow(`SELECT work_owner FROM music_conversion_jobs WHERE id=?`, id).Scan(&newOwner); err != nil || newOwner == "" || newOwner == firstOwner {
+		t.Fatalf("reclaimed lease not taken by a fresh owner: %q (err %v)", newOwner, err)
+	}
+	if until, err := func() (int64, error) {
+		var until int64
+		err := db.QueryRow(`SELECT work_until FROM music_conversion_jobs WHERE id=?`, id).Scan(&until)
+		return until, err
+	}(); err != nil || until <= time.Now().Unix() {
+		t.Fatalf("reclaim did not take a fresh lease: %d (err %v)", until, err)
+	}
+}

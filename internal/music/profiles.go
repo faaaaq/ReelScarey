@@ -141,6 +141,23 @@ func (s *Service) SaveCustomProfile(ctx context.Context, in QualityProfile) (Qua
 	if err != nil {
 		return QualityProfile{}, err
 	}
+	// The name column is UNIQUE (case-insensitive). Translate the constraint
+	// into a typed conflict before the write so a duplicate save answers with
+	// an honest 409-class error instead of a raw storage failure. A concurrent
+	// duplicate save can still lose the INSERT race; that only yields the
+	// generic storage error, never inconsistent data.
+	var taken int64
+	if in.ID > 0 {
+		err = s.store.db.QueryRowContext(ctx, `SELECT id FROM music_quality_profiles WHERE name=? AND id<>?`, clean.Name, in.ID).Scan(&taken)
+	} else {
+		err = s.store.db.QueryRowContext(ctx, `SELECT id FROM music_quality_profiles WHERE name=?`, clean.Name).Scan(&taken)
+	}
+	if err == nil {
+		return QualityProfile{}, ErrProfileNameTaken
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return QualityProfile{}, err
+	}
 	now := time.Now().Unix()
 	clean.Key = ""
 	clean.Custom = true
@@ -227,6 +244,27 @@ func (s *Service) customProfile(ctx context.Context, id int64) (QualityProfile, 
 	return profile, nil
 }
 
+// customKeyNamespaceCollision reports whether name sits inside the generated
+// "custom-<id>" key namespace (a numeric suffix after the dash). Those names
+// are reserved so a hand-written name can never be ambiguous with a
+// generated key in ResolveProfileKey.
+func customKeyNamespaceCollision(name string) bool {
+	suffix, ok := strings.CutPrefix(name, "custom-")
+	if !ok || suffix == "" {
+		return false
+	}
+	for _, char := range suffix {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// ErrProfileNameTaken is returned when a custom profile is saved with a name
+// another profile row already uses; the name column is UNIQUE.
+var ErrProfileNameTaken = &Error{Code: "music_profile_name_taken", Message: "A custom profile with this name already exists."}
+
 // validateCustomProfile trims the name and validates codec, bitrate, container
 // and name length so a custom profile row cannot be saved with an unusable
 // encoder target. Control characters are rejected on the raw name so a
@@ -243,6 +281,26 @@ func validateCustomProfile(in QualityProfile) (QualityProfile, error) {
 		KeepOriginal:     in.KeepOriginal,
 	}
 	if clean.Name == "" || len(clean.Name) > 100 {
+		return QualityProfile{}, ErrInvalidInput
+	}
+	// A custom name must never shadow a builtin key or collide with the
+	// generated "custom-<id>" key namespace: ResolveProfileKey checks builtins
+	// first, so a custom profile named "original" could never be resolved by
+	// name, and a numeric custom-<id> name would be ambiguous with another
+	// row's generated key. Rows saved before this check are unaffected; the
+	// validation only gates new saves and updates.
+	if _, ok := ProfileByKey(clean.Name); ok {
+		return QualityProfile{}, ErrInvalidInput
+	}
+	// The name column compares case-insensitively (COLLATE NOCASE), so a name
+	// that differs only in case from a builtin key is rejected for the same
+	// reason.
+	for _, builtin := range BuiltinProfiles() {
+		if strings.EqualFold(clean.Name, builtin.Key) {
+			return QualityProfile{}, ErrInvalidInput
+		}
+	}
+	if customKeyNamespaceCollision(clean.Name) {
 		return QualityProfile{}, ErrInvalidInput
 	}
 	for _, char := range in.Name {
