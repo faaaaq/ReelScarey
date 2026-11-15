@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@radix-ui/themes";
 import {
   CircleAlert,
@@ -131,6 +131,19 @@ export function Activity() {
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0);
   const [openID, setOpenID] = useState("");
+  // The row control that opened the dialog regains focus when it closes;
+  // dialogs otherwise return focus to the page body.
+  const jobTrigger = useRef<HTMLElement | null>(null);
+  function openJob(id: string, trigger?: HTMLElement | null) {
+    jobTrigger.current = trigger ?? null;
+    setOpenID(id);
+  }
+  function closeJob() {
+    setOpenID("");
+    const trigger = jobTrigger.current;
+    jobTrigger.current = null;
+    if (trigger) requestAnimationFrame(() => trigger.focus());
+  }
   function reload() {
     setAttempt((n) => n + 1);
   }
@@ -292,7 +305,7 @@ export function Activity() {
               <QueueTable
                 jobs={visible}
                 focus={focusValid ? focus : ""}
-                onOpen={setOpenID}
+                onOpen={openJob}
               />
             </>
           ))}
@@ -305,12 +318,7 @@ export function Activity() {
         )}
       </PageBody>
       {openID && (
-        <JobModal
-          open
-          job={opened}
-          onClose={() => setOpenID("")}
-          reload={reload}
-        />
+        <JobModal open job={opened} onClose={closeJob} reload={reload} />
       )}
       {focusValid && !openID && (
         <FocusedJob id={focus} onClose={() => setParam("job", null)} />
@@ -326,7 +334,7 @@ function QueueTable({
 }: {
   jobs: DownloadJob[];
   focus: string;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, trigger?: HTMLElement | null) => void;
 }) {
   return (
     <Table label="Queue" className="act-table">
@@ -370,7 +378,7 @@ function QueueTable({
             key={job.id}
             job={job}
             selected={job.id === focus}
-            onOpen={() => onOpen(job.id)}
+            onOpen={(trigger) => onOpen(job.id, trigger)}
           />
         ))}
       </tbody>
@@ -385,7 +393,7 @@ function QueueRow({
 }: {
   job: DownloadJob;
   selected: boolean;
-  onOpen: () => void;
+  onOpen: (trigger?: HTMLElement | null) => void;
 }) {
   const state = stateOf(job);
   const attention = needsAttention(job);
@@ -479,8 +487,8 @@ function QueueRow({
           {attention && (
             <Button
               size="1"
-              color="orange"
-              onClick={onOpen}
+              className="rs-btn-attention"
+              onClick={(event) => onOpen(event.currentTarget)}
               aria-label={`${reviewLabel(job)} for ${job.movie_title}`}
             >
               {reviewLabel(job)}
@@ -489,7 +497,7 @@ function QueueRow({
           <button
             type="button"
             className="act-icon-button"
-            onClick={onOpen}
+            onClick={(event) => onOpen(event.currentTarget)}
             aria-label={`Details for ${job.movie_title}`}
             title="Details"
           >
@@ -798,7 +806,7 @@ function JobActions({
       {attention && (
         <ConfirmDialog
           trigger={
-            <Button variant="soft" color="red" disabled={pending}>
+            <Button variant="soft" className="rs-btn-danger" disabled={pending}>
               Stop tracking
             </Button>
           }

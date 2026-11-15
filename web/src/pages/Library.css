@@ -3,17 +3,6 @@
 .lib-body {
   padding-bottom: 28px;
 }
-.lib-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 16px;
-}
-.lib-title {
-  font-size: 22px;
-  font-weight: 300;
-}
 .lib-search {
   display: flex;
   gap: 6px;

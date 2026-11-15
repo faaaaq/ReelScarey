@@ -23,7 +23,7 @@ import {
   type MediaItem,
   type CatalogProfileContext,
 } from "../api";
-import { RequestState } from "../components";
+import { RequestState, PageHeading } from "../components";
 import { Poster, Pagination } from "../movieComponents";
 import {
   Alert,
@@ -90,7 +90,21 @@ function detailsPath(item: MediaItem) {
   return `/${item.kind === "movie" ? "movies" : "series"}/${item.id}`;
 }
 
-function ItemAction({ item }: { item: MediaItem }) {
+function ItemAction({
+  item,
+  kind,
+}: {
+  item: MediaItem;
+  kind: "movie" | "series" | "anime";
+}) {
+  // Carry the library view (query/filters/sort) along so release review can
+  // return straight back to the same browsing state. Only missing movies use
+  // this branch, and Anime films are movies in the catalog.
+  const [params] = useSearchParams();
+  const query = params.toString();
+  const returnTo = `/${kind === "anime" ? "anime" : "movies"}${
+    query ? `?${query}` : ""
+  }`;
   return (
     <Link
       to={
@@ -100,7 +114,9 @@ function ItemAction({ item }: { item: MediaItem }) {
             ? "/activity"
             : item.status === "available"
               ? `/movies/${item.id}`
-              : `/releases?movie=${item.id}`
+              : `/releases?movie=${item.id}&return=${encodeURIComponent(
+                  returnTo,
+                )}`
       }
     >
       {item.kind === "series"
@@ -131,6 +147,34 @@ function MonitorIcon({ monitored }: { monitored: boolean }) {
 
 export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
   const [params, setParams] = useSearchParams();
+  // Returning to the library from a nav link or another page lands on a bare
+  // path. Restore the remembered filters/sort/view so the reference workflow
+  // (Movies → details → releases → Activity → Movies) resumes where it left
+  // off. Explicit deep links with any param still win.
+  const rememberKey = `reelscarey.library.${kind}.params`;
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    if (params.size > 0) return;
+    try {
+      const saved = localStorage.getItem(rememberKey);
+      const savedParams = saved ? new URLSearchParams(saved) : null;
+      if (savedParams && savedParams.size > 0)
+        setParams(savedParams, { replace: true });
+    } catch {
+      /* Storage unavailable: browse with the defaults. */
+    }
+    // Run once per mount; the save effect below records later changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(rememberKey, params.toString());
+    } catch {
+      /* Storage unavailable. */
+    }
+  }, [params, rememberKey]);
   const queryParam = params.get("query") ?? "";
   const [input, setInput] = useState(queryParam);
   useEffect(() => setInput(queryParam), [queryParam]);
@@ -390,8 +434,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
       </PageToolbar>
 
       <PageBody className="lib-body">
-        <div className="lib-head">
-          <h1 className="lib-title">{title}</h1>
+        <PageHeading title={title}>
           <form onSubmit={submit} className="lib-search" role="search">
             <TextField.Root
               aria-label="Search saved titles"
@@ -412,7 +455,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
               Apply
             </Button>
           </form>
-        </div>
+        </PageHeading>
 
         {ready && letters.length > 1 && (
           <nav className="lib-az" aria-label="Jump to letter">
@@ -630,7 +673,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                             </Label>
                           </td>
                           <td className="is-actions">
-                            <ItemAction item={item} />
+                            <ItemAction item={item} kind={kind} />
                           </td>
                         </tr>
                       ))}
@@ -690,7 +733,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                               </Label>
                             )}
                             <ProfileLabel item={item} />
-                            <ItemAction item={item} />
+                            <ItemAction item={item} kind={kind} />
                           </div>
                           {item.overview && (
                             <p className="lib-overview-text">{item.overview}</p>

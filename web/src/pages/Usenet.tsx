@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, messageFor } from "../api";
-import { RequestState } from "../components";
+import { RequestState, PageHeading } from "../components";
 import {
   Alert,
   Check,
@@ -401,7 +401,7 @@ export function Usenet() {
   if (!data || !status || !queue) {
     return (
       <PageBody>
-        <h1 className="sr-only">Usenet</h1>
+        <PageHeading title="Usenet" />
         <RequestState
           loading={overview.loading}
           error={overview.error}
@@ -416,7 +416,7 @@ export function Usenet() {
 
   return (
     <div className="use-app">
-      <h1 className="sr-only">Usenet</h1>
+      <PageHeading title="Usenet" />
       <PageToolbar label="Usenet actions">
         <ToolbarSection>
           <ToolbarButton
@@ -609,7 +609,7 @@ export function Usenet() {
                     trigger={
                       <Button
                         variant="soft"
-                        color="red"
+                        className="rs-btn-danger"
                         disabled={busy || status.active_jobs > 0}
                       >
                         Turn off client

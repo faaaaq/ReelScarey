@@ -122,7 +122,24 @@ function ReleaseBrowser() {
   const [error, setError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [attachOpen, setAttachOpen] = useState(false);
-  const [protocol, setProtocol] = useState("all");
+  // Remember the protocol filter across reviews; releases reviews are
+  // short-lived pages and the choice survives returning from Activity.
+  const [protocol, setProtocolState] = useState(() => {
+    try {
+      const saved = localStorage.getItem("reelscarey.releases.protocol");
+      return saved === "torrent" || saved === "usenet" ? saved : "all";
+    } catch {
+      return "all";
+    }
+  });
+  function setProtocol(value: string) {
+    setProtocolState(value);
+    try {
+      localStorage.setItem("reelscarey.releases.protocol", value);
+    } catch {
+      /* Storage unavailable. */
+    }
+  }
   const [sort, setSort] = useState<SortState<ReleaseSortKey>>({
     key: "rank",
     direction: "asc",
@@ -187,11 +204,21 @@ function ReleaseBrowser() {
     release.protocol === "usenet"
       ? sab.data?.configured
       : client.data?.configured || builtinReady;
-  const back = tv
-    ? `/series/${movieID}`
-    : valid
-      ? `/movies/${movieID}`
-      : "/movies";
+  // A library action can pass its own browsing URL in `return`; when present
+  // it takes the owner straight back to the same filtered view instead of the
+  // unfiltered library.
+  const returnParam = params.get("return") ?? "";
+  const returnTo =
+    returnParam.startsWith("/") && !returnParam.startsWith("//")
+      ? returnParam
+      : "";
+  const back = returnTo
+    ? returnTo
+    : tv
+      ? `/series/${movieID}`
+      : valid
+        ? `/movies/${movieID}`
+        : "/movies";
   const showPurpose = !tv || !!replacementFiles.data?.items.length;
   return (
     <>
@@ -199,7 +226,13 @@ function ReleaseBrowser() {
         <ToolbarSection>
           <ToolbarButton
             icon={ArrowLeft}
-            label={tv ? "Back to show" : "Back to movie"}
+            label={
+              returnTo
+                ? "Back to library"
+                : tv
+                  ? "Back to show"
+                  : "Back to movie"
+            }
             to={back}
           />
           <ToolbarSeparator />

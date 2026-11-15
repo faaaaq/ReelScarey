@@ -25,7 +25,7 @@ import {
   ToolbarSection,
 } from "../ui";
 import { Pagination } from "../movieComponents";
-import { RequestState } from "../components";
+import { RequestState, PageHeading } from "../components";
 import { groupID, groupedByLetter, sortLetters } from "../libraryGroups";
 import {
   api,
@@ -274,8 +274,7 @@ export function MusicLibrary() {
         </ToolbarSection>
       </PageToolbar>
       <PageBody className="lib-body">
-        <div className="lib-head">
-          <h1 className="lib-title">Music</h1>
+        <PageHeading title="Music">
           <form onSubmit={submit} className="lib-search" role="search">
             <TextField.Root
               aria-label="Filter saved music"
@@ -296,7 +295,7 @@ export function MusicLibrary() {
               Apply
             </Button>
           </form>
-        </div>
+        </PageHeading>
 
         {activeJobs > 0 && (
           <Alert kind="info" title="Music downloads running">

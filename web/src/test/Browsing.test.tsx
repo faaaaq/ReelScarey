@@ -143,7 +143,7 @@ describe("catalog browsing", () => {
     );
     expect(screen.getByRole("link", { name: "Find releases" })).toHaveAttribute(
       "href",
-      "/releases?movie=11",
+      "/releases?movie=11&return=%2Fmovies%3Fsort%3Dadded%26view%3Dtable",
     );
     await userEvent.click(screen.getByRole("button", { name: "Overview" }));
     expect(screen.getByRole("list", { name: "Movies overview" })).toBeVisible();
