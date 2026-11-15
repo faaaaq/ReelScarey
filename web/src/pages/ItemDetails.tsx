@@ -79,6 +79,7 @@ function MovieView({ id }: { id: number }) {
             <ToolbarButton
               icon={Search}
               label="Manual Search"
+              className="is-primary"
               to={`/releases?movie=${id}`}
             />
           )}

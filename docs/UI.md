@@ -68,10 +68,12 @@ titles dated before today start unselected. See
 
 Every page renders, in order:
 
-1. `PageToolbar` (optional, sticky): icon-over-label `ToolbarButton`s. Left
-   section for actions (Refresh, Add, Search, Save Changes), right section for
-   view options (View, Sort, Filter). Use `ToolbarSeparator` between groups.
-2. `PageBody`: 20px padded content column.
+1. `PageToolbar` (optional, sticky): compact `ToolbarButton`s with icons beside
+   labels at desktop widths and above labels on narrower screens. Use the left
+   section for actions (Refresh, Add, Search, Save Changes) and the right
+   section for view options (View, Sort, Filter). Use `ToolbarSeparator`
+   between groups.
+2. `PageBody`: content column with a shared gutter that widens on desktop.
 
 ```tsx
 <>
