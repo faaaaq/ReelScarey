@@ -318,11 +318,16 @@ the media root; clearing never touches registered music content.
 
 GET `/files/{id}/export?profile=KEY` downloads one registered file in a
 chosen quality. The `original` profile streams the registered file directly
-with byte-range support; a converting profile streams converted audio
-through the same playback path players use (an on-the-fly conversion is
-streamed without a length; cached and pass-through results keep byte
-ranges). A missing `profile` value is 400 `invalid_music`; an unknown
-profile or a missing file is rejected as `invalid_music` / `not_found`.
+with byte-range support; a converting profile answers with a finished,
+self-contained audio file served with byte ranges: an existing library
+variant is reused when its probed codec and quality satisfy the requested
+profile, otherwise the server converts freshly into an isolated temporary
+directory (the stream cache and the media root are never touched). Converted
+exports preserve the source's text metadata and embedded artwork for MP3,
+FLAC and M4A; Ogg/Opus keeps audio and text metadata but no artwork (a
+documented container limitation). A missing `profile` value is 400
+`invalid_music`; an unknown profile or a missing file is rejected as
+`invalid_music` / `not_found`.
 
 ### Per-user Subsonic quality
 

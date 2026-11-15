@@ -244,6 +244,8 @@ jobs:
         run: bash scripts/automatic-library-container-smoke.sh reelscarey:ci
       - name: Container storage copy, mount activation and recovery
         run: bash scripts/storage-container-smoke.sh reelscarey:ci
+      - name: Music container catalog, scan and tag-write smoke
+        run: bash scripts/music-container-smoke.sh reelscarey:ci
       - name: Constrained container read and write budget
         run: bash scripts/container-workload.sh reelscarey:ci 60
 

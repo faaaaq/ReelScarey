@@ -546,8 +546,8 @@ and publishes the result as a variant of the same track.
 
 - Kinds are `download`, `library` and `export`. Today the library bulk
   optimization enqueues `library` jobs at priority 8; the export endpoint
-  streams converted audio directly instead of enqueuing, and no flow enqueues
-  `download` yet.
+  serves finished converted audio directly instead of enqueuing, and no flow
+  enqueues `download` yet.
 - States: `queued` -> `processing` -> `completed`, `failed` or `cancelled`. The
   worker claims the lowest priority number first (1-9), takes a five-minute
   lease it renews while the conversion runs, and reports progress at fixed
@@ -634,11 +634,22 @@ streams strip tags and artwork; only file conversions preserve tags.
 
 `GET /api/v1/library/music/files/{id}/export?profile=` downloads one registered
 file in a chosen quality profile. The `original` profile streams the registered
-file directly with byte-range support. A converting profile streams the
-converted audio through the same playback path players use, so the export
-reuses the stream cache and never writes to the media root. Converted exports
-carry no tags (the stream pipeline strips metadata); the original file keeps
-its tags.
+file directly with byte-range support. A converting profile answers with a
+finished, self-contained audio file: the server first reuses an existing
+library variant of the same track when its *probed* codec and quality actually
+satisfy the requested profile (profile labels are never trusted blindly, and a
+lower-quality variant is never served as a higher quality), otherwise it
+converts freshly into an isolated temporary directory and never touches the
+stream cache or the media root. The response supports byte ranges and carries
+the correct file extension and content type.
+
+Converted exports preserve the source's text metadata (title, artist, album
+artist, album, track, disc, year and any other tags the container maps) and
+embedded artwork where the container supports it reliably: MP3 (APIC), FLAC
+(picture) and M4A (`covr`). Ogg/Opus is a documented limitation: ffmpeg's Ogg
+muxer cannot attach pictures reliably, so Opus exports keep audio and all text
+metadata but no artwork. The original file keeps its tags and is never
+modified.
 
 ## Limits
 
