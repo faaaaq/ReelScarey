@@ -64,12 +64,16 @@ function episodeCode(episode: SourceEpisode) {
   ).padStart(2, "0")}`;
 }
 
-/** A row can only be queued when no download is active and no file exists. */
+/** A row can only be queued when no download is active and no file exists;
+ * an episode awaiting import review already has an active job and is handled
+ * from the Downloads page instead. */
 function queueable(episode: SourceEpisode) {
   return (
     episode.videos.length > 0 &&
     episode.file_count === 0 &&
-    !["queued", "downloading", "importing"].includes(episode.state)
+    !["queued", "downloading", "importing", "awaiting_review"].includes(
+      episode.state,
+    )
   );
 }
 

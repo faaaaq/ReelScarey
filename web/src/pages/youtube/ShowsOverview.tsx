@@ -59,22 +59,18 @@ export function ShowsOverview() {
       setBusy("");
     }
   }
-  /** Round-trip the full source body; fields not in the overview response
-   * keep safe defaults instead of silently clobbering saved values. */
+  /** Round-trip the full source body: every editable field is serialized by
+   * the overview endpoint, so toggling enabled cannot clobber saved values. */
   function toggleBody(source: SourcesOverviewItem) {
     return {
       source_url: source.source_url,
       mapping: source.mapping,
       season_number: source.season_number,
-      start_episode: source.start_episode ?? 1,
+      start_episode: source.start_episode,
       quality: source.quality,
-      subtitles: source.subtitles ?? {
-        languages: [],
-        automatic: false,
-        quality: source.quality,
-      },
+      subtitles: source.subtitles,
       auto_import: source.auto_import,
-      interval_hours: source.interval_hours ?? 6,
+      interval_hours: source.interval_hours,
       enabled: !source.enabled,
       revision: source.revision,
       reviewed: true,

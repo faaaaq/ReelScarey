@@ -543,6 +543,58 @@ func TestSeriesSourceSummariesCounts(t *testing.T) {
 	}
 }
 
+func TestSeriesSourceSummaryRoundTripsToggleFields(t *testing.T) {
+	ctx := context.Background()
+	s, _, mediaID := seriesFixture(t)
+	_, e := s.SaveSeriesSource(ctx, mediaID, SeriesSourceInput{
+		URL:          "https://www.youtube.com/playlist?list=PLfixture0",
+		Mapping:      "episode",
+		Season:       2,
+		StartEpisode: 7,
+		Quality:      "1080",
+		Subtitles:    DownloadOptions{Languages: []string{"en"}, Automatic: true},
+		AutoImport:   true,
+		Interval:     12,
+		Reviewed:     true,
+	})
+	if e != nil {
+		t.Fatal(e)
+	}
+	summaries, e := s.SeriesSourceSummaries(ctx)
+	if e != nil || len(summaries) != 1 {
+		t.Fatal(summaries, e)
+	}
+	summary := summaries[0]
+	if summary.StartEpisode != 7 || summary.Interval != 12 || len(summary.Subtitles.Languages) != 1 ||
+		summary.Subtitles.Languages[0] != "en" || !summary.Subtitles.Automatic {
+		t.Fatalf("summary must carry the toggle round-trip fields: %+v", summary)
+	}
+	// The overview card toggles enabled by POSTing the summary back verbatim
+	// (only enabled and the revision change). Nothing else may be clobbered.
+	toggled := SeriesSourceInput{
+		URL:          summary.SourceURL,
+		Mapping:      summary.Mapping,
+		Season:       summary.Season,
+		StartEpisode: summary.StartEpisode,
+		Quality:      summary.Quality,
+		Subtitles:    summary.Subtitles,
+		AutoImport:   summary.AutoImport,
+		Interval:     summary.Interval,
+		Enabled:      true,
+		Revision:     summary.Revision,
+		Reviewed:     true,
+	}
+	saved, e := s.SaveSeriesSource(ctx, mediaID, toggled)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !saved.Enabled || saved.StartEpisode != 7 || saved.Interval != 12 ||
+		len(saved.Subtitles.Languages) != 1 || saved.Subtitles.Languages[0] != "en" ||
+		!saved.Subtitles.Automatic || saved.Season != 2 || saved.Quality != "1080" || !saved.AutoImport {
+		t.Fatalf("enable toggle clobbered saved source fields: %+v", saved)
+	}
+}
+
 func TestSeriesEpisodeStatusesDeriveState(t *testing.T) {
 	ctx := context.Background()
 	s, inspector, mediaID := seriesFixture(t)

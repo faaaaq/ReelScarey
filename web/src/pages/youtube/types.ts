@@ -261,9 +261,13 @@ export type SourcesOverviewItem = {
   source_url: string;
   mapping: string;
   season_number: number;
+  /** Serialized so Enable/Pause round-trips faithfully. */
+  start_episode: number;
   quality: string;
+  subtitles: SourceSubtitles;
   auto_import: boolean;
   enabled: boolean;
+  interval_hours: number;
   initialized: boolean;
   revision: number;
   state: string;
@@ -272,10 +276,6 @@ export type SourcesOverviewItem = {
   last_checked: number;
   counts: SourceCounts;
   show: { id: number; title: string };
-  /** Serialized when present so Enable/Pause round-trips faithfully. */
-  start_episode?: number;
-  interval_hours?: number;
-  subtitles?: SourceSubtitles;
 };
 export type SourcesOverviewResponse = { items: SourcesOverviewItem[] };
 

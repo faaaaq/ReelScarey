@@ -382,8 +382,10 @@ test.describe.serial("YouTube shows journeys", () => {
     await expect(failedChip).toHaveAttribute("aria-pressed", "false");
     await expect(allChip).toHaveAttribute("aria-pressed", "true");
 
-    // A Tab walk from the chips reaches the first episode checkbox without
-    // focus ever being dropped, and each stop is visible.
+    // A Tab walk from the chips reaches the first selectable episode checkbox
+    // (S01E02 failed; S01E01 awaits import review so its checkbox is
+    // intentionally disabled) without focus ever being dropped, and each stop
+    // is visible.
     await chips.getByRole("button", { name: "All" }).focus();
     let focusedLabel = "";
     for (let i = 0; i < 20 && !focusedLabel; i++) {
@@ -393,10 +395,10 @@ test.describe.serial("YouTube shows journeys", () => {
         if (!el || el === document.body || (el as HTMLElement).offsetParent === null)
           return "dropped";
         const label = el.getAttribute("aria-label") ?? "";
-        return label.startsWith("Select S01E01") ? label : "";
+        return label.startsWith("Select S01E02") ? label : "";
       });
     }
-    expect(focusedLabel).toContain("Select S01E01");
+    expect(focusedLabel).toContain("Select S01E02");
 
     // Destructive action: the Remove confirm dialog receives focus and can be
     // dismissed without any network call.

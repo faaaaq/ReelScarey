@@ -876,23 +876,26 @@ type SeriesSourceShow struct {
 }
 
 type SeriesSourceSummary struct {
-	ID          string             `json:"id"`
-	MediaID     int64              `json:"media_id"`
-	ShowTitle   string             `json:"show_title"`
-	SourceURL   string             `json:"source_url"`
-	Mapping     string             `json:"mapping"`
-	Season      int                `json:"season_number"`
-	Quality     string             `json:"quality"`
-	AutoImport  bool               `json:"auto_import"`
-	Enabled     bool               `json:"enabled"`
-	Initialized bool               `json:"initialized"`
-	Revision    int                `json:"revision"`
-	State       string             `json:"state"`
-	Message     string             `json:"message"`
-	NextRun     int64              `json:"next_run"`
-	LastChecked int64              `json:"last_checked"`
-	Counts      SeriesSourceCounts `json:"counts"`
-	Show        SeriesSourceShow   `json:"show"`
+	ID           string             `json:"id"`
+	MediaID      int64              `json:"media_id"`
+	ShowTitle    string             `json:"show_title"`
+	SourceURL    string             `json:"source_url"`
+	Mapping      string             `json:"mapping"`
+	Season       int                `json:"season_number"`
+	StartEpisode int                `json:"start_episode"`
+	Quality      string             `json:"quality"`
+	Subtitles    DownloadOptions    `json:"subtitles"`
+	AutoImport   bool               `json:"auto_import"`
+	Enabled      bool               `json:"enabled"`
+	Interval     int                `json:"interval_hours"`
+	Initialized  bool               `json:"initialized"`
+	Revision     int                `json:"revision"`
+	State        string             `json:"state"`
+	Message      string             `json:"message"`
+	NextRun      int64              `json:"next_run"`
+	LastChecked  int64              `json:"last_checked"`
+	Counts       SeriesSourceCounts `json:"counts"`
+	Show         SeriesSourceShow   `json:"show"`
 }
 
 const seriesSummaryBoundSet = `(SELECT episode_id FROM youtube_series_entries WHERE source_id=s.id AND episode_id IS NOT NULL UNION SELECT episode_id FROM youtube_series_matches WHERE source_id=s.id)`
@@ -901,7 +904,7 @@ const seriesSummaryBoundSet = `(SELECT episode_id FROM youtube_series_entries WH
 // activity counts, bounded to the newest 500 sources. It is a pure read and
 // works without yt-dlp installed.
 func (s *Store) SeriesSourceSummaries(ctx context.Context) ([]SeriesSourceSummary, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT s.id,s.media_id,m.title,s.source_url,s.mapping,s.season_number,s.quality,s.auto_import,s.enabled,s.initialized,s.revision,s.state,s.message,s.next_run,s.last_checked,
+	rows, e := s.db.QueryContext(ctx, `SELECT s.id,s.media_id,m.title,s.source_url,s.mapping,s.season_number,s.start_episode,s.quality,s.subtitles_json,s.auto_import,s.enabled,s.interval_hours,s.initialized,s.revision,s.state,s.message,s.next_run,s.last_checked,
 (SELECT COUNT(*) FROM youtube_series_entries e WHERE e.source_id=s.id),
 (SELECT COUNT(*) FROM youtube_jobs j WHERE j.series_source_id=s.id AND j.state='queued'),
 (SELECT COUNT(*) FROM youtube_jobs j WHERE j.series_source_id=s.id AND j.state='downloading'),
@@ -918,8 +921,12 @@ ORDER BY m.title COLLATE NOCASE,s.created_at,s.id LIMIT 500`)
 	out := []SeriesSourceSummary{}
 	for rows.Next() {
 		var v SeriesSourceSummary
-		if e = rows.Scan(&v.ID, &v.MediaID, &v.ShowTitle, &v.SourceURL, &v.Mapping, &v.Season, &v.Quality, &v.AutoImport, &v.Enabled, &v.Initialized, &v.Revision, &v.State, &v.Message, &v.NextRun, &v.LastChecked,
+		var options string
+		if e = rows.Scan(&v.ID, &v.MediaID, &v.ShowTitle, &v.SourceURL, &v.Mapping, &v.Season, &v.StartEpisode, &v.Quality, &options, &v.AutoImport, &v.Enabled, &v.Interval, &v.Initialized, &v.Revision, &v.State, &v.Message, &v.NextRun, &v.LastChecked,
 			&v.Counts.Entries, &v.Counts.Queued, &v.Counts.Downloading, &v.Counts.AwaitingReview, &v.Counts.Completed, &v.Counts.Downloaded, &v.Counts.Missing); e != nil {
+			return nil, e
+		}
+		if e = json.Unmarshal([]byte(options), &v.Subtitles); e != nil {
 			return nil, e
 		}
 		if v.Quality == "" {
