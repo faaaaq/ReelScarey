@@ -181,6 +181,9 @@ const MusicOrganize = lazy(() =>
 const MusicWanted = lazy(() =>
   import("./pages/MusicWanted").then((m) => ({ default: m.MusicWanted })),
 );
+const MusicSettings = lazy(() =>
+  import("./pages/MusicSettings").then((m) => ({ default: m.MusicSettings })),
+);
 
 export default function App() {
   return (
@@ -439,6 +442,7 @@ function AppShell() {
               <Route path="/music/discover" element={<MusicDiscover />} />
               <Route path="/music/organize" element={<MusicOrganize />} />
               <Route path="/music/wanted" element={<MusicWanted />} />
+              <Route path="/music/settings" element={<MusicSettings />} />
               <Route path="/search" element={<MovieSearch />} />
               <Route path="/releases" element={<Releases />} />
               <Route

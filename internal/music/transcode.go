@@ -127,6 +127,53 @@ func clampBitRate(bitRate int) int {
 	return bitRate
 }
 
+// DefaultStreamingQuality is the effective quality when neither the account
+// nor the global preferences name one. It matches the migration default for
+// music_preferences.streaming_quality.
+const DefaultStreamingQuality = defaultStreamingQuality
+
+// StreamingQualityParams maps a streaming quality name to the default
+// (format, maxBitRate) the conversion planner receives. "original" returns an
+// empty format so playable files are served byte-for-byte (the compatibility
+// fallback still converts containers clients cannot decode). "auto" behaves
+// like balanced for now: client-reported connection information (available
+// bandwidth) is not reliably available server-side, so there is nothing
+// honest to adapt to and no bandwidth detection is fabricated here.
+func StreamingQualityParams(quality string) (format string, maxBitRate int) {
+	switch strings.TrimSpace(quality) {
+	case "data-saver":
+		return "opus", 64
+	case "high":
+		return "opus", 128
+	case "premium":
+		return "opus", 160
+	case "original":
+		return "", 0
+	case "auto", "balanced":
+		return "opus", 96
+	default:
+		// Unknown or empty values fall back to the built-in default quality
+		// instead of failing the stream.
+		return "opus", 96
+	}
+}
+
+// ResolveStreamQuality picks the effective streaming quality name:
+// an explicit per-server-account choice wins, then the global preference.
+// An empty per-user value means "follow global"; an empty global value falls
+// back to the built-in default.
+func ResolveStreamQuality(user, global string) string {
+	user = strings.TrimSpace(user)
+	if user != "" {
+		return user
+	}
+	global = strings.TrimSpace(global)
+	if global != "" {
+		return global
+	}
+	return DefaultStreamingQuality
+}
+
 // planTranscode decides whether a stream request needs conversion and into
 // which codec. The codec is empty when the registered file can be served
 // unchanged.
@@ -178,6 +225,22 @@ func transcodeContentType(codec string) string {
 // transcodeArgs builds the ffmpeg command line. Audio is read from stdin and
 // written to stdout so a registered path never leaves the server process.
 func transcodeArgs(codec string, bitRate, timeOffset int) []string {
+	return append(transcodeCodecArgs(codec, bitRate, timeOffset), "pipe:1")
+}
+
+// transcodeFileArgs is the file-output variant used by the stream cache: the
+// encoded audio is written to dest (the .part staging path inside the cache
+// dir) instead of stdout. The dest path is the only path in the arguments and
+// stays inside the cache dir; the source still travels on stdin. -y makes
+// ffmpeg overwrite a stale .part file left by an interrupted encode instead
+// of prompting on the piped input.
+func transcodeFileArgs(codec string, bitRate, timeOffset int, dest string) []string {
+	return append(append([]string{"-y"}, transcodeCodecArgs(codec, bitRate, timeOffset)...), dest)
+}
+
+// transcodeCodecArgs builds the shared conversion options: input on stdin,
+// one audio stream, no metadata, the requested codec and an unbound output.
+func transcodeCodecArgs(codec string, bitRate, timeOffset int) []string {
 	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-i", "pipe:0"}
 	if timeOffset > 0 {
 		// Output seeking keeps working for non-seekable pipe input; ffmpeg
@@ -199,7 +262,7 @@ func transcodeArgs(codec string, bitRate, timeOffset int) []string {
 	case "wav":
 		args = append(args, "-c:a", "pcm_s16le", "-f", "wav")
 	}
-	return append(args, "pipe:1")
+	return args
 }
 
 // PlaybackStream is one audio response for a client. Body is set when ffmpeg is
@@ -261,6 +324,33 @@ func (s *Service) OpenPlayback(ctx context.Context, id int64, requestedFormat st
 		}, nil
 	}
 
+	// Stream cache: a full-file conversion (no offset seek) is served from
+	// the persistent cache when possible, encoding into it on a miss. The
+	// cache is strictly an optimization: any cache failure (miss with a
+	// failed encode, unreadable cache dir, database error) falls through to
+	// the on-the-fly pipe below so the stream endpoint never fails because
+	// the cache failed. Offset requests stay on the pipe with output
+	// seeking: a cached encode covers only the whole track, and seeking into
+	// a re-encoded ogg/opus container would need timestamp-aware range math
+	// the existing decode-and-discard path already gets right, so a seek is
+	// deliberately never answered from the cache.
+	if timeOffset == 0 {
+		if cached, info, _, err := s.OpenCachedStream(ctx, id, codec, bitRate, native.SHA256,
+			s.cacheEncodeFunc(ctx, ffmpeg, native.File, codec, bitRate)); err == nil {
+			// The registered source file is no longer needed once the cache
+			// owns the bytes the client will read.
+			_ = native.File.Close()
+			return PlaybackStream{
+				Name:        transcodedName(native.Name, codec),
+				ContentType: transcodeContentType(codec),
+				Size:        info.Size(),
+				ModTime:     info.ModTime(),
+				File:        cached,
+				Codec:       codec,
+			}, nil
+		}
+	}
+
 	// NEW-A1: bound simultaneous ffmpeg conversions. The slot is taken only
 	// when a conversion will actually start; a failed spawn or a closed
 	// stream always releases it.
@@ -307,4 +397,24 @@ func transcodedName(name, codec string) string {
 		return base + ".wav"
 	}
 	return name
+}
+
+// cacheEncodeFunc wraps the pipe-based ffmpeg conversion into the encode func
+// the stream cache expects: the registered file stays on stdin, ffmpeg writes
+// the encoded audio to the dest staging path with file-output arguments, and
+// the process is awaited before the cache publishes the file. The conversion
+// takes one of the same bounded transcode slots as on-the-fly piping so
+// cache encodes can never escape the server-wide concurrency limit; a busy
+// slot fails the encode, which the caller falls back to on-the-fly piping.
+func (s *Service) cacheEncodeFunc(ctx context.Context, ffmpeg string, input *os.File, codec string, bitRate int) func(context.Context, string) error {
+	return func(ctx context.Context, dest string) error {
+		release, err := s.acquireTranscodeSlot(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		// Cache encodes are always full-file: OpenPlayback only routes
+		// timeOffset==0 requests into the cache, so no output seek applies.
+		return runTranscodeFile(ctx, ffmpeg, input, codec, bitRate, 0, dest)
+	}
 }

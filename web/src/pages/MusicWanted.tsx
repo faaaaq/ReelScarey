@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
-import { ListMusic, Play, RefreshCw } from "lucide-react";
+import { ListMusic, Play, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   Alert,
@@ -18,6 +18,7 @@ import { PageHeading, RequestState } from "../components";
 import {
   api,
   messageFor,
+  type ConversionJobPage,
   type MusicAlbumDetails,
   type MusicDownloadFileList,
   type MusicJob,
@@ -47,6 +48,15 @@ export function MusicWanted() {
   const schedule = useResource<MusicSchedule>("/library/music/schedule");
   const jobs = useLiveResource<MusicJobPage>("/library/music/downloads", 5000);
   const upgrades = useResource<MusicUpgradeList>("/library/music/upgrades");
+  const conversions = useLiveResource<ConversionJobPage>(
+    "/library/music/conversions?page=1",
+    10000,
+  );
+  // Same attention-banner pattern as the download queue: a count from the
+  // backend drives the message, never a fabricated state.
+  const failedConversions = (
+    Array.isArray(conversions.data?.items) ? conversions.data.items : []
+  ).filter((job) => job.state === "failed").length;
   const [allowLossless, setAllowLossless] = useState(true);
   const [minBitrate, setMinBitrate] = useState("0");
   const [formats, setFormats] = useState("FLAC,ALAC,MP3");
@@ -90,6 +100,11 @@ export function MusicWanted() {
       await api("/library/music/preferences", {
         method: "PUT",
         body: JSON.stringify({
+          // Transcoding fields (profiles, streaming quality, cache) are
+          // managed on the Music settings page; forward the loaded values so
+          // saving here cannot reset them, and the revision fence rejects a
+          // stale save if they changed in between.
+          ...prefs.data,
           allow_lossless: allowLossless,
           min_bitrate: Number(minBitrate) || 0,
           preferred_formats: formats
@@ -248,6 +263,12 @@ export function MusicWanted() {
               jobs.reload();
             }}
           />
+          <ToolbarButton
+            icon={SlidersHorizontal}
+            label="Transcoding settings"
+            title="Profiles, streaming quality, retention and stream cache"
+            to="/music/settings"
+          />
         </ToolbarSection>
       </PageToolbar>
       <PageBody className="mus-body">
@@ -263,6 +284,17 @@ export function MusicWanted() {
         </Alert>
         {error && <Alert kind="danger">{error}</Alert>}
         {message && <Alert kind="success">{message}</Alert>}
+        {failedConversions > 0 && (
+          <Alert kind="warning" title="Conversions need attention">
+            <p>
+              {failedConversions}{" "}
+              {failedConversions === 1 ? "conversion has" : "conversions have"}{" "}
+              failed.{" "}
+              <Link to="/music/organize">Review the conversion queue</Link> to
+              retry or cancel them.
+            </p>
+          </Alert>
+        )}
         <FieldSet legend="Download preferences">
           <RequestState
             loading={prefs.loading}

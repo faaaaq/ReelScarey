@@ -55,6 +55,7 @@ import { albumCoverURL, artistImageURL } from "../musicArtwork";
 import {
   AcquisitionProgress,
   AlbumDownloadModal,
+  MusicExportMenu,
   type AlbumDownloadTarget,
 } from "../musicDownload";
 import "./Library.css";
@@ -1260,6 +1261,10 @@ export function MusicAlbumPage() {
       await api(`/library/music/albums/${id}/preferences`, {
         method: "PUT",
         body: JSON.stringify({
+          // Forward the loaded preferences (including the transcoding fields
+          // managed on the Music settings page) so this save cannot reset
+          // them; the revision fence rejects a stale save regardless.
+          ...albumPrefs.data.preferences,
           allow_lossless: allowLossless,
           min_bitrate: Number(minBitrate) || 0,
           preferred_formats: formats
@@ -1510,15 +1515,21 @@ export function MusicAlbumPage() {
                     <td>{formatTrackDuration(track.duration_ms)}</td>
                     <td className="is-actions">
                       {fileID ? (
-                        <Button
-                          size="1"
-                          variant="ghost"
-                          color="gray"
-                          aria-label={`Play ${track.title}`}
-                          onClick={() => playTrack(fileID)}
-                        >
-                          <Play size={14} aria-hidden="true" />
-                        </Button>
+                        <>
+                          <Button
+                            size="1"
+                            variant="ghost"
+                            color="gray"
+                            aria-label={`Play ${track.title}`}
+                            onClick={() => playTrack(fileID)}
+                          >
+                            <Play size={14} aria-hidden="true" />
+                          </Button>{" "}
+                          <MusicExportMenu
+                            fileID={fileID}
+                            title={track.title}
+                          />
+                        </>
                       ) : null}
                     </td>
                   </tr>

@@ -439,6 +439,135 @@ type importPublication struct {
 	// for the recorded (or freshly re-resolved) conflict before registering.
 	Deduped bool   `json:"deduped,omitempty"`
 	Aside   string `json:"aside,omitempty"`
+	// Conversion journals what the effective quality profile did to this
+	// file (migration 103 quality profiles). Old rows and profile-less
+	// imports leave it empty, so the journal stays backward compatible.
+	Conversion *importConversion `json:"conversion,omitempty"`
+}
+
+// importConversion is the journal entry for one profile-driven import: which
+// profile applied, why conversion was or was not needed, the honest note
+// shown on the import job, and where the staged original went under the
+// effective retention policy.
+type importConversion struct {
+	Profile string `json:"profile"`
+	// Reason is the ConversionNeeded verdict text for the applied profile.
+	Reason string `json:"reason,omitempty"`
+	// Note is an honest user-facing message recorded on the import job (a
+	// failed conversion that fell back to the original, a lossless request
+	// that was unavailable, or an "ask" retention pending review).
+	Note string `json:"note,omitempty"`
+	// Retention is the effective policy applied to the staged original when
+	// a conversion happened: keep|delete|ask.
+	Retention string `json:"retention,omitempty"`
+	// OriginalStage is the staged original file when the retention policy is
+	// delete: the publisher removes it only after the converted file is
+	// verified in place, never before and never on failure.
+	OriginalStage string `json:"original_stage,omitempty"`
+	// Archive describes the retained original published alongside the
+	// converted primary file as an archive variant (retention keep/ask).
+	Archive *importArchive `json:"archive,omitempty"`
+}
+
+// importArchive describes the retained original of a converted import.
+type importArchive struct {
+	Stage       string    `json:"stage"`
+	Destination string    `json:"destination"`
+	SHA         string    `json:"sha256"`
+	Size        int64     `json:"size"`
+	Tags        AudioTags `json:"tags"`
+}
+
+// importProfilePlan carries the resolved quality profile into the staging
+// step. nil means the source is imported unchanged.
+type importProfilePlan struct {
+	Profile   QualityProfile
+	Retention string // keep|delete|ask
+	Fallback  string // best|skip|approve
+}
+
+// resolveImportProfileKey maps a stored per-download profile value (the
+// acquisition job's format column) onto a profile key, accepting the legacy
+// yt-dlp values. Unknown values resolve to ” so a stale row never blocks an
+// import; the per-album override or the global preference takes over.
+func resolveImportProfileKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+	if value == "source" {
+		return "original"
+	}
+	if key, ok := legacyAcquisitionProfiles[value]; ok {
+		return key
+	}
+	if _, ok := ProfileByKey(value); ok {
+		return value
+	}
+	return ""
+}
+
+// importProfilePlan resolves the effective quality profile for one import
+// job. The per-download key recorded on the linking acquisition job wins,
+// then the per-album override, then the global download preference
+// (music.ResolveProfile order). Transcoding disabled or an unresolvable
+// profile yields nil, which imports the source unchanged.
+func (s *Service) importProfilePlan(ctx context.Context, jobID, albumID int64) *importProfilePlan {
+	prefs, err := s.GetPreferences(ctx)
+	if err != nil || !prefs.TranscodingEnabled {
+		return nil
+	}
+	explicit := ""
+	if err := s.store.db.QueryRowContext(ctx, `SELECT j.format FROM music_acquisition_jobs j JOIN music_acquisition_tracks t ON t.job_id=j.id WHERE t.import_job_id=? LIMIT 1`, jobID).Scan(&explicit); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		explicit = ""
+	}
+	override, err := s.AlbumProfileOverride(ctx, albumID)
+	if err != nil {
+		override = ""
+	}
+	profile, err := s.resolveStoredProfile(ctx, prefs, resolveImportProfileKey(explicit), strings.TrimSpace(override))
+	if err != nil || profile.Codec == "original" {
+		return nil
+	}
+	retention := prefs.OriginalRetention
+	if profile.KeepOriginal {
+		retention = "keep"
+	}
+	if retention == "" {
+		retention = defaultOriginalRetention
+	}
+	fallback := prefs.FallbackPolicy
+	if fallback == "" {
+		fallback = defaultFallbackPolicy
+	}
+	return &importProfilePlan{Profile: profile, Retention: retention, Fallback: fallback}
+}
+
+// storedProfileKey is the value journaled for a profile: the stable builtin
+// key, or the custom profile's name (custom rows have no key).
+func storedProfileKey(profile QualityProfile) string {
+	if profile.Key != "" {
+		return profile.Key
+	}
+	return profile.Name
+}
+
+// profileFileExtension is the file extension a profile's output uses.
+func profileFileExtension(profile QualityProfile) string {
+	if profile.Container != "" {
+		return "." + profile.Container
+	}
+	switch profile.Codec {
+	case "flac":
+		return ".flac"
+	case "mp3":
+		return ".mp3"
+	case "aac":
+		return ".m4a"
+	case "opus":
+		return ".opus"
+	}
+	return ""
 }
 
 func (s *Service) runImport(ctx context.Context, jobID, albumID int64, folder string) (int64, error) {
@@ -446,6 +575,10 @@ func (s *Service) runImport(ctx context.Context, jobID, albumID int64, folder st
 	if err != nil {
 		return 0, err
 	}
+	// The effective quality profile is resolved once per job: the per-download
+	// key recorded on the linking acquisition job wins, then the per-album
+	// override, then the global download preference. nil imports unchanged.
+	plan := s.importProfilePlan(ctx, jobID, albumID)
 	media, err := os.OpenRoot(s.mediaDir)
 	if err != nil {
 		return 0, err
@@ -466,7 +599,7 @@ func (s *Service) runImport(ctx context.Context, jobID, albumID int64, folder st
 		if track == nil {
 			return fileID, errors.New("A catalog track disappeared before import.")
 		}
-		if err := s.importFile(ctx, media, album, *track, folder, source, jobID, fileID, raw); err != nil {
+		if err := s.importFile(ctx, media, album, *track, folder, source, jobID, fileID, raw, plan); err != nil {
 			return fileID, err
 		}
 	}
@@ -481,17 +614,51 @@ func (s *Service) runImport(ctx context.Context, jobID, albumID int64, folder st
 	if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET status='available',updated_at=unixepoch() WHERE id=?`, album.AlbumID); err != nil {
 		return 0, err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE music_import_jobs SET state='completed',error='',updated_at=unixepoch() WHERE id=?`, jobID); err != nil {
+	// Profile-driven imports record honest notes (a failed conversion that
+	// fell back to the original, an unavailable lossless request, an "ask"
+	// retention pending review) on their file rows; the job surfaces them.
+	notes, err := s.importNotes(ctx, jobID)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE music_import_jobs SET state='completed',error=?,updated_at=unixepoch() WHERE id=?`, notes, jobID); err != nil {
 		return 0, err
 	}
 	return 0, tx.Commit()
 }
 
-func (s *Service) importFile(ctx context.Context, media *os.Root, album importAlbum, track Track, folder, source string, jobID, fileID int64, raw string) error {
+// importNotes joins the per-file honest notes recorded during a profile-driven
+// import so the completed job still reports what actually happened.
+func (s *Service) importNotes(ctx context.Context, jobID int64) (string, error) {
+	rows, err := s.store.db.QueryContext(ctx, `SELECT error FROM music_import_files WHERE job_id=? AND error<>'' ORDER BY id`, jobID)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	notes := []string{}
+	seen := map[string]bool{}
+	for rows.Next() {
+		var note string
+		if err := rows.Scan(&note); err != nil {
+			return "", err
+		}
+		if seen[note] {
+			continue
+		}
+		seen[note] = true
+		notes = append(notes, note)
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	return strings.Join(notes, " "), nil
+}
+
+func (s *Service) importFile(ctx context.Context, media *os.Root, album importAlbum, track Track, folder, source string, jobID, fileID int64, raw string, plan *importProfilePlan) error {
 	var p importPublication
 	if raw == "" {
 		var err error
-		p, err = s.prepareMusicImport(ctx, media, album, track, folder, source)
+		p, err = s.prepareMusicImport(ctx, media, album, track, folder, source, plan)
 		if err != nil {
 			return err
 		}
@@ -561,7 +728,11 @@ func (s *Service) importFile(ctx context.Context, media *os.Root, album importAl
 		album.ArtistID, album.AlbumID, track.ID, folder, p.Destination, p.Size, p.SHA, p.Tags.Format, p.Tags.Bitrate, p.Tags.SampleRate, p.Tags.Channels, p.Tags.DurationMS, string(tagJSON), path.Base(source)); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE music_import_files SET state='imported',destination_path=?,updated_at=unixepoch() WHERE id=?`, p.Destination, fileID); err != nil {
+	note := ""
+	if p.Conversion != nil {
+		note = p.Conversion.Note
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE music_import_files SET state='imported',destination_path=?,error=?,updated_at=unixepoch() WHERE id=?`, p.Destination, note, fileID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE music_import_jobs SET imported_count=(SELECT COUNT(*) FROM music_import_files WHERE job_id=? AND state='imported'),updated_at=unixepoch() WHERE id=?`, jobID, jobID); err != nil {
@@ -574,10 +745,24 @@ func (s *Service) importFile(ctx context.Context, media *os.Root, album importAl
 	// is no longer needed whether it was hardlinked in, copied, or the
 	// destination already held identical content.
 	_ = media.Remove(p.Stage)
+	if p.Conversion == nil {
+		return nil
+	}
+	if p.Conversion.Archive != nil {
+		// The retention policy kept the original: publish it as an archive
+		// variant beside the converted primary file.
+		return s.publishImportArchive(ctx, media, album, track, folder, source, p)
+	}
+	if p.Conversion.OriginalStage != "" {
+		// Retention delete: the converted file is now fully imported and
+		// verified at its destination, so the staged original may go. It is
+		// never removed earlier and never on a failure path.
+		_ = media.Remove(p.Conversion.OriginalStage)
+	}
 	return nil
 }
 
-func (s *Service) prepareMusicImport(ctx context.Context, media *os.Root, album importAlbum, track Track, folder, source string) (importPublication, error) {
+func (s *Service) prepareMusicImport(ctx context.Context, media *os.Root, album importAlbum, track Track, folder, source string, plan *importProfilePlan) (importPublication, error) {
 	var p importPublication
 	downloads, err := os.OpenRoot(s.downloadsDir)
 	if err != nil {
@@ -611,10 +796,13 @@ func (s *Service) prepareMusicImport(ctx context.Context, media *os.Root, album 
 		return p, err
 	}
 	stage.Close()
+	stagedFiles := []string{p.Stage}
 	keep := false
 	defer func() {
 		if !keep {
-			_ = media.Remove(p.Stage)
+			for _, name := range stagedFiles {
+				_ = media.Remove(name)
+			}
 		}
 	}()
 	stagePath := filepath.Join(s.mediaDir, filepath.FromSlash(p.Stage))
@@ -647,6 +835,20 @@ func (s *Service) prepareMusicImport(ctx context.Context, media *os.Root, album 
 	if err := verifyEditTags(p.Tags, tags); err != nil {
 		return p, err
 	}
+	// The effective quality profile is applied while the staged copy is
+	// still private: a needed conversion replaces the staged file, the
+	// retention policy decides where the original goes, and everything is
+	// journaled on the publication before it is persisted. A failed
+	// conversion never aborts the import: the original is imported
+	// unchanged with an honest note instead.
+	if plan != nil {
+		if err := s.applyImportProfile(ctx, media, &p, *plan); err != nil {
+			return p, err
+		}
+		if p.Stage != stagedFiles[0] {
+			stagedFiles = append(stagedFiles, p.Stage)
+		}
+	}
 	p.SHA, p.Size, err = musicDigest(ctx, media, p.Stage)
 	if err != nil {
 		return p, err
@@ -669,6 +871,158 @@ func (s *Service) prepareMusicImport(ctx context.Context, media *os.Root, album 
 	}
 	keep = true
 	return p, nil
+}
+
+// applyImportProfile converts the staged original into the effective quality
+// profile's target before the publication is finalized. The staged source is
+// never rewritten or deleted here: on any conversion failure the original is
+// imported unchanged and an honest note is recorded instead, so an existing
+// download keeps working when transcoding is unavailable.
+func (s *Service) applyImportProfile(ctx context.Context, media *os.Root, p *importPublication, plan importProfilePlan) error {
+	profile := plan.Profile
+	ensure := func() {
+		if p.Conversion == nil {
+			p.Conversion = &importConversion{}
+		}
+	}
+	ensure()
+	p.Conversion.Profile = storedProfileKey(profile)
+	sourceFamily := probeFormatFamily(p.Tags.Format)
+	// A lossless-only profile fails closed against a lossy source before any
+	// conversion is attempted; the saved fallback policy decides the outcome.
+	// The probed tags are the authoritative evidence here; release-name
+	// metadata from the search path is only a ranking hint.
+	if profile.RequireLossless && !sourceIsLossless(sourceFamily) {
+		_, reason := ConversionNeeded(p.Tags, profile)
+		p.Conversion.Reason = reason
+		switch plan.Fallback {
+		case "skip":
+			return &Error{Code: "music_lossless_unavailable", Message: "This source is lossy and does not meet the lossless quality profile, so it was not imported."}
+		case "approve":
+			return &Error{Code: "music_lossless_review", Message: "This source is lossy and does not meet the lossless quality profile. The original download was retained for review; approve a lossy fallback or choose a lossless release, then retry."}
+		}
+		// best: keep the best available source and store it accurately (the
+		// registered row carries the probed format and bitrate), saying
+		// honestly that the requested lossless quality was unavailable.
+		p.Conversion.Note = "The requested lossless quality was not available; the best available source was kept and stored exactly as probed."
+		return nil
+	}
+	needed, reason := ConversionNeeded(p.Tags, profile)
+	p.Conversion.Reason = reason
+	if !needed {
+		// The staged source already satisfies the profile, so it is imported
+		// unchanged instead of being copied onto itself.
+		return nil
+	}
+	if ffmpegPath() == "" {
+		p.Conversion.Note = "FFmpeg is not installed on the server, so the original file was imported unchanged."
+		return nil
+	}
+	origExt := path.Ext(p.Destination)
+	convExt := profileFileExtension(profile)
+	convRel := strings.TrimSuffix(p.Stage, path.Ext(p.Stage)) + "-converted" + convExt
+	convAbs := filepath.Join(s.mediaDir, filepath.FromSlash(convRel))
+	stageAbs := filepath.Join(s.mediaDir, filepath.FromSlash(p.Stage))
+	result, err := s.ConvertFile(ctx, ConvertRequest{SourcePath: stageAbs, OutputPath: convAbs, Profile: profile})
+	if err != nil {
+		p.Conversion.Note = "The conversion to " + profile.Name + " failed (" + err.Error() + "), so the original file was imported unchanged."
+		return nil
+	}
+	// The staged original is handled per the effective retention policy. The
+	// keep and ask variants publish it as an archive variant beside the
+	// converted primary; delete records its stage path so the publisher can
+	// remove it only after the converted file is verified in place.
+	base := strings.TrimSuffix(p.Destination, origExt)
+	switch plan.Retention {
+	case "keep", "ask":
+		sha, size, err := musicDigest(ctx, media, p.Stage)
+		if err != nil {
+			return err
+		}
+		archiveDest := base + origExt
+		if convExt == origExt {
+			archiveDest = base + " (original)" + origExt
+		}
+		p.Conversion.Archive = &importArchive{Stage: p.Stage, Destination: archiveDest, SHA: sha, Size: size, Tags: p.Tags}
+		p.Conversion.Retention = plan.Retention
+		if plan.Retention == "ask" {
+			p.Conversion.Note = "The original " + strings.TrimPrefix(origExt, ".") + " file was retained beside the converted " + profile.Name + " copy pending review."
+		}
+	default:
+		p.Conversion.OriginalStage = p.Stage
+		p.Conversion.Retention = plan.Retention
+	}
+	p.Stage = convRel
+	p.Tags = result.Tags
+	p.SHA = result.SHA256
+	p.Size = result.SizeBytes
+	p.Destination = base + convExt
+	return nil
+}
+
+// publishImportArchive registers the retained original of a converted import
+// as an archive variant beside the converted primary file. It follows the
+// same no-overwrite verification and conflict reconciliation as the primary
+// publication, and the journal (importConversion.Archive) makes a replay
+// after a crash idempotent.
+func (s *Service) publishImportArchive(ctx context.Context, media *os.Root, album importAlbum, track Track, folder, source string, p importPublication) error {
+	archive := p.Conversion.Archive
+	if archive.Stage == "" || archive.Destination == "" {
+		return nil
+	}
+	if err := expectMusicDigest(ctx, media, archive.Stage, archive.SHA); err != nil {
+		return errors.New("The retained original changed. Inspect it before retrying.")
+	}
+	deduped, aside := false, ""
+	if !sameMusicFile(media, archive.Stage, archive.Destination) {
+		var err error
+		deduped, aside, err = placeMusicStage(ctx, media, archive.Destination, archive.Stage, archive.SHA)
+		if err != nil {
+			return err
+		}
+	} else {
+		// The destination already holds identical content; any registered
+		// row there is a duplicate to reconcile below.
+		deduped = true
+	}
+	if err := expectMusicDigest(ctx, media, archive.Destination, archive.SHA); err != nil {
+		return filecheck.ErrChanged
+	}
+	tagJSON, err := json.Marshal(archive.Tags)
+	if err != nil {
+		return err
+	}
+	tx, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if deduped {
+		// Identical content at the destination: drop the stale row so the
+		// archive variant can register without violating
+		// UNIQUE(relative_path).
+		if _, err := tx.ExecContext(ctx, `DELETE FROM music_files WHERE relative_path=?`, archive.Destination); err != nil {
+			return err
+		}
+	} else if aside != "" {
+		asideRoot := ""
+		if slash := strings.IndexByte(aside, '/'); slash > 0 {
+			asideRoot = aside[:slash]
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE music_files SET relative_path=?,root=? WHERE relative_path=?`, aside, asideRoot, archive.Destination); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO music_files(artist_id,album_id,track_id,root,relative_path,size_bytes,sha256,format,bitrate,sample_rate,channels,duration_ms,tag_json,imported_at,origin,source_name,variant_role,variant_profile)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,unixepoch(),'download',?,'archive','')`,
+		album.ArtistID, album.AlbumID, track.ID, folder, archive.Destination, archive.Size, archive.SHA, archive.Tags.Format, archive.Tags.Bitrate, archive.Tags.SampleRate, archive.Tags.Channels, archive.Tags.DurationMS, string(tagJSON), path.Base(source)); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	_ = media.Remove(archive.Stage)
+	return nil
 }
 
 func trackByID(tracks []Track, id int64) *Track {

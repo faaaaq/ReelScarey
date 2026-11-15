@@ -147,6 +147,14 @@ type MusicFile struct {
 	Format       string `json:"format"`
 	DurationMS   int    `json:"duration_ms"`
 	SizeBytes    int64  `json:"size_bytes"`
+	// VariantRole is 'primary' for the registered file that playback and
+	// preferred-file selection use, or 'archive'/'variant' for a format copy
+	// produced by the conversion queue. It is omitted from the JSON when the
+	// row predates the variants feature or a caller did not select it.
+	VariantRole string `json:"variant_role,omitempty"`
+	// VariantProfile is the quality profile key that produced a variant copy;
+	// empty for primary files.
+	VariantProfile string `json:"variant_profile,omitempty"`
 }
 
 type MusicFilePage struct {

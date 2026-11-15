@@ -17,6 +17,15 @@ import {
   X,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import {
+  APIError,
+  api,
+  messageFor,
+  type MusicPreferences,
+  type MusicStreamingQuality,
+} from "./api";
+import { useResource } from "./useResource";
+import { STREAMING_QUALITY_OPTIONS } from "./musicProfiles";
 import "./musicPlayer.css";
 
 /** One playable registered file. The server never exposes its path. */
@@ -28,6 +37,8 @@ export type PlayerTrack = {
   coverURL?: string;
   durationMS?: number;
   albumID?: number;
+  /** Effective codec/bitrate of the playing file, when the caller knows it. */
+  formatLabel?: string;
 };
 
 type PlayerValue = {
@@ -312,6 +323,79 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Streaming quality selector. The backend reads `streaming_quality` from the
+ * music preferences when transcoding a stream, so the selector writes the
+ * preference; it does not change the audio element URL itself.
+ */
+function PlayerQualityControl() {
+  const track = useMusicPlayer().current;
+  const prefs = useResource<MusicPreferences>("/library/music/preferences");
+  const [value, setValue] = useState<MusicStreamingQuality>("balanced");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    if (prefs.data) setValue(prefs.data.streaming_quality);
+  }, [prefs.data]);
+
+  async function change(next: MusicStreamingQuality) {
+    setValue(next);
+    if (!prefs.data || saving) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await api("/library/music/preferences", {
+        method: "PUT",
+        body: JSON.stringify({ ...prefs.data, streaming_quality: next }),
+      });
+      prefs.reload();
+    } catch (e) {
+      if (
+        e instanceof APIError &&
+        (e.status === 409 || e.code === "revision_conflict")
+      ) {
+        prefs.reload();
+        setSaveError(
+          "The streaming quality changed elsewhere. The saved setting was reloaded.",
+        );
+      } else {
+        setSaveError(messageFor(e));
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="music-player-quality">
+      <select
+        aria-label="Streaming quality"
+        value={value}
+        disabled={saving || !prefs.data}
+        onChange={(event) =>
+          void change(event.target.value as MusicStreamingQuality)
+        }
+      >
+        {!prefs.data && <option value="">Loading…</option>}
+        {STREAMING_QUALITY_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {track?.formatLabel && (
+        <span className="music-player-meta">{track.formatLabel}</span>
+      )}
+      {saveError && (
+        <span className="music-player-error" role="status">
+          {saveError}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function MusicPlayerBar() {
   const player = useMusicPlayer();
   const track = player.current;
@@ -403,6 +487,7 @@ export function MusicPlayerBar() {
         </div>
       </div>
       <div className="music-player-volume">
+        <PlayerQualityControl />
         <button
           type="button"
           className="music-player-button"

@@ -258,7 +258,7 @@ func (s *Service) searchTopTracks(ctx context.Context, base, artistName string, 
 
 func (s *Service) libraryMatch(ctx context.Context, title, artist, album string) (sql.NullInt64, sql.NullInt64, sql.NullInt64, error) {
 	var fileID, albumID, trackID sql.NullInt64
-	err := s.store.db.QueryRowContext(ctx, `SELECT t.id,a.id,(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id)
+	err := s.store.db.QueryRowContext(ctx, `SELECT t.id,a.id,(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id AND f.variant_role='primary')
 		FROM music_tracks t JOIN music_albums a ON a.id=t.album_id JOIN music_artists ar ON ar.id=a.artist_id
 		WHERE lower(trim(t.title))=lower(trim(?)) AND lower(trim(ar.name))=lower(trim(?))
 		ORDER BY CASE WHEN lower(trim(a.title))=lower(trim(?)) THEN 0 ELSE 1 END,t.id LIMIT 1`,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -699,17 +700,29 @@ func (s *Server) musicFileStream(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	stream, err := s.music.OpenAudioFile(r.Context(), id)
+	// The browser player defaults to the saved streaming quality (the
+	// webPlayerStream helper in subsonic.go shares the conversion planner
+	// with the Subsonic endpoint); "original" or unreadable preferences
+	// stream the pristine file byte-for-byte as before.
+	playback, err := s.webPlayerStream(r.Context(), id)
 	if err != nil {
 		s.musicError(w, err)
 		return
 	}
-	defer stream.File.Close()
-	w.Header().Set("Content-Type", stream.ContentType)
+	defer playback.Close()
+	w.Header().Set("Content-Type", playback.ContentType)
 	w.Header().Set("Content-Disposition", "inline")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	http.ServeContent(w, r, stream.Name, stream.ModTime, stream.File)
+	if playback.Body != nil {
+		// On-the-fly conversion output has no known length and is not
+		// range-seekable.
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.Copy(w, playback.Body)
+		return
+	}
+	http.ServeContent(w, r, playback.Name, playback.ModTime, playback.File)
 }
 
 func (s *Server) musicServer(w http.ResponseWriter, r *http.Request) {
@@ -798,6 +811,10 @@ type musicServerUserBody struct {
 	PlaylistRole      *bool  `json:"playlist_role"`
 	CoverArtRole      *bool  `json:"cover_art_role"`
 	ShareRole         *bool  `json:"share_role"`
+	// Optional quality overrides: an omitted field keeps the stored value;
+	// an explicit "" clears the override so the account follows global.
+	StreamQuality   *string `json:"stream_quality"`
+	DownloadProfile *string `json:"download_profile"`
 }
 
 func (b musicServerUserBody) input() music.MusicServerUserInput {
@@ -813,6 +830,8 @@ func (b musicServerUserBody) input() music.MusicServerUserInput {
 		PlaylistRole:      b.PlaylistRole,
 		CoverArtRole:      b.CoverArtRole,
 		ShareRole:         b.ShareRole,
+		StreamQuality:     b.StreamQuality,
+		DownloadProfile:   b.DownloadProfile,
 	}
 }
 
@@ -1819,4 +1838,285 @@ func musicID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+// musicProfiles serves GET and POST /api/v1/library/music/profiles. GET lists
+// the builtin quality profiles followed by saved custom rows; POST creates a
+// custom profile. Builtin profiles are code and can never be created here.
+func (s *Server) musicProfiles(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		profiles, err := s.music.ListProfiles(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, map[string]any{"profiles": profiles})
+	case http.MethodPost:
+		var body music.QualityProfile
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		// Creation only: updates go through PUT /profiles/{id} so a posted ID
+		// can never silently rewrite an existing custom row.
+		body.ID = 0
+		profile, err := s.music.SaveCustomProfile(r.Context(), body)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 201, profile)
+	default:
+		w.Header().Set("Allow", "GET, POST")
+		fail(w, 405, "method_not_allowed", "Use GET or POST.")
+	}
+}
+
+// musicProfile serves PUT and DELETE /api/v1/library/music/profiles/{id} for
+// custom quality profiles. Both actions fail closed through the music service
+// when the ID is missing or names a builtin profile.
+func (s *Server) musicProfile(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	switch r.Method {
+	case http.MethodPut:
+		var body music.QualityProfile
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		body.ID = id
+		profile, err := s.music.SaveCustomProfile(r.Context(), body)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, profile)
+	case http.MethodDelete:
+		if err := s.music.DeleteCustomProfile(r.Context(), id); err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, map[string]bool{"deleted": true})
+	default:
+		w.Header().Set("Allow", "PUT, DELETE")
+		fail(w, 405, "method_not_allowed", "Use PUT or DELETE.")
+	}
+}
+
+// musicConversions serves GET /api/v1/library/music/conversions?page=.
+func (s *Server) musicConversions(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	page, valid := pageNumber(r, 100000)
+	if !valid {
+		fail(w, 400, "invalid_music", "Choose a valid conversion page.")
+		return
+	}
+	jobs, err := s.music.ListConversions(r.Context(), page)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, jobs)
+}
+
+// musicConversionAction serves POST /api/v1/library/music/conversions/{id}/
+// {cancel|retry}. The action segment is allowlisted so an unknown verb is a
+// plain 404 rather than a forwarded mutation.
+func (s *Server) musicConversionAction(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	var body struct{}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	switch r.PathValue("action") {
+	case "cancel":
+		if err := s.music.CancelConversion(r.Context(), id); err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, map[string]bool{"cancelled": true})
+	case "retry":
+		if err := s.music.RetryConversion(r.Context(), id); err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, map[string]bool{"retried": true})
+	default:
+		fail(w, 404, "not_found", "This conversion action does not exist.")
+	}
+}
+
+// musicOptimizePreview serves POST /api/v1/library/music/optimize/preview.
+// The dry run never writes files or enqueues jobs; file_ids is optional so the
+// whole library can be previewed.
+func (s *Server) musicOptimizePreview(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	var body struct {
+		Profile string  `json:"profile"`
+		FileIDs []int64 `json:"file_ids"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	profile := strings.TrimSpace(body.Profile)
+	if profile == "" {
+		fail(w, 400, "invalid_music", "Choose a quality profile to preview.")
+		return
+	}
+	if len(body.FileIDs) > music.MaxDiscoverFiles {
+		fail(w, 400, "invalid_music", "Preview at most 500 files at a time.")
+		return
+	}
+	for _, fileID := range body.FileIDs {
+		if fileID < 1 {
+			fail(w, 400, "invalid_music", "Choose valid registered files.")
+			return
+		}
+	}
+	preview, err := s.music.PreviewOptimization(r.Context(), profile, body.FileIDs)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, preview)
+}
+
+// musicOptimizeApply serves POST /api/v1/library/music/optimize/apply. This is
+// the explicit administrator action behind the dry run: it enqueues bounded
+// library conversion jobs and never replaces files on its own.
+func (s *Server) musicOptimizeApply(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	var body struct {
+		Profile string  `json:"profile"`
+		FileIDs []int64 `json:"file_ids"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	profile := strings.TrimSpace(body.Profile)
+	if profile == "" {
+		fail(w, 400, "invalid_music", "Choose a quality profile to apply.")
+		return
+	}
+	if len(body.FileIDs) < 1 || len(body.FileIDs) > music.MaxDiscoverFiles {
+		fail(w, 400, "invalid_music", "Choose between 1 and 500 registered files.")
+		return
+	}
+	for _, fileID := range body.FileIDs {
+		if fileID < 1 {
+			fail(w, 400, "invalid_music", "Choose valid registered files.")
+			return
+		}
+	}
+	enqueued, err := s.music.ApplyOptimization(r.Context(), profile, body.FileIDs)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 202, map[string]any{"enqueued": enqueued})
+}
+
+// musicCache serves GET and DELETE /api/v1/library/music/cache. The stats are
+// re-keyed to snake_case for the shared frontend contract; Clear removes cache
+// files only and never registered music content.
+func (s *Server) musicCache(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		stats, err := s.music.StreamCacheStats(r.Context())
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, map[string]any{
+			"entries": stats.Entries, "size_bytes": stats.SizeBytes,
+			"limit_bytes": stats.LimitBytes, "hits": stats.Hits, "misses": stats.Misses,
+		})
+	case http.MethodDelete:
+		if err := s.music.ClearStreamCache(r.Context()); err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, map[string]bool{"cleared": true})
+	default:
+		w.Header().Set("Allow", "GET, DELETE")
+		fail(w, 405, "method_not_allowed", "Use GET or DELETE.")
+	}
+}
+
+// musicFileExport serves GET /api/v1/library/music/files/{id}/export?profile=KEY.
+// Profiles with the "original" codec stream the registered file directly with
+// byte-range support. A converting profile currently enqueues an export
+// conversion job and answers 409 music_export_pending: serving the converted
+// bytes from the stream cache needs an ExportAudio-style MusicService method
+// the music package does not expose yet (recorded in audit/music-transcode).
+func (s *Server) musicFileExport(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	profileKey := strings.TrimSpace(r.URL.Query().Get("profile"))
+	if profileKey == "" {
+		fail(w, 400, "invalid_music", "Choose a quality profile for the export.")
+		return
+	}
+	profile, err := s.music.ResolveProfileKey(r.Context(), profileKey)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	if profile.Codec == "original" {
+		stream, err := s.music.OpenAudioFile(r.Context(), id)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		defer stream.File.Close()
+		w.Header().Set("Content-Type", stream.ContentType)
+		w.Header().Set("Content-Disposition", "attachment")
+		w.Header().Set("Cache-Control", "private, max-age=3600")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		http.ServeContent(w, r, stream.Name, stream.ModTime, stream.File)
+		return
+	}
+	// Custom rows resolve by name and carry an empty key column, so the queued
+	// profile is the key the caller used, not the resolved row's Key.
+	if _, err := s.music.EnqueueConversion(r.Context(), "export", id, profileKey, 3); err != nil {
+		s.musicError(w, err)
+		return
+	}
+	fail(w, http.StatusConflict, "music_export_pending", "The export conversion is queued. Download the converted file once the conversion worker completes it.")
 }

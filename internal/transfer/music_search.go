@@ -10,6 +10,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/faaaaq/ReelScarey/internal/music"
 )
 
 // MusicRelease is a redacted music search result. Release.ID remains the
@@ -22,6 +24,14 @@ type MusicRelease struct {
 	Format       string `json:"format"`
 	Bitrate      int    `json:"bitrate"`
 	Lossless     bool   `json:"lossless"`
+	// ProfileMatch honestly reports how the release relates to the album's
+	// effective quality profile: empty when no profile applies, "yes" when
+	// the release satisfies it, "lossy" when a lossless profile is required
+	// but the release is lossy, "low" when it is below the target bitrate,
+	// "unknown" when its bitrate could not be parsed, and "other" when it
+	// uses a different codec family. The actual conversion still happens in
+	// the music import step.
+	ProfileMatch string `json:"profile_match,omitempty"`
 }
 
 // SearchMusicAlbum searches the configured indexers with the audio category,
@@ -50,6 +60,12 @@ func (s *Service) SearchMusicAlbum(ctx context.Context, albumID int64, query str
 	for _, candidate := range candidates {
 		byID[candidate.ID] = candidate
 	}
+	// The album's effective quality profile (per-album override or global
+	// download preference) only influences ranking and honest labeling; the
+	// downloaded source is always converted during the music import step, so
+	// a queue decision never depends on it and QueueMusicGuarded is
+	// unchanged.
+	profile := s.musicQualityProfile(ctx, albumID)
 	type scored struct {
 		release MusicRelease
 		score   int
@@ -81,6 +97,8 @@ func (s *Service) SearchMusicAlbum(ctx context.Context, albumID int64, query str
 		if candidate.Seeders != nil {
 			score += min(5, *candidate.Seeders/50)
 		}
+		fitScore, fitLabel := musicProfileFit(profile, parsed)
+		score += fitScore
 		ranked = append(ranked, scored{MusicRelease{
 			Release:      candidate.Release,
 			ParsedArtist: parsed.Artist,
@@ -89,6 +107,7 @@ func (s *Service) SearchMusicAlbum(ctx context.Context, albumID int64, query str
 			Format:       parsed.Format,
 			Bitrate:      parsed.Bitrate,
 			Lossless:     parsed.Lossless,
+			ProfileMatch: fitLabel,
 		}, score})
 	}
 	sort.SliceStable(ranked, func(i, j int) bool {
@@ -131,6 +150,85 @@ func (s *Service) SearchMusicAlbum(ctx context.Context, albumID int64, query str
 		out = append(out, item.release)
 	}
 	return out, nil
+}
+
+// musicQualitySource is the optional extension of the registered music
+// importer that the search path uses to learn an album's effective quality
+// profile. music.Service implements it; fixtures and deployments without it
+// keep the legacy ranking unchanged.
+type musicQualitySource interface {
+	MusicQualityProfile(context.Context, int64) (music.QualityProfile, bool)
+}
+
+// musicQualityProfile resolves the album's effective download profile through
+// the registered music importer. A zero profile means no profile should
+// influence ranking.
+func (s *Service) musicQualityProfile(ctx context.Context, albumID int64) music.QualityProfile {
+	if v, ok := musicImporters.Load(s); ok {
+		if source, ok := v.(musicQualitySource); ok {
+			if profile, ok := source.MusicQualityProfile(ctx, albumID); ok {
+				return profile
+			}
+		}
+	}
+	return music.QualityProfile{}
+}
+
+// musicFormatFamily groups a parsed release format into one codec family so
+// a profile targeting opus prefers OGG/Opus releases, aac prefers AAC and so
+// on.
+func musicFormatFamily(format string) string {
+	switch strings.ToUpper(strings.TrimSpace(format)) {
+	case "FLAC", "ALAC", "WAV":
+		return "lossless"
+	case "MP3":
+		return "mp3"
+	case "AAC":
+		return "aac"
+	case "OGG", "OPUS":
+		return "opus"
+	}
+	return ""
+}
+
+// musicProfileFit reports the score adjustment and honest fit label one
+// release earns against the album's effective quality profile. Candidate
+// selection only prefers and labels: a lossless-only profile restricts
+// ranking to lossless releases (non-lossless rows are dropped from the
+// ranking entirely instead of being silently downloaded), a lossy target
+// codec boosts same-family releases at or above the target bitrate, and
+// everything else stays listed with an honest label. The actual conversion
+// happens in the music import step, which handles every source.
+func musicProfileFit(profile music.QualityProfile, parsed ParsedMusicRelease) (int, string) {
+	if profile.Codec == "" || profile.Codec == "original" {
+		return 0, ""
+	}
+	if profile.RequireLossless && !parsed.Lossless {
+		return -100, "lossy"
+	}
+	family := musicFormatFamily(parsed.Format)
+	switch profile.Codec {
+	case "flac":
+		if parsed.Lossless {
+			return 6, "yes"
+		}
+		// A FLAC profile without an explicit lossless requirement still
+		// prefers lossless sources; a lossy one is honestly labeled.
+		return -4, "lossy"
+	case "mp3", "aac", "opus":
+		if family != profile.Codec {
+			return 0, "other"
+		}
+		switch {
+		case parsed.Bitrate <= 0:
+			return 4, "unknown"
+		case parsed.Bitrate >= profile.BitrateKbps:
+			return 7, "yes"
+		default:
+			return 2, "low"
+		}
+	}
+	return 0, ""
 }
 
 func musicIdentityMatch(parsed ParsedMusicRelease, title, artist, album string) bool {

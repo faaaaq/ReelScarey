@@ -183,7 +183,7 @@ func (s *Store) SaveAlbum(ctx context.Context, artistID int64, album Album) (int
 
 func (s *Store) Tracks(ctx context.Context, albumID int64) ([]Track, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT t.id, t.album_id, t.musicbrainz_id, t.recording_id, t.disc, t.number, t.title, t.duration_ms,
-		(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id)
+		(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id AND f.variant_role='primary')
 		FROM music_tracks t WHERE t.album_id=? ORDER BY t.disc, t.number, t.id`, albumID)
 	if err != nil {
 		return nil, err
@@ -221,7 +221,7 @@ func (s *Store) ArtistTracks(ctx context.Context, artistID int64, page, limit in
 		return ArtistTrackPage{}, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT t.id,t.album_id,t.musicbrainz_id,t.recording_id,t.disc,t.number,t.title,t.duration_ms,
-		(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id),ar.name,a.title,a.year,a.cover_url`+
+		(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id AND f.variant_role='primary'),ar.name,a.title,a.year,a.cover_url`+
 		registered+` ORDER BY a.year IS NULL, a.year DESC, a.title COLLATE NOCASE, t.disc, t.number, t.id LIMIT ? OFFSET ?`,
 		artistID, limit, (page-1)*limit)
 	if err != nil {
@@ -298,7 +298,7 @@ func (s *Store) ListTracks(ctx context.Context, query string, page, limit int) (
 		return ArtistTrackPage{}, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT t.id,t.album_id,t.musicbrainz_id,t.recording_id,t.disc,t.number,t.title,t.duration_ms,
-		(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id),ar.name,a.title,a.year,a.cover_url`+from+where+`
+		(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id AND f.variant_role='primary'),ar.name,a.title,a.year,a.cover_url`+from+where+`
 		ORDER BY ar.name COLLATE NOCASE, a.year IS NULL, a.year, a.title COLLATE NOCASE, t.disc, t.number, t.id LIMIT ? OFFSET ?`,
 		append(args, limit, (page-1)*limit)...)
 	if err != nil {
@@ -330,7 +330,7 @@ func (s *Store) ListFiles(ctx context.Context, page int) (MusicFilePage, error) 
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_files`).Scan(&out.Total); err != nil {
 		return MusicFilePage{}, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT f.id,f.artist_id,f.album_id,f.track_id,ar.name,a.title,COALESCE(t.title,''),COALESCE(t.disc,1),COALESCE(t.number,0),f.relative_path,f.format,f.duration_ms,f.size_bytes
+	rows, err := s.db.QueryContext(ctx, `SELECT f.id,f.artist_id,f.album_id,f.track_id,ar.name,a.title,COALESCE(t.title,''),COALESCE(t.disc,1),COALESCE(t.number,0),f.relative_path,f.format,f.duration_ms,f.size_bytes,f.variant_role,f.variant_profile
 		FROM music_files f
 		JOIN music_artists ar ON ar.id=f.artist_id
 		JOIN music_albums a ON a.id=f.album_id
@@ -343,10 +343,38 @@ func (s *Store) ListFiles(ctx context.Context, page int) (MusicFilePage, error) 
 	defer rows.Close()
 	for rows.Next() {
 		var file MusicFile
-		if err := rows.Scan(&file.ID, &file.ArtistID, &file.AlbumID, &file.TrackID, &file.ArtistName, &file.AlbumTitle, &file.TrackTitle, &file.Disc, &file.Number, &file.RelativePath, &file.Format, &file.DurationMS, &file.SizeBytes); err != nil {
+		if err := rows.Scan(&file.ID, &file.ArtistID, &file.AlbumID, &file.TrackID, &file.ArtistName, &file.AlbumTitle, &file.TrackTitle, &file.Disc, &file.Number, &file.RelativePath, &file.Format, &file.DurationMS, &file.SizeBytes, &file.VariantRole, &file.VariantProfile); err != nil {
 			return MusicFilePage{}, err
 		}
 		out.Items = append(out.Items, file)
+	}
+	return out, rows.Err()
+}
+
+// ListTrackVariants returns every registered file for a track, ordered so the
+// primary file comes first and the remaining copies (archive/variant roles)
+// follow by file ID. It lets callers show the format copies that the
+// conversion queue produced for a track without changing which file is the
+// playback default.
+func (s *Store) ListTrackVariants(ctx context.Context, trackID int64) ([]MusicFile, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT f.id,f.artist_id,f.album_id,f.track_id,ar.name,a.title,COALESCE(t.title,''),COALESCE(t.disc,1),COALESCE(t.number,0),f.relative_path,f.format,f.duration_ms,f.size_bytes,f.variant_role,f.variant_profile
+		FROM music_files f
+		JOIN music_artists ar ON ar.id=f.artist_id
+		JOIN music_albums a ON a.id=f.album_id
+		LEFT JOIN music_tracks t ON t.id=f.track_id
+		WHERE f.track_id=?
+		ORDER BY CASE WHEN f.variant_role='primary' THEN 0 ELSE 1 END, f.id`, trackID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MusicFile{}
+	for rows.Next() {
+		var file MusicFile
+		if err := rows.Scan(&file.ID, &file.ArtistID, &file.AlbumID, &file.TrackID, &file.ArtistName, &file.AlbumTitle, &file.TrackTitle, &file.Disc, &file.Number, &file.RelativePath, &file.Format, &file.DurationMS, &file.SizeBytes, &file.VariantRole, &file.VariantProfile); err != nil {
+			return nil, err
+		}
+		out = append(out, file)
 	}
 	return out, rows.Err()
 }

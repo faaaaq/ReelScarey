@@ -12,9 +12,11 @@ import {
   Alert,
   EmptyState,
   FieldSet,
+  formatBytes,
   Label,
   PageBody,
   PageToolbar,
+  ProgressBar,
   Table,
   ToolbarButton,
   ToolbarSection,
@@ -22,20 +24,35 @@ import {
 import { PageHeading, RequestState } from "../components";
 import {
   api,
+  applyOptimization,
+  cancelConversion,
   messageFor,
+  previewOptimization,
+  retryConversion,
+  type ConversionJobPage,
   type MusicEditJob,
   type MusicEditJobList,
   type MusicEditPlan,
   type MusicFilePage,
+  type OptimizationPreview,
 } from "../api";
 import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
+import { MusicExportMenu } from "../musicDownload";
+import { profileLabel, useMusicProfiles } from "../musicProfiles";
 import "./Music.css";
 
 function jobKind(state: string) {
   if (state === "completed") return "success" as const;
   if (state === "failed") return "danger" as const;
   if (state === "rolled_back") return "disabled" as const;
+  return "info" as const;
+}
+
+function conversionKind(state: string) {
+  if (state === "completed") return "success" as const;
+  if (state === "failed") return "danger" as const;
+  if (state === "cancelled") return "disabled" as const;
   return "info" as const;
 }
 
@@ -95,6 +112,22 @@ export function MusicOrganize() {
   );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const conversions = useLiveResource<ConversionJobPage>(
+    "/library/music/conversions?page=1",
+    5000,
+  );
+  const profiles = useMusicProfiles();
+  const [optimizeProfile, setOptimizeProfile] = useState("");
+  const [optimizePreview, setOptimizePreview] =
+    useState<OptimizationPreview | null>(null);
+  const [optimizeMessage, setOptimizeMessage] = useState("");
+
+  const conversionItems = Array.isArray(conversions.data?.items)
+    ? conversions.data.items
+    : [];
+  const failedConversions = conversionItems.filter(
+    (job) => job.state === "failed",
+  );
 
   const items = files.data?.items ?? [];
   const visibleFiles = useMemo(() => {
@@ -106,6 +139,7 @@ export function MusicOrganize() {
         .includes(query),
     );
   }, [items, filter]);
+  const fileByID = new Map(items.map((file) => [file.id, file]));
   const pageCount = files.data
     ? Math.max(1, Math.ceil(files.data.total / files.data.limit))
     : 1;
@@ -188,6 +222,65 @@ export function MusicOrganize() {
       files.reload();
       jobs.reload();
       if (jobID === id) job.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function conversionAction(id: number, action: "cancel" | "retry") {
+    if (pending) return;
+    setPending(true);
+    setError("");
+    try {
+      if (action === "cancel") await cancelConversion(id);
+      else await retryConversion(id);
+      conversions.reload();
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function runOptimizePreview() {
+    if (!optimizeProfile || pending) return;
+    setPending(true);
+    setError("");
+    setOptimizeMessage("");
+    try {
+      // With no page selection the backend previews every registered file;
+      // a selection narrows the dry run.
+      const preview = await previewOptimization(
+        optimizeProfile,
+        selected.length > 0 ? selected : undefined,
+      );
+      setOptimizePreview(preview);
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function applyOptimize() {
+    if (!optimizePreview || pending) return;
+    const fileIDs = optimizePreview.items
+      .filter((item) => item.eligible)
+      .map((item) => item.file_id);
+    if (fileIDs.length === 0) return;
+    setPending(true);
+    setError("");
+    try {
+      await applyOptimization(optimizeProfile, fileIDs);
+      setOptimizePreview(null);
+      setOptimizeMessage(
+        `Queued ${fileIDs.length} file${
+          fileIDs.length === 1 ? "" : "s"
+        } for conversion. Originals are kept or deleted according to the original-file retention setting.`,
+      );
+      conversions.reload();
     } catch (e) {
       setError(messageFor(e));
     } finally {
@@ -335,6 +428,9 @@ export function MusicOrganize() {
                     <th scope="col">Track</th>
                     <th scope="col">Path</th>
                     <th scope="col">Format</th>
+                    <th scope="col" className="is-actions">
+                      <span className="sr-only">Export</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -360,6 +456,14 @@ export function MusicOrganize() {
                         <span className="mus-path">{file.relative_path}</span>
                       </td>
                       <td>{file.format || "—"}</td>
+                      <td className="is-actions">
+                        {file.id > 0 && (
+                          <MusicExportMenu
+                            fileID={file.id}
+                            title={file.track_title || file.relative_path}
+                          />
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -390,6 +494,137 @@ export function MusicOrganize() {
             </div>
           </FieldSet>
         )}
+        <FieldSet
+          legend="Optimize storage"
+          description="Advanced: converts registered files to the selected profile to save disk space. The preview never writes files; applying queues conversion jobs and originals are kept or deleted according to the original-file retention setting in Music settings."
+        >
+          <div className="mus-search">
+            <label>
+              Target profile{" "}
+              <select
+                aria-label="Optimize target profile"
+                value={optimizeProfile}
+                onChange={(e) => {
+                  setOptimizeProfile(e.target.value);
+                  setOptimizePreview(null);
+                }}
+              >
+                <option value="">Choose a profile…</option>
+                {profiles.profiles
+                  .filter(
+                    (profile) =>
+                      profile.key !== "" && profile.codec !== "original",
+                  )
+                  .map((profile) => (
+                    <option key={profile.key} value={profile.key}>
+                      {profileLabel(profile)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <Button
+              disabled={pending || optimizeProfile === ""}
+              onClick={() => void runOptimizePreview()}
+            >
+              Preview savings
+            </Button>
+          </div>
+          {selected.length > 0 ? (
+            <p className="rs-muted rs-small">
+              Previewing {selected.length} file
+              {selected.length === 1 ? "" : "s"} chosen above. Clear the
+              selection above to preview every registered file.
+            </p>
+          ) : (
+            <p className="rs-muted rs-small">
+              Previewing every registered file.
+            </p>
+          )}
+          {optimizeMessage && <Alert kind="success">{optimizeMessage}</Alert>}
+          {optimizePreview && (
+            <>
+              {optimizePreview.items.length === 0 ? (
+                <Alert kind="info">
+                  No registered files were returned for this profile.
+                </Alert>
+              ) : (
+                <>
+                  <Table label="Optimization preview">
+                    <thead>
+                      <tr>
+                        <th scope="col">Track</th>
+                        <th scope="col">Eligible</th>
+                        <th scope="col">Current</th>
+                        <th scope="col">Estimated</th>
+                        <th scope="col">Savings</th>
+                        <th scope="col">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {optimizePreview.items.map((item) => {
+                        const file = fileByID.get(item.file_id);
+                        return (
+                          <tr key={item.file_id}>
+                            <td>
+                              {file
+                                ? `${file.artist_name} — ${file.track_title}`
+                                : `File ${item.file_id}`}
+                            </td>
+                            <td>
+                              <Label
+                                kind={item.eligible ? "success" : "disabled"}
+                              >
+                                {item.eligible ? "Eligible" : "Skipped"}
+                              </Label>
+                            </td>
+                            <td>{formatBytes(item.current_bytes)}</td>
+                            <td>{formatBytes(item.estimated_bytes)}</td>
+                            <td>
+                              {item.saved_bytes > 0
+                                ? formatBytes(item.saved_bytes)
+                                : "—"}
+                            </td>
+                            <td>{item.reason || "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </Table>
+                  <div className="mus-scan-actions">
+                    <Button
+                      size="1"
+                      variant="soft"
+                      color="gray"
+                      disabled={pending}
+                      onClick={() => setOptimizePreview(null)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="1"
+                      disabled={
+                        pending ||
+                        optimizePreview.items.every((item) => !item.eligible)
+                      }
+                      onClick={() => void applyOptimize()}
+                    >
+                      Convert{" "}
+                      {
+                        optimizePreview.items.filter((item) => item.eligible)
+                          .length
+                      }{" "}
+                      file
+                      {optimizePreview.items.filter((item) => item.eligible)
+                        .length === 1
+                        ? ""
+                        : "s"}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </FieldSet>
         {error && <Alert kind="danger">{error}</Alert>}
         {plan && (
           <FieldSet
@@ -568,6 +803,105 @@ export function MusicOrganize() {
             </Table>
           </FieldSet>
         )}
+        {failedConversions.length > 0 && (
+          <Alert kind="warning" title="Conversions need attention">
+            <p>
+              {failedConversions.length}{" "}
+              {failedConversions.length === 1
+                ? "conversion has"
+                : "conversions have"}{" "}
+              failed. Use Retry in the Conversions panel below.
+            </p>
+          </Alert>
+        )}
+        <FieldSet
+          legend="Conversions"
+          description="The durable conversion queue for downloads, exports and library optimization. Failed or cancelled jobs can be retried; queued or running jobs can be cancelled."
+        >
+          <RequestState
+            loading={conversions.loading}
+            error={conversions.error}
+            code={conversions.code}
+            retry={conversions.reload}
+          />
+          {conversions.data && conversionItems.length === 0 && (
+            <Alert kind="info">
+              No conversion jobs. Jobs appear here when a download, export or
+              optimization needs a converted copy.
+            </Alert>
+          )}
+          {conversions.data && conversionItems.length > 0 && (
+            <Table label="Music conversion queue">
+              <thead>
+                <tr>
+                  <th scope="col">Kind</th>
+                  <th scope="col">Profile</th>
+                  <th scope="col">State</th>
+                  <th scope="col">Progress</th>
+                  <th scope="col">Error</th>
+                  <th scope="col" className="is-actions">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {conversionItems.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.kind}</td>
+                    <td>{item.profile}</td>
+                    <td>
+                      <Label kind={conversionKind(item.state)}>
+                        {item.state}
+                      </Label>
+                    </td>
+                    <td>
+                      {item.state === "processing" ? (
+                        <ProgressBar
+                          label={`Conversion ${item.id} progress`}
+                          value={(item.progress || 0) / 100}
+                          size="small"
+                          text={`${item.progress || 0}%`}
+                        />
+                      ) : item.state === "completed" ? (
+                        "100%"
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td>{item.error || "—"}</td>
+                    <td className="is-actions">
+                      {["failed", "cancelled"].includes(item.state) && (
+                        <Button
+                          size="1"
+                          variant="soft"
+                          disabled={pending}
+                          onClick={() =>
+                            void conversionAction(item.id, "retry")
+                          }
+                        >
+                          Retry
+                        </Button>
+                      )}
+                      {["queued", "processing"].includes(item.state) && (
+                        <Button
+                          size="1"
+                          variant="soft"
+                          color="gray"
+                          disabled={pending}
+                          onClick={() =>
+                            void conversionAction(item.id, "cancel")
+                          }
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </FieldSet>
       </PageBody>
     </>
   );

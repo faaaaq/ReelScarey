@@ -134,6 +134,7 @@ export const navigation: NavItem[] = [
       { label: "Library import", to: "/music/import" },
       { label: "Organize", to: "/music/organize" },
       { label: "Wanted", to: "/music/wanted" },
+      { label: "Settings", to: "/music/settings" },
     ],
   },
   {
@@ -262,6 +263,7 @@ const titles: Record<string, string> = {
   "/music/import": "Music import",
   "/music/organize": "Organize music",
   "/music/wanted": "Music wanted",
+  "/music/settings": "Music settings",
   "/music/discover": "Music discover",
   "/music/server": "Music server",
   "/youtube": "YouTube",

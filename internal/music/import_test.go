@@ -129,7 +129,7 @@ func TestImportResumesPublishedFileAndKeepsDownloadIdentity(t *testing.T) {
 	}
 	defer media.Close()
 	file := job.Files[0]
-	p, err := s.prepareMusicImport(ctx, media, album, *trackByID(album.Tracks, *file.TrackID), "Music", file.SourcePath)
+	p, err := s.prepareMusicImport(ctx, media, album, *trackByID(album.Tracks, *file.TrackID), "Music", file.SourcePath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

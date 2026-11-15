@@ -2,6 +2,7 @@ package music
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 	"unicode"
@@ -30,7 +31,7 @@ func BuiltinProfiles() []QualityProfile {
 	return []QualityProfile{
 		{Key: "original", Name: "Original", Codec: "original", Container: "", BitrateKbps: 0, VBR: true},
 		{Key: "lossless-archive", Name: "Lossless Archive", Codec: "flac", Container: "flac", BitrateKbps: 0, VBR: true, CompressionLevel: 8, KeepOriginal: true},
-		{Key: "lossless-opus", Name: "Lossless Opus", Codec: "opus", Container: "opus", BitrateKbps: 192, VBR: true, KeepOriginal: true},
+		{Key: "lossless-opus", Name: "Lossless Opus", Codec: "opus", Container: "opus", BitrateKbps: 128, VBR: true, KeepOriginal: true},
 		{Key: "opus-economy", Name: "Opus Economy", Codec: "opus", Container: "opus", BitrateKbps: 64, VBR: true},
 		{Key: "opus-balanced", Name: "Opus Balanced", Codec: "opus", Container: "opus", BitrateKbps: 96, VBR: true},
 		{Key: "opus-high", Name: "Opus High", Codec: "opus", Container: "opus", BitrateKbps: 128, VBR: true},
@@ -72,7 +73,7 @@ func (s *Service) ResolveProfileKey(ctx context.Context, key string) (QualityPro
 		if !profile.Custom {
 			continue
 		}
-		if profile.Name == key {
+		if profile.Name == key || profile.Key == key {
 			return profile, nil
 		}
 	}
@@ -164,6 +165,13 @@ func (s *Service) SaveCustomProfile(ctx context.Context, in QualityProfile) (Qua
 		return QualityProfile{}, err
 	}
 	if in.ID, err = result.LastInsertId(); err != nil {
+		return QualityProfile{}, err
+	}
+	// Custom profiles get a stable generated key so they are selectable
+	// everywhere a profile key is used (download override, optimization,
+	// export). The key is derived from the row id and never changes.
+	key := fmt.Sprintf("custom-%d", in.ID)
+	if _, err := s.store.db.ExecContext(ctx, `UPDATE music_quality_profiles SET key=? WHERE id=? AND custom=1`, key, in.ID); err != nil {
 		return QualityProfile{}, err
 	}
 	return s.customProfile(ctx, in.ID)

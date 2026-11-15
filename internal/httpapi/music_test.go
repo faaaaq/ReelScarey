@@ -48,6 +48,26 @@ type fakeMusic struct {
 	serverAlbumSongs   []music.ServerSong
 	serverSongCount    int
 	serverStatus       *music.MusicServerStatus
+	profiles           []music.QualityProfile
+	savedProfile       music.QualityProfile
+	deletedProfileID   int64
+	convPage           music.ConversionJobPage
+	cancelID           int64
+	retryID            int64
+	previewProfile     string
+	previewFileIDs     []int64
+	preview            music.OptimizationPreview
+	appliedProfile     string
+	appliedFileIDs     []int64
+	enqueued           int64
+	exportKind         string
+	exportFileID       int64
+	exportProfile      string
+	exportPriority     int
+	cacheStats         music.StreamCacheStats
+	cacheCleared       bool
+	customProfileName  string
+	customProfileCodec string
 }
 
 func (f *fakeMusic) SearchArtists(context.Context, string, int) (music.SearchResults, error) {

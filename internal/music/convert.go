@@ -90,8 +90,19 @@ func convertSlots(size int) chan struct{} {
 // returned release func is idempotent so a double release can never
 // underflow the semaphore, mirroring acquireTranscodeSlot in service.go.
 func acquireConvertSlot(ctx context.Context, slots chan struct{}) (func(), error) {
+	// An already-cancelled context must win even when a slot is free: the
+	// two-ready-case select would otherwise pick a branch at random.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	select {
 	case slots <- struct{}{}:
+		select {
+		case <-ctx.Done():
+			<-slots
+			return nil, ctx.Err()
+		default:
+		}
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -213,13 +224,22 @@ func ConversionNeeded(source AudioTags, profile QualityProfile) (bool, string) {
 	case "mp3", "aac", "opus":
 		target := profileTargetFamily(profile)
 		if family == target {
-			if source.Bitrate > 0 && source.Bitrate >= profile.BitrateKbps {
-				return false, fmt.Sprintf("The source is already %s at %d kbps, at or above the %d kbps target, so it is copied without re-encoding and the output inherits the source quality.", targetFamilyName(target), source.Bitrate, profile.BitrateKbps)
+			// ffprobe reports bit_rate in bits per second while profiles use
+			// kbps. Valid lossy kbps targets are <= 320, so any value above
+			// that must be bits per second (raw probe output); normalize
+			// before comparing so real ffprobe data cannot be mistaken for
+			// an "already sufficient" kbps source.
+			sourceKbps := source.Bitrate
+			if sourceKbps > 320 {
+				sourceKbps /= 1000
 			}
-			if source.Bitrate <= 0 {
+			if sourceKbps > 0 && sourceKbps >= profile.BitrateKbps {
+				return false, fmt.Sprintf("The source is already %s at %d kbps, at or above the %d kbps target, so it is copied without re-encoding and the output inherits the source quality.", targetFamilyName(target), sourceKbps, profile.BitrateKbps)
+			}
+			if sourceKbps <= 0 {
 				return true, fmt.Sprintf("The source bitrate is unknown, so the file is re-encoded to the %d kbps %s profile.", profile.BitrateKbps, profile.Codec)
 			}
-			return true, fmt.Sprintf("Re-encoding %d kbps %s audio to the %d kbps %s profile.", source.Bitrate, targetFamilyName(target), profile.BitrateKbps, profile.Codec)
+			return true, fmt.Sprintf("Re-encoding %d kbps %s audio to the %d kbps %s profile.", sourceKbps, targetFamilyName(target), profile.BitrateKbps, profile.Codec)
 		}
 		if profile.RequireLossless && !sourceIsLossless(family) {
 			return true, "This profile requires a lossless source, but the file is lossy."

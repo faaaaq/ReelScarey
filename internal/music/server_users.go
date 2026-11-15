@@ -54,9 +54,16 @@ type MusicServerUser struct {
 	PlaylistRole      bool   `json:"playlist_role"`
 	CoverArtRole      bool   `json:"cover_art_role"`
 	ShareRole         bool   `json:"share_role"`
-	CreatedAt         int64  `json:"created_at"`
-	UpdatedAt         int64  `json:"updated_at"`
-	LastUsedAt        int64  `json:"last_used_at"`
+	// StreamQuality is the account's default streaming quality
+	// (auto|data-saver|balanced|high|premium|original). Empty means follow
+	// the global streaming quality preference. DownloadProfile is the
+	// account's default download quality profile key; empty means follow
+	// global too.
+	StreamQuality   string `json:"stream_quality"`
+	DownloadProfile string `json:"download_profile"`
+	CreatedAt       int64  `json:"created_at"`
+	UpdatedAt       int64  `json:"updated_at"`
+	LastUsedAt      int64  `json:"last_used_at"`
 }
 
 // MusicServerUserInput carries a create or update request. The role fields are
@@ -75,6 +82,12 @@ type MusicServerUserInput struct {
 	PlaylistRole      *bool
 	CoverArtRole      *bool
 	ShareRole         *bool
+	// StreamQuality and DownloadProfile are optional pointers with the same
+	// keep-on-omit semantics as the role fields. A supplied empty string is
+	// meaningful: it clears an override so the account follows the global
+	// preference again.
+	StreamQuality   *string
+	DownloadProfile *string
 }
 
 // musicServerLegacyTokenID is the sentinel row identity of the legacy shared
@@ -129,7 +142,7 @@ func (u MusicServerUser) CanCoverArt() bool { return u.has(u.CoverArtRole) }
 func (u MusicServerUser) CanShare() bool    { return u.has(u.ShareRole) }
 func (u MusicServerUser) CanSettings() bool { return u.has(u.SettingsRole) }
 
-const musicServerUserColumns = `id,username,email,password_generated,scrobbling_enabled,admin_role,settings_role,download_role,upload_role,playlist_role,cover_art_role,share_role,created_at,updated_at,last_used_at`
+const musicServerUserColumns = `id,username,email,password_generated,scrobbling_enabled,admin_role,settings_role,download_role,upload_role,playlist_role,cover_art_role,share_role,stream_quality,download_profile,created_at,updated_at,last_used_at`
 
 // rowScanner is satisfied by both *sql.Row and *sql.Rows.
 type rowScanner interface {
@@ -140,7 +153,8 @@ func scanMusicServerUser(row rowScanner) (MusicServerUser, error) {
 	var out MusicServerUser
 	var generated, scrobbling, admin, settings, download, upload, playlist, coverArt, share int
 	if err := row.Scan(&out.ID, &out.Username, &out.Email, &generated, &scrobbling, &admin, &settings,
-		&download, &upload, &playlist, &coverArt, &share, &out.CreatedAt, &out.UpdatedAt, &out.LastUsedAt); err != nil {
+		&download, &upload, &playlist, &coverArt, &share, &out.StreamQuality, &out.DownloadProfile,
+		&out.CreatedAt, &out.UpdatedAt, &out.LastUsedAt); err != nil {
 		return MusicServerUser{}, err
 	}
 	out.PasswordGenerated = generated == 1
@@ -247,11 +261,19 @@ func (s *Service) CreateMusicServerUser(ctx context.Context, input MusicServerUs
 	if err != nil {
 		return MusicServerUser{}, "", err
 	}
+	streamQuality, err := validateMusicServerStreamQuality(textValue(input.StreamQuality))
+	if err != nil {
+		return MusicServerUser{}, "", err
+	}
+	downloadProfile, err := validateMusicServerDownloadProfile(textValue(input.DownloadProfile))
+	if err != nil {
+		return MusicServerUser{}, "", err
+	}
 	now := time.Now().Unix()
 	result, err := s.store.db.ExecContext(ctx, `INSERT INTO music_server_users
 		(username,email,password_sealed,password_generated,scrobbling_enabled,admin_role,settings_role,
-		 download_role,upload_role,playlist_role,cover_art_role,share_role,created_at,updated_at,last_used_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
+		 download_role,upload_role,playlist_role,cover_art_role,share_role,stream_quality,download_profile,created_at,updated_at,last_used_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
 		username, email, sealed, boolInt(generated),
 		boolInt(roleDefault(input.ScrobblingEnabled, true)),
 		boolInt(roleDefault(input.AdminRole, false)),
@@ -261,6 +283,7 @@ func (s *Service) CreateMusicServerUser(ctx context.Context, input MusicServerUs
 		boolInt(roleDefault(input.PlaylistRole, true)),
 		boolInt(roleDefault(input.CoverArtRole, true)),
 		boolInt(roleDefault(input.ShareRole, false)),
+		streamQuality, downloadProfile,
 		now, now)
 	if err != nil {
 		// A concurrent creation can win the COLLATE NOCASE UNIQUE(username)
@@ -347,9 +370,17 @@ func (s *Service) UpdateMusicServerUser(ctx context.Context, id int64, input Mus
 		}
 		generated = false
 	}
+	streamQuality, err := validateMusicServerStreamQuality(textKeep(input.StreamQuality, current.StreamQuality))
+	if err != nil {
+		return MusicServerUser{}, err
+	}
+	downloadProfile, err := validateMusicServerDownloadProfile(textKeep(input.DownloadProfile, current.DownloadProfile))
+	if err != nil {
+		return MusicServerUser{}, err
+	}
 	_, err = s.store.db.ExecContext(ctx, `UPDATE music_server_users SET
 		username=?,email=?,password_sealed=?,password_generated=?,scrobbling_enabled=?,admin_role=?,settings_role=?,
-		download_role=?,upload_role=?,playlist_role=?,cover_art_role=?,share_role=?,updated_at=unixepoch()
+		download_role=?,upload_role=?,playlist_role=?,cover_art_role=?,share_role=?,stream_quality=?,download_profile=?,updated_at=unixepoch()
 		WHERE id=?`,
 		username, email, sealed, boolInt(generated),
 		boolInt(roleKeep(input.ScrobblingEnabled, current.ScrobblingEnabled)),
@@ -360,6 +391,7 @@ func (s *Service) UpdateMusicServerUser(ctx context.Context, id int64, input Mus
 		boolInt(roleKeep(input.PlaylistRole, current.PlaylistRole)),
 		boolInt(roleKeep(input.CoverArtRole, current.CoverArtRole)),
 		boolInt(roleKeep(input.ShareRole, current.ShareRole)),
+		streamQuality, downloadProfile,
 		id)
 	if err != nil {
 		return MusicServerUser{}, err
@@ -564,4 +596,44 @@ func roleKeep(value *bool, current bool) bool {
 		return current
 	}
 	return *value
+}
+
+// textValue reads an optional string field for a create: an omitted field is
+// the empty string, which means "follow global".
+func textValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+// textKeep reads an optional string field for an update: an omitted field
+// keeps its stored value, a supplied value (including the empty string) is
+// written, so an override can be cleared.
+func textKeep(value *string, current string) string {
+	if value == nil {
+		return current
+	}
+	return *value
+}
+
+// validateMusicServerStreamQuality accepts an empty per-user streaming
+// quality (follow global) or one of the saved global quality names.
+func validateMusicServerStreamQuality(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if err := validateStreamingQuality(value); err != nil {
+		return "", ErrInvalidInput
+	}
+	return value, nil
+}
+
+// validateMusicServerDownloadProfile accepts an empty per-user download
+// profile (follow global) or a builtin profile key. Custom keys are resolved
+// against the profile table at use time, mirroring the global preference.
+func validateMusicServerDownloadProfile(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if err := validatePreferenceKey(value); err != nil {
+		return "", ErrInvalidInput
+	}
+	return value, nil
 }

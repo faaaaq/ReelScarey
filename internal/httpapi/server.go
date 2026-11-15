@@ -210,6 +210,18 @@ type MusicService interface {
 	StartImport(context.Context, int64, string, string) (music.ImportJob, error)
 	ImportJob(context.Context, int64) (music.ImportJob, error)
 	ListImports(context.Context, int) (music.ImportJobList, error)
+	ListProfiles(context.Context) ([]music.QualityProfile, error)
+	SaveCustomProfile(context.Context, music.QualityProfile) (music.QualityProfile, error)
+	DeleteCustomProfile(context.Context, int64) error
+	ListConversions(context.Context, int) (music.ConversionJobPage, error)
+	CancelConversion(context.Context, int64) error
+	RetryConversion(context.Context, int64) error
+	EnqueueConversion(context.Context, string, int64, string, int) (int64, error)
+	PreviewOptimization(context.Context, string, []int64) (music.OptimizationPreview, error)
+	ApplyOptimization(context.Context, string, []int64) (int64, error)
+	StreamCacheStats(context.Context) (music.StreamCacheStats, error)
+	ClearStreamCache(context.Context) error
+	ResolveProfileKey(context.Context, string) (music.QualityProfile, error)
 }
 
 func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, version string, deps Dependencies) http.Handler {
@@ -547,6 +559,14 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/scans/{id}/skip", method(http.MethodPost, s.musicScanSkip))
 	mux.HandleFunc("/api/v1/library/music/files", method(http.MethodGet, s.musicFiles))
 	mux.HandleFunc("/api/v1/library/music/files/{id}/stream", method(http.MethodGet, s.musicFileStream))
+	mux.HandleFunc("/api/v1/library/music/files/{id}/export", method(http.MethodGet, s.musicFileExport))
+	mux.HandleFunc("/api/v1/library/music/profiles", s.musicProfiles)
+	mux.HandleFunc("/api/v1/library/music/profiles/{id}", s.musicProfile)
+	mux.HandleFunc("/api/v1/library/music/conversions", method(http.MethodGet, s.musicConversions))
+	mux.HandleFunc("/api/v1/library/music/conversions/{id}/{action}", method(http.MethodPost, s.musicConversionAction))
+	mux.HandleFunc("/api/v1/library/music/optimize/preview", method(http.MethodPost, s.musicOptimizePreview))
+	mux.HandleFunc("/api/v1/library/music/optimize/apply", method(http.MethodPost, s.musicOptimizeApply))
+	mux.HandleFunc("/api/v1/library/music/cache", s.musicCache)
 	mux.HandleFunc("/api/v1/library/music/edits", method(http.MethodGet, s.musicEdits))
 	mux.HandleFunc("/api/v1/library/music/edits/preview", method(http.MethodPost, s.musicEditPreview))
 	mux.HandleFunc("/api/v1/library/music/edits/apply", method(http.MethodPost, s.musicEditApply))
@@ -824,6 +844,7 @@ func frontend(assets fs.FS) http.HandlerFunc {
 	routes["/music/discover"] = true
 	routes["/music/organize"] = true
 	routes["/music/wanted"] = true
+	routes["/music/settings"] = true
 	routes["/notifications"] = true
 	routes["/api-keys"] = true
 	routes["/media-servers"] = true

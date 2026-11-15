@@ -195,6 +195,124 @@ func validAcquisitionFormat(format string) bool {
 	}
 }
 
+// legacyAcquisitionProfiles maps the legacy yt-dlp format values onto the
+// equivalent builtin quality profile keys, so pre-profile jobs and callers
+// keep working unchanged.
+var legacyAcquisitionProfiles = map[string]string{
+	"mp3":  "mp3-maximum",
+	"flac": "lossless-archive",
+	"m4a":  "aac-high",
+	"opus": "opus-maximum",
+}
+
+// resolveAcquisitionProfile resolves an acquisition format value into a
+// quality profile and the key that should be stored on the acquisition job.
+// Accepted inputs: any builtin profile key, any custom profile name, the
+// legacy yt-dlp values ("mp3"/"flac"/"m4a"/"opus", mapped onto their builtin
+// equivalents for backward compatibility), "source" (explicit original) and
+// "" (no explicit choice).
+//
+// Storage decision (no new migration): the resolved key is stored in the
+// existing music_acquisition_jobs.format TEXT column. That column already
+// carried the acquisition format, has no CHECK constraint, and is the only
+// free-form text column on the job row, so it is the practical place to
+// persist the profile. An empty input stores ” rather than pinning
+// 'original': the import step then applies the per-album override or the
+// global download preference, whose migration default is the original
+// profile — the same effective outcome with override support kept intact.
+// The import step re-derives the profile from this column through the
+// music_acquisition_tracks.import_job_id link, so the choice survives
+// restarts without widening the import-job schema.
+func (s *Service) resolveAcquisitionProfile(ctx context.Context, format string) (QualityProfile, string, error) {
+	trimmed := strings.TrimSpace(format)
+	value := strings.ToLower(trimmed)
+	// '' leaves the choice open: the profile is resolved again at import
+	// time from the album override or the global preference. The resolved
+	// profile is still reported here so the download format derivation keeps
+	// working ("original" downloads the source).
+	if value == "" {
+		profile, _ := ProfileByKey("original")
+		return profile, "", nil
+	}
+	if value == "source" {
+		profile, _ := ProfileByKey("original")
+		return profile, "original", nil
+	}
+	if key, ok := legacyAcquisitionProfiles[value]; ok {
+		profile, _ := ProfileByKey(key)
+		return profile, key, nil
+	}
+	if profile, ok := ProfileByKey(value); ok {
+		return profile, value, nil
+	}
+	// Custom profiles carry the empty key column and are matched by name.
+	profile, err := s.ResolveProfileKey(ctx, trimmed)
+	if err != nil {
+		return QualityProfile{}, "", ErrInvalidInput
+	}
+	return profile, profile.Name, nil
+}
+
+// acquisitionDownloadFormat maps a resolved profile onto the yt-dlp audio
+// format the downloader should produce. yt-dlp only re-encodes to a codec
+// family at its best quality; the precise bitrate and container conversion
+// happens in the import step against the saved profile.
+func acquisitionDownloadFormat(profile QualityProfile) string {
+	switch profile.Codec {
+	case "flac":
+		return "flac"
+	case "mp3":
+		return "mp3"
+	case "aac":
+		return "m4a"
+	case "opus":
+		return "opus"
+	}
+	return "source"
+}
+
+// MusicQualityProfile reports the album's effective download profile for the
+// transfer search path: the per-album override wins over the global download
+// preference, and the profile only applies when transcoding is enabled and
+// targets an actual codec. The bool is false when no profile should
+// influence release ranking.
+func (s *Service) MusicQualityProfile(ctx context.Context, albumID int64) (QualityProfile, bool) {
+	prefs, err := s.GetPreferences(ctx)
+	if err != nil || !prefs.TranscodingEnabled {
+		return QualityProfile{}, false
+	}
+	override, err := s.AlbumProfileOverride(ctx, albumID)
+	if err != nil {
+		override = ""
+	}
+	profile, err := s.resolveStoredProfile(ctx, prefs, "", strings.TrimSpace(override))
+	if err != nil || profile.Codec == "original" {
+		return QualityProfile{}, false
+	}
+	return profile, true
+}
+
+// resolveStoredProfile applies the resolution order explicit key > album
+// override > global preference over stored values. Builtin keys resolve
+// directly; custom profiles are matched by name. Unknown keys are
+// ErrInvalidInput.
+func (s *Service) resolveStoredProfile(ctx context.Context, prefs MusicPreferences, explicit, override string) (QualityProfile, error) {
+	key := strings.TrimSpace(explicit)
+	if key == "" {
+		key = strings.TrimSpace(override)
+	}
+	if key == "" {
+		key = strings.TrimSpace(prefs.DownloadProfile)
+	}
+	if key == "" {
+		return QualityProfile{}, ErrInvalidInput
+	}
+	if profile, ok := ProfileByKey(key); ok {
+		return profile, nil
+	}
+	return s.ResolveProfileKey(ctx, key)
+}
+
 func (s *Service) StartAcquisition(ctx context.Context, sourceURL, sourceKind, title, root, format string, tracks []AcquisitionTrackInput) (AcquisitionJob, error) {
 	return s.startAcquisition(ctx, "", sourceURL, sourceKind, title, root, format, tracks)
 }
@@ -203,16 +321,20 @@ func (s *Service) startAcquisition(ctx context.Context, dedupKey, sourceURL, sou
 	if s.audio == nil {
 		return AcquisitionJob{}, &Error{Code: "music_acquisition_unavailable", Message: "Audio downloading is unavailable because yt-dlp is not configured."}
 	}
-	if len(tracks) == 0 || len(tracks) > 100 || !validAcquisitionFormat(format) {
+	if len(tracks) == 0 || len(tracks) > 100 {
 		return AcquisitionJob{}, ErrInvalidInput
 	}
-	root, err := s.cleanImportRoot(root)
+	// The format value doubles as the quality profile selector: legacy
+	// yt-dlp values, builtin keys and custom profile names all resolve here,
+	// and the resolved key is what the job row stores.
+	_, profileKey, err := s.resolveAcquisitionProfile(ctx, format)
+	if err != nil {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	format = profileKey
+	root, err = s.cleanImportRoot(root)
 	if err != nil {
 		return AcquisitionJob{}, err
-	}
-	format = strings.ToLower(strings.TrimSpace(format))
-	if format == "" {
-		format = "source"
 	}
 	// Provider links deduplicate on their URL; album jobs on the album id
 	// (CS-7). The write transaction is BEGIN IMMEDIATE, so a concurrent
@@ -561,7 +683,15 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 		}
 		videoID = chosen.ID
 	}
-	audio, err := s.audio.DownloadAudio(ctx, videoID, stagingRoot, job.Format)
+	// The job's format column stores the resolved quality profile key (or a
+	// legacy yt-dlp value on pre-profile rows). yt-dlp itself only receives a
+	// codec family at its best quality; the saved profile's exact bitrate and
+	// container are applied by the import conversion step.
+	downloadFormat := "source"
+	if profile, _, err := s.resolveAcquisitionProfile(ctx, job.Format); err == nil {
+		downloadFormat = acquisitionDownloadFormat(profile)
+	}
+	audio, err := s.audio.DownloadAudio(ctx, videoID, stagingRoot, downloadFormat)
 	if err != nil {
 		return &Error{Code: "music_acquisition_download", Message: "yt-dlp could not download or convert this track."}
 	}

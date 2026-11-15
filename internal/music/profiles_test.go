@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -39,7 +40,7 @@ func TestBuiltinProfiles(t *testing.T) {
 	}{
 		{"original", "Original", "original", "", 0, true},
 		{"lossless-archive", "Lossless Archive", "flac", "flac", 0, true},
-		{"lossless-opus", "Lossless Opus", "opus", "opus", 192, true},
+		{"lossless-opus", "Lossless Opus", "opus", "opus", 128, true},
 		{"opus-economy", "Opus Economy", "opus", "opus", 64, true},
 		{"opus-balanced", "Opus Balanced", "opus", "opus", 96, true},
 		{"opus-high", "Opus High", "opus", "opus", 128, true},
@@ -118,7 +119,7 @@ func TestCustomProfileSaveAndList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.ID <= 0 || saved.Name != "Opus 96" || saved.Codec != "opus" || saved.Container != "opus" || saved.BitrateKbps != 96 || saved.Key != "" || !saved.Custom {
+	if saved.ID <= 0 || saved.Name != "Opus 96" || saved.Codec != "opus" || saved.Container != "opus" || saved.BitrateKbps != 96 || saved.Key != fmt.Sprintf("custom-%d", saved.ID) || !saved.Custom {
 		t.Fatalf("unexpected saved profile %+v", saved)
 	}
 	// The name is trimmed and the stored row persists.

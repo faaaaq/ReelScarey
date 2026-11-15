@@ -11,13 +11,16 @@ import (
 
 // AudioStream is one registered audio file opened for HTTP streaming. The
 // caller must close File. The path is never serialized or returned to a
-// browser; playback addresses the catalog file ID instead.
+// browser; playback addresses the catalog file ID instead. SHA256 carries the
+// catalog content digest so the stream cache can verify that a cached
+// conversion still belongs to the current file bytes.
 type AudioStream struct {
 	File        *os.File
 	Name        string
 	ContentType string
 	Size        int64
 	ModTime     time.Time
+	SHA256      string
 }
 
 // OpenAudioFile opens a registered music file below the media root. os.Root
@@ -27,9 +30,9 @@ func (s *Service) OpenAudioFile(ctx context.Context, id int64) (AudioStream, err
 	if id < 1 {
 		return AudioStream{}, ErrInvalidInput
 	}
-	var relative, format string
-	err := s.store.db.QueryRowContext(ctx, `SELECT relative_path,format FROM music_files WHERE id=?`, id).
-		Scan(&relative, &format)
+	var relative, format, sha string
+	err := s.store.db.QueryRowContext(ctx, `SELECT relative_path,format,sha256 FROM music_files WHERE id=?`, id).
+		Scan(&relative, &format, &sha)
 	if err != nil {
 		return AudioStream{}, err
 	}
@@ -63,6 +66,7 @@ func (s *Service) OpenAudioFile(ctx context.Context, id int64) (AudioStream, err
 		ContentType: audioContentType(format, relative),
 		Size:        info.Size(),
 		ModTime:     info.ModTime(),
+		SHA256:      sha,
 	}, nil
 }
 

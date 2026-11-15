@@ -622,10 +622,25 @@ export type MusicImportJobList = {
   limit: number;
 };
 
+export type MusicStreamingQuality =
+  "auto" | "data-saver" | "balanced" | "high" | "premium" | "original";
+
+export type MusicOriginalRetention = "keep" | "delete" | "ask";
+
+export type MusicFallbackPolicy = "best" | "skip" | "approve";
+
 export type MusicPreferences = {
   allow_lossless: boolean;
   min_bitrate: number;
   preferred_formats: string[];
+  /** Download/import profile used when nothing more specific applies. */
+  download_profile: string;
+  streaming_quality: MusicStreamingQuality;
+  original_retention: MusicOriginalRetention;
+  fallback_policy: MusicFallbackPolicy;
+  transcoding_enabled: boolean;
+  cache_limit_mb: number;
+  max_conversions: number;
   revision: number;
 };
 
@@ -711,6 +726,79 @@ export type MusicDownloadFile = {
 
 export type MusicDownloadFileList = {
   items: MusicDownloadFile[];
+};
+
+/** Builtin or custom music transcoding profile. */
+export type QualityProfile = {
+  id?: number;
+  name: string;
+  /** Stable builtin key, or empty for custom profiles. */
+  key?: string;
+  codec: "original" | "flac" | "mp3" | "aac" | "opus" | string;
+  container?: string;
+  /** 0 means lossless. */
+  bitrate_kbps: number;
+  vbr: boolean;
+  compression_level?: number;
+  require_lossless: boolean;
+  keep_original: boolean;
+  custom?: boolean;
+};
+
+/** One entry of the durable conversion queue. */
+export type ConversionJob = {
+  id: number;
+  kind: "download" | "library" | "export" | string;
+  /** Catalog music file id for library/export jobs; 0 for downloads. */
+  file_id: number;
+  profile: string;
+  state:
+    "queued" | "processing" | "completed" | "failed" | "cancelled" | string;
+  priority: number;
+  /** 0..100 while processing. */
+  progress: number;
+  attempts: number;
+  error: string;
+  created_at: number;
+  updated_at: number;
+  completed_at?: number | null;
+  source_path: string;
+  output_path: string;
+};
+
+export type ConversionJobPage = {
+  items: ConversionJob[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
+/** Per-file dry-run result of a library optimization preview. */
+export type OptimizationItem = {
+  file_id: number;
+  eligible: boolean;
+  /** Why the file is not eligible, when it is not. */
+  reason: string;
+  current_bytes: number;
+  estimated_bytes: number;
+  saved_bytes: number;
+};
+
+export type OptimizationPreview = {
+  profile: string;
+  items: OptimizationItem[];
+  eligible_count?: number;
+  current_bytes?: number;
+  estimated_bytes?: number;
+  saved_bytes?: number;
+};
+
+export type StreamCacheStats = {
+  entries: number;
+  size_bytes: number;
+  limit_bytes: number;
+  hits: number;
+  misses: number;
 };
 
 export type AnimePreferences = {
@@ -1222,4 +1310,98 @@ export function messageFor(error: unknown): string {
   )
     return "The request timed out. It may still have completed — check Activity before retrying.";
   return "ReelScarey could not be reached. Check that the server is running, then try again.";
+}
+
+// ---------------------------------------------------------------------------
+// Music transcoding: quality profiles, conversions, optimization and the
+// stream cache. Endpoints and shapes follow audit/music-transcode/CONTRACTS.md.
+// ---------------------------------------------------------------------------
+
+export async function listProfiles() {
+  return api<QualityProfile[]>("/library/music/profiles");
+}
+
+export async function saveCustomProfile(profile: QualityProfile) {
+  return api<QualityProfile>("/library/music/profiles", {
+    method: "POST",
+    body: JSON.stringify({
+      name: profile.name,
+      codec: profile.codec,
+      bitrate_kbps: profile.bitrate_kbps,
+      vbr: profile.vbr,
+      compression_level: profile.compression_level ?? 0,
+      require_lossless: profile.require_lossless,
+      keep_original: profile.keep_original,
+    }),
+  });
+}
+
+export async function updateCustomProfile(id: number, profile: QualityProfile) {
+  return api<QualityProfile>(`/library/music/profiles/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      name: profile.name,
+      codec: profile.codec,
+      bitrate_kbps: profile.bitrate_kbps,
+      vbr: profile.vbr,
+      compression_level: profile.compression_level ?? 0,
+      require_lossless: profile.require_lossless,
+      keep_original: profile.keep_original,
+    }),
+  });
+}
+
+export async function deleteCustomProfile(id: number) {
+  return api<void>(`/library/music/profiles/${id}`, { method: "DELETE" });
+}
+
+export async function listConversions(page = 1) {
+  return api<ConversionJobPage>(`/library/music/conversions?page=${page}`);
+}
+
+export async function cancelConversion(id: number) {
+  return api<void>(`/library/music/conversions/${id}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function retryConversion(id: number) {
+  return api<void>(`/library/music/conversions/${id}/retry`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function previewOptimization(profile: string, fileIDs?: number[]) {
+  return api<OptimizationPreview>("/library/music/optimize/preview", {
+    method: "POST",
+    body: JSON.stringify({
+      profile,
+      ...(fileIDs && fileIDs.length > 0 ? { file_ids: fileIDs } : {}),
+    }),
+  });
+}
+
+export async function applyOptimization(profile: string, fileIDs: number[]) {
+  return api<{ queued?: number }>("/library/music/optimize/apply", {
+    method: "POST",
+    body: JSON.stringify({ profile, file_ids: fileIDs }),
+  });
+}
+
+export async function getCacheStats() {
+  return api<StreamCacheStats>("/library/music/cache");
+}
+
+export async function clearCache() {
+  return api<void>("/library/music/cache", { method: "DELETE" });
+}
+
+/** Authenticated converted-file download URL; cookies carry the session. */
+export function exportFileURL(fileID: number, profileKey?: string) {
+  const params = new URLSearchParams();
+  if (profileKey) params.set("profile", profileKey);
+  const query = params.toString();
+  return `/api/v1/library/music/files/${fileID}/export${query ? `?${query}` : ""}`;
 }

@@ -1,9 +1,23 @@
 import { useEffect, useState } from "react";
-import { Button, TextField } from "@radix-ui/themes";
+import { Button, DropdownMenu, TextField } from "@radix-ui/themes";
 import { Download } from "lucide-react";
 import { Alert, Label, Modal, ProgressBar } from "./ui";
-import { api, messageFor, type MusicAcquisitionJob } from "./api";
+import {
+  api,
+  exportFileURL,
+  messageFor,
+  type MusicAcquisitionJob,
+  type MusicPreferences,
+} from "./api";
 import { useLiveResource } from "./useLiveResource";
+import { useResource } from "./useResource";
+import {
+  EXPORT_MP3_192_KEY,
+  EXPORT_OPUS_128_KEY,
+  EXPORT_ORIGINAL_KEY,
+  profileLabel,
+  useMusicProfiles,
+} from "./musicProfiles";
 
 export type AlbumDownloadTarget = {
   albumID?: number | null;
@@ -11,6 +25,51 @@ export type AlbumDownloadTarget = {
   title: string;
   artist?: string;
 };
+
+/**
+ * Export submenu for a registered music file: the original bytes or a
+ * converted copy served by the backend (session cookies carry the auth, so a
+ * plain link works like every other same-origin download).
+ */
+export function MusicExportMenu({
+  fileID,
+  title,
+}: {
+  fileID: number;
+  title: string;
+}) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger>
+        <Button
+          size="1"
+          variant="ghost"
+          color="gray"
+          aria-label={`Export ${title}`}
+        >
+          <Download size={14} aria-hidden="true" />
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content>
+        <DropdownMenu.Item asChild>
+          <a href={exportFileURL(fileID, EXPORT_ORIGINAL_KEY)} download>
+            Original
+          </a>
+        </DropdownMenu.Item>
+        <DropdownMenu.Item asChild>
+          <a href={exportFileURL(fileID, EXPORT_OPUS_128_KEY)} download>
+            Opus 128
+          </a>
+        </DropdownMenu.Item>
+        <DropdownMenu.Item asChild>
+          <a href={exportFileURL(fileID, EXPORT_MP3_192_KEY)} download>
+            MP3 192
+          </a>
+        </DropdownMenu.Item>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  );
+}
 
 function labelKind(state: string): "info" | "success" | "danger" {
   if (state === "completed") return "success";
@@ -119,7 +178,6 @@ export function AlbumDownloadModal({
   /** Receives the created job so the owning page can keep tracking it. */
   onJob?: (job: MusicAcquisitionJob) => void;
 }) {
-  const [format, setFormat] = useState("source");
   const [root, setRoot] = useState("Music");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -128,12 +186,20 @@ export function AlbumDownloadModal({
     jobID ? `/library/music/acquisitions/${jobID}` : null,
     2000,
   );
+  const profiles = useMusicProfiles();
+  const prefs = useResource<MusicPreferences>("/library/music/preferences");
+  /** Empty until the user overrides the global default for this download. */
+  const [profileKey, setProfileKey] = useState("");
+  const defaultProfile = profiles.profiles.find(
+    (profile) => profile.key === (prefs.data?.download_profile ?? "original"),
+  );
 
   useEffect(() => {
     if (!target) {
       setJobID(null);
       setError("");
       setPending(false);
+      setProfileKey("");
     }
   }, [target]);
 
@@ -145,11 +211,13 @@ export function AlbumDownloadModal({
       const path = target.albumID
         ? `/library/music/albums/${target.albumID}/acquire`
         : `/library/music/provider-albums/${target.providerID}/acquire`;
+      // No explicit choice means the backend resolves the global download
+      // profile; the acquisition format field also accepts profile keys.
       const result = await api<MusicAcquisitionJob>(path, {
         method: "POST",
         body: JSON.stringify({
           root: root.trim() || "Music",
-          format,
+          format: profileKey || "source",
           reviewed: true,
         }),
       });
@@ -194,18 +262,29 @@ export function AlbumDownloadModal({
           </p>
           <div className="mus-search">
             <label>
-              Format{" "}
+              Profile{" "}
               <select
-                aria-label="Album download format"
-                value={format}
-                onChange={(event) => setFormat(event.target.value)}
+                aria-label="Album download profile"
+                value={profileKey}
+                onChange={(event) => setProfileKey(event.target.value)}
                 disabled={Boolean(jobID)}
               >
+                <option value="">
+                  {defaultProfile
+                    ? `${defaultProfile.name} (default)`
+                    : "Default profile"}
+                </option>
                 <option value="source">Best available source</option>
-                <option value="mp3">MP3</option>
-                <option value="flac">FLAC</option>
-                <option value="m4a">M4A</option>
-                <option value="opus">Opus</option>
+                {profiles.profiles
+                  .filter(
+                    (profile) =>
+                      profile.key !== "" && profile !== defaultProfile,
+                  )
+                  .map((profile) => (
+                    <option key={profile.key} value={profile.key}>
+                      {profileLabel(profile)}
+                    </option>
+                  ))}
               </select>
             </label>
             <TextField.Root

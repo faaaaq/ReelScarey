@@ -391,6 +391,66 @@ func (s *Server) subsonicDenied(w http.ResponseWriter, r *http.Request) {
 	writeSubsonic(w, r, subsonicFailure(s.version, 50, "The user is not authorized for this operation."))
 }
 
+// musicPreferencesService is satisfied by *music.Service and by the test
+// fakes. Asserting it locally keeps streaming quality independent of the
+// MusicService interface in server.go (same pattern as music_automation.go).
+type musicPreferencesService interface {
+	GetPreferences(context.Context) (music.MusicPreferences, error)
+}
+
+// musicPreferenceReader accesses the concrete service through the narrow
+// local interface above.
+func (s *Server) musicPreferenceReader() (musicPreferencesService, bool) {
+	if s.music == nil {
+		return nil, false
+	}
+	svc, ok := s.music.(musicPreferencesService)
+	return svc, ok
+}
+
+// globalStreamingQuality reads the saved global streaming quality preference.
+// A missing concrete service or an unreadable preference row must never fail
+// a stream, so the built-in default quality applies instead.
+func (s *Server) globalStreamingQuality(ctx context.Context) string {
+	svc, ok := s.musicPreferenceReader()
+	if !ok {
+		return music.DefaultStreamingQuality
+	}
+	prefs, err := svc.GetPreferences(ctx)
+	if err != nil {
+		return music.DefaultStreamingQuality
+	}
+	return prefs.StreamingQuality
+}
+
+// webPlayerStream opens one registered audio file for the browser player. The
+// saved global streaming quality is the default conversion target (the
+// browser player has no per-account quality of its own); "original" — or a
+// missing concrete service or an unreadable preference row — streams the
+// pristine file byte-for-byte exactly as the player always did. The
+// compatibility fallback for containers browsers cannot decode keeps working
+// underneath via the same planner the Subsonic endpoint uses.
+func (s *Server) webPlayerStream(ctx context.Context, id int64) (music.PlaybackStream, error) {
+	if svc, ok := s.musicPreferenceReader(); ok {
+		prefs, err := svc.GetPreferences(ctx)
+		if err == nil && !strings.EqualFold(strings.TrimSpace(prefs.StreamingQuality), "original") {
+			format, rate := music.StreamingQualityParams(prefs.StreamingQuality)
+			return s.music.OpenPlayback(ctx, id, format, rate, 0)
+		}
+	}
+	stream, err := s.music.OpenAudioFile(ctx, id)
+	if err != nil {
+		return music.PlaybackStream{}, err
+	}
+	return music.PlaybackStream{
+		Name:        stream.Name,
+		ContentType: stream.ContentType,
+		Size:        stream.Size,
+		ModTime:     stream.ModTime,
+		File:        stream.File,
+	}, nil
+}
+
 func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 	if s.music == nil {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "The music catalog is unavailable."))
@@ -1214,11 +1274,24 @@ func (s *Server) subsonicStream(w http.ResponseWriter, r *http.Request) {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "A valid song ID is required."))
 		return
 	}
+	requested := strings.TrimSpace(r.URL.Query().Get("format"))
+	maxBitRate := subsonicQueryInt(r, "maxBitRate")
+	// Effective quality resolution: an explicit client parameter always wins
+	// and is passed through unchanged. When the client sends neither format
+	// nor maxBitRate, the per-server-account stream quality ('' = follow
+	// global) then the global streaming quality preference choose the default
+	// conversion target; the compatibility fallback for containers clients
+	// cannot decode keeps working underneath.
+	if requested == "" && maxBitRate == 0 {
+		quality := music.ResolveStreamQuality(subsonicRequestUser(r).StreamQuality,
+			s.globalStreamingQuality(r.Context()))
+		requested, maxBitRate = music.StreamingQualityParams(quality)
+	}
 	// Convert when the client asked for another format or when the native
 	// container is one the client cannot decode; the pristine file is streamed
 	// byte-for-byte otherwise.
-	playback, err := s.music.OpenPlayback(r.Context(), id, r.URL.Query().Get("format"),
-		subsonicQueryInt(r, "maxBitRate"), subsonicQueryInt(r, "timeOffset"))
+	playback, err := s.music.OpenPlayback(r.Context(), id, requested,
+		maxBitRate, subsonicQueryInt(r, "timeOffset"))
 	if err != nil {
 		// NEW-A1: an over-limit transcode request is not a missing song; it
 		// gets an honest busy failure instead of the not-found code.

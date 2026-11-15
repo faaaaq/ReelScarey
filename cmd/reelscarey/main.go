@@ -154,6 +154,9 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if err := musicService.RecoverScans(ctx); err != nil {
 		return false, err
 	}
+	if err := musicService.RecoverConversions(ctx); err != nil {
+		return false, err
+	}
 	transferService := transfer.New(db, secretStore, cfg, transfer.NewQBittorrent(), transfer.NewTorznab())
 	transferService.SetLogger(logger)
 	transferService.SetAutomaticMetadata(metadataService)
@@ -325,6 +328,13 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		}
 	})
 	defer workers.join(musicWorkflowDone, "musicWorkflow")
+	musicConversionsDone := make(chan struct{})
+	go guardWorker(logger, "musicConversions", musicConversionsDone, func() {
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			musicService.RunConversions(workerCtx)
+		}
+	})
+	defer workers.join(musicConversionsDone, "musicConversions")
 	subscriptionsDone := make(chan struct{})
 	go guardWorker(logger, "subscriptions", subscriptionsDone, func() {
 		if youtubeInspector != nil && waitRecovery(workerCtx, cfg.ConfigDir) {

@@ -158,6 +158,36 @@
   width: 84px;
 }
 
+/* Compact streaming quality selector; colors come from the shared tokens. */
+.music-player-quality {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.music-player-quality select {
+  max-width: 150px;
+  padding: 2px 4px;
+  font-size: 12px;
+  color: var(--rs-text-strong);
+  background: var(--rs-surface-2);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+}
+
+.music-player-quality .music-player-error {
+  max-width: 150px;
+  white-space: normal;
+}
+
+@media (max-width: 900px) {
+  .music-player-quality {
+    display: none;
+  }
+}
+
 @media (max-width: 900px) {
   .music-player {
     grid-template-columns: minmax(0, 1fr) auto;
