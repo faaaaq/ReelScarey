@@ -234,7 +234,11 @@ export function ExistingLibrary() {
   const [params, setParams] = useSearchParams();
   const scanID = params.get("scan") ?? roots.data?.items[0]?.id;
   const [target, setTarget] = useState<"movie" | "series" | "anime">(
-    params.get("collection") === "anime" ? "anime" : "movie",
+    params.get("collection") === "anime"
+      ? "anime"
+      : params.get("collection") === "series"
+        ? "series"
+        : "movie",
   );
   const [automatic, setAutomatic] = useState(true);
   const [root, setRoot] = useState("");

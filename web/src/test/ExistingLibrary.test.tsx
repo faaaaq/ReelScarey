@@ -156,6 +156,39 @@ describe("existing library discovery and review", () => {
       "X-CSRF-Token": "fixture-csrf",
     });
   });
+  it("defaults the target to TV when arriving from the series collection link", async () => {
+    let body: Record<string, unknown> | undefined;
+    const fetch = setup((url, options) => {
+      if (url.endsWith("/library/imports") && options?.method === "POST") {
+        body = JSON.parse(String(options?.body));
+        return Response.json({ ...scan, kind: "series" }, { status: 202 });
+      }
+      if (url.endsWith("/library/imports"))
+        return Response.json({
+          items: body ? [{ ...scan, kind: "series" }] : [],
+          media_root: "/media",
+          movie_root: "/media/Movies",
+          series_root: "/media/TV",
+        });
+    });
+    render(
+      <Theme>
+        <MemoryRouter initialEntries={["/import?collection=series"]}>
+          <App />
+        </MemoryRouter>
+      </Theme>,
+    );
+    await screen.findByLabelText("Scan media type");
+    expect(screen.getByLabelText("Scan media type")).toHaveValue("series");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Scan and match library" }),
+    );
+    await waitFor(() => expect(body).toBeDefined());
+    expect(body?.kind).toBe("series");
+    expect(fetch.mock.calls.some(([url]) => url.includes("collection="))).toBe(
+      false,
+    );
+  });
   it("requires explicit movie review and never submits a client-supplied file path", async () => {
     const fetch = setup();
     mount();
