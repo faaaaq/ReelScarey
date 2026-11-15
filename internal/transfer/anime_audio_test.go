@@ -457,24 +457,28 @@ func TestRealFFprobeAnimeAudioClassification(t *testing.T) {
 	if e := os.WriteFile(subtitle, []byte("1\n00:00:00,000 --> 00:00:01,000\nHello\n"), 0600); e != nil {
 		t.Fatal(e)
 	}
-	base := []string{"-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:r=10", "-f", "lavfi", "-i", "sine=frequency=1000", "-t", "0.5", "-map", "0:v", "-map", "1:a", "-c:v", "mpeg4", "-c:a", "aac"}
+	// Inputs come first; every option after them is an output option. FFmpeg
+	// scopes per-file options to the NEXT file, so an input appended after
+	// output options would consume the codecs and fail to open.
+	inputs := []string{"-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:r=10", "-f", "lavfi", "-i", "sine=frequency=1000"}
+	outputs := []string{"-t", "0.5", "-map", "0:v", "-map", "1:a", "-c:v", "mpeg4", "-c:a", "aac"}
 	cases := []struct {
 		name      string
-		extra     []string
+		extraIn   []string
+		extraOut  []string
 		want      string
 		languages []string
 	}{
-		{"english-only", append([]string{}, "-metadata:s:a:0", "language=eng"), AudioVerifiedEnglish, nil},
-		{"dual-english-japanese", append([]string{}, "-f", "lavfi", "-i", "sine=frequency=2000", "-map", "2:a", "-c:a:1", "aac", "-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=jpn"), AudioVerifiedEnglish, []string{"jpn"}},
-		{"japanese-only", append([]string{}, "-metadata:s:a:0", "language=jpn"), AudioVerifiedNoEnglish, []string{"jpn"}},
-		{"english-subs-japanese-audio", append([]string{}, "-i", subtitle, "-map", "2:s", "-c:s", "srt", "-metadata:s:a:0", "language=jpn", "-metadata:s:s:0", "language=eng"), AudioVerifiedNoEnglish, []string{"jpn"}},
-		{"untagged", nil, AudioUnverified, nil},
+		{"english-only", nil, []string{"-metadata:s:a:0", "language=eng"}, AudioVerifiedEnglish, nil},
+		{"dual-english-japanese", []string{"-f", "lavfi", "-i", "sine=frequency=2000"}, []string{"-map", "2:a", "-c:a:1", "aac", "-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=jpn"}, AudioVerifiedEnglish, []string{"jpn"}},
+		{"japanese-only", nil, []string{"-metadata:s:a:0", "language=jpn"}, AudioVerifiedNoEnglish, []string{"jpn"}},
+		{"english-subs-japanese-audio", []string{"-i", subtitle}, []string{"-map", "2:s", "-c:s", "srt", "-metadata:s:a:0", "language=jpn", "-metadata:s:s:0", "language=eng"}, AudioVerifiedNoEnglish, []string{"jpn"}},
+		{"untagged", nil, nil, AudioUnverified, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			name := filepath.Join(t.TempDir(), "audio.mkv")
-			args := append([]string{}, base...)
-			args = append(args, c.extra...)
+			args := append(append(append(append([]string{}, inputs...), c.extraIn...), outputs...), c.extraOut...)
 			args = append(args, name)
 			cmd := exec.Command("ffmpeg", args...)
 			hideProbeWindow(cmd)
