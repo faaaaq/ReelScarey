@@ -223,6 +223,13 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 	if e != nil {
 		return p, e
 	}
+	// Strict Anime shows verify the actual audio after the download: a
+	// release whose title claimed English audio but whose tracks are
+	// Japanese-only is rejected here, before the hash and before any
+	// import_operations row is journaled, so an owner retry re-verifies.
+	if e := i.verifyAnimeAudio(ctx, j, source, &probe); e != nil {
+		return p, e
+	}
 	if j.Kind != "series" && (j.MovieVersion == "hd" || j.MovieVersion == "uhd") && !quality.MovieVersionMatches(j.MovieVersion, quality.VerifiedQuality(probe.Width, probe.Height)) {
 		return p, problem("version_mismatch", "The downloaded video's inspected resolution does not match the selected movie version. The source and existing versions were left unchanged.")
 	}
