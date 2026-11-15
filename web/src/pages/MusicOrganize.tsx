@@ -56,6 +56,46 @@ function conversionKind(state: string) {
   return "info" as const;
 }
 
+/**
+ * Splits file ids into the groups the optimize preview and apply endpoints
+ * accept; the backend rejects any request with more than 500 file ids.
+ */
+export function chunkFileIds(ids: number[], size = 500): number[][] {
+  const batches: number[][] = [];
+  for (let index = 0; index < ids.length; index += size) {
+    batches.push(ids.slice(index, index + size));
+  }
+  return batches;
+}
+
+/**
+ * Combines the dry runs of a chunked preview into one preview so the review
+ * table and totals cover the whole selection.
+ */
+export function mergePreviews(previews: OptimizationPreview[]) {
+  const [first] = previews;
+  return {
+    profile: first.profile,
+    items: previews.flatMap((preview) => preview.items),
+    eligible_count: previews.reduce(
+      (sum, preview) => sum + (preview.eligible_count ?? 0),
+      0,
+    ),
+    current_bytes: previews.reduce(
+      (sum, preview) => sum + (preview.current_bytes ?? 0),
+      0,
+    ),
+    estimated_bytes: previews.reduce(
+      (sum, preview) => sum + (preview.estimated_bytes ?? 0),
+      0,
+    ),
+    saved_bytes: previews.reduce(
+      (sum, preview) => sum + (preview.saved_bytes ?? 0),
+      0,
+    ),
+  };
+}
+
 /** Optional catalog corrections sent with the preview and apply requests. */
 type EditOverrideInput = {
   artist: string;
@@ -112,8 +152,10 @@ export function MusicOrganize() {
   );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [convPage, setConvPage] = useState(1);
+  const [convState, setConvState] = useState("all");
   const conversions = useLiveResource<ConversionJobPage>(
-    "/library/music/conversions?page=1",
+    `/library/music/conversions?page=${convPage}`,
     5000,
   );
   const profiles = useMusicProfiles();
@@ -121,6 +163,9 @@ export function MusicOrganize() {
   const [optimizePreview, setOptimizePreview] =
     useState<OptimizationPreview | null>(null);
   const [optimizeMessage, setOptimizeMessage] = useState("");
+  const [optimizeProgress, setOptimizeProgress] = useState("");
+  /** Eligible files already queued for the open preview, for batch resume. */
+  const [optimizeQueued, setOptimizeQueued] = useState(0);
 
   const conversionItems = Array.isArray(conversions.data?.items)
     ? conversions.data.items
@@ -128,6 +173,18 @@ export function MusicOrganize() {
   const failedConversions = conversionItems.filter(
     (job) => job.state === "failed",
   );
+  // The backend exposes no state query param on the conversions list, so the
+  // state filter narrows the jobs of the fetched page only and says so.
+  const visibleConversions =
+    convState === "all"
+      ? conversionItems
+      : conversionItems.filter((job) => job.state === convState);
+  const conversionPageCount = conversions.data
+    ? Math.max(
+        1,
+        Math.ceil(conversions.data.total / Math.max(1, conversions.data.limit)),
+      )
+    : 1;
 
   const items = files.data?.items ?? [];
   const visibleFiles = useMemo(() => {
@@ -148,6 +205,12 @@ export function MusicOrganize() {
   useEffect(() => {
     if (files.data && page > pageCount) setPage(pageCount);
   }, [files.data, page, pageCount]);
+
+  // Same clamp for the conversion queue.
+  useEffect(() => {
+    if (conversions.data && convPage > conversionPageCount)
+      setConvPage(conversionPageCount);
+  }, [conversions.data, convPage, conversionPageCount]);
 
   function toggle(id: number, checked: boolean) {
     setSelected((current) =>
@@ -251,12 +314,20 @@ export function MusicOrganize() {
     setOptimizeMessage("");
     try {
       // With no page selection the backend previews every registered file;
-      // a selection narrows the dry run.
-      const preview = await previewOptimization(
-        optimizeProfile,
-        selected.length > 0 ? selected : undefined,
+      // a selection narrows the dry run. The preview endpoint also caps one
+      // request at 500 file ids, so a larger selection is split and the dry
+      // runs are merged into one review.
+      const groups = selected.length > 0 ? chunkFileIds(selected) : [[]];
+      const previews = await Promise.all(
+        groups.map((ids) =>
+          previewOptimization(
+            optimizeProfile,
+            ids.length > 0 ? ids : undefined,
+          ),
+        ),
       );
-      setOptimizePreview(preview);
+      setOptimizeQueued(0);
+      setOptimizePreview(mergePreviews(previews));
     } catch (e) {
       setError(messageFor(e));
     } finally {
@@ -269,30 +340,45 @@ export function MusicOrganize() {
     const eligibleIDs = optimizePreview.items
       .filter((item) => item.eligible)
       .map((item) => item.file_id);
-    if (eligibleIDs.length === 0) return;
-    // The backend caps one apply at 500 files; a larger library needs
-    // multiple passes, so queue the first bounded batch and say so.
-    const capped = eligibleIDs.length > 500;
-    const fileIDs = capped ? eligibleIDs.slice(0, 500) : eligibleIDs;
+    // After a failed batch the already queued files are skipped, so the next
+    // click queues only the rest of the preview.
+    const remaining = eligibleIDs.slice(optimizeQueued);
+    if (remaining.length === 0) return;
+    const batches = chunkFileIds(remaining);
+    const totalBatches = chunkFileIds(eligibleIDs).length;
     setPending(true);
     setError("");
-    try {
-      await applyOptimization(optimizeProfile, fileIDs);
-      setOptimizePreview(null);
-      setOptimizeMessage(
-        `Queued ${fileIDs.length} file${
-          fileIDs.length === 1 ? "" : "s"
-        } for conversion. Originals are kept or deleted according to the original-file retention setting.${
-          capped
-            ? ` The library has more eligible files than one apply allows (500); preview again to queue the rest.`
-            : ""
-        }`,
+    setOptimizeMessage("");
+    let queued = optimizeQueued;
+    let failure = "";
+    for (const [index, batch] of batches.entries()) {
+      setOptimizeProgress(
+        `Optimizing batch ${index + 1} of ${batches.length}…`,
       );
-      conversions.reload();
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setPending(false);
+      try {
+        await applyOptimization(optimizeProfile, batch);
+        queued += batch.length;
+        setOptimizeQueued(queued);
+      } catch (e) {
+        failure = messageFor(e);
+        break;
+      }
+    }
+    setPending(false);
+    setOptimizeProgress("");
+    conversions.reload();
+    if (failure === "") {
+      setOptimizePreview(null);
+      setOptimizeQueued(0);
+      setOptimizeMessage(
+        `Queued ${queued} file${queued === 1 ? "" : "s"} for conversion${
+          totalBatches > 1 ? ` across ${totalBatches} batches` : ""
+        }. Originals are kept or deleted according to the original-file retention setting.`,
+      );
+    } else {
+      setError(
+        `Queued ${queued} of ${eligibleIDs.length} eligible files before a batch failed: ${failure}. Use Convert again to queue the remaining files.`,
+      );
     }
   }
 
@@ -515,6 +601,7 @@ export function MusicOrganize() {
                 onChange={(e) => {
                   setOptimizeProfile(e.target.value);
                   setOptimizePreview(null);
+                  setOptimizeQueued(0);
                 }}
               >
                 <option value="">Choose a profile…</option>
@@ -549,6 +636,11 @@ export function MusicOrganize() {
             </p>
           )}
           {optimizeMessage && <Alert kind="success">{optimizeMessage}</Alert>}
+          {optimizeProgress && (
+            <p className="rs-muted rs-small" role="status" aria-live="polite">
+              {optimizeProgress}
+            </p>
+          )}
           {optimizePreview && (
             <>
               {optimizePreview.items.length === 0 ? (
@@ -604,7 +696,10 @@ export function MusicOrganize() {
                       variant="soft"
                       color="gray"
                       disabled={pending}
-                      onClick={() => setOptimizePreview(null)}
+                      onClick={() => {
+                        setOptimizePreview(null);
+                        setOptimizeQueued(0);
+                      }}
                     >
                       Cancel
                     </Button>
@@ -832,13 +927,39 @@ export function MusicOrganize() {
             code={conversions.code}
             retry={conversions.reload}
           />
+          {conversions.data && conversionItems.length > 0 && (
+            <div className="mus-filter">
+              <label>
+                State{" "}
+                <select
+                  aria-label="Filter conversions by state"
+                  value={convState}
+                  onChange={(e) => setConvState(e.target.value)}
+                >
+                  <option value="all">All states</option>
+                  <option value="queued">Queued</option>
+                  <option value="processing">Processing</option>
+                  <option value="failed">Failed</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </label>
+            </div>
+          )}
           {conversions.data && conversionItems.length === 0 && (
             <Alert kind="info">
               No conversion jobs. Jobs appear here when a download, export or
               optimization needs a converted copy.
             </Alert>
           )}
-          {conversions.data && conversionItems.length > 0 && (
+          {conversions.data &&
+            conversionItems.length > 0 &&
+            visibleConversions.length === 0 && (
+              <Alert kind="info">
+                No {convState} jobs on this page. Choose another state or use
+                the page controls to check other pages of the queue.
+              </Alert>
+            )}
+          {conversions.data && visibleConversions.length > 0 && (
             <Table label="Music conversion queue">
               <thead>
                 <tr>
@@ -853,7 +974,7 @@ export function MusicOrganize() {
                 </tr>
               </thead>
               <tbody>
-                {conversionItems.map((item) => (
+                {visibleConversions.map((item) => (
                   <tr key={item.id}>
                     <td>{item.kind}</td>
                     <td>{item.profile}</td>
@@ -908,6 +1029,44 @@ export function MusicOrganize() {
                 ))}
               </tbody>
             </Table>
+          )}
+          {convState !== "all" &&
+            conversions.data &&
+            conversionItems.length > 0 &&
+            visibleConversions.length > 0 && (
+              <p className="rs-muted rs-small">
+                The state filter applies to the {conversionItems.length} job
+                {conversionItems.length === 1 ? "" : "s"} on this page only; the
+                backend has no state filter, so use the page controls to check
+                older pages of the queue.
+              </p>
+            )}
+          {conversions.data && conversionPageCount > 1 && (
+            <div className="mus-paging">
+              <span>{`Page ${convPage} of ${conversionPageCount} · ${conversions.data.total} queued jobs`}</span>
+              <Button
+                size="1"
+                variant="soft"
+                aria-label="Previous conversions page"
+                disabled={pending || convPage <= 1}
+                onClick={() => setConvPage((value) => Math.max(1, value - 1))}
+              >
+                <ChevronLeft size={14} aria-hidden="true" /> Previous
+              </Button>
+              <Button
+                size="1"
+                variant="soft"
+                aria-label="Next conversions page"
+                disabled={pending || convPage >= conversionPageCount}
+                onClick={() =>
+                  setConvPage((value) =>
+                    Math.min(conversionPageCount, value + 1),
+                  )
+                }
+              >
+                Next <ChevronRight size={14} aria-hidden="true" />
+              </Button>
+            </div>
           )}
         </FieldSet>
       </PageBody>

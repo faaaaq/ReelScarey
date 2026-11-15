@@ -541,7 +541,7 @@ describe("library optimization", () => {
     });
   });
 
-  it("caps one apply at the backend limit and says so", async () => {
+  it("splits a large optimization into bounded apply batches", async () => {
     const file = {
       id: 1,
       artist_id: 1,
@@ -613,14 +613,18 @@ describe("library optimization", () => {
       name: "Convert 510 files",
     });
     await userEvent.click(convert);
-    await screen.findByText(/more eligible files than one apply allows/);
+    await screen.findByText(/Queued 510 files for conversion across 2 batches/);
     const applies = bodiesFor(
       fetch,
       "/api/v1/library/music/optimize/apply",
       "POST",
     );
+    expect(applies).toHaveLength(2);
     expect(applies[0].file_ids).toHaveLength(500);
-    expect(applies[0].profile).toBe("opus-balanced");
+    expect(applies[1].file_ids).toHaveLength(10);
+    for (const body of applies) {
+      expect(body.profile).toBe("opus-balanced");
+    }
   });
 });
 
