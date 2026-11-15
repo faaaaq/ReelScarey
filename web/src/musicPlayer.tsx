@@ -94,6 +94,11 @@ function clock(seconds: number) {
 
 export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  // Monotonic counter for play() requests. A superseded load (rapid track
+  // skipping) rejects its play() promise after the new track's play() has
+  // already resolved; that stale rejection must not flip `playing` back to
+  // false while the new track is actually playing.
+  const playEpoch = useRef(0);
   const [current, setCurrent] = useState<PlayerTrack | null>(null);
   const [queue, setQueue] = useState<PlayerTrack[]>([]);
   const [index, setIndex] = useState(-1);
@@ -109,6 +114,30 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     return () => document.body.classList.remove("has-music-player");
   }, [current]);
 
+  /**
+   * Requests playback and tracks the request generation. Setting `src` and
+   * calling `load()` already aborts the previous in-flight fetch, so only the
+   * stale promise result needs fencing: results from an older epoch are
+   * ignored instead of clobbering the current playing state.
+   */
+  function requestPlay(audio: HTMLAudioElement) {
+    const epoch = ++playEpoch.current;
+    void audio
+      .play()
+      .then(() => {
+        if (epoch === playEpoch.current) setPlaying(true);
+      })
+      .catch((e: unknown) => {
+        if (epoch !== playEpoch.current) return;
+        setPlaying(false);
+        // Autoplay policies reject programmatic play before any request is
+        // made; that is not a server failure and must be phrased as one the
+        // user can act on (RS-0008).
+        if (e instanceof DOMException && e.name === "NotAllowedError")
+          setError("The browser blocked autoplay. Press play to start.");
+      });
+  }
+
   function start(track: PlayerTrack) {
     const audio = audioRef.current;
     if (!audio) return;
@@ -118,17 +147,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     setError("");
     audio.src = musicStreamURL(track.fileID) + browserStreamSuffix(audio);
     audio.load();
-    void audio
-      .play()
-      .then(() => setPlaying(true))
-      .catch((e: unknown) => {
-        setPlaying(false);
-        // Autoplay policies reject programmatic play before any request is
-        // made; that is not a server failure and must be phrased as one the
-        // user can act on (RS-0008).
-        if (e instanceof DOMException && e.name === "NotAllowedError")
-          setError("The browser blocked autoplay. Press play to start.");
-      });
+    requestPlay(audio);
   }
 
   function play(track: PlayerTrack, requestedQueue?: PlayerTrack[]) {
@@ -151,14 +170,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       setPosition(0);
       audioRef.current.currentTime = 0;
       setError("");
-      void audioRef.current
-        .play()
-        .then(() => setPlaying(true))
-        .catch((e: unknown) => {
-          setPlaying(false);
-          if (e instanceof DOMException && e.name === "NotAllowedError")
-            setError("The browser blocked autoplay. Press play to start.");
-        });
+      requestPlay(audioRef.current);
       return;
     }
     start(track);
@@ -169,14 +181,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     if (!audio || !current) return;
     if (audio.paused) {
       setError("");
-      void audio
-        .play()
-        .then(() => setPlaying(true))
-        .catch((e: unknown) => {
-          setPlaying(false);
-          if (e instanceof DOMException && e.name === "NotAllowedError")
-            setError("The browser blocked autoplay. Press play to start.");
-        });
+      requestPlay(audio);
     } else {
       audio.pause();
     }

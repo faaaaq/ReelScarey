@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,31 +8,29 @@ import {
   useMusicPlayer,
 } from "../musicPlayer";
 
+const QUEUE_TRACKS = [
+  {
+    fileID: 7,
+    title: "Airbag",
+    artist: "Radiohead",
+    album: "OK Computer",
+    albumID: 2,
+  },
+  {
+    fileID: 8,
+    title: "Paranoid Android",
+    artist: "Radiohead",
+    album: "OK Computer",
+    albumID: 2,
+  },
+];
+
 function Harness() {
   const player = useMusicPlayer();
   return (
     <button
       type="button"
-      onClick={() =>
-        player.play(
-          {
-            fileID: 7,
-            title: "Airbag",
-            artist: "Radiohead",
-            album: "OK Computer",
-            albumID: 2,
-          },
-          [
-            {
-              fileID: 7,
-              title: "Airbag",
-              artist: "Radiohead",
-              album: "OK Computer",
-              albumID: 2,
-            },
-          ],
-        )
-      }
+      onClick={() => player.play(QUEUE_TRACKS[0], QUEUE_TRACKS)}
     >
       Start
     </button>
@@ -107,5 +105,96 @@ describe("music player", () => {
       "/api/v1/library/music/files/7/stream",
     );
     withOpus.mockRestore();
+  });
+
+  it("treats a 'maybe' codec report as support and keeps the default stream", async () => {
+    // canPlayType returns "", "maybe" or "probably". Only the empty string
+    // means the browser reported no support, so "maybe" must keep the
+    // quality-driven default URL rather than forcing the MP3 fallback.
+    const maybe = vi
+      .spyOn(HTMLMediaElement.prototype, "canPlayType")
+      .mockReturnValue("maybe");
+    render(
+      <MusicPlayerProvider>
+        <MemoryRouter>
+          <Harness />
+          <MusicPlayerBar />
+        </MemoryRouter>
+      </MusicPlayerProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByText("Airbag")).toBeVisible();
+    expect(document.querySelector("audio")?.getAttribute("src")).toBe(
+      "/api/v1/library/music/files/7/stream",
+    );
+    maybe.mockRestore();
+  });
+
+  it("ignores a stale play() rejection when tracks are skipped rapidly", async () => {
+    // First track's play() is held pending; skipping starts a second play()
+    // that resolves. When the abandoned promise then rejects with the usual
+    // AbortError, the player must not flip back to a paused state.
+    let rejectFirst: ((reason?: unknown) => void) | undefined;
+    const playSpy = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectFirst = reject;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    render(
+      <MusicPlayerProvider>
+        <MemoryRouter>
+          <Harness />
+          <MusicPlayerBar />
+        </MemoryRouter>
+      </MusicPlayerProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByText("Airbag")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Next track" }));
+    expect(await screen.findByText("Paranoid Android")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Pause" })).toBeVisible();
+    rejectFirst?.(
+      new DOMException(
+        "The play() request was interrupted by a new load request",
+        "AbortError",
+      ),
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.getByRole("button", { name: "Pause" })).toBeVisible();
+    playSpy.mockRestore();
+  });
+
+  it("surfaces a stream failure with a visible error and stays usable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 500 }),
+    );
+    render(
+      <MusicPlayerProvider>
+        <MemoryRouter>
+          <Harness />
+          <MusicPlayerBar />
+        </MemoryRouter>
+      </MusicPlayerProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByText("Airbag")).toBeVisible();
+    const audio = document.querySelector("audio");
+    expect(audio).toBeTruthy();
+    await act(async () => {
+      audio?.dispatchEvent(new Event("error"));
+    });
+    expect(
+      await screen.findByText("Playback is unavailable for this file."),
+    ).toBeVisible();
+    // The player bar and transport remain interactive after the failure.
+    expect(screen.getByRole("button", { name: "Next track" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Play" })).toBeEnabled();
   });
 });
