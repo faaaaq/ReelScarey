@@ -136,6 +136,12 @@ export function Discover() {
                   <span className="rs-label">First 100</span>
                 )}
               </div>
+              {inspection.truncated && (
+                <p className="rs-form-help" role="note">
+                  Discovery lists the newest 100 videos of a channel. To reach
+                  older episodes, paste the show's playlist URL here.
+                </p>
+              )}
               <ul className="yt-results" aria-label="Source results">
                 {inspection.entries.map((entry) => (
                   <li

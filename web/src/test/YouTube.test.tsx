@@ -271,4 +271,61 @@ describe("YouTube source review", () => {
       keep_source: false,
     });
   });
+
+  it("explains the bounded discovery window when a channel is truncated", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, _options?: RequestInit) => {
+        if (url.endsWith("/youtube/collections"))
+          return Response.json({ items: [] });
+        if (url.endsWith("/youtube/inspect"))
+          return Response.json({
+            source: {
+              kind: "channel",
+              id: "UC1234567890123456789012",
+              url: "https://www.youtube.com/channel/UC1234567890123456789012",
+            },
+            title: "XG",
+            channel: "XG",
+            truncated: true,
+            entries: [
+              {
+                kind: "video",
+                id: "boKAdg0BS-c",
+                title: "XTRA XG #12",
+                channel: "XG",
+                url: "https://www.youtube.com/watch?v=boKAdg0BS-c",
+                published: "",
+              },
+            ],
+          });
+        return Response.json(
+          { error: { message: "Unexpected request" } },
+          { status: 404 },
+        );
+      }),
+    );
+    window.localStorage.setItem(
+      "reelscarey-notice:work-in-progress:youtube",
+      "hidden",
+    );
+    render(
+      <Theme>
+        <MemoryRouter>
+          <YouTube />
+        </MemoryRouter>
+      </Theme>,
+    );
+    await userEvent.type(
+      screen.getByLabelText("YouTube URL"),
+      "https://www.youtube.com/channel/UC1234567890123456789012",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Load" }));
+    expect(await screen.findByText("First 100")).toBeVisible();
+    expect(
+      await screen.findByText(
+        /Discovery lists the newest 100 videos of a channel\. To reach older episodes, paste the show's playlist URL here\./,
+      ),
+    ).toBeVisible();
+  });
 });
