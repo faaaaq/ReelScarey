@@ -1179,7 +1179,13 @@ html[data-theme="light"] .rs-label.is-disabled {
 
 .rs-table-wrap {
   width: 100%;
+  /* Flex/grid parents give items min-width:auto, which lets a wide table
+     stretch the wrap (and the page) instead of scrolling inside it. The
+     paint containment guarantees clipped overflow never propagates. */
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  contain: paint;
   background: var(--rs-surface);
   border: 1px solid var(--rs-border);
   border-radius: var(--rs-radius);

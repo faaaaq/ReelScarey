@@ -82,7 +82,10 @@ export function ArtistTile({ artist }: { artist: MusicArtist }) {
         to={`/music/artists/${artist.id}`}
         aria-label={`Open ${artist.name}`}
       >
-        {imageURL && !failed ? (
+        <span className="mus-tile-fallback mus-tile-initial" aria-hidden="true">
+          {initial}
+        </span>
+        {imageURL && !failed && (
           <img
             className="mus-tile-img"
             src={imageURL}
@@ -91,13 +94,6 @@ export function ArtistTile({ artist }: { artist: MusicArtist }) {
             referrerPolicy="no-referrer"
             onError={() => setFailed(true)}
           />
-        ) : (
-          <span
-            className="mus-tile-fallback mus-tile-initial"
-            aria-hidden="true"
-          >
-            {initial}
-          </span>
         )}
       </Link>
       <span
@@ -152,7 +148,10 @@ export function AlbumTile({
         to={`/music/albums/${album.id}`}
         aria-label={`Open ${album.title}`}
       >
-        {coverURL && !failed ? (
+        <span className="mus-tile-fallback" aria-hidden="true">
+          <Disc3 size={34} strokeWidth={1} />
+        </span>
+        {coverURL && !failed && (
           <img
             className="mus-tile-img"
             src={coverURL}
@@ -161,10 +160,6 @@ export function AlbumTile({
             referrerPolicy="no-referrer"
             onError={() => setFailed(true)}
           />
-        ) : (
-          <span className="mus-tile-fallback" aria-hidden="true">
-            <Disc3 size={34} strokeWidth={1} />
-          </span>
         )}
       </Link>
       <span
@@ -486,7 +481,10 @@ function DiscographyTile({
   return (
     <li className="lib-card">
       <div className="lib-card-art mus-card-art">
-        {coverURL && !failed ? (
+        <span className="mus-tile-fallback" aria-hidden="true">
+          <Disc3 size={34} strokeWidth={1} />
+        </span>
+        {coverURL && !failed && (
           <img
             className="mus-tile-img"
             src={coverURL}
@@ -495,10 +493,6 @@ function DiscographyTile({
             referrerPolicy="no-referrer"
             onError={() => setFailed(true)}
           />
-        ) : (
-          <span className="mus-tile-fallback" aria-hidden="true">
-            <Disc3 size={34} strokeWidth={1} />
-          </span>
         )}
       </div>
       <span

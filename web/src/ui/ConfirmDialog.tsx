@@ -27,6 +27,7 @@ export function ConfirmDialog({
   description?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** Kept for call-site compatibility; renders as the shared danger token. */
   color?: "red" | "orange" | "blue";
   onConfirm: () => void | Promise<void>;
 }) {
@@ -68,7 +69,7 @@ export function ConfirmDialog({
             </Button>
           </ModalClose>
           <Button
-            color={color}
+            className={color === "blue" ? undefined : "rs-btn-danger"}
             disabled={busy}
             onClick={() => void handleConfirm()}
           >
