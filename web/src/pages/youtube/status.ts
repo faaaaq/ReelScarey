@@ -1,4 +1,5 @@
 import type { BatchEntry, EpisodeState } from "./types";
+import type { Kind } from "../../ui";
 
 /** Single source of truth for YouTube status labels and colors. */
 export function duration(seconds?: number) {
@@ -46,14 +47,12 @@ export function stateLabel(state: string) {
   };
   return labels[state] ?? state;
 }
-export function stateColor(
-  state: string,
-): "gray" | "green" | "amber" | "red" | "blue" {
-  if (state === "completed") return "green";
-  if (state === "awaiting_review" || state === "importing") return "blue";
-  if (state === "failed" || state === "cancelled") return "red";
-  if (state === "downloading") return "amber";
-  return "gray";
+export function stateColor(state: string): Kind {
+  if (state === "completed") return "success";
+  if (state === "awaiting_review" || state === "importing") return "info";
+  if (state === "failed" || state === "cancelled") return "danger";
+  if (state === "downloading") return "warning";
+  return "default";
 }
 /** Episode state labels for the per-source episode table. */
 export function episodeStateLabel(state: EpisodeState | string) {
@@ -69,23 +68,21 @@ export function episodeStateLabel(state: EpisodeState | string) {
   };
   return labels[state] ?? state;
 }
-export function episodeStateColor(
-  state: EpisodeState | string,
-): "gray" | "green" | "amber" | "red" | "blue" {
-  if (state === "downloaded") return "green";
-  if (state === "awaiting_review" || state === "importing") return "blue";
-  if (state === "failed") return "red";
-  if (state === "downloading" || state === "queued") return "amber";
-  return "gray";
+export function episodeStateColor(state: EpisodeState | string): Kind {
+  if (state === "downloaded") return "success";
+  if (state === "awaiting_review" || state === "importing") return "info";
+  if (state === "failed") return "danger";
+  if (state === "downloading" || state === "queued") return "warning";
+  return "default";
 }
 /** English subtitle evidence: null means the episode was not checked yet. */
 export function englishSubsBadge(value: boolean | null | undefined): {
   label: string;
-  color: "gray" | "green" | "red";
+  kind: Kind;
 } {
-  if (value === true) return { label: "English subs", color: "green" };
-  if (value === false) return { label: "English subs missing", color: "red" };
-  return { label: "English subs not checked", color: "gray" };
+  if (value === true) return { label: "English subs", kind: "success" };
+  if (value === false) return { label: "English subs missing", kind: "danger" };
+  return { label: "English subs not checked", kind: "default" };
 }
 export function thumb(videoID: string) {
   return `https://i.ytimg.com/vi/${videoID}/mqdefault.jpg`;
@@ -107,13 +104,13 @@ export function sourceState(source: {
   enabled: boolean;
   state: string;
   message?: string;
-}): { label: string; color: "gray" | "green" | "amber" } {
-  if (!source.enabled) return { label: "Paused", color: "gray" };
+}): { label: string; kind: Kind } {
+  if (!source.enabled) return { label: "Paused", kind: "disabled" };
   if (
     source.state === "attention" ||
     source.state === "failed" ||
     source.state === "error"
   )
-    return { label: "Attention", color: "amber" };
-  return { label: "Active", color: "green" };
+    return { label: "Attention", kind: "warning" };
+  return { label: "Active", kind: "success" };
 }

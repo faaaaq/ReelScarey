@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Rss } from "lucide-react";
-import { Badge, Button, TextField } from "@radix-ui/themes";
+import { Button, TextField } from "@radix-ui/themes";
 import {
   api,
   messageFor,
@@ -10,6 +10,7 @@ import {
   type TVSeasonDetails,
 } from "../../api";
 import { PageHeading, RequestState } from "../../components";
+import { Label } from "../../ui";
 import {
   PageBody,
   PageToolbar,
@@ -162,7 +163,15 @@ export function Discover() {
                       }}
                     >
                       {entry.thumbnail ? (
-                        <img src={entry.thumbnail} alt="" loading="lazy" />
+                        <img
+                          className="yt-thumb"
+                          src={entry.thumbnail}
+                          alt=""
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.style.visibility = "hidden";
+                          }}
+                        />
                       ) : (
                         <span
                           className="yt-thumb-placeholder"
@@ -181,7 +190,7 @@ export function Discover() {
                         </small>
                       </span>
                       {entry.kind === "playlist" && (
-                        <Badge color="gray">Playlist</Badge>
+                        <Label kind="default">Playlist</Label>
                       )}
                     </button>
                   </li>
@@ -888,15 +897,15 @@ function PlaylistDownload({ initialURL }: { initialURL: string }) {
                         </span>
                         {entry.note && <small>{entry.note}</small>}
                       </div>
-                      <Badge
-                        color={
+                      <Label
+                        kind={
                           entry.status === "missing"
-                            ? "green"
+                            ? "success"
                             : entry.status === "available"
-                              ? "gray"
+                              ? "default"
                               : entry.status === "active"
-                                ? "amber"
-                                : "red"
+                                ? "warning"
+                                : "danger"
                         }
                       >
                         {entry.status === "missing"
@@ -906,7 +915,7 @@ function PlaylistDownload({ initialURL }: { initialURL: string }) {
                             : entry.status === "active"
                               ? "Downloading"
                               : "Unmatched"}
-                      </Badge>
+                      </Label>
                     </li>
                   );
                 })}
@@ -985,13 +994,15 @@ function PlaylistDownload({ initialURL }: { initialURL: string }) {
                     return (
                       <li key={result.video_id}>
                         <span>{entry?.title ?? result.video_id}</span>
-                        <Badge
-                          color={result.state === "queued" ? "green" : "gray"}
+                        <Label
+                          kind={
+                            result.state === "queued" ? "success" : "default"
+                          }
                         >
                           {result.state === "queued"
                             ? "Queued"
                             : result.message}
-                        </Badge>
+                        </Label>
                       </li>
                     );
                   })}

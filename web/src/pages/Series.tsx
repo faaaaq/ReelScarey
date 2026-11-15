@@ -1009,7 +1009,9 @@ function SeasonEpisodes({
                     <td>
                       {e.file_path ? (
                         <details className="det-episode-file">
-                          <summary>{e.file_path.split("/").at(-1)}</summary>
+                          <summary title={e.file_path}>
+                            {e.file_path.split("/").at(-1)}
+                          </summary>
                           <code>{e.file_path}</code>
                         </details>
                       ) : (
@@ -1068,7 +1070,16 @@ function SeasonEpisodes({
                               </button>
                             }
                             title={`Delete ${episodeCode(season.number, e.number)}?`}
-                            description={`${e.file_path ?? ""}\n\nThis permanently deletes the media file and cannot be undone. The download folder and seeding sources are never touched.`}
+                            description={
+                              <>
+                                <code>{e.file_path ?? ""}</code>
+                                <p>
+                                  This permanently deletes the media file and
+                                  cannot be undone. The download folder and
+                                  seeding sources are never touched.
+                                </p>
+                              </>
+                            }
                             onConfirm={() => {
                               onRemoveFile &&
                                 onRemoveFile(

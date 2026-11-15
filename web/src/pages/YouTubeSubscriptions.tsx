@@ -311,7 +311,7 @@ function Subscription({
           </Button>
           <ConfirmDialog
             trigger={
-              <Button variant="ghost" color="red">
+              <Button variant="ghost" className="rs-btn-danger">
                 Remove subscription
               </Button>
             }

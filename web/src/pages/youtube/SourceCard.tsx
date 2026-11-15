@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Badge, Button, TextField } from "@radix-ui/themes";
+import { Button, TextField } from "@radix-ui/themes";
 import { api, messageFor } from "../../api";
 import { RequestState } from "../../components";
-import { ConfirmDialog } from "../../ui";
+import { ConfirmDialog, Label } from "../../ui";
 import { useResource } from "../../useResource";
 import { EpisodeTable } from "./EpisodeTable";
 import { mappingLabel } from "./status";
@@ -453,9 +453,9 @@ export function SourceDraftForm({
                       ? `S${String(entry.season_number).padStart(2, "0")}E${String(entry.episode_number).padStart(2, "0")}`
                       : "No episode")}
                 </span>
-                <Badge color={entry.state === "ready" ? "green" : "gray"}>
+                <Label kind={entry.state === "ready" ? "success" : "default"}>
                   {entry.state === "ready" ? "Ready" : entry.note || "Skipped"}
-                </Badge>
+                </Label>
               </li>
             ))}
           </ul>
@@ -506,9 +506,9 @@ export function SourceCard({
           <strong>{mappingLabel(source.mapping, source.season_number)}</strong>
           <span>{source.source_url}</span>
         </div>
-        <Badge color={source.enabled ? "green" : "gray"}>
+        <Label kind={source.enabled ? "success" : "disabled"}>
           {source.enabled ? "Enabled" : "Paused"}
-        </Badge>
+        </Label>
       </div>
       <p className="rs-form-help">
         {source.quality === "best" ? "Best" : `${source.quality}p`} · every{" "}
@@ -598,7 +598,12 @@ export function SourceCard({
         )}
         <ConfirmDialog
           trigger={
-            <Button size="1" variant="soft" color="red" disabled={!!busy}>
+            <Button
+              size="1"
+              variant="soft"
+              className="rs-btn-danger"
+              disabled={!!busy}
+            >
               Remove
             </Button>
           }

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Badge, Button } from "@radix-ui/themes";
+import { Button } from "@radix-ui/themes";
 import { APIError, api, messageFor } from "../../api";
 import { RequestState } from "../../components";
-import { Table } from "../../ui";
+import { Label, Table } from "../../ui";
 import { useResource } from "../../useResource";
 import {
   englishSubsBadge,
@@ -225,9 +225,11 @@ export function EpisodeTable({
               {results.map((result) => (
                 <li key={`${result.video_id}-${result.episode_id}`}>
                   <span>{result.video_id}</span>
-                  <Badge color={result.state === "queued" ? "green" : "gray"}>
+                  <Label
+                    kind={result.state === "queued" ? "success" : "default"}
+                  >
                     {result.state === "queued" ? "Queued" : result.message}
-                  </Badge>
+                  </Label>
                 </li>
               ))}
             </ul>
@@ -264,7 +266,7 @@ export function EpisodeTable({
                       {!episode.monitored && (
                         <>
                           {" "}
-                          <Badge color="gray">Unmonitored</Badge>
+                          <Label kind="default">Unmonitored</Label>
                         </>
                       )}
                     </td>
@@ -275,6 +277,7 @@ export function EpisodeTable({
                             <span
                               key={video.video_id}
                               className="yt-episode-video"
+                              title={video.title}
                             >
                               {video.title}
                             </span>
@@ -284,13 +287,13 @@ export function EpisodeTable({
                       )}
                     </td>
                     <td>
-                      <Badge color={episodeStateColor(episode.state)}>
+                      <Label kind={episodeStateColor(episode.state)}>
                         {episodeStateLabel(episode.state)}
-                      </Badge>
+                      </Label>
                     </td>
                     <td>{episode.file_count}</td>
                     <td>
-                      <Badge color={subs.color}>{subs.label}</Badge>
+                      <Label kind={subs.kind}>{subs.label}</Label>
                     </td>
                     <td>
                       <Button

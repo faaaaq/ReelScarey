@@ -644,10 +644,10 @@ function ScanReview({
               <span
                 className={`rs-label ${
                   scan.state === "failed"
-                    ? "amber"
+                    ? "is-danger"
                     : scan.state === "completed"
-                      ? "green"
-                      : "blue"
+                      ? "is-success"
+                      : "is-info"
                 }`}
               >
                 {stateLabels[scan.state] ?? scan.state}
@@ -958,10 +958,10 @@ function ScanReview({
                   <span
                     className={`rs-label ${
                       item.state === "registered"
-                        ? "green"
+                        ? "is-success"
                         : item.state === "blocked"
-                          ? "amber"
-                          : "blue"
+                          ? "is-warning"
+                          : "is-info"
                     }`}
                   >
                     {stateLabels[item.state] ?? item.state}
@@ -1084,7 +1084,7 @@ function DuplicateGroups({
             The other variants stay unregistered.
           </p>
         </div>
-        <span className="rs-label amber">Needs a choice</span>
+        <span className="rs-label is-warning">Needs a choice</span>
       </div>
       {page.truncated && (
         <p className="scan-notice">

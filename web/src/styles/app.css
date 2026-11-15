@@ -1209,6 +1209,14 @@ html[data-theme="light"] .rs-label.is-disabled {
 .rs-table tbody tr:hover {
   background: var(--rs-hover);
 }
+/* Subtle zebra keeps dense tables (season lists, queues) readable while
+   scrolling without a sticky header. */
+.rs-table tbody tr:nth-child(even) {
+  background: var(--rs-surface-2);
+}
+.rs-table tbody tr:hover {
+  background: var(--rs-hover);
+}
 .rs-table tbody tr.is-selected {
   background: var(--rs-selected);
 }
@@ -1443,67 +1451,6 @@ html[data-theme="light"] .rs-label.is-disabled {
 /* Token-remapped Radix buttons. Radix buttons color themselves from its
    built-in palette; these remap the accent variables to the shared
    Sonarr/Radarr tokens so pages never introduce a second palette. */
-.rs-btn-attention {
-  --accent-a2: var(--rs-warning-soft);
-  --accent-a3: var(--rs-warning-soft);
-  --accent-a4: var(--rs-warning-soft);
-  --accent-a5: var(--rs-warning-soft);
-  --accent-a6: var(--rs-warning-soft);
-  --accent-a7: var(--rs-warning-soft);
-  --accent-a8: var(--rs-warning-soft);
-  --accent-a9: var(--rs-warning);
-  --accent-a10: var(--rs-warning);
-  --accent-a11: var(--rs-warning);
-  --accent-a12: var(--rs-warning);
-}
-.rs-btn-danger {
-  --accent-a2: var(--rs-danger-soft);
-  --accent-a3: var(--rs-danger-soft);
-  --accent-a4: var(--rs-danger-soft);
-  --accent-a5: var(--rs-danger-soft);
-  --accent-a6: var(--rs-danger-soft);
-  --accent-a7: var(--rs-danger-soft);
-  --accent-a8: var(--rs-danger-soft);
-  --accent-a9: var(--rs-danger);
-  --accent-a10: var(--rs-danger);
-  --accent-a11: var(--rs-danger);
-  --accent-a12: var(--rs-danger);
-}
-
-/* Token-remapped Radix buttons. Radix Themes buttons take colors from its
-   own palette; these remap the accent variables to the shared Sonarr/Radarr
-   tokens so a page never introduces a second palette. */
-.rs-btn-attention {
-  --accent-a2: var(--rs-warning-soft);
-  --accent-a3: var(--rs-warning-soft);
-  --accent-a4: var(--rs-warning-soft);
-  --accent-a5: var(--rs-warning-soft);
-  --accent-a6: var(--rs-warning-soft);
-  --accent-a7: var(--rs-warning-soft);
-  --accent-a8: var(--rs-warning-soft);
-  --accent-a9: var(--rs-warning);
-  --accent-a10: var(--rs-warning);
-  --accent-a11: var(--rs-warning);
-  --accent-a12: var(--rs-warning);
-}
-.rs-btn-danger {
-  --accent-a2: var(--rs-danger-soft);
-  --accent-a3: var(--rs-danger-soft);
-  --accent-a4: var(--rs-danger-soft);
-  --accent-a5: var(--rs-danger-soft);
-  --accent-a6: var(--rs-danger-soft);
-  --accent-a7: var(--rs-danger-soft);
-  --accent-a8: var(--rs-danger-soft);
-  --accent-a9: var(--rs-danger);
-  --accent-a10: var(--rs-danger);
-  --accent-a11: var(--rs-danger);
-  --accent-a12: var(--rs-danger);
-}
-
-/* Token-remapped Radix buttons. Radix Themes buttons take colors from its
-   own palette; these remap the accent variables to the shared Sonarr/Radarr
-   tokens so a button can carry the warning/danger status colors without any
-   page introducing a second palette. */
 .rs-btn-attention {
   --accent-a2: var(--rs-warning-soft);
   --accent-a3: var(--rs-warning-soft);

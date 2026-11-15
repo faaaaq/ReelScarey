@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import {
   ArrowLeft,
@@ -241,7 +241,7 @@ export function LibraryTrackTable({ tracks }: { tracks: MusicArtistTrack[] }) {
                   : track.number}
               </td>
               <td>{track.title}</td>
-              <td>{track.artist_name || "—"}</td>
+              <td>{track.artist_name || ""}</td>
               <td>
                 <Link to={`/music/albums/${track.album_id}`}>
                   {track.album_title}
@@ -437,7 +437,7 @@ function TopTrackTable({
               {track.title}{" "}
               {track.in_library && <Label kind="success">In library</Label>}
             </td>
-            <td>{track.album || "—"}</td>
+            <td>{track.album || ""}</td>
             <td>{formatTrackDuration(track.duration_ms)}</td>
             <td className="is-actions">
               {track.file_id ? (
@@ -901,7 +901,7 @@ export function MusicArtistPage() {
               </div>
             </div>
             {topTracks.loading && (
-              <p className="rs-muted">Loading top tracks…</p>
+              <p className="rs-muted">Loading top tracks</p>
             )}
             {topTracks.error && <Alert kind="danger">{topTracks.error}</Alert>}
             {topTracks.data?.message && (
@@ -963,7 +963,7 @@ export function MusicArtistPage() {
           </Button>
         }
       >
-        {allTracks.loading && <p className="rs-muted">Loading tracks…</p>}
+        {allTracks.loading && <p className="rs-muted">Loading tracks</p>}
         {allTracks.error && <Alert kind="danger">{allTracks.error}</Alert>}
         {allTracks.data &&
           (allTracks.data.items.length ? (
@@ -1019,7 +1019,7 @@ export function MusicArtistPage() {
               onClick={() => void startTopDownload()}
             >
               <Download size={15} aria-hidden="true" />
-              {downloadPending ? "Starting…" : "Download"}
+              {downloadPending ? "Starting" : "Download"}
             </Button>
           </>
         }
@@ -1291,7 +1291,7 @@ export function MusicAlbumPage() {
         // server so the conflict loop ends; the current edit is discarded.
         albumPrefs.reload();
         setError(
-          "The album preferences changed while you were working. The saved preferences have been reloaded — review them and apply your changes again.",
+          "The album preferences changed while you were working. The saved preferences have been reloaded  review them and apply your changes again.",
         );
       } else {
         setError(messageFor(e));
@@ -1681,7 +1681,7 @@ export function MusicAlbumPage() {
                       </td>
                       <td>
                         <span className="mus-path">
-                          {file.destination_path || "—"}
+                          {file.destination_path || ""}
                         </span>
                       </td>
                       <td>
@@ -1697,7 +1697,7 @@ export function MusicAlbumPage() {
                           {file.state}
                         </Label>
                       </td>
-                      <td>{file.error || "—"}</td>
+                      <td>{file.error || ""}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1788,7 +1788,7 @@ export function MusicAlbumPage() {
               </tbody>
             </Table>
             <Button
-              color="red"
+              className="rs-btn-danger"
               disabled={fixPending}
               onClick={() => void applyFixMetadata()}
             >
@@ -1862,10 +1862,10 @@ export function MusicAlbumPage() {
                       release.bitrate ? `${release.bitrate} kbps` : "",
                     ]
                       .filter(Boolean)
-                      .join(" ") || "—"}
+                      .join(" ") || ""}
                   </td>
                   <td>{formatBytes(release.size)}</td>
-                  <td>{release.seeders ?? "—"}</td>
+                  <td>{release.seeders ?? ""}</td>
                   <td className="is-actions">
                     <Button
                       size="1"
@@ -1883,7 +1883,7 @@ export function MusicAlbumPage() {
                         Open <ExternalLink size={12} aria-hidden="true" />
                       </a>
                     ) : (
-                      "—"
+                      ""
                     )}
                   </td>
                 </tr>

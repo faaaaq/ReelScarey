@@ -77,7 +77,9 @@ export function EpisodeMappingReview({
       <h3>Review episode files</h3>
       <p className="rs-muted rs-small">
         Choose the completed file for each episode, or skip it. One file can
-        cover up to 20 consecutive episodes of the same season.
+        cover up to 20 consecutive episodes of the same season. Leave at least
+        one episode mapped; the confirm button stays off until the review is
+        complete.
       </p>
       <fieldset disabled={pending} className="act-mapping-fields">
         <div className="act-mapping-table">
@@ -96,11 +98,18 @@ export function EpisodeMappingReview({
               >
                 <option value="">Choose a completed file…</option>
                 <option value="skip">Skip this episode</option>
-                {job.choices.map((f) => (
-                  <option key={f.index} value={f.index}>
-                    {f.name} ({bytes(f.size_bytes)})
-                  </option>
-                ))}
+                {job.choices.map((f) => {
+                  const suggested =
+                    values[t.episode_id] === String(f.index) &&
+                    f.suggestions?.includes(t.episode_id);
+                  return (
+                    <option key={f.index} value={f.index}>
+                      {`#${f.index} · ${f.name} (${bytes(f.size_bytes)})${
+                        suggested ? " · suggested" : ""
+                      }`}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           ))}

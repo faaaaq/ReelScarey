@@ -140,6 +140,11 @@
   gap: 8px;
   color: var(--rs-muted);
   font-size: 12.5px;
+  overflow: hidden;
+}
+.lib-card-status {
+  color: var(--rs-muted);
+  font-size: 12.5px;
 }
 .lib-card-info .lib-profile {
   overflow: hidden;
@@ -294,6 +299,18 @@
 .lib-az button:focus-visible {
   outline: 2px solid var(--rs-brand);
   outline-offset: 1px;
+}
+/* Keep the fixed jump rail from covering poster titles and table edges. */
+.lib-with-az {
+  padding-right: 40px;
+}
+.has-music-player .lib-az {
+  max-height: calc(78vh - 150px);
+}
+@media (max-width: 768px) {
+  .lib-with-az {
+    padding-right: 34px;
+  }
 }
 .lib-group-heading {
   scroll-margin-top: 84px;

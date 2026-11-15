@@ -1622,7 +1622,7 @@ export function MusicImport() {
                   <Button
                     type="button"
                     variant="soft"
-                    color="red"
+                    className="rs-btn-danger"
                     disabled={acoustidPending}
                   >
                     Remove key
@@ -1692,7 +1692,7 @@ export function MusicImport() {
               <Button
                 type="button"
                 variant="soft"
-                color="red"
+                className="rs-btn-danger"
                 disabled={musicbrainzPending}
                 onClick={() => void resetMusicBrainz()}
               >

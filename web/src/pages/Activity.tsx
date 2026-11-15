@@ -616,6 +616,57 @@ function JobDetails({
           {job.error_message}
         </Alert>
       )}
+      {/* Recovery actions sit directly under the error so they are never
+         below the fold of the scrolling details list. */}
+      {job.error_code === "replacement_review" && (
+        <p>
+          <Link
+            to={`/organization?acquisition_kind=download&acquisition_job=${job.id}`}
+          >
+            Review acquired replacement
+          </Link>
+        </p>
+      )}
+      {job.error_code === "choose_file" && attention && (
+        <section className="act-choose" aria-label="Choose the movie file">
+          <h3>Choose the movie file</h3>
+          <div className="act-choose-row">
+            <label htmlFor={`file-${job.id}`}>Movie file to import</label>
+            <select
+              id={`file-${job.id}`}
+              value={chosen}
+              onChange={(e) => setChosen(e.target.value)}
+              disabled={pending}
+            >
+              <option value="">Choose a movie file…</option>
+              {job.choices.map((file) => (
+                <option key={file.index} value={file.index}>
+                  {`#${file.index} · ${file.name} (${bytes(file.size_bytes)})`}
+                </option>
+              ))}
+            </select>
+            <Button
+              disabled={pending || chosen === ""}
+              onClick={() => void importFile()}
+            >
+              Import selected file
+            </Button>
+          </div>
+          {error && <Alert kind="danger">{error}</Alert>}
+        </section>
+      )}
+      {job.kind === "series" &&
+        job.error_code === "map_episodes" &&
+        attention && (
+          <EpisodeMappingReview
+            key={`${job.id}-${job.updated_at}`}
+            job={job}
+            onDone={() => {
+              reload();
+              onClose();
+            }}
+          />
+        )}
       <DescriptionList>
         <DescriptionItem title="Status">
           <Label kind={state.kind}>{state.label}</Label>
@@ -659,43 +710,6 @@ function JobDetails({
           {formatTimestamp(job.updated_at)}
         </DescriptionItem>
       </DescriptionList>
-      {job.error_code === "replacement_review" && (
-        <p>
-          <Link
-            to={`/organization?acquisition_kind=download&acquisition_job=${job.id}`}
-          >
-            Review acquired replacement
-          </Link>
-        </p>
-      )}
-      {job.error_code === "choose_file" && attention && (
-        <section className="act-choose" aria-label="Choose the movie file">
-          <h3>Choose the movie file</h3>
-          <div className="act-choose-row">
-            <label htmlFor={`file-${job.id}`}>Movie file to import</label>
-            <select
-              id={`file-${job.id}`}
-              value={chosen}
-              onChange={(e) => setChosen(e.target.value)}
-              disabled={pending}
-            >
-              <option value="">Choose a movie file…</option>
-              {job.choices.map((file) => (
-                <option key={file.index} value={file.index}>
-                  {file.name} ({bytes(file.size_bytes)})
-                </option>
-              ))}
-            </select>
-            <Button
-              disabled={pending || chosen === ""}
-              onClick={() => void importFile()}
-            >
-              Import selected file
-            </Button>
-          </div>
-          {error && <Alert kind="danger">{error}</Alert>}
-        </section>
-      )}
       {job.anime_search && (
         <p className="rs-muted rs-small">
           Anime match:{" "}
@@ -709,18 +723,6 @@ function JobDetails({
           requires review.
         </p>
       )}
-      {job.kind === "series" &&
-        job.error_code === "map_episodes" &&
-        attention && (
-          <EpisodeMappingReview
-            key={`${job.id}-${job.updated_at}`}
-            job={job}
-            onDone={() => {
-              reload();
-              onClose();
-            }}
-          />
-        )}
       {job.anime_order && (
         <section aria-label="Saved Anime episode order" className="act-order">
           <h3>Reviewed Anime order · revision {job.anime_order.revision}</h3>
@@ -806,7 +808,11 @@ function JobActions({
       {attention && (
         <ConfirmDialog
           trigger={
-            <Button variant="soft" className="rs-btn-danger" disabled={pending}>
+            <Button
+              variant="ghost"
+              className="rs-btn-danger"
+              disabled={pending}
+            >
               Stop tracking
             </Button>
           }

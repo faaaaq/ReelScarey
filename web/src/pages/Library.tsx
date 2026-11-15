@@ -433,7 +433,9 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
         </ToolbarSection>
       </PageToolbar>
 
-      <PageBody className="lib-body">
+      <PageBody
+        className={letters.length > 1 ? "lib-body lib-with-az" : "lib-body"}
+      >
         <PageHeading title={title}>
           <form onSubmit={submit} className="lib-search" role="search">
             <TextField.Root
@@ -794,7 +796,9 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                                 {item.kind === "movie" ? "Movie" : "Show"}
                               </span>
                             )}
-                            <span className="sr-only">{statusLabel(item)}</span>
+                            <span className="lib-card-status">
+                              {statusLabel(item)}
+                            </span>
                           </div>
                           <ProfileLabel item={item} />
                         </div>

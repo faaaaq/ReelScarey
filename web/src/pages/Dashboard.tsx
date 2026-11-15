@@ -64,7 +64,7 @@ function PlanningTable({
         <tr>
           <th scope="col">Title</th>
           <th scope="col">Episode</th>
-          <th scope="col" className="is-numeric">
+          <th scope="col" className="is-shrink">
             Date
           </th>
         </tr>
@@ -82,7 +82,7 @@ function PlanningTable({
               </Link>
             </th>
             <td className="dash-episode">{entryKindText(item)}</td>
-            <td className="is-numeric">{item.date || "—"}</td>
+            <td className="is-shrink">{item.date || "—"}</td>
           </tr>
         ))}
       </tbody>

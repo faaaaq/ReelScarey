@@ -41,7 +41,8 @@
   box-shadow: inset 3px 0 0 var(--rs-danger);
 }
 .act-col-status {
-  white-space: nowrap;
+  /* Long client states must wrap instead of forcing the queue wider. */
+  white-space: normal;
 }
 .act-sub {
   display: block;
@@ -69,6 +70,9 @@
   margin-top: 2px;
   color: var(--rs-muted);
   font-size: 12.5px;
+  /* Cells ignore max-width in auto table layout; constrain the content so a
+     150-character release name cannot expand the whole queue table. */
+  max-width: 480px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

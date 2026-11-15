@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { Badge, Button } from "@radix-ui/themes";
+import { Button } from "@radix-ui/themes";
+import { Label } from "../../ui";
 import type { Job } from "./types";
 import {
   bytes,
@@ -36,11 +37,19 @@ export function JobCard({
     job.message.includes("English subtitles");
   return (
     <li className="yt-job">
-      <img src={thumb(job.video.id)} alt="" loading="lazy" />
+      <img
+        className="yt-thumb"
+        src={thumb(job.video.id)}
+        alt=""
+        loading="lazy"
+        onError={(e) => {
+          e.currentTarget.style.visibility = "hidden";
+        }}
+      />
       <div className="yt-job-main">
         <div className="yt-job-title">
           <strong>{job.video.title}</strong>
-          <Badge color={stateColor(job.state)}>{stateLabel(job.state)}</Badge>
+          <Label kind={stateColor(job.state)}>{stateLabel(job.state)}</Label>
         </div>
         <span className="yt-job-meta">
           {job.video.channel}
@@ -69,14 +78,14 @@ export function JobCard({
         {job.state !== "queued" && job.state !== "downloading" && (
           <span className="yt-job-subtitles">
             {job.english_subtitles ? (
-              <Badge color="green">
+              <Label kind="success">
                 English subs
                 {job.subtitle_languages?.length
                   ? ` · ${job.subtitle_languages.join(", ")}`
                   : ""}
-              </Badge>
+              </Label>
             ) : (
-              <Badge color="red">English subs missing</Badge>
+              <Label kind="danger">English subs missing</Label>
             )}
           </span>
         )}

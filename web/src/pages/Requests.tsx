@@ -940,7 +940,7 @@ export function AdminRequests() {
                                 <Button
                                   size="1"
                                   variant="soft"
-                                  color="red"
+                                  className="rs-btn-danger"
                                   disabled={pending}
                                 >
                                   Decline

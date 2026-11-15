@@ -96,6 +96,7 @@ export function ReleaseResultsTable({
   readyFor,
   failedTitles,
   tv,
+  showClientLink = true,
 }: {
   items: Release[];
   protocol: string;
@@ -106,6 +107,9 @@ export function ReleaseResultsTable({
   readyFor: (release: Release) => boolean | undefined;
   failedTitles: Set<string>;
   tv: boolean;
+  /** The page-level alert already explains an unconfigured client; per-row
+   * links are opt-in so 30 results do not repeat the same call to action. */
+  showClientLink?: boolean;
 }) {
   const rows = useMemo(() => {
     const list = items.filter(
@@ -196,7 +200,7 @@ export function ReleaseResultsTable({
               label="Peers"
               sort={sort}
               onSort={onSort}
-              className="is-shrink"
+              className="is-numeric"
             />
             <th scope="col" className="is-actions">
               <span className="sr-only">Download</span>
@@ -269,7 +273,7 @@ export function ReleaseResultsTable({
                 </td>
                 <td className="is-actions">
                   <div className="rel-actions">
-                    {!ready && (
+                    {!ready && showClientLink && (
                       <Link
                         className="rs-small"
                         to={usenet ? "/settings#sabnzbd" : "/download-clients"}

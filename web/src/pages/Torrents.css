@@ -9,6 +9,11 @@
   min-height: 360px;
   overflow: hidden;
 }
+/* The viewport-locked console must also clear the fixed music player. */
+.has-music-player .tor-app {
+  height: calc(100vh - var(--rs-header-height) - 104px);
+  height: calc(100dvh - var(--rs-header-height) - 104px);
+}
 .tor-app > .rs-toolbar {
   position: static;
   flex: none;

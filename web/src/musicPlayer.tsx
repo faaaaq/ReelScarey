@@ -423,18 +423,21 @@ function PlayerQualityControl() {
 export function MusicPlayerBar() {
   const player = useMusicPlayer();
   const track = player.current;
+  const [coverFailed, setCoverFailed] = useState(false);
+  useEffect(() => setCoverFailed(false), [track?.coverURL]);
   if (!track) return null;
   const total = Math.max(0, player.duration);
   const position = Math.min(Math.max(0, player.position), total || 0);
   return (
     <section className="music-player" aria-label="Music player">
       <div className="music-player-track">
-        {track.coverURL ? (
+        {track.coverURL && !coverFailed ? (
           <img
             className="music-player-cover"
             src={track.coverURL}
             alt=""
             referrerPolicy="no-referrer"
+            onError={() => setCoverFailed(true)}
           />
         ) : (
           <span className="music-player-cover is-empty" aria-hidden="true">

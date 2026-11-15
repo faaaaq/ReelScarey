@@ -180,6 +180,12 @@
 .music-player-quality .music-player-error {
   max-width: 150px;
   white-space: normal;
+  /* A wrapped streaming error must not grow the fixed player past the
+     104px reserve; clamp it like the other two-line status text. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 @media (max-width: 900px) {
@@ -209,11 +215,11 @@
   }
 
   .has-music-player .rs-main {
-    padding-bottom: 146px;
+    padding-bottom: 154px;
   }
 
   .has-music-player .lib-select-bar {
-    bottom: 146px;
+    bottom: 154px;
   }
 }
 

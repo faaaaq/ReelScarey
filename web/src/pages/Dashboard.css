@@ -93,3 +93,16 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+@media (max-width: 768px) {
+  .dash-status {
+    flex-direction: column;
+  }
+  .dash-status-item {
+    border-right: 0;
+    border-bottom: 1px solid var(--rs-border);
+  }
+  .dash-status-item:last-child {
+    border-bottom: 0;
+    margin-left: 0;
+  }
+}

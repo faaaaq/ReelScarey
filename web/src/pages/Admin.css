@@ -231,6 +231,22 @@ fieldset:disabled {
   border-radius: var(--rs-radius);
   background: var(--rs-surface-2);
 }
+/* Source-file anchor of the match review: full path, stated to stay in place. */
+.import-file-summary {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  background: var(--rs-surface-2);
+}
+.import-file-summary p {
+  margin: 0;
+  color: var(--rs-muted);
+  font-size: 13px;
+}
 
 /* Header rows: title left, actions or state right. */
 :is(
@@ -436,6 +452,16 @@ fieldset:disabled {
   border-radius: var(--rs-radius);
   color: var(--rs-faint);
 }
+/* Real thumbnails render at the placeholder size; an unloaded thumbnail
+   must never balloon a Discover row or push a job card wide. */
+.yt-thumb {
+  width: 120px;
+  height: 68px;
+  flex: none;
+  object-fit: cover;
+  background: var(--rs-surface-3);
+  border-radius: var(--rs-radius);
+}
 .yt-progress {
   display: flex;
   align-items: center;
@@ -544,6 +570,29 @@ fieldset:disabled {
   color: var(--rs-warning);
   display: inline-flex;
 }
+/* A successful discovery must not read as a warning. */
+.scan-banner.done {
+  border-color: var(--rs-success);
+  background: var(--rs-success-soft);
+}
+.scan-banner.done .scan-banner-icon {
+  color: var(--rs-success);
+}
+.scan-banner.error {
+  border-color: var(--rs-danger);
+  background: var(--rs-danger-soft);
+}
+.scan-banner.error .scan-banner-icon {
+  color: var(--rs-danger);
+}
+/* A running scan is informational, not a warning; review stays amber. */
+.scan-banner.active {
+  border-color: var(--rs-info);
+  background: var(--rs-info-soft);
+}
+.scan-banner.active .scan-banner-icon {
+  color: var(--rs-info);
+}
 .scan-live,
 .scan-auto-state {
   display: inline-flex;
@@ -596,6 +645,13 @@ a.scan-metric:hover {
 .scan-phase-icon {
   display: inline-flex;
   color: var(--rs-muted);
+}
+.scan-phase-icon[data-tone="done"],
+.scan-phase-icon[data-tone="active"] {
+  color: var(--rs-success);
+}
+.scan-phase-icon[data-tone="attention"] {
+  color: var(--rs-warning);
 }
 
 /* Segmented view switches. */
@@ -762,6 +818,17 @@ a.scan-metric:hover {
 }
 .adm-requester-user {
   margin-right: 10px;
+  min-width: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 768px) {
+  /* The admin shell hides its account name at this width too. */
+  .adm-requester-user {
+    display: none;
+  }
 }
 .adm-request-search {
   display: flex;
@@ -1143,6 +1210,11 @@ a.scan-metric:hover {
 }
 .yt-episode-video {
   display: block;
+  /* A 300-character video title must not make table rows very tall. */
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .yt-row-actions {
   flex-wrap: wrap;

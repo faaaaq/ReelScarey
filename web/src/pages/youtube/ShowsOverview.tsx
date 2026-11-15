@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Badge, Button } from "@radix-ui/themes";
+import { Button } from "@radix-ui/themes";
 import { api, messageFor } from "../../api";
 import { PageHeading, RequestState } from "../../components";
-import { PageBody } from "../../ui";
+import { Label, PageBody } from "../../ui";
 import { useLiveResource } from "../../useLiveResource";
 import { mappingLabel, sourceState } from "./status";
 import type { SourcesOverviewItem, SourcesOverviewResponse } from "./types";
@@ -121,7 +121,7 @@ export function ShowsOverview() {
                   </strong>
                   <span>{source.source_url}</span>
                 </div>
-                <Badge color={badge.color}>{badge.label}</Badge>
+                <Label kind={badge.kind}>{badge.label}</Label>
               </div>
               <span className="yt-overview-meta">
                 {mappingLabel(source.mapping, source.season_number)} ·{" "}

@@ -423,6 +423,16 @@ function ReleaseBrowser() {
             readyFor={configuredFor}
             failedTitles={failedTitles}
             tv={tv}
+            showClientLink={
+              !(
+                movie.data &&
+                client.data &&
+                sab.data &&
+                !client.data.configured &&
+                !sab.data.configured &&
+                !builtinReady
+              )
+            }
           />
         )}
       </PageBody>
