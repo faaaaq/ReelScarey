@@ -128,8 +128,8 @@ func (s *Service) matchFileRecordings(
 		// by title alone and supply the canonical artist for the local
 		// fallback, which is exactly the case for files under an "unknown
 		// artist" folder with a title in the file name.
-		if s.itunes != nil {
-			if tracks, err := s.itunes.SearchTracks(ctx, title, 5); err == nil {
+		if s.itunester != nil {
+			if tracks, err := s.itunester.SearchTracks(ctx, title, 5); err == nil {
 				stats.IssuedItun = true
 				for _, track := range tracks {
 					if !trackTitleMatchesAny(track.TrackName, title) || isPlaceholderName(track.ArtistName) {
@@ -221,9 +221,9 @@ func (s *Service) matchFileRecordings(
 	// identifiers, so it never creates a canonical match by itself; it
 	// confirms that the song exists and supplies a canonical artist name when
 	// the file's own artist is missing or a placeholder.
-	if s.itunes != nil {
+	if s.itunester != nil {
 		term := iTunesSearchTermFor(candidates[0], title)
-		tracks, err := s.itunes.SearchTracks(ctx, term, 5)
+		tracks, err := s.itunester.SearchTracks(ctx, term, 5)
 		if err != nil {
 			var provider *Error
 			if errors.As(err, &provider) && (provider.Code == "music_itunes_rate_limited" || provider.Code == "music_itunes_unavailable") {
