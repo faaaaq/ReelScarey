@@ -135,7 +135,7 @@ func (c *Client) cooldownError(ctx context.Context) error {
 	if remaining <= 0 {
 		return nil
 	}
-	if strings.TrimSpace(message) == "" {
+	if strings.TrimSpace(message) == "" || strings.HasSuffix(message, legacyCooldownSuffix) {
 		message = cooldownMessage(until)
 	}
 	return &Error{Code: "music_rate_limited", Message: message, RetryAfter: retrySeconds(remaining)}
@@ -361,6 +361,14 @@ type mbReleaseGroup struct {
 	PrimaryType      string   `json:"primary-type"`
 	SecondaryTypes   []string `json:"secondary-types"`
 	FirstReleaseDate string   `json:"first-release-date"`
+	ArtistCredit     []struct {
+		Name       string `json:"name"`
+		JoinPhrase string `json:"joinphrase"`
+		Artist     struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"artist"`
+	} `json:"artist-credit"`
 }
 
 type mbReleaseGroupBrowse struct {
@@ -373,16 +381,6 @@ type mbReleaseGroupSearch struct {
 	Count         int              `json:"count"`
 	Offset        int              `json:"offset"`
 	ReleaseGroups []mbReleaseGroup `json:"release-groups"`
-}
-
-type mbReleaseGroupLookup struct {
-	mbReleaseGroup
-	ArtistCredit []struct {
-		Artist struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		} `json:"artist"`
-	} `json:"artist-credit"`
 }
 
 type mbTrack struct {
@@ -538,7 +536,7 @@ func (c *Client) SearchReleaseGroups(ctx context.Context, artistID, title string
 // Discovery uses the provider identity already present in the file tag; the
 // returned album is only saved after this exact lookup succeeds.
 func (c *Client) ReleaseGroup(ctx context.Context, mbid string) (Album, string, error) {
-	var body mbReleaseGroupLookup
+	var body mbReleaseGroup
 	if err := c.request(ctx, "/release-group/"+url.PathEscape(mbid), url.Values{
 		"inc": {"artist-credits"},
 	}, &body, 2<<20); err != nil {
@@ -547,7 +545,7 @@ func (c *Client) ReleaseGroup(ctx context.Context, mbid string) (Album, string, 
 	if !strings.EqualFold(body.ID, mbid) {
 		return Album{}, "", invalidResponse("release group details")
 	}
-	album, err := normalizeAlbum(body.mbReleaseGroup)
+	album, err := normalizeAlbum(body)
 	if err != nil {
 		return Album{}, "", err
 	}

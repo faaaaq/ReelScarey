@@ -272,6 +272,16 @@ one reviewed scan.
     artist), and exactly one release group whose normalized title equals the
     tagged album. The year is used only to disambiguate multiple exact title
     matches.
+  - if artist-based discovery is inconclusive, one exact album title whose
+    track count and titles match every file in the scanned album folder.
+    Every file must match a different track. This works with missing track
+    numbers and alternate artist names.
+- When MusicBrainz cannot identify an album or is unavailable, ReelScarey
+  checks the US iTunes catalog for complete folders with consistent album
+  tags. Automatic matching requires one result with the same album title,
+  track count, and a unique track title for each file. iTunes supplies track
+  positions for the local catalog. Incomplete folders and multiple matching
+  editions stay unresolved.
 - Discovery adds only the missing artist and release group, loads the album's
   tracks, and re-matches the selected files. It never moves, tags or registers a
   file, and a file it cannot prove stays unresolved with a clear message:
@@ -282,6 +292,15 @@ one reviewed scan.
   if two artists list it, and a rerun finds the same catalog rows instead of
   copying them. A provider failure keeps the existing catalog, scan rows and
   registered files and reports an actionable warning.
+- Use **Correct match** on an unresolved row or **Correct selected** for
+  several tracks from the same album. Search MusicBrainz by album title or
+  paste a release-group link, then review the track assignments and durations.
+  Choose **Match to iTunes** to search its catalog by artist and album or
+  paste an Apple Music album link, then confirm the track assignments.
+  For releases you already know, choose **Enter local metadata** and supply
+  the album artist, album, track titles and disc and track numbers. Saving a
+  correction matches the selected files. Use **Finalize** when you are ready
+  to apply the catalog metadata to your files.
 - A request processes at most 10 album groups and 500 files, and stops starting
   new provider work before the server write deadline. The response reports
   matched files, added artists/albums, unresolved files, deferred files and
@@ -328,7 +347,7 @@ MusicBrainz or AcoustID:
 3. fingerprint and look up still-unresolved files through AcoustID, using the
    returned release-group and recording IDs together with the tags when the tags
    are complete enough for a local row; and
-4. only then run MusicBrainz discovery for files whose tags were not complete
+4. only then run MusicBrainz and iTunes discovery for files whose tags were not complete
    enough for a local identity.
 
 A complete local identity needs a non-empty album artist (or artist), album and
@@ -422,7 +441,7 @@ one durable background worker; the browser's HTTP request never owns the work.
   saves progress after each batch. Provider, rate-limit and transient errors
   keep the matched rows, leave the rest unresolved and end in `ready` with a
   warning; a missing AcoustID key or fpcalc adds an explicit warning and
-  MusicBrainz discovery still runs. The final message reports how many files
+  Catalog discovery still runs. The final message reports how many files
   matched from the saved catalog/tags, how many matched by audio fingerprint and
   how many were discovered through MusicBrainz. Match All never registers,
   moves, renames or tags a file. `reviewed:true` is consent to create catalog
@@ -741,10 +760,11 @@ modified.
 | GET | `/api/v1/library/music/albums/{id}` | Album and tracks; first read loads tracks |
 | GET/POST | `/api/v1/library/music/scans` | List scans or start `{roots:[...],full?}` (legacy `{root}` accepted); 202 |
 | GET | `/api/v1/library/music/scans/{id}?page=` | Scan state, phase, progress and 100 files per page |
-| POST | `/api/v1/library/music/scans/{id}/match-all` | `{reviewed:true}`; queues durable saved-catalog/tag matching, then AcoustID, then MusicBrainz discovery; 202 |
+| POST | `/api/v1/library/music/scans/{id}/match-all` | `{reviewed:true}`; queues durable saved-catalog/tag matching, then AcoustID, then catalog discovery with MusicBrainz and iTunes; 202 |
 | POST | `/api/v1/library/music/scans/{id}/finalize` | `{reviewed:true}`; queues registration then sequential organization/tagging; 202 |
 | POST | `/api/v1/library/music/scans/{id}/register` | `{file_ids,reviewed:true}` |
 | POST | `/api/v1/library/music/scans/{id}/discover` | `{file_ids,reviewed:true}` or `{all:true,reviewed:true}`; bounded catalog discovery |
+| GET / POST | `/api/v1/library/music/scans/{id}/corrections` | Search and preview MusicBrainz albums or save reviewed corrections for unresolved files |
 | POST | `/api/v1/library/music/scans/{id}/fingerprint` | `{file_ids,reviewed:true}` or `{all:true,reviewed:true}`; reviewed Chromaprint/AcoustID matching |
 | GET/PUT/DELETE | `/api/v1/library/music/acoustid` | Status; PUT `{api_key}` saves or replaces the encrypted key, DELETE removes it. The key is never returned |
 | GET/PUT/DELETE | `/api/v1/library/music/musicbrainz` | Status; PUT `{base_url}` saves or replaces the encrypted optional provider URL, DELETE resets to public MusicBrainz. Returns `base_url`, `default_base_url`, `using_default`, `cooldown_until`, `message` and `cache_entries`; never a secret |

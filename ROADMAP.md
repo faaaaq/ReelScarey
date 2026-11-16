@@ -69,8 +69,8 @@ Historical native and package results below remain as records of past work.
   seasons while preserving canonical IDs, monitoring and files.
 
 - [x] Add a Music catalog with MusicBrainz artist, album and track metadata, a
-  Music tab, existing-file scanning, reviewed catalog discovery for unresolved
-  files, native AcoustID/Chromaprint fingerprint matching, reviewed registration
+  Music tab, existing-file scanning, MusicBrainz and iTunes album discovery,
+  reviewed match corrections, AcoustID/Chromaprint fingerprint matching, reviewed registration
   and organization, verified tag writing with
   rollback, audio release search and reviewed completed-folder import,
   automatic client queueing, a leased download worker, audio preferences,

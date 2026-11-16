@@ -29,12 +29,14 @@ import {
   type MusicFingerprintResult,
   type MusicBrainzStatus,
   type MusicScan,
+  type MusicScanFile,
   type MusicScanList,
   type MusicScanPage,
   type MusicScanPhase,
 } from "../api";
 import { useLiveResource } from "../useLiveResource";
 import { useResource } from "../useResource";
+import { MusicMatchCorrection } from "./MusicMatchCorrection";
 import "./Music.css";
 
 function countLabel(count: number, singular: string) {
@@ -52,7 +54,7 @@ const activePhases: ReadonlySet<MusicScanPhase> = new Set([
 const phaseLabels: Record<MusicScanPhase, string> = {
   queued: "Queued",
   scanning: "Scanning files",
-  matching: "Matching MusicBrainz",
+  matching: "Matching catalog metadata",
   fingerprinting: "Fingerprinting with AcoustID",
   ready: "Ready",
   organizing: "Organizing files",
@@ -151,8 +153,15 @@ function discoverySummary(result: MusicDiscoverResult) {
       : `No selected files matched (${result.selected} checked).`,
     result.artists_added || result.albums_added
       ? `Added ${countLabel(result.artists_added, "artist")} and ${countLabel(result.albums_added, "album")} to the catalog.`
-      : "No catalog entries were added.",
-  ];
+      : result.itunes_matched
+        ? ""
+        : "No catalog entries were added.",
+  ].filter(Boolean);
+  if (result.itunes_matched) {
+    parts.push(
+      `Matched ${countLabel(result.itunes_matched, "file")} using iTunes tracklists.`,
+    );
+  }
   if (result.unresolved > 0) {
     parts.push(
       `${countLabel(result.unresolved, "selected file")} ${
@@ -280,6 +289,11 @@ export function MusicImport() {
   const [roots, setRoots] = useState<string[]>([]);
   const [fullScan, setFullScan] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
+  const [correction, setCorrection] = useState<{
+    scanID: number;
+    files: MusicScanFile[];
+  } | null>(null);
+  const [correctionNotice, setCorrectionNotice] = useState("");
   const [pending, setPending] = useState(false);
   const [workflowBusy, setWorkflowBusy] = useState(false);
   const [discoverOpen, setDiscoverOpen] = useState(false);
@@ -356,6 +370,8 @@ export function MusicImport() {
   useEffect(() => {
     setFilterInitialized(false);
     setFileFilter("all");
+    setCorrection(null);
+    setCorrectionNotice("");
   }, [scanID]);
   useEffect(() => {
     if (
@@ -567,7 +583,7 @@ export function MusicImport() {
       );
       setMatchAllOpen(false);
       setWorkflowNotice(
-        "Matching all unmatched files started. MusicBrainz matching, AcoustID fingerprinting and current work are shown below while the scan runs.",
+        "Matching all unmatched files started. Catalog matching, AcoustID fingerprinting and current work are shown below while the scan runs.",
       );
       active.reload();
       scans.reload();
@@ -1045,9 +1061,8 @@ export function MusicImport() {
             )}
             {scanCooldownMessage && (
               <Alert kind="warning" title="MusicBrainz matching is paused">
-                {scanCooldownMessage} This is a provider cooldown, not a failed
-                scan. Matched files are unchanged; wait for the retry window,
-                then run Match all unmatched again.
+                {scanCooldownMessage} Use Correct match to search iTunes or
+                enter local metadata.
               </Alert>
             )}
             {!phaseActive && skippedCount > 0 && (
@@ -1074,6 +1089,11 @@ export function MusicImport() {
             {workflowNotice && (
               <Alert kind="info" title="Workflow started">
                 {workflowNotice}
+              </Alert>
+            )}
+            {correctionNotice && (
+              <Alert kind="success" title="Matches saved">
+                {correctionNotice}
               </Alert>
             )}
             {(canMatchAll || canFinalize) && (
@@ -1232,7 +1252,8 @@ export function MusicImport() {
                       <td>
                         {file.tag_disc && file.tag_track
                           ? `${file.tag_disc}.${file.tag_track}`
-                          : (file.tag_track ?? "—")}
+                          : file.tag_track ||
+                            (file.state === "unresolved" ? "Missing tag" : "—")}
                       </td>
                       <td>
                         <Label
@@ -1250,6 +1271,26 @@ export function MusicImport() {
                         </Label>
                       </td>
                       <td className="is-actions">
+                        {file.state === "unresolved" && (
+                          <Button
+                            size="1"
+                            variant="soft"
+                            disabled={
+                              pending ||
+                              phaseActive ||
+                              workflowBusy ||
+                              phase === "cancelled"
+                            }
+                            onClick={() =>
+                              setCorrection({
+                                scanID: file.scan_id,
+                                files: [file],
+                              })
+                            }
+                          >
+                            Correct match
+                          </Button>
+                        )}
                         {(file.state === "matched" ||
                           file.state === "unresolved") && (
                           <Button
@@ -1276,6 +1317,26 @@ export function MusicImport() {
               or run an automatic action to work on the whole scan.
             </p>
             <div className="mus-scan-actions">
+              <Button
+                variant="soft"
+                disabled={
+                  pending ||
+                  phaseActive ||
+                  workflowBusy ||
+                  phase === "cancelled" ||
+                  selectedUnresolved.length === 0 ||
+                  selectedUnresolved.length > 100
+                }
+                onClick={() =>
+                  active.data &&
+                  setCorrection({
+                    scanID: active.data.scan.id,
+                    files: selectedUnresolved,
+                  })
+                }
+              >
+                Correct selected ({selectedUnresolved.length})
+              </Button>
               <Button
                 disabled={pending || selectedMatched.length === 0}
                 onClick={() => void register()}
@@ -1428,7 +1489,7 @@ export function MusicImport() {
         open={matchAllOpen}
         onOpenChange={setMatchAllOpen}
         title="Match all unmatched files"
-        description="Review this automatic MusicBrainz and AcoustID step before it runs."
+        description="Review this automatic tag, fingerprint, and catalog matching step."
         footer={
           <>
             <Button
@@ -1461,12 +1522,12 @@ export function MusicImport() {
         </Alert>
         {!acoustidReady && (
           <Alert kind="warning" title="AcoustID fingerprinting may be skipped">
-            {fingerprintBlockedReason} Tag-based MusicBrainz matching still
-            runs; any skipped fingerprinting is reported on the scan.
+            {fingerprintBlockedReason} Catalog matching can still use
+            MusicBrainz and iTunes.
           </Alert>
         )}
         <p className="rs-form-help">
-          The scan continues in the background and reports MusicBrainz matching,
+          The scan continues in the background and reports catalog matching,
           AcoustID fingerprinting, current work and skipped files. Matching
           never changes a file.
         </p>
@@ -1766,6 +1827,22 @@ export function MusicImport() {
         </p>
         {fingerprintError && <Alert kind="danger">{fingerprintError}</Alert>}
       </Modal>
+      {correction && correction.scanID === scanID && (
+        <MusicMatchCorrection
+          scanID={correction.scanID}
+          files={correction.files}
+          onClose={() => setCorrection(null)}
+          onSaved={(matched) => {
+            setCorrection(null);
+            setCorrectionNotice(
+              `${countLabel(matched, "file")} matched and ready for Finalize.`,
+            );
+            setSelected([]);
+            active.reload();
+            scans.reload();
+          }}
+        />
+      )}
     </>
   );
 }

@@ -192,7 +192,9 @@ with the queued scan (`request:"match"`); the durable worker first matches the
 saved catalog and the files' own tags, creates tag-derived local catalog rows
 when those tags are complete (no MusicBrainz or AcoustID request), then
 fingerprints still-unresolved files through AcoustID when configured, and only
-then runs MusicBrainz discovery for files without a complete local tag identity.
+then runs catalog discovery for files without a complete local tag identity.
+During a MusicBrainz cooldown or when it cannot identify the album, discovery
+can match a complete scanned folder to one iTunes tracklist in the US catalog.
 The final message reports local, fingerprint and provider match counts. It never
 registers, moves or tags media. POST
 `/scans/{id}/finalize` accepts `{reviewed:true}` and returns `202` with
@@ -207,10 +209,13 @@ request already owns it. POST
 accepts `{file_ids,reviewed:true}` or `{all:true,reviewed:true}` and performs a
 bounded, reviewed MusicBrainz catalog discovery for unresolved files. It uses a
 tagged release-group or album-artist MBID, or one exact normalized artist and
-album title (with a bounded discography fallback), and is idempotent on rerun;
-unmatched or ambiguous evidence stays unresolved with a warning or file message.
+album title (with a bounded discography fallback). If artist-based lookup
+cannot identify the album, discovery can use one exact album title and a
+complete one-to-one match between the scanned folder and a MusicBrainz
+tracklist. Unmatched or ambiguous evidence stays unresolved.
 Its response reports `selected`, `matched`, `artists_added`, `albums_added`,
-`unresolved`, `remaining`, `deferred` and `warnings`. POST
+`itunes_matched` (a subset of `matched`), `unresolved`, `remaining`,
+`deferred` and `warnings`. POST
 `/scans/{id}/fingerprint` accepts `{file_ids,reviewed:true}` or
 `{all:true,reviewed:true}` and performs bounded AcoustID/Chromaprint matching
 for unresolved files. It processes at most 20 files and 10 album groups, sends
@@ -220,6 +225,19 @@ response adds `fingerprinted` and `provider_calls`. GET/PUT/DELETE
 `/api/v1/library/music/acoustid` returns
 `{configured, updated_at, fingerprint_available, message}`, saves `{api_key}`
 after basic format validation or removes the key; the key is never returned.
+
+GET `/api/v1/library/music/scans/{id}/corrections?album=...` returns
+`{items,complete}` for a bounded MusicBrainz album search. Use
+`?release_group_id=...` on the same route to preview an album and its tracks.
+Pass `source=itunes` with `album` to search iTunes or with `collection_id`
+to preview its tracklist. Save reviewed iTunes assignments using the local
+metadata fields below.
+POST to the route with `reviewed:true` and up to 100 unresolved files.
+For MusicBrainz, supply `release_group_id` and `files:[{file_id,track_id}]`
+using MusicBrainz track IDs from the preview. For local catalog metadata,
+supply `artist`, `album`, and `files:[{file_id,title,disc,number}]`.
+The response returns `{matched}`. A successful correction updates the scan and
+catalog. Finalize remains the action that registers, organizes and writes tags.
 GET/PUT/DELETE `/api/v1/library/music/musicbrainz` returns
 `{base_url, default_base_url, using_default, cooldown_until, message,
 cache_entries}`, saves an encrypted optional `{base_url}` or resets to the

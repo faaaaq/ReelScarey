@@ -34,6 +34,7 @@ var transcodeGracePeriod = defaultTranscodeGrace
 // tag rewrite.
 type Service struct {
 	client         *Client
+	itunes         *itunesCatalog
 	store          *Store
 	mediaDir       string
 	downloadsDir   string
@@ -111,7 +112,7 @@ func NewService(db *sql.DB, mediaDir string) *Service {
 	client := New()
 	client.SetCache(brainz)
 	client.SetCooldownStore(brainz)
-	return &Service{client: client, store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}, fingerprinter: NewChromaprint(), acoustid: NewAcoustID(), brainz: brainz}
+	return &Service{client: client, itunes: newITunesCatalog(), store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}, fingerprinter: NewChromaprint(), acoustid: NewAcoustID(), brainz: brainz}
 }
 
 func NewServiceWithClient(db *sql.DB, client *Client, mediaDir string) *Service {
@@ -258,7 +259,18 @@ func (s *Service) Album(ctx context.Context, id int64) (AlbumDetails, error) {
 }
 
 func (s *Service) loadTracks(ctx context.Context, album Album) ([]Track, error) {
-	releases, err := s.client.ReleaseGroupReleases(ctx, album.MusicBrainzID)
+	tracks, err := s.providerAlbumTracks(ctx, album.MusicBrainzID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.SaveTracks(ctx, album.ID, tracks); err != nil {
+		return nil, err
+	}
+	return tracks, nil
+}
+
+func (s *Service) providerAlbumTracks(ctx context.Context, mbid string) ([]Track, error) {
+	releases, err := s.client.ReleaseGroupReleases(ctx, mbid)
 	if err != nil {
 		return nil, err
 	}
@@ -271,14 +283,7 @@ func (s *Service) loadTracks(ctx context.Context, album Album) ([]Track, error) 
 			chosen = release
 		}
 	}
-	tracks, err := s.client.ReleaseTracks(ctx, chosen.ID)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.store.SaveTracks(ctx, album.ID, tracks); err != nil {
-		return nil, err
-	}
-	return tracks, nil
+	return s.client.ReleaseTracks(ctx, chosen.ID)
 }
 
 // betterRelease prefers an official release, then the earliest known date.

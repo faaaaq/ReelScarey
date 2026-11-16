@@ -1,0 +1,36 @@
+.mus-correction {
+  display: grid;
+  gap: 1rem;
+}
+
+.mus-correction :is(h3, p) {
+  margin: 0;
+}
+
+.mus-correction-modes,
+.mus-correction-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.mus-correction-fields,
+.mus-correction-search {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.mus-correction-search {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.mus-correction-select {
+  width: 100%;
+  min-width: 10rem;
+}
+
+.mus-correction-number {
+  min-width: 4.5rem;
+}

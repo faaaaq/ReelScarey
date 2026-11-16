@@ -381,16 +381,16 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 	// MusicBrainz discovery is the last step and only sees files whose tags
 	// were not complete enough for a local identity. A well-tagged library
 	// therefore never waits on the provider.
-	discovered := 0
+	discovered, itunesMatched := 0, 0
 	if unresolved > 0 {
-		if err := s.startWorkflowPhase(base, id, owner, "matching", unresolved, "Discovering MusicBrainz catalog entries for the remaining files."); err != nil {
+		if err := s.startWorkflowPhase(base, id, owner, "matching", unresolved, "Checking MusicBrainz and the iTunes catalog for the remaining files."); err != nil {
 			if errors.Is(err, errWorkLeaseLost) {
 				return nil
 			}
 			return err
 		}
 		var discoverWarnings []string
-		discovered, discoverWarnings, err = s.discoverAllFiles(ctx, id, owner)
+		discovered, itunesMatched, discoverWarnings, err = s.discoverAllFiles(ctx, id, owner)
 		warnings = append(warnings, discoverWarnings...)
 		if err != nil {
 			var provider *Error
@@ -405,8 +405,12 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 	if err != nil {
 		return err
 	}
-	message := fmt.Sprintf("Matched %d files from the saved catalog and their own tags without MusicBrainz or AcoustID calls; matched %d more by audio fingerprint; discovered %d through MusicBrainz. %d files remain unresolved for review.",
-		localMatched, fingerprinted, discovered, unresolved)
+	message := fmt.Sprintf("Matched %d files from the saved catalog and their own tags; matched %d more by audio fingerprint; discovered %d through MusicBrainz.",
+		localMatched, fingerprinted, discovered-itunesMatched)
+	if itunesMatched > 0 {
+		message += fmt.Sprintf(" Matched %d through iTunes.", itunesMatched)
+	}
+	message += fmt.Sprintf(" %d files remain unresolved for review.", unresolved)
 	if warningText := dedupeWarnings(warnings); warningText != "" {
 		message += " " + warningText
 	}
@@ -510,30 +514,30 @@ func (s *Service) localTagMatchFiles(ctx context.Context, scanID int64, owner st
 // whose tags were not complete enough for a local identity, so a well-tagged
 // library never reaches it. Files are processed in bounded batches and each
 // provider result is saved as it completes.
-func (s *Service) discoverAllFiles(ctx context.Context, scanID int64, owner string) (int, []string, error) {
+func (s *Service) discoverAllFiles(ctx context.Context, scanID int64, owner string) (int, int, []string, error) {
 	warnings := []string{}
-	matched := 0
+	matched, itunesMatched := 0, 0
 	cursor := ""
 	total, err := s.unresolvedCount(ctx, scanID)
 	if err != nil {
-		return matched, warnings, err
+		return matched, itunesMatched, warnings, err
 	}
 	processed := 0
 	for {
 		if err := s.renewWorkflow(ctx, scanID, owner); err != nil {
-			return matched, warnings, err
+			return matched, itunesMatched, warnings, err
 		}
 		files, err := s.unresolvedScanFilesAfter(ctx, scanID, cursor, workflowFileBatch)
 		if err != nil {
-			return matched, warnings, err
+			return matched, itunesMatched, warnings, err
 		}
 		if len(files) == 0 {
-			return matched, warnings, nil
+			return matched, itunesMatched, warnings, nil
 		}
 		if cancelled, err := s.workflowCancelled(ctx, scanID); err != nil {
-			return matched, warnings, err
+			return matched, itunesMatched, warnings, err
 		} else if cancelled {
-			return matched, warnings, nil
+			return matched, itunesMatched, warnings, nil
 		}
 		next := files[len(files)-1].RelativePath
 		candidates := make([]ScanFile, 0, len(files))
@@ -549,18 +553,20 @@ func (s *Service) discoverAllFiles(ctx context.Context, scanID int64, owner stri
 		}
 		if len(candidates) > 0 {
 			result, stopped, err := s.runDiscovery(ctx, scanID, candidates, discoveryRun{
+				beforeGroup: func() error { return s.renewWorkflow(ctx, scanID, owner) },
 				onFile: func(file ScanFile) {
 					processed++
-					_ = s.setWorkflowCounts(ctx, scanID, owner, "matching", total, processed, file.RelativePath, "Discovering MusicBrainz catalog entries.")
+					_ = s.setWorkflowCounts(ctx, scanID, owner, "matching", total, processed, file.RelativePath, "Checking MusicBrainz and iTunes catalog entries.")
 				},
 			})
 			if err != nil {
-				return matched, warnings, err
+				return matched, itunesMatched, warnings, err
 			}
 			matched += result.Matched
+			itunesMatched += result.ITunesMatched
 			warnings = append(warnings, result.Warnings...)
 			if stopped && ctx.Err() != nil {
-				return matched, warnings, ctx.Err()
+				return matched, itunesMatched, warnings, ctx.Err()
 			}
 		}
 		cursor = next

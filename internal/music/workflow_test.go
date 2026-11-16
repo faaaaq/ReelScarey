@@ -575,7 +575,7 @@ func TestMatchWorkflowStopsSafelyWhenMusicBrainzIsCoolingDown(t *testing.T) {
 	if scan.MatchedCount != 1 || scan.UnresolvedCount != 1 {
 		t.Fatalf("cooldown changed counts: %+v", scan)
 	}
-	if !strings.Contains(scan.Message, "MusicBrainz is limiting requests") || !strings.Contains(scan.Message, "Matching is paused until") {
+	if !strings.Contains(scan.Message, "MusicBrainz is limiting requests") || !strings.Contains(scan.Message, "MusicBrainz lookups resume after") {
 		t.Fatal("cooldown warning", scan.Message)
 	}
 	if requests.Load() != 1 {

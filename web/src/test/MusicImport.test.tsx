@@ -179,6 +179,122 @@ function mount() {
 }
 
 describe("music import", () => {
+  it("reviews an Apple Music album link and saves the selected track as local metadata", async () => {
+    const fetch = mockFetch((path, options) => {
+      if (path.endsWith("/scans")) return scanList([scan]);
+      if (path.endsWith("/scans/1")) return scanPage(scan);
+      if (path.endsWith("/corrections")) {
+        if (options?.method === "POST") return Response.json({ matched: 1 });
+        return Response.json({
+          id: "1631461686",
+          artist: "C. Ray",
+          title: "Space Coast",
+          tracks: [{ disc: 1, number: 2, title: "Other", duration_ms: 1000 }],
+        });
+      }
+    });
+    const user = userEvent.setup();
+    mount();
+    await user.click(
+      await screen.findByRole("button", { name: "Correct match" }),
+    );
+    const dialog = within(
+      screen.getByRole("dialog", { name: "Correct match" }),
+    );
+    await user.click(dialog.getByRole("button", { name: "Match to iTunes" }));
+    const input = dialog.getByRole("textbox", {
+      name: /Apple Music album link/,
+    });
+    await user.clear(input);
+    await user.type(
+      input,
+      "https://music.apple.com/us/album/space-coast/1631461686",
+    );
+    await user.click(dialog.getByRole("button", { name: "Find album" }));
+    expect(
+      await dialog.findByRole("combobox", { name: "Track for 02 - Other.mp3" }),
+    ).toHaveValue("1.2");
+    expect(
+      fetch.mock.calls.some(([url]) =>
+        url.endsWith("/corrections?source=itunes&collection_id=1631461686"),
+      ),
+    ).toBe(true);
+    await user.click(dialog.getByRole("button", { name: "Save match" }));
+    expect(
+      await screen.findByText("1 file matched and ready for Finalize."),
+    ).toBeVisible();
+    expect(
+      JSON.parse(String(postCalls(fetch, "/corrections")[0][1]?.body)),
+    ).toEqual({
+      reviewed: true,
+      artist: "C. Ray",
+      album: "Space Coast",
+      files: [{ file_id: 12, title: "Other", disc: 1, number: 2 }],
+    });
+  });
+
+  it("reviews a MusicBrainz track assignment for an unresolved file", async () => {
+    const group = "c316814b-5abc-42a7-b55d-91bff2cbdcdf";
+    const trackID = "44444444-4444-4444-8444-444444444444";
+    const candidate = {
+      id: group,
+      title: "Album",
+      artist: "Artist",
+      year: 2020,
+    };
+    let lookups = 0;
+    const fetch = mockFetch((path, options) => {
+      if (path.endsWith("/scans")) return scanList([scan]);
+      if (path.endsWith("/scans/1")) return scanPage(scan);
+      if (path.endsWith("/corrections")) {
+        if (options?.method === "POST") return Response.json({ matched: 1 });
+        return Response.json(
+          ++lookups === 1
+            ? { items: [candidate], complete: true }
+            : {
+                ...candidate,
+                tracks: [
+                  {
+                    musicbrainz_id: trackID,
+                    disc: 1,
+                    number: 2,
+                    title: "Other",
+                    duration_ms: 1000,
+                  },
+                ],
+              },
+        );
+      }
+    });
+    const user = userEvent.setup();
+    mount();
+    await user.click(
+      await screen.findByRole("button", { name: "Correct match" }),
+    );
+    const dialog = within(
+      screen.getByRole("dialog", { name: "Correct match" }),
+    );
+    await user.type(dialog.getByRole("textbox"), "Album");
+    await user.click(dialog.getByRole("button", { name: "Find album" }));
+    await user.click(
+      await dialog.findByRole("button", { name: "Album · Artist · 2020" }),
+    );
+    expect(
+      await dialog.findByRole("combobox", { name: "Track for 02 - Other.mp3" }),
+    ).toHaveValue(trackID);
+    await user.click(dialog.getByRole("button", { name: "Save match" }));
+    expect(
+      await screen.findByText("1 file matched and ready for Finalize."),
+    ).toBeVisible();
+    expect(
+      JSON.parse(String(postCalls(fetch, "/corrections")[0][1]?.body)),
+    ).toEqual({
+      reviewed: true,
+      release_group_id: group,
+      files: [{ file_id: 12, track_id: trackID }],
+    });
+  });
+
   it("registers selected matched files", async () => {
     const fetch = mockFetch((path, options) => {
       if (path === "/api/v1/library/music/scans" && !options?.method) {
@@ -582,7 +698,7 @@ describe("music import", () => {
       await screen.findByRole("table", { name: "Scanned music files" }),
     ).toBeVisible();
     const bar = await screen.findByRole("progressbar", {
-      name: "Matching MusicBrainz progress",
+      name: "Matching catalog metadata progress",
     });
     expect(bar).toHaveAttribute("aria-valuenow", "40");
     expect(screen.getByText("4 of 10 files")).toBeVisible();

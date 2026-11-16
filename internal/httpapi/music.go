@@ -47,7 +47,7 @@ func (s *Server) musicError(w http.ResponseWriter, err error) {
 			status = http.StatusBadRequest
 		case "music_import_missing_source":
 			status = http.StatusConflict
-		case "music_profile_name_taken":
+		case "music_profile_name_taken", "music_correction_conflict", "music_local_track", "music_ambiguous_artist", "music_ambiguous_album":
 			status = http.StatusConflict
 		}
 		if provider.RetryAfter > 0 {
@@ -1136,6 +1136,70 @@ func (s *Server) musicScanRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, map[string]any{"registered": registered})
+}
+
+func (s *Server) musicScanAlbumLookup(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	if _, ok := musicID(w, r); !ok {
+		return
+	}
+	query := r.URL.Query()
+	search, preview := s.music.SearchScanAlbums, s.music.PreviewScanAlbum
+	id := query.Get("release_group_id")
+	switch query.Get("source") {
+	case "", "musicbrainz":
+	case "itunes":
+		search, preview = s.music.SearchITunesScanAlbums, s.music.PreviewITunesScanAlbum
+		id = query.Get("collection_id")
+	default:
+		fail(w, 400, "invalid_music", "Choose MusicBrainz or iTunes.")
+		return
+	}
+	if id != "" {
+		album, err := preview(r.Context(), id)
+		if err != nil {
+			s.musicError(w, err)
+			return
+		}
+		send(w, 200, album)
+		return
+	}
+	items, complete, err := search(r.Context(), query.Get("album"))
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, map[string]any{"items": items, "complete": complete})
+}
+
+func (s *Server) musicScanCorrections(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		music.ScanCorrections
+		Reviewed bool `json:"reviewed"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !body.Reviewed {
+		fail(w, 400, "review_required", "Review the track assignments before saving.")
+		return
+	}
+	if err := s.music.CorrectScanMatches(r.Context(), id, body.ScanCorrections); err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, map[string]int{"matched": len(body.Files)})
 }
 
 func (s *Server) musicScanDiscover(w http.ResponseWriter, r *http.Request) {

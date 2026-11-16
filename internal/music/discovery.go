@@ -30,6 +30,7 @@ const (
 type DiscoverResult struct {
 	Selected      int      `json:"selected"`
 	Matched       int      `json:"matched"`
+	ITunesMatched int      `json:"itunes_matched"`
 	ArtistsAdded  int      `json:"artists_added"`
 	AlbumsAdded   int      `json:"albums_added"`
 	Fingerprinted int      `json:"fingerprinted"`
@@ -96,6 +97,7 @@ type discoveryRun struct {
 	workBudget      time.Duration
 	providerTimeout time.Duration
 	onFile          func(file ScanFile)
+	beforeGroup     func() error
 }
 
 func (s *Service) runDiscovery(ctx context.Context, scanID int64, files []ScanFile, run discoveryRun) (DiscoverResult, bool, error) {
@@ -123,6 +125,8 @@ func (s *Service) runDiscovery(ctx context.Context, scanID int64, files []ScanFi
 	}
 	stopped := false
 	processed := 0
+	var brainzBlocked error
+	itunesBlocked := false
 	for i, group := range groups {
 		if stopped || (run.maxAlbums > 0 && processed >= run.maxAlbums) ||
 			(!workDeadline.IsZero() && time.Now().After(workDeadline)) {
@@ -139,21 +143,80 @@ func (s *Service) runDiscovery(ctx context.Context, scanID int64, files []ScanFi
 			stopped = true
 			break
 		}
-		processed++
-		artistID, albumID, err := s.discoverGroupAlbum(providerCtx, group, cache)
-		if err != nil {
-			if saveErr := s.markDiscoverGroup(dbCtx, group, artistID, albumID, discoveryErrorMessage(err)); saveErr != nil {
-				return result, stopped, saveErr
+		if run.beforeGroup != nil {
+			if err := run.beforeGroup(); err != nil {
+				return result, stopped, err
 			}
-			if run.onFile != nil {
-				for _, file := range group.files {
+		}
+		processed++
+		var artistID, albumID int64
+		err := brainzBlocked
+		if err == nil {
+			artistID, albumID, err = s.discoverGroupAlbum(providerCtx, group, cache)
+		}
+		if err != nil {
+			recovered := map[int64]albumTrackMatch{}
+			if group.releaseGroupID == "" && discoveryNeedsTracklist(err) {
+				var recoveryErr error
+				recovered, recoveryErr = s.recoverAlbumByTracklist(providerCtx, scanID, group, cache)
+				if recoveryErr != nil {
+					var provider *Error
+					if !errors.As(recoveryErr, &provider) && providerCtx.Err() == nil {
+						return result, stopped, recoveryErr
+					}
+					err = recoveryErr
+				}
+			}
+			tryITunes := s.itunes != nil && discoveryAllowsITunes(err)
+			if tryITunes && !itunesBlocked && len(recovered) < len(group.files) {
+				appleCtx, stop := context.WithTimeout(providerCtx, 20*time.Second)
+				apple, appleErr := s.discoverByITunes(appleCtx, scanID, group, recovered)
+				stop()
+				for id, match := range apple {
+					recovered[id] = match
+				}
+				result.ITunesMatched += len(apple)
+				if appleErr != nil && !errors.Is(appleErr, ErrPlanChanged) {
+					var provider *Error
+					switch {
+					case errors.As(appleErr, &provider):
+						cache.addWarning(provider.Message)
+						itunesBlocked = provider.Code == "music_itunes_unavailable"
+					case errors.Is(appleErr, context.DeadlineExceeded) || errors.Is(appleErr, context.Canceled):
+						cache.addWarning("iTunes catalog lookup timed out. Run matching again to check unresolved files.")
+						itunesBlocked = true
+					default:
+						return result, stopped, appleErr
+					}
+				}
+			}
+			for _, file := range group.files {
+				if match, ok := recovered[file.ID]; ok {
+					if saveErr := s.updateScanFileState(dbCtx, file.ID, "matched", match.artistID, match.albumID, match.trackID, ""); saveErr != nil {
+						return result, stopped, saveErr
+					}
+					result.Matched++
+				} else {
+					message := discoveryErrorMessage(err)
+					if file.Track == nil && file.Title != "" && discoveryNeedsTracklist(err) {
+						message += " Track number tag missing. Use Correct match to review the album or enter the track number."
+					}
+					if saveErr := s.updateScanFileState(dbCtx, file.ID, "unresolved", artistID, albumID, 0, message); saveErr != nil {
+						return result, stopped, saveErr
+					}
+				}
+				if run.onFile != nil {
 					run.onFile(file)
 				}
 			}
 			if discoveryStops(err) {
 				cache.addWarning(discoveryWarning(err))
-				stopped = true
-				continue
+				if tryITunes && !itunesBlocked && providerCtx.Err() == nil {
+					// Finish this batch using iTunes while MusicBrainz is paused.
+					brainzBlocked = err
+				} else {
+					stopped = true
+				}
 			}
 			continue
 		}
@@ -612,6 +675,9 @@ func (s *Service) saveDiscoveredAlbum(ctx context.Context, artistMBID string, al
 func albumTracksUnavailableError(title string, err error) error {
 	var provider *Error
 	if errors.As(err, &provider) && strings.TrimSpace(provider.Message) != "" {
+		if provider.Code == "music_rate_limited" || provider.Code == "music_unavailable" {
+			return provider
+		}
 		return &Error{Code: "music_album_tracks_unavailable", Message: fmt.Sprintf("The album %q was added to the catalog, but its MusicBrainz tracks could not be loaded: %s", title, provider.Message)}
 	}
 	return &Error{Code: "music_album_tracks_unavailable", Message: fmt.Sprintf("The album %q was added to the catalog, but its track list could not be loaded. Open the album and retry.", title)}
@@ -783,7 +849,7 @@ func (s *Service) markDiscoverGroup(ctx context.Context, group *discoverGroup, a
 }
 
 func (s *Service) updateScanFileState(ctx context.Context, fileID int64, state string, artistID, albumID, trackID int64, message string) error {
-	_, err := s.store.db.ExecContext(ctx, `UPDATE music_scan_files SET artist_id=?,album_id=?,track_id=?,state=?,error=?,updated_at=unixepoch() WHERE id=?`,
+	_, err := s.store.db.ExecContext(ctx, `UPDATE music_scan_files SET artist_id=?,album_id=?,track_id=?,state=?,error=?,updated_at=unixepoch() WHERE id=? AND state='unresolved'`,
 		nullableID(artistID), nullableID(albumID), nullableID(trackID), state, message, fileID)
 	return err
 }
@@ -812,6 +878,33 @@ func discoveryTrackMessage(err error) string {
 	return "The album matched but this file's track could not be matched. Correct the title, disc and track tags and run discovery again."
 }
 
+func discoveryNeedsTracklist(err error) bool {
+	var provider *Error
+	if !errors.As(err, &provider) {
+		return false
+	}
+	switch provider.Code {
+	case "music_artist_not_found", "music_ambiguous_artist", "music_album_not_found", "music_ambiguous_album":
+		return true
+	}
+	return false
+}
+
+func discoveryAllowsITunes(err error) bool {
+	if discoveryNeedsTracklist(err) {
+		return true
+	}
+	var provider *Error
+	if !errors.As(err, &provider) {
+		return false
+	}
+	switch provider.Code {
+	case "music_not_found", "music_rate_limited", "music_unavailable":
+		return true
+	}
+	return false
+}
+
 func discoveryStops(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return true
@@ -819,7 +912,7 @@ func discoveryStops(err error) bool {
 	var provider *Error
 	if errors.As(err, &provider) {
 		switch provider.Code {
-		case "music_not_found", "music_artist_not_found", "music_album_not_found",
+		case "music_not_found", "music_artist_not_found", "music_album_not_found", "music_ambiguous_tracklist",
 			"music_ambiguous_artist", "music_ambiguous_album", "music_release_group_not_found",
 			"music_album_tracks_unavailable", "music_unmatched_track":
 			return false

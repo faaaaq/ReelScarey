@@ -182,7 +182,11 @@ func (s *Store) SaveAlbum(ctx context.Context, artistID int64, album Album) (int
 }
 
 func (s *Store) Tracks(ctx context.Context, albumID int64) ([]Track, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT t.id, t.album_id, t.musicbrainz_id, t.recording_id, t.disc, t.number, t.title, t.duration_ms,
+	return catalogTracks(ctx, s.db, albumID)
+}
+
+func catalogTracks(ctx context.Context, db catalogConnection, albumID int64) ([]Track, error) {
+	rows, err := db.QueryContext(ctx, `SELECT t.id, t.album_id, t.musicbrainz_id, t.recording_id, t.disc, t.number, t.title, t.duration_ms,
 		(SELECT MIN(f.id) FROM music_files f WHERE f.track_id=t.id AND f.variant_role='primary')
 		FROM music_tracks t WHERE t.album_id=? ORDER BY t.disc, t.number, t.id`, albumID)
 	if err != nil {

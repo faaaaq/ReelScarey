@@ -191,7 +191,7 @@ func (s *Service) MusicBrainzStatus(ctx context.Context) (MusicBrainzStatus, err
 		if cooldownErr == nil && until.After(time.Now()) {
 			status.CooldownUntil = until.Unix()
 			status.Message = message
-			if strings.TrimSpace(status.Message) == "" {
+			if strings.TrimSpace(status.Message) == "" || strings.HasSuffix(status.Message, legacyCooldownSuffix) {
 				status.Message = cooldownMessage(until)
 			}
 		}
@@ -247,8 +247,10 @@ func (s *Service) DeleteMusicBrainzBaseURL(ctx context.Context) (MusicBrainzStat
 	return s.MusicBrainzStatus(ctx)
 }
 
+const legacyCooldownSuffix = "Wait for that window, then run Match all again."
+
 func cooldownMessage(until time.Time) string {
-	return "MusicBrainz is limiting requests. Matching is paused until " + until.UTC().Format(time.RFC3339) + ". Wait for that window, then run Match all again."
+	return "MusicBrainz is limiting requests. MusicBrainz lookups resume after " + until.UTC().Format(time.RFC3339) + ". iTunes and local matching are available separately."
 }
 
 // musicbrainzStore persists provider evidence and the cooldown in SQLite. Every

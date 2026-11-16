@@ -143,8 +143,14 @@ type albumRef struct {
 // matching run. Artists are loaded once; albums and tracks are loaded once per
 // artist/album, so a large well-tagged batch does not run several catalog
 // queries per file.
+type catalogConnection interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 type localCatalog struct {
-	service *Service
+	db catalogConnection
 
 	artistsLoaded bool
 	artistsByMBID map[string]int64
@@ -160,7 +166,7 @@ type localCatalog struct {
 
 func newLocalCatalog(service *Service) *localCatalog {
 	return &localCatalog{
-		service:        service,
+		db:             service.store.db,
 		artistsByMBID:  map[string]int64{},
 		artistsByKey:   map[string][]int64{},
 		albumsLoaded:   map[int64]bool{},
@@ -175,7 +181,7 @@ func (c *localCatalog) loadArtists(ctx context.Context) error {
 	if c.artistsLoaded {
 		return nil
 	}
-	rows, err := c.service.store.db.QueryContext(ctx, `SELECT id,musicbrainz_id,name FROM music_artists`)
+	rows, err := c.db.QueryContext(ctx, `SELECT id,musicbrainz_id,name FROM music_artists`)
 	if err != nil {
 		return err
 	}
@@ -205,7 +211,7 @@ func (c *localCatalog) loadAlbums(ctx context.Context, artistID int64) error {
 	if c.albumsLoaded[artistID] {
 		return nil
 	}
-	rows, err := c.service.store.db.QueryContext(ctx, `SELECT id,artist_id,musicbrainz_id,title FROM music_albums WHERE artist_id=? ORDER BY id`, artistID)
+	rows, err := c.db.QueryContext(ctx, `SELECT id,artist_id,musicbrainz_id,title FROM music_albums WHERE artist_id=? ORDER BY id`, artistID)
 	if err != nil {
 		return err
 	}
@@ -238,7 +244,7 @@ func (c *localCatalog) findAlbumByMBID(ctx context.Context, mbid string) (albumR
 		return ref, true, nil
 	}
 	var ref albumRef
-	err := c.service.store.db.QueryRowContext(ctx, `SELECT id,artist_id,musicbrainz_id,title FROM music_albums WHERE musicbrainz_id=? ORDER BY id LIMIT 1`, mbid).
+	err := c.db.QueryRowContext(ctx, `SELECT id,artist_id,musicbrainz_id,title FROM music_albums WHERE musicbrainz_id=? ORDER BY id LIMIT 1`, mbid).
 		Scan(&ref.id, &ref.artistID, &ref.mbid, &ref.title)
 	if errors.Is(err, sql.ErrNoRows) {
 		return albumRef{}, false, nil
@@ -304,13 +310,13 @@ func (c *localCatalog) enrichLocalArtistMBID(ctx context.Context, id int64, mbid
 		return
 	}
 	var current string
-	if err := c.service.store.db.QueryRowContext(ctx, `SELECT musicbrainz_id FROM music_artists WHERE id=?`, id).Scan(&current); err != nil {
+	if err := c.db.QueryRowContext(ctx, `SELECT musicbrainz_id FROM music_artists WHERE id=?`, id).Scan(&current); err != nil {
 		return
 	}
 	if !IsLocalMusicID(current) {
 		return
 	}
-	if _, err := c.service.store.db.ExecContext(ctx, `UPDATE music_artists SET musicbrainz_id=?,updated_at=unixepoch() WHERE id=? AND musicbrainz_id=?`, mbid, id, current); err != nil {
+	if _, err := c.db.ExecContext(ctx, `UPDATE music_artists SET musicbrainz_id=?,updated_at=unixepoch() WHERE id=? AND musicbrainz_id=?`, mbid, id, current); err != nil {
 		return
 	}
 	delete(c.artistsByMBID, strings.ToLower(current))
@@ -324,7 +330,7 @@ func (c *localCatalog) enrichLocalAlbumMBID(ctx context.Context, ref albumRef, m
 	if ref.id < 1 || mbid == "" || !IsLocalMusicID(ref.mbid) {
 		return ref
 	}
-	if _, err := c.service.store.db.ExecContext(ctx, `UPDATE music_albums SET musicbrainz_id=?,updated_at=unixepoch() WHERE id=? AND musicbrainz_id=?`, mbid, ref.id, ref.mbid); err != nil {
+	if _, err := c.db.ExecContext(ctx, `UPDATE music_albums SET musicbrainz_id=?,updated_at=unixepoch() WHERE id=? AND musicbrainz_id=?`, mbid, ref.id, ref.mbid); err != nil {
 		return ref
 	}
 	delete(c.albumsByMBID, ref.mbid)
@@ -342,7 +348,7 @@ func (c *localCatalog) enrichLocalAlbumMBID(ctx context.Context, ref albumRef, m
 
 func (c *localCatalog) createArtist(ctx context.Context, mbid, name string) (int64, bool, error) {
 	now := time.Now().Unix()
-	result, err := c.service.store.db.ExecContext(ctx, `INSERT INTO music_artists(musicbrainz_id,name,sort_name,disambiguation,country,artist_type,overview,image_url,monitored,status,created_at,updated_at)
+	result, err := c.db.ExecContext(ctx, `INSERT INTO music_artists(musicbrainz_id,name,sort_name,disambiguation,country,artist_type,overview,image_url,monitored,status,created_at,updated_at)
 		VALUES(?,?,?,'','','','','',1,'missing',?,?)
 		ON CONFLICT(musicbrainz_id) DO NOTHING`, mbid, name, name, now, now)
 	if err != nil {
@@ -364,7 +370,7 @@ func (c *localCatalog) createArtist(ctx context.Context, mbid, name string) (int
 		return id, true, nil
 	}
 	var id int64
-	if err := c.service.store.db.QueryRowContext(ctx, `SELECT id FROM music_artists WHERE musicbrainz_id=?`, mbid).Scan(&id); err != nil {
+	if err := c.db.QueryRowContext(ctx, `SELECT id FROM music_artists WHERE musicbrainz_id=?`, mbid).Scan(&id); err != nil {
 		return 0, false, err
 	}
 	c.artistsByMBID[strings.ToLower(mbid)] = id
@@ -420,7 +426,7 @@ func (c *localCatalog) resolveAlbum(ctx context.Context, ev tagIdentity, create 
 		year = ev.year
 	}
 	now := time.Now().Unix()
-	result, err := c.service.store.db.ExecContext(ctx, `INSERT INTO music_albums(artist_id,musicbrainz_id,title,primary_type,secondary_types,year,release_date,cover_url,monitored,status,created_at,updated_at)
+	result, err := c.db.ExecContext(ctx, `INSERT INTO music_albums(artist_id,musicbrainz_id,title,primary_type,secondary_types,year,release_date,cover_url,monitored,status,created_at,updated_at)
 		VALUES(?,?,?,'','',?,'','',1,'missing',?,?)
 		ON CONFLICT(artist_id,musicbrainz_id) DO NOTHING`, artistID, mbid, ev.albumTitle, year, now, now)
 	if err != nil {
@@ -436,7 +442,7 @@ func (c *localCatalog) resolveAlbum(ctx context.Context, ev tagIdentity, create 
 		if err != nil {
 			return albumRef{}, false, err
 		}
-	} else if err := c.service.store.db.QueryRowContext(ctx, `SELECT id,musicbrainz_id,title FROM music_albums WHERE artist_id=? AND musicbrainz_id=?`, artistID, mbid).
+	} else if err := c.db.QueryRowContext(ctx, `SELECT id,musicbrainz_id,title FROM music_albums WHERE artist_id=? AND musicbrainz_id=?`, artistID, mbid).
 		Scan(&ref.id, &ref.mbid, &ref.title); err != nil {
 		return albumRef{}, false, err
 	}
@@ -454,7 +460,7 @@ func (c *localCatalog) loadTracks(ctx context.Context, albumID int64) ([]Track, 
 	if c.tracksLoaded[albumID] {
 		return c.tracksByAlbum[albumID], nil
 	}
-	tracks, err := c.service.store.Tracks(ctx, albumID)
+	tracks, err := catalogTracks(ctx, c.db, albumID)
 	if err != nil {
 		return nil, err
 	}
@@ -556,7 +562,7 @@ func (c *localCatalog) findOrCreateTrack(ctx context.Context, file ScanFile, ev 
 		mbid = localCatalogID(localTrackIDPrefix, ev.artistKey, ev.albumKey, strconv.Itoa(disc), strconv.Itoa(ev.number), ev.trackKey)
 	}
 	now := time.Now().Unix()
-	result, err := c.service.store.db.ExecContext(ctx, `INSERT INTO music_tracks(album_id,musicbrainz_id,recording_id,disc,number,title,duration_ms,created_at,updated_at)
+	result, err := c.db.ExecContext(ctx, `INSERT INTO music_tracks(album_id,musicbrainz_id,recording_id,disc,number,title,duration_ms,created_at,updated_at)
 		VALUES(?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(album_id,disc,number) DO NOTHING`, album.id, mbid, ev.recordingMBID, disc, ev.number, ev.trackTitle, file.DurationMS, now, now)
 	if err != nil {
@@ -574,7 +580,7 @@ func (c *localCatalog) findOrCreateTrack(ctx context.Context, file ScanFile, ev 
 		}
 		track.AlbumID, track.MusicBrainzID, track.RecordingID = album.id, mbid, ev.recordingMBID
 		track.Disc, track.Number, track.Title, track.DurationMS = disc, ev.number, ev.trackTitle, file.DurationMS
-	} else if err := c.service.store.db.QueryRowContext(ctx, `SELECT id,album_id,musicbrainz_id,recording_id,disc,number,title,duration_ms FROM music_tracks WHERE album_id=? AND disc=? AND number=?`, album.id, disc, ev.number).
+	} else if err := c.db.QueryRowContext(ctx, `SELECT id,album_id,musicbrainz_id,recording_id,disc,number,title,duration_ms FROM music_tracks WHERE album_id=? AND disc=? AND number=?`, album.id, disc, ev.number).
 		Scan(&track.ID, &track.AlbumID, &track.MusicBrainzID, &track.RecordingID, &track.Disc, &track.Number, &track.Title, &track.DurationMS); err != nil {
 		return 0, err
 	}
@@ -610,7 +616,7 @@ func (c *localCatalog) enrichLocalTrackIDs(ctx context.Context, album albumRef, 
 		if !changed {
 			return
 		}
-		if _, err := c.service.store.db.ExecContext(ctx, `UPDATE music_tracks SET musicbrainz_id=?,recording_id=?,updated_at=unixepoch() WHERE id=? AND album_id=?`, mbid, recording, trackID, album.id); err != nil {
+		if _, err := c.db.ExecContext(ctx, `UPDATE music_tracks SET musicbrainz_id=?,recording_id=?,updated_at=unixepoch() WHERE id=? AND album_id=?`, mbid, recording, trackID, album.id); err != nil {
 			return
 		}
 		tracks[i].MusicBrainzID, tracks[i].RecordingID = mbid, recording

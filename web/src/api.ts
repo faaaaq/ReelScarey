@@ -457,6 +457,7 @@ export type MusicScanPage = {
 export type MusicDiscoverResult = {
   selected: number;
   matched: number;
+  itunes_matched?: number;
   artists_added: number;
   albums_added: number;
   unresolved: number;

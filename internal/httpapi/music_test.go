@@ -329,6 +329,26 @@ func (f *fakeMusic) ScanPageFiltered(context.Context, int64, int, string) (music
 func (f *fakeMusic) RegisterScan(context.Context, int64, []int64) (int, error) {
 	return 1, f.err
 }
+func (f *fakeMusic) SearchScanAlbums(context.Context, string) ([]music.ScanAlbumCandidate, bool, error) {
+	return []music.ScanAlbumCandidate{}, true, nil
+}
+
+func (f *fakeMusic) PreviewScanAlbum(context.Context, string) (music.ScanAlbumPreview, error) {
+	return music.ScanAlbumPreview{}, nil
+}
+
+func (f *fakeMusic) SearchITunesScanAlbums(context.Context, string) ([]music.ScanAlbumCandidate, bool, error) {
+	return []music.ScanAlbumCandidate{{ID: "1631461686", Title: "Space Coast"}}, true, nil
+}
+
+func (f *fakeMusic) PreviewITunesScanAlbum(context.Context, string) (music.ScanAlbumPreview, error) {
+	return music.ScanAlbumPreview{}, nil
+}
+
+func (f *fakeMusic) CorrectScanMatches(context.Context, int64, music.ScanCorrections) error {
+	return nil
+}
+
 func (f *fakeMusic) DiscoverScan(context.Context, int64, []int64, bool) (music.DiscoverResult, error) {
 	return music.DiscoverResult{Selected: 1, Matched: 1, ArtistsAdded: 1, AlbumsAdded: 1, Remaining: 0, Warnings: []string{}}, f.err
 }
@@ -1102,6 +1122,30 @@ func TestMusicScanRoutes(t *testing.T) {
 	out = request(handler, "GET", "/api/v1/library/music/scans", "", session, false)
 	if out.Code != 200 {
 		t.Fatal("scan list", out.Code, out.Body.String())
+	}
+}
+
+func TestMusicScanCorrectionRoutes(t *testing.T) {
+	handler, session := musicFixture(t, &fakeMusic{})
+	const route = "/api/v1/library/music/scans/1/corrections"
+	if out := request(handler, "GET", route+"?album=Raydiation", "", nil, false); out.Code != 401 {
+		t.Fatal("unauthenticated album search", out.Code)
+	}
+	if out := request(handler, "GET", route+"?album=Raydiation", "", session, false); out.Code != 200 || !strings.Contains(out.Body.String(), `"complete":true`) {
+		t.Fatal("album search", out.Code, out.Body.String())
+	}
+	if out := request(handler, "GET", route+"?source=itunes&album=Space+Coast", "", session, false); out.Code != 200 || !strings.Contains(out.Body.String(), `"title":"Space Coast"`) {
+		t.Fatal("iTunes album search", out.Code, out.Body.String())
+	}
+	if out := request(handler, "POST", route, `{"reviewed":true}`, session, false); out.Code != 403 {
+		t.Fatal("correction without CSRF", out.Code)
+	}
+	if out := request(handler, "POST", route, `{}`, session, true); out.Code != 400 {
+		t.Fatal("correction without review", out.Code)
+	}
+	out := request(handler, "POST", route, `{"reviewed":true,"artist":"C. Ray","album":"Space Coast","files":[{"file_id":1,"title":"Activated","disc":1,"number":2}]}`, session, true)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"matched":1`) {
+		t.Fatal("reviewed correction", out.Code, out.Body.String())
 	}
 }
 
