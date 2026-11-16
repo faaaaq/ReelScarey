@@ -405,7 +405,7 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 	if err != nil {
 		return err
 	}
-	message := fmt.Sprintf("Matched %d files from the saved catalog and their own tags; matched %d more by audio fingerprint; discovered %d through MusicBrainz.",
+	message := fmt.Sprintf("Matched %d files from the saved catalog and their own tags without MusicBrainz or AcoustID calls; matched %d more by audio fingerprint; discovered %d through MusicBrainz.",
 		localMatched, fingerprinted, discovered-itunesMatched)
 	if itunesMatched > 0 {
 		message += fmt.Sprintf(" Matched %d through iTunes.", itunesMatched)

@@ -300,7 +300,7 @@ func TestMusicBrainzCooldownPersistsAcrossReopen(t *testing.T) {
 		t.Fatal("429", err)
 	}
 	until, message, err := store.Cooldown(ctx)
-	if err != nil || time.Until(until) < 5*time.Second || !strings.Contains(message, "paused until") {
+	if err != nil || time.Until(until) < 5*time.Second || !strings.Contains(message, "MusicBrainz lookups resume after") {
 		t.Fatal("persisted cooldown", until, message, err)
 	}
 	if _, err := client.Artist(ctx, testMBID); !errors.As(err, &provider) || provider.Code != "music_rate_limited" || requests.Load() != 1 {
@@ -351,7 +351,7 @@ func TestMusicBrainzServiceUnavailableAlsoStartsCooldown(t *testing.T) {
 		t.Fatal("503", err)
 	}
 	until, message, err := store.Cooldown(ctx)
-	if err != nil || time.Until(until) < 100*time.Second || !strings.Contains(message, "paused until") {
+	if err != nil || time.Until(until) < 100*time.Second || !strings.Contains(message, "MusicBrainz lookups resume after") {
 		t.Fatal("503 cooldown", until, message, err)
 	}
 	if _, err := client.Artist(ctx, testMBID); !errors.As(err, &provider) || provider.Code != "music_rate_limited" || requests.Load() != 1 {
