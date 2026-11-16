@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // Regression tests for the supplied unresolved-file failure patterns. Each
@@ -81,7 +82,7 @@ func TestMatchAllFingerprintMissKeepsRecordingSearchRunning(t *testing.T) {
 	if scan.MatchedCount != 1 || scan.UnresolvedCount != 0 {
 		t.Fatalf("scan %+v", scan)
 	}
-	if !strings.Contains(scan.Message, "matched 1 more through MusicBrainz and iTunes recordings") {
+	if !strings.Contains(scan.Message, "Matched 1 more through MusicBrainz recordings") {
 		t.Fatalf("message %q", scan.Message)
 	}
 	if brainzCalls == 0 {
@@ -114,7 +115,10 @@ func TestMatchAlliTunesRecoversPlaceholderArtist(t *testing.T) {
 	itunesServer := httptest.NewServer(http.HandlerFunc(itunesHandler))
 	defer itunesServer.Close()
 	service, db, scanID, _ := acoustidFixture(t, brainz, nil, nil, false)
-	service.SetiTunesClient(&iTunesClient{BaseURL: itunesServer.URL, HTTP: itunesServer.Client(), mu: make(chan struct{}, 1)})
+	service.itunester = &itunesCatalog{http: &http.Client{
+		Transport: correctionFixtureTransport{http.HandlerFunc(itunesHandler)},
+		Timeout:   7 * time.Second,
+	}}
 
 	// The file carries no artist evidence anywhere except the file name; the
 	// folder names the artist "unknown" (placeholder).
@@ -182,27 +186,15 @@ func TestMatchAllAmbiguousRecordingsNeverAutoAccept(t *testing.T) {
 	if err := db.QueryRow(`SELECT state,error FROM music_scan_files WHERE scan_id=?`, scanID).Scan(&state, &message); err != nil {
 		t.Fatal(err)
 	}
-	if state != "matched" {
-		t.Fatalf("file did not resolve from its own names: %s %q", state, message)
+	if state != "unresolved" || !strings.Contains(message, "will not choose automatically") {
+		t.Fatalf("ambiguous recordings were auto-accepted: %s %q", state, message)
 	}
-	// Neither ambiguous recording was adopted: every catalog row must be a
-	// tag-derived local identity, never a guessed provider identity.
 	var artists, albums int
-	var artistMBID, albumMBID string
 	if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM music_artists),(SELECT COUNT(*) FROM music_albums)`).Scan(&artists, &albums); err != nil {
 		t.Fatal(err)
 	}
-	if artists != 1 || albums != 1 {
-		t.Fatalf("ambiguity created unexpected catalog rows %d/%d", artists, albums)
-	}
-	if err := db.QueryRow(`SELECT musicbrainz_id FROM music_artists`).Scan(&artistMBID); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.QueryRow(`SELECT musicbrainz_id FROM music_albums`).Scan(&albumMBID); err != nil {
-		t.Fatal(err)
-	}
-	if !IsLocalMusicID(artistMBID) || !IsLocalMusicID(albumMBID) {
-		t.Fatalf("a guessed provider identity was adopted: artist=%q album=%q", artistMBID, albumMBID)
+	if artists != 0 || albums != 0 {
+		t.Fatalf("ambiguity created catalog rows %d/%d", artists, albums)
 	}
 }
 

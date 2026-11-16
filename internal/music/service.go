@@ -37,6 +37,7 @@ type Service struct {
 	itunes           *itunesCatalog
 	itunester        iTunester
 	recoveredArtists map[int64]string
+	ambiguousFiles   map[int64]bool
 	store            *Store
 	mediaDir         string
 	downloadsDir     string

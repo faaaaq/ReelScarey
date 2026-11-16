@@ -309,6 +309,7 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 	id := scan.ID
 	base := context.WithoutCancel(ctx)
 	s.recoveredArtists = map[int64]string{}
+	s.ambiguousFiles = map[int64]bool{}
 	total, err := s.unresolvedCount(base, id)
 	if err != nil {
 		return err
@@ -471,8 +472,18 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 	if err != nil {
 		return err
 	}
-	message := fmt.Sprintf("Matched %d files from the saved catalog and their own tags without MusicBrainz or AcoustID calls; matched %d more by audio fingerprint; discovered %d through MusicBrainz albums and %d through the iTunes catalog; matched %d more through MusicBrainz recordings; matched %d from their own names into the local catalog. %d files remain unresolved for review.",
-		localMatched, fingerprinted, discovered-itunesMatched, itunesMatched, recordingMatched, namesMatched, unresolved)
+	message := fmt.Sprintf("Matched %d files from the saved catalog and their own tags without MusicBrainz or AcoustID calls; matched %d more by audio fingerprint; discovered %d through MusicBrainz.",
+		localMatched, fingerprinted, discovered-itunesMatched)
+	if itunesMatched > 0 {
+		message += fmt.Sprintf(" Matched %d through iTunes.", itunesMatched)
+	}
+	if recordingMatched > 0 {
+		message += fmt.Sprintf(" Matched %d more through MusicBrainz recordings.", recordingMatched)
+	}
+	if namesMatched > 0 {
+		message += fmt.Sprintf(" Matched %d from their own names into the local catalog.", namesMatched)
+	}
+	message += fmt.Sprintf(" %d files remain unresolved for review.", unresolved)
 	if warningText := dedupeWarnings(warnings); warningText != "" {
 		message += " " + warningText
 	}

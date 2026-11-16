@@ -76,6 +76,8 @@ func (s *Service) DiscoverScan(ctx context.Context, scanID int64, fileIDs []int6
 	if state == "scanning" {
 		return DiscoverResult{}, &Error{Code: "music_scan_state", Message: "Wait for the scan to finish before discovering catalog entries."}
 	}
+	s.recoveredArtists = map[int64]string{}
+	s.ambiguousFiles = map[int64]bool{}
 	files, err := s.unresolvedScanFiles(ctx, scanID, fileIDs, all)
 	if err != nil {
 		return DiscoverResult{}, err
@@ -194,6 +196,9 @@ func (s *Service) runDiscovery(ctx context.Context, scanID int64, files []ScanFi
 			artistID, albumID, err = s.discoverGroupAlbum(providerCtx, group, cache)
 		}
 		if err != nil {
+			if discoveryAmbiguity(err) {
+				s.rememberAmbiguousFiles(group.files)
+			}
 			recovered := map[int64]albumTrackMatch{}
 			if group.releaseGroupID == "" && discoveryNeedsTracklist(err) {
 				var recoveryErr error
@@ -921,6 +926,21 @@ func discoveryTrackMessage(err error) string {
 		}
 	}
 	return "The album matched but this file's track could not be matched. Correct the title, disc and track tags and run discovery again."
+}
+
+// discoveryAmbiguity reports whether provider evidence could not safely
+// distinguish candidates; such files stay open for the reviewed Correct-match
+// flow instead of the weaker local fallback.
+func discoveryAmbiguity(err error) bool {
+	var provider *Error
+	if !errors.As(err, &provider) {
+		return false
+	}
+	switch provider.Code {
+	case "music_ambiguous_artist", "music_ambiguous_album", "music_ambiguous_tracklist":
+		return true
+	}
+	return false
 }
 
 func discoveryNeedsTracklist(err error) bool {

@@ -44,6 +44,15 @@ func (s *Service) LocalNamesFallbackFiles(ctx context.Context, scanID int64, fil
 		// The fallback is the weakest evidence tier; an occupied numbered
 		// position yields to the title evidence and takes the next free slot.
 		ev.relaxedPosition = true
+		if s.isAmbiguousFile(file.ID) {
+			// Provider evidence could not safely distinguish candidates; the
+			// file stays for the reviewed Correct-match flow.
+			stats.Skipped++
+			if run.onFile != nil {
+				run.onFile(file)
+			}
+			continue
+		}
 		if recovered := s.recoveredArtist(file.ID); recovered != "" &&
 			(isPlaceholderName(ev.artistName) || ev.artistName == "") {
 			if clean, ok := cleanText(recovered, 500); ok {

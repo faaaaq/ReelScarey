@@ -76,6 +76,7 @@ func (s *Service) ProviderMatchFiles(ctx context.Context, scanID int64, files []
 		} else if cancelled {
 			return stats, nil
 		}
+		alreadyAmbiguous := s.isAmbiguousFile(file.ID)
 		matched, message, err := s.matchFileRecordings(ctx, file, cache, rgAlbums, searchCache, searchFailed, &stats)
 		if err != nil {
 			var provider *Error
@@ -94,8 +95,15 @@ func (s *Service) ProviderMatchFiles(ctx context.Context, scanID int64, files []
 		if matched {
 			stats.Matched++
 		} else {
-			if saveErr := s.updateScanFileState(dbCtx, file.ID, "unresolved", 0, 0, 0, message); saveErr != nil {
-				return stats, saveErr
+			// A file whose provider evidence was ambiguous keeps the ambiguity
+			// diagnostic from the album phase; a message produced later in
+			// this same recording decision (including its own ambiguity
+			// detection) may replace it only when the file was not already
+			// flagged before this pass.
+			if message != "" && (!alreadyAmbiguous || strings.Contains(message, "will not choose automatically")) {
+				if saveErr := s.updateScanFileState(dbCtx, file.ID, "unresolved", 0, 0, 0, message); saveErr != nil {
+					return stats, saveErr
+				}
 			}
 		}
 		if run.onFile != nil {
@@ -202,6 +210,7 @@ func (s *Service) matchFileRecordings(
 		if second != nil && second.score >= recordingAutoAcceptScore &&
 			!strings.EqualFold(second.hit.MBID, best.hit.MBID) &&
 			!recordingEvidenceSeparates(best.hit, second.hit, identity) {
+			s.rememberAmbiguousFiles([]ScanFile{file})
 			return false, recordingAmbiguityMessage(best.hit, identity), nil
 		}
 		matched, err := s.applyRecordingMatch(ctx, file, best.hit, identity, cache, rgAlbums)
@@ -268,6 +277,25 @@ func (s *Service) recoveredArtist(fileID int64) string {
 		return ""
 	}
 	return s.recoveredArtists[fileID]
+}
+
+// rememberAmbiguousFiles marks files whose provider evidence cannot safely
+// distinguish candidates. They stay unresolved for the reviewed Correct-match
+// flow instead of being resolved into a guessed catalog identity by the
+// weaker local fallback.
+func (s *Service) rememberAmbiguousFiles(files []ScanFile) {
+	if s.ambiguousFiles == nil {
+		s.ambiguousFiles = map[int64]bool{}
+	}
+	for _, file := range files {
+		s.ambiguousFiles[file.ID] = true
+	}
+}
+
+// isAmbiguousFile reports whether provider evidence could not safely identify
+// this file during the current run.
+func (s *Service) isAmbiguousFile(fileID int64) bool {
+	return s.ambiguousFiles != nil && s.ambiguousFiles[fileID]
 }
 
 // applyRecordingMatch resolves the winning recording into the catalog: through

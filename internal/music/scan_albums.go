@@ -137,9 +137,15 @@ func (s *Service) recoverAlbumByTracklist(ctx context.Context, scanID int64, gro
 				return matches, err
 			}
 			if !sameAlbumTracklist(cohort, tracks, candidate.ID) {
+				// The provider has an album with this exact title; the file
+				// cohort just did not prove which edition it belongs to. The
+				// reviewed Correct-match flow owns the choice, so the weaker
+				// local fallback must not guess a duplicate local album.
+				s.rememberAmbiguousFiles(group.files)
 				continue
 			}
 			if chosen != "" {
+				s.rememberAmbiguousFiles(group.files)
 				return matches, &Error{Code: "music_ambiguous_tracklist", Message: "More than one MusicBrainz album has this exact tracklist. Use Correct match to choose the edition."}
 			}
 			chosen = candidate.ID

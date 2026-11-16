@@ -54,6 +54,10 @@ func TestDiscoverMatchesRaydiationByCompleteTracklist(t *testing.T) {
 					writeDiscoveryJSON(w, `{"id":"`+group+`","title":"Raydiation","artist-credit":[{"name":"C. Ray","artist":{"id":"`+artist+`","name":"Charlie Ray"}}]}`)
 				case "/ws/2/artist/" + artist:
 					writeDiscoveryJSON(w, artistLookupBody(artist, "Charlie Ray"))
+				case "/ws/2/recording":
+					// The recording-level search finds nothing in this fixture;
+					// ambiguous album cohorts stay open for Correct match.
+					writeDiscoveryJSON(w, emptyRecordingSearchBody())
 				default:
 					t.Errorf("unexpected request %s", r.URL)
 					http.NotFound(w, r)
@@ -109,6 +113,11 @@ func TestDiscoverMatchesRaydiationByCompleteTracklist(t *testing.T) {
 					t.Fatalf("Ashes track number = %d, %v", trackNumber, err)
 				}
 			} else if result.Matched != 0 || result.AlbumsAdded != 0 {
+				var aid any
+				var st, er string
+				if err := db.QueryRow(`SELECT state,coalesce(error,''),album_id FROM music_scan_files WHERE id=?`, selected[0]).Scan(&st, &er, &aid); err == nil {
+					t.Logf("DEBUG state=%s album=%v err=%q", st, aid, er)
+				}
 				t.Fatalf("expected discovery to leave review open, got %+v", result)
 			}
 			if scenario == "missing file" {

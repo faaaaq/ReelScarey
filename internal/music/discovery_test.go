@@ -1032,7 +1032,7 @@ func TestDiscoverUnknownReleaseGroupIDFallsBackToOwnNames(t *testing.T) {
 	}
 }
 
-func TestDiscoverAmbiguousExactAlbumCreatesLocalIdentity(t *testing.T) {
+func TestDiscoverAmbiguousExactAlbumStaysForCorrectMatch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/ws/2/artist" && r.URL.Query().Get("query") != "":
@@ -1058,25 +1058,22 @@ func TestDiscoverAmbiguousExactAlbumCreatesLocalIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Two identically titled release groups are a genuine provider
-	// ambiguity, so no canonical album is chosen. The file is still resolved
-	// from its own names into a tag-derived album that claims neither.
-	if result.Matched != 1 || result.Unresolved != 0 {
+	// Two identically titled release groups are a genuine provider ambiguity:
+	// ReelScarey does not choose automatically and does not fabricate a local
+	// identity that would hide the reviewed Correct-match flow.
+	if result.Matched != 0 || result.AlbumsAdded != 0 {
 		t.Fatal("discover result", result)
 	}
-	var mbid string
-	if err := db.QueryRow(`SELECT musicbrainz_id FROM music_albums`).Scan(&mbid); err != nil {
+	var state, message string
+	if err := db.QueryRow(`SELECT state,error FROM music_scan_files WHERE id=?`, fileID).Scan(&state, &message); err != nil {
 		t.Fatal(err)
 	}
-	if !IsLocalMusicID(mbid) {
-		t.Fatalf("ambiguous album was guessed: %q", mbid)
+	if state != "unresolved" || !strings.Contains(message, "more than one release group exactly titled") {
+		t.Fatalf("scan file %s %q", state, message)
 	}
-	var state string
-	if err := db.QueryRow(`SELECT state FROM music_scan_files WHERE id=?`, fileID).Scan(&state); err != nil {
-		t.Fatal(err)
-	}
-	if state != "matched" {
-		t.Fatal("file state", state)
+	var albums int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM music_albums`).Scan(&albums); err != nil || albums != 0 {
+		t.Fatalf("ambiguous album created rows %d", albums)
 	}
 }
 
