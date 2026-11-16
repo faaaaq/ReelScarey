@@ -78,6 +78,39 @@ completed folder, and runs wanted-album searches on a schedule.
     and the `Various`/`Various Artists` compilation aliases are comparison-only;
     a provider-created catalog row stores the MusicBrainz name, while a local row
     keeps the tagged name.
+  - Files whose album evidence is missing or a placeholder (`Unknown`,
+    `<Unknown>`, `New Folder`, `Artiste inconnu`, …) are not abandoned: after
+    the album pass they go through recording-level matching, and files it
+    cannot prove go through the local name fallback. Placeholder names never
+    become album or artist catalog entries.
+- Recording-level matching (part of **Match All** and **Discover** after the
+  album pass). Each remaining file is searched on MusicBrainz with
+  `recording:"Title" AND artist:"Name"` using the artist candidates from its
+  tags, file name and folders. Every hit is scored against the file's own
+  evidence (credited artist 0.45, title 0.45 with featured-credit folding,
+  duration within tolerance 0.10). Only a confident unique winner (score
+  ≥ 0.85, no equally strong second recording) is auto-accepted; its release
+  group is resolved into the catalog through the same album path and the track
+  is matched by recording ID. A catalog album that agrees with the file's own
+  album evidence can be extended with the genuine recording when its loaded
+  track list lacks it. Weaker or tied evidence stays unresolved with a message
+  naming the closest candidate and its confidence. MusicBrainz is the only
+  provider that supplies identities here; iTunes Search is consulted for
+  corroboration: it confirms a song exists, supplies a canonical artist name
+  when the file's own artist is a placeholder or missing (used by the local
+  fallback), and never fabricates MusicBrainz identifiers. A MusicBrainz rate
+  limit pauses only provider matching — iTunes and the local fallback still
+  run, and files whose album evidence MusicBrainz could still resolve are not
+  degraded to local entries while the provider is cooling down.
+- Local name fallback (the last **Match All** step). A file whose tags, file
+  name or folder still identify an artist and a track title is matched into
+  the local catalog from those names: the artist and album reuse identical
+  existing rows (a matching album under the album artist may be extended with
+  the track), a missing album groups into the artist's shared `Unknown` album,
+  and a missing track number takes the next free position. These rows carry
+  tag-derived `local-` identities, never claimed MusicBrainz IDs, and no media
+  file is ever modified. Files without an artist or without a track title stay
+  unresolved with a message naming exactly what evidence is missing.
 - Match selected unresolved files by audio fingerprint through AcoustID. It is
   a separate reviewed action that requires a saved application API key and
   fpcalc (Chromaprint) on the server. A request runs

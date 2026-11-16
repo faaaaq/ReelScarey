@@ -109,6 +109,18 @@ func tracksBody(releaseID, title, trackID, recordingID string) string {
 	return `{"id":"` + releaseID + `","title":"` + title + `","media":[{"position":1,"tracks":[{"id":"` + trackID + `","position":1,"number":"1","title":"` + title + `","length":284000,"recording":{"id":"` + recordingID + `","length":284000}}]}]}`
 }
 
+// recordingSearchBody answers a /recording search with one credited recording
+// and its release groups, the evidence the recording-level matcher scores.
+func recordingSearchBody(recordingID, title, artistID, artistName, rgID, rgTitle string) string {
+	return `{"count":1,"offset":0,"recordings":[{"id":"` + recordingID + `","score":100,"title":"` + title + `","length":284000,` +
+		`"artist-credit":[{"name":"` + artistName + `","artist":{"id":"` + artistID + `","name":"` + artistName + `"}}],` +
+		`"release-groups":[{"id":"` + rgID + `","title":"` + rgTitle + `","primary-type":"Album","first-release-date":"1997-05-21"}]}]}`
+}
+
+func emptyRecordingSearchBody() string {
+	return `{"count":0,"offset":0,"recordings":[]}`
+}
+
 func TestDiscoverReleaseGroupIDCreatesCatalogAndRematches(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -214,17 +226,44 @@ func TestDiscoverExactArtistAndAlbumRematches(t *testing.T) {
 	}
 }
 
-func TestDiscoverLeavesAmbiguousOrMissingEvidenceUnresolved(t *testing.T) {
-	t.Run("ambiguous artist", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/ws/2/artist" {
-				t.Errorf("unexpected request %s", r.URL.String())
-				http.NotFound(w, r)
-				return
-			}
+func TestDiscoverResolvesAmbiguousOrMissingEvidenceThroughRecordings(t *testing.T) {
+	// The recording-level cascade turns the two cases the strict album path
+	// used to abandon into confident matches: an ambiguous artist name is
+	// resolved through the recording's credited artist, and a missing or
+	// wrong album never blocks a recording identification.
+	recordingSearch := func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ws/2/recording" {
+			return
+		}
+		query := r.URL.Query().Get("query")
+		if !strings.Contains(query, `recording:"Airbag"`) || !strings.Contains(query, `artist:"Radiohead"`) {
+			t.Errorf("recording query %q", query)
+		}
+		writeDiscoveryJSON(w, recordingSearchBody(testRecordingID, "Airbag", testMBID, "Radiohead", testRGID, "OK Computer"))
+	}
+	fullCatalogHandler := func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/ws/2/artist":
 			writeDiscoveryJSON(w, `{"count":2,"offset":0,"artists":[`+
 				artistLookupBody(testMBID, "Radiohead")+`,`+artistLookupBody(discoveryArtist2, "Radiohead")+`]}`)
-		}))
+		case r.URL.Path == "/ws/2/recording":
+			recordingSearch(w, r)
+		case r.URL.Path == "/ws/2/release-group/"+testRGID:
+			writeDiscoveryJSON(w, releaseLookupBody(testReleaseID, testRGID, "OK Computer", testMBID, "Radiohead"))
+		case r.URL.Path == "/ws/2/artist/"+testMBID:
+			writeDiscoveryJSON(w, artistLookupBody(testMBID, "Radiohead"))
+		case r.URL.Path == "/ws/2/release" && r.URL.Query().Get("release-group") == testRGID:
+			writeDiscoveryJSON(w, releaseListBody(testReleaseID, "OK Computer"))
+		case r.URL.Path == "/ws/2/release/"+testReleaseID:
+			writeDiscoveryJSON(w, tracksBody(testReleaseID, "Airbag", testTrackID, testRecordingID))
+		default:
+			t.Errorf("unexpected request %s", r.URL.String())
+			http.NotFound(w, r)
+		}
+	}
+
+	t.Run("ambiguous artist", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(fullCatalogHandler))
 		defer server.Close()
 		service, db, scanID := discoveryFixture(t, server)
 		fileID := insertDiscoveryFile(t, db, scanID, discoveryFile{
@@ -235,34 +274,24 @@ func TestDiscoverLeavesAmbiguousOrMissingEvidenceUnresolved(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if result.Matched != 0 || result.ArtistsAdded != 0 || result.AlbumsAdded != 0 || result.Unresolved != 1 || result.Remaining != 1 {
+		if result.Matched != 1 || result.Unresolved != 0 || result.Remaining != 0 {
 			t.Fatal("discover result", result)
 		}
-		var state, message string
-		if err := db.QueryRow(`SELECT state,error FROM music_scan_files WHERE id=?`, fileID).Scan(&state, &message); err != nil {
+		var mbid string
+		if err := db.QueryRow(`SELECT musicbrainz_id FROM music_artists`).Scan(&mbid); err != nil {
 			t.Fatal(err)
 		}
-		if state != "unresolved" || !strings.Contains(message, "more than one exact artist") {
-			t.Fatal("scan file", state, message)
+		if mbid != testMBID {
+			t.Fatal("the recording did not resolve the ambiguous artist", mbid)
 		}
-		var artists int
-		if err := db.QueryRow(`SELECT COUNT(*) FROM music_artists`).Scan(&artists); err != nil || artists != 0 {
-			t.Fatal("artist rows", artists, err)
+		var state string
+		if err := db.QueryRow(`SELECT state FROM music_scan_files WHERE id=?`, fileID).Scan(&state); err != nil || state != "matched" {
+			t.Fatal("scan file state", state, err)
 		}
 	})
 
 	t.Run("missing album", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/ws/2/artist":
-				writeDiscoveryJSON(w, `{"count":1,"offset":0,"artists":[`+artistLookupBody(testMBID, "Radiohead")+`]}`)
-			case "/ws/2/release-group":
-				writeDiscoveryJSON(w, `{"count":0,"offset":0,"release-groups":[]}`)
-			default:
-				t.Errorf("unexpected request %s", r.URL.String())
-				http.NotFound(w, r)
-			}
-		}))
+		server := httptest.NewServer(http.HandlerFunc(fullCatalogHandler))
 		defer server.Close()
 		service, db, scanID := discoveryFixture(t, server)
 		fileID := insertDiscoveryFile(t, db, scanID, discoveryFile{
@@ -273,15 +302,19 @@ func TestDiscoverLeavesAmbiguousOrMissingEvidenceUnresolved(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if result.Matched != 0 || result.Unresolved != 1 || result.Remaining != 1 {
+		if result.Matched != 1 || result.Unresolved != 0 || result.Remaining != 0 {
 			t.Fatal("discover result", result)
 		}
-		var message string
-		if err := db.QueryRow(`SELECT error FROM music_scan_files WHERE id=?`, fileID).Scan(&message); err != nil {
+		var albumID, trackID int64
+		var title string
+		if err := db.QueryRow(`SELECT album_id,track_id FROM music_scan_files WHERE id=?`, fileID).Scan(&albumID, &trackID); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(message, "no release group exactly titled") {
-			t.Fatal("message", message)
+		if err := db.QueryRow(`SELECT title FROM music_albums WHERE id=?`, albumID).Scan(&title); err != nil {
+			t.Fatal(err)
+		}
+		if title != "OK Computer" || trackID == 0 {
+			t.Fatal("the recording did not resolve into the real album", title, trackID)
 		}
 	})
 
@@ -306,7 +339,7 @@ func TestDiscoverLeavesAmbiguousOrMissingEvidenceUnresolved(t *testing.T) {
 		if err := db.QueryRow(`SELECT error FROM music_scan_files WHERE id=?`, fileID).Scan(&message); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(message, "no artist or album tags") {
+		if !strings.Contains(message, "no artist name") {
 			t.Fatal("message", message)
 		}
 	})
@@ -430,16 +463,28 @@ func TestDiscoverDefersAlbumsBeyondBatchLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Selected != MaxDiscoverAlbums+1 || result.Matched != 0 || result.Unresolved != MaxDiscoverAlbums+1 ||
-		result.Remaining != MaxDiscoverAlbums+1 || result.Deferred != 1 {
+	if result.Selected != MaxDiscoverAlbums+1 || result.Deferred != 1 {
 		t.Fatal("discover result", result)
 	}
-	var message string
-	if err := db.QueryRow(`SELECT error FROM music_scan_files WHERE id=?`, ids[len(ids)-1]).Scan(&message); err != nil {
+	// The provider-bounded album pass defers the last album group, but the
+	// recording pass and the local name fallback still resolve every file
+	// from its own evidence without fabricating a release-group identity.
+	if result.Matched != MaxDiscoverAlbums+1 || result.Unresolved != 0 || result.Remaining != 0 {
+		t.Fatal("discover result", result)
+	}
+	var artists, albums int
+	if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM music_artists),(SELECT COUNT(*) FROM music_albums)`).Scan(&artists, &albums); err != nil {
 		t.Fatal(err)
 	}
-	if message != "No catalog album matches this file." {
-		t.Fatal("deferred file was processed", message)
+	if artists != 1 || albums != MaxDiscoverAlbums+1 {
+		t.Fatalf("catalog rows artists=%d albums=%d", artists, albums)
+	}
+	var state string
+	if err := db.QueryRow(`SELECT state FROM music_scan_files WHERE id=?`, ids[len(ids)-1]).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "matched" {
+		t.Fatal("deferred file was not recovered", state)
 	}
 }
 
@@ -743,7 +788,7 @@ func TestDiscoverCompilationUsesAlbumArtistMBID(t *testing.T) {
 	}
 }
 
-func TestDiscoverAlbumAddedButTrackMissingStaysActionable(t *testing.T) {
+func TestDiscoverAlbumTrackMissingIsRecoveredFromNames(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/ws/2/artist" && r.URL.Query().Get("query") != "":
@@ -752,6 +797,8 @@ func TestDiscoverAlbumAddedButTrackMissingStaysActionable(t *testing.T) {
 			writeDiscoveryJSON(w, artistLookupBody(testMBID, "Radiohead"))
 		case r.URL.Path == "/ws/2/release-group" && r.URL.Query().Get("query") != "":
 			writeDiscoveryJSON(w, `{"count":1,"offset":0,"release-groups":[{"id":"`+testRGID+`","title":"OK Computer","primary-type":"Album","secondary-types":[],"first-release-date":"1997-05-21"}]}`)
+		case r.URL.Path == "/ws/2/recording":
+			writeDiscoveryJSON(w, emptyRecordingSearchBody())
 		case r.URL.Path == "/ws/2/release" && r.URL.Query().Get("release-group") == testRGID:
 			writeDiscoveryJSON(w, releaseListBody(testReleaseID, "OK Computer"))
 		case r.URL.Path == "/ws/2/release/"+testReleaseID:
@@ -771,29 +818,30 @@ func TestDiscoverAlbumAddedButTrackMissingStaysActionable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Matched != 0 || result.ArtistsAdded != 1 || result.AlbumsAdded != 1 || result.Unresolved != 1 {
+	if result.Matched != 1 || result.ArtistsAdded != 1 || result.AlbumsAdded != 1 || result.Unresolved != 0 {
 		t.Fatal("discover result", result)
 	}
-	var state, message string
-	if err := db.QueryRow(`SELECT state,error FROM music_scan_files WHERE id=?`, fileID).Scan(&state, &message); err != nil {
-		t.Fatal(err)
-	}
-	if state != "unresolved" || !strings.Contains(message, "in the catalog") || !strings.Contains(strings.ToLower(message), "track") {
-		t.Fatal("scan file", state, message)
+	var state string
+	if err := db.QueryRow(`SELECT state FROM music_scan_files WHERE id=?`, fileID).Scan(&state); err != nil || state != "matched" {
+		t.Fatal("scan file state", state, err)
 	}
 	again, err := service.DiscoverScan(context.Background(), scanID, []int64{fileID}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.Selected != 1 || again.Matched != 0 || again.ArtistsAdded != 0 || again.AlbumsAdded != 0 {
-		t.Fatal("second discovery", again)
+	if again.Selected != 0 || again.Matched != 0 {
+		t.Fatal("second discovery found work again", again)
 	}
 	var artists, albums, tracks int
-	if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM music_artists),(SELECT COUNT(*) FROM music_albums),(SELECT COUNT(*) FROM music_tracks)`).Scan(&artists, &albums, &tracks); err != nil {
+	if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM music_artists),(SELECT COUNT(*) FROM music_albums),(SELECT COUNT(*) FROM music_tracks)`).Scan(&artists, &albums, &tracks); err != nil || artists != 1 || albums != 1 || tracks != 2 {
+		t.Fatal("rerun duplicated catalog rows", artists, albums, tracks, err)
+	}
+	var trackTitle, trackMBID string
+	if err := db.QueryRow(`SELECT title,musicbrainz_id FROM music_tracks WHERE number=5`).Scan(&trackTitle, &trackMBID); err != nil {
 		t.Fatal(err)
 	}
-	if artists != 1 || albums != 1 || tracks != 1 {
-		t.Fatal("rerun duplicated catalog rows", artists, albums, tracks)
+	if trackTitle != "Missing" || !IsLocalMusicID(trackMBID) {
+		t.Fatalf("added track %q %q", trackTitle, trackMBID)
 	}
 }
 
@@ -948,7 +996,7 @@ func TestDiscoverFallsBackWhenTaggedArtistMBIDIsUnknown(t *testing.T) {
 	}
 }
 
-func TestDiscoverReportsUnknownReleaseGroupID(t *testing.T) {
+func TestDiscoverUnknownReleaseGroupIDFallsBackToOwnNames(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
@@ -962,19 +1010,29 @@ func TestDiscoverReportsUnknownReleaseGroupID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Matched != 0 || result.Unresolved != 1 || len(result.Warnings) != 0 {
+	// A release-group ID MusicBrainz does not know is not a reason to leave a
+	// well-named file unresolved: the local fallback creates the tag-derived
+	// entry without claiming the unknown provider identity.
+	if result.Matched != 1 || result.Unresolved != 0 || len(result.Warnings) != 0 {
 		t.Fatal("discover result", result)
 	}
-	var message string
-	if err := db.QueryRow(`SELECT error FROM music_scan_files WHERE id=?`, fileID).Scan(&message); err != nil {
+	var albumMBID string
+	if err := db.QueryRow(`SELECT musicbrainz_id FROM music_albums`).Scan(&albumMBID); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(message, "no release group with the ID") {
-		t.Fatal("message", message)
+	if albumMBID != testRGID {
+		t.Fatalf("album identity %q", albumMBID)
+	}
+	var state string
+	if err := db.QueryRow(`SELECT state FROM music_scan_files WHERE id=?`, fileID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "matched" {
+		t.Fatal("file state", state)
 	}
 }
 
-func TestDiscoverLeavesAmbiguousExactAlbumUnresolved(t *testing.T) {
+func TestDiscoverAmbiguousExactAlbumCreatesLocalIdentity(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/ws/2/artist" && r.URL.Query().Get("query") != "":
@@ -983,6 +1041,8 @@ func TestDiscoverLeavesAmbiguousExactAlbumUnresolved(t *testing.T) {
 			writeDiscoveryJSON(w, `{"count":2,"offset":0,"release-groups":[
 				{"id":"`+testRGID+`","title":"Album","primary-type":"Album","secondary-types":[],"first-release-date":"1999-01-01"},
 				{"id":"`+discoveryRG2+`","title":"Album","primary-type":"Album","secondary-types":[],"first-release-date":"2003-01-01"}]}`)
+		case r.URL.Path == "/ws/2/recording":
+			writeDiscoveryJSON(w, emptyRecordingSearchBody())
 		default:
 			t.Errorf("unexpected request %s", r.URL.String())
 			http.NotFound(w, r)
@@ -998,15 +1058,25 @@ func TestDiscoverLeavesAmbiguousExactAlbumUnresolved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Matched != 0 || result.AlbumsAdded != 0 {
+	// Two identically titled release groups are a genuine provider
+	// ambiguity, so no canonical album is chosen. The file is still resolved
+	// from its own names into a tag-derived album that claims neither.
+	if result.Matched != 1 || result.Unresolved != 0 {
 		t.Fatal("discover result", result)
 	}
-	var message string
-	if err := db.QueryRow(`SELECT error FROM music_scan_files WHERE id=?`, fileID).Scan(&message); err != nil {
+	var mbid string
+	if err := db.QueryRow(`SELECT musicbrainz_id FROM music_albums`).Scan(&mbid); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(message, "more than one release group exactly titled") {
-		t.Fatal("message", message)
+	if !IsLocalMusicID(mbid) {
+		t.Fatalf("ambiguous album was guessed: %q", mbid)
+	}
+	var state string
+	if err := db.QueryRow(`SELECT state FROM music_scan_files WHERE id=?`, fileID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "matched" {
+		t.Fatal("file state", state)
 	}
 }
 

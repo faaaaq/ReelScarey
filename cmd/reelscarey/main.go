@@ -144,6 +144,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	metadataService.SetCooldownDB(db)
 	musicService := music.NewService(db, cfg.MediaDir)
 	musicService.SetDownloadsDir(cfg.DownloadsDir)
+	musicService.EnableiTunes()
 	musicService.SetArtworkDir(filepath.Join(cfg.ConfigDir, "artwork"))
 	musicService.SetSecrets(secretStore)
 	musicBrainzCtx, musicBrainzCancel := context.WithTimeout(context.Background(), 30*time.Second)

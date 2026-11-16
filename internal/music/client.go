@@ -416,6 +416,15 @@ type mbReleaseBrowse struct {
 	Releases []mbRelease `json:"releases"`
 }
 
+// CoolingDown reports whether provider requests are paused by an active
+// cooldown without consuming a request slot or contacting the network.
+func (c *Client) CoolingDown(ctx context.Context) bool {
+	if c == nil {
+		return false
+	}
+	return c.cooldownError(ctx) != nil
+}
+
 func (c *Client) SearchArtists(ctx context.Context, query string, page int) (SearchResults, error) {
 	return c.searchArtists(ctx, query, page, true)
 }
@@ -555,6 +564,123 @@ func (c *Client) ReleaseGroup(ctx context.Context, mbid string) (Album, string, 
 		}
 	}
 	return Album{}, "", invalidResponse("release group artist")
+}
+
+// RecordingHit is one MusicBrainz recording returned by a recording search.
+// The artist and release-group evidence let a caller separate "the recording
+// exists" from "this artist recorded it" without extra lookups.
+type RecordingHit struct {
+	MBID          string
+	Score         int
+	Title         string
+	LengthMS      int
+	ArtistID      string
+	ArtistName    string
+	ReleaseGroups []Album
+}
+
+type mbRecordingSearch struct {
+	Count      int           `json:"count"`
+	Offset     int           `json:"offset"`
+	Recordings []mbRecording `json:"recordings"`
+}
+
+type mbRecording struct {
+	ID           string `json:"id"`
+	Score        int    `json:"score"`
+	Title        string `json:"title"`
+	Length       *int   `json:"length"`
+	ArtistCredit []struct {
+		Artist struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"artist"`
+	} `json:"artist-credit"`
+	ReleaseGroups []mbReleaseGroup `json:"release-groups"`
+	Releases      []struct {
+		ID           string `json:"id"`
+		Title        string `json:"title"`
+		ReleaseGroup *struct {
+			ID               string `json:"id"`
+			Title            string `json:"title"`
+			FirstReleaseDate string `json:"first-release-date"`
+		} `json:"release-group"`
+	} `json:"releases"`
+}
+
+// SearchRecordings runs one bounded recording search with a raw query. The
+// caller builds the query (for example `recording:"Title" AND artist:"Name"`
+// or `arid:<mbid> AND recording:"Title"`), so evidence scope stays explicit.
+func (c *Client) SearchRecordings(ctx context.Context, query string) ([]RecordingHit, error) {
+	const limit = 25
+	var body mbRecordingSearch
+	if err := c.request(ctx, "/recording", url.Values{
+		"query":  {query},
+		"limit":  {strconv.Itoa(limit)},
+		"offset": {"0"},
+	}, &body, 4<<20); err != nil {
+		return nil, err
+	}
+	if body.Count < 0 || body.Offset < 0 || len(body.Recordings) > limit {
+		return nil, invalidResponse("recording search")
+	}
+	hits := make([]RecordingHit, 0, len(body.Recordings))
+	for _, raw := range body.Recordings {
+		title, ok := cleanText(raw.Title, 500)
+		if !ok || !ValidMBID(raw.ID) {
+			continue
+		}
+		hit := RecordingHit{MBID: raw.ID, Score: raw.Score, Title: title}
+		if raw.Length != nil && *raw.Length > 0 {
+			hit.LengthMS = *raw.Length
+		}
+		for _, credit := range raw.ArtistCredit {
+			if ValidMBID(credit.Artist.ID) {
+				hit.ArtistID, hit.ArtistName = credit.Artist.ID, credit.Artist.Name
+				break
+			}
+		}
+		seen := map[string]bool{}
+		addGroup := func(id, groupTitle, date string) {
+			if !ValidMBID(id) || seen[id] {
+				return
+			}
+			seen[id] = true
+			album := Album{MusicBrainzID: id, Title: groupTitle, CoverURL: coverURL(id), Monitored: true, Status: "missing"}
+			if year, err := strconv.Atoi(date[:min(4, len(date))]); err == nil && year >= 1800 {
+				album.Year = &year
+			}
+			hit.ReleaseGroups = append(hit.ReleaseGroups, album)
+		}
+		for _, group := range raw.ReleaseGroups {
+			addGroup(group.ID, group.Title, group.FirstReleaseDate)
+		}
+		for _, release := range raw.Releases {
+			if release.ReleaseGroup != nil {
+				addGroup(release.ReleaseGroup.ID, release.ReleaseGroup.Title, release.ReleaseGroup.FirstReleaseDate)
+			}
+		}
+		hits = append(hits, hit)
+	}
+	return hits, nil
+}
+
+// SearchRecordingByArtistName searches for one recording title credited to an
+// artist with the given name. Evidence stays scoped to that name.
+func (c *Client) SearchRecordingByArtistName(ctx context.Context, artistName, title string) ([]RecordingHit, error) {
+	if strings.TrimSpace(artistName) == "" || strings.TrimSpace(title) == "" {
+		return nil, nil
+	}
+	return c.SearchRecordings(ctx, "recording:"+quoteSearchValue(title)+" AND artist:"+quoteSearchValue(artistName))
+}
+
+// SearchRecordingByArtistID scopes the recording search to one artist MBID so
+// multiple same-named artists can be told apart.
+func (c *Client) SearchRecordingByArtistID(ctx context.Context, artistID, title string) ([]RecordingHit, error) {
+	if strings.TrimSpace(artistID) == "" || strings.TrimSpace(title) == "" {
+		return nil, nil
+	}
+	return c.SearchRecordings(ctx, "arid:"+artistID+" AND recording:"+quoteSearchValue(title))
 }
 
 func quoteSearchValue(value string) string {

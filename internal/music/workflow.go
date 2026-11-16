@@ -308,6 +308,7 @@ func (s *Service) workflowCancelled(ctx context.Context, id int64) (bool, error)
 func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string) error {
 	id := scan.ID
 	base := context.WithoutCancel(ctx)
+	s.recoveredArtists = map[int64]string{}
 	total, err := s.unresolvedCount(base, id)
 	if err != nil {
 		return err
@@ -378,9 +379,8 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 	if err != nil {
 		return err
 	}
-	// MusicBrainz discovery is the last step and only sees files whose tags
-	// were not complete enough for a local identity. A well-tagged library
-	// therefore never waits on the provider.
+	// MusicBrainz album discovery resolves strong album evidence. A well-tagged
+	// library therefore never waits on the provider.
 	discovered, itunesMatched := 0, 0
 	if unresolved > 0 {
 		if err := s.startWorkflowPhase(base, id, owner, "matching", unresolved, "Checking MusicBrainz and the iTunes catalog for the remaining files."); err != nil {
@@ -405,12 +405,74 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 	if err != nil {
 		return err
 	}
-	message := fmt.Sprintf("Matched %d files from the saved catalog and their own tags without MusicBrainz or AcoustID calls; matched %d more by audio fingerprint; discovered %d through MusicBrainz.",
-		localMatched, fingerprinted, discovered-itunesMatched)
-	if itunesMatched > 0 {
-		message += fmt.Sprintf(" Matched %d through iTunes.", itunesMatched)
+	// Recording-level provider matching resolves artist/title evidence without
+	// a trustworthy album. A MusicBrainz rate limit pauses only this step; the
+	// local name fallback still runs so a rate limit never hides resolvable
+	// files.
+	recordingMatched := 0
+	if unresolved > 0 {
+		files, listErr := s.unresolvedScanFilesAll(base, id)
+		if listErr != nil {
+			return s.handleWorkflowError(ctx, id, owner, listErr, localMatched+fingerprinted+discovered)
+		}
+		if err := s.startWorkflowPhase(base, id, owner, "matching", unresolved, "Searching MusicBrainz and iTunes recordings for the remaining files."); err != nil {
+			if errors.Is(err, errWorkLeaseLost) {
+				return nil
+			}
+			return err
+		}
+		stats, recErr := s.ProviderMatchFiles(ctx, id, files, providerMatchRun{
+			onFile: func(file ScanFile) {
+				_ = s.progressWorkflow(ctx, id, owner, "matching", file.RelativePath, "Searching MusicBrainz and iTunes recordings.")
+			},
+		})
+		recordingMatched = stats.Matched
+		if stats.IssuedMB && stats.Deferred > 0 {
+			warnings = append(warnings, "MusicBrainz is limiting requests. Provider recording matching paused; the remaining files stay for the next run.")
+		}
+		if recErr != nil {
+			var provider *Error
+			if errors.As(recErr, &provider) {
+				warnings = append(warnings, matchErrorMessage(recErr))
+			} else {
+				return s.handleWorkflowError(ctx, id, owner, recErr, localMatched+fingerprinted+discovered+recordingMatched)
+			}
+		}
 	}
-	message += fmt.Sprintf(" %d files remain unresolved for review.", unresolved)
+	unresolved, err = s.unresolvedCount(base, id)
+	if err != nil {
+		return err
+	}
+	// Local name fallback: whatever providers could not prove is matched from
+	// the file's own tags, file name and folder into the tag-derived catalog.
+	namesMatched := 0
+	if unresolved > 0 {
+		files, listErr := s.unresolvedScanFilesAll(base, id)
+		if listErr != nil {
+			return s.handleWorkflowError(ctx, id, owner, listErr, localMatched+fingerprinted+discovered+recordingMatched)
+		}
+		if err := s.startWorkflowPhase(base, id, owner, "matching", unresolved, "Matching the remaining files from their own names into the local catalog."); err != nil {
+			if errors.Is(err, errWorkLeaseLost) {
+				return nil
+			}
+			return err
+		}
+		fallbackStats, fbErr := s.LocalNamesFallbackFiles(ctx, id, files, namesFallbackRun{
+			onFile: func(file ScanFile) {
+				_ = s.progressWorkflow(ctx, id, owner, "matching", file.RelativePath, "Matching files from their own names.")
+			},
+		})
+		namesMatched = fallbackStats.Matched
+		if fbErr != nil {
+			return s.handleWorkflowError(ctx, id, owner, fbErr, localMatched+fingerprinted+discovered+recordingMatched+namesMatched)
+		}
+	}
+	unresolved, err = s.unresolvedCount(base, id)
+	if err != nil {
+		return err
+	}
+	message := fmt.Sprintf("Matched %d files from the saved catalog and their own tags without MusicBrainz or AcoustID calls; matched %d more by audio fingerprint; discovered %d through MusicBrainz albums and %d through the iTunes catalog; matched %d more through MusicBrainz recordings; matched %d from their own names into the local catalog. %d files remain unresolved for review.",
+		localMatched, fingerprinted, discovered-itunesMatched, itunesMatched, recordingMatched, namesMatched, unresolved)
 	if warningText := dedupeWarnings(warnings); warningText != "" {
 		message += " " + warningText
 	}
@@ -481,7 +543,10 @@ func (s *Service) localTagMatchFiles(ctx context.Context, scanID int64, owner st
 			}
 		}
 		for _, file := range remaining {
-			ev := tagIdentityFor(file)
+			// The creation fast path trusts only embedded tags, so files whose
+			// tags are incomplete still get their provider chances before the
+			// weaker name-derived fallback creates local entries.
+			ev := tagIdentityTagOnly(file)
 			if !ev.canCreate() {
 				// The file stays unresolved for the fingerprint and provider
 				// fallbacks; it has no complete local tag identity.
@@ -542,13 +607,10 @@ func (s *Service) discoverAllFiles(ctx context.Context, scanID int64, owner stri
 		next := files[len(files)-1].RelativePath
 		candidates := make([]ScanFile, 0, len(files))
 		for _, file := range files {
-			if tagIdentityFor(file).canCreate() {
-				// A complete tag identity was already handled locally. It is
-				// left for manual review if the tags conflicted; provider
-				// discovery must not create a second catalog album for it.
-				processed++
-				continue
-			}
+			// Every unresolved file goes to album discovery now: complete-tag
+			// files that failed local matching (conflicting titles, occupied
+			// positions) still deserve a provider album search, and the
+			// recording and local-fallback phases run afterwards for the rest.
 			candidates = append(candidates, file)
 		}
 		if len(candidates) > 0 {
@@ -862,6 +924,27 @@ func (s *Service) registeredMusicFileIDs(ctx context.Context, scanID int64) ([]i
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// unresolvedScanFilesAll loads every unresolved file of a scan in bounded
+// pages so a provider phase can process the complete remaining set.
+func (s *Service) unresolvedScanFilesAll(ctx context.Context, scanID int64) ([]ScanFile, error) {
+	files := []ScanFile{}
+	cursor := ""
+	for {
+		page, err := s.unresolvedScanFilesAfter(ctx, scanID, cursor, workflowFileBatch)
+		if err != nil {
+			return nil, err
+		}
+		if len(page) == 0 {
+			return files, nil
+		}
+		files = append(files, page...)
+		cursor = page[len(page)-1].RelativePath
+		if len(files) >= 10000 {
+			return files, nil
+		}
+	}
 }
 
 // unresolvedScanFilesAfter pages through unresolved files by relative path so a

@@ -366,6 +366,7 @@ func TestLocalTagCatalogHandlesMultiDiscDefaultsAndNormalization(t *testing.T) {
 		t.Fatalf("conflict changed tracks: %d %v", afterTracks, err)
 	}
 
+	rerunBrainz := brainzCalls
 	// A rerun over the same tags reuses every catalog row.
 	rerunScan := newLocalTagScan(t, db)
 	insertLocalTagRows(t, db, rerunScan, rows)
@@ -389,8 +390,8 @@ func TestLocalTagCatalogHandlesMultiDiscDefaultsAndNormalization(t *testing.T) {
 	if artists != 1 || albums != 1 || tracks != 4 {
 		t.Fatalf("rerun duplicated catalog rows artists=%d albums=%d tracks=%d", artists, albums, tracks)
 	}
-	if brainzCalls != 0 {
-		t.Fatalf("rerun called MusicBrainz %d times", brainzCalls)
+	if brainzCalls != rerunBrainz {
+		t.Fatalf("rerun called MusicBrainz %d extra times", brainzCalls-rerunBrainz)
 	}
 }
 

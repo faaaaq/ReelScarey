@@ -22,6 +22,14 @@ const (
 	localTrackIDPrefix  = "local-track:"
 )
 
+// The shared grouping label for files with no album evidence at all. All
+// "Unknown" files of one artist share one local album row instead of one row
+// per file.
+const (
+	unknownAlbumTitle = "Unknown"
+	unknownAlbumKey   = "unknown"
+)
+
 // IsLocalMusicID reports whether an identifier was generated from file tags
 // rather than supplied by MusicBrainz.
 func IsLocalMusicID(value string) bool {
@@ -59,16 +67,35 @@ type tagIdentity struct {
 }
 
 // canCreate reports whether the tags are complete enough to create or use a
-// local catalog entry: album artist/artist, album, title and a track number.
+// local catalog entry without provider backing: album artist/artist, album,
+// title and a track number.
 func (ev tagIdentity) canCreate() bool {
 	return ev.artistName != "" && ev.albumTitle != "" && ev.trackTitle != "" &&
 		ev.artistKey != "" && ev.albumKey != "" && ev.trackKey != "" && ev.number > 0
 }
 
-// tagIdentityFor reads the evidence already stored on the scan row. A missing
-// disc tag is not an error; the caller decides whether to default it or to use
-// the album's existing track list.
-func tagIdentityFor(file ScanFile) tagIdentity {
+// canCreateFromRelease reports whether a provider-backed identity is complete
+// enough to build the catalog entry locally without a track number. Album and
+// track titles are still required; the recording identity replaces only the
+// positional evidence.
+func (ev tagIdentity) canCreateFromRelease() bool {
+	return ev.artistName != "" && ev.albumTitle != "" && ev.trackTitle != "" &&
+		ev.artistKey != "" && ev.albumKey != "" && ev.trackKey != ""
+}
+
+// canCreateFromNames reports whether the file's own names (tags, file name or
+// directory) are complete enough to create a tag-derived local entry during
+// the final local fallback. Album and track number stay optional because a
+// missing album groups into the artist's shared "Unknown" album and a missing
+// number takes the next free position.
+func (ev tagIdentity) canCreateFromNames() bool {
+	return ev.artistName != "" && ev.trackTitle != "" && ev.artistKey != "" && ev.trackKey != ""
+}
+
+// tagIdentityTagOnly reads only the embedded tag evidence, without filename or
+// directory inference. It gates the local tag-creation fast path so provider
+// matching still gets the first chance at files whose tags are incomplete.
+func tagIdentityTagOnly(file ScanFile) tagIdentity {
 	artist, artistOK := cleanText(firstNonEmpty(file.AlbumArtist, file.Artist), 500)
 	album, albumOK := cleanText(file.Album, 500)
 	title, titleOK := cleanText(file.Title, 500)
@@ -102,6 +129,76 @@ func tagIdentityFor(file ScanFile) tagIdentity {
 	}
 	if file.Year != nil && *file.Year > 0 {
 		ev.year = *file.Year
+	}
+	return ev
+}
+
+// tagIdentityFor reads the evidence already stored on the scan row, extended
+// with the file name and directory inference. Embedded tags stay authoritative
+// for the fields they contain; the file name fills a missing artist or title,
+// and a real album folder fills a missing album. A missing disc tag is not an
+// error; the caller decides whether to default it or to use the album's
+// existing track list.
+func tagIdentityFor(file ScanFile) tagIdentity {
+	inferred := inferFileIdentity(file)
+	artist, _ := cleanText(firstNonEmpty(inferred.AlbumArtist, inferred.Artist), 500)
+	album, _ := cleanText(inferred.Album, 500)
+	title, _ := cleanText(inferred.Title, 500)
+	ev := tagIdentity{
+		artistMBID:    trustedArtistMusicBrainzID(file),
+		albumMBID:     strings.ToLower(strings.TrimSpace(file.MusicBrainzReleaseGroupID)),
+		trackMBID:     strings.ToLower(strings.TrimSpace(file.MusicBrainzTrackID)),
+		recordingMBID: strings.ToLower(strings.TrimSpace(file.MusicBrainzRecordingID)),
+	}
+	if !ValidMBID(ev.albumMBID) {
+		ev.albumMBID = ""
+	}
+	if !ValidMBID(ev.trackMBID) {
+		ev.trackMBID = ""
+	}
+	if !ValidMBID(ev.recordingMBID) {
+		ev.recordingMBID = ""
+	}
+	// Placeholder names ("Unknown Artist", "<Unknown>") are not identity
+	// evidence; each field is set independently so one placeholder never
+	// erases the usable evidence in the other fields.
+	if !isPlaceholderName(artist) {
+		ev.artistName = artist
+		ev.artistKey = localArtistKey(artist)
+	}
+	if !isPlaceholderName(album) {
+		ev.albumTitle = album
+		ev.albumKey = compactMatchName(album)
+	}
+	if !isPlaceholderName(title) {
+		ev.trackTitle = title
+		ev.trackKey = compactMatchName(title)
+	}
+	if file.Track != nil && *file.Track > 0 && *file.Track <= 100000 {
+		ev.number = *file.Track
+	}
+	if file.Disc != nil && *file.Disc > 0 && *file.Disc <= 100000 {
+		ev.disc = *file.Disc
+	}
+	if file.Year != nil && *file.Year > 0 {
+		ev.year = *file.Year
+	}
+	return ev
+}
+
+// tagIdentityWithRecording upgrades an identity with a provider recording and
+// release-group identity, the canonical artist from the recording and a
+// provider-normalized title when the file has none of its own.
+func (ev tagIdentity) withRecording(artistMBID, recordingMBID string, title string) tagIdentity {
+	if ValidMBID(artistMBID) && ev.artistMBID == "" {
+		ev.artistMBID = strings.ToLower(strings.TrimSpace(artistMBID))
+	}
+	if ValidMBID(recordingMBID) && ev.recordingMBID == "" {
+		ev.recordingMBID = strings.ToLower(strings.TrimSpace(recordingMBID))
+	}
+	if clean, ok := cleanText(title, 500); ok && ev.trackKey == "" {
+		ev.trackTitle = clean
+		ev.trackKey = compactMatchName(clean)
 	}
 	return ev
 }
@@ -390,8 +487,16 @@ func (c *localCatalog) resolveAlbum(ctx context.Context, ev tagIdentity, create 
 			return ref, true, nil
 		}
 	}
-	if ev.albumTitle == "" || ev.artistKey == "" {
+	if ev.artistKey == "" {
 		return albumRef{}, false, nil
+	}
+	if ev.albumTitle == "" {
+		// A missing album only supports creation inside the reviewed fallback
+		// path; a lookup without an album is not evidence of anything.
+		if !create {
+			return albumRef{}, false, nil
+		}
+		ev.albumTitle, ev.albumKey = unknownAlbumTitle, unknownAlbumKey
 	}
 	artistID, found, err := c.resolveArtist(ctx, ev, create)
 	if err != nil || !found {
@@ -498,16 +603,27 @@ func (c *localCatalog) findExisting(ctx context.Context, file ScanFile) (int64, 
 // matchTagCreate creates or reuses the artist, album and track the tags prove
 // and returns the matched catalog IDs. It never contacts a provider.
 func (c *localCatalog) matchTagCreate(ctx context.Context, file ScanFile) (int64, int64, int64, error) {
-	return c.matchIdentity(ctx, file, tagIdentityFor(file))
+	return c.matchIdentity(ctx, file, tagIdentityTagOnly(file))
 }
 
 func (c *localCatalog) matchTagCreateWithIDs(ctx context.Context, file ScanFile, releaseGroupID, recordingID string) (int64, int64, int64, error) {
 	return c.matchIdentity(ctx, file, tagIdentityFor(file).withAcoustID(releaseGroupID, recordingID))
 }
 
+// matchTagCreateFromNames builds the tag-derived entry from the merged
+// tag/filename/path identity during the final local fallback. Album and track
+// number are optional there; the album falls back to the artist's shared
+// "Unknown" album and the track takes the next free position.
+func (c *localCatalog) matchTagCreateFromNames(ctx context.Context, file ScanFile, ev tagIdentity) (int64, int64, int64, error) {
+	if !ev.canCreateFromNames() {
+		return 0, 0, 0, &Error{Code: "music_local_names", Message: "The file's names do not identify an artist and a track title. It stays unresolved for manual review."}
+	}
+	return c.matchIdentity(ctx, file, ev)
+}
+
 func (c *localCatalog) matchIdentity(ctx context.Context, file ScanFile, ev tagIdentity) (int64, int64, int64, error) {
-	if !ev.canCreate() {
-		return 0, 0, 0, &Error{Code: "music_local_tags", Message: "The file needs artist, album, title and a track number to match from its tags. Add the missing tags or use MusicBrainz discovery."}
+	if !ev.canCreate() && !ev.canCreateFromNames() && !ev.canCreateFromRelease() {
+		return 0, 0, 0, &Error{Code: "music_local_tags", Message: "The file needs an artist and a track title, plus album and track-number evidence, to match from its tags. Add the missing tags or use MusicBrainz discovery."}
 	}
 	ref, found, err := c.resolveAlbum(ctx, ev, true)
 	if err != nil {
@@ -547,24 +663,31 @@ func (c *localCatalog) findOrCreateTrack(ctx context.Context, file ScanFile, ev 
 	if disc < 1 {
 		disc = 1
 	}
+	number := ev.number
+	if number < 1 {
+		// No tagged or inferred track number: never overwrite an occupied
+		// position. The title evidence has already been checked above, so the
+		// track takes the next free position on the disc.
+		number = nextFreeTrackNumber(tracks, disc)
+	}
 	for _, track := range tracks {
-		if track.Disc != disc || track.Number != ev.number {
+		if track.Disc != disc || track.Number != number {
 			continue
 		}
 		if trackIdentityMatches(track, ev) {
 			c.enrichLocalTrackIDs(ctx, album, track.ID, ev)
 			return track.ID, nil
 		}
-		return 0, &Error{Code: "music_local_track", Message: fmt.Sprintf("Another file in this album already uses disc %d track %d with a different title. Correct the tags and try again.", disc, ev.number)}
+		return 0, &Error{Code: "music_local_track", Message: fmt.Sprintf("Another file in this album already uses disc %d track %d with a different title. Correct the tags and try again.", disc, number)}
 	}
 	mbid := ev.trackMBID
 	if mbid == "" {
-		mbid = localCatalogID(localTrackIDPrefix, ev.artistKey, ev.albumKey, strconv.Itoa(disc), strconv.Itoa(ev.number), ev.trackKey)
+		mbid = localCatalogID(localTrackIDPrefix, ev.artistKey, ev.albumKey, strconv.Itoa(disc), strconv.Itoa(number), ev.trackKey)
 	}
 	now := time.Now().Unix()
 	result, err := c.db.ExecContext(ctx, `INSERT INTO music_tracks(album_id,musicbrainz_id,recording_id,disc,number,title,duration_ms,created_at,updated_at)
 		VALUES(?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(album_id,disc,number) DO NOTHING`, album.id, mbid, ev.recordingMBID, disc, ev.number, ev.trackTitle, file.DurationMS, now, now)
+		ON CONFLICT(album_id,disc,number) DO NOTHING`, album.id, mbid, ev.recordingMBID, disc, number, ev.trackTitle, file.DurationMS, now, now)
 	if err != nil {
 		return 0, err
 	}
@@ -579,13 +702,13 @@ func (c *localCatalog) findOrCreateTrack(ctx context.Context, file ScanFile, ev 
 			return 0, err
 		}
 		track.AlbumID, track.MusicBrainzID, track.RecordingID = album.id, mbid, ev.recordingMBID
-		track.Disc, track.Number, track.Title, track.DurationMS = disc, ev.number, ev.trackTitle, file.DurationMS
-	} else if err := c.db.QueryRowContext(ctx, `SELECT id,album_id,musicbrainz_id,recording_id,disc,number,title,duration_ms FROM music_tracks WHERE album_id=? AND disc=? AND number=?`, album.id, disc, ev.number).
+		track.Disc, track.Number, track.Title, track.DurationMS = disc, number, ev.trackTitle, file.DurationMS
+	} else if err := c.db.QueryRowContext(ctx, `SELECT id,album_id,musicbrainz_id,recording_id,disc,number,title,duration_ms FROM music_tracks WHERE album_id=? AND disc=? AND number=?`, album.id, disc, number).
 		Scan(&track.ID, &track.AlbumID, &track.MusicBrainzID, &track.RecordingID, &track.Disc, &track.Number, &track.Title, &track.DurationMS); err != nil {
 		return 0, err
 	}
 	if !trackIdentityMatches(track, ev) {
-		return 0, &Error{Code: "music_local_track", Message: fmt.Sprintf("Another file in this album already uses disc %d track %d with a different title. Correct the tags and try again.", disc, ev.number)}
+		return 0, &Error{Code: "music_local_track", Message: fmt.Sprintf("Another file in this album already uses disc %d track %d with a different title. Correct the tags and try again.", disc, number)}
 	}
 	if affected == 1 {
 		c.tracksByAlbum[album.id] = append(c.tracksByAlbum[album.id], track)
@@ -624,6 +747,9 @@ func (c *localCatalog) enrichLocalTrackIDs(ctx context.Context, album albumRef, 
 	}
 }
 
+// trackIdentityMatches reports whether a saved track carries the same
+// identity: a genuine provider track/recording ID, or the same normalized
+// title when no provider ID is available.
 func trackIdentityMatches(track Track, ev tagIdentity) bool {
 	if ev.trackMBID != "" && strings.EqualFold(track.MusicBrainzID, ev.trackMBID) {
 		return true
@@ -632,6 +758,21 @@ func trackIdentityMatches(track Track, ev tagIdentity) bool {
 		return true
 	}
 	return compactMatchName(track.Title) != "" && compactMatchName(track.Title) == ev.trackKey
+}
+
+// nextFreeTrackNumber returns one position past the highest used number on a
+// disc so a numberless file never overwrites an occupied slot.
+func nextFreeTrackNumber(tracks []Track, disc int) int {
+	highest := 0
+	for _, track := range tracks {
+		if track.Disc != disc || track.Number <= 0 {
+			continue
+		}
+		if track.Number > highest {
+			highest = track.Number
+		}
+	}
+	return highest + 1
 }
 
 func ambiguousLocalArtistError(name string) error {

@@ -164,8 +164,12 @@ func (s *Service) runFingerprint(ctx context.Context, scanID int64, files []Scan
 		}
 		// When the file's own tags are complete, the AcoustID release-group and
 		// recording IDs are enough to build the catalog entry locally. No
-		// MusicBrainz request is needed for metadata or a track list.
-		if tagIdentityFor(file).canCreate() {
+		// MusicBrainz request is needed for metadata or a track list. A
+		// missing track number is acceptable there: the provider evidence
+		// identifies the recording directly. Inferred names stay out of this
+		// fast path so provider-resolved albums always load their full
+		// MusicBrainz track lists.
+		if ev := tagIdentityTagOnly(file); ev.canCreate() || ev.canCreateFromRelease() {
 			artistID, albumID, trackID, localErr := run.catalog.matchTagCreateWithIDs(dbCtx, file, match.ReleaseGroupID, match.RecordingID)
 			if localErr == nil {
 				if err := s.updateScanFileState(dbCtx, file.ID, "matched", artistID, albumID, trackID, ""); err != nil {

@@ -85,6 +85,45 @@ func (s *Service) DiscoverScan(ctx context.Context, scanID int64, fileIDs []int6
 		workBudget:      discoveryWorkBudget,
 		providerTimeout: discoveryProviderTimeout,
 	})
+	if err != nil {
+		return result, err
+	}
+	// Album discovery is only the first reviewed step. The remaining files are
+	// resolved through recording-level provider matching and the local name
+	// fallback in the same reviewed request, so a missing album never ends
+	// the work.
+	files, err = s.unresolvedScanFiles(ctx, scanID, fileIDs, all)
+	if err != nil {
+		return result, err
+	}
+	if len(files) > 0 {
+		recordingStats, recErr := s.ProviderMatchFiles(ctx, scanID, files, providerMatchRun{})
+		if recErr == nil {
+			result.Matched += recordingStats.Matched
+			if recordingStats.IssuedMB && recordingStats.Deferred > 0 {
+				result.Warnings = append(result.Warnings, "MusicBrainz is limiting requests. Provider recording matching paused; run discovery again to continue.")
+			}
+		} else {
+			var provider *Error
+			if !errors.As(recErr, &provider) {
+				return result, recErr
+			}
+			result.Warnings = append(result.Warnings, matchErrorMessage(recErr))
+		}
+	}
+	files, err = s.unresolvedScanFiles(ctx, scanID, fileIDs, all)
+	if err != nil {
+		return result, err
+	}
+	if len(files) > 0 {
+		fallbackStats, fbErr := s.LocalNamesFallbackFiles(ctx, scanID, files, namesFallbackRun{})
+		if fbErr != nil {
+			return result, fbErr
+		}
+		result.Matched += fallbackStats.Matched
+	}
+	result.Unresolved = result.Selected - result.Matched
+	result.Remaining, err = s.refreshScanCounts(context.WithoutCancel(ctx), scanID)
 	return result, err
 }
 
@@ -314,10 +353,13 @@ func (s *Service) unresolvedScanFiles(ctx context.Context, scanID int64, fileIDs
 	return files, nil
 }
 
-// buildDiscoveryGroups groups strong evidence without inferring identity. A
-// release-group ID is its own group; otherwise normalized album artist plus
+// buildDiscoveryGroups groups strong album evidence without inferring identity.
+// A release-group ID is its own group; otherwise normalized album artist plus
 // album title is the only accepted fallback. A trusted album-artist MBID is
-// kept as direct evidence instead of searching the name again.
+// kept as direct evidence instead of searching the name again. Files without
+// usable album evidence are left untouched here: the recording-level matching
+// and local name fallback phases own them, so a missing album tag never
+// terminates matching.
 func (s *Service) buildDiscoveryGroups(ctx context.Context, files []ScanFile) ([]*discoverGroup, error) {
 	groups := []*discoverGroup{}
 	index := map[string]int{}
@@ -336,11 +378,11 @@ func (s *Service) buildDiscoveryGroups(ctx context.Context, files []ScanFile) ([
 		artist, artistOK := cleanText(firstNonEmpty(file.AlbumArtist, file.Artist), 500)
 		album, albumOK := cleanText(file.Album, 500)
 		artistName, albumName := normalizeMatchName(artist), normalizeMatchName(album)
-		if !artistOK || !albumOK || artistName == "" || albumName == "" {
-			message := discoveryMissingTagMessage(file, artistName == "", albumName == "")
-			if err := s.updateScanFileState(ctx, file.ID, "unresolved", 0, 0, 0, message); err != nil {
-				return nil, err
-			}
+		if !artistOK || !albumOK || artistName == "" || albumName == "" ||
+			isPlaceholderName(album) {
+			// No trustworthy album evidence. The file is left for the
+			// recording-level phase; nothing is persisted here so a repeated
+			// pass never caches a failure.
 			continue
 		}
 		key := "tags:" + artistGroupKey(artist) + "\x00" + albumName
@@ -372,6 +414,8 @@ func addFileToDiscoveryGroup(group *discoverGroup, file ScanFile) {
 	}
 }
 
+// discoveryMissingTagMessage is retained for direct tag-correctness reports on
+// review screens.
 func discoveryMissingTagMessage(file ScanFile, missingArtist, missingAlbum bool) string {
 	var message string
 	switch {
@@ -869,7 +913,7 @@ func discoveryTrackMessage(err error) string {
 	var provider *Error
 	if errors.As(err, &provider) {
 		if provider.Code == "music_unmatched_track" {
-			return "The album is in the catalog, but no track matches this file's MusicBrainz track ID, disc/track number or title. Correct the tags and run discovery again."
+			return "The album is in the catalog, but no track matches this file's MusicBrainz track ID, disc/track number or title."
 		}
 		if strings.TrimSpace(provider.Message) != "" {
 			return provider.Message

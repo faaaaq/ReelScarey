@@ -33,24 +33,26 @@ var transcodeGracePeriod = defaultTranscodeGrace
 // stages, verifies, publishes without overwrite and retains a backup before a
 // tag rewrite.
 type Service struct {
-	client         *Client
-	itunes         *itunesCatalog
-	store          *Store
-	mediaDir       string
-	downloadsDir   string
-	prober         AudioProber
-	fingerprinter  Fingerprinter
-	acoustid       *AcoustIDClient
-	secrets        *securestore.Store
-	brainz         *musicbrainzStore
-	audio          AudioSource
-	topBaseURL     string
-	artworkDir     string
-	artworkMu      sync.Mutex
-	artworkLocks   map[string]*sync.Mutex
-	scheduleRunner ScheduleRunner
-	fileMu         sync.Mutex
-	scheduleMu     sync.Mutex
+	client           *Client
+	itunes           *itunesCatalog
+	itunester        iTunester
+	recoveredArtists map[int64]string
+	store            *Store
+	mediaDir         string
+	downloadsDir     string
+	prober           AudioProber
+	fingerprinter    Fingerprinter
+	acoustid         *AcoustIDClient
+	secrets          *securestore.Store
+	brainz           *musicbrainzStore
+	audio            AudioSource
+	topBaseURL       string
+	artworkDir       string
+	artworkMu        sync.Mutex
+	artworkLocks     map[string]*sync.Mutex
+	scheduleRunner   ScheduleRunner
+	fileMu           sync.Mutex
+	scheduleMu       sync.Mutex
 
 	// transcodeSem bounds simultaneous ffmpeg conversions. It is created
 	// lazily (transcodeSlots) so hand-built test Services work too; it is
@@ -112,7 +114,8 @@ func NewService(db *sql.DB, mediaDir string) *Service {
 	client := New()
 	client.SetCache(brainz)
 	client.SetCooldownStore(brainz)
-	return &Service{client: client, itunes: newITunesCatalog(), store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}, fingerprinter: NewChromaprint(), acoustid: NewAcoustID(), brainz: brainz}
+	catalog := newITunesCatalog()
+	return &Service{client: client, itunes: catalog, itunester: catalog, store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}, fingerprinter: NewChromaprint(), acoustid: NewAcoustID(), brainz: brainz}
 }
 
 func NewServiceWithClient(db *sql.DB, client *Client, mediaDir string) *Service {
@@ -122,6 +125,20 @@ func NewServiceWithClient(db *sql.DB, client *Client, mediaDir string) *Service 
 		client.SetCooldownStore(brainz)
 	}
 	return &Service{client: client, store: NewStore(db), mediaDir: mediaDir, prober: FFprobeTagger{}, fingerprinter: NewChromaprint(), acoustid: NewAcoustID(), brainz: brainz}
+}
+
+// SetiTunesClient replaces the iTunes track-search client. Production wiring
+// enables the public client; tests leave it unset so matching never contacts
+// the network unless a test injects its own fake.
+func (s *Service) SetiTunesClient(client iTunester) {
+	s.itunester = client
+}
+
+// EnableiTunes attaches the default public iTunes track-search client.
+// Production startup calls this once; tests inject fakes with SetiTunesClient
+// instead.
+func (s *Service) EnableiTunes() {
+	s.itunester = newITunesCatalog()
 }
 
 func (s *Service) SetProber(prober AudioProber) {
