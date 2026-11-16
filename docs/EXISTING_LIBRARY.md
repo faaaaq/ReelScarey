@@ -152,10 +152,28 @@ consecutive failures. Correct the connection and use the matching button to retr
 Jobs resume after ordinary restarts. Restoring a backup pauses them for explicit
 restart. Failed/partial discovery cannot automatically register files.
 
+## Import one file directly
+
+When you already know which file belongs to a title, open the title's detail
+page and choose **Import file**. The picker lists only the configured library
+roots and their subfolders — it never accepts an arbitrary path and never
+leaves the media root. Choose the video, pick the target (a movie, or a
+season's episodes for a show; registered episodes and samples/trailers are
+excluded), check the explicit confirmation that the file belongs to the
+selected title, and queue the import.
+
+The request stores the same reviewed identity a discovery review stores, and
+the same durable verification worker then inspects the file (anchored open,
+stable file identity, size/mtime, sample fingerprints, FFprobe) before the
+atomic in-place registration. Nothing is copied, renamed or replaced, and no
+download, release or Activity job is fabricated. The queued item appears on
+the Library Import page like any review row, where it can be retried or
+skipped after a reported problem. Multiple files for the same movie remain
+separate versions; the same episode cannot be claimed twice.
+
 ## Review the identity
 
-Open **Review match** for a discovered file. The original path and size are shown.
-Filename hints only prefill a search; they never select a title or episodes. A
+Open **Review match** for a discovered file. The original path and size are shown.Filename hints only prefill a search; they never select a title or episodes. A
 hint removes the episode label, year/quality suffixes and trailing separators, so
 `Hunter x Hunter - S02E63 - A x Hard x Master.mkv` suggests `Hunter x Hunter`,
 not `Hunter x Hunter -`. The review opens with the cleaned hint and resets its

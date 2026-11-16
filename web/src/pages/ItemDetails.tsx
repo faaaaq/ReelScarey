@@ -1,10 +1,12 @@
 import {
   Bookmark,
   FolderTree,
+  HardDriveDownload,
   RefreshCw,
   Search,
   Settings2,
 } from "lucide-react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { RequestState } from "../components";
 import { Pagination } from "../movieComponents";
@@ -44,6 +46,7 @@ import {
   profileLabel,
 } from "./details/DetailParts";
 import { useItemDetails } from "./details/useItemDetails";
+import { ImportExistingFile } from "./details/ImportExistingFile";
 
 export type { Information, LocalDetails } from "./details/useItemDetails";
 
@@ -63,6 +66,7 @@ function MovieView({ id }: { id: number }) {
   const data = details.data;
   const item = data?.item;
   const search = useItemSearch();
+  const [importOpen, setImportOpen] = useState(false);
   return (
     <>
       <PageToolbar>
@@ -88,6 +92,13 @@ function MovieView({ id }: { id: number }) {
             pending={!!search.pending}
             onTrigger={(mediaID) => search.trigger(mediaID)}
           />
+          <ToolbarButton
+            icon={HardDriveDownload}
+            label="Import file"
+            title="Point at a video already on disk and register it for this title"
+            disabled={!item}
+            onClick={() => setImportOpen(true)}
+          />
           <ToolbarSeparator />
           <ToolbarButton
             icon={FolderTree}
@@ -96,7 +107,7 @@ function MovieView({ id }: { id: number }) {
           />
           <ToolbarButton icon={Settings2} label="Automation" to="/automation" />
         </ToolbarSection>
-      </PageToolbar>
+      </PageToolbar>{" "}
       {search.result && (
         <PageBody>
           <ItemSearchResultAlert
@@ -266,6 +277,16 @@ function MovieView({ id }: { id: number }) {
             />
           </PageBody>
         </>
+      )}
+      {item && (
+        <ImportExistingFile
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          kind="movie"
+          mediaID={id}
+          title={item.title}
+          onQueued={() => void details.reload()}
+        />
       )}
     </>
   );

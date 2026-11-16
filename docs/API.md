@@ -566,7 +566,8 @@ same-origin validation. Reads never start a filesystem scan.
 | POST | `/api/v1/library/import/backup/preview` | Raw Radarr or Sonarr backup ZIP (≤256 MiB) or iCalendar export (≤5 MiB); returns source, title list and `in_library`; reads only Movies/Series or SUMMARY/DTSTART/UID |
 | POST | `/api/v1/library/import/backup/apply` | `{items:[{kind,tmdb_id,tvdb_id,monitored}]}`; adds the reviewed titles from a backup or calendar; returns added/skipped/errors |
 | GET | `/api/v1/library/imports/catalog?kind=movie&query=title` | Up to 20 saved catalog title matches; offline read |
-| POST | `/api/v1/library/import-files/{id}/register` | `{media_id,episode_ids:[],reviewed:true}`; queue verified in-place registration; 202 |
+| GET | `/api/v1/library/imports/direct?kind=movie&dir=` | Bounded listing of one folder below a configured library root (empty `dir` lists the roots); read-only |
+| POST | `/api/v1/library/imports/direct` | `{kind,media_id,episode_ids?,root,relative,reviewed:true}`; point at one file inside a configured root and queue its verified in-place registration for the selected title; 202 || POST | `/api/v1/library/import-files/{id}/register` | `{media_id,episode_ids:[],reviewed:true}`; queue verified in-place registration; 202 |
 | POST | `/api/v1/library/import-files/{id}/skip` | `{}`; skip a review/blocked item |
 
 Paths are immutable server snapshots selected through opaque discovered IDs;

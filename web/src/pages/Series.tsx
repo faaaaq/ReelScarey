@@ -3,6 +3,7 @@ import { Button } from "@radix-ui/themes";
 import {
   ChevronDown,
   FolderTree,
+  HardDriveDownload,
   ListChecks,
   RefreshCw,
   FileX,
@@ -43,6 +44,7 @@ import {
 } from "./details/ItemSearch";
 import { bulkSearchMessage, useBulkSearch } from "./details/bulkSearch";
 import { ReleaseSearchModal } from "./details/ReleaseSearchModal";
+import { ImportExistingFile } from "./details/ImportExistingFile";
 import { AnimeSettings } from "./AnimeSettings";
 import { AnimeSearch } from "./AnimeSearch";
 import { AnimeOrder } from "./AnimeOrder";
@@ -125,6 +127,7 @@ function SeriesView({ initial }: { initial: TVSeries }) {
   const [releaseSearch, setReleaseSearch] = useState<ReleaseSearchScope | null>(
     null,
   );
+  const [importOpen, setImportOpen] = useState(false);
   const details = useItemDetails(show.id);
   const firstRevision = useRef(show.revision);
   const base = `/library/series/${show.id}`;
@@ -266,9 +269,15 @@ function SeriesView({ initial }: { initial: TVSeries }) {
             label="Organize"
             to={`/organization?media_id=${show.id}`}
           />
+          <ToolbarButton
+            icon={HardDriveDownload}
+            label="Import file"
+            title="Point at a video already on disk and register it for an episode of this show"
+            onClick={() => setImportOpen(true)}
+          />
           <ToolbarButton icon={Settings2} label="Automation" to="/automation" />
         </ToolbarSection>
-      </PageToolbar>
+      </PageToolbar>{" "}
       {bulk.state.status !== "idle" && (
         <PageBody>
           <Alert
@@ -627,6 +636,16 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           fileID={releaseSearch.fileID}
         />
       )}
+      <ImportExistingFile
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        kind="series"
+        collection={anime ? "anime" : undefined}
+        mediaID={show.id}
+        title={show.title}
+        seasons={show.seasons}
+        onQueued={() => void reload()}
+      />
     </>
   );
 }

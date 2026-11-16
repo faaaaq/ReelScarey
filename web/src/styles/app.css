@@ -865,6 +865,45 @@ details > summary {
   color: var(--rs-muted);
   font-size: 13px;
 }
+/* Direct existing-file import picker (ImportExistingFile dialog). */
+.rs-browse-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--rs-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.rs-browse-row {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+}
+.rs-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 3px 0;
+  min-width: 0;
+}
+.rs-check-row > span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rs-attach-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+}
+.rs-attach-field > label {
+  font-weight: 700;
+  color: var(--rs-text-strong);
+}
 .rs-form-help.is-warning {
   color: var(--rs-warning);
 }
