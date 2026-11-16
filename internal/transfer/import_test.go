@@ -25,7 +25,12 @@ func plannedImport(t *testing.T, f *workflowFixture) (Job, importPlan, []byte) {
 		t.Fatal(e)
 	}
 	defer file.Close()
-	p, e := f.s.importer.plan(context.Background(), owned, source, int64(len(data)), file)
+	mediaRoot, e := os.OpenRoot(f.cfg.MediaDir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer mediaRoot.Close()
+	p, e := f.s.importer.plan(context.Background(), owned, source, int64(len(data)), file, mediaRoot)
 	if e != nil {
 		t.Fatal(e)
 	}

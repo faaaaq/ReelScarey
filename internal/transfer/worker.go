@@ -111,6 +111,19 @@ func (s *Service) ProcessNext(ctx context.Context) (bool, error) {
 		var typed *Error
 		if errors.As(err, &typed) {
 			p = typed
+		} else {
+			// An untyped failure (filesystem or database) must not vanish
+			// behind the generic notice. Log it and surface a bounded,
+			// secret-free technical detail with the stored job error so a
+			// blocked download stays diagnosable.
+			detail := err.Error()
+			if len(detail) > 200 {
+				detail = detail[:200]
+			}
+			if s.logger != nil {
+				s.logger.Error("download workflow failed", "operation", "process", "job", j.ID, "error", detail)
+			}
+			p.Message += " (" + detail + ")"
 		}
 		state := "blocked"
 		next := time.Now().Unix()

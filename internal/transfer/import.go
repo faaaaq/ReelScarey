@@ -199,7 +199,7 @@ func video(name string) bool {
 
 var extraVideo = regexp.MustCompile(`(?i)(^|[\s._\-/])(sample|trailer)([\s._\-/]|$)`)
 
-func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, src *os.File) (importPlan, error) {
+func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, src *os.File, mediaRoot *os.Root) (importPlan, error) {
 	var p importPlan
 	s := i.service
 	e := s.db.QueryRowContext(ctx, `SELECT source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,probe_json,mode,phase FROM import_operations WHERE download_id=? AND file_index=?`, j.ID, j.importIndex()).Scan(&p.Source, &p.Destination, &p.Stage, &p.Size, &p.Mtime, &p.Hash, &p.Probe, &p.Mode, &p.Phase)
@@ -304,7 +304,41 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 		destination = path.Join(".reelscarey-versions", "acquired-"+j.stageID()+strings.ToLower(path.Ext(source)))
 	}
 	p = importPlan{Source: source, Destination: destination, Stage: ".reelscarey-" + j.stageID() + ".part", Size: size, Mtime: before.ModTime().UnixNano(), Hash: hash, Probe: string(b), Mode: "pending", Phase: "planned"}
-	result, e := s.db.ExecContext(ctx, `INSERT INTO import_operations(download_id,file_index,source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,probe_json,phase,updated_at) SELECT ?,?,?,?,?,?,?,?,?,'planned',unixepoch() WHERE EXISTS(SELECT 1 FROM downloads WHERE id=? AND lease_owner=? AND lease_until>=unixepoch())`, j.ID, j.importIndex(), p.Source, p.Destination, p.Stage, p.Size, p.Mtime, p.Hash, p.Probe, j.ID, j.owner)
+	// Committed journal rows keep their destination_path claim forever, but a
+	// library file can disappear outside the app (manual cleanup, replaced
+	// media servers). A committed claim whose destination file no longer
+	// exists is stale and must not block a re-acquisition forever: the old
+	// import stays recorded in History, so clearing the dead claim loses no
+	// state. An existing file, or a claim from an unfinished import, is a real
+	// conflict and fails with an actionable message instead of a raw
+	// constraint error the worker would hide behind its generic notice.
+	var claimOwner, claimPhase string
+	claimErr := s.db.QueryRowContext(ctx, `SELECT download_id,phase FROM import_operations WHERE destination_path=?`, p.Destination).Scan(&claimOwner, &claimPhase)
+	if claimErr != nil && !errors.Is(claimErr, sql.ErrNoRows) {
+		return p, claimErr
+	}
+	if claimErr == nil && claimOwner != j.ID {
+		stale := false
+		if claimPhase == "committed" {
+			if _, statErr := mediaRoot.Stat(filepath.FromSlash(p.Destination)); statErr != nil {
+				stale = true
+			}
+		}
+		if !stale {
+			return p, problem("destination_claimed", "Another import already published or is publishing a file at this destination. If the episode still exists in the library, no import is needed; otherwise wait for that import to finish or remove the old file through the library, then retry.")
+		}
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return p, e
+	}
+	defer tx.Rollback()
+	if claimErr == nil && claimOwner != j.ID {
+		if _, e = tx.ExecContext(ctx, `DELETE FROM import_operations WHERE destination_path=? AND phase='committed' AND download_id<>?`, p.Destination, j.ID); e != nil {
+			return p, e
+		}
+	}
+	result, e := tx.ExecContext(ctx, `INSERT INTO import_operations(download_id,file_index,source_path,destination_path,stage_name,size_bytes,source_mtime,sha256,probe_json,phase,updated_at) SELECT ?,?,?,?,?,?,?,?,?,'planned',unixepoch() WHERE EXISTS(SELECT 1 FROM downloads WHERE id=? AND lease_owner=? AND lease_until>=unixepoch())`, j.ID, j.importIndex(), p.Source, p.Destination, p.Stage, p.Size, p.Mtime, p.Hash, p.Probe, j.ID, j.owner)
 	if e != nil {
 		return p, e
 	}
@@ -312,7 +346,7 @@ func (i *Importer) plan(ctx context.Context, j Job, source string, size int64, s
 	if n != 1 {
 		return p, ErrLease
 	}
-	return p, nil
+	return p, tx.Commit()
 }
 func (i *Importer) phase(ctx context.Context, j Job, p *importPlan, phase, mode string) error {
 	result, e := i.service.db.ExecContext(ctx, `UPDATE import_operations SET phase=?,mode=?,updated_at=unixepoch() WHERE download_id=? AND file_index=? AND EXISTS(SELECT 1 FROM downloads WHERE id=? AND lease_owner=? AND lease_until>=unixepoch())`, phase, mode, j.ID, j.importIndex(), j.ID, j.owner)
@@ -357,7 +391,7 @@ func (i *Importer) Execute(ctx context.Context, j Job, source string, size int64
 		return problem("source_unavailable", "The completed movie file could not be opened under the download root.")
 	}
 	defer src.Close()
-	p, e := i.plan(ctx, j, source, size, src)
+	p, e := i.plan(ctx, j, source, size, src, dstRoot)
 	if e != nil {
 		return e
 	}
