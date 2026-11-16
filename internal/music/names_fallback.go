@@ -12,13 +12,13 @@ import (
 // claim a MusicBrainz identity, never overwrite embedded tags and never move
 // or rename media. Files without enough evidence stay unresolved for review.
 
-// namesFallbackRun bounds one local-fallback pass.
-type namesFallbackRun struct {
+// NamesFallbackRun bounds one local-fallback pass.
+type NamesFallbackRun struct {
 	onFile func(file ScanFile)
 }
 
-// namesFallbackStats reports what one fallback pass achieved.
-type namesFallbackStats struct {
+// NamesFallbackStats reports what one fallback pass achieved.
+type NamesFallbackStats struct {
 	Matched   int
 	Skipped   int
 	UsedITune int
@@ -27,8 +27,8 @@ type namesFallbackStats struct {
 // LocalNamesFallbackFiles matches unresolved files from their own names into
 // the local catalog. It is idempotent: identities are deterministic, so a
 // repeated pass reuses the same catalog rows instead of duplicating them.
-func (s *Service) LocalNamesFallbackFiles(ctx context.Context, scanID int64, files []ScanFile, run namesFallbackRun) (namesFallbackStats, error) {
-	stats := namesFallbackStats{}
+func (s *Service) LocalNamesFallbackFiles(ctx context.Context, scanID int64, files []ScanFile, run NamesFallbackRun) (NamesFallbackStats, error) {
+	stats := NamesFallbackStats{}
 	catalog := newLocalCatalog(s)
 	dbCtx := context.WithoutCancel(ctx)
 	for _, file := range files {
@@ -41,6 +41,9 @@ func (s *Service) LocalNamesFallbackFiles(ctx context.Context, scanID int64, fil
 			return stats, nil
 		}
 		ev := tagIdentityFor(file)
+		// The fallback is the weakest evidence tier; an occupied numbered
+		// position yields to the title evidence and takes the next free slot.
+		ev.relaxedPosition = true
 		if recovered := s.recoveredArtist(file.ID); recovered != "" &&
 			(isPlaceholderName(ev.artistName) || ev.artistName == "") {
 			if clean, ok := cleanText(recovered, 500); ok {

@@ -64,6 +64,11 @@ type tagIdentity struct {
 	albumMBID     string
 	trackMBID     string
 	recordingMBID string
+
+	// relaxedPosition marks the weakest evidence tier (the final local
+	// fallback): an occupied disc/track position with a different title
+	// takes the next free position instead of blocking the file.
+	relaxedPosition bool
 }
 
 // canCreate reports whether the tags are complete enough to create or use a
@@ -87,9 +92,11 @@ func (ev tagIdentity) canCreateFromRelease() bool {
 // directory) are complete enough to create a tag-derived local entry during
 // the final local fallback. Album and track number stay optional because a
 // missing album groups into the artist's shared "Unknown" album and a missing
-// number takes the next free position.
+// number takes the next free position. A title whose normalized key is empty
+// (a single symbol such as "+") can still take a numbered position.
 func (ev tagIdentity) canCreateFromNames() bool {
-	return ev.artistName != "" && ev.trackTitle != "" && ev.artistKey != "" && ev.trackKey != ""
+	return ev.artistName != "" && ev.artistKey != "" &&
+		(ev.trackKey != "" || ev.number > 0)
 }
 
 // tagIdentityTagOnly reads only the embedded tag evidence, without filename or
@@ -141,7 +148,13 @@ func tagIdentityTagOnly(file ScanFile) tagIdentity {
 // existing track list.
 func tagIdentityFor(file ScanFile) tagIdentity {
 	inferred := inferFileIdentity(file)
-	artist, _ := cleanText(firstNonEmpty(inferred.AlbumArtist, inferred.Artist), 500)
+	artistCandidate := firstNonEmpty(inferred.AlbumArtist, inferred.Artist)
+	if isPlaceholderName(artistCandidate) {
+		// The album artist is a placeholder but the track artist may still
+		// name a real performer.
+		artistCandidate = firstNonEmpty(inferred.Artist, inferred.AlbumArtist)
+	}
+	artist, _ := cleanText(artistCandidate, 500)
 	album, _ := cleanText(inferred.Album, 500)
 	title, _ := cleanText(inferred.Title, 500)
 	ev := tagIdentity{
@@ -670,15 +683,32 @@ func (c *localCatalog) findOrCreateTrack(ctx context.Context, file ScanFile, ev 
 		// track takes the next free position on the disc.
 		number = nextFreeTrackNumber(tracks, disc)
 	}
-	for _, track := range tracks {
-		if track.Disc != disc || track.Number != number {
-			continue
+	for {
+		var occupied *Track
+		for i := range tracks {
+			if tracks[i].Disc == disc && tracks[i].Number == number {
+				occupied = &tracks[i]
+				break
+			}
 		}
-		if trackIdentityMatches(track, ev) {
-			c.enrichLocalTrackIDs(ctx, album, track.ID, ev)
-			return track.ID, nil
+		if occupied == nil {
+			break
 		}
-		return 0, &Error{Code: "music_local_track", Message: fmt.Sprintf("Another file in this album already uses disc %d track %d with a different title. Correct the tags and try again.", disc, number)}
+		if trackIdentityMatches(*occupied, ev) {
+			c.enrichLocalTrackIDs(ctx, album, occupied.ID, ev)
+			return occupied.ID, nil
+		}
+		if !ev.relaxedPosition {
+			return 0, &Error{Code: "music_local_track", Message: fmt.Sprintf("Another file in this album already uses disc %d track %d with a different title. Correct the tags and try again.", disc, number)}
+		}
+		// Weakest-evidence tier: the position is less trustworthy than the
+		// title, so keep the title and take the next free position instead of
+		// blocking the file for review.
+		next := nextFreeTrackNumber(tracks, disc)
+		if next <= number {
+			next = number + 1
+		}
+		number = next
 	}
 	mbid := ev.trackMBID
 	if mbid == "" {

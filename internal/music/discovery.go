@@ -97,7 +97,7 @@ func (s *Service) DiscoverScan(ctx context.Context, scanID int64, fileIDs []int6
 		return result, err
 	}
 	if len(files) > 0 {
-		recordingStats, recErr := s.ProviderMatchFiles(ctx, scanID, files, providerMatchRun{})
+		recordingStats, recErr := s.ProviderMatchFiles(ctx, scanID, files, ProviderMatchRun{})
 		if recErr == nil {
 			result.Matched += recordingStats.Matched
 			if recordingStats.IssuedMB && recordingStats.Deferred > 0 {
@@ -116,7 +116,7 @@ func (s *Service) DiscoverScan(ctx context.Context, scanID int64, fileIDs []int6
 		return result, err
 	}
 	if len(files) > 0 {
-		fallbackStats, fbErr := s.LocalNamesFallbackFiles(ctx, scanID, files, namesFallbackRun{})
+		fallbackStats, fbErr := s.LocalNamesFallbackFiles(ctx, scanID, files, NamesFallbackRun{})
 		if fbErr != nil {
 			return result, fbErr
 		}
@@ -375,11 +375,11 @@ func (s *Service) buildDiscoveryGroups(ctx context.Context, files []ScanFile) ([
 			groups = append(groups, &discoverGroup{releaseGroupID: releaseGroupID, files: []ScanFile{file}})
 			continue
 		}
-		artist, artistOK := cleanText(firstNonEmpty(file.AlbumArtist, file.Artist), 500)
-		album, albumOK := cleanText(file.Album, 500)
+		identity := inferFileIdentity(file)
+		artist, artistOK := cleanText(firstNonEmpty(identity.AlbumArtist, identity.Artist), 500)
+		album, albumOK := cleanText(identity.Album, 500)
 		artistName, albumName := normalizeMatchName(artist), normalizeMatchName(album)
-		if !artistOK || !albumOK || artistName == "" || albumName == "" ||
-			isPlaceholderName(album) {
+		if !artistOK || !albumOK || artistName == "" || albumName == "" {
 			// No trustworthy album evidence. The file is left for the
 			// recording-level phase; nothing is persisted here so a repeated
 			// pass never caches a failure.
@@ -392,7 +392,7 @@ func (s *Service) buildDiscoveryGroups(ctx context.Context, files []ScanFile) ([
 		}
 		group := &discoverGroup{
 			artist:           artist,
-			artistCandidates: discoveryArtistCandidates(artist, file.Artist),
+			artistCandidates: identityArtistCandidates(identity),
 			artistMBIDs:      map[string]bool{},
 			album:            album,
 			years:            map[int]bool{},
@@ -463,6 +463,7 @@ func albumArtistMusicBrainzID(file ScanFile) string {
 	return tags.MusicBrainzAlbumArtistID
 }
 
+// discoveryArtistCandidates is retained for tag-only callers.
 func discoveryArtistCandidates(albumArtist, trackArtist string) []string {
 	out := []string{}
 	seen := map[string]bool{}

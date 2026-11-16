@@ -421,7 +421,7 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 			}
 			return err
 		}
-		stats, recErr := s.ProviderMatchFiles(ctx, id, files, providerMatchRun{
+		stats, recErr := s.ProviderMatchFiles(ctx, id, files, ProviderMatchRun{
 			onFile: func(file ScanFile) {
 				_ = s.progressWorkflow(ctx, id, owner, "matching", file.RelativePath, "Searching MusicBrainz and iTunes recordings.")
 			},
@@ -457,7 +457,7 @@ func (s *Service) runMatchWorkflow(ctx context.Context, scan Scan, owner string)
 			}
 			return err
 		}
-		fallbackStats, fbErr := s.LocalNamesFallbackFiles(ctx, id, files, namesFallbackRun{
+		fallbackStats, fbErr := s.LocalNamesFallbackFiles(ctx, id, files, NamesFallbackRun{
 			onFile: func(file ScanFile) {
 				_ = s.progressWorkflow(ctx, id, owner, "matching", file.RelativePath, "Matching files from their own names.")
 			},

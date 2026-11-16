@@ -336,7 +336,10 @@ func TestLocalTagCatalogHandlesMultiDiscDefaultsAndNormalization(t *testing.T) {
 	}
 
 	// A missing disc tag with an ambiguous track number and a different title
-	// is never guessed into an occupied position or renumbered.
+	// is not conflated with an occupied position. The strong tag-creation tier
+	// refuses the conflict; the final local fallback then keeps the title
+	// evidence and appends the track at the next free position instead of
+	// leaving the file permanently unresolved.
 	conflictScan := newLocalTagScan(t, db)
 	insertLocalTagRows(t, db, conflictScan, []localTagRow{
 		{path: "Music/ACDC/Greatest Hits/09 Conflict.flac", artist: "AC/DC", albumArtist: "AC/DC", album: "Greatest Hits", title: "Different", track: intPtr(1), disc: nil},
@@ -351,19 +354,20 @@ func TestLocalTagCatalogHandlesMultiDiscDefaultsAndNormalization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if conflict.MatchedCount != 0 || conflict.UnresolvedCount != 1 || !strings.Contains(conflict.Message, "Audio fingerprint matching was skipped") {
+	if conflict.MatchedCount != 1 || conflict.UnresolvedCount != 0 {
 		t.Fatalf("conflict scan %+v", conflict)
 	}
-	var conflictMessage string
-	if err := db.QueryRow(`SELECT error FROM music_scan_files WHERE scan_id=?`, conflictScan).Scan(&conflictMessage); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(conflictMessage, "already uses disc 1 track 1") {
-		t.Fatalf("conflict message %q", conflictMessage)
-	}
 	var afterTracks int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM music_tracks`).Scan(&afterTracks); err != nil || afterTracks != 4 {
+	var conflictTitle string
+	if err := db.QueryRow(`SELECT COUNT(*) FROM music_tracks`).Scan(&afterTracks); err != nil || afterTracks != 5 {
 		t.Fatalf("conflict changed tracks: %d %v", afterTracks, err)
+	}
+	if err := db.QueryRow(`SELECT title FROM music_tracks WHERE number=5`).Scan(&conflictTitle); err != nil || conflictTitle != "Different" {
+		t.Fatalf("conflict track %q %v", conflictTitle, err)
+	}
+	var occupiedTitle string
+	if err := db.QueryRow(`SELECT title FROM music_tracks WHERE number=1 AND title='One'`).Scan(&occupiedTitle); err != nil || occupiedTitle != "One" {
+		t.Fatalf("occupied position was disturbed: %q %v", occupiedTitle, err)
 	}
 
 	rerunBrainz := brainzCalls
@@ -387,7 +391,9 @@ func TestLocalTagCatalogHandlesMultiDiscDefaultsAndNormalization(t *testing.T) {
 		Scan(&artists, &albums, &tracks); err != nil {
 		t.Fatal(err)
 	}
-	if artists != 1 || albums != 1 || tracks != 4 {
+	// Five tracks: the four rerun rows reuse their catalog rows and the
+	// earlier conflict track stays untouched.
+	if artists != 1 || albums != 1 || tracks != 5 {
 		t.Fatalf("rerun duplicated catalog rows artists=%d albums=%d tracks=%d", artists, albums, tracks)
 	}
 	if brainzCalls != rerunBrainz {

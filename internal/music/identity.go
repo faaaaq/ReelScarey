@@ -17,7 +17,9 @@ import (
 
 // isPlaceholderName reports whether a value is an organizational placeholder
 // rather than a real name. Comparison is normalized, so "<Unknown>",
-// "unknown", "-Unknown-" and "Unknown Artist" all fold together.
+// "unknown", "-Unknown-" and "Unknown Artist" all fold together. The
+// compilation marker "Various"/"Various Artists" is deliberately not treated
+// here: it is a meaningful artist alias handled by the artist comparison.
 func isPlaceholderName(value string) bool {
 	name := normalizeMatchName(value)
 	switch name {
@@ -32,10 +34,16 @@ func isPlaceholderName(value string) bool {
 	compact := compactMatchName(name)
 	switch compact {
 	case "unknown", "unknownalbum", "unknownartist", "untitled", "none", "noalbum",
-		"noartist", "various":
+		"noartist":
 		return true
 	}
 	return false
+}
+
+// isVariousAlbumName reports whether an album title is really a compilation
+// marker rather than a release name.
+func isVariousAlbumName(value string) bool {
+	return isVariousArtistsKey(normalizeMatchName(value))
 }
 
 // cdFolderPattern reports whether an album folder is really a disc label
@@ -115,9 +123,24 @@ func inferFileIdentity(file ScanFile) fileIdentity {
 		Year:        file.Year,
 	}
 	out.ArtistSource, out.AlbumArtistSource, out.AlbumSource, out.TitleSource = sourceTag, sourceTag, sourceTag, sourceTag
-	if out.Album != "" && isPlaceholderName(out.Album) {
+	if out.Album != "" && (isPlaceholderName(out.Album) || isVariousAlbumName(out.Album)) {
 		// A placeholder album tag is not album evidence.
 		out.Album, out.AlbumSource = "", ""
+	}
+	if out.Album != "" {
+		// A tag like "Album [CD2]" names release "Album" plus a disc; the
+		// bracketed label is not part of the title.
+		if baseName, disc, ok := cdFolderSuffix(out.Album); ok {
+			if baseName != "" && !isPlaceholderName(baseName) {
+				out.Album, out.AlbumSource = baseName, sourceTag
+			} else {
+				out.Album, out.AlbumSource = "", ""
+			}
+			if out.Disc == nil || (out.Disc != nil && *out.Disc <= 0) {
+				d := disc
+				out.Disc = &d
+			}
+		}
 	}
 
 	// File name evidence: "01 - Artist - Title", "Artist - Title", "01 Title",
@@ -374,7 +397,7 @@ func identityArtistCandidates(identity fileIdentity) []string {
 // file carries no trustworthy album name.
 func identityAlbumTitle(identity fileIdentity) string {
 	album := strings.TrimSpace(identity.Album)
-	if album == "" || isPlaceholderName(album) {
+	if album == "" || isPlaceholderName(album) || isVariousAlbumName(album) {
 		return ""
 	}
 	return album

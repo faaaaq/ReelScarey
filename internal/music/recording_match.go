@@ -35,14 +35,14 @@ type scoredRecording struct {
 	score float64
 }
 
-// providerMatchRun bounds one recording-matching pass.
-type providerMatchRun struct {
+// ProviderMatchRun bounds one recording-matching pass.
+type ProviderMatchRun struct {
 	onFile func(file ScanFile)
 }
 
-// providerMatchStats reports what one recording pass achieved so the workflow
+// ProviderMatchStats reports what one recording pass achieved so the workflow
 // message can attribute matches to strategies honestly.
-type providerMatchStats struct {
+type ProviderMatchStats struct {
 	Matched    int
 	Deferred   int
 	ProviderMB bool
@@ -54,8 +54,8 @@ type providerMatchStats struct {
 // searches with iTunes corroboration. It is idempotent: files that already
 // match stay untouched, catalog rows are reused, and an interrupted pass
 // resumes from the remaining unresolved rows.
-func (s *Service) ProviderMatchFiles(ctx context.Context, scanID int64, files []ScanFile, run providerMatchRun) (providerMatchStats, error) {
-	stats := providerMatchStats{}
+func (s *Service) ProviderMatchFiles(ctx context.Context, scanID int64, files []ScanFile, run ProviderMatchRun) (ProviderMatchStats, error) {
+	stats := ProviderMatchStats{}
 	cache := &discoveryCache{
 		artists:        map[string]Artist{},
 		pendingArtists: map[string]Artist{},
@@ -115,7 +115,7 @@ func (s *Service) matchFileRecordings(
 	rgAlbums map[string]fingerprintGroup,
 	searchCache map[string][]scoredRecording,
 	searchFailed map[string]bool,
-	stats *providerMatchStats,
+	stats *ProviderMatchStats,
 ) (bool, string, error) {
 	identity := inferFileIdentity(file)
 	title := strings.TrimSpace(identity.Title)
