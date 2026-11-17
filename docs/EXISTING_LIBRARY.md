@@ -176,6 +176,18 @@ target (a movie, or a season's episodes for a show; registered episodes and
 samples/trailers are excluded), check the explicit confirmation that the file
 belongs to the selected title, and queue the import.
 
+## Re-attach a file that is registered to another title
+
+When the chosen file is already registered — to a duplicate catalog entry or
+the wrong title — the import is refused and names the title that owns it. The
+dialog then offers **Re-attach**: with the reviewed confirmation the file's
+registration moves to the selected title (the same file row keeps its id,
+observations, checksums and subtitle records), and a reviewed organization
+plan moves and renames it into the new title's canonical folder exactly like
+the Organize page does. Nothing is overwritten; the old title's status
+follows the loss, and both titles journal the change. Files owned by an
+active replacement or living in the download folder for seeding are refused.
+
 The request stores the same reviewed identity a discovery review stores, and
 the same durable verification worker then inspects the file (anchored open,
 stable file identity, size/mtime, sample fingerprints, FFprobe) before the

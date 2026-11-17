@@ -278,3 +278,75 @@ describe("browser-picked import copy", () => {
     expect(queued).toBe(1);
   });
 });
+
+describe("re-attaching a file registered elsewhere", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("offers the reviewed re-attach when the file is registered elsewhere and posts it", async () => {
+    const user = userEvent.setup();
+    const posts: { url: string; body: unknown }[] = [];
+    const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+      if (url.includes("/library/imports/direct")) {
+        if (options?.method === "POST") {
+          return Response.json(
+            {
+              error: {
+                code: "registered_elsewhere",
+                message:
+                  'This file is already registered to "The Lion King (2019)". Choose re-attach to move it to this title instead.',
+              },
+            },
+            { status: 409 },
+          );
+        }
+        return Response.json(files);
+      }
+      if (url.includes("/library/imports/reattach")) {
+        posts.push({ url, body: JSON.parse(String(options?.body)) });
+        return Response.json({ id: "f".repeat(32) }, { status: 202 });
+      }
+      return Response.json(
+        { error: { message: "Unexpected fixture request" } },
+        { status: 404 },
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+    let queued = 0;
+    mount(
+      <ImportExistingFile
+        open
+        onOpenChange={() => {}}
+        kind="movie"
+        mediaID={7}
+        title="The Lion King"
+        onQueued={() => {
+          queued++;
+        }}
+      />,
+    );
+    await user.click(await screen.findByRole("radio"));
+    await user.click(screen.getByLabelText(/I confirm this file belongs to/i));
+    await user.click(screen.getByRole("button", { name: /Verify & add/ }));
+    // The refusal reveals the re-attach choice and names the owning title.
+    expect(await screen.findByText(/already registered to/)).toBeVisible();
+    const reattachBox = (await screen.findByLabelText(
+      /Re-attach this file to/i,
+    )) as HTMLInputElement;
+    // The refusal already turned the offer on; toggling would clear it.
+    expect(reattachBox.checked).toBe(true);
+    const submit = screen.getByRole("button", {
+      name: /Re-attach & move here/,
+    });
+    await user.click(submit);
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0].body).toMatchObject({
+      kind: "movie",
+      media_id: 7,
+      relative: "Movies/Test Movie (2026)/Test.Movie.2026.mp4",
+      reviewed: true,
+    });
+    expect(queued).toBe(1);
+  });
+});

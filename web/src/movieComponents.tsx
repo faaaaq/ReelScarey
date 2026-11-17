@@ -1,5 +1,6 @@
 import {
   useId,
+  useEffect,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
@@ -15,7 +16,7 @@ import {
   Plus,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { api, messageFor, type Movie } from "./api";
+import { api, lookupLibraryItem, messageFor, type Movie } from "./api";
 import { RequestState } from "./components";
 import { FormGroup, Label, Modal } from "./ui";
 import { useResource } from "./useResource";
@@ -144,6 +145,7 @@ export function AddMovieButton({
   id,
   added,
   onAdded,
+  onLibraryID,
   kind = "movie",
   category,
   createFolder = false,
@@ -152,6 +154,7 @@ export function AddMovieButton({
   id: number;
   added: boolean;
   onAdded: (id: number) => void;
+  onLibraryID?: (id: number) => void;
   kind?: "movie" | "series";
   category?: "anime";
   createFolder?: boolean;
@@ -163,6 +166,24 @@ export function AddMovieButton({
   const [error, setError] = useState("");
   const [folderMessage, setFolderMessage] = useState("");
   const [libraryID, setLibraryID] = useState<number | null>(null);
+  // An in-library title the button did not add itself still resolves to its
+  // saved page so "In library" opens the title itself, not a list.
+  useEffect(() => {
+    if (!added || libraryID !== null) return;
+    let cancelled = false;
+    lookupLibraryItem(kind === "series" ? "series" : "movie", id)
+      .then((found) => {
+        if (!cancelled && found?.id) {
+          setLibraryID(found.id);
+          onLibraryID?.(found.id);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [added, id, kind]);
   async function add(choice: "monitored" | "unmonitored" | SeriesMonitorMode) {
     if (pending) return;
     setPending(choice);
@@ -182,6 +203,7 @@ export function AddMovieButton({
         },
       );
       setLibraryID(result?.item?.id ?? null);
+      onLibraryID?.(result.item.id);
       if (createFolder) {
         try {
           if (!result?.item) throw new Error("The new title was not returned.");
@@ -299,6 +321,22 @@ export function MovieDetails({
   const [createFolder, setCreateFolder] = useState(false);
   const folderId = useId();
   const data = details.data;
+  // The footer action opens the title's own saved page, so resolve the
+  // library id — immediately for a title this modal just added, otherwise
+  // through the catalog lookup when the title is already saved.
+  const [libraryItemID, setLibraryItemID] = useState<number | null>(null);
+  useEffect(() => {
+    if (!added || libraryItemID !== null) return;
+    let cancelled = false;
+    lookupLibraryItem(kind === "series" ? "series" : "movie", id)
+      .then((found) => {
+        if (!cancelled && found?.id) setLibraryItemID(found.id);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [added, id, kind, libraryItemID]);
 
   return (
     <Modal
@@ -313,19 +351,13 @@ export function MovieDetails({
       description={`${kind === "series" ? "TV show" : "Movie"} details from TMDb.`}
       footer={
         <>
-          {data && added && (
+          {data && added && libraryItemID !== null && (
             <Button asChild variant="soft" className="is-left">
               <Link
-                to={
-                  category === "anime"
-                    ? "/anime"
-                    : kind === "series"
-                      ? "/series"
-                      : "/movies"
-                }
+                to={`/${kind === "series" ? "series" : "movies"}/${libraryItemID}`}
                 onClick={close}
               >
-                Open library
+                Open title page
               </Link>
             </Button>
           )}
@@ -339,6 +371,7 @@ export function MovieDetails({
               id={id}
               added={added}
               onAdded={onAdded}
+              onLibraryID={setLibraryItemID}
               createFolder={createFolder}
               variant="solid"
             />

@@ -1479,6 +1479,19 @@ export async function setFileVersionLabel(fileID: number, label: string) {
   });
 }
 
+/**
+ * Resolves the saved catalog title behind a TMDb id so links can open the
+ * title's own library page. 404 means the title is not saved.
+ */
+export async function lookupLibraryItem(
+  kind: "movie" | "series",
+  tmdbID: number,
+) {
+  return api<{ id: number; kind: string }>(
+    `/library/lookup/${tmdbID}?kind=${kind}`,
+  );
+}
+
 export type ImportUploadPrepare = { destination: string };
 
 /** Resolves (and creates when missing) the destination folder for a copy. */

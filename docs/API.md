@@ -569,7 +569,8 @@ same-origin validation. Reads never start a filesystem scan.
 | GET | `/api/v1/library/imports/direct?kind=movie&dir=` | Bounded listing of one folder below a configured library root (empty `dir` lists the roots); read-only |
 | POST | `/api/v1/library/imports/direct` | `{kind,media_id,episode_ids?,root,relative,reviewed:true}`; point at one file inside a configured root and queue its verified in-place registration for the selected title; 202 |
 | POST | `/api/v1/library/imports/upload/prepare` | `{kind,collection?,media_id}`; resolve (and create when missing) the destination folder inside a configured root for a browser-picked copy; returns `{destination}` |
-| POST | `/api/v1/library/imports/upload?kind=&media_id=&name=&episode_ids=` | Raw file body; copy a browser-picked video into the prepared destination and queue its reviewed registration; never overwrites; 202 || POST | `/api/v1/library/import-files/{id}/register` | `{media_id,episode_ids:[],reviewed:true}`; queue verified in-place registration; 202 |
+| POST | `/api/v1/library/imports/upload?kind=&media_id=&name=&episode_ids=` | Raw file body; copy a browser-picked video into the prepared destination and queue its reviewed registration; never overwrites; 202 |
+| POST | `/api/v1/library/imports/reattach` | `{kind,media_id,episode_ids?,relative,reviewed:true}`; re-parent a file already registered to another title, then queue the reviewed organization move/rename into the new title's canonical layout; 202 || POST | `/api/v1/library/import-files/{id}/register` | `{media_id,episode_ids:[],reviewed:true}`; queue verified in-place registration; 202 |
 | POST | `/api/v1/library/import-files/{id}/skip` | `{}`; skip a review/blocked item |
 
 Paths are immutable server snapshots selected through opaque discovered IDs;

@@ -118,6 +118,17 @@ func TestDirectUploadAndFileVersionRoutes(t *testing.T) {
 	if out = uploadRequest(handler, "/api/v1/library/imports/upload?kind=movie&media_id=1&name=Test.Movie.2026.mp4", "second", &session, true); out.Code != 409 {
 		t.Fatalf("a colliding upload was not refused: %d %s", out.Code, out.Body.String())
 	}
+
+	// The re-attach route stays behind the session, origin and CSRF.
+	if out := request(handler, "POST", "/api/v1/library/imports/reattach", `{"kind":"movie","media_id":1,"relative":"Movies/x.mkv","reviewed":true}`, nil, false); out.Code != 401 {
+		t.Fatal("the re-attach route allowed an anonymous move", out.Code)
+	}
+	if out := request(handler, "POST", "/api/v1/library/imports/reattach", `{"kind":"movie","media_id":1,"relative":"Movies/x.mkv","reviewed":true}`, &session, false); out.Code != 403 || !strings.Contains(out.Body.String(), "csrf_required") {
+		t.Fatal("the re-attach route allowed a move without CSRF", out.Code, out.Body.String())
+	}
+	if out := request(handler, "POST", "/api/v1/library/imports/reattach", `{"kind":"movie","media_id":1,"relative":"Movies/missing.mkv","reviewed":true}`, &session, true); out.Code != 400 || !strings.Contains(out.Body.String(), "invalid_selection") {
+		t.Fatal("the re-attach route accepted an unregistered file", out.Code, out.Body.String())
+	}
 }
 
 // uploadRequest posts a raw body with the session cookie and CSRF header the

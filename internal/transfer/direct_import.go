@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -261,6 +263,12 @@ func (s *Service) QueueDirectImport(ctx context.Context, in DirectImportRequest)
 		return LibraryScan{}, e
 	}
 	if registered > 0 {
+		var owner string
+		if e = s.db.QueryRowContext(ctx, `SELECT m.title FROM media_files f JOIN media_items m ON m.id=COALESCE(f.movie_id,f.series_id) WHERE f.relative_path=? COLLATE NOCASE`, relative).Scan(&owner); e == nil && owner != "" {
+			return LibraryScan{}, problem("registered_elsewhere", fmt.Sprintf("This file is already registered to %q. Choose re-attach to move it to this title instead.", owner))
+		} else if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return LibraryScan{}, e
+		}
 		return LibraryScan{}, problem("duplicate_file", "This file is already registered in the library.")
 	}
 	var pending int

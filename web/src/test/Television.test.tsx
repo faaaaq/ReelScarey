@@ -312,8 +312,8 @@ describe("TV catalog and monitoring", () => {
     );
     await within(dialog).findByText("In library");
     expect(
-      within(dialog).getByRole("link", { name: "Open library" }),
-    ).toHaveAttribute("href", "/series");
+      within(dialog).getByRole("link", { name: "Open title page" }),
+    ).toHaveAttribute("href", "/series/7");
     const call = fetch.mock.calls.find(
       ([url, options]) =>
         url.endsWith("/library/series") && options?.method === "POST",

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, Progress } from "@radix-ui/themes";
 import { Alert, Modal, ModalClose } from "../../ui";
 import {
+  APIError,
   api,
   messageFor,
   prepareImportUpload,
@@ -89,7 +90,20 @@ export function ImportExistingFile({
   const [busy, setBusy] = useState(false);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [error, setError] = useState("");
+  // A file already registered elsewhere is offered the reviewed re-attach:
+  // the registration moves to this title and the file is moved and renamed
+  // into its canonical layout.
+  const [reattach, setReattach] = useState(false);
 
+  function reportError(e: unknown) {
+    setError(messageFor(e));
+    if (
+      e instanceof APIError &&
+      (e.code === "registered_elsewhere" || e.code === "duplicate_file")
+    ) {
+      setReattach(true);
+    }
+  }
   const load = useCallback(
     async (target: string) => {
       setError("");
@@ -119,6 +133,7 @@ export function ImportExistingFile({
       setChecked([]);
       setReviewed(false);
       setBusy(false);
+      setReattach(false);
       setError("");
       void load("");
     }
@@ -229,7 +244,31 @@ export function ImportExistingFile({
       onQueued();
       onOpenChange(false);
     } catch (e) {
-      setError(messageFor(e));
+      reportError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitReattach() {
+    if (!selected || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api("/library/imports/reattach", {
+        method: "POST",
+        body: JSON.stringify({
+          kind,
+          media_id: mediaID,
+          ...(kind === "series" ? { episode_ids: checked } : {}),
+          relative: selected.path,
+          reviewed: true,
+        }),
+      });
+      onQueued();
+      onOpenChange(false);
+    } catch (e) {
+      reportError(e);
     } finally {
       setBusy(false);
     }
@@ -263,8 +302,19 @@ export function ImportExistingFile({
             </Button>
           )}
           {!localFile && (
-            <Button disabled={!canBrowse} onClick={() => void submitBrowse()}>
-              {busy ? "Queueing…" : "Verify & add in place"}
+            <Button
+              disabled={!canBrowse}
+              onClick={() =>
+                void (reattach && !!selected
+                  ? submitReattach()
+                  : submitBrowse())
+              }
+            >
+              {busy
+                ? "Queueing…"
+                : reattach && !!selected
+                  ? "Re-attach & move here"
+                  : "Verify & add in place"}
             </Button>
           )}
         </>
@@ -376,7 +426,11 @@ export function ImportExistingFile({
                     type="radio"
                     name="direct-import-file"
                     checked={selected?.path === item.path}
-                    onChange={() => setSelected(item)}
+                    onChange={() => {
+                      setSelected(item);
+                      setReattach(false);
+                      setError("");
+                    }}
                   />
                   <span>{item.name}</span>
                   <span className="rs-muted">
@@ -442,6 +496,22 @@ export function ImportExistingFile({
           )}
         </div>
       )}
+      {reattach && !localFile && (
+        <label className="rs-check-row">
+          <input
+            type="checkbox"
+            checked={!!selected && reattach}
+            onChange={(event) =>
+              setReattach(event.target.checked && !!selected)
+            }
+          />
+          <span>
+            Re-attach this file to <strong>{title}</strong>: it is removed from
+            the title it is registered under now, and this title's folder and
+            naming take over — the file is moved and renamed accordingly.
+          </span>
+        </label>
+      )}
       <label className="rs-check-row">
         <input
           type="checkbox"
@@ -453,7 +523,9 @@ export function ImportExistingFile({
           {kind === "series" ? " and the selected episodes" : ""}
           {localFile
             ? ". The browser will copy it into the server library, then it will be verified."
-            : ". It will be verified in place, not copied."}
+            : reattach && selected
+              ? ". Re-attaching moves the file out of its current title and renames it under this title."
+              : ". It will be verified in place, not copied."}
         </span>
       </label>
     </Modal>

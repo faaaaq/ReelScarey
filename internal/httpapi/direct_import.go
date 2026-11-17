@@ -157,3 +157,31 @@ func (s *Server) existingUploadPrepare(w http.ResponseWriter, r *http.Request) {
 	}
 	send(w, 200, map[string]string{"destination": destination})
 }
+
+// existingReattach moves an already-registered file between catalog titles:
+// the registration is re-parented and the reviewed organization plan moves
+// and renames the file into the new title's canonical layout.
+func (s *Server) existingReattach(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		fail(w, 405, "method_not_allowed", "Use POST.")
+		return
+	}
+	var in transfer.ReattachRequest
+	if !decodeBoundedJSON(w, r, &in, 16<<10) {
+		return
+	}
+	if len(in.Episodes) > 20 || len(in.Relative) > 2048 {
+		fail(w, 400, "invalid_mapping", "Review the title and episode match before re-attaching this file.")
+		return
+	}
+	plan, e := s.transfer.ReattachFile(r.Context(), in)
+	if e != nil {
+		s.transferError(w, e)
+		return
+	}
+	send(w, 202, plan)
+}
