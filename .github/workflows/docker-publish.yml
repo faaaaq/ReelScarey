@@ -361,6 +361,13 @@ jobs:
           set +x
           digest=$(docker buildx imagetools inspect "$image:sha-${{ github.sha }}" --format '{{.Manifest.Digest}}')
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          oldIFS=$IFS; IFS=','
+          for tag in $tag_list; do
+            actual=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')
+            test "$actual" = "$digest"
+            echo "Verified tag $tag @ $actual"
+          done
+          IFS=$oldIFS
           platforms=$(docker buildx imagetools inspect "$image:sha-${{ github.sha }}" \
             --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')
           case "$platforms" in *linux/amd64*) ;; *) echo "missing linux/amd64: $platforms" >&2; exit 1 ;; esac

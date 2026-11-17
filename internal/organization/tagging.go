@@ -468,7 +468,7 @@ func (s *Service) commitEmbeddedTitle(ctx context.Context, root *os.Root, p *Pla
 		return problem("revision_conflict", "YouTube provenance changed during the title update.")
 	}
 	a := r.After
-	result, e := tx.ExecContext(ctx, `UPDATE media_files SET relative_path=?,size_bytes=?,sha256=?,probe_json=? WHERE id=? AND relative_path=? AND sha256=?`, a.Path, a.Size, a.SHA, a.Probe, r.FileID, r.Before.Path, r.Before.SHA)
+	result, e := tx.ExecContext(ctx, `UPDATE media_files SET relative_path=?,size_bytes=?,sha256=?,probe_json=?,verification_json='{}' WHERE id=? AND relative_path=? AND sha256=?`, a.Path, a.Size, a.SHA, a.Probe, r.FileID, r.Before.Path, r.Before.SHA)
 	if e != nil {
 		return e
 	}

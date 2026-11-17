@@ -28,6 +28,7 @@ docker exec "$name" python3 /verification/automatic-library-seed.py
 docker run --rm --network "container:$name" -e REELSCAREY_AUTOMATIC_SMOKE=1 \
   -v "$config:/fixture:ro" -v "$scripts:/verification:ro" \
   node:24-bookworm-slim node /verification/automatic-library-container-smoke.mjs
+docker exec "$name" python3 /verification/automatic-library-seed.py --wait
 docker restart "$name" >/dev/null
 ready
 docker exec "$name" python3 /verification/automatic-library-seed.py --verify
