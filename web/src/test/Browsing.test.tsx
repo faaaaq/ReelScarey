@@ -28,7 +28,7 @@ function Location() {
     </>
   );
 }
-function mount(path = "/movies", kind: "movie" | "series" = "movie") {
+function mount(path = "/movies", kind: "movie" | "series" | "anime" = "movie") {
   render(
     <Theme>
       <MemoryRouter initialEntries={[path]}>
@@ -69,12 +69,36 @@ describe("catalog browsing", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByText(/all shown/)).toBeVisible();
   });
-  it.each(["table", "overview", "posters"])(
-    "toggles selection on the whole %s item",
-    async (view) => {
+  it.each(
+    (["movie", "series", "anime"] as const).flatMap((kind) =>
+      ["table", "overview", "posters"].map((view) => ({ kind, view })),
+    ),
+  )(
+    "toggles selection on the whole $kind $view item",
+    async ({ kind, view }) => {
       const user = userEvent.setup();
-      mock();
-      mount(`/movies?view=${view}`);
+      mock((url) =>
+        url.includes("/library?")
+          ? Response.json({
+              items: [
+                {
+                  ...item,
+                  kind: kind === "movie" ? "movie" : "series",
+                  category: kind === "anime" ? "anime" : "standard",
+                },
+              ],
+              total: 1,
+              collection_total: 1,
+              page: 1,
+              limit: 1,
+            })
+          : url.endsWith("/library/anime/preferences")
+            ? Response.json({ dub_rule: "", default_rule: "" })
+            : undefined,
+      );
+      const path =
+        kind === "movie" ? "/movies" : kind === "series" ? "/series" : "/anime";
+      mount(`${path}?view=${view}`, kind);
       const title = await screen.findByRole("link", { name: item.title });
       await user.click(screen.getByRole("button", { name: "Select" }));
       await user.click(title);
@@ -85,7 +109,7 @@ describe("catalog browsing", () => {
         screen.getByRole("button", { name: "Delete selected (1)" }),
       ).toBeEnabled();
       expect(screen.getByLabelText("Current address")).toHaveTextContent(
-        "/movies?view=",
+        `${path}?view=`,
       );
       const tile = title.closest("li") ?? title.closest("tr");
       expect(tile).not.toBeNull();

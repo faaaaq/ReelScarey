@@ -147,6 +147,59 @@ function mount() {
   );
 }
 describe("subtitles", () => {
+  it("keeps subtitle and audio cleanup available when provider settings fail", async () => {
+    setup((url) => {
+      if (url.endsWith("/providers/opensubtitles"))
+        return Response.json(
+          { error: { message: "Provider unavailable" } },
+          { status: 503 },
+        );
+      if (url.endsWith("/organization"))
+        return Response.json({ libraries: [{ key: "anime", name: "Anime" }] });
+    });
+    mount();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Delete subtitles" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Delete subtitles" });
+    expect(
+      within(dialog).getByRole("option", { name: "All subtitles" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("option", {
+        name: "Subtitles outside configured languages",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("option", {
+        name: "Non-forced subtitles outside configured languages",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("option", { name: /Audio outside/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      await within(dialog).findByRole("option", { name: "Anime" }),
+    ).toBeInTheDocument();
+  });
+  it("offers language-based audio cleanup independently of subtitle downloads", async () => {
+    setup((url) =>
+      url.endsWith("/organization")
+        ? Response.json({ libraries: [] })
+        : undefined,
+    );
+    mount();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Delete audio tracks" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Delete audio tracks" });
+    expect(
+      within(dialog).getByRole("combobox", { name: "Remove" }),
+    ).toHaveValue("other_audio");
+    expect(
+      within(dialog).queryByRole("option", { name: "All subtitles" }),
+    ).not.toBeInTheDocument();
+  });
   it("switches subtitle providers without reusing hidden credentials", async () => {
     const fetch = setup();
     mount();

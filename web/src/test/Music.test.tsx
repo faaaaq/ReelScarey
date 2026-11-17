@@ -105,15 +105,44 @@ describe("music", () => {
     expect(
       await screen.findByRole("link", { name: "Open Radiohead" }),
     ).toHaveAttribute("href", "/music/artists/1");
+    async function checkSelection(target: HTMLElement, name: string) {
+      await userEvent.click(screen.getByRole("button", { name: "Select" }));
+      await userEvent.click(target);
+      expect(
+        screen.getByRole("checkbox", { name: `Select ${name}` }),
+      ).toBeChecked();
+      expect(
+        screen.getByRole("button", { name: "Delete selected (1)" }),
+      ).toBeEnabled();
+      const row = target.closest("li") ?? target.closest("tr");
+      expect(row).not.toBeNull();
+      await userEvent.click(row!);
+      expect(
+        screen.getByRole("checkbox", { name: `Select ${name}` }),
+      ).not.toBeChecked();
+      await userEvent.click(screen.getByRole("button", { name: "Select" }));
+    }
+    await checkSelection(
+      screen.getByRole("link", { name: "Radiohead" }),
+      "Radiohead",
+    );
     await userEvent.click(screen.getByRole("button", { name: "Albums" }));
     expect(
       (await screen.findAllByRole("link", { name: "OK Computer" }))[0],
     ).toHaveAttribute("href", "/music/albums/2");
+    await checkSelection(
+      screen.getByRole("link", { name: "OK Computer" }),
+      "OK Computer",
+    );
     await userEvent.click(screen.getByRole("button", { name: "Tracks" }));
     expect(
       await screen.findByRole("table", { name: "Music tracks" }),
     ).toBeVisible();
     expect(screen.getByText("Airbag")).toBeVisible();
+    await checkSelection(
+      screen.getByRole("link", { name: "OK Computer" }),
+      "Airbag",
+    );
     await userEvent.click(screen.getByRole("button", { name: "Artists" }));
     expect(
       await screen.findByRole("link", { name: "Open Radiohead" }),

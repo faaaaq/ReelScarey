@@ -3,7 +3,6 @@ package music
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 
 	"github.com/faaaaq/ReelScarey/internal/organization"
@@ -29,6 +28,9 @@ func (s *Service) processTitleUpdate(ctx context.Context) (bool, error) {
 		return true, err
 	}
 	if err != nil {
+		if ctx.Err() == nil {
+			_, _ = s.store.db.ExecContext(ctx, `UPDATE music_title_updates SET next_attempt=unixepoch()+300 WHERE music_file_id=? AND revision=?`, id, revision)
+		}
 		return false, err
 	}
 	tx, err := s.store.db.BeginTx(ctx, nil)
@@ -47,8 +49,7 @@ func (s *Service) processTitleUpdate(ctx context.Context) (bool, error) {
 		return true, tx.Commit()
 	}
 	file := plan.Files[0]
-	var tags AudioTags
-	if json.Unmarshal([]byte(file.PreviousTagJSON), &tags) == nil && tags.Title == file.Tags.Title {
+	if !needsRetag(file.PreviousTagJSON, file.Tags) {
 		_, err = tx.ExecContext(ctx, `DELETE FROM music_title_updates WHERE music_file_id=? AND revision=?`, id, revision)
 		if err != nil {
 			return false, err
@@ -82,6 +83,13 @@ func (s *Service) processTitleUpdate(ctx context.Context) (bool, error) {
 	s.runEditJob(ctx, job)
 	if ctx.Err() != nil {
 		return true, ctx.Err()
+	}
+	var state string
+	if err = s.store.db.QueryRowContext(ctx, `SELECT state FROM music_edit_jobs WHERE id=?`, job).Scan(&state); err != nil {
+		return true, err
+	}
+	if state != "completed" {
+		return true, nil
 	}
 	_, err = s.store.db.ExecContext(ctx, `DELETE FROM music_title_updates WHERE music_file_id=? AND revision=?`, id, revision)
 	return true, err

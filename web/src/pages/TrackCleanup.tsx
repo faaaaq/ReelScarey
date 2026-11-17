@@ -29,14 +29,26 @@ type CleanupPlan = {
 export function TrackCleanup({
   mediaID,
   onDone,
+  kind = "all",
 }: {
   mediaID?: number;
   onDone?: () => void;
+  kind?: "all" | "subtitles" | "audio";
 }) {
+  const available = actions.filter(
+    ([value]) =>
+      kind === "all" || (kind === "audio") === (value === "other_audio"),
+  );
+  const title =
+    kind === "subtitles"
+      ? "Delete subtitles"
+      : kind === "audio"
+        ? "Delete audio tracks"
+        : "Remove media tracks";
   const libraries = useResource<{ libraries: { key: string; name: string }[] }>(
     mediaID ? null : "/organization",
   );
-  const [mode, setMode] = useState<string>(actions[0][0]);
+  const [mode, setMode] = useState<string>(available[0][0]);
   const [library, setLibrary] = useState("");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -103,16 +115,20 @@ export function TrackCleanup({
 
   return (
     <FieldSet
-      legend="Remove media tracks"
+      legend={title}
       description="Embedded tracks are removed by rewriting the video container. External subtitles move to the media trash."
     >
       <Modal
         open={open}
         onOpenChange={changeOpen}
-        title="Remove media tracks"
+        title={title}
         trigger={
           <Button variant="soft">
-            {running ? "View cleanup progress" : "Open track cleanup"}
+            {running
+              ? "View cleanup progress"
+              : kind === "all"
+                ? "Open track cleanup"
+                : title}
           </Button>
         }
         footer={
@@ -178,7 +194,7 @@ export function TrackCleanup({
                 value={mode}
                 onChange={(event) => setMode(event.target.value)}
               >
-                {actions.map(([value, label]) => (
+                {available.map(([value, label]) => (
                   <option value={value} key={value}>
                     {label}
                   </option>

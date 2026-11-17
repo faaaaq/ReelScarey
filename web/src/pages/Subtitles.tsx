@@ -188,6 +188,8 @@ export function Subtitles() {
       </PageToolbar>
       <PageBody>
         <PageHeading title="Subtitles" />
+        <TrackCleanup kind="subtitles" />
+        <TrackCleanup kind="audio" />
         <RequestState
           loading={prefs.loading || provider.loading}
           error={prefs.error || provider.error}
@@ -203,7 +205,6 @@ export function Subtitles() {
               provider={provider.data}
               reload={provider.reload}
             />
-            <TrackCleanup />
             <Preferences
               data={prefs.data}
               provider={provider.data}

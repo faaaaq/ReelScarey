@@ -1719,6 +1719,9 @@ forever.
 
 ### Library deletion and track cleanup
 
+See [the control locations and behavior](LIBRARY_MANAGEMENT.md) for the library,
+detail-page, subtitle, audio, and music actions.
+
 The video and music libraries let an administrator delete a reviewed selection.
 Movie, show, artist and album pages also expose deletion of the saved entry or
 individual registered files. Music tracks can be removed with all their

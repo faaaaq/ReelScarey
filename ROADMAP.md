@@ -13,6 +13,12 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
+- [x] Follow through on existing collections: queue older registered video and
+  matched music files for canonical metadata checks; correct music album/artist
+  tags even when the track title already matches, and retain failed writes for
+  retry. Separate subtitle deletion and audio cleanup controls remain accessible
+  when provider settings are unavailable. See [control locations](docs/LIBRARY_MANAGEMENT.md).
+
 - [x] Review and delete selected movie, TV, anime, or music entries. Detail pages
   support individual registered-file deletion. Supported video and matched
   music imports queue canonical embedded titles, and stopped download tracking
