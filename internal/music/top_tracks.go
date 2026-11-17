@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -78,6 +79,225 @@ type deezerArtistTop struct {
 
 var topTracksHTTP = &http.Client{Timeout: 15 * time.Second}
 
+// deezerCandidate is one same-named artist returned by the Deezer search.
+type deezerCandidate struct {
+	id   int64
+	name string
+	fans int64
+}
+
+// resolveDeezerArtist picks the Deezer artist behind a catalog artist name
+// using evidence instead of popularity. Every exact and normalized name match
+// is compared against the artist's saved catalog album titles; the first
+// candidate whose discography contains a catalog album wins. When the catalog
+// has albums and no candidate corroborates them, the name is not resolved —
+// a popular same-named stranger must never own the page. When the catalog has
+// no albums yet there is nothing to corroborate, so the best exact-name match
+// is used as before. The bool reports whether the identity was verified
+// against the catalog.
+func (s *Service) resolveDeezerArtist(ctx context.Context, base, name string) (int64, bool, error) {
+	var body struct {
+		Data []struct {
+			ID    int64  `json:"id"`
+			Name  string `json:"name"`
+			NbFan int64  `json:"nb_fan"`
+		} `json:"data"`
+	}
+	if err := deezerGet(ctx, base+"/search/artist?limit=25&q="+url.QueryEscape(name), &body); err != nil {
+		return 0, false, err
+	}
+	key := compactMatchName(name)
+	candidates := []deezerCandidate{}
+	for _, item := range body.Data {
+		if item.ID <= 0 || compactMatchName(item.Name) != key {
+			continue
+		}
+		candidates = append(candidates, deezerCandidate{id: item.ID, name: item.Name, fans: item.NbFan})
+	}
+	if len(candidates) == 0 {
+		return 0, false, nil
+	}
+	// Exact display-name matches are stronger evidence than normalized ones.
+	sort.SliceStable(candidates, func(i, j int) bool {
+		iExact, jExact := candidates[i].name == name, candidates[j].name == name
+		if iExact != jExact {
+			return iExact
+		}
+		return candidates[i].fans > candidates[j].fans
+	})
+	titles, verifiable, err := s.catalogAlbumTitles(ctx, name)
+	if err != nil {
+		return 0, false, err
+	}
+	if !verifiable {
+		return candidates[0].id, false, nil
+	}
+	checked := 0
+	for _, candidate := range candidates {
+		if checked >= 4 {
+			break
+		}
+		checked++
+		if s.deezerAlbumsContain(ctx, base, candidate.id, titles) {
+			return candidate.id, true, nil
+		}
+	}
+	// Same-named candidates do not carry the catalog's albums. The display
+	// name may differ from the catalog name (a stage-name alias, such as
+	// "ABK" versus "Anybody Killa"), so the catalog's own album titles are
+	// searched instead: whoever owns the catalog's albums on Deezer is the
+	// artist, regardless of the display name.
+	id := s.deezerArtistByCatalogAlbums(ctx, base, titles)
+	if id != 0 {
+		return id, true, nil
+	}
+	// Nothing on Deezer carries the saved catalog's albums; a popular
+	// same-named stranger must not own the page.
+	return 0, false, nil
+}
+
+// deezerArtistByCatalogAlbums searches the catalog's album titles and returns
+// the Deezer artist that owns the most of them. An album-title search result
+// alone is not enough — the candidate's own album list must contain the
+// catalog album, and when several catalog albums exist the majority wins.
+func (s *Service) deezerArtistByCatalogAlbums(ctx context.Context, base string, titles []string) int64 {
+	type deezerTally struct {
+		name  string
+		hits  int
+		order int
+	}
+	tallies := map[int64]*deezerTally{}
+	order := 0
+	checked := 0
+	for _, title := range titles {
+		if checked >= 3 {
+			break
+		}
+		checked++
+		var body struct {
+			Data []struct {
+				Title  string `json:"title"`
+				Artist struct {
+					ID   int64  `json:"id"`
+					Name string `json:"name"`
+				} `json:"artist"`
+			} `json:"data"`
+		}
+		if err := deezerGet(ctx, base+"/search/album?limit=10&q="+url.QueryEscape(title), &body); err != nil {
+			return 0
+		}
+		for _, album := range body.Data {
+			if album.Artist.ID <= 0 || !matchNameEqual(album.Title, title) {
+				continue
+			}
+			tally := tallies[album.Artist.ID]
+			if tally == nil {
+				tally = &deezerTally{name: album.Artist.Name, order: order}
+				order++
+				tallies[album.Artist.ID] = tally
+			}
+		}
+	}
+	if len(tallies) == 0 {
+		return 0
+	}
+	// Verify each candidate's own album list before trusting a search hit.
+	type verified struct {
+		id    int64
+		hits  int
+		name  string
+		order int
+	}
+	candidates := []verified{}
+	for id, tally := range tallies {
+		hits := 0
+		var body struct {
+			Data []struct {
+				Title string `json:"title"`
+			} `json:"data"`
+		}
+		if err := deezerGet(ctx, base+"/artist/"+strconv.FormatInt(id, 10)+"/albums?limit=100", &body); err != nil {
+			continue
+		}
+		for _, album := range body.Data {
+			for _, title := range titles {
+				if matchNameEqual(album.Title, title) {
+					hits++
+					break
+				}
+			}
+		}
+		if hits > 0 {
+			candidates = append(candidates, verified{id: id, hits: hits, name: tally.name, order: tally.order})
+		}
+	}
+	if len(candidates) == 0 {
+		return 0
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].hits != candidates[j].hits {
+			return candidates[i].hits > candidates[j].hits
+		}
+		return candidates[i].order < candidates[j].order
+	})
+	return candidates[0].id
+}
+
+// deezerAlbumsContain reports whether the candidate artist's bounded album
+// list contains one of the catalog album titles.
+func (s *Service) deezerAlbumsContain(ctx context.Context, base string, providerID int64, titles []string) bool {
+	var body struct {
+		Data []struct {
+			Title string `json:"title"`
+		} `json:"data"`
+	}
+	if err := deezerGet(ctx, base+"/artist/"+strconv.FormatInt(providerID, 10)+"/albums?limit=100", &body); err != nil {
+		return false
+	}
+	for _, album := range body.Data {
+		for _, title := range titles {
+			if matchNameEqual(album.Title, title) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// catalogAlbumTitles returns the saved album titles of the catalog artist
+// with the given name. The bool reports whether album evidence can be used:
+// it is false when several catalog artists share the name, because the
+// albums could belong to any of them, and when the artist has no saved
+// albums at all, because there is nothing to corroborate against.
+func (s *Service) catalogAlbumTitles(ctx context.Context, name string) ([]string, bool, error) {
+	rows, err := s.store.db.QueryContext(ctx, `SELECT ar.id, a.title FROM music_artists ar JOIN music_albums a ON a.artist_id=ar.id
+		WHERE lower(trim(ar.name))=lower(trim(?))`, name)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	artistIDs := map[int64]bool{}
+	titles := []string{}
+	for rows.Next() {
+		var artistID int64
+		var title string
+		if err := rows.Scan(&artistID, &title); err != nil {
+			return nil, false, err
+		}
+		artistIDs[artistID] = true
+		if title = strings.TrimSpace(title); title != "" {
+			titles = append(titles, title)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	if len(artistIDs) > 1 || len(titles) == 0 {
+		return nil, false, nil
+	}
+	return titles, true, nil
+}
+
 // ArtistTopTracks returns the provider's overall top tracks, not just tracks
 // already registered in this library. Deezer's public API is the popularity
 // source; each item is then matched against the local catalog for playback or
@@ -94,11 +314,25 @@ func (s *Service) ArtistTopTracks(ctx context.Context, artistID int64, limit int
 	if base == "" {
 		base = defaultTopTracksBaseURL
 	}
-	providerID, err := deezerArtistID(ctx, base, artist.Name)
+	providerID, verified, err := s.resolveDeezerArtist(ctx, base, artist.Name)
 	if err != nil {
 		return TopTrackPage{}, err
 	}
 	if providerID == 0 {
+		if verified {
+			// Unreachable: a refused resolution reports verified=false.
+			return TopTrackPage{Source: "Deezer", Items: []TopTrack{}}, nil
+		}
+		var titles []string
+		titles, verifiable, titleErr := s.catalogAlbumTitles(ctx, artist.Name)
+		if titleErr != nil {
+			return TopTrackPage{}, titleErr
+		}
+		if verifiable && len(titles) > 0 {
+			// The saved catalog contradicts every same-named Deezer artist;
+			// showing a stranger's tracks would be wrong.
+			return TopTrackPage{Source: "Deezer", Items: []TopTrack{}, Message: "Deezer's same-named artists do not match the saved albums for this artist, so no top tracks are shown."}, nil
+		}
 		return TopTrackPage{Source: "Deezer", Items: []TopTrack{}, Message: "Deezer has no exact artist match for this name."}, nil
 	}
 	out := TopTrackPage{Source: "Deezer", Items: []TopTrack{}}
@@ -335,11 +569,21 @@ func (s *Service) ArtistDiscography(ctx context.Context, artistID int64, limit i
 	if base == "" {
 		base = defaultTopTracksBaseURL
 	}
-	providerID, err := deezerArtistID(ctx, base, artist.Name)
+	providerID, verified, err := s.resolveDeezerArtist(ctx, base, artist.Name)
 	if err != nil {
 		return DiscographyPage{}, err
 	}
 	if providerID == 0 {
+		if !verified {
+			var titles []string
+			titles, verifiable, titleErr := s.catalogAlbumTitles(ctx, artist.Name)
+			if titleErr != nil {
+				return DiscographyPage{}, titleErr
+			}
+			if verifiable && len(titles) > 0 {
+				return DiscographyPage{Source: "Deezer", Items: []DiscographyAlbum{}, Message: "Deezer's same-named artists do not match the saved albums for this artist, so the full discography is not shown."}, nil
+			}
+		}
 		return DiscographyPage{Source: "Deezer", Items: []DiscographyAlbum{}, Message: "Deezer has no exact artist match for this name."}, nil
 	}
 	var body struct {
@@ -395,37 +639,6 @@ func (s *Service) ArtistDiscography(ctx context.Context, artistID int64, limit i
 		out.Message = "Deezer returned no albums for this artist."
 	}
 	return out, nil
-}
-
-func deezerArtistID(ctx context.Context, base, name string) (int64, error) {
-	var body struct {
-		Data []struct {
-			ID    int64  `json:"id"`
-			Name  string `json:"name"`
-			NbFan int64  `json:"nb_fan"`
-		} `json:"data"`
-	}
-	if err := deezerGet(ctx, base+"/search/artist?limit=25&q="+url.QueryEscape(name), &body); err != nil {
-		return 0, err
-	}
-	key := compactMatchName(name)
-	var bestExact, bestNormalized int64
-	var bestExactFans, bestNormalizedFans int64
-	for _, item := range body.Data {
-		if item.ID <= 0 || compactMatchName(item.Name) != key {
-			continue
-		}
-		if item.Name == name && (bestExact == 0 || item.NbFan > bestExactFans) {
-			bestExact, bestExactFans = item.ID, item.NbFan
-		}
-		if bestNormalized == 0 || item.NbFan > bestNormalizedFans {
-			bestNormalized, bestNormalizedFans = item.ID, item.NbFan
-		}
-	}
-	if bestExact != 0 {
-		return bestExact, nil
-	}
-	return bestNormalized, nil
 }
 
 func deezerGet(ctx context.Context, endpoint string, out any) error {

@@ -776,41 +776,34 @@ export function MusicArtistPage() {
         {discography.data?.message && (
           <p className="rs-muted">{discography.data.message}</p>
         )}
-        {discography.data ? (
-          discography.data.items.length ? (
-            <>
-              <div className="mus-section-head">
-                <div>
-                  <h2>Albums</h2>
-                  <p className="rs-muted rs-small">
-                    Full {discography.data.source} discography. Albums already
-                    in the library open normally; missing albums can be
-                    downloaded.
-                  </p>
-                </div>
+        {discography.data && discography.data.items.length > 0 ? (
+          <>
+            <div className="mus-section-head">
+              <div>
+                <h2>Albums</h2>
+                <p className="rs-muted rs-small">
+                  Full {discography.data.source} discography. Albums already in
+                  the library open normally; missing albums can be downloaded.
+                </p>
               </div>
-              <ul className="lib-grid" aria-label="Music albums">
-                {discography.data.items.map((album) => (
-                  <DiscographyTile
-                    key={album.provider_id}
-                    album={album}
-                    onDownload={(item) =>
-                      setAlbumDownload({
-                        albumID: item.album_id,
-                        providerID: item.provider_id,
-                        title: item.title,
-                        artist: item.artist || artist?.name,
-                      })
-                    }
-                  />
-                ))}
-              </ul>
-            </>
-          ) : (
-            <EmptyState icon={Disc3} title="No albums">
-              Deezer has no albums for this artist.
-            </EmptyState>
-          )
+            </div>
+            <ul className="lib-grid" aria-label="Music albums">
+              {discography.data.items.map((album) => (
+                <DiscographyTile
+                  key={album.provider_id}
+                  album={album}
+                  onDownload={(item) =>
+                    setAlbumDownload({
+                      albumID: item.album_id,
+                      providerID: item.provider_id,
+                      title: item.title,
+                      artist: item.artist || artist?.name,
+                    })
+                  }
+                />
+              ))}
+            </ul>
+          </>
         ) : details.data ? (
           details.data.albums.length === 0 ? (
             <EmptyState icon={Disc3} title="No albums">

@@ -1058,6 +1058,14 @@ image.
 
 - Artist images are resolved from Deezer's public artist search using an exact
   normalized artist-name match, then cached.
+- The artist page's full Deezer discography and top tracks are name-resolved
+  with catalog evidence: every exact and normalized same-named candidate is
+  checked against the saved catalog's albums, and when no candidate carries
+  them, the catalog's own album titles are searched to find the artist that
+  owns them (covering stage-name aliases such as "ABK" versus
+  "Anybody Killa"). When nothing on Deezer carries the saved albums, the page
+  keeps the saved catalog albums and says the discography could not be
+  verified instead of showing a popular same-named stranger's albums.
 - Album covers use the saved Cover Art Archive/provider URL first. If a local or
   imported album has no cover URL, an exact Deezer album search supplies one;
   MusicBrainz release groups fall back to the Cover Art Archive.

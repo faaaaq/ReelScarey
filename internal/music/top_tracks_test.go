@@ -11,22 +11,73 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/database"
 )
 
-func TestDeezerArtistMatchPrefersExactCaseAndPopularity(t *testing.T) {
+func TestResolveDeezerArtistPrefersCatalogCorroborationOverPopularity(t *testing.T) {
+	// Two same-named artists exist on Deezer; the popular one is a stranger.
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/search/artist" {
+		switch r.URL.Path {
+		case "/search/artist":
+			_, _ = w.Write([]byte(`{"data":[
+				{"id":377,"name":"ABK","nb_fan":3011},
+				{"id":157,"name":"Anybody Killa","nb_fan":761}
+			]}`))
+		case "/artist/377/albums":
+			_, _ = w.Write([]byte(`{"data":[{"title":"The Real ABK"},{"title":"En Realidad"}]}`))
+		case "/artist/157/albums":
+			_, _ = w.Write([]byte(`{"data":[{"title":"Dirty History"},{"title":"Hatchet Warrior"}]}`))
+		case "/search/album":
+			_, _ = w.Write([]byte(`{"data":[
+				{"title":"Dirty History","artist":{"id":157,"name":"Anybody Killa"}},
+				{"title":"Dirty History","artist":{"id":909,"name":"Somebody Else"}}
+			]}`))
+		case "/artist/909/albums":
+			_, _ = w.Write([]byte(`{"data":[{"title":"Dirty History (Deluxe Reissue)"}]}`))
+		default:
 			http.NotFound(w, r)
-			return
 		}
-		_, _ = w.Write([]byte(`{"data":[
-			{"id":1,"name":"Abba","nb_fan":80},
-			{"id":2,"name":"ABBA","nb_fan":3207007},
-			{"id":3,"name":"Abba","nb_fan":349}
-		]}`))
 	}))
 	defer provider.Close()
-	id, err := deezerArtistID(context.Background(), provider.URL, "ABBA")
-	if err != nil || id != 2 {
-		t.Fatal("artist match", id, err)
+	ctx := context.Background()
+	db, err := database.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	service := &Service{store: NewStore(db), topBaseURL: provider.URL}
+	if _, err := db.Exec(`INSERT INTO music_artists(id,musicbrainz_id,name,monitored,status,created_at,updated_at) VALUES(15,'f851528b-e574-4309-92df-4b33ffde1340','ABK',1,'available',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO music_albums(id,artist_id,musicbrainz_id,title,monitored,status,created_at,updated_at) VALUES(50,15,'c7a0c651-0178-33eb-8eb6-d6563f2cb095','Dirty History',1,'available',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+
+	// The saved catalog album corroborates the less popular candidate even
+	// though the stranger has the exact display name.
+	id, verified, err := service.resolveDeezerArtist(ctx, provider.URL, "ABK")
+	if err != nil || id != 157 || !verified {
+		t.Fatalf("corroborated artist id=%d verified=%v err=%v", id, verified, err)
+	}
+
+	// A catalog with no albums yet cannot corroborate; the exact-name
+	// popularity fallback applies as before.
+	if _, err := db.Exec(`DELETE FROM music_albums`); err != nil {
+		t.Fatal(err)
+	}
+	id, verified, err = service.resolveDeezerArtist(ctx, provider.URL, "ABK")
+	if err != nil || id != 377 || verified {
+		t.Fatalf("uncorroborated fallback id=%d verified=%v err=%v", id, verified, err)
+	}
+
+	// A catalog album that no candidate carries refuses the resolution; a
+	// popular same-named stranger must not own the page.
+	if _, err := db.Exec(`INSERT INTO music_albums(id,artist_id,musicbrainz_id,title,monitored,status,created_at,updated_at) VALUES(51,15,'16735596-37a1-49ef-9b46-2f7c776bd249','Hatchet Warrior',1,'available',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE music_albums SET title='Mud, Water, Air, Blood' WHERE id=51`); err != nil {
+		t.Fatal(err)
+	}
+	id, verified, err = service.resolveDeezerArtist(ctx, provider.URL, "ABK")
+	if err != nil || id != 0 || verified {
+		t.Fatalf("refused resolution id=%d verified=%v err=%v", id, verified, err)
 	}
 }
 
@@ -68,6 +119,8 @@ func TestArtistTopTracksUsesProviderOverallTracksAndMarksLibraryMatches(t *testi
 		switch r.URL.Path {
 		case "/search/artist":
 			_, _ = w.Write([]byte(`{"data":[{"id":1,"name":"Radiohead"}]}`))
+		case "/artist/1/albums":
+			_, _ = w.Write([]byte(`{"data":[{"title":"OK Computer"},{"title":"The Bends"}]}`))
 		case "/artist/1/top":
 			_, _ = w.Write([]byte(`{"data":[{"id":10,"title":"Airbag","duration":284,"artist":{"name":"Radiohead"},"album":{"id":2,"title":"OK Computer","cover_medium":""}}]}`))
 		case "/chart/0/tracks":
