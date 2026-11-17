@@ -348,6 +348,7 @@ export type MusicServerUserInput = {
 export type MusicAlbumDetails = {
   album: MusicAlbum;
   tracks: MusicTrack[];
+  files?: MusicFile[];
 };
 
 /** Workflow phase of a reviewed music scan. */
@@ -894,6 +895,7 @@ export type AuthStatus = {
   totp_enabled?: boolean;
 };
 export type ProviderStatus = {
+  tvdb_configured?: boolean;
   configured: boolean;
   updated_at: string;
   using_default?: boolean;

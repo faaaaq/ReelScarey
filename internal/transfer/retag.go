@@ -6,11 +6,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"hash"
 	"io"
 	"os"
 	"os/exec"
 	"reflect"
+	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/faaaaq/ReelScarey/internal/organization"
 )
 
 // tagManifest retains the stream, attachment, chapter and tag facts which must
@@ -50,17 +55,18 @@ type tagManifest struct {
 }
 
 type retagResult struct {
-	Probe      Probe
-	Manifest   tagManifest
-	PacketHash [32]byte
+	Probe        Probe
+	Manifest     tagManifest
+	PacketHash   [32]byte
+	StreamHashes map[int][]byte
 }
 
-func retagInspect(ctx context.Context, f *os.File) (retagResult, error) {
-	var out retagResult
+func inspectManifest(ctx context.Context, f *os.File) (tagManifest, error) {
+	var out tagManifest
 	if _, e := f.Seek(0, 0); e != nil {
 		return out, e
 	}
-	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", probeProtocols(), "-show_data_hash", "sha256", "-show_entries", "stream=index,codec_type,codec_name,codec_tag_string,extradata_hash,width,height,sample_rate,channels,channel_layout,pix_fmt,sample_fmt,r_frame_rate,time_base,color_transfer,color_primaries,color_space,color_range:stream_tags:stream_disposition:chapter=start_time,end_time:chapter_tags:format_tags", "-of", "json", "-i", probeInput())
+	cmd := exec.CommandContext(ctx, trackTool("REELSCAREY_FFPROBE_PATH", "ffprobe"), "-v", "error", "-protocol_whitelist", probeProtocols(), "-format_whitelist", "mov,matroska,webm,avi,mpegts", "-enable_drefs", "0", "-use_absolute_path", "0", "-show_data_hash", "sha256", "-show_entries", "stream=index,codec_type,codec_name,codec_tag_string,extradata_hash,width,height,sample_rate,channels,channel_layout,pix_fmt,sample_fmt,r_frame_rate,time_base,color_transfer,color_primaries,color_space,color_range:stream_tags:stream_disposition:chapter=start_time,end_time:chapter_tags:format_tags", "-of", "json", "-i", probeInput())
 	hideProbeWindow(cmd)
 	cmd.Stdin = f
 	cmd.Stderr = io.Discard
@@ -70,15 +76,33 @@ func retagInspect(ctx context.Context, f *os.File) (retagResult, error) {
 	if e := cmd.Run(); e != nil {
 		return out, problem("invalid_media", "Unable to verify all media streams and metadata.")
 	}
-	if e := json.Unmarshal(b.Bytes(), &out.Manifest); e != nil {
+	if e := json.Unmarshal(b.Bytes(), &out); e != nil {
 		return out, problem("invalid_media", "Unable to read media stream information.")
 	}
+	return out, nil
+}
+
+func trackTool(env, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(env)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func retagInspect(ctx context.Context, f *os.File) (retagResult, error) {
+	var out retagResult
+	var err error
+	out.Manifest, err = inspectManifest(ctx, f)
+	if err != nil {
+		return out, err
+	}
+
 	if _, e := f.Seek(0, 0); e != nil {
 		return out, e
 	}
 	// Hash packet indexes, timestamps, durations and data hashes in their original
 	// order. Any remux that changes, omits or reorders packets is rejected.
-	cmd = exec.CommandContext(ctx, "ffprobe", "-v", "error", "-protocol_whitelist", probeProtocols(), "-show_packets", "-show_data_hash", "sha256", "-show_entries", "packet=stream_index,pts_time,dts_time,duration_time,data_hash", "-of", "compact=p=0:nk=0", "-i", probeInput())
+	cmd := exec.CommandContext(ctx, trackTool("REELSCAREY_FFPROBE_PATH", "ffprobe"), "-v", "error", "-protocol_whitelist", probeProtocols(), "-format_whitelist", "mov,matroska,webm,avi,mpegts", "-enable_drefs", "0", "-use_absolute_path", "0", "-show_packets", "-show_data_hash", "sha256", "-show_entries", "packet=stream_index,pts_time,dts_time,duration_time,data_hash", "-of", "compact=p=0:nk=0", "-i", probeInput())
 	hideProbeWindow(cmd)
 	cmd.Stdin = f
 	cmd.Stderr = io.Discard
@@ -93,6 +117,8 @@ func retagInspect(ctx context.Context, f *os.File) (retagResult, error) {
 	scanner := bufio.NewScanner(pipe)
 	scanner.Buffer(make([]byte, 4096), 65536)
 	packets := 0
+	streams := map[int]hash.Hash{}
+	var active hash.Hash
 	havePacket, haveHash := false, false
 	continuations := 0
 	for scanner.Scan() {
@@ -105,6 +131,18 @@ func retagInspect(ctx context.Context, f *os.File) (retagResult, error) {
 				_ = cmd.Process.Kill()
 				_ = cmd.Wait()
 				return out, problem("invalid_media", "A media packet could not be hashed.")
+			}
+			index, _, _ := strings.Cut(strings.TrimPrefix(line, "stream_index="), "|")
+			stream, err := strconv.Atoi(index)
+			if err != nil {
+				_ = cmd.Process.Kill()
+				_ = cmd.Wait()
+				return out, problem("invalid_media", "A media packet stream number could not be verified.")
+			}
+			active = streams[stream]
+			if active == nil {
+				active = sha256.New()
+				streams[stream] = active
 			}
 			havePacket = true
 			haveHash = false
@@ -144,6 +182,11 @@ func retagInspect(ctx context.Context, f *os.File) (retagResult, error) {
 			haveHash = true
 		}
 		_, _ = io.WriteString(h, line+"\n")
+		packet := line
+		if strings.HasPrefix(packet, "stream_index=") {
+			_, packet, _ = strings.Cut(packet, "|")
+		}
+		_, _ = io.WriteString(active, packet+"\n")
 	}
 	if e = scanner.Err(); e != nil {
 		_ = cmd.Process.Kill()
@@ -157,6 +200,10 @@ func retagInspect(ctx context.Context, f *os.File) (retagResult, error) {
 		return out, problem("invalid_media", "No media packets could be verified.")
 	}
 	copy(out.PacketHash[:], h.Sum(nil))
+	out.StreamHashes = make(map[int][]byte, len(streams))
+	for index, hash := range streams {
+		out.StreamHashes[index] = hash.Sum(nil)
+	}
 	p, e := (FFprobe{}).Probe(ctx, f)
 	if e != nil {
 		return out, e
@@ -172,6 +219,33 @@ func RewriteTitleVerified(ctx context.Context, source, stage *os.File, extension
 	if strings.TrimSpace(title) == "" || len(title) > 1024 || strings.ContainsAny(title, "\x00\r\n") {
 		return Probe{}, problem("invalid_metadata", "The saved title cannot be written safely.")
 	}
+	return rewriteMediaVerified(ctx, source, stage, extension, title, nil)
+}
+
+type CleanupStream = organization.TrackStream
+
+func ReadCleanupStreams(ctx context.Context, source *os.File) ([]CleanupStream, error) {
+	manifest, err := inspectManifest(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+	var streams []CleanupStream
+	for _, stream := range manifest.Streams {
+		if stream.Type == "audio" || stream.Type == "subtitle" {
+			streams = append(streams, CleanupStream{Index: stream.Index, Kind: stream.Type, Language: stream.Tags["language"], Forced: stream.Disposition["forced"] != 0})
+		}
+	}
+	return streams, nil
+}
+
+func RewriteTracksVerified(ctx context.Context, source, stage *os.File, extension string, drop []int) (Probe, error) {
+	if len(drop) == 0 {
+		return Probe{}, problem("invalid_selection", "Choose tracks to remove.")
+	}
+	return rewriteMediaVerified(ctx, source, stage, extension, "", drop)
+}
+
+func rewriteMediaVerified(ctx context.Context, source, stage *os.File, extension, title string, drop []int) (Probe, error) {
 	mux := ""
 	switch strings.ToLower(extension) {
 	case ".mkv":
@@ -212,14 +286,70 @@ func RewriteTitleVerified(ctx context.Context, source, stage *os.File, extension
 	}
 	// The source is inherited as stdin so Linux can open a seekable descriptor
 	// for MP4/MOV files whose index sits at the end. The stage is fd 3.
-	args := []string{"-nostdin", "-v", "error", "-copyts", "-protocol_whitelist", probeProtocols(), "-i", probeInput(), "-map", "0", "-map_metadata", "0", "-map_chapters", "0", "-c", "copy", "-metadata", "title=" + title, "-f", mux, "-avoid_negative_ts", "disabled"}
+	args := []string{"-nostdin", "-v", "error", "-copyts", "-protocol_whitelist", probeProtocols(), "-format_whitelist", "mov,matroska,webm,avi,mpegts"}
+	if mux == "mov" || mux == "mp4" || mux == "ipod" {
+		args = append(args, "-enable_drefs", "0", "-use_absolute_path", "0")
+	}
+	args = append(args, "-i", probeInput())
+	kept := before.Manifest.Streams[:0:0]
+	removed := map[int]bool{}
+	for _, index := range drop {
+		removed[index] = true
+	}
+	audioBefore, audioKept := 0, 0
+	for _, stream := range before.Manifest.Streams {
+		if stream.Type == "audio" {
+			audioBefore++
+		}
+		if removed[stream.Index] {
+			if stream.Type != "audio" && stream.Type != "subtitle" {
+				return Probe{}, problem("invalid_selection", "Only audio and subtitle tracks can be removed.")
+			}
+			delete(removed, stream.Index)
+			continue
+		}
+		if stream.Type == "audio" {
+			audioKept++
+		}
+		kept = append(kept, stream)
+	}
+	if len(removed) != 0 || (audioBefore > 0 && audioKept == 0) {
+		return Probe{}, problem("invalid_selection", "The track selection changed or would remove all audio.")
+	}
+	if len(drop) == 0 {
+		args = append(args, "-map", "0")
+	} else {
+		for i, stream := range kept {
+			args = append(args, "-map", "0:"+strconv.Itoa(stream.Index))
+			if stream.Type == "attachment" {
+				continue
+			}
+			var flags []string
+			for name, flag := range stream.Disposition {
+				if flag != 0 {
+					flags = append(flags, name)
+				}
+			}
+			sort.Strings(flags)
+			disposition := strings.Join(flags, "+")
+			if disposition == "" {
+				disposition = "0"
+			}
+			args = append(args, "-disposition:"+strconv.Itoa(i), disposition)
+		}
+	}
+	args = append(args, "-map_metadata", "0", "-map_chapters", "0", "-c", "copy")
+	if title != "" {
+		args = append(args, "-metadata", "title="+title)
+	}
+	args = append(args, "-f", mux, "-avoid_negative_ts", "disabled")
 	if mux == "mp4" || mux == "mov" || mux == "ipod" {
 		if brand := before.Manifest.Format.Tags["major_brand"]; brand != "" {
 			args = append(args, "-brand", brand)
 		}
 	}
 	args = append(args, "-y", "/proc/self/fd/3")
-	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	cmd := exec.CommandContext(ctx, trackTool("REELSCAREY_FFMPEG_PATH", "ffmpeg"), args...)
 	hideProbeWindow(cmd)
 	cmd.Stdin = source
 	cmd.ExtraFiles = []*os.File{stage}
@@ -235,11 +365,17 @@ func RewriteTitleVerified(ctx context.Context, source, stage *os.File, extension
 	if e != nil {
 		return Probe{}, e
 	}
-	if len(before.Manifest.Streams) != len(after.Manifest.Streams) {
+	if len(kept) != len(after.Manifest.Streams) {
 		return Probe{}, problem("metadata_changed_streams", "The rewritten copy did not preserve every stream.")
 	}
-	for i := range before.Manifest.Streams {
-		a, b := before.Manifest.Streams[i], after.Manifest.Streams[i]
+	for i := range kept {
+		a, b := kept[i], after.Manifest.Streams[i]
+		if len(drop) > 0 {
+			if !reflect.DeepEqual(before.StreamHashes[a.Index], after.StreamHashes[b.Index]) {
+				return Probe{}, problem("metadata_changed_streams", "The rewritten copy did not preserve the retained stream packets.")
+			}
+			a.Index = b.Index
+		}
 		for k, v := range a.Tags {
 			if strings.EqualFold(k, "encoder") || strings.EqualFold(k, "duration") || strings.HasPrefix(strings.ToUpper(k), "_STATISTICS_") {
 				continue
@@ -254,11 +390,11 @@ func RewriteTitleVerified(ctx context.Context, source, stage *os.File, extension
 			return Probe{}, problem("metadata_changed_streams", "The rewritten copy did not preserve stream facts.")
 		}
 	}
-	if after.Probe.Title == nil || *after.Probe.Title != title || before.PacketHash != after.PacketHash || !reflect.DeepEqual(before.Manifest.Chapters, after.Manifest.Chapters) {
+	if title != "" && (after.Probe.Title == nil || *after.Probe.Title != title || before.PacketHash != after.PacketHash) || !reflect.DeepEqual(before.Manifest.Chapters, after.Manifest.Chapters) {
 		return Probe{}, problem("metadata_changed_streams", "The rewritten copy did not preserve every stream, packet and chapter; the original was left unchanged.")
 	}
 	for k, v := range before.Manifest.Format.Tags {
-		if strings.EqualFold(k, "title") || strings.EqualFold(k, "encoder") {
+		if title != "" && strings.EqualFold(k, "title") || strings.EqualFold(k, "encoder") {
 			continue
 		}
 		got, ok := after.Manifest.Format.Tags[k]

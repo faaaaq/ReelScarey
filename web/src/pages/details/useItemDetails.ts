@@ -14,6 +14,7 @@ export type Information = {
   votes: number;
   imdb_url: string;
   tmdb_url: string;
+  tvdb_url?: string;
   trailer_url: string;
   cast: { id: number; name: string; role: string; image_url: string }[];
   crew: { id: number; name: string; role: string; image_url: string }[];

@@ -27,6 +27,7 @@ import { Pagination } from "../movieComponents";
 import { useLiveResource } from "../useLiveResource";
 import { UnsavedRouteGuard } from "../UnsavedRouteGuard";
 import { SubtitleEdits } from "./SubtitleEdits";
+import { TrackCleanup } from "./TrackCleanup";
 import "./Subtitles.css";
 
 export type SubtitleTrack = {
@@ -202,6 +203,7 @@ export function Subtitles() {
               provider={provider.data}
               reload={provider.reload}
             />
+            <TrackCleanup />
             <Preferences
               data={prefs.data}
               provider={provider.data}

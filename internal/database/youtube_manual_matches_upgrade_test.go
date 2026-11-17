@@ -52,7 +52,7 @@ func TestYouTubeManualMatchesUpgradePreservesSourcesAndEntries(t *testing.T) {
 		`INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(1,1,11,1,'One','','',1)`,
 		`INSERT INTO episodes(id,season_id,tmdb_id,number,title,overview,air_date,monitored) VALUES(2,1,12,2,'Two','','',1)`,
 		`INSERT INTO youtube_series_sources(id,media_id,source_url,title,mapping,season_number,start_episode,quality,subtitles_json,auto_import,enabled,interval_hours,initialized,revision,requested,next_run,last_checked,state,message,target_snapshot,created_at,lease_owner,lease_until) VALUES('src-old',1,'https://www.youtube.com/playlist?list=PLabcdefghijk','Fixture Show','episode',1,1,'1080','{"languages":["en"],"automatic":true,"quality":"1080"}',1,1,12,1,5,0,4444,3333,'idle','kept','{"Title":"Fixture Show"}',2222,'owner-1',5555)`,
-		`INSERT INTO youtube_series_entries(source_id,video_id,position,title,channel,state,episode_id,job_id,note,discovered_at) VALUES('src-old','aaaaaaaaaaa',0,'S01E01','Fixture','queued',1,NULL,'S01E01 — One',111)`,
+		`INSERT INTO youtube_series_entries(source_id,video_id,position,title,channel,state,episode_id,job_id,note,discovered_at) VALUES('src-old','aaaaaaaaaaa',0,'S01E01','Fixture','queued',1,NULL,'S01E01 â€” One',111)`,
 		`INSERT INTO youtube_series_entries(source_id,video_id,position,title,channel,state,episode_id,job_id,note,discovered_at) VALUES('src-old','bbbbbbbbbbb',1,'S01E02','Fixture','skipped',2,NULL,'already has a file',222)`,
 	} {
 		if _, err = db.Exec(query); err != nil {
@@ -62,7 +62,7 @@ func TestYouTubeManualMatchesUpgradePreservesSourcesAndEntries(t *testing.T) {
 	if err = Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	if version, err := Version(ctx, db); err != nil || version != 104 {
+	if version, err := Version(ctx, db); err != nil || version != 105 {
 		t.Fatal("unexpected schema version", version, err)
 	}
 	var mapping, quality, subtitles, state, message, snapshot, owner, url, title string
@@ -86,7 +86,7 @@ func TestYouTubeManualMatchesUpgradePreservesSourcesAndEntries(t *testing.T) {
 	if err = db.QueryRow(`SELECT state,episode_id,note,position,discovered_at FROM youtube_series_entries WHERE source_id='src-old' AND video_id='aaaaaaaaaaa'`).Scan(&entryState, &episodeID, &note, &position, &discovered); err != nil {
 		t.Fatal("entry lost", err)
 	}
-	if entryState != "queued" || !episodeID.Valid || episodeID.Int64 != 1 || note != "S01E01 — One" || position != 0 || discovered != 111 {
+	if entryState != "queued" || !episodeID.Valid || episodeID.Int64 != 1 || note != "S01E01 â€” One" || position != 0 || discovered != 111 {
 		t.Fatal("entry fields changed", entryState, episodeID, note, position, discovered)
 	}
 

@@ -1,3 +1,4 @@
+import { LibraryDeletion, selectionClick } from "../components/LibraryDeletion";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import {
@@ -12,10 +13,9 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Alert,
-  EmptyState,
   FieldSet,
   Label,
   Modal,
@@ -72,17 +72,52 @@ function statusKind(status: string, monitored: boolean) {
   return monitored ? "danger" : "disabled";
 }
 
-export function ArtistTile({ artist }: { artist: MusicArtist }) {
+type TileSelection = { checked: boolean; toggle: () => void };
+
+function SelectionBox({
+  selection,
+  name,
+}: {
+  selection: TileSelection;
+  name: string;
+}) {
+  return (
+    <input
+      type="checkbox"
+      aria-label={`Select ${name}`}
+      checked={selection.checked}
+      onChange={selection.toggle}
+    />
+  );
+}
+
+export function ArtistTile({
+  artist,
+  selection,
+}: {
+  artist: MusicArtist;
+  selection?: TileSelection;
+}) {
   const [failed, setFailed] = useState(false);
   const initial = artist.name.trim().charAt(0).toUpperCase() || "?";
   const label =
     artist.status === "available" ? "In library" : "No registered files";
   const imageURL = artistImageURL(artist.id) || artist.image_url;
   return (
-    <li className="lib-card">
+    <li
+      className={selection?.checked ? "lib-card is-selected" : "lib-card"}
+      data-selecting={!!selection || undefined}
+      onClickCapture={selection && selectionClick(selection.toggle)}
+    >
+      {selection && (
+        <span className="lib-card-select">
+          <SelectionBox selection={selection} name={artist.name} />
+        </span>
+      )}
       <Link
         className="lib-card-art mus-card-art"
         to={`/music/artists/${artist.id}`}
+        tabIndex={selection ? -1 : undefined}
         aria-label={`Open ${artist.name}`}
       >
         <span className="mus-tile-fallback mus-tile-initial" aria-hidden="true">
@@ -106,7 +141,12 @@ export function ArtistTile({ artist }: { artist: MusicArtist }) {
       <div className="lib-card-info">
         <div className="lib-card-line">
           <h2 className="lib-card-title">
-            <Link to={`/music/artists/${artist.id}`}>{artist.name}</Link>
+            <Link
+              to={`/music/artists/${artist.id}`}
+              tabIndex={selection ? -1 : undefined}
+            >
+              {artist.name}
+            </Link>
           </h2>
         </div>
         <div className="lib-card-meta">
@@ -131,10 +171,12 @@ export function AlbumTile({
   album,
   onDownload,
   showArtist = false,
+  selection,
 }: {
   album: MusicAlbum;
   onDownload?: (album: MusicAlbum) => void;
   showArtist?: boolean;
+  selection?: TileSelection;
 }) {
   const [failed, setFailed] = useState(false);
   const label =
@@ -145,10 +187,20 @@ export function AlbumTile({
       .join(" · ") || "Release";
   const coverURL = albumCoverURL(album.id) || album.cover_url;
   return (
-    <li className="lib-card">
+    <li
+      className={selection?.checked ? "lib-card is-selected" : "lib-card"}
+      data-selecting={!!selection || undefined}
+      onClickCapture={selection && selectionClick(selection.toggle)}
+    >
+      {selection && (
+        <span className="lib-card-select">
+          <SelectionBox selection={selection} name={album.title} />
+        </span>
+      )}
       <Link
         className="lib-card-art mus-card-art"
         to={`/music/albums/${album.id}`}
+        tabIndex={selection ? -1 : undefined}
         aria-label={`Open ${album.title}`}
       >
         <span className="mus-tile-fallback" aria-hidden="true">
@@ -172,7 +224,12 @@ export function AlbumTile({
       <div className="lib-card-info">
         <div className="lib-card-line">
           <h2 className="lib-card-title">
-            <Link to={`/music/albums/${album.id}`}>{album.title}</Link>
+            <Link
+              to={`/music/albums/${album.id}`}
+              tabIndex={selection ? -1 : undefined}
+            >
+              {album.title}
+            </Link>
           </h2>
         </div>
         <div className="lib-card-meta">
@@ -185,7 +242,7 @@ export function AlbumTile({
           </span>
         </div>
         <span className="lib-profile">{type}</span>
-        {onDownload && album.status !== "available" && (
+        {!selection && onDownload && album.status !== "available" && (
           <Button
             size="1"
             variant="soft"
@@ -202,7 +259,15 @@ export function AlbumTile({
   );
 }
 
-export function LibraryTrackTable({ tracks }: { tracks: MusicArtistTrack[] }) {
+export function LibraryTrackTable({
+  tracks,
+  select,
+  onDeleted,
+}: {
+  tracks: MusicArtistTrack[];
+  select?: (id: number) => TileSelection;
+  onDeleted?: () => void;
+}) {
   const player = useMusicPlayer();
   const playable = tracks
     .map((track) => artistPlayerTrack(track, track.artist_name ?? ""))
@@ -211,6 +276,11 @@ export function LibraryTrackTable({ tracks }: { tracks: MusicArtistTrack[] }) {
     <Table label="Music tracks">
       <thead>
         <tr>
+          {select && (
+            <th scope="col">
+              <span className="sr-only">Select</span>
+            </th>
+          )}
           <th scope="col" className="is-shrink">
             #
           </th>
@@ -226,13 +296,24 @@ export function LibraryTrackTable({ tracks }: { tracks: MusicArtistTrack[] }) {
       <tbody>
         {tracks.map((track) => {
           const fileID = track.file_id;
+          const selection = select && track.id ? select(track.id) : undefined;
           return (
             <tr
+              data-selecting={!!selection || undefined}
+              className={selection?.checked ? "is-selected" : undefined}
+              onClickCapture={selection && selectionClick(selection.toggle)}
               key={
                 track.id ??
                 `${track.album_id}-${track.disc}-${track.number}-${track.title}`
               }
             >
+              {select && (
+                <td>
+                  {selection && (
+                    <SelectionBox selection={selection} name={track.title} />
+                  )}
+                </td>
+              )}
               <td>
                 {track.disc > 1
                   ? `${track.disc}.${track.number}`
@@ -241,13 +322,16 @@ export function LibraryTrackTable({ tracks }: { tracks: MusicArtistTrack[] }) {
               <td>{track.title}</td>
               <td>{track.artist_name || ""}</td>
               <td>
-                <Link to={`/music/albums/${track.album_id}`}>
+                <Link
+                  to={`/music/albums/${track.album_id}`}
+                  tabIndex={select ? -1 : undefined}
+                >
                   {track.album_title}
                 </Link>
               </td>
               <td>{formatTrackDuration(track.duration_ms)}</td>
               <td className="is-actions">
-                {fileID ? (
+                {fileID && !select ? (
                   <Button
                     size="1"
                     variant="ghost"
@@ -264,6 +348,15 @@ export function LibraryTrackTable({ tracks }: { tracks: MusicArtistTrack[] }) {
                     <Play size={14} aria-hidden="true" />
                   </Button>
                 ) : null}
+                {!select && onDeleted && track.id && (
+                  <LibraryDeletion
+                    selection="tracks"
+                    ids={[track.id]}
+                    label="Delete track"
+                    name={track.title}
+                    onDone={onDeleted}
+                  />
+                )}
               </td>
             </tr>
           );
@@ -293,10 +386,12 @@ function ArtistTrackTable({
   tracks,
   label,
   artistName,
+  onDeleted,
 }: {
   tracks: MusicArtistTrack[];
   label: string;
   artistName: string;
+  onDeleted: () => void;
 }) {
   const player = useMusicPlayer();
   const playable = tracks.flatMap((track) => {
@@ -356,6 +451,15 @@ function ArtistTrackTable({
                     <Play size={14} aria-hidden="true" />
                   </Button>
                 ) : null}
+                {track.id && (
+                  <LibraryDeletion
+                    selection="tracks"
+                    ids={[track.id]}
+                    label="Delete track"
+                    name={track.title}
+                    onDone={onDeleted}
+                  />
+                )}
               </td>
             </tr>
           );
@@ -535,6 +639,123 @@ function DiscographyTile({
 
 export function MusicArtistPage() {
   const { id } = useParams();
+  return <MusicArtistDetail key={id} id={id} />;
+}
+
+function ArtistAlbums({
+  albums,
+  remote,
+  showAll,
+  loading,
+  error,
+  toggle,
+  onDownload,
+}: {
+  albums: MusicAlbum[];
+  remote: MusicDiscographyAlbum[];
+  showAll: boolean;
+  loading: boolean;
+  error: string;
+  toggle: () => void;
+  onDownload: (target: AlbumDownloadTarget) => void;
+}) {
+  const saved = albums.filter(
+    (album) => showAll || album.status === "available",
+  );
+  const savedIDs = new Set(saved.map((album) => album.id));
+  const provider = remote.filter(
+    (album) => album.album_id == null || !savedIDs.has(album.album_id),
+  );
+  const localSingles = saved.filter(
+    (album) => album.primary_type.toLowerCase() === "single",
+  );
+  const providerSingles = provider.filter(
+    (album) => album.status.toLowerCase() === "single",
+  );
+  function localDownload(album: MusicAlbum) {
+    onDownload({
+      albumID: album.id,
+      title: album.title,
+      artist: album.artist_name,
+    });
+  }
+  function remoteDownload(album: MusicDiscographyAlbum) {
+    onDownload({
+      albumID: album.album_id,
+      providerID: album.provider_id,
+      title: album.title,
+      artist: album.artist,
+    });
+  }
+  return (
+    <section className="mus-section" aria-labelledby="artist-albums">
+      <div className="mus-section-head">
+        <h2 id="artist-albums">Albums</h2>
+        <Button variant="soft" onClick={toggle}>
+          {showAll ? "Show library albums" : "Show all albums"}
+        </Button>
+      </div>
+      {loading && <p role="status">Loading discography…</p>}
+      {error && <Alert kind="warning">{error} Showing saved albums.</Alert>}
+      {!saved.length && !provider.length && !loading && (
+        <p className="rs-muted">No albums to show.</p>
+      )}
+      <ul className="lib-grid" aria-label="Music albums">
+        {saved
+          .filter((album) => !localSingles.includes(album))
+          .map((album) => (
+            <AlbumTile
+              key={album.id}
+              album={album}
+              onDownload={localDownload}
+            />
+          ))}
+        {provider
+          .filter((album) => !providerSingles.includes(album))
+          .map((album) => (
+            <DiscographyTile
+              key={album.provider_id}
+              album={album}
+              onDownload={remoteDownload}
+            />
+          ))}
+        {(localSingles.length > 0 || providerSingles.length > 0) && (
+          <li className="lib-card">
+            <details className="lib-card-info">
+              <summary>
+                Singles ({localSingles.length + providerSingles.length})
+              </summary>
+              <ul>
+                {localSingles.map((single) => (
+                  <li key={single.id}>
+                    <Link to={`/music/albums/${single.id}`}>
+                      {single.title}
+                    </Link>
+                  </li>
+                ))}
+                {providerSingles.map((single) => (
+                  <li key={single.provider_id}>
+                    <Button
+                      size="1"
+                      variant="ghost"
+                      onClick={() => remoteDownload(single)}
+                    >
+                      {single.title}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </li>
+        )}
+      </ul>
+    </section>
+  );
+}
+
+function MusicArtistDetail({ id }: { id?: string }) {
+  const navigate = useNavigate();
+  const [showAllAlbums, setShowAllAlbums] = useState(false);
   const details = useResource<MusicArtistDetails>(
     id ? `/library/music/artists/${id}` : null,
   );
@@ -542,7 +763,9 @@ export function MusicArtistPage() {
     id ? `/library/music/artists/${id}/top-tracks?limit=20` : null,
   );
   const discography = useResource<MusicDiscographyPage>(
-    id ? `/library/music/artists/${id}/discography?limit=100` : null,
+    id && showAllAlbums
+      ? `/library/music/artists/${id}/discography?limit=100`
+      : null,
   );
   const [selectedTopTracks, setSelectedTopTracks] = useState<string[]>([]);
   const [albumDownload, setAlbumDownload] =
@@ -765,6 +988,15 @@ export function MusicArtistPage() {
             spinning={refreshPending}
             onClick={refreshArtist}
           />
+          {artist?.id && (
+            <LibraryDeletion
+              selection="artists"
+              ids={[artist.id]}
+              label="Delete artist"
+              name={artist.name}
+              onDone={() => navigate("/music")}
+            />
+          )}
         </ToolbarSection>
       </PageToolbar>
       <PageBody className="lib-body">
@@ -827,65 +1059,17 @@ export function MusicArtistPage() {
             />
           </FieldSet>
         )}
-        {discography.error && (
-          <Alert kind="warning" title="Full discography unavailable">
-            {discography.error} Showing saved catalog albums instead.
-          </Alert>
+        {details.data && (
+          <ArtistAlbums
+            albums={details.data.albums}
+            remote={showAllAlbums ? (discography.data?.items ?? []) : []}
+            showAll={showAllAlbums}
+            loading={showAllAlbums && discography.loading}
+            error={showAllAlbums ? discography.error : ""}
+            toggle={() => setShowAllAlbums((value) => !value)}
+            onDownload={setAlbumDownload}
+          />
         )}
-        {discography.data?.message && (
-          <p className="rs-muted">{discography.data.message}</p>
-        )}
-        {discography.data && discography.data.items.length > 0 ? (
-          <>
-            <div className="mus-section-head">
-              <div>
-                <h2>Albums</h2>
-                <p className="rs-muted rs-small">
-                  Full {discography.data.source} discography. Albums already in
-                  the library open normally; missing albums can be downloaded.
-                </p>
-              </div>
-            </div>
-            <ul className="lib-grid" aria-label="Music albums">
-              {discography.data.items.map((album) => (
-                <DiscographyTile
-                  key={album.provider_id}
-                  album={album}
-                  onDownload={(item) =>
-                    setAlbumDownload({
-                      albumID: item.album_id,
-                      providerID: item.provider_id,
-                      title: item.title,
-                      artist: item.artist || artist?.name,
-                    })
-                  }
-                />
-              ))}
-            </ul>
-          </>
-        ) : details.data ? (
-          details.data.albums.length === 0 ? (
-            <EmptyState icon={Disc3} title="No albums">
-              MusicBrainz has no release groups for this artist.
-            </EmptyState>
-          ) : (
-            <ul className="lib-grid" aria-label="Music albums">
-              {details.data.albums.map((album) => (
-                <AlbumTile
-                  key={album.id}
-                  album={album}
-                  onDownload={(item) =>
-                    setAlbumDownload({
-                      albumID: item.id,
-                      title: item.title,
-                      artist: item.artist_name,
-                    })
-                  }
-                />
-              ))}
-            </ul>
-          )
-        ) : null}
 
         {details.data && (
           <section className="mus-section" aria-labelledby="artist-top-tracks">
@@ -1016,6 +1200,12 @@ export function MusicArtistPage() {
             <ArtistTrackTable
               tracks={allTracks.data.items}
               label="All tracks"
+              onDeleted={() => {
+                allTracks.reload();
+                libraryTracks.reload();
+                details.reload();
+                topTracks.reload();
+              }}
               artistName={artist?.name ?? ""}
             />
           ) : (
@@ -1143,6 +1333,7 @@ export function MusicArtistPage() {
 }
 
 export function MusicAlbumPage() {
+  const navigate = useNavigate();
   const { id } = useParams();
   const details = useResource<MusicAlbumDetails>(
     id ? `/library/music/albums/${id}` : null,
@@ -1523,6 +1714,21 @@ export function MusicAlbumPage() {
             spinning={refreshPending}
             onClick={refreshAlbum}
           />
+          {album?.id && (
+            <LibraryDeletion
+              selection="albums"
+              ids={[album.id]}
+              label="Delete album"
+              name={album.title}
+              onDone={() =>
+                navigate(
+                  album.artist_id
+                    ? `/music/artists/${album.artist_id}`
+                    : "/music",
+                )
+              }
+            />
+          )}
         </ToolbarSection>
       </PageToolbar>
       <PageBody className="mus-body">
@@ -1644,12 +1850,55 @@ export function MusicAlbumPage() {
                           />
                         </>
                       ) : null}
+                      {track.id && (
+                        <LibraryDeletion
+                          selection="tracks"
+                          ids={[track.id]}
+                          label="Delete track"
+                          name={track.title}
+                          onDone={details.reload}
+                        />
+                      )}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </Table>
+        )}
+        {!!details.data?.files?.length && (
+          <FieldSet legend="Registered files">
+            <Table label="Registered music files">
+              <thead>
+                <tr>
+                  <th scope="col">File</th>
+                  <th scope="col">Track</th>
+                  <th scope="col">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {details.data.files.map((file) => (
+                  <tr key={file.id}>
+                    <td>
+                      <code>{file.relative_path}</code>
+                    </td>
+                    <td>{file.track_title || "—"}</td>
+                    <td>
+                      <LibraryDeletion
+                        selection="music_files"
+                        ids={[file.id]}
+                        label="Delete file"
+                        name={file.relative_path}
+                        onDone={details.reload}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </FieldSet>
         )}
         {albumPrefs.data?.preferences && (
           <FieldSet legend="Album preferences">

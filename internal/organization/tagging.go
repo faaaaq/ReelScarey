@@ -30,6 +30,15 @@ func embeddedTitle(title string, episodes []Episode) string {
 	return title + " - " + number
 }
 
+// A single matched episode uses its exact catalog title. A shared file
+// carries the show and ordered episode range because it represents several titles.
+func registeredEmbeddedTitle(title string, episodes []Episode) string {
+	if len(episodes) == 1 && strings.TrimSpace(episodes[0].Title) != "" {
+		return strings.TrimSpace(episodes[0].Title)
+	}
+	return embeddedTitle(title, episodes)
+}
+
 func reviewedEmbeddedTitle(v PlannedFile) (string, error) {
 	ext := strings.ToLower(path.Ext(v.Source))
 	if ext != ".mkv" && ext != ".mp4" && ext != ".m4v" && ext != ".mov" && ext != ".avi" && ext != ".webm" {
@@ -92,7 +101,7 @@ func (s *Service) PreviewEmbeddedTitle(ctx context.Context, fileID int64) (Plan,
 }
 
 // Caller holds the media gate and arranges any durable queue reservation.
-func (s *Service) previewEmbeddedTitle(ctx context.Context, fileID int64, parentID string) (Plan, error) {
+func (s *Service) previewEmbeddedTitle(ctx context.Context, fileID int64, parentID string, automatic ...bool) (Plan, error) {
 	root, resolved, e := s.openRoot("")
 	if e != nil {
 		return Plan{}, e
@@ -145,7 +154,11 @@ func (s *Service) previewEmbeddedTitle(ctx context.Context, fileID int64, parent
 			return Plan{}, problem("invalid_selection", "Review the episode mapping before updating this file's embedded title.")
 		}
 	}
+	auto := len(automatic) > 0 && automatic[0]
 	value := embeddedTitle(title, episodes)
+	if auto {
+		value = registeredEmbeddedTitle(title, episodes)
+	}
 	if value == "" || len(value) > 1024 || strings.ContainsAny(value, "\x00\r\n") {
 		return Plan{}, problem("invalid_selection", "The saved title cannot be safely embedded.")
 	}
@@ -154,18 +167,28 @@ func (s *Service) previewEmbeddedTitle(ctx context.Context, fileID int64, parent
 	// inspection found none. The plan snapshot is the durable change record
 	// for an update that keeps no copy of the video.
 	previousTitle := s.readEmbeddedTitle(ctx, root, before.Path, before.Probe)
+	state := "review"
+	if auto {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM video_title_updates WHERE media_file_id=?`, fileID); err != nil {
+			return Plan{}, err
+		}
+		if previousTitle != nil && *previousTitle == value {
+			return Plan{}, tx.Commit()
+		}
+		state = "queued"
+	}
 	now := time.Now().Unix()
 	pid := id()
 	// Keep the verified stage on the same filesystem as the video so the final
 	// replacement is a same-device rename. Media libraries may be separate
 	// mounts, so a state-volume staging file cannot be renamed into them.
-	r := &Replacement{FileID: fileID, MediaID: mediaID, Title: title, Before: before, BeforeYouTube: youtube, Original: old, Incoming: old, MetadataOnly: true, PreviousTitle: previousTitle, TagStage: path.Join(path.Dir(before.Path), ".reelscarey-tag-"+pid), TagTitle: value, TagParent: parentID, Episodes: episodes}
-	p := Plan{ID: pid, State: "review", Root: resolved, Phase: "planned", Created: now, Updated: now, Files: []PlannedFile{}, Replacement: r}
+	r := &Replacement{FileID: fileID, MediaID: mediaID, Title: title, Before: before, BeforeYouTube: youtube, Original: old, Incoming: old, MetadataOnly: true, AutomaticTitle: auto, PreviousTitle: previousTitle, TagStage: path.Join(path.Dir(before.Path), ".reelscarey-tag-"+pid), TagTitle: value, TagParent: parentID, Episodes: episodes}
+	p := Plan{ID: pid, State: state, Root: resolved, Phase: "planned", Created: now, Updated: now, Files: []PlannedFile{}, Replacement: r}
 	raw, e := json.Marshal(p)
 	if e != nil {
 		return Plan{}, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO organization_plans(id,state,snapshot,created_at,updated_at) VALUES(?,'review',?,?,?)`, pid, string(raw), now, now); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO organization_plans(id,state,snapshot,created_at,updated_at) VALUES(?,?,?,?,?)`, pid, state, string(raw), now, now); e != nil {
 		return Plan{}, e
 	}
 	return p, tx.Commit()
@@ -173,7 +196,7 @@ func (s *Service) previewEmbeddedTitle(ctx context.Context, fileID int64, parent
 
 func (s *Service) prepareEmbeddedTitle(ctx context.Context, root *os.Root, p *Plan) error {
 	r := p.Replacement
-	if s.tag == nil {
+	if len(r.DropStreams) == 0 && s.tag == nil || len(r.DropStreams) > 0 && s.rewriteTracks == nil {
 		return problem("ffprobe_missing", "The embedded metadata verifier is unavailable.")
 	}
 	dir := path.Dir(r.TagStage)
@@ -229,7 +252,12 @@ func (s *Service) prepareEmbeddedTitle(ctx context.Context, root *os.Root, p *Pl
 	if e != nil || sourceID != r.Original.Identity {
 		return problem("source_changed", "The original changed before metadata verification.")
 	}
-	probe, e := s.tag(ctx, source, stage, path.Ext(r.Original.Source), r.TagTitle)
+	var probe string
+	if len(r.DropStreams) > 0 {
+		probe, e = s.rewriteTracks(ctx, source, stage, path.Ext(r.Original.Source), r.DropStreams)
+	} else {
+		probe, e = s.tag(ctx, source, stage, path.Ext(r.Original.Source), r.TagTitle)
+	}
 	if e != nil {
 		return e
 	}
@@ -341,6 +369,9 @@ func (s *Service) executeEmbeddedTitle(ctx context.Context, p *Plan) error {
 				_ = root.Remove(filepath.FromSlash(r.TagStage))
 			}
 		}
+	}
+	if p.TrackCleanup != nil {
+		return nil
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -467,7 +498,9 @@ func (s *Service) commitEmbeddedTitle(ctx context.Context, root *os.Root, p *Pla
 		return e
 	}
 	activity := "embedded title updated"
-	if r.PreviousTitle != nil {
+	if len(r.DropStreams) > 0 {
+		activity = "embedded tracks removed"
+	} else if r.PreviousTitle != nil {
 		activity = "embedded title updated; previous title recorded"
 	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'title',?,?,?)`, r.MediaID, r.Title, activity); e != nil {

@@ -16,6 +16,7 @@ type Person struct {
 	Image string `json:"image_url"`
 }
 type Information struct {
+	TVDBURL    string   `json:"tvdb_url,omitempty"`
 	Tagline    string   `json:"tagline"`
 	Genres     []string `json:"genres"`
 	Rating     float64  `json:"rating"`
@@ -31,6 +32,26 @@ type InformationProvider interface {
 }
 
 func (s *Service) Information(ctx context.Context, kind string, id int64) (Information, error) {
+	if kind == "series" && id < 0 {
+		creds, err := s.tvdbCredentials(ctx)
+		if err != nil {
+			return Information{}, err
+		}
+		if creds.Key == "" {
+			return Information{}, ErrTVDBNotConfigured
+		}
+		record, err := s.tvdb.record(ctx, creds, -id)
+		if err != nil {
+			return Information{}, err
+		}
+		out := Information{Genres: []string{}, Cast: []Person{}, Crew: []Person{}, TVDBURL: "https://thetvdb.com/dereferrer/series/" + strconv.FormatInt(-id, 10)}
+		for _, genre := range record.Genres {
+			if genre.Name != "" {
+				out.Genres = append(out.Genres, genre.Name)
+			}
+		}
+		return out, nil
+	}
 	p, ok := s.provider.(InformationProvider)
 	if !ok {
 		return Information{}, &Error{Code: "metadata_unavailable", Message: "Extended metadata is unavailable from this provider."}

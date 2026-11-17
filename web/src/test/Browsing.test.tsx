@@ -69,6 +69,32 @@ describe("catalog browsing", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByText(/all shown/)).toBeVisible();
   });
+  it.each(["table", "overview", "posters"])(
+    "toggles selection on the whole %s item",
+    async (view) => {
+      const user = userEvent.setup();
+      mock();
+      mount(`/movies?view=${view}`);
+      const title = await screen.findByRole("link", { name: item.title });
+      await user.click(screen.getByRole("button", { name: "Select" }));
+      await user.click(title);
+      expect(
+        screen.getByRole("checkbox", { name: `Select ${item.title}` }),
+      ).toBeChecked();
+      expect(
+        screen.getByRole("button", { name: "Delete selected (1)" }),
+      ).toBeEnabled();
+      expect(screen.getByLabelText("Current address")).toHaveTextContent(
+        "/movies?view=",
+      );
+      const tile = title.closest("li") ?? title.closest("tr");
+      expect(tile).not.toBeNull();
+      await user.click(tile!);
+      expect(
+        screen.getByRole("checkbox", { name: `Select ${item.title}` }),
+      ).not.toBeChecked();
+    },
+  );
   it("selects every shown title even past the old 200 cap", async () => {
     const items = Array.from({ length: 250 }, (_, index) => ({
       ...item,

@@ -18,11 +18,14 @@ import (
 // rows atomically. Only registered media and recognized companions are moved;
 // extras, client sources and version backups are never deleted.
 type Removal struct {
-	MediaID int64         `json:"media_id"`
-	Title   string        `json:"title"`
-	Mode    string        `json:"mode"`
-	Paths   []string      `json:"paths"`
-	Rows    []RemovalRows `json:"affected_records"`
+	MediaID   int64         `json:"media_id"`
+	Title     string        `json:"title"`
+	Mode      string        `json:"mode"`
+	Paths     []string      `json:"paths"`
+	Rows      []RemovalRows `json:"affected_records"`
+	Selection string        `json:"selection,omitempty"`
+	IDs       []int64       `json:"ids,omitempty"`
+	Assets    []Companion   `json:"assets,omitempty"`
 }
 type RemovalRows struct {
 	Table  string  `json:"table"`
@@ -46,6 +49,10 @@ func numbers(ids []int64) string {
 // Follow child references only, never parent accounts/configuration. Capture
 // row contents as hashes so encrypted payloads cannot leak through the review.
 func removalRows(ctx context.Context, q query, mediaID int64) ([]RemovalRows, error) {
+	return dependentRows(ctx, q, map[string]map[int64]bool{"media_items": {mediaID: true}}, false)
+}
+
+func dependentRows(ctx context.Context, q query, selected map[string]map[int64]bool, retainOptional bool) ([]RemovalRows, error) {
 	rows, err := q.QueryContext(ctx, `SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -82,6 +89,9 @@ func removalRows(ctx context.Context, q query, mediaID int64) ([]RemovalRows, er
 				r.Close()
 				return nil, problem("invalid_selection", "This schema has unsupported catalog references.")
 			}
+			if retainOptional && (onDelete == "SET NULL" || table == "library_scan_files" && parent == "media_files") {
+				continue
+			}
 			if groups[id] == nil {
 				groups[id] = &foreignLink{child: table, parent: parent}
 			}
@@ -97,7 +107,6 @@ func removalRows(ctx context.Context, q query, mediaID int64) ([]RemovalRows, er
 			links = append(links, *v)
 		}
 	}
-	selected := map[string]map[int64]bool{"media_items": {mediaID: true}}
 	changed := true
 	for changed {
 		changed = false
@@ -308,6 +317,9 @@ func (s *Service) PreviewRemoval(ctx context.Context, mediaID int64, mode string
 }
 
 func deleteRemovalRows(ctx context.Context, tx *sql.Tx, r *Removal) error {
+	if r.Selection != "" {
+		return deleteSelectionRows(ctx, tx, r)
+	}
 	if _, err := tx.ExecContext(ctx, `PRAGMA defer_foreign_keys=ON`); err != nil {
 		return err
 	}

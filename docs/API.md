@@ -1716,3 +1716,43 @@ not delete the file or retry the download automatically. Files whose audio
 tracks carry no usable language tags import fail-open as `unverified` with an
 honest activity note, since a legitimate dub with stripped tags must not wedge
 forever.
+
+### Library deletion and track cleanup
+
+The video and music libraries let an administrator delete a reviewed selection.
+Movie, show, artist and album pages also expose deletion of the saved entry or
+individual registered files. Music tracks can be removed with all their
+registered copies. The default moves registered files to
+`.reelscarey-trash/<plan-id>/` under the media root. The review can also remove
+the registrations while keeping the files. Download-client copies and unrelated
+files remain outside the operation.
+
+- `POST /api/v1/library/deletion` creates an organization review with
+  `{"selection":"titles","ids":[12,15],"mode":"trash"}`. The other selections
+  are `video_files`, `artists`, `albums`, `tracks`, and `music_files`.
+  Use `mode:"keep"` to retain the files at their current paths.
+- `POST /api/v1/subtitles/track-cleanup` reviews a video scope and language
+  policy. Set `mode` to `all_subtitles`, `other_subtitles`,
+  `other_non_forced`, or `other_audio`. The optional `library` is a saved
+  organization library key. An optional `media_id` or `file_id` narrows the
+  scope. Omitting these fields covers all registered video libraries.
+- Apply a review with `POST /api/v1/organization/plans/{id}/apply` and read
+  progress via `GET /api/v1/organization/plans/{id}`. Cleanup reports reviewed
+  videos, tracks removed, and files needing attention. The worker verifies
+  retained embedded streams before publishing the rewritten file. External
+  subtitle files go to the media trash.
+- Audio cleanup keeps the original language, the configured languages, and
+  audio whose language tag is unknown. It skips a video when the original
+  language cannot be determined or the operation would leave no audio.
+
+### TheTVDB television fallback
+
+Configure the API key through Settings or `PUT /api/v1/providers/tvdb`
+with `{"key":"…","pin":"…"}`. The subscriber PIN is optional and depends
+on the API key. GET reports whether a connection is saved, and DELETE removes
+it. Credentials are encrypted. TV search uses TheTVDB when TMDb has no exact
+title match. A TheTVDB series URL selects TheTVDB directly. TheTVDB results
+include `tvdb_id`, which can be sent as the identity on
+`POST /api/v1/library/series`. The existing numeric provider lookup field uses
+a negative value for TheTVDB series and episode identities to distinguish them
+from TMDb. Catalog IDs and registered-file APIs remain provider-independent.

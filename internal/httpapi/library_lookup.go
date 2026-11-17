@@ -14,12 +14,12 @@ import (
 // list. It is a read-only catalog lookup; it never adds anything.
 func (s *Server) libraryLookup(w http.ResponseWriter, r *http.Request) {
 	tmdbID, err := strconv.ParseInt(r.PathValue("tmdb"), 10, 64)
-	if err != nil || tmdbID < 1 {
-		fail(w, 400, "invalid_id", "Choose a TMDb title.")
+	if err != nil || tmdbID == 0 || tmdbID < -9007199254740991 {
+		fail(w, 400, "invalid_id", "Choose a provider title.")
 		return
 	}
 	kind := r.URL.Query().Get("kind")
-	if kind != "movie" && kind != "series" {
+	if kind != "movie" && kind != "series" || kind == "movie" && tmdbID < 0 {
 		fail(w, 400, "invalid_id", "Choose movies or TV shows.")
 		return
 	}

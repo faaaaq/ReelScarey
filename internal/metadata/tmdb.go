@@ -28,6 +28,8 @@ func (e *Error) Error() string { return e.Message }
 var ErrNotConfigured = &Error{Code: "tmdb_not_configured", Message: "Connect TMDb in Settings before searching for movies or TV shows."}
 
 type Movie struct {
+	OriginalLanguage      string `json:"original_language,omitempty"`
+	TVDbID                int64  `json:"tvdb_id,omitempty"`
 	TMDbID                int64  `json:"tmdb_id"`
 	Title                 string `json:"title"`
 	Overview              string `json:"overview"`
@@ -47,13 +49,14 @@ type Results struct {
 	Items        []Movie `json:"items"`
 }
 type movieResponse struct {
-	ID           int64                `json:"id"`
-	Title        string               `json:"title"`
-	Overview     string               `json:"overview"`
-	ReleaseDate  string               `json:"release_date"`
-	PosterPath   string               `json:"poster_path"`
-	Runtime      *int                 `json:"runtime"`
-	ReleaseDates releaseDatesResponse `json:"release_dates"`
+	OriginalLanguage string               `json:"original_language"`
+	ID               int64                `json:"id"`
+	Title            string               `json:"title"`
+	Overview         string               `json:"overview"`
+	ReleaseDate      string               `json:"release_date"`
+	PosterPath       string               `json:"poster_path"`
+	Runtime          *int                 `json:"runtime"`
+	ReleaseDates     releaseDatesResponse `json:"release_dates"`
 }
 type releaseDatesResponse struct {
 	Results []releaseDateRegion `json:"results"`
@@ -70,6 +73,9 @@ type releaseDateEntry struct {
 var posterPattern = regexp.MustCompile(`^/[A-Za-z0-9_-]+\.(jpg|png|webp)$`)
 
 func PosterURL(p string) string {
+	if tvdbArt.MatchString(p) {
+		return p
+	}
 	if !posterPattern.MatchString(p) {
 		return ""
 	}
@@ -79,7 +85,7 @@ func normalize(in movieResponse) (Movie, error) {
 	if in.ID < 1 || strings.TrimSpace(in.Title) == "" || utf8.RuneCountInString(in.Title) > 500 || len(in.Overview) > 32000 || strings.IndexFunc(in.Title, unicode.IsControl) >= 0 {
 		return Movie{}, &Error{Code: "tmdb_invalid_response", Message: "TMDb returned invalid movie details. Try again later."}
 	}
-	out := Movie{TMDbID: in.ID, Title: strings.TrimSpace(in.Title), Overview: in.Overview, RuntimeMinutes: in.Runtime}
+	out := Movie{TMDbID: in.ID, Title: strings.TrimSpace(in.Title), Overview: in.Overview, RuntimeMinutes: in.Runtime, OriginalLanguage: LanguageCode(in.OriginalLanguage)}
 	if in.ReleaseDate != "" {
 		if date, err := time.Parse("2006-01-02", in.ReleaseDate); err == nil && date.Year() >= 1800 {
 			year := date.Year()
@@ -213,8 +219,8 @@ func newClient(base string, client *http.Client) *Client {
 	return &Client{base: strings.TrimRight(base, "/"), http: &copy, interval: tmdbMinInterval}
 }
 
-// pace reserves the next request slot so concurrent callers — the refresher
-// worker and interactive searches share one client — cannot burst TMDb
+// pace reserves the next request slot so concurrent callers â€” the refresher
+// worker and interactive searches share one client â€” cannot burst TMDb
 // (RS-0017). The wait honors context cancellation and never lengthens or
 // shortens a 429 cooldown; it only spaces healthy traffic.
 func (c *Client) pace(ctx context.Context) error {

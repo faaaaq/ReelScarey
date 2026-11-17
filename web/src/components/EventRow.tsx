@@ -85,6 +85,8 @@ export function eventPath(event: Event): string | undefined {
   return paths[event.kind];
 }
 export function eventStateText(event: Event) {
+  if (event.kind === "download" && event.state === "cancelled")
+    return "Tracking stopped";
   return event.state.replaceAll("_", " ");
 }
 /** Status color from the recorded state text; unknown states stay neutral. */

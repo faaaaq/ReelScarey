@@ -1,13 +1,13 @@
+import { LibraryDeletion } from "../components/LibraryDeletion";
 import {
   Bookmark,
   FolderTree,
   HardDriveDownload,
   RefreshCw,
   Search,
-  Settings2,
 } from "lucide-react";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { RequestState } from "../components";
 import { Pagination } from "../movieComponents";
 import {
@@ -62,6 +62,7 @@ export function ItemDetails() {
 }
 
 function MovieView({ id }: { id: number }) {
+  const navigate = useNavigate();
   const details = useItemDetails(id);
   const data = details.data;
   const item = data?.item;
@@ -105,7 +106,17 @@ function MovieView({ id }: { id: number }) {
             label="Organize"
             to={`/organization?media_id=${id}`}
           />
-          <ToolbarButton icon={Settings2} label="Automation" to="/automation" />
+          {item && (
+            <LibraryDeletion
+              selection="titles"
+              ids={[id]}
+              label="Delete movie"
+              name={item.title}
+              onDone={() =>
+                navigate(item.category === "anime" ? "/anime" : "/movies")
+              }
+            />
+          )}
         </ToolbarSection>
       </PageToolbar>{" "}
       {search.result && (

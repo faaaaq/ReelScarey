@@ -251,8 +251,20 @@ describe("music", () => {
               primary_type: "Album",
               secondary_types: [],
               track_count: 12,
-              status: "missing",
+              status: "available",
               cover_url: "",
+            },
+            {
+              id: 6,
+              title: "Street Spirit",
+              primary_type: "Single",
+              status: "available",
+            },
+            {
+              id: 7,
+              title: "In Rainbows",
+              primary_type: "Album",
+              status: "missing",
             },
           ],
         });
@@ -336,6 +348,14 @@ describe("music", () => {
       name: "OK Computer",
     });
     expect(albumLinks[0]).toHaveAttribute("href", "/music/albums/2");
+    expect(screen.queryByRole("link", { name: "In Rainbows" })).toBeNull();
+    expect(screen.getByText("Singles (1)")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Show all albums" }),
+    );
+    expect(
+      await screen.findByRole("link", { name: "In Rainbows" }),
+    ).toBeVisible();
     expect(screen.getByRole("heading", { name: "Radiohead" })).toBeVisible();
     expect(
       await screen.findByRole("table", { name: "Top tracks" }),

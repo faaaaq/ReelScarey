@@ -65,8 +65,9 @@ func tvNumber(w http.ResponseWriter, r *http.Request, key string, min, max int) 
 	return v, true
 }
 func (s *Server) seriesDetails(w http.ResponseWriter, r *http.Request) {
-	id, ok := tvID(w, r)
-	if !ok {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id == 0 || id < -9007199254740991 {
+		fail(w, 400, "invalid_series", "Choose a valid show.")
 		return
 	}
 	v, e := s.metadata.Series(r.Context(), id)
@@ -79,6 +80,7 @@ func (s *Server) seriesDetails(w http.ResponseWriter, r *http.Request) {
 func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		TMDbID    int64  `json:"tmdb_id"`
+		TVDBID    int64  `json:"tvdb_id"`
 		Monitored *bool  `json:"monitored"`
 		Monitor   string `json:"monitor"`
 		Category  string `json:"category"`
@@ -86,22 +88,26 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if body.TMDbID < 1 || (body.Category != "" && body.Category != "standard" && body.Category != "anime") {
-		fail(w, 400, "invalid_series", "Choose a valid TMDb show ID.")
+	if body.TMDbID < 0 || body.TVDBID < 0 || body.TVDBID > 9007199254740991 || (body.TMDbID > 0) == (body.TVDBID > 0) || (body.Category != "" && body.Category != "standard" && body.Category != "anime") {
+		fail(w, 400, "invalid_series", "Choose a valid TMDb or TheTVDB show ID.")
 		return
 	}
 	if body.Monitor != "" && !library.ValidSeriesMonitorMode(body.Monitor) {
 		fail(w, 400, "invalid_monitoring", "Choose no monitoring, missing episodes, the current season or future episodes.")
 		return
 	}
-	if existing, e := s.library.Series(r.Context(), body.TMDbID); e == nil {
+	id := body.TMDbID
+	if body.TVDBID > 0 {
+		id = -body.TVDBID
+	}
+	if existing, e := s.library.Series(r.Context(), id); e == nil {
 		send(w, 200, map[string]any{"item": existing, "created": false})
 		return
 	} else if !errors.Is(e, sql.ErrNoRows) {
 		s.tvError(w, e)
 		return
 	}
-	show, e := s.metadata.Series(r.Context(), body.TMDbID)
+	show, e := s.metadata.Series(r.Context(), id)
 	if e != nil {
 		s.tvError(w, e)
 		return

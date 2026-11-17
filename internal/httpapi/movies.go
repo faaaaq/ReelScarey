@@ -23,13 +23,13 @@ func (s *Server) providerError(w http.ResponseWriter, err error) {
 	if errors.As(err, &provider) {
 		status := 502
 		switch provider.Code {
-		case "tmdb_not_configured":
+		case "tmdb_not_configured", "tvdb_not_configured":
 			status = 409
 		case "movie_not_found", "series_not_found", "anime_not_found":
 			status = 404
-		case "tmdb_invalid_token", "invalid_anime_id", "invalid_anime_query", "invalid_anime_order":
+		case "tmdb_invalid_token", "tvdb_invalid_credentials", "invalid_anime_id", "invalid_anime_query", "invalid_anime_order":
 			status = 400
-		case "tmdb_rate_limited", "anilist_rate_limited":
+		case "tmdb_rate_limited", "tvdb_rate_limited", "anilist_rate_limited":
 			status = 429
 		}
 		if provider.RetryAfter > 0 {
@@ -53,8 +53,13 @@ func (s *Server) tmdbSettings(w http.ResponseWriter, r *http.Request) {
 			s.internal(w, "tmdb_status", err)
 			return
 		}
+		tvdbConfigured, err := s.metadata.TVDBConnected(r.Context())
+		if err != nil {
+			s.logger.Warn("TheTVDB status could not be read")
+		}
 		send(w, 200, map[string]any{
 			"configured":        configured,
+			"tvdb_configured":   tvdbConfigured,
 			"updated_at":        updated,
 			"using_default":     usingDefault,
 			"default_available": s.metadata.DefaultTokenAvailable(),

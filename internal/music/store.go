@@ -361,13 +361,21 @@ func (s *Store) ListFiles(ctx context.Context, page int) (MusicFilePage, error) 
 // conversion queue produced for a track without changing which file is the
 // playback default.
 func (s *Store) ListTrackVariants(ctx context.Context, trackID int64) ([]MusicFile, error) {
+	return s.registeredMusicFiles(ctx, "track_id", trackID)
+}
+
+func (s *Store) albumFiles(ctx context.Context, albumID int64) ([]MusicFile, error) {
+	return s.registeredMusicFiles(ctx, "album_id", albumID)
+}
+
+func (s *Store) registeredMusicFiles(ctx context.Context, column string, id int64) ([]MusicFile, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT f.id,f.artist_id,f.album_id,f.track_id,ar.name,a.title,COALESCE(t.title,''),COALESCE(t.disc,1),COALESCE(t.number,0),f.relative_path,f.format,f.duration_ms,f.size_bytes,f.variant_role,f.variant_profile
 		FROM music_files f
 		JOIN music_artists ar ON ar.id=f.artist_id
 		JOIN music_albums a ON a.id=f.album_id
 		LEFT JOIN music_tracks t ON t.id=f.track_id
-		WHERE f.track_id=?
-		ORDER BY CASE WHEN f.variant_role='primary' THEN 0 ELSE 1 END, f.id`, trackID)
+		WHERE f.`+column+`=?
+		ORDER BY CASE WHEN f.variant_role='primary' THEN 0 ELSE 1 END, f.id`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -441,6 +449,9 @@ func (s *Store) SaveTracks(ctx context.Context, albumID int64, tracks []Track) e
 			albumID, track.MusicBrainzID, track.RecordingID, track.Disc, track.Number, track.Title, track.DurationMS, now, now); err != nil {
 			return err
 		}
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE music_albums SET tracks_loaded=1 WHERE id=?`, albumID); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

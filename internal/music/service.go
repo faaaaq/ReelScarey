@@ -264,16 +264,22 @@ func (s *Service) Album(ctx context.Context, id int64) (AlbumDetails, error) {
 		return AlbumDetails{}, err
 	}
 	if len(tracks) == 0 {
-		if IsLocalMusicID(album.MusicBrainzID) {
+		var loaded bool
+		if err := s.store.db.QueryRowContext(ctx, `SELECT tracks_loaded FROM music_albums WHERE id=?`, id).Scan(&loaded); err != nil {
+			return AlbumDetails{}, err
+		}
+		if loaded || IsLocalMusicID(album.MusicBrainzID) {
 			// A tag-derived album has no provider identity to load from.
-			return AlbumDetails{Album: album, Tracks: []Track{}}, nil
+			files, err := s.store.albumFiles(ctx, id)
+			return AlbumDetails{Album: album, Tracks: []Track{}, Files: files}, err
 		}
 		tracks, err = s.loadTracks(ctx, album)
 		if err != nil {
 			return AlbumDetails{}, err
 		}
 	}
-	return AlbumDetails{Album: album, Tracks: tracks}, nil
+	files, err := s.store.albumFiles(ctx, id)
+	return AlbumDetails{Album: album, Tracks: tracks, Files: files}, err
 }
 
 func (s *Service) loadTracks(ctx context.Context, album Album) ([]Track, error) {

@@ -144,6 +144,9 @@ func (s *Service) RunWorkflow(ctx context.Context, logger *slog.Logger) {
 	defer ticker.Stop()
 	for ctx.Err() == nil {
 		worked, err := s.ProcessWorkflow(ctx)
+		if !worked && err == nil {
+			worked, err = s.processTitleUpdate(ctx)
+		}
 		if err != nil && ctx.Err() == nil {
 			logger.Error("music workflow worker failed", "error", err)
 		}

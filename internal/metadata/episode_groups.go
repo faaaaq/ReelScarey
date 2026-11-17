@@ -109,6 +109,10 @@ func (c *Client) EpisodeGroup(ctx context.Context, token string, seriesID int64,
 	return out, nil
 }
 func (s *Service) EpisodeGroups(ctx context.Context, id int64) ([]EpisodeGroup, error) {
+	if id < 0 {
+		return nil, animeProviderError("invalid_anime_order", "TMDb episode groups are available for shows matched to TMDb.")
+	}
+
 	p, ok := s.provider.(EpisodeGroupProvider)
 	if !ok {
 		return nil, animeProviderError("metadata_unavailable", "Episode orders are unavailable from this provider.")
@@ -120,6 +124,10 @@ func (s *Service) EpisodeGroups(ctx context.Context, id int64) ([]EpisodeGroup, 
 	return p.EpisodeGroups(ctx, token, id)
 }
 func (s *Service) EpisodeGroup(ctx context.Context, seriesID int64, id string) (EpisodeGroupDetails, error) {
+	if seriesID < 0 {
+		return EpisodeGroupDetails{}, animeProviderError("invalid_anime_order", "TMDb episode groups are available for shows matched to TMDb.")
+	}
+
 	p, ok := s.provider.(EpisodeGroupProvider)
 	if !ok {
 		return EpisodeGroupDetails{}, animeProviderError("metadata_unavailable", "Episode orders are unavailable from this provider.")

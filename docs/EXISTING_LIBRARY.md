@@ -191,11 +191,13 @@ active replacement or living in the download folder for seeding are refused.
 The request stores the same reviewed identity a discovery review stores, and
 the same durable verification worker then inspects the file (anchored open,
 stable file identity, size/mtime, sample fingerprints, FFprobe) before the
-atomic in-place registration. Nothing is copied, renamed or replaced, and no
+atomic in-place registration. The registration uses the existing path and no
 download, release or Activity job is fabricated. The queued item appears on
 the Library Import page like any review row, where it can be retried or
 skipped after a reported problem. Multiple files for the same movie remain
-separate versions; the same episode cannot be claimed twice.
+separate versions; the same episode cannot be claimed twice. The worker then
+queues the matched title for supported containers. A verified rewrite publishes
+at the same library path and keeps any download-client link on the original bytes.
 
 ## Review the identity
 

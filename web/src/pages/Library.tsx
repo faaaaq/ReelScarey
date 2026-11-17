@@ -1,3 +1,4 @@
+import { LibraryDeletion, selectionClick } from "../components/LibraryDeletion";
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, DropdownMenu, TextField } from "@radix-ui/themes";
 import {
@@ -344,6 +345,11 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
     setMonitoringMessage(message);
     reload();
   }
+  function selectItem(item: MediaItem) {
+    return canSelect
+      ? selectionClick(() => toggle(item.id, !selected.includes(item.id)))
+      : undefined;
+  }
   function selectBox(item: MediaItem) {
     return (
       <input
@@ -658,6 +664,8 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                       {rows.map((item) => (
                         <tr
                           key={item.id}
+                          onClickCapture={selectItem(item)}
+                          data-selecting={canSelect || undefined}
                           className={
                             canSelect && selected.includes(item.id)
                               ? "is-selected"
@@ -671,7 +679,12 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                             <MonitorIcon monitored={item.monitored} />
                           </td>
                           <th scope="row">
-                            <Link to={detailsPath(item)}>{item.title}</Link>
+                            <Link
+                              to={detailsPath(item)}
+                              tabIndex={canSelect ? -1 : undefined}
+                            >
+                              {item.title}
+                            </Link>
                           </th>
                           <td className="is-shrink">{item.year ?? "—"}</td>
                           {anime && (
@@ -686,7 +699,9 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                             </Label>
                           </td>
                           <td className="is-actions">
-                            <ItemAction item={item} kind={kind} />
+                            {!canSelect && (
+                              <ItemAction item={item} kind={kind} />
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -706,6 +721,8 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                     {rows.map((item) => (
                       <li
                         key={item.id}
+                        onClickCapture={selectItem(item)}
+                        data-selecting={canSelect || undefined}
                         className={
                           canSelect && selected.includes(item.id)
                             ? "lib-overview-row is-selected"
@@ -720,6 +737,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                         <Link
                           className="lib-overview-poster"
                           to={detailsPath(item)}
+                          tabIndex={canSelect ? -1 : undefined}
                           aria-label={`Open ${item.title} details`}
                         >
                           <Poster movie={item} />
@@ -732,7 +750,12 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                           <div className="lib-overview-head">
                             <MonitorIcon monitored={item.monitored} />
                             <h2 className="lib-overview-title">
-                              <Link to={detailsPath(item)}>{item.title}</Link>
+                              <Link
+                                to={detailsPath(item)}
+                                tabIndex={canSelect ? -1 : undefined}
+                              >
+                                {item.title}
+                              </Link>
                             </h2>
                             <span className="rs-muted">{item.year ?? ""}</span>
                           </div>
@@ -746,7 +769,9 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                               </Label>
                             )}
                             <ProfileLabel item={item} />
-                            <ItemAction item={item} kind={kind} />
+                            {!canSelect && (
+                              <ItemAction item={item} kind={kind} />
+                            )}
                           </div>
                           {item.overview && (
                             <p className="lib-overview-text">{item.overview}</p>
@@ -772,6 +797,8 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                         : "lib-card"
                     }
                     key={item.id}
+                    onClickCapture={selectItem(item)}
+                    data-selecting={canSelect || undefined}
                   >
                     {canSelect && (
                       <span className="lib-card-select">{selectBox(item)}</span>
@@ -779,6 +806,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                     <Link
                       className="lib-card-art"
                       to={detailsPath(item)}
+                      tabIndex={canSelect ? -1 : undefined}
                       aria-label={`Open ${item.title} details`}
                     >
                       <Poster movie={item} />
@@ -790,7 +818,11 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
                     <div className="lib-card-info">
                       <div className="lib-card-line">
                         <h2 className="lib-card-title">
-                          <Link to={detailsPath(item)} title={item.title}>
+                          <Link
+                            to={detailsPath(item)}
+                            title={item.title}
+                            tabIndex={canSelect ? -1 : undefined}
+                          >
                             {item.title}
                           </Link>
                         </h2>
@@ -940,6 +972,17 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
               )}
             </div>
             <div className="lib-select-editors">
+              {selected.length > 0 && (
+                <LibraryDeletion
+                  selection="titles"
+                  ids={selected}
+                  label={`Delete selected (${selected.length})`}
+                  onDone={() => {
+                    setSelected([]);
+                    reload();
+                  }}
+                />
+              )}
               {selectedGroups.map((group) => (
                 <section
                   key={group.kind}
@@ -973,7 +1016,7 @@ export function Library({ kind }: { kind: "movie" | "series" | "anime" }) {
               ))}
               {selectedGroups.length === 0 && (
                 <span className="rs-muted rs-small">
-                  Select titles to edit monitoring or quality profiles.
+                  Select titles to delete or edit.
                 </span>
               )}
             </div>

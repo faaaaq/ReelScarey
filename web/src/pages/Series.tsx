@@ -1,3 +1,4 @@
+import { LibraryDeletion } from "../components/LibraryDeletion";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@radix-ui/themes";
 import {
@@ -6,12 +7,10 @@ import {
   HardDriveDownload,
   ListChecks,
   RefreshCw,
-  FileX,
   Search,
   SearchCheck,
-  Settings2,
 } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   api,
   messageFor,
@@ -128,6 +127,7 @@ function SeriesView({ initial }: { initial: TVSeries }) {
     null,
   );
   const [importOpen, setImportOpen] = useState(false);
+  const navigate = useNavigate();
   const details = useItemDetails(show.id);
   const firstRevision = useRef(show.revision);
   const base = `/library/series/${show.id}`;
@@ -168,33 +168,6 @@ function SeriesView({ initial }: { initial: TVSeries }) {
       setPending(false);
     }
   };
-  async function removeFile(
-    episodeID: number,
-    _code: string,
-    _filePath: string,
-  ) {
-    setPending(true);
-    setError("");
-    try {
-      const out = await api<TVSeries>(
-        `/library/series/${show.id}/episodes/${episodeID}/remove-file`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            revision: show.revision,
-            reviewed: true,
-            delete_file: true,
-          }),
-        },
-      );
-      setShow(out);
-      setAttempt((n) => n + 1);
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setPending(false);
-    }
-  }
   async function reload() {
     if (pending) return;
     setPending(true);
@@ -275,7 +248,15 @@ function SeriesView({ initial }: { initial: TVSeries }) {
             title="Point at a video already on disk and register it for an episode of this show"
             onClick={() => setImportOpen(true)}
           />
-          <ToolbarButton icon={Settings2} label="Automation" to="/automation" />
+          <LibraryDeletion
+            selection="titles"
+            ids={[show.id]}
+            label="Delete series"
+            name={show.title}
+            onDone={() =>
+              navigate(show.category === "anime" ? "/anime" : "/series")
+            }
+          />
         </ToolbarSection>
       </PageToolbar>{" "}
       {bulk.state.status !== "idle" && (
@@ -292,9 +273,6 @@ function SeriesView({ initial }: { initial: TVSeries }) {
           >
             <p>{bulkSearchMessage(bulk.state)}</p>
             <div className="rs-row">
-              <Link className="rs-link-button rs-small" to="/automation">
-                Open Automation for details
-              </Link>
               <button
                 type="button"
                 className="rs-link-button rs-small"
@@ -531,7 +509,10 @@ function SeriesView({ initial }: { initial: TVSeries }) {
                               )
                             }
                             onOpenReleaseSearch={setReleaseSearch}
-                            onRemoveFile={removeFile}
+                            onFileDeleted={() => {
+                              details.reload();
+                              void reload();
+                            }}
                           />
                         ))}
                       </div>
@@ -549,7 +530,14 @@ function SeriesView({ initial }: { initial: TVSeries }) {
               label: "Files & History",
               content: data ? (
                 <>
-                  <FilesSection details={details} savedTitle={show.title} />
+                  <FilesSection
+                    details={details}
+                    savedTitle={show.title}
+                    onFilesChanged={() => {
+                      details.reload();
+                      void reload();
+                    }}
+                  />
                   <HistorySection details={details} />
                   <Pagination
                     page={details.page}
@@ -673,7 +661,7 @@ function SeasonBlock({
   onEpisodeSearch,
   onSeasonSearch,
   onOpenReleaseSearch,
-  onRemoveFile,
+  onFileDeleted,
 }: {
   show: TVSeries;
   season: TVSeason;
@@ -689,7 +677,7 @@ function SeasonBlock({
   onEpisodeSearch: (episodeID: number) => void;
   onSeasonSearch: (seasonNumber: number) => void;
   onOpenReleaseSearch: (scope: ReleaseSearchScope) => void;
-  onRemoveFile?: (episodeID: number, code: string, filePath: string) => void;
+  onFileDeleted?: () => void;
 }) {
   const panelID = `season-${season.id}`;
   return (
@@ -783,7 +771,7 @@ function SeasonBlock({
             searchPending={searchPending}
             onEpisodeSearch={onEpisodeSearch}
             onOpenReleaseSearch={onOpenReleaseSearch}
-            onRemoveFile={onRemoveFile}
+            onFileDeleted={onFileDeleted}
           />
         </div>
       )}
@@ -800,7 +788,7 @@ function SeasonEpisodes({
   searchPending,
   onEpisodeSearch,
   onOpenReleaseSearch,
-  onRemoveFile,
+  onFileDeleted,
 }: {
   show: TVSeries;
   season: TVSeason;
@@ -810,7 +798,7 @@ function SeasonEpisodes({
   searchPending: boolean;
   onEpisodeSearch: (episodeID: number) => void;
   onOpenReleaseSearch: (scope: ReleaseSearchScope) => void;
-  onRemoveFile?: (episodeID: number, code: string, filePath: string) => void;
+  onFileDeleted?: () => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
@@ -1075,38 +1063,16 @@ function SeasonEpisodes({
                         >
                           <Search size={16} aria-hidden="true" />
                         </button>
-                        {e.available && e.file_id && (
-                          <ConfirmDialog
-                            trigger={
-                              <button
-                                type="button"
-                                className="det-icon-link"
-                                aria-label={`Delete ${episodeCode(season.number, e.number)} ${e.title} from disk and the library`}
-                                title="Delete this episode's file from disk and remove it from the library."
-                                disabled={pending || onRemoveFile === undefined}
-                              >
-                                <FileX size={16} aria-hidden="true" />
-                              </button>
+                        {e.available && e.file_id && onFileDeleted && (
+                          <LibraryDeletion
+                            selection="video_files"
+                            ids={[e.file_id]}
+                            label="Delete file"
+                            name={
+                              e.file_path ||
+                              episodeCode(season.number, e.number)
                             }
-                            title={`Delete ${episodeCode(season.number, e.number)}?`}
-                            description={
-                              <>
-                                <code>{e.file_path ?? ""}</code>
-                                <p>
-                                  This permanently deletes the media file and
-                                  cannot be undone. The download folder and
-                                  seeding sources are never touched.
-                                </p>
-                              </>
-                            }
-                            onConfirm={() => {
-                              onRemoveFile &&
-                                onRemoveFile(
-                                  e.id,
-                                  episodeCode(season.number, e.number),
-                                  e.file_path ?? "",
-                                );
-                            }}
+                            onDone={onFileDeleted}
                           />
                         )}
                       </span>

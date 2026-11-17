@@ -131,7 +131,17 @@ func putSeasons(ctx context.Context, tx *sql.Tx, id int64, seasons []metadata.Se
 		if err == nil && prior != v.TMDbID {
 			return &metadata.Error{Code: "tmdb_invalid_response", Message: "Season identity changed. Saved seasons were retained for review."}
 		}
-		if _, e := tx.ExecContext(ctx, `INSERT INTO seasons(series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(series_id,number) DO UPDATE SET tmdb_id=excluded.tmdb_id,title=excluded.title,overview=excluded.overview,air_date=excluded.air_date,episode_count=excluded.episode_count`, id, v.TMDbID, v.Number, v.Title, v.Overview, v.AirDate, v.EpisodeCount, v.Number != 0); e != nil {
+		if v.TMDbID < 0 {
+			var prior int64
+			err := tx.QueryRowContext(ctx, `SELECT tmdb_id FROM seasons WHERE series_id=? AND number=? AND loaded_at<>''`, id, v.Number).Scan(&prior)
+			if err == nil && prior != v.TMDbID {
+				return ErrRevision
+			}
+			if err != nil && err != sql.ErrNoRows {
+				return err
+			}
+		}
+		if _, e := tx.ExecContext(ctx, `INSERT INTO seasons(series_id,tmdb_id,number,title,overview,air_date,episode_count,monitored) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(series_id,number) DO UPDATE SET tmdb_id=excluded.tmdb_id,title=excluded.title,overview=excluded.overview,air_date=CASE WHEN excluded.tmdb_id<0 AND excluded.air_date='' THEN seasons.air_date ELSE excluded.air_date END,episode_count=CASE WHEN excluded.tmdb_id<0 AND excluded.episode_count=0 AND seasons.loaded_at<>'' THEN seasons.episode_count ELSE excluded.episode_count END`, id, v.TMDbID, v.Number, v.Title, v.Overview, v.AirDate, v.EpisodeCount, v.Number != 0); e != nil {
 			return e
 		}
 	}
@@ -146,7 +156,7 @@ func (s *Store) AddSeriesAuthorized(ctx context.Context, show metadata.Series, m
 	if err != nil {
 		return Item{}, false, err
 	}
-	if show.TMDbID < 1 || show.Title == "" {
+	if show.TMDbID == 0 || show.TMDbID < 0 && show.TVDbID != -show.TMDbID || show.Title == "" {
 		return Item{}, false, errors.New("invalid series metadata")
 	}
 	tx, e := s.db.BeginTx(ctx, nil)
@@ -159,7 +169,7 @@ func (s *Store) AddSeriesAuthorized(ctx context.Context, show metadata.Series, m
 			return Item{}, false, err
 		}
 	}
-	result, e := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date,category) VALUES('series',?,?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, show.TMDbID, show.Title, show.Year, monitored, show.Overview, show.PosterPath, show.ReleaseDate, section)
+	result, e := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date,category,original_language) VALUES('series',?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, show.TMDbID, show.Title, show.Year, monitored, show.Overview, show.PosterPath, show.ReleaseDate, section, show.OriginalLanguage)
 	if e != nil {
 		return Item{}, false, e
 	}
@@ -221,7 +231,7 @@ func (s *Store) RefreshSeries(ctx context.Context, id int64, show metadata.Serie
 	if e = bumpSeries(ctx, tx, id, revision); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET title=?,year=?,overview=?,poster_path=?,release_date=? WHERE id=?`, show.Title, show.Year, show.Overview, show.PosterPath, show.ReleaseDate, id); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET title=?,year=?,overview=?,poster_path=?,release_date=?,original_language=COALESCE(NULLIF(?,''),original_language) WHERE id=?`, show.Title, show.Year, show.Overview, show.PosterPath, show.ReleaseDate, show.OriginalLanguage, id); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE series_details SET series_status=? WHERE media_id=?`, show.SeriesStatus, id); e != nil {

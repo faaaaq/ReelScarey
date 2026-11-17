@@ -53,7 +53,7 @@ func (s *MetadataRefresher) Get(ctx context.Context) (MetadataSchedule, error) {
 }
 func (s *MetadataRefresher) Save(ctx context.Context, p MetadataSchedule) (MetadataSchedule, error) {
 	if p.IntervalHours < 1 || p.IntervalHours > 720 || p.Batch < 1 || p.Batch > 25 {
-		return p, invalid("Choose 1–720 hours and 1–25 titles per batch.")
+		return p, invalid("Choose 1â€“720 hours and 1â€“25 titles per batch.")
 	}
 	r, e := s.db.ExecContext(ctx, `UPDATE metadata_refresh_schedule SET enabled=?,interval_hours=?,batch_size=?,only_monitored=?,revision=revision+1,requested=0,next_run=?,cursor=0,lease_owner='',lease_until=0,state=CASE WHEN ? THEN 'scheduled' ELSE 'paused' END,message='Metadata schedule saved.' WHERE id=1 AND revision=?`, p.Enabled, p.IntervalHours, p.Batch, p.OnlyMonitored, time.Now().Unix()+int64(p.IntervalHours)*3600, p.Enabled, p.Revision)
 	if e != nil {
@@ -110,7 +110,7 @@ func (s *MetadataRefresher) EnqueueLibrary(ctx context.Context, kind string) (in
 		return 0, err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `INSERT INTO metadata_refresh_queue(media_id,full) SELECT id,1 FROM media_items WHERE tmdb_id>0 AND `+where+` ON CONFLICT(media_id) DO UPDATE SET requested_at=unixepoch(),full=1,attempts=0,next_attempt=0,last_error=''`)
+	result, err := tx.ExecContext(ctx, `INSERT INTO metadata_refresh_queue(media_id,full) SELECT id,1 FROM media_items WHERE tmdb_id<>0 AND `+where+` ON CONFLICT(media_id) DO UPDATE SET requested_at=unixepoch(),full=1,attempts=0,next_attempt=0,last_error=''`)
 	if err != nil {
 		return 0, err
 	}
@@ -281,7 +281,7 @@ func (s *MetadataRefresher) ProcessNext(ctx context.Context) (bool, error) {
 		}
 	}()
 	defer func() { cancel(); <-done }()
-	rows, e := s.db.QueryContext(work, `SELECT id FROM media_items WHERE tmdb_id>0 AND id>? AND (?=0 OR monitored=1) ORDER BY id LIMIT ?`, p.Cursor, p.OnlyMonitored, p.Batch)
+	rows, e := s.db.QueryContext(work, `SELECT id FROM media_items WHERE tmdb_id<>0 AND id>? AND (?=0 OR monitored=1) ORDER BY id LIMIT ?`, p.Cursor, p.OnlyMonitored, p.Batch)
 	if e != nil {
 		return true, e
 	}
@@ -378,7 +378,7 @@ func (s *MetadataRefresher) refreshItem(ctx context.Context, id int64, full bool
 		_ = s.db.QueryRowContext(ctx, `SELECT season_cursor FROM metadata_refresh_state WHERE media_id=?`, id).Scan(&cursor)
 		eligible := []int{}
 		for _, v := range show.Seasons {
-			if v.LoadedAt != "" || (v.Monitored && v.AirDate != "" && v.AirDate <= time.Now().AddDate(0, 0, 90).Format(time.DateOnly)) {
+			if item.TMDbID < 0 || v.LoadedAt != "" || (v.Monitored && v.AirDate != "" && v.AirDate <= time.Now().AddDate(0, 0, 90).Format(time.DateOnly)) {
 				eligible = append(eligible, v.Number)
 			}
 		}

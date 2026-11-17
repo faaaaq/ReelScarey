@@ -65,7 +65,6 @@ const filters = [
   { value: "all", label: "All on queue" },
   { value: "attention", label: "Needs attention" },
   { value: "active", label: "In progress" },
-  { value: "cancelled", label: "Tracking stopped" },
 ];
 const active = new Set(["queued", "submitting", "downloading", "importing"]);
 
@@ -73,11 +72,9 @@ function needsAttention(job: DownloadJob) {
   return job.state === "blocked" || job.state === "failed";
 }
 function matchesFilter(job: DownloadJob, filter: string) {
+  if (job.state === "cancelled" || job.state === "completed") return false;
   if (filter === "attention") return needsAttention(job);
   if (filter === "active") return active.has(job.state);
-  if (filter === "cancelled") return job.state === "cancelled";
-  // Completed downloads leave the queue and live in History.
-  if (filter === "completed") return false;
   return true;
 }
 function stateOf(job: DownloadJob) {
@@ -196,10 +193,10 @@ export function Activity() {
     setParams(next);
   }
   const focusValid = !!focus;
-  const items = data?.items ?? [];
+  const items = (data?.items ?? []).filter((job) => matchesFilter(job, "all"));
   const visible = items.filter((job) => matchesFilter(job, filter));
   const attention = items.filter(needsAttention).length;
-  const opened = items.find((job) => job.id === openID);
+  const opened = data?.items.find((job) => job.id === openID);
   return (
     <>
       <PageToolbar>
@@ -231,11 +228,11 @@ export function Activity() {
       <PageBody>
         <PageHeading
           title="Activity"
-          description="Active downloads only. Completed items appear in History."
+          description="Tracked downloads and items that need attention."
         />
         <p className="rs-muted rs-small">
-          Finished downloads are kept in <Link to="/timeline">History</Link>,
-          never on this queue.
+          Finished downloads and stopped tracking events appear in{" "}
+          <Link to="/timeline">History</Link>.
         </p>
         {focus && !focusValid && (
           <Alert kind="danger" role="alert">
@@ -283,8 +280,8 @@ export function Activity() {
               }
             >
               <p>
-                Downloads appear here after you choose a release. Completed
-                items are kept in History.
+                Downloads appear here after you choose a release. Completed and
+                stopped downloads appear in History.
               </p>
             </EmptyState>
           ) : (

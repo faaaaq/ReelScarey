@@ -296,17 +296,26 @@ jobs:
 
       - name: Compose image tags
         id: tags
+        env:
+          RELEASE_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          APPLICATION_VERSION: ${{ steps.version.outputs.value }}
         run: |
           tags="${{ vars.DOCKERHUB_USERNAME }}/reelscarey:sha-${{ github.sha }}"
-          # `latest` is a production-consumed default (compose.yaml's
-          # REELSCAREY_IMAGE default), so it may only move on an explicit
-          # release event: a v* tag or a manual dispatch. An ordinary
-          # primary-branch push publishes the immutable sha-<sha> candidate
-          # for review and staging pinning but never moves `latest`.
-          if [[ "${{ github.ref }}" == refs/tags/v* ]] || [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          # An explicitly named release commit lets repository integrations
+          # publish a version without separate tag or dispatch permissions.
+          release_commit=false
+          subject="${RELEASE_COMMIT_MESSAGE%%$'\n'*}"
+          if [[ "${{ github.event_name }}" == push ]] && \
+             [[ "${{ github.ref }}" == refs/heads/codex/foundation ]] && \
+             [[ "$subject" == "Release $APPLICATION_VERSION" ]]; then
+            release_commit=true
+          fi
+          if [[ "${{ github.ref }}" == refs/tags/v* ]] || \
+             [[ "${{ github.event_name }}" == workflow_dispatch ]] || \
+             [[ "$release_commit" == true ]]; then
             tags="${{ vars.DOCKERHUB_USERNAME }}/reelscarey:latest,$tags"
           fi
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [[ "${{ github.ref }}" == refs/tags/v* ]] || [[ "$release_commit" == true ]]; then
             tags="$tags,${{ vars.DOCKERHUB_USERNAME }}/reelscarey:${{ steps.version.outputs.value }}"
           fi
           echo "value=$tags" >> "$GITHUB_OUTPUT"

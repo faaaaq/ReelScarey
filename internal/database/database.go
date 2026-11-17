@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/url"
@@ -106,20 +108,43 @@ func migrate(ctx context.Context, db *sql.DB, files fs.FS) error {
 			return err
 		}
 		checksum := fmt.Sprintf("%x", sha256.Sum256(body))
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			return err
-		}
-		err = apply(ctx, tx, version, name, checksum, body)
-		if err != nil {
-			_ = tx.Rollback()
+		if err := migrateOne(ctx, db, version, name, checksum, body); err != nil {
 			return fmt.Errorf("migration %s: %w", name, err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit migration %s: %w", name, err)
 		}
 	}
 	return nil
+}
+
+func migrateOne(ctx context.Context, db *sql.DB, version int, name, checksum string, body []byte) (err error) {
+	// A parent rebuild must not fire ON DELETE CASCADE. A dedicated
+	// connection scopes the pragma and apply still checks the complete
+	// foreign-key graph before it commits.
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if name == "migrations/105_video_metadata_identity.sql" {
+		if _, err = conn.ExecContext(ctx, "PRAGMA foreign_keys=OFF; PRAGMA legacy_alter_table=ON"); err != nil {
+			return err
+		}
+		defer func() {
+			_, reset := conn.ExecContext(context.WithoutCancel(ctx), "PRAGMA legacy_alter_table=OFF; PRAGMA foreign_keys=ON")
+			if reset != nil {
+				_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+				err = errors.Join(err, reset)
+			}
+		}()
+	}
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err = apply(ctx, tx, version, name, checksum, body); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func apply(ctx context.Context, tx *sql.Tx, version int, name, checksum string, body []byte) error {

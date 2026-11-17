@@ -262,7 +262,7 @@ func needsRetag(currentJSON string, target EditTags) bool {
 		return true
 	}
 	if !equalFold(current.Artist, target.Artist) || !equalFold(current.AlbumArtist, target.AlbumArtist) ||
-		!equalFold(current.Album, target.Album) || !equalFold(current.Title, target.Title) {
+		!equalFold(current.Album, target.Album) || current.Title != target.Title {
 		return true
 	}
 	if current.Track == nil || *current.Track != target.Track || current.Disc == nil || *current.Disc != target.Disc {
@@ -337,27 +337,35 @@ func (s *Service) ApplyEditsWith(ctx context.Context, fileIDs []int64, planHash 
 		return EditJob{}, err
 	}
 	defer tx.Rollback()
-	now := time.Now().Unix()
-	result, err := tx.ExecContext(ctx, `INSERT INTO music_edit_jobs(state,file_count,created_at,updated_at) VALUES('running',?,?,?)`, len(plan.Files), now, now)
+	jobID, err := persistEditJob(ctx, tx, plan.Files, false)
 	if err != nil {
 		return EditJob{}, err
-	}
-	jobID, err := result.LastInsertId()
-	if err != nil {
-		return EditJob{}, err
-	}
-	for _, file := range plan.Files {
-		tagsJSON, _ := json.Marshal(file.Tags)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO music_edit_files(job_id,music_file_id,source_path,destination_path,action,tags_json,previous_tag_json,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'pending',?,?)`,
-			jobID, file.MusicFileID, file.SourcePath, file.DestinationPath, file.Action, string(tagsJSON), file.PreviousTagJSON, now, now); err != nil {
-			return EditJob{}, err
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		return EditJob{}, err
 	}
 	go s.runEditJob(ctx, jobID)
 	return s.EditJob(ctx, jobID)
+}
+
+func persistEditJob(ctx context.Context, tx *sql.Tx, files []EditFile, automatic bool) (int64, error) {
+	now := time.Now().Unix()
+	result, err := tx.ExecContext(ctx, `INSERT INTO music_edit_jobs(state,file_count,created_at,updated_at,automatic_title) VALUES('running',?,?,?,?)`, len(files), now, now, automatic)
+	if err != nil {
+		return 0, err
+	}
+	jobID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	for _, file := range files {
+		tagsJSON, _ := json.Marshal(file.Tags)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO music_edit_files(job_id,music_file_id,source_path,destination_path,action,tags_json,previous_tag_json,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'pending',?,?)`,
+			jobID, file.MusicFileID, file.SourcePath, file.DestinationPath, file.Action, string(tagsJSON), file.PreviousTagJSON, now, now); err != nil {
+			return 0, err
+		}
+	}
+	return jobID, nil
 }
 
 // editLeaseOwner returns a random lease identity for one edit-job claimant.
@@ -491,6 +499,19 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 	if err := s.store.db.QueryRowContext(ctx, `SELECT root FROM music_files WHERE id=? AND relative_path=?`, musicFileID, sourceRel).Scan(&originalRoot); err != nil {
 		return err
 	}
+	var automatic bool
+	if err := s.store.db.QueryRowContext(ctx, `SELECT automatic_title FROM music_edit_jobs WHERE id=?`, jobID).Scan(&automatic); err != nil {
+		return err
+	}
+	if automatic {
+		var digest, title string
+		if err := s.store.db.QueryRowContext(ctx, `SELECT f.sha256,t.title FROM music_files f JOIN music_tracks t ON t.id=f.track_id WHERE f.id=? AND f.relative_path=?`, musicFileID, sourceRel).Scan(&digest, &title); err != nil {
+			return err
+		}
+		if digest != "" && digest != originalSHA || title != tags.Title {
+			return ErrPlanChanged
+		}
+	}
 	// A conflicting destination is resolved after staging (see placeMusicStage):
 	// identical content is deduplicated, differing content is set aside under a
 	// versioned sibling name instead of failing the whole edit.
@@ -506,9 +527,14 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 	stageRel = filepath.ToSlash(stageRel)
 	retag := action == "retag" || action == "move_retag"
 	backup := ""
+	backupRelative := ""
 	var verified AudioTags
 	if retag {
-		backup = source + ".reelscarey-backup"
+		backupRelative = sourceRel + ".reelscarey-backup"
+		if automatic {
+			backupRelative += fmt.Sprintf("-%d", editID)
+		}
+		backup = filepath.Join(s.mediaDir, filepath.FromSlash(backupRelative))
 		if _, err := os.Stat(backup); err == nil {
 			return &Error{Code: "music_backup_exists", Message: "A previous retained copy exists. Review it before retagging this file again."}
 		}
@@ -547,7 +573,7 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		return err
 	}
 	if retag {
-		if err := expectMusicDigest(ctx, media, sourceRel+".reelscarey-backup", originalSHA); err != nil {
+		if err := expectMusicDigest(ctx, media, backupRelative, originalSHA); err != nil {
 			return err
 		}
 	}
@@ -645,17 +671,17 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		// Keep the album/artist rows in step with the corrected file tags. The
 		// tag_json is the source of truth; without this the library, Subsonic
 		// clients and the web UI keep showing the stale (e.g. year 6666) values.
-		if tags.Year > 0 {
+		if !automatic && tags.Year > 0 {
 			if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET year=?,updated_at=unixepoch() WHERE id=(SELECT album_id FROM music_files WHERE id=?)`, tags.Year, musicFileID); err != nil {
 				return err
 			}
 		}
-		if strings.TrimSpace(tags.Album) != "" {
+		if !automatic && strings.TrimSpace(tags.Album) != "" {
 			if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET title=?,updated_at=unixepoch() WHERE id=(SELECT album_id FROM music_files WHERE id=?)`, tags.Album, musicFileID); err != nil {
 				return err
 			}
 		}
-		if strings.TrimSpace(tags.Artist) != "" {
+		if !automatic && strings.TrimSpace(tags.Artist) != "" {
 			if _, err := tx.ExecContext(ctx, `UPDATE music_artists SET name=?,updated_at=unixepoch() WHERE id=(SELECT artist_id FROM music_files WHERE id=?)`, tags.Artist, musicFileID); err != nil {
 				return err
 			}
@@ -726,7 +752,7 @@ func writeTags(ctx context.Context, source, stage string, tags EditTags, ext str
 }
 
 func verifyEditTags(actual AudioTags, tags EditTags) error {
-	if !equalFold(actual.Artist, tags.Artist) || !equalFold(actual.Album, tags.Album) || !equalFold(actual.Title, tags.Title) {
+	if !equalFold(actual.Artist, tags.Artist) || !equalFold(actual.Album, tags.Album) || actual.Title != tags.Title {
 		return &Error{Code: "music_tag_verify", Message: "The written tags did not match the catalog. The original was retained."}
 	}
 	if actual.Track == nil || *actual.Track != tags.Track || actual.Disc == nil || *actual.Disc != tags.Disc {

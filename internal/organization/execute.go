@@ -42,9 +42,17 @@ func ensureMediaAvailable(ctx context.Context, db query) error {
 func EnsureOrganizationAvailable(ctx context.Context, db *sql.DB) error {
 	return ensureOrganizationAvailable(ctx, db)
 }
+
+const unsafeOrganizationFailure = `(
+	((json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL)
+		AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe'))
+	OR (json_extract(snapshot,'$.removal') IS NOT NULL AND json_extract(snapshot,'$.phase')<>'failed_safe')
+	OR json_extract(snapshot,'$.phase')='track_sidecars_committed'
+)`
+
 func ensureOrganizationAvailable(ctx context.Context, db query) error {
 	var n int
-	if e := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state IN ('queued','running') OR (state='failed' AND (((json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')) OR (json_extract(snapshot,'$.removal') IS NOT NULL AND json_extract(snapshot,'$.phase')<>'failed_safe')))`).Scan(&n); e != nil {
+	if e := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state IN ('queued','running') OR (state='failed' AND `+unsafeOrganizationFailure+`)`).Scan(&n); e != nil {
 		return e
 	}
 	if n != 0 {
@@ -54,6 +62,9 @@ func ensureOrganizationAvailable(ctx context.Context, db query) error {
 }
 func allFiles(p Plan) []Companion {
 	out := []Companion{}
+	if p.Removal != nil {
+		out = append(out, p.Removal.Assets...)
+	}
 	for _, v := range p.Files {
 		if !v.Unchanged {
 			out = append(out, Companion{Source: v.Source, Destination: v.Destination, Size: v.Size, Mtime: v.Mtime, SHA: v.SHA, Identity: v.Identity})
@@ -67,6 +78,9 @@ func allFiles(p Plan) []Companion {
 	return out
 }
 func (s *Service) execute(ctx context.Context, p *Plan) error {
+	if p.TrackCleanup != nil {
+		return s.executeTrackCleanup(ctx, p)
+	}
 	if p.Replacement != nil {
 		return s.executeReplacement(ctx, p)
 	}
@@ -182,30 +196,37 @@ func (s *Service) execute(ctx context.Context, p *Plan) error {
 	// References already point to verified outputs. Cleanup never touches a
 	// download-client source, unknown file, or file replaced after publication.
 	for n, v := range allFiles(*p) {
-		if e = s.checkOutput(ctx, root, s.db, p.ID, v); e != nil {
-			return e
-		}
-		if e = checkSource(ctx, root, v, true); e == nil {
-			if e = root.Remove(filepath.FromSlash(v.Source)); e != nil {
-				return problem("cleanup_pending", "The new file is registered, but its old library link could not be removed. Retry cleanup.")
-			}
-		} else if !errors.Is(e, os.ErrNotExist) {
-			return problem("cleanup_pending", "The new file is registered. An old library path changed, so it was retained for review.")
-		}
-		stage := path.Join(path.Dir(v.Destination), fmt.Sprintf(".reelscarey-organize-%s-%d.part", p.ID, n))
-		var saved string
-		if e = s.db.QueryRowContext(ctx, `SELECT identity FROM organization_outputs WHERE plan_id=? AND destination=?`, p.ID, v.Destination).Scan(&saved); e != nil {
-			return e
-		}
-		if f, e := root.Open(filepath.FromSlash(stage)); e == nil {
-			id, _ := identity(f)
-			f.Close()
-			if id == saved {
-				_ = root.Remove(filepath.FromSlash(stage))
-			}
+		if err := s.cleanPublishedSource(ctx, root, *p, v, n); err != nil {
+			return err
 		}
 	}
 	return s.finishOrganization(ctx, p)
+}
+func (s *Service) cleanPublishedSource(ctx context.Context, root *os.Root, p Plan, v Companion, n int) error {
+	var e error
+	if e = s.checkOutput(ctx, root, s.db, p.ID, v); e != nil {
+		return e
+	}
+	if e = checkSource(ctx, root, v, true); e == nil {
+		if e = root.Remove(filepath.FromSlash(v.Source)); e != nil {
+			return problem("cleanup_pending", "The new file is registered, but its old library link could not be removed. Retry cleanup.")
+		}
+	} else if !errors.Is(e, os.ErrNotExist) {
+		return problem("cleanup_pending", "The new file is registered. An old library path changed, so it was retained for review.")
+	}
+	stage := path.Join(path.Dir(v.Destination), fmt.Sprintf(".reelscarey-organize-%s-%d.part", p.ID, n))
+	var saved string
+	if e = s.db.QueryRowContext(ctx, `SELECT identity FROM organization_outputs WHERE plan_id=? AND destination=?`, p.ID, v.Destination).Scan(&saved); e != nil {
+		return e
+	}
+	if f, e := root.Open(filepath.FromSlash(stage)); e == nil {
+		id, _ := identity(f)
+		f.Close()
+		if id == saved {
+			_ = root.Remove(filepath.FromSlash(stage))
+		}
+	}
+	return nil
 }
 func (s *Service) checkOutput(ctx context.Context, root *os.Root, q query, planID string, v Companion) error {
 	var saved string

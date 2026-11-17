@@ -396,7 +396,7 @@ func (s *Server) compatSeries(ctx context.Context, w http.ResponseWriter) {
 			percent = float64(episodeFiles) / float64(totalEpisodes)
 		}
 		out = append(out, map[string]any{
-			"id": id, "tmdbId": tmdbID, "title": title, "year": nullableInt(year), "monitored": monitored,
+			"id": id, "tmdbId": max(0, tmdbID), "title": title, "year": nullableInt(year), "monitored": monitored,
 			"status": seriesStatus, "qualityProfileId": profile, "path": "", "folderName": title,
 			"added": created, "seasons": seasonItems,
 			"statistics": map[string]any{"seasonCount": len(seasons), "episodeCount": episodeCount, "episodeFileCount": episodeFiles, "totalEpisodeCount": totalEpisodes, "percentOfEpisodes": percent},
@@ -447,7 +447,7 @@ func (s *Server) compatSeriesLookup(ctx context.Context, w http.ResponseWriter, 
 	}
 	out := []map[string]any{}
 	for _, m := range results.Items {
-		out = append(out, map[string]any{"tmdbId": m.TMDbID, "tvdbId": 0, "title": m.Title, "year": m.Year, "overview": m.Overview, "remotePoster": metadata.PosterURL(m.PosterPath)})
+		out = append(out, map[string]any{"tmdbId": max(0, m.TMDbID), "tvdbId": m.TVDbID, "title": m.Title, "year": m.Year, "overview": m.Overview, "remotePoster": metadata.PosterURL(m.PosterPath)})
 	}
 	send(w, 200, out)
 }
@@ -478,7 +478,7 @@ func (s *Server) compatEpisodes(ctx context.Context, w http.ResponseWriter, r *h
 			return
 		}
 		out = append(out, map[string]any{
-			"id": id, "seriesId": seriesID, "tvdbId": 0, "tmdbId": tmdbID, "seasonNumber": seasonNumber, "episodeNumber": number,
+			"id": id, "seriesId": seriesID, "tvdbId": max(0, -tmdbID), "tmdbId": max(0, tmdbID), "seasonNumber": seasonNumber, "episodeNumber": number,
 			"title": title, "overview": overview, "airDate": air, "runtime": nullableInt(runtime),
 			"monitored": monitored, "hasFile": files > 0, "episodeFileId": 0,
 		})

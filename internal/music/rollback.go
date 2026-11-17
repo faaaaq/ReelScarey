@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 
 	"github.com/faaaaq/ReelScarey/internal/filecheck"
 	"github.com/faaaaq/ReelScarey/internal/organization"
@@ -276,7 +275,7 @@ func (s *Service) rollbackMusicFile(ctx context.Context, root *os.Root, it music
 	if it.source != it.dest {
 		cleanup[it.dest] = it.editedSHA
 	}
-	if strings.HasSuffix(it.backup, ".reelscarey-backup") && it.backup == it.source+".reelscarey-backup" {
+	if it.backup == it.source+".reelscarey-backup" || it.backup == it.source+fmt.Sprintf(".reelscarey-backup-%d", it.id) {
 		cleanup[it.backup] = it.originalSHA
 	}
 	for name, sha := range cleanup {

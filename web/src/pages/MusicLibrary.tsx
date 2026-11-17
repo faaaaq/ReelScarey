@@ -1,3 +1,4 @@
+import { LibraryDeletion } from "../components/LibraryDeletion";
 import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import {
@@ -5,6 +6,7 @@ import {
   FolderInput,
   LayoutGrid,
   ListMusic,
+  ListChecks,
   Plus,
   RefreshCw,
   Search,
@@ -71,6 +73,8 @@ export function MusicLibrary() {
         ? "tracks"
         : "artists";
   const [input, setInput] = useState(query);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<number[]>([]);
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [results, setResults] = useState<MusicArtist[]>([]);
@@ -128,6 +132,7 @@ export function MusicLibrary() {
   );
 
   useEffect(() => setInput(query), [query]);
+  useEffect(() => setSelected([]), [view, page, query, artistsCapped]);
 
   function change(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -215,6 +220,22 @@ export function MusicLibrary() {
   const albumItems = albums.data?.items ?? [];
   const artistItems = artists.data?.items ?? [];
   const trackItems = tracks.data?.items ?? [];
+  const shownIDs = (
+    view === "albums"
+      ? albumItems
+      : view === "artists"
+        ? artistItems
+        : trackItems
+  ).flatMap((item) => (item.id ? [item.id] : []));
+  const selection = (id: number) => ({
+    checked: selected.includes(id),
+    toggle: () =>
+      setSelected((current) =>
+        current.includes(id)
+          ? current.filter((item) => item !== id)
+          : [...current, id],
+      ),
+  });
   const activeResource =
     view === "albums" ? albums : view === "artists" ? artists : tracks;
   const ready =
@@ -290,6 +311,15 @@ export function MusicLibrary() {
             spinning={metadataPending}
             disabled={metadataPending}
             onClick={refreshMetadata}
+          />
+          <ToolbarButton
+            icon={ListChecks}
+            label="Select"
+            active={selecting}
+            onClick={() => {
+              setSelecting((value) => !value);
+              setSelected([]);
+            }}
           />
         </ToolbarSection>
         <ToolbarSection align="right">
@@ -417,6 +447,32 @@ export function MusicLibrary() {
           </nav>
         )}
 
+        {selecting && ready && shownIDs.length > 0 && (
+          <div className="lib-select-bar" aria-label="Selection">
+            <div className="lib-select-summary">
+              <label className="lib-select-page">
+                <input
+                  type="checkbox"
+                  checked={selected.length === shownIDs.length}
+                  onChange={(event) =>
+                    setSelected(event.target.checked ? shownIDs : [])
+                  }
+                />
+                Select all shown
+              </label>
+              <strong>{selected.length} selected</strong>
+              <LibraryDeletion
+                selection={view}
+                ids={selected}
+                label={`Delete selected (${selected.length})`}
+                onDone={() => {
+                  setSelected([]);
+                  reload();
+                }}
+              />
+            </div>
+          </div>
+        )}
         <RequestState
           loading={activeResource.loading}
           error={activeResource.error}
@@ -439,6 +495,11 @@ export function MusicLibrary() {
                         key={album.id}
                         album={album}
                         showArtist
+                        selection={
+                          selecting && album.id
+                            ? selection(album.id)
+                            : undefined
+                        }
                         onDownload={(item) =>
                           setDownload({
                             albumID: item.id,
@@ -493,7 +554,15 @@ export function MusicLibrary() {
                       </h2>
                     </li>
                     {rows.map((artist) => (
-                      <ArtistTile key={artist.id} artist={artist} />
+                      <ArtistTile
+                        key={artist.id}
+                        artist={artist}
+                        selection={
+                          selecting && artist.id
+                            ? selection(artist.id)
+                            : undefined
+                        }
+                      />
                     ))}
                   </Fragment>
                 ))}
@@ -530,7 +599,11 @@ export function MusicLibrary() {
               </EmptyState>
             )
           ) : trackItems.length ? (
-            <LibraryTrackTable tracks={trackItems} />
+            <LibraryTrackTable
+              tracks={trackItems}
+              select={selecting ? selection : undefined}
+              onDeleted={reload}
+            />
           ) : query ? (
             <EmptyState
               icon={Search}

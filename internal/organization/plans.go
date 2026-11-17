@@ -286,7 +286,7 @@ func readPlan(ctx context.Context, q query, id string) (Plan, error) {
 	return p, nil
 }
 func (s *Service) Plans(ctx context.Context) ([]Plan, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT id FROM organization_plans ORDER BY CASE WHEN state IN ('queued','running') OR (state='failed' AND (((json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')) OR (json_extract(snapshot,'$.removal') IS NOT NULL AND json_extract(snapshot,'$.phase')<>'failed_safe'))) THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT 20`)
+	rows, e := s.db.QueryContext(ctx, `SELECT id FROM organization_plans ORDER BY CASE WHEN state IN ('queued','running') OR (state='failed' AND `+unsafeOrganizationFailure+`) THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT 20`)
 	if e != nil {
 		return nil, e
 	}
@@ -366,7 +366,7 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 		}
 	}
 	var count int
-	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE (state IN ('queued','running') OR (state='failed' AND (((json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')) OR (json_extract(snapshot,'$.removal') IS NOT NULL AND json_extract(snapshot,'$.phase')<>'failed_safe')))) AND id<>?`, id).Scan(&count); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE (state IN ('queued','running') OR (state='failed' AND `+unsafeOrganizationFailure+`)) AND id<>?`, id).Scan(&count); e != nil {
 		return p, e
 	}
 	if count != 0 {
@@ -382,6 +382,9 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 }
 func (s *Service) validate(ctx context.Context, root *os.Root, q query, p Plan, allowPublished bool) error {
 	if p.Removal != nil {
+		if p.Removal.Selection != "" {
+			return s.validateDeletion(ctx, root, q, p, allowPublished)
+		}
 		if e := s.validateRemoval(ctx, q, p); e != nil {
 			return e
 		}
@@ -506,7 +509,7 @@ func (s *Service) Tick(ctx context.Context) error {
 	mediaGate.Lock()
 	defer mediaGate.Unlock()
 	var unresolved int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state='failed' AND (((json_extract(snapshot,'$.folder_move') IS NOT NULL OR json_extract(snapshot,'$.replacement') IS NOT NULL) AND json_extract(snapshot,'$.phase') NOT IN ('committed','failed_safe')) OR (json_extract(snapshot,'$.removal') IS NOT NULL AND json_extract(snapshot,'$.phase')<>'failed_safe'))`).Scan(&unresolved); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans WHERE state='failed' AND `+unsafeOrganizationFailure+``).Scan(&unresolved); err != nil {
 		return err
 	}
 	if unresolved != 0 {
@@ -522,7 +525,7 @@ func (s *Service) Tick(ctx context.Context) error {
 	for {
 		e := s.db.QueryRowContext(ctx, `SELECT id FROM organization_plans WHERE state IN ('queued','running') AND id>? ORDER BY id LIMIT 1`, cursor).Scan(&id)
 		if errors.Is(e, sql.ErrNoRows) {
-			return nil
+			return s.queueRegisteredTitle(ctx)
 		}
 		if e != nil {
 			return e
@@ -540,7 +543,7 @@ func (s *Service) Tick(ctx context.Context) error {
 		return e
 	}
 	e = s.execute(ctx, &p)
-	if e != nil {
+	if e != nil && !(p.TrackCleanup != nil && ctx.Err() != nil) {
 		s.recordPlanFailure(ctx, &p, e)
 	}
 	return e

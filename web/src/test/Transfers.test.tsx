@@ -420,7 +420,7 @@ describe("release downloads and imports", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Import selected file" }),
     );
-    expect(await screen.findByText("In library")).toBeVisible();
+    expect(await screen.findByText("No active downloads")).toBeVisible();
     const sent = fetch.mock.calls.find(([url]) =>
       url.endsWith(`/downloads/${job.id}/file`),
     );

@@ -194,7 +194,7 @@ export function AddMovieButton({
         {
           method: "POST",
           body: JSON.stringify({
-            tmdb_id: id,
+            ...(id < 0 ? { tvdb_id: -id } : { tmdb_id: id }),
             ...(kind === "series"
               ? { monitor: choice }
               : { monitored: choice === "monitored" }),
@@ -348,7 +348,7 @@ export function MovieDetails({
       title={
         data ? `${data.title}${data.year ? ` (${data.year})` : ""}` : title
       }
-      description={`${kind === "series" ? "TV show" : "Movie"} details from TMDb.`}
+      description={`${kind === "series" ? "TV show" : "Movie"} details from ${id < 0 ? "TheTVDB" : "TMDb"}.`}
       footer={
         <>
           {data && added && libraryItemID !== null && (

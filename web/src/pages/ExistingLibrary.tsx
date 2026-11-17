@@ -1229,7 +1229,10 @@ export function MatchReview({
   const catalog = useResource<{ items: MediaItem[] }>(
     `/library/imports/catalog?kind=${kind}&query=${encodeURIComponent(savedQuery)}`,
   );
-  const provider = useResource<{ configured: boolean }>("/providers/tmdb");
+  const provider = useResource<{
+    configured: boolean;
+    tvdb_configured?: boolean;
+  }>("/providers/tmdb");
   const [remote, setRemote] = useState<SearchResults>();
   const [chosen, setChosen] = useState<MediaItem>();
   const [episodes, setEpisodes] = useState<number[]>([]);
@@ -1277,7 +1280,10 @@ export function MatchReview({
         `/library/${kind === "movie" ? "movies" : "series"}`,
         {
           method: "POST",
-          body: JSON.stringify({ tmdb_id: tmdbID, monitored: false }),
+          body: JSON.stringify({
+            ...(tmdbID < 0 ? { tvdb_id: -tmdbID } : { tmdb_id: tmdbID }),
+            monitored: false,
+          }),
         },
       );
       choose(out.item);
@@ -1353,10 +1359,17 @@ export function MatchReview({
         <Button
           type="button"
           variant="soft"
-          disabled={busy || !query.trim() || !provider.data?.configured}
+          disabled={
+            busy ||
+            !query.trim() ||
+            !(
+              provider.data?.configured ||
+              (kind === "series" && provider.data?.tvdb_configured)
+            )
+          }
           onClick={() => void searchRemote()}
         >
-          Search TMDb
+          {kind === "series" ? "Search TV providers" : "Search TMDb"}
         </Button>
       </div>
       <RequestState
@@ -1365,7 +1378,10 @@ export function MatchReview({
         code={catalog.code}
         retry={catalog.reload}
       />
-      {!provider.data?.configured && (
+      {!(
+        provider.data?.configured ||
+        (kind === "series" && provider.data?.tvdb_configured)
+      ) && (
         <p className="rs-form-help">
           Saved catalog titles work offline. Connect TMDb in Settings to add new
           titles.
@@ -1404,7 +1420,7 @@ export function MatchReview({
       </div>
       {remote && (
         <div className="import-catalog-results">
-          <h3>TMDb matches</h3>
+          <h3>{kind === "series" ? "TV provider matches" : "TMDb matches"}</h3>
           <p className="rs-form-help">
             Adding a new title starts with monitoring paused. Registration
             follows your existing subtitle preferences.

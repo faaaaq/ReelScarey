@@ -13,6 +13,15 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
+- [x] Review and delete selected movie, TV, anime, or music entries. Detail pages
+  support individual registered-file deletion. Supported video and matched
+  music imports queue canonical embedded titles, and stopped download tracking
+  appears in History.
+- [x] Library and title-scoped embedded subtitle, external subtitle, and audio
+  cleanup under Subtitles. TheTVDB provides TV series and default episode order
+  when selected as a fallback source. See [API](docs/API.md).
+
+
 - [x] Integration surface: scoped API keys with one-time tokens and revocation,
   Sonarr v3/Radarr v3/Prowlarr v1-compatible read endpoints plus a small
   allowlisted command set, durable multi-provider notifications with an

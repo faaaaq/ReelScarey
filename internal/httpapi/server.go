@@ -406,6 +406,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/organization/files", method(http.MethodGet, s.organizationFiles))
 	mux.HandleFunc("/api/v1/organization/files/{id}/health", method(http.MethodPost, s.organizationFileHealth))
 	mux.HandleFunc("/api/v1/organization/plans", s.organizationPlans)
+	mux.HandleFunc("/api/v1/subtitles/track-cleanup", method(http.MethodPost, s.trackCleanup))
+	mux.HandleFunc("/api/v1/library/deletion", method(http.MethodPost, s.libraryDeletion))
 	mux.HandleFunc("/api/v1/organization/removal", method(http.MethodPost, s.organizationRemoval))
 	mux.HandleFunc("/api/v1/organization/acquisition", method(http.MethodPost, s.organizationAcquisition))
 	mux.HandleFunc("/api/v1/organization/replacements", s.organizationReplacement)
@@ -518,6 +520,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/requester/requests/{id}/notification/retry", method(http.MethodPost, s.requesterRetryNotification))
 	mux.HandleFunc("/api/v1/requests", method(http.MethodGet, s.adminRequests))
 	mux.HandleFunc("/api/v1/requests/{id}/{action}", method(http.MethodPost, s.requestAction))
+	mux.HandleFunc("/api/v1/providers/tvdb", s.tvdbSettings)
 	mux.HandleFunc("/api/v1/providers/tmdb", s.tmdbSettings)
 	mux.HandleFunc("/api/v1/providers/tmdb/test", method(http.MethodPost, s.tmdbTest))
 	mux.HandleFunc("/api/v1/metadata/movies", method(http.MethodGet, s.searchMovies))
@@ -945,7 +948,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://image.tmdb.org https://coverartarchive.org https://archive.org; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://image.tmdb.org https://artworks.thetvdb.com https://coverartarchive.org https://archive.org; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 		if r.TLS != nil || strings.HasPrefix(s.config.PublicURL, "https://") {
 			w.Header().Set("Strict-Transport-Security", "max-age=86400")
 		}

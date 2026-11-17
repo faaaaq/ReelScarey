@@ -19,6 +19,8 @@ import (
 // Metadata-only title updates keep no second copy: the verified stage replaces
 // the original in place, and PreviousTitle records the prior container title.
 type Replacement struct {
+	AutomaticTitle       bool                `json:"automatic_title,omitempty"`
+	DropStreams          []int               `json:"drop_streams,omitempty"`
 	AcquisitionSubtitles []AcquiredSubtitle  `json:"acquisition_subtitles,omitempty"`
 	AcquisitionKind      string              `json:"acquisition_kind,omitempty"`
 	AcquisitionJob       string              `json:"acquisition_job,omitempty"`
@@ -217,7 +219,11 @@ func (s *Service) validateReplacement(ctx context.Context, root *os.Root, q quer
 		if e = q.QueryRowContext(ctx, `SELECT title FROM media_items WHERE id=?`, r.MediaID).Scan(&title); e != nil {
 			return e
 		}
-		if embeddedTitle(title, eps) != r.TagTitle {
+		expected := embeddedTitle(title, eps)
+		if r.AutomaticTitle {
+			expected = registeredEmbeddedTitle(title, eps)
+		}
+		if expected != r.TagTitle {
 			return problem("revision_conflict", "The saved title changed after review.")
 		}
 	}

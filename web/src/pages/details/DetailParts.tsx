@@ -1,3 +1,5 @@
+import { TrackCleanup } from "../TrackCleanup";
+import { LibraryDeletion } from "../../components/LibraryDeletion";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button, Tabs, TextField } from "@radix-ui/themes";
 import { Bookmark, ExternalLink, Search } from "lucide-react";
@@ -185,14 +187,24 @@ export function ProviderLinks({
   const info = details.info;
   return (
     <>
-      <External
-        href={
-          info?.tmdb_url ||
-          `https://www.themoviedb.org/${kind === "series" ? "tv" : "movie"}/${tmdbID}`
-        }
-      >
-        TMDb
-      </External>
+      {tmdbID < 0 ? (
+        <External
+          href={
+            info?.tvdb_url || `https://thetvdb.com/dereferrer/series/${-tmdbID}`
+          }
+        >
+          TheTVDB
+        </External>
+      ) : (
+        <External
+          href={
+            info?.tmdb_url ||
+            `https://www.themoviedb.org/${kind === "series" ? "tv" : "movie"}/${tmdbID}`
+          }
+        >
+          TMDb
+        </External>
+      )}
       {info?.imdb_url && <External href={info.imdb_url}>IMDb</External>}
       {info?.trailer_url && (
         <External href={info.trailer_url}>Trailer</External>
@@ -307,9 +319,11 @@ function originLabel(origin?: string) {
 export function FilesSection({
   details,
   savedTitle,
+  onFilesChanged,
 }: {
   details: ItemDetailsState;
   savedTitle: string;
+  onFilesChanged?: () => void;
 }) {
   const data = details.data!;
   const movie = data.item.kind === "movie";
@@ -342,6 +356,12 @@ export function FilesSection({
         </>
       }
     >
+      {data.file_count > 0 && (
+        <TrackCleanup
+          mediaID={data.item.id}
+          onDone={onFilesChanged ?? details.reload}
+        />
+      )}
       {data.files.length ? (
         <>
           <Table label="Registered files">
@@ -364,10 +384,7 @@ export function FilesSection({
               {data.files.map((file) => {
                 const title = file.probe.embedded_title;
                 const differs =
-                  movie &&
-                  !!title &&
-                  title.trim().toLocaleLowerCase() !==
-                    savedTitle.trim().toLocaleLowerCase();
+                  movie && !!title && title.trim() !== savedTitle.trim();
                 return (
                   <tr key={file.id}>
                     <td className="det-file-cell">
@@ -476,6 +493,13 @@ export function FilesSection({
                           Edit version
                         </Button>
                       )}
+                      <LibraryDeletion
+                        selection="video_files"
+                        ids={[file.id]}
+                        label="Delete file"
+                        name={file.path}
+                        onDone={onFilesChanged ?? details.reload}
+                      />
                     </td>
                   </tr>
                 );

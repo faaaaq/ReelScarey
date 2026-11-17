@@ -55,13 +55,14 @@ type seasonResponse struct {
 	EpisodeCount int    `json:"episode_count"`
 }
 type seriesResponse struct {
-	ID           int64            `json:"id"`
-	Name         string           `json:"name"`
-	Overview     string           `json:"overview"`
-	FirstAirDate string           `json:"first_air_date"`
-	PosterPath   string           `json:"poster_path"`
-	Status       string           `json:"status"`
-	Seasons      []seasonResponse `json:"seasons"`
+	OriginalLanguage string           `json:"original_language"`
+	ID               int64            `json:"id"`
+	Name             string           `json:"name"`
+	Overview         string           `json:"overview"`
+	FirstAirDate     string           `json:"first_air_date"`
+	PosterPath       string           `json:"poster_path"`
+	Status           string           `json:"status"`
+	Seasons          []seasonResponse `json:"seasons"`
 }
 
 func tvError() error {
@@ -95,7 +96,7 @@ func normalizeSeason(in seasonResponse) (SeasonSummary, error) {
 	return SeasonSummary{TMDbID: in.ID, Number: in.Number, Title: m.Title, Overview: m.Overview, AirDate: airDate(in.AirDate), EpisodeCount: in.EpisodeCount}, nil
 }
 func normalizeSeries(in seriesResponse) (Series, error) {
-	m, e := normalize(movieResponse{ID: in.ID, Title: in.Name, Overview: in.Overview, ReleaseDate: in.FirstAirDate, PosterPath: in.PosterPath})
+	m, e := normalize(movieResponse{ID: in.ID, Title: in.Name, Overview: in.Overview, ReleaseDate: in.FirstAirDate, PosterPath: in.PosterPath, OriginalLanguage: in.OriginalLanguage})
 	if e != nil || len(in.Seasons) > 500 || len(in.Status) > 100 {
 		return Series{}, tvError()
 	}
@@ -183,7 +184,10 @@ func (c *Client) Season(ctx context.Context, token string, id int64, number int)
 	out.EpisodeCount = len(out.Episodes)
 	return out, nil
 }
-func (s *Service) SupportsSeries() bool { _, ok := s.provider.(SeriesProvider); return ok }
+func (s *Service) SupportsSeries() bool {
+	_, ok := s.provider.(SeriesProvider)
+	return ok || s.tvdb != nil
+}
 func (s *Service) seriesProvider(ctx context.Context) (SeriesProvider, string, error) {
 	p, ok := s.provider.(SeriesProvider)
 	if !ok {
@@ -193,13 +197,61 @@ func (s *Service) seriesProvider(ctx context.Context) (SeriesProvider, string, e
 	return p, token, e
 }
 func (s *Service) SearchSeries(ctx context.Context, query string, page int) (SeriesResults, error) {
-	p, token, e := s.seriesProvider(ctx)
-	if e != nil {
-		return SeriesResults{}, e
+	var primary SeriesResults
+	var primaryErr error
+	query, direct := tvdbTitleQuery(query)
+	if !direct {
+		p, token, err := s.seriesProvider(ctx)
+		primaryErr = err
+		if err == nil {
+			primary, primaryErr = p.SearchSeries(ctx, token, query, page)
+			if primaryErr == nil {
+				for _, item := range primary.Items {
+					if titleKey(item.Title) == titleKey(query) {
+						return primary, nil
+					}
+				}
+			}
+		}
 	}
-	return p.SearchSeries(ctx, token, query, page)
+	creds, err := s.tvdbCredentials(ctx)
+	if err != nil {
+		return SeriesResults{}, err
+	}
+	if creds.Key == "" {
+		if direct {
+			return SeriesResults{}, ErrTVDBNotConfigured
+		}
+		return primary, primaryErr
+	}
+	fallback, err := s.tvdb.search(ctx, creds, query, page)
+	if err != nil {
+		if !direct && primaryErr == nil && len(primary.Items) > 0 {
+			return primary, nil
+		}
+		return SeriesResults{}, err
+	}
+	if direct || primaryErr != nil || len(fallback.Items) > 0 {
+		return fallback, nil
+	}
+	return primary, nil
 }
+
 func (s *Service) Series(ctx context.Context, id int64) (Series, error) {
+	if id < 0 {
+		creds, err := s.tvdbCredentials(ctx)
+		if err != nil {
+			return Series{}, err
+		}
+		if creds.Key == "" {
+			return Series{}, ErrTVDBNotConfigured
+		}
+		record, err := s.tvdb.record(ctx, creds, -id)
+		if err != nil {
+			return Series{}, err
+		}
+		return tvdbSeries(record)
+	}
 	p, token, e := s.seriesProvider(ctx)
 	if e != nil {
 		return Series{}, e
@@ -207,6 +259,16 @@ func (s *Service) Series(ctx context.Context, id int64) (Series, error) {
 	return p.Series(ctx, token, id)
 }
 func (s *Service) Season(ctx context.Context, id int64, number int) (Season, error) {
+	if id < 0 {
+		creds, err := s.tvdbCredentials(ctx)
+		if err != nil {
+			return Season{}, err
+		}
+		if creds.Key == "" {
+			return Season{}, ErrTVDBNotConfigured
+		}
+		return s.tvdb.season(ctx, creds, -id, number)
+	}
 	p, token, e := s.seriesProvider(ctx)
 	if e != nil {
 		return Season{}, e

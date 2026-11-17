@@ -73,8 +73,12 @@ function MediaSearch({
       ? { kind: "series" }
       : {};
   const provider = useResource<ProviderStatus>("/providers/tmdb");
+  const connected = !!(
+    provider.data?.configured ||
+    (tv && provider.data?.tvdb_configured)
+  );
   const results = useResource<SearchResults>(
-    query && provider.data?.configured
+    query && connected
       ? `/metadata/${tv ? "series" : "movies"}?query=${encodeURIComponent(query)}&page=${page}`
       : null,
   );
@@ -135,21 +139,24 @@ function MediaSearch({
         code={provider.code}
         retry={provider.reload}
       />
-      {provider.data && !provider.data.configured && (
+      {provider.data && !connected && (
         <EmptyState
           icon={Settings2}
-          title="TMDb is not connected"
+          title={tv ? "TV metadata is not connected" : "TMDb is not connected"}
           actions={
             <Button asChild>
-              <Link to="/settings">Connect TMDb</Link>
+              <Link to="/settings">
+                {tv ? "Connect a TV provider" : "Connect TMDb"}
+              </Link>
             </Button>
           }
         >
-          Searching for new titles needs a TMDb API Read Access Token in
-          Settings.
+          {tv
+            ? "Connect TMDb or TheTVDB in Settings to search for shows."
+            : "Connect a TMDb API Read Access Token in Settings to search for movies."}
         </EmptyState>
       )}
-      {provider.data?.configured && (
+      {connected && (
         <>
           <form onSubmit={submit} className="add-search" role="search">
             <TextField.Root
@@ -178,7 +185,10 @@ function MediaSearch({
           </form>
           {!query && (
             <p className="rs-muted add-hint">
-              Search TMDb by title. Titles already in your library are marked.
+              {tv
+                ? "Search by title or paste a TheTVDB series URL."
+                : "Search TMDb by title."}{" "}
+              Titles already in your library are marked.
             </p>
           )}
           <RequestState
@@ -217,7 +227,12 @@ function MediaSearch({
                         key={movie.tmdb_id}
                         onOpen={open}
                         labels={
-                          category ? <Label outline>Anime</Label> : undefined
+                          <>
+                            {category && <Label outline>Anime</Label>}
+                            {movie.tmdb_id < 0 && (
+                              <Label outline>TheTVDB</Label>
+                            )}
+                          </>
                         }
                       >
                         <AddMovieButton

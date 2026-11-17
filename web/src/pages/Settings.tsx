@@ -30,6 +30,7 @@ import {
   ToolbarSection,
 } from "../ui";
 import { TMDbSettings } from "./TMDbSettings";
+import { TVDBSettings } from "./TVDBSettings";
 import { IntegrationSettings } from "./IntegrationSettings";
 import { ArrBackupImport } from "./ArrBackupImport";
 import { SecuritySettings } from "./SecuritySettings";
@@ -598,6 +599,7 @@ function ConnectSettings() {
     <PageBody>
       <PageHeading title="Connect" />
       <TMDbSettings />
+      <TVDBSettings />
       <FieldSet legend="Other connections">
         <ul className="adm-settings-list">
           <li>

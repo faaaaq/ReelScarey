@@ -8,13 +8,14 @@ import (
 )
 
 type Service struct {
+	tvdb         *tvdbClient
 	secrets      *securestore.Store
 	provider     MovieProvider
 	defaultToken string
 }
 
 func New(secrets *securestore.Store, provider MovieProvider) *Service {
-	return &Service{secrets: secrets, provider: provider}
+	return &Service{secrets: secrets, provider: provider, tvdb: newTVDBClient()}
 }
 
 // SetDefaultToken installs the optional shared TMDb Read Access Token from the

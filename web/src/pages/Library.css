@@ -473,3 +473,7 @@
   max-width: 70ch;
   margin-top: 4px;
 }
+
+[data-selecting] {
+  cursor: pointer;
+}

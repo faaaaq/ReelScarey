@@ -101,6 +101,7 @@ type PlannedFile struct {
 	Unchanged     bool        `json:"unchanged"`
 }
 type Plan struct {
+	TrackCleanup        *TrackCleanup `json:"track_cleanup,omitempty"`
 	Removal             *Removal      `json:"removal,omitempty"`
 	RestoresPlan        string        `json:"restores_plan,omitempty"`
 	ID                  string        `json:"id"`
@@ -128,10 +129,13 @@ type FolderMove struct {
 	StageID     string          `json:"stage_identity,omitempty"`
 }
 type Service struct {
-	db       *sql.DB
-	cfg      config.Config
-	mu       sync.Mutex
-	healthMu sync.Mutex
+	originalLanguage func(context.Context, string, int64) (string, error)
+	readTracks       func(context.Context, *os.File) ([]TrackStream, error)
+	rewriteTracks    func(context.Context, *os.File, *os.File, string, []int) (string, error)
+	db               *sql.DB
+	cfg              config.Config
+	mu               sync.Mutex
+	healthMu         sync.Mutex
 	// degraded holds plan ids whose terminal failure could not be persisted
 	// (RS-0004): the claim loop skips them so a failed plan is never
 	// re-executed because its state write failed.

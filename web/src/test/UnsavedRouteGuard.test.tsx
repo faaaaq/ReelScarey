@@ -80,9 +80,7 @@ describe("unsaved-changes in-app navigation guard", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Leave without saving" }),
     );
-    await screen.findByText(
-      "Active downloads only. Completed items appear in History.",
-    );
+    await screen.findByRole("heading", { name: "Activity" });
     expect(screen.queryByLabelText("Library name")).not.toBeInTheDocument();
   });
 
@@ -91,9 +89,7 @@ describe("unsaved-changes in-app navigation guard", () => {
     mount("/settings/general");
     await screen.findByLabelText("Library name");
     await userEvent.click(screen.getByRole("link", { name: "Activity" }));
-    await screen.findByText(
-      "Active downloads only. Completed items appear in History.",
-    );
+    await screen.findByRole("heading", { name: "Activity" });
     expect(
       screen.queryByText("Leave with unsaved changes?"),
     ).not.toBeInTheDocument();

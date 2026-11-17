@@ -44,7 +44,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.54.22"
+var version = "0.54.23"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -224,6 +224,26 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	})
 	organizationService.SetTagger(func(ctx context.Context, source, stage *os.File, extension, title string) (string, error) {
 		result, err := transfer.RewriteTitleVerified(ctx, source, stage, extension, title)
+		if err != nil {
+			var problem *transfer.Error
+			if errors.As(err, &problem) {
+				return "", &organization.Error{Code: problem.Code, Message: problem.Message}
+			}
+			return "", err
+		}
+		data, err := json.Marshal(result)
+		return string(data), err
+	})
+	organizationService.SetOriginalLanguageLookup(func(ctx context.Context, kind string, id int64) (string, error) {
+		if kind == "series" {
+			item, err := metadataService.Series(ctx, id)
+			return item.OriginalLanguage, err
+		}
+		item, err := metadataService.Movie(ctx, id)
+		return item.OriginalLanguage, err
+	})
+	organizationService.SetTrackCleaner(transfer.ReadCleanupStreams, func(ctx context.Context, source, stage *os.File, extension string, drop []int) (string, error) {
+		result, err := transfer.RewriteTracksVerified(ctx, source, stage, extension, drop)
 		if err != nil {
 			var problem *transfer.Error
 			if errors.As(err, &problem) {

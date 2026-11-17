@@ -12,6 +12,7 @@ import (
 )
 
 type Item struct {
+	TVDbID                int64           `json:"tvdb_id,omitempty"`
 	ID                    int64           `json:"id"`
 	Kind                  string          `json:"kind"`
 	TMDbID                int64           `json:"tmdb_id"`
@@ -83,6 +84,9 @@ func scan(row scanner, extra ...any) (Item, error) {
 	args := []any{&item.ID, &item.Kind, &item.TMDbID, &item.Title, &item.Year, &item.Monitored, &item.Status, &item.Overview, &item.PosterPath, &item.ReleaseDate, &item.TheatricalReleaseDate, &item.DigitalReleaseDate, &item.PhysicalReleaseDate, &item.RuntimeMinutes, &item.Category, &item.CategoryRevision}
 	err := row.Scan(append(args, extra...)...)
 	item.PosterURL = metadata.PosterURL(item.PosterPath)
+	if item.Kind == "series" && item.TMDbID < 0 {
+		item.TVDbID = -item.TMDbID
+	}
 	return item, err
 }
 
@@ -258,7 +262,7 @@ func (s *Store) AddMovieAuthorized(ctx context.Context, movie metadata.Movie, mo
 			return Item{}, false, err
 		}
 	}
-	result, err := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date,theatrical_release_date,digital_release_date,physical_release_date,runtime_minutes,category) VALUES('movie',?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, movie.TMDbID, movie.Title, movie.Year, monitored, movie.Overview, movie.PosterPath, movie.ReleaseDate, movie.TheatricalReleaseDate, movie.DigitalReleaseDate, movie.PhysicalReleaseDate, movie.RuntimeMinutes, section)
+	result, err := tx.ExecContext(ctx, `INSERT INTO media_items(kind,tmdb_id,title,year,monitored,overview,poster_path,release_date,theatrical_release_date,digital_release_date,physical_release_date,runtime_minutes,category,original_language) VALUES('movie',?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(kind,tmdb_id) DO NOTHING`, movie.TMDbID, movie.Title, movie.Year, monitored, movie.Overview, movie.PosterPath, movie.ReleaseDate, movie.TheatricalReleaseDate, movie.DigitalReleaseDate, movie.PhysicalReleaseDate, movie.RuntimeMinutes, section, movie.OriginalLanguage)
 	if err != nil {
 		return Item{}, false, err
 	}

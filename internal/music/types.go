@@ -165,8 +165,9 @@ type MusicFilePage struct {
 }
 
 type AlbumDetails struct {
-	Album  Album   `json:"album"`
-	Tracks []Track `json:"tracks"`
+	Files  []MusicFile `json:"files,omitempty"`
+	Album  Album       `json:"album"`
+	Tracks []Track     `json:"tracks"`
 }
 
 type AlbumPage struct {

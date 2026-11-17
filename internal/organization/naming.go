@@ -94,6 +94,9 @@ func legacyName(m Content) string {
 	if m.Year != nil {
 		v += fmt.Sprintf(" (%d)", *m.Year)
 	}
+	if m.TMDbID < 0 {
+		return v + fmt.Sprintf(" [tvdb-%d]", -m.TMDbID)
+	}
 	return v + fmt.Sprintf(" [tmdb-%d]", m.TMDbID)
 }
 func Destination(s Snapshot, episodes []Episode, source string) (string, error) {
@@ -174,6 +177,11 @@ func render(template string, m Content, episodes []Episode) (string, error) {
 		year = strconv.Itoa(*m.Year)
 	}
 	values := map[string]string{"title": sanitize(m.Title, 100), "year": year, "tmdb_id": strconv.FormatInt(m.TMDbID, 10)}
+	if m.TMDbID < 0 {
+		// Adapt existing provider markers in local naming presets.
+		template = strings.NewReplacer("tmdbid-{tmdb_id}", "tvdbid-{tmdb_id}", "tmdb-{tmdb_id}", "tvdb-{tmdb_id}").Replace(template)
+		values["tmdb_id"] = strconv.FormatInt(-m.TMDbID, 10)
+	}
 	if len(episodes) > 0 {
 		first, last := episodes[0], episodes[len(episodes)-1]
 		values["season"] = strconv.Itoa(first.Season)

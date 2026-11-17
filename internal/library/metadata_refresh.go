@@ -103,7 +103,7 @@ func (s *Store) ApplyMetadataRefresh(ctx context.Context, expected Item, revisio
 	// The media row merges the same way: a partial provider response keeps
 	// previously valid title, year, overview, artwork, dates and runtime.
 	m := fresh.Movie
-	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET title=COALESCE(NULLIF(?,''),title),year=COALESCE(?,year),overview=COALESCE(NULLIF(?,''),overview),poster_path=COALESCE(NULLIF(?,''),poster_path),release_date=COALESCE(NULLIF(?,''),release_date),theatrical_release_date=COALESCE(NULLIF(?,''),theatrical_release_date),digital_release_date=COALESCE(NULLIF(?,''),digital_release_date),physical_release_date=COALESCE(NULLIF(?,''),physical_release_date),runtime_minutes=COALESCE(?,runtime_minutes) WHERE id=?`, m.Title, m.Year, m.Overview, m.PosterPath, m.ReleaseDate, m.TheatricalReleaseDate, m.DigitalReleaseDate, m.PhysicalReleaseDate, m.RuntimeMinutes, expected.ID); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET title=COALESCE(NULLIF(?,''),title),year=COALESCE(?,year),overview=COALESCE(NULLIF(?,''),overview),poster_path=COALESCE(NULLIF(?,''),poster_path),release_date=COALESCE(NULLIF(?,''),release_date),theatrical_release_date=COALESCE(NULLIF(?,''),theatrical_release_date),digital_release_date=COALESCE(NULLIF(?,''),digital_release_date),physical_release_date=COALESCE(NULLIF(?,''),physical_release_date),runtime_minutes=COALESCE(?,runtime_minutes),original_language=COALESCE(NULLIF(?,''),original_language) WHERE id=?`, m.Title, m.Year, m.Overview, m.PosterPath, m.ReleaseDate, m.TheatricalReleaseDate, m.DigitalReleaseDate, m.PhysicalReleaseDate, m.RuntimeMinutes, m.OriginalLanguage, expected.ID); e != nil {
 		return e
 	}
 	payload, e := json.Marshal(fresh.Information)
