@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/faaaaq/ReelScarey/internal/library"
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/organization"
@@ -14,17 +16,20 @@ import (
 )
 
 type LocalFile struct {
-	VersionLabel string `json:"version_label,omitempty"`
-	ID           int64  `json:"id"`
-	Path         string `json:"path"`
-	Directory    string `json:"directory"`
-	Size         int64  `json:"size_bytes"`
-	Imported     int64  `json:"imported_at"`
-	DownloadID   string `json:"download_id"`
-	Release      string `json:"release"`
-	Probe        Probe  `json:"probe"`
-	Episodes     string `json:"episodes"`
-	Origin       string `json:"origin"`
+	// VersionManual is true when the owner corrected the label explicitly;
+	// the derived label alone never claims an edition.
+	VersionManual bool   `json:"version_manual,omitempty"`
+	VersionLabel  string `json:"version_label,omitempty"`
+	ID            int64  `json:"id"`
+	Path          string `json:"path"`
+	Directory     string `json:"directory"`
+	Size          int64  `json:"size_bytes"`
+	Imported      int64  `json:"imported_at"`
+	DownloadID    string `json:"download_id"`
+	Release       string `json:"release"`
+	Probe         Probe  `json:"probe"`
+	Episodes      string `json:"episodes"`
+	Origin        string `json:"origin"`
 }
 type History struct {
 	Protocol string  `json:"protocol"`
@@ -85,14 +90,14 @@ func (s *Service) Details(ctx context.Context, id int64, page int) (ItemDetails,
 	if e = s.db.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(size_bytes),0) FROM media_files WHERE movie_id=? OR series_id=?`, id, id).Scan(&out.FileCount, &out.TotalSize); e != nil {
 		return out, e
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT f.id,f.relative_path,f.size_bytes,f.imported_at,COALESCE(f.download_id,''),COALESCE(d.title,f.source_name),f.probe_json,COALESCE((SELECT group_concat(label,', ') FROM (SELECT printf('S%02dE%02d',s.number,e.number) label FROM episode_files ef JOIN episodes e ON e.id=ef.episode_id JOIN seasons s ON s.id=e.season_id WHERE ef.media_file_id=f.id ORDER BY s.number,e.number)),''),CASE WHEN EXISTS(SELECT 1 FROM youtube_files yf WHERE yf.media_file_id=f.id) THEN 'youtube' ELSE f.origin END FROM media_files f LEFT JOIN downloads d ON d.id=f.download_id WHERE f.movie_id=? OR f.series_id=? ORDER BY f.relative_path LIMIT 50 OFFSET ?`, id, id, (page-1)*50)
+	rows, e := s.db.QueryContext(ctx, `SELECT f.id,f.relative_path,f.size_bytes,f.imported_at,COALESCE(f.download_id,''),COALESCE(d.title,f.source_name),f.probe_json,COALESCE((SELECT group_concat(label,', ') FROM (SELECT printf('S%02dE%02d',s.number,e.number) label FROM episode_files ef JOIN episodes e ON e.id=ef.episode_id JOIN seasons s ON s.id=e.season_id WHERE ef.media_file_id=f.id ORDER BY s.number,e.number)),''),CASE WHEN EXISTS(SELECT 1 FROM youtube_files yf WHERE yf.media_file_id=f.id) THEN 'youtube' ELSE f.origin END,COALESCE(f.version_label,'') FROM media_files f LEFT JOIN downloads d ON d.id=f.download_id WHERE f.movie_id=? OR f.series_id=? ORDER BY f.relative_path LIMIT 50 OFFSET ?`, id, id, (page-1)*50)
 	if e != nil {
 		return out, e
 	}
 	for rows.Next() {
 		var f LocalFile
-		var rel, probe string
-		if e = rows.Scan(&f.ID, &rel, &f.Size, &f.Imported, &f.DownloadID, &f.Release, &probe, &f.Episodes, &f.Origin); e != nil {
+		var rel, probe, manual string
+		if e = rows.Scan(&f.ID, &rel, &f.Size, &f.Imported, &f.DownloadID, &f.Release, &probe, &f.Episodes, &f.Origin, &manual); e != nil {
 			rows.Close()
 			return out, e
 		}
@@ -108,13 +113,18 @@ func (s *Service) Details(ctx context.Context, id int64, page int) (ItemDetails,
 			return out, e
 		}
 		if item.Kind == "movie" {
-			resolution := quality.VerifiedQuality(f.Probe.Width, f.Probe.Height)
-			f.VersionLabel = "Resolution unknown"
-			if resolution > 0 {
-				f.VersionLabel = fmt.Sprintf("%dp", resolution)
-			}
-			if resolution == 2160 {
-				f.VersionLabel = "4K (2160p)"
+			if label := strings.TrimSpace(manual); label != "" {
+				f.VersionLabel = label
+				f.VersionManual = true
+			} else {
+				resolution := quality.VerifiedQuality(f.Probe.Width, f.Probe.Height)
+				f.VersionLabel = "Resolution unknown"
+				if resolution > 0 {
+					f.VersionLabel = fmt.Sprintf("%dp", resolution)
+				}
+				if resolution == 2160 {
+					f.VersionLabel = "4K (2160p)"
+				}
 			}
 		}
 		out.Files = append(out.Files, f)

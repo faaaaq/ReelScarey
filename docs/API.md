@@ -567,7 +567,9 @@ same-origin validation. Reads never start a filesystem scan.
 | POST | `/api/v1/library/import/backup/apply` | `{items:[{kind,tmdb_id,tvdb_id,monitored}]}`; adds the reviewed titles from a backup or calendar; returns added/skipped/errors |
 | GET | `/api/v1/library/imports/catalog?kind=movie&query=title` | Up to 20 saved catalog title matches; offline read |
 | GET | `/api/v1/library/imports/direct?kind=movie&dir=` | Bounded listing of one folder below a configured library root (empty `dir` lists the roots); read-only |
-| POST | `/api/v1/library/imports/direct` | `{kind,media_id,episode_ids?,root,relative,reviewed:true}`; point at one file inside a configured root and queue its verified in-place registration for the selected title; 202 || POST | `/api/v1/library/import-files/{id}/register` | `{media_id,episode_ids:[],reviewed:true}`; queue verified in-place registration; 202 |
+| POST | `/api/v1/library/imports/direct` | `{kind,media_id,episode_ids?,root,relative,reviewed:true}`; point at one file inside a configured root and queue its verified in-place registration for the selected title; 202 |
+| POST | `/api/v1/library/imports/upload/prepare` | `{kind,collection?,media_id}`; resolve (and create when missing) the destination folder inside a configured root for a browser-picked copy; returns `{destination}` |
+| POST | `/api/v1/library/imports/upload?kind=&media_id=&name=&episode_ids=` | Raw file body; copy a browser-picked video into the prepared destination and queue its reviewed registration; never overwrites; 202 || POST | `/api/v1/library/import-files/{id}/register` | `{media_id,episode_ids:[],reviewed:true}`; queue verified in-place registration; 202 |
 | POST | `/api/v1/library/import-files/{id}/skip` | `{}`; skip a review/blocked item |
 
 Paths are immutable server snapshots selected through opaque discovered IDs;
@@ -1072,6 +1074,13 @@ includes bounded `audio_streams` with codec, embedded language tag and title.
 Existing registrations made before audio inspection can use this operation; the
 check reads the whole file. Tags describe file metadata and do not prove the
 spoken language. A changed file is rejected without updating its saved facts.
+
+`PUT /library/files/{id}/version` with `{version_label}` records an
+owner-corrected version label for one registered movie file (for example
+`"2019"` when the file is actually a different cut than the catalog title's
+year); an empty label clears the correction and returns to the derived
+resolution label. Series files are refused; the write is journaled as an
+activity event.
 
 `POST /organization/plans/{id}/cancel` with `{}` returns a queued job to
 review only if no file work has started. It refuses journaled outputs or a

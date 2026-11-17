@@ -155,12 +155,26 @@ restart. Failed/partial discovery cannot automatically register files.
 ## Import one file directly
 
 When you already know which file belongs to a title, open the title's detail
-page and choose **Import file**. The picker lists only the configured library
-roots and their subfolders — it never accepts an arbitrary path and never
-leaves the media root. Choose the video, pick the target (a movie, or a
-season's episodes for a show; registered episodes and samples/trailers are
-excluded), check the explicit confirmation that the file belongs to the
-selected title, and queue the import.
+page and choose **Import file**.
+
+**From this computer** uses the browser's native file picker. The browser
+cannot address the server's filesystem, so this path is an explicit copy: the
+server resolves the destination folder (the title's existing folder, or a
+folder created from the naming templates, always inside a configured library
+root) and shows it before the transfer. After the reviewed confirmation the
+file is copied, then registered through the exact same verification flow a
+discovered file uses. Nothing is overwritten — a name collision is refused —
+and until registration succeeds the incoming copy lives under a staging name
+the library never lists; a failed or interrupted upload removes it. A copy
+holds the library media fence for its duration, so a reviewed organization
+batch simply waits rather than racing the write.
+
+**From a server folder** is the original in-place path: the picker lists only
+the configured library roots and their subfolders — it never accepts an
+arbitrary path and never leaves the media root. Choose the video, pick the
+target (a movie, or a season's episodes for a show; registered episodes and
+samples/trailers are excluded), check the explicit confirmation that the file
+belongs to the selected title, and queue the import.
 
 The request stores the same reviewed identity a discovery review stores, and
 the same durable verification worker then inspects the file (anchored open,

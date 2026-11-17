@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -36,6 +37,30 @@ func (s *Server) itemDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, out)
+}
+
+// mediaFileVersion records an owner-corrected version label for one
+// registered movie file, or clears it with an empty label.
+func (s *Server) mediaFileVersion(w http.ResponseWriter, r *http.Request) {
+	if !s.transferReady(w) {
+		return
+	}
+	fileID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || fileID < 1 {
+		fail(w, 400, "invalid_file", "Choose a registered file.")
+		return
+	}
+	var in struct {
+		VersionLabel string `json:"version_label"`
+	}
+	if !decodeBoundedJSON(w, r, &in, 4<<10) {
+		return
+	}
+	if e := s.transfer.SetFileVersionLabel(r.Context(), fileID, in.VersionLabel); e != nil {
+		s.transferError(w, e)
+		return
+	}
+	send(w, 200, map[string]bool{"saved": true})
 }
 func (s *Server) refreshInformation(w http.ResponseWriter, r *http.Request) {
 	id, ok := tvID(w, r)

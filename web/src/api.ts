@@ -1466,3 +1466,95 @@ export function exportFileURL(fileID: number, profileKey?: string) {
   const query = params.toString();
   return `/api/v1/library/music/files/${fileID}/export${query ? `?${query}` : ""}`;
 }
+
+// ---------------------------------------------------------------------------
+// Importing: manual version labels and browser-picked copies into the library.
+// ---------------------------------------------------------------------------
+
+/** Records (or clears, with an empty label) one movie file's version label. */
+export async function setFileVersionLabel(fileID: number, label: string) {
+  return api<{ saved: boolean }>(`/library/files/${fileID}/version`, {
+    method: "PUT",
+    body: JSON.stringify({ version_label: label }),
+  });
+}
+
+export type ImportUploadPrepare = { destination: string };
+
+/** Resolves (and creates when missing) the destination folder for a copy. */
+export async function prepareImportUpload(
+  kind: "movie" | "series",
+  mediaID: number,
+  collection?: string,
+) {
+  return api<ImportUploadPrepare>("/library/imports/upload/prepare", {
+    method: "POST",
+    body: JSON.stringify({
+      kind,
+      media_id: mediaID,
+      ...(collection ? { collection } : {}),
+    }),
+  });
+}
+
+/**
+ * Copies one file picked with the browser's native file picker into the
+ * prepared destination and queues its reviewed registration. Sent as a raw
+ * body with upload progress events; the session cookie carries the request
+ * and the CSRF token guards the mutation.
+ */
+export function uploadImportFile(opts: {
+  kind: "movie" | "series";
+  mediaID: number;
+  name: string;
+  file: File;
+  collection?: string;
+  episodes?: number[];
+  onProgress?: (loaded: number, total: number) => void;
+}): Promise<unknown> {
+  const params = new URLSearchParams({
+    kind: opts.kind,
+    media_id: String(opts.mediaID),
+    name: opts.name,
+  });
+  if (opts.collection) params.set("collection", opts.collection);
+  if (opts.episodes?.length) params.set("episode_ids", opts.episodes.join(","));
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/v1/library/imports/upload?${params.toString()}`);
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    if (csrfToken) xhr.setRequestHeader("X-CSRF-Token", csrfToken);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) opts.onProgress?.(event.loaded, event.total);
+    };
+    xhr.onload = () => {
+      let body: { error?: { message?: string; code?: string } } | null = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        body = null;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body);
+        return;
+      }
+      reject(
+        new APIError(
+          body?.error?.message ??
+            `The copy could not be completed (HTTP ${xhr.status}).`,
+          xhr.status,
+          body?.error?.code ?? "",
+        ),
+      );
+    };
+    xhr.onerror = () =>
+      reject(
+        new APIError(
+          "The copy could not be completed. Check the connection and try again.",
+          0,
+          "network",
+        ),
+      );
+    xhr.send(opts.file);
+  });
+}

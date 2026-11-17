@@ -13,6 +13,17 @@ belong to a specific file. Resolution labels come from inspected video dimension
 HDR/SDR labels come from the video stream's transfer characteristics. Edition
 labels in filenames are not independently verified edition claims.
 
+## Correcting a version label
+
+Inspection can only read the resolution; it can never tell which edition or cut
+a file actually is. When a file is registered under a catalog title but is really
+another version (for example a 2019 cut saved next to the 1994 movie), choose
+**Edit version** on the file row and set the label explicitly. A corrected label
+is an owner decision stored per file and journaled as an activity event; it
+changes nothing else — the file, its path, its download provenance and the catalog
+entry all stay as they are. Clearing the label returns to the derived resolution
+label.
+
 ## Download choices
 
 **Download another version** opens release search with **Keep existing files and

@@ -20,6 +20,7 @@ export type Information = {
 };
 export type DetailFile = {
   version_label?: string;
+  version_manual?: boolean;
   origin?: string;
   id: number;
   path: string;

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ImportExistingFile } from "../pages/details/ImportExistingFile";
+import { setCSRFToken } from "../api";
 
 const roots = {
   roots: ["Movies"],
@@ -189,5 +190,91 @@ describe("direct existing-file import dialog", () => {
       episode_ids: [102],
       reviewed: true,
     });
+  });
+});
+
+describe("browser-picked import copy", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setCSRFToken("");
+  });
+
+  it("prepares the destination and copies the picked file to the server", async () => {
+    setCSRFToken("fixture-csrf");
+    const user = userEvent.setup();
+    const posts: { url: string; body: unknown }[] = [];
+    let sent: unknown;
+    const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+      if (url.includes("/library/imports/direct")) {
+        return Response.json(roots);
+      }
+      if (url.includes("/library/imports/upload/prepare")) {
+        posts.push({ url, body: JSON.parse(String(options?.body)) });
+        return Response.json({ destination: "Movies/Test Movie (2026)" });
+      }
+      return Response.json(
+        { error: { message: "Unexpected fixture request" } },
+        { status: 404 },
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+    class FakeXHR {
+      status = 0;
+      responseText = "";
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      upload = { onprogress: () => {} };
+      headers: string[] = [];
+      url = "";
+      open(_method: string, target: string) {
+        this.url = target;
+      }
+      setRequestHeader(name: string) {
+        this.headers.push(name);
+      }
+      send(body: unknown) {
+        sent = body;
+        posts.push({ url: this.url, body: null });
+        this.status = 202;
+        this.responseText = JSON.stringify({ id: "e".repeat(32) });
+        setTimeout(() => this.onload?.(), 0);
+      }
+    }
+    vi.stubGlobal("XMLHttpRequest", FakeXHR);
+    let queued = 0;
+    mount(
+      <ImportExistingFile
+        open
+        onOpenChange={() => {}}
+        kind="movie"
+        mediaID={7}
+        title="Test Movie"
+        onQueued={() => {
+          queued++;
+        }}
+      />,
+    );
+    const picker = await screen.findByLabelText(
+      "Choose a file from this computer",
+    );
+    const file = new File(
+      ["browser fixture bytes"],
+      "Test.Movie.2026.2160p.mkv",
+      {
+        type: "video/x-matroska",
+      },
+    );
+    await user.upload(picker, file);
+    // The prepared destination is shown for confirmation.
+    await screen.findByText(/It will be copied to/i);
+    await user.click(screen.getByLabelText(/I confirm this file belongs to/i));
+    const copy = screen.getByRole("button", { name: /Copy to server/ });
+    await waitFor(() => expect(copy).toBeEnabled());
+    await user.click(copy);
+    await waitFor(() => expect(posts).toHaveLength(2));
+    expect(posts[1].url).toContain("kind=movie&media_id=7");
+    expect(posts[1].url).toContain("name=Test.Movie.2026.2160p.mkv");
+    expect(sent).toBeInstanceOf(File);
+    expect(queued).toBe(1);
   });
 });

@@ -1,14 +1,21 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Button, Tabs } from "@radix-ui/themes";
+import { Button, Tabs, TextField } from "@radix-ui/themes";
 import { Bookmark, ExternalLink, Search } from "lucide-react";
 import { Link } from "react-router-dom";
-import { api, messageFor, type MediaItem, type PersonCredit } from "../../api";
+import {
+  api,
+  messageFor,
+  setFileVersionLabel,
+  type MediaItem,
+  type PersonCredit,
+} from "../../api";
 import { AddMovieButton, Poster } from "../../movieComponents";
 import {
   Alert,
   FieldSet,
   Label,
   Modal,
+  ModalClose,
   Table,
   formatBytes,
   formatTimestamp,
@@ -306,6 +313,25 @@ export function FilesSection({
 }) {
   const data = details.data!;
   const movie = data.item.kind === "movie";
+  const [versionEdit, setVersionEdit] = useState<DetailFile | null>(null);
+  const [versionLabel, setVersionLabel] = useState("");
+  const [versionBusy, setVersionBusy] = useState(false);
+  const [versionError, setVersionError] = useState("");
+
+  async function saveVersion(clear = false) {
+    if (!versionEdit || versionBusy) return;
+    setVersionBusy(true);
+    setVersionError("");
+    try {
+      await setFileVersionLabel(versionEdit.id, clear ? "" : versionLabel);
+      setVersionEdit(null);
+      details.reload();
+    } catch (e) {
+      setVersionError(messageFor(e));
+    } finally {
+      setVersionBusy(false);
+    }
+  }
   return (
     <FieldSet
       legend="Files"
@@ -352,9 +378,17 @@ export function FilesSection({
                     </td>
                     <td>
                       {movie ? (
-                        <Label kind="success">
-                          {file.version_label || "Movie"}
-                        </Label>
+                        <>
+                          <Label kind="success">
+                            {file.version_label || "Movie"}
+                          </Label>
+                          {file.version_manual && (
+                            <span className="rs-muted rs-small">
+                              {" "}
+                              set by you
+                            </span>
+                          )}
+                        </>
                       ) : (
                         file.episodes || "—"
                       )}
@@ -425,6 +459,23 @@ export function FilesSection({
                           ? "Inspecting…"
                           : "Inspect embedded tags"}
                       </Button>
+                      {movie && (
+                        <Button
+                          size="1"
+                          variant="soft"
+                          onClick={() => {
+                            setVersionEdit(file);
+                            setVersionLabel(
+                              file.version_manual
+                                ? (file.version_label ?? "")
+                                : "",
+                            );
+                            setVersionError("");
+                          }}
+                        >
+                          Edit version
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -443,6 +494,66 @@ export function FilesSection({
             ? "No files on this page."
             : "No file is registered for this title."}
         </p>
+      )}
+      {movie && (
+        <Modal
+          open={!!versionEdit}
+          onOpenChange={(next) => {
+            if (!next) setVersionEdit(null);
+          }}
+          title="Edit version label"
+          description={
+            versionEdit
+              ? `How should ${versionEdit.path.split("/").at(-1)} be labeled? Inspection reads the resolution only; which edition or cut this file actually is (for example "2019") is your call.`
+              : ""
+          }
+          footer={
+            <>
+              <ModalClose>
+                <Button variant="soft" color="gray">
+                  Cancel
+                </Button>
+              </ModalClose>
+              {versionEdit?.version_manual && (
+                <Button
+                  variant="soft"
+                  color="amber"
+                  disabled={versionBusy}
+                  onClick={() => void saveVersion(true)}
+                >
+                  Clear label
+                </Button>
+              )}
+              <Button
+                disabled={versionBusy}
+                onClick={() => void saveVersion(false)}
+              >
+                {versionBusy ? "Saving…" : "Save label"}
+              </Button>
+            </>
+          }
+        >
+          {versionError && (
+            <Alert kind="danger">
+              <p>{versionError}</p>
+            </Alert>
+          )}
+          <label className="rs-attach-field">
+            Version label
+            <TextField.Root
+              aria-label="Version label"
+              value={versionLabel}
+              maxLength={80}
+              disabled={versionBusy}
+              onChange={(event) => setVersionLabel(event.target.value)}
+              placeholder={versionEdit?.version_label || "4K (2160p)"}
+            />
+          </label>
+          <p className="rs-form-help">
+            The resolution stays on file either way. Leave the field empty to
+            return to the derived resolution label.
+          </p>
+        </Modal>
       )}
     </FieldSet>
   );
