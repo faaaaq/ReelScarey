@@ -276,6 +276,27 @@ func (f *fakeMusic) ArtistImage(context.Context, int64) (music.Artwork, error) {
 	return fakeArtwork(f.artworkPath, f.err)
 }
 
+func (f *fakeMusic) RefreshArtistMetadata(context.Context, int64) (music.ArtistRefreshResult, error) {
+	if f.err != nil {
+		return music.ArtistRefreshResult{}, f.err
+	}
+	return music.ArtistRefreshResult{ArtistUpdated: true}, nil
+}
+
+func (f *fakeMusic) RefreshAlbumMetadata(context.Context, int64) (music.AlbumRefreshResult, error) {
+	if f.err != nil {
+		return music.AlbumRefreshResult{}, f.err
+	}
+	return music.AlbumRefreshResult{CoverUpdate: true}, nil
+}
+
+func (f *fakeMusic) RefreshLibraryMetadataBatch(context.Context, int64) (music.LibraryRefreshResult, error) {
+	if f.err != nil {
+		return music.LibraryRefreshResult{}, f.err
+	}
+	return music.LibraryRefreshResult{Processed: 1, Done: true}, nil
+}
+
 func (f *fakeMusic) AlbumImage(context.Context, int64) (music.Artwork, error) {
 	return fakeArtwork(f.artworkPath, f.err)
 }
@@ -547,6 +568,34 @@ func TestMusicRoutesRequireAuthenticationAndCSRF(t *testing.T) {
 	}
 	if out := request(handler, "POST", "/api/v1/library/music/scans/1/discover", `{"file_ids":[1],"reviewed":true}`, nil, false); out.Code != 401 {
 		t.Fatal("unauthenticated music discovery", out.Code)
+	}
+}
+
+func TestMusicMetadataRefreshRoutes(t *testing.T) {
+	handler, session := musicFixture(t, &fakeMusic{})
+	// Mutations require CSRF like every other music route.
+	if out := request(handler, "POST", "/api/v1/library/music/artists/15/refresh", "", session, false); out.Code != 403 {
+		t.Fatal("artist refresh without CSRF", out.Code)
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/albums/50/refresh", "", session, false); out.Code != 403 {
+		t.Fatal("album refresh without CSRF", out.Code)
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/artists/15/refresh", "", session, true); out.Code != 200 || !strings.Contains(out.Body.String(), `"artist_updated":true`) {
+		t.Fatal("artist refresh", out.Code, out.Body.String())
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/albums/50/refresh", "", session, true); out.Code != 200 || !strings.Contains(out.Body.String(), `"cover_updated":true`) {
+		t.Fatal("album refresh", out.Code, out.Body.String())
+	}
+	out := request(handler, "POST", "/api/v1/library/music/metadata/refresh", `{"cursor":0}`, session, true)
+	if out.Code != 200 || !strings.Contains(out.Body.String(), `"done":true`) {
+		t.Fatal("library refresh batch", out.Code, out.Body.String())
+	}
+	out = request(handler, "POST", "/api/v1/library/music/metadata/refresh", `{"cursor":15}`, session, true)
+	if out.Code != 200 {
+		t.Fatal("library refresh continuation", out.Code, out.Body.String())
+	}
+	if out := request(handler, "GET", "/api/v1/library/music/metadata/refresh", "", session, false); out.Code != 405 {
+		t.Fatal("library refresh GET", out.Code)
 	}
 }
 

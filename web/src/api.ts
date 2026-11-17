@@ -1399,6 +1399,66 @@ export async function clearCache() {
   return api<void>("/library/music/cache", { method: "DELETE" });
 }
 
+export type MusicArtistRefreshResult = {
+  artist_id: number;
+  name: string;
+  artist_updated: boolean;
+  image_updated: boolean;
+  image_cleared: boolean;
+  albums_updated: number;
+  message: string;
+};
+
+export type MusicAlbumRefreshResult = {
+  album_id: number;
+  title: string;
+  album_updated: boolean;
+  cover_updated: boolean;
+  cover_cleared: boolean;
+  message: string;
+};
+
+export type MusicLibraryRefreshResult = {
+  processed: number;
+  artists_updated: number;
+  images_cleared: number;
+  albums_updated: number;
+  failed: number;
+  cursor: number;
+  done: boolean;
+  message: string;
+};
+
+/** Re-resolves one artist's provider metadata: details, image, album covers. */
+export async function refreshMusicArtist(id: number) {
+  return api<MusicArtistRefreshResult>(`/library/music/artists/${id}/refresh`, {
+    method: "POST",
+    body: JSON.stringify({}),
+    signal: AbortSignal.timeout(60000),
+  });
+}
+
+/** Re-resolves one album's cover art and canonical title/year. */
+export async function refreshMusicAlbum(id: number) {
+  return api<MusicAlbumRefreshResult>(`/library/music/albums/${id}/refresh`, {
+    method: "POST",
+    body: JSON.stringify({}),
+    signal: AbortSignal.timeout(60000),
+  });
+}
+
+/**
+ * Runs one bounded batch of a library-wide metadata refresh. Loop with the
+ * returned cursor until done; each batch is independent and idempotent.
+ */
+export async function refreshMusicLibraryMetadata(cursor: number) {
+  return api<MusicLibraryRefreshResult>("/library/music/metadata/refresh", {
+    method: "POST",
+    body: JSON.stringify({ cursor }),
+    signal: AbortSignal.timeout(60000),
+  });
+}
+
 /** Authenticated converted-file download URL; cookies carry the session. */
 export function exportFileURL(fileID: number, profileKey?: string) {
   const params = new URLSearchParams();

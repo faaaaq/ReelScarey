@@ -151,7 +151,7 @@ func (s *Service) artistImageSource(ctx context.Context, id int64) (string, erro
 	if base == "" {
 		base = defaultTopTracksBaseURL
 	}
-	picture, err := deezerArtistPicture(ctx, base, name)
+	picture, err := s.verifiedDeezerArtistPicture(ctx, base, name)
 	if err != nil || picture == "" {
 		return "", err
 	}
@@ -159,6 +159,82 @@ func (s *Service) artistImageSource(ctx context.Context, id int64) (string, erro
 		return "", err
 	}
 	return picture, nil
+}
+
+// verifiedDeezerArtistPicture resolves the artist's image only from a Deezer
+// artist that the saved catalog corroborates. A popular same-named stranger
+// must never own the artist's face; when the catalog's albums prove the name
+// belongs to someone else, no picture is guessed.
+func (s *Service) verifiedDeezerArtistPicture(ctx context.Context, base, name string) (string, error) {
+	providerID, verified, err := s.resolveDeezerArtist(ctx, base, name)
+	if err != nil {
+		return "", err
+	}
+	if providerID == 0 {
+		return "", nil
+	}
+	_, verifiable, err := s.catalogAlbumTitles(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	if !verifiable {
+		// Nothing to corroborate against; the name match is the only
+		// evidence available, as before.
+		return deezerArtistPictureByID(ctx, base, providerID)
+	}
+	if !verified {
+		return "", nil
+	}
+	return deezerArtistPictureByID(ctx, base, providerID)
+}
+
+func deezerArtistPictureByID(ctx context.Context, base string, providerID int64) (string, error) {
+	var body struct {
+		PictureXL     string `json:"picture_xl"`
+		PictureBig    string `json:"picture_big"`
+		PictureMedium string `json:"picture_medium"`
+	}
+	if err := deezerGet(ctx, base+"/artist/"+strconv.FormatInt(providerID, 10), &body); err != nil {
+		return "", err
+	}
+	for _, image := range []string{body.PictureXL, body.PictureBig, body.PictureMedium} {
+		if allowedArtworkURL(image) {
+			return image, nil
+		}
+	}
+	return "", nil
+}
+
+// deezerAlbumCoverByID picks a cover for the album title from the verified
+// Deezer artist's own album list, so a same-named stranger's cover art can
+// never be attached to a catalog album. The full list is fetched once per
+// artist and shared by every catalog album refresh.
+func deezerArtistAlbumCovers(ctx context.Context, base string, providerID int64) (map[string]string, error) {
+	var body struct {
+		Data []struct {
+			Title       string `json:"title"`
+			CoverXL     string `json:"cover_xl"`
+			CoverBig    string `json:"cover_big"`
+			CoverMedium string `json:"cover_medium"`
+		} `json:"data"`
+	}
+	if err := deezerGet(ctx, base+"/artist/"+strconv.FormatInt(providerID, 10)+"/albums?limit=100", &body); err != nil {
+		return nil, err
+	}
+	covers := map[string]string{}
+	for _, item := range body.Data {
+		for _, image := range []string{item.CoverXL, item.CoverBig, item.CoverMedium} {
+			if !allowedArtworkURL(image) {
+				continue
+			}
+			key := compactMatchName(item.Title)
+			if key != "" && covers[key] == "" {
+				covers[key] = image
+			}
+			break
+		}
+	}
+	return covers, nil
 }
 
 func (s *Service) albumCoverSource(ctx context.Context, id int64) (string, error) {
@@ -187,35 +263,6 @@ func (s *Service) albumCoverSource(ctx context.Context, id int64) (string, error
 
 func coverURLFor(mbid string) string {
 	return "https://coverartarchive.org/release-group/" + mbid + "/front-500"
-}
-
-type deezerArtistSearch struct {
-	Data []struct {
-		ID            int64  `json:"id"`
-		Name          string `json:"name"`
-		PictureXL     string `json:"picture_xl"`
-		PictureBig    string `json:"picture_big"`
-		PictureMedium string `json:"picture_medium"`
-	} `json:"data"`
-}
-
-func deezerArtistPicture(ctx context.Context, base, name string) (string, error) {
-	var body deezerArtistSearch
-	if err := deezerGet(ctx, base+"/search/artist?limit=10&q="+url.QueryEscape(name), &body); err != nil {
-		return "", err
-	}
-	key := compactMatchName(name)
-	for _, item := range body.Data {
-		if compactMatchName(item.Name) != key {
-			continue
-		}
-		for _, image := range []string{item.PictureXL, item.PictureBig, item.PictureMedium} {
-			if allowedArtworkURL(image) {
-				return image, nil
-			}
-		}
-	}
-	return "", nil
 }
 
 type deezerAlbumSearch struct {

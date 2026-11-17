@@ -30,12 +30,14 @@ import { groupID, groupedByLetter, sortLetters } from "../libraryGroups";
 import {
   api,
   messageFor,
+  refreshMusicLibraryMetadata,
   type MusicAcquisitionJob,
   type MusicAcquisitionJobList,
   type MusicAlbumPage,
   type MusicArtist,
   type MusicArtistPage,
   type MusicArtistTrackPage,
+  type MusicLibraryRefreshResult,
   type MusicSearchResults,
 } from "../api";
 import { useResource } from "../useResource";
@@ -76,6 +78,10 @@ export function MusicLibrary() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [download, setDownload] = useState<AlbumDownloadTarget | null>(null);
+  const [metadataRefresh, setMetadataRefresh] =
+    useState<MusicLibraryRefreshResult | null>(null);
+  const [metadataPending, setMetadataPending] = useState(false);
+  const [metadataError, setMetadataError] = useState("");
 
   const apiParams = new URLSearchParams({ page: String(page) });
   if (query) apiParams.set("query", query);
@@ -141,6 +147,32 @@ export function MusicLibrary() {
     artists.reload();
     tracks.reload();
     downloads.reload();
+  }
+
+  /**
+   * Refreshes the whole library's provider metadata (artist images and album
+   * covers) in bounded batches until every artist has been revisited.
+   * Each batch is independent, so a failed batch loses only that batch.
+   */
+  async function refreshMetadata() {
+    if (metadataPending) return;
+    setMetadataPending(true);
+    setMetadataError("");
+    setMetadataRefresh(null);
+    let cursor = 0;
+    try {
+      for (;;) {
+        const batch = await refreshMusicLibraryMetadata(cursor);
+        setMetadataRefresh(batch);
+        cursor = batch.cursor;
+        if (batch.done) break;
+      }
+      reload();
+    } catch (e) {
+      setMetadataError(messageFor(e));
+    } finally {
+      setMetadataPending(false);
+    }
   }
 
   async function search(e: FormEvent) {
@@ -251,6 +283,14 @@ export function MusicLibrary() {
             spinning={activeResource.loading}
             onClick={reload}
           />
+          <ToolbarButton
+            icon={RefreshCw}
+            label="Refresh metadata"
+            title="Re-resolve every artist image and album cover from the providers"
+            spinning={metadataPending}
+            disabled={metadataPending}
+            onClick={refreshMetadata}
+          />
         </ToolbarSection>
         <ToolbarSection align="right">
           <ToolbarButton
@@ -274,6 +314,23 @@ export function MusicLibrary() {
         </ToolbarSection>
       </PageToolbar>
       <PageBody className="lib-body">
+        {metadataPending && (
+          <Alert kind="info" title="Refreshing library metadata">
+            {metadataRefresh
+              ? `${metadataRefresh.processed} artist${metadataRefresh.processed === 1 ? "" : "s"} checked so far — ${metadataRefresh.artists_updated + metadataRefresh.albums_updated} image and cover update${metadataRefresh.artists_updated + metadataRefresh.albums_updated === 1 ? "" : "s"}${metadataRefresh.images_cleared > 0 ? `, ${metadataRefresh.images_cleared} unverified image${metadataRefresh.images_cleared === 1 ? "" : "s"} removed` : ""}.`
+              : "Checking every artist and album against the providers. This runs in batches and can take a few minutes."}
+          </Alert>
+        )}
+        {metadataRefresh?.done && !metadataPending && (
+          <Alert kind="success" title="Library metadata refreshed">
+            {`${metadataRefresh.artists_updated + metadataRefresh.albums_updated} update${metadataRefresh.artists_updated + metadataRefresh.albums_updated === 1 ? "" : "s"} across ${metadataRefresh.processed} artist${metadataRefresh.processed === 1 ? "" : "s"}${metadataRefresh.images_cleared > 0 ? `; ${metadataRefresh.images_cleared} unverified image${metadataRefresh.images_cleared === 1 ? "" : "s"} removed` : ""}${metadataRefresh.failed > 0 ? `; ${metadataRefresh.failed} could not be reached and can be refreshed again` : ""}.`}
+          </Alert>
+        )}
+        {metadataError && (
+          <Alert kind="danger" title="Metadata refresh failed">
+            {metadataError}
+          </Alert>
+        )}
         <PageHeading title="Music">
           <form onSubmit={submit} className="lib-search" role="search">
             <TextField.Root

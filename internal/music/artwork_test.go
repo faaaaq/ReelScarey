@@ -31,6 +31,10 @@ func TestArtworkIsDownloadedCachedAndServedLocally(t *testing.T) {
 		switch r.URL.Path {
 		case "/search/artist":
 			_, _ = w.Write([]byte(`{"data":[{"id":1,"name":"Radiohead","picture_xl":"https://e-cdns-images.dzcdn.net/images/artist/1/1000x1000.jpg"}]}`))
+		case "/artist/1/albums":
+			_, _ = w.Write([]byte(`{"data":[{"title":"OK Computer","cover_xl":"https://e-cdns-images.dzcdn.net/images/cover/1/1000x1000.jpg"}]}`))
+		case "/artist/1":
+			_, _ = w.Write([]byte(`{"picture_xl":"https://e-cdns-images.dzcdn.net/images/artist/1/1000x1000.jpg"}`))
 		case "/search/album":
 			_, _ = w.Write([]byte(`{"data":[{"title":"OK Computer","artist":{"name":"Radiohead"},"cover_xl":"https://e-cdns-images.dzcdn.net/images/cover/1/1000x1000.jpg"}]}`))
 		default:

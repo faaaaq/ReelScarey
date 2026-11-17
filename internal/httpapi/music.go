@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -972,6 +973,84 @@ func (s *Server) musicAlbum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, 200, details)
+}
+
+// musicArtistRefresh re-resolves one artist's provider-sourced metadata: the
+// canonical MusicBrainz details, the verified artist image and the covers of
+// the artist's catalog albums.
+func (s *Server) musicArtistRefresh(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	result, err := s.music.RefreshArtistMetadata(r.Context(), id)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, result)
+}
+
+// musicAlbumRefresh re-resolves one album's cover art and, for a canonical
+// release group, its title and year.
+func (s *Server) musicAlbumRefresh(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	result, err := s.music.RefreshAlbumMetadata(r.Context(), id)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, result)
+}
+
+// musicLibraryMetadataRefresh runs one bounded batch of a library-wide
+// metadata refresh. The response carries the next cursor until Done.
+func (s *Server) musicLibraryMetadataRefresh(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	if r.Method != http.MethodPost {
+		fail(w, 405, "invalid_music", "Use POST to refresh library metadata.")
+		return
+	}
+	var body struct {
+		Cursor int64 `json:"cursor"`
+	}
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<10))
+	if err != nil {
+		fail(w, 400, "invalid_music", "The refresh request could not be read.")
+		return
+	}
+	if len(strings.TrimSpace(string(raw))) > 0 {
+		if err := json.Unmarshal(raw, &body); err != nil {
+			fail(w, 400, "invalid_music", "The refresh request could not be read.")
+			return
+		}
+	}
+	result, err := s.music.RefreshLibraryMetadataBatch(r.Context(), body.Cursor)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			result.Message = "The refresh batch stopped at its provider work limit; send it again to continue."
+			result.Done = false
+			send(w, 200, result)
+			return
+		}
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, result)
 }
 
 func (s *Server) musicArtistImage(w http.ResponseWriter, r *http.Request) {

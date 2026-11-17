@@ -9,6 +9,7 @@ import {
   ListMusic,
   Pencil,
   Play,
+  RefreshCw,
   Search,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
@@ -30,6 +31,8 @@ import {
   APIError,
   api,
   messageFor,
+  refreshMusicAlbum,
+  refreshMusicArtist,
   type MusicAlbum,
   type MusicAlbumDetails,
   type MusicAlbumPreferences,
@@ -563,6 +566,10 @@ export function MusicArtistPage() {
   const [downloadError, setDownloadError] = useState("");
   const [downloadJobID, setDownloadJobID] = useState<number | null>(null);
   const [batchJobID, setBatchJobID] = useState<number | null>(null);
+  const [imageVersion, setImageVersion] = useState(0);
+  const [refreshPending, setRefreshPending] = useState(false);
+  const [refreshNotice, setRefreshNotice] = useState("");
+  const [refreshError, setRefreshError] = useState("");
   const downloadJob = useLiveResource<MusicAcquisitionJob>(
     downloadJobID ? `/library/music/acquisitions/${downloadJobID}` : null,
     2000,
@@ -597,6 +604,41 @@ export function MusicArtistPage() {
     setDownloadError("");
     setDownloadFormat("source");
     setDownloadRoot("Music");
+  }
+
+  async function refreshArtist() {
+    if (!id || refreshPending) return;
+    setRefreshPending(true);
+    setRefreshError("");
+    setRefreshNotice("");
+    try {
+      const result = await refreshMusicArtist(Number(id));
+      const parts: string[] = [];
+      if (result.image_updated) parts.push("a new artist image");
+      if (result.image_cleared)
+        parts.push("the unverified artist image removed");
+      if (result.artist_updated) parts.push("the artist details");
+      if (result.albums_updated > 0)
+        parts.push(
+          `${result.albums_updated} album cover${result.albums_updated === 1 ? "" : "s"}`,
+        );
+      setRefreshNotice(
+        parts.length > 0
+          ? `Refreshed ${parts.join(", ")}.`
+          : result.message || "The stored metadata was already current.",
+      );
+      setImageVersion((version) => version + 1);
+      await Promise.all([
+        details.reload(),
+        discography.reload(),
+        topTracks.reload(),
+        libraryTracks.reload(),
+      ]);
+    } catch (e) {
+      setRefreshError(messageFor(e));
+    } finally {
+      setRefreshPending(false);
+    }
   }
 
   async function startTopDownload() {
@@ -716,6 +758,13 @@ export function MusicArtistPage() {
       <PageToolbar label="Music artist actions">
         <ToolbarSection>
           <ToolbarButton icon={ArrowLeft} label="Artists" to="/music" />
+          <ToolbarButton
+            icon={RefreshCw}
+            label="Refresh metadata"
+            title="Re-resolve the artist's details, image and album covers from the providers"
+            spinning={refreshPending}
+            onClick={refreshArtist}
+          />
         </ToolbarSection>
       </PageToolbar>
       <PageBody className="lib-body">
@@ -732,7 +781,7 @@ export function MusicArtistPage() {
           {artist?.id ? (
             <img
               className="mus-heading-cover"
-              src={artistImageURL(artist.id)}
+              src={`${artistImageURL(artist.id)}${imageVersion ? `?v=${imageVersion}` : ""}`}
               alt=""
               loading="lazy"
               referrerPolicy="no-referrer"
@@ -748,6 +797,16 @@ export function MusicArtistPage() {
           code={details.code}
           retry={details.reload}
         />
+        {refreshNotice && !refreshError && (
+          <Alert kind="success" title="Metadata refreshed">
+            {refreshNotice}
+          </Alert>
+        )}
+        {refreshError && (
+          <Alert kind="danger" title="Metadata refresh failed">
+            {refreshError}
+          </Alert>
+        )}
         {albumJob.data && (
           <FieldSet
             legend={`Album download · ${albumJob.data.title}`}
@@ -1091,7 +1150,10 @@ export function MusicAlbumPage() {
   const album = details.data?.album;
   const tracks = details.data?.tracks ?? [];
   const multiDisc = new Set(tracks.map((track) => track.disc)).size > 1;
-  const albumCover = album ? albumCoverURL(album.id) || album.cover_url : "";
+  const [coverVersion, setCoverVersion] = useState(0);
+  const albumCover = album
+    ? `${albumCoverURL(album.id) || album.cover_url}${coverVersion ? `?v=${coverVersion}` : ""}`
+    : "";
   const player = useMusicPlayer();
   const playableTracks: PlayerTrack[] =
     album?.id === undefined
@@ -1160,6 +1222,9 @@ export function MusicAlbumPage() {
   const [fixPlan, setFixPlan] = useState<MusicEditPlan | null>(null);
   const [fixPending, setFixPending] = useState(false);
   const [fixMessage, setFixMessage] = useState("");
+  const [refreshPending, setRefreshPending] = useState(false);
+  const [refreshNotice, setRefreshNotice] = useState("");
+  const [refreshError, setRefreshError] = useState("");
   const hasMissingTracks = tracks.some((track) => !track.file_id);
   const fixOverrides = () => ({
     album_id: album?.id ?? 0,
@@ -1179,6 +1244,31 @@ export function MusicAlbumPage() {
   useEffect(() => {
     if (albumJob.data?.state === "completed") details.reload();
   }, [albumJob.data?.state]);
+
+  async function refreshAlbum() {
+    if (!id || refreshPending) return;
+    setRefreshPending(true);
+    setRefreshError("");
+    setRefreshNotice("");
+    try {
+      const result = await refreshMusicAlbum(Number(id));
+      const parts: string[] = [];
+      if (result.cover_updated) parts.push("a new cover");
+      if (result.cover_cleared) parts.push("the unverifiable cover removed");
+      if (result.album_updated) parts.push("the title and year");
+      setRefreshNotice(
+        parts.length > 0
+          ? `Refreshed ${parts.join(", ")}.`
+          : result.message || "The stored metadata was already current.",
+      );
+      setCoverVersion((version) => version + 1);
+      await details.reload();
+    } catch (e) {
+      setRefreshError(messageFor(e));
+    } finally {
+      setRefreshPending(false);
+    }
+  }
 
   async function searchReleases(e: FormEvent) {
     e.preventDefault();
@@ -1426,6 +1516,13 @@ export function MusicAlbumPage() {
             disabled={!album?.id || tracks.length === 0}
             onClick={openFixMetadata}
           />
+          <ToolbarButton
+            icon={RefreshCw}
+            label="Refresh metadata"
+            title="Re-resolve the album's cover art and canonical details from the providers"
+            spinning={refreshPending}
+            onClick={refreshAlbum}
+          />
         </ToolbarSection>
       </PageToolbar>
       <PageBody className="mus-body">
@@ -1475,6 +1572,16 @@ export function MusicAlbumPage() {
           code={details.code}
           retry={details.reload}
         />
+        {refreshNotice && !refreshError && (
+          <Alert kind="success" title="Metadata refreshed">
+            {refreshNotice}
+          </Alert>
+        )}
+        {refreshError && (
+          <Alert kind="danger" title="Metadata refresh failed">
+            {refreshError}
+          </Alert>
+        )}
         {albumJob.data && (
           <FieldSet
             legend={`Album download · ${albumJob.data.title}`}
