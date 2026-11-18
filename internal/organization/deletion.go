@@ -85,7 +85,7 @@ func deletionFiles(ctx context.Context, q query, kind string, ids []int64) ([]in
 
 func (s *Service) PreviewDeletion(ctx context.Context, request DeletionRequest) (Plan, error) {
 	if !mediaGate.TryRLock() {
-		return Plan{}, problem("organization_busy", "Another media operation is running. Wait for it to finish, then review deletion again.")
+		return Plan{}, s.busyProblem(ctx, "review deletion again")
 	}
 	defer mediaGate.RUnlock()
 	if err := EnsureMediaAvailable(ctx, s.db); err != nil {

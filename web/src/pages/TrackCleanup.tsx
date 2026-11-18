@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { Button } from "@radix-ui/themes";
-import { api, messageFor } from "../api";
+import { api, messageFor, APIError } from "../api";
 import { Alert, FieldSet, Modal } from "../ui";
+import {
+  activePlanDetail,
+  activePlanLabel,
+  activePlanStoppable,
+  type ActivePlan,
+} from "../components/MediaWorkBanner";
 import { useLiveResource } from "../useLiveResource";
 import { useResource } from "../useResource";
 
@@ -26,14 +32,6 @@ type CleanupPlan = {
   };
 };
 
-type ActivePlan = {
-  id: string;
-  state: string;
-  kind: string;
-  message?: string;
-};
-
-/** One media operation runs at a time; this is the one the worker is on. */
 type ActiveResponse = { active: boolean; plan?: ActivePlan };
 
 export function TrackCleanup({
@@ -63,19 +61,14 @@ export function TrackCleanup({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState("");
   const [review, setReview] = useState<CleanupPlan>();
   const [id, setID] = useState("");
+  const [stopping, setStopping] = useState(false);
   // The worker runs every plan through one shared queue. Watching the active
-  // plan keeps this control honest about work started elsewhere — including a
+  // plan keeps this control honest about work started elsewhere - including a
   // cleanup started on another page or before a reload.
   const active = useLiveResource<ActiveResponse>("/organization/active", 3000);
-  const adopted =
-    !id &&
-    !review &&
-    active.data?.active &&
-    active.data.plan?.kind === "track_cleanup" &&
-    (active.data.plan.state === "queued" ||
-      active.data.plan.state === "running");
   const [reported, setReported] = useState("");
   const status = useLiveResource<CleanupPlan>(
     id ? `/organization/plans/${id}` : null,
@@ -91,10 +84,23 @@ export function TrackCleanup({
     status.data?.state === "failed" ||
     status.data?.state === "cancelled";
   const running = !!id && !ended;
+  const plan = active.data?.plan;
+  const adopted =
+    !id &&
+    !review &&
+    plan?.kind === "track_cleanup" &&
+    (plan.state === "queued" || plan.state === "running");
+  // A refused request names the operation that is using the library; the same
+  // active-plan poll shows its live progress and offers the stop control.
+  const blocking =
+    errorCode === "organization_busy" ||
+    (!id && plan && plan.kind !== "track_cleanup")
+      ? plan
+      : undefined;
 
   useEffect(() => {
-    if (adopted && active.data?.plan) setID(active.data.plan.id);
-  }, [adopted, active.data?.plan]);
+    if (adopted && plan) setID(plan.id);
+  }, [adopted, plan]);
 
   useEffect(() => {
     if (id && status.data?.state === "completed" && reported !== id) {
@@ -106,6 +112,7 @@ export function TrackCleanup({
   async function submit() {
     setBusy(true);
     setError("");
+    setErrorCode("");
     try {
       if (review) {
         // Applying never runs the cleanup inside the request; it validates and
@@ -132,8 +139,28 @@ export function TrackCleanup({
       }
     } catch (e) {
       setError(messageFor(e));
+      setErrorCode(e instanceof APIError ? e.code : "");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function stopBlocking() {
+    if (!blocking) return;
+    setStopping(true);
+    try {
+      await api(`/organization/plans/${blocking.id}/cancel`, {
+        method: "POST",
+        body: "{}",
+      });
+      setError("");
+      setErrorCode("");
+      active.reload();
+    } catch (e) {
+      setError(messageFor(e));
+      setErrorCode("");
+    } finally {
+      setStopping(false);
     }
   }
 
@@ -146,14 +173,10 @@ export function TrackCleanup({
         setReview(undefined);
       }
       setError("");
+      setErrorCode("");
     }
   }
 
-  const busyElsewhere =
-    active.data?.active &&
-    active.data.plan &&
-    active.data.plan.kind !== "track_cleanup" &&
-    !id;
   return (
     <FieldSet
       legend={title}
@@ -183,8 +206,8 @@ export function TrackCleanup({
             </Button>
             {!running &&
               !adopted &&
-              status.data?.state !== "completed" &&
-              !busyElsewhere && (
+              !blocking &&
+              status.data?.state !== "completed" && (
                 <Button
                   color="red"
                   disabled={busy}
@@ -257,11 +280,39 @@ export function TrackCleanup({
             safely kept are skipped.
           </p>
         )}
-        {busyElsewhere && (
-          <p role="status">
-            Another media operation is running. This review can start once it
-            finishes; its progress is shown on any page.
-          </p>
+        {blocking && (
+          <div role="status" className="rs-stack">
+            <p>
+              <strong>{activePlanLabel(blocking.kind)}</strong> is using the
+              library. One media operation runs at a time, so this review waits
+              for it.
+            </p>
+            <p>
+              {activePlanDetail(blocking)} ·{" "}
+              {blocking.state === "queued" ? "queued" : "running"}
+            </p>
+            {activePlanStoppable(blocking) && (
+              <Button
+                size="1"
+                variant="soft"
+                color="gray"
+                disabled={stopping}
+                onClick={() => void stopBlocking()}
+              >
+                {stopping
+                  ? "Stopping…"
+                  : blocking.state === "queued"
+                    ? "Cancel the queued job"
+                    : "Stop after the video in progress"}
+              </Button>
+            )}
+            {!activePlanStoppable(blocking) && (
+              <p className="rs-muted rs-small">
+                This job cannot be interrupted safely; it finishes the file it
+                is working on, and this review can start afterwards.
+              </p>
+            )}
+          </div>
         )}
         {id && (
           <p role="status">
@@ -281,14 +332,15 @@ export function TrackCleanup({
             </ul>
           </details>
         )}
-        {(error ||
-          status.error ||
-          (libraries.error && !mediaID) ||
-          status.data?.state === "failed") && (
-          <Alert kind="danger" role="alert">
-            {error || status.error || status.data?.message || libraries.error}
-          </Alert>
-        )}
+        {!blocking &&
+          (error ||
+            status.error ||
+            (libraries.error && !mediaID) ||
+            status.data?.state === "failed") && (
+            <Alert kind="danger" role="alert">
+              {error || status.error || status.data?.message || libraries.error}
+            </Alert>
+          )}
       </Modal>
     </FieldSet>
   );

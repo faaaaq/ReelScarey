@@ -75,7 +75,7 @@ func (s *Service) resolveOriginalLanguage(ctx context.Context, mediaID int64) (s
 
 func (s *Service) PreviewTrackCleanup(ctx context.Context, request TrackCleanupRequest) (Plan, error) {
 	if !mediaGate.TryRLock() {
-		return Plan{}, problem("organization_busy", "Another media operation is running. Wait for it to finish, then review cleanup again.")
+		return Plan{}, s.busyProblem(ctx, "review cleanup again")
 	}
 	defer mediaGate.RUnlock()
 	if err := EnsureMediaAvailable(ctx, s.db); err != nil {

@@ -1086,6 +1086,11 @@ activity event.
 `POST /organization/plans/{id}/cancel` with `{}` returns a queued job to
 review only if no file work has started. It refuses journaled outputs or a
 folder that may already have moved; those jobs must follow recovery instead.
+A *running* track cleanup can be stopped: the stop is one durable state
+change, the video being rewritten finishes safely on its own journal with its
+completed changes kept, and the plan returns to review showing the progress
+so far — apply again to resume the remainder. Other running jobs cannot be
+interrupted and are refused until they finish the file they are on.
 
 `embedded_title` in the inspected file's probe is its container title tag; null
 means it has not been inspected with this version and an empty string means no
@@ -1760,7 +1765,10 @@ files remain outside the operation.
   progress via `GET /api/v1/organization/plans/{id}`. Applying only validates
   and queues; it never waits for a running media operation. When another
   organization batch is active the apply answers `409 organization_busy`
-  immediately instead of holding the request until the browser times out.
+  immediately instead of holding the request until the browser times out, and
+  the message names the running operation and its progress. Track cleanup can
+  be stopped from the progress banner while it runs; the video in progress
+  finishes safely and the plan returns to review.
   Cleanup reports reviewed videos, tracks removed, and files needing
   attention. The worker verifies retained embedded streams before publishing
   the rewritten file. External subtitle files are permanently deleted. The

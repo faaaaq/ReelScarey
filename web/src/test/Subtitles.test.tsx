@@ -466,4 +466,71 @@ describe("subtitles", () => {
     expect(screen.getByText("Provider cooldown")).toBeVisible();
     expect(screen.getByText(/Retry after/)).toBeVisible();
   });
+  it("names the blocking operation and offers to stop it when the library is busy", async () => {
+    const user = userEvent.setup();
+    let active = true;
+    const calls: { url: string; body: string }[] = [];
+    const fetch = setup((url, o) => {
+      if (url.endsWith("/organization"))
+        return Response.json({ libraries: [] });
+      if (url.endsWith("/organization/active"))
+        return Response.json(
+          active
+            ? {
+                active: true,
+                plan: {
+                  id: "busy-1",
+                  state: "queued",
+                  kind: "deletion",
+                  processed: 0,
+                  total: 9,
+                  changed: 2,
+                  skipped: 1,
+                  dropped: 0,
+                },
+              }
+            : { active: false },
+        );
+      if (url.endsWith("/subtitles/track-cleanup") && o?.method === "POST")
+        return Response.json(
+          {
+            error: {
+              code: "organization_busy",
+              message: "Removing media tracks is using the library.",
+            },
+          },
+          { status: 409 },
+        );
+      if (url.endsWith("/organization/plans/busy-1/cancel")) {
+        calls.push({ url, body: String(o?.body ?? "") });
+        active = false;
+        return Response.json({});
+      }
+      return undefined;
+    });
+    void fetch;
+    mount();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Delete subtitles" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Delete subtitles" });
+    expect(
+      await within(dialog).findByText(/is using the library/),
+    ).toBeVisible();
+    expect(within(dialog).getByText(/Waiting to start/)).toBeVisible();
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: "Cancel the queued job",
+      }),
+    );
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].url.endsWith("/organization/plans/busy-1/cancel")).toBe(
+      true,
+    );
+    await waitFor(() => {
+      expect(
+        within(dialog).queryByRole("button", { name: "Review cleanup" }),
+      ).toBeInTheDocument();
+    });
+  });
 });

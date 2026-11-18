@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Button } from "@radix-ui/themes";
+import { Loader2, Square } from "lucide-react";
+import { api } from "../api";
 import { useLiveResource } from "../useLiveResource";
 
-type ActivePlan = {
+export type ActivePlan = {
   id: string;
   state: string;
   kind: string;
@@ -21,8 +24,27 @@ const labels: Record<string, string> = {
   deletion: "Deleting library files",
   replacement: "Replacing a library file",
   folder_move: "Moving a library folder",
-  organization: "Organizing the library",
+  organization: "A library organization job",
 };
+
+export function activePlanLabel(kind: string) {
+  return labels[kind] ?? "Working on the library";
+}
+
+export function activePlanDetail(plan: ActivePlan) {
+  if (plan.kind === "track_cleanup") {
+    return `${plan.processed} of ${plan.total} videos · ${plan.dropped} track${
+      plan.dropped === 1 ? "" : "s"
+    } removed${plan.skipped ? ` · ${plan.skipped} skipped` : ""}`;
+  }
+  return plan.state === "queued" ? "Waiting to start" : "In progress";
+}
+
+/** A queued plan can always return to review; a running track cleanup can be
+ * stopped safely between videos. Other running jobs cannot be interrupted. */
+export function activePlanStoppable(plan: ActivePlan) {
+  return plan.state === "queued" || plan.kind === "track_cleanup";
+}
 
 /**
  * Persistent media-work indicator. The organization worker runs one reviewed
@@ -33,17 +55,30 @@ const labels: Record<string, string> = {
  */
 export function MediaWorkBanner() {
   const active = useLiveResource<ActiveResponse>("/organization/active", 2000);
+  const [stopping, setStopping] = useState("");
+  const [error, setError] = useState("");
   const plan = active.data?.plan;
   if (!active.data || !plan) return null;
-  const label = labels[plan.kind] ?? "Working on the library";
-  const detail =
-    plan.kind === "track_cleanup"
-      ? `${plan.processed} of ${plan.total} videos · ${plan.dropped} track${
-          plan.dropped === 1 ? "" : "s"
-        } removed${plan.skipped ? ` · ${plan.skipped} skipped` : ""}`
-      : plan.state === "queued"
-        ? "Waiting to start"
-        : "In progress";
+  const label = activePlanLabel(plan.kind);
+  const detail = activePlanDetail(plan);
+  const stoppable = activePlanStoppable(plan);
+  async function stop() {
+    if (!plan) return;
+    setStopping(plan.id);
+    setError("");
+    try {
+      await api(`/organization/plans/${plan.id}/cancel`, {
+        method: "POST",
+        body: "{}",
+      });
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "The job could not be stopped.",
+      );
+    } finally {
+      setStopping("");
+    }
+  }
   return (
     <aside
       className="rs-work-banner"
@@ -54,6 +89,24 @@ export function MediaWorkBanner() {
       <span className="rs-work-label">
         {label} · {detail}
       </span>
+      {stoppable && (
+        <Button
+          size="1"
+          variant="soft"
+          color="gray"
+          disabled={!!stopping}
+          aria-label={`Stop ${label}`}
+          onClick={() => void stop()}
+        >
+          <Square size={11} aria-hidden="true" />
+          {stopping ? "Stopping…" : "Stop"}
+        </Button>
+      )}
+      {error && (
+        <span className="rs-work-label" role="alert">
+          {error}
+        </span>
+      )}
       <Link to="/organization" className="rs-work-link">
         Open organization
       </Link>

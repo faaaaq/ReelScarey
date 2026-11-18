@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -322,6 +323,37 @@ func activeKind(p Plan) string {
 	}
 }
 
+var activeLabels = map[string]string{
+	"track_cleanup": "Removing media tracks",
+	"deletion":      "Deleting library files",
+	"replacement":   "Replacing a library file",
+	"folder_move":   "Moving a library folder",
+	"organization":  "A library organization job",
+}
+
+// busyProblem reports that one media operation at a time is already using the
+// library. The error names the operation and its progress so the owner can
+// decide to wait or stop it instead of guessing what is blocking the request.
+func (s *Service) busyProblem(ctx context.Context, retry string) error {
+	plan, active, err := s.Active(ctx)
+	if err != nil || !active {
+		return problem("organization_busy", "Another media operation is using the library. Wait for it to finish, then "+retry+". Its progress is shown on every page.")
+	}
+	label := activeLabels[plan.Kind]
+	detail := ""
+	if plan.Kind == "track_cleanup" {
+		detail = fmt.Sprintf(" — %d of %d videos reviewed, %d tracks removed", plan.Processed, plan.Total, plan.Dropped)
+		if plan.Skipped > 0 {
+			detail += fmt.Sprintf(", %d skipped", plan.Skipped)
+		}
+	} else if plan.State == "queued" {
+		detail = " — queued, waiting to start"
+	}
+	return problem("organization_busy", fmt.Sprintf(
+		"%s%s is using the library. One media operation runs at a time, so this must wait. Watch its progress on any page, or stop it from there; then %s.",
+		label, detail, retry))
+}
+
 // Active returns the plan the organization worker is currently running or has
 // queued, if any. Only one plan runs at a time; queued plans wait behind it.
 func (s *Service) Active(ctx context.Context) (ActivePlan, bool, error) {
@@ -399,18 +431,18 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 	// blocked apply only ends in a client-side timeout. Fail closed with a
 	// bounded error the UI can surface immediately instead.
 	if !s.mu.TryLock() {
-		return initial, problem("organization_busy", "Another media operation is running. Wait for it to finish, then apply again.")
+		return initial, s.busyProblem(ctx, "apply again")
 	}
 	defer s.mu.Unlock()
 	if permanent {
 		if !mediaGate.TryRLock() {
-			return initial, problem("organization_busy", "Another media operation is running. Wait for it to finish, then apply deletion again.")
+			return initial, s.busyProblem(ctx, "apply deletion again")
 		}
 		defer mediaGate.RUnlock()
 	} else {
 		unlock, ok := TryReadMedia()
 		if !ok {
-			return initial, problem("organization_busy", "Another media operation is running. Wait for it to finish, then apply again.")
+			return initial, s.busyProblem(ctx, "apply again")
 		}
 		defer unlock()
 	}
@@ -465,7 +497,7 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 		return p, e
 	}
 	if count != 0 {
-		return p, problem("organization_busy", "Wait for the current organization batch to finish.")
+		return p, s.busyProblem(ctx, "apply again")
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE organization_plans SET state='queued',message='',updated_at=unixepoch() WHERE id=? AND state IN ('review','failed')`, id); e != nil {
 		return p, e
@@ -742,9 +774,40 @@ func (s *Service) savePhase(ctx context.Context, p *Plan, phase string) error {
 	return e
 }
 
-// CancelQueued returns an unstarted job to review. Jobs with any journaled
-// output or a moved folder must instead finish or use their recovery flow.
+// CancelQueued returns an unstarted job to review, or stops a running track
+// cleanup back into review. Jobs with any journaled output or a moved folder
+// must instead finish or use their recovery flow.
+//
+// Stopping a running track cleanup is a single durable state change: the video
+// being rewritten finishes on its own journal (its completed work is kept) and
+// the worker stops before claiming the next one, so no media-gate wait and no
+// in-process coordination is involved. Other running jobs finish their current
+// file and are refused here instead.
 func (s *Service) CancelQueued(ctx context.Context, id string) (Plan, error) {
+	p, err := s.Plan(ctx, id)
+	if err != nil {
+		return p, err
+	}
+	if p.State == "running" {
+		if p.TrackCleanup == nil {
+			return p, problem("invalid_selection", "Only track cleanup can be stopped while it runs; other jobs finish the file they are working on.")
+		}
+		res, e := s.db.ExecContext(ctx, `UPDATE organization_plans SET state='review',message='Stopped by the owner. The video being rewritten finished safely and its completed changes were kept; the remaining videos are back in review. Apply again to continue, or leave it here.',updated_at=unixepoch() WHERE id=? AND state='running'`, id)
+		if e != nil {
+			return p, e
+		}
+		if n, e := res.RowsAffected(); e != nil || n != 1 {
+			latest, planErr := s.Plan(ctx, id)
+			if planErr != nil {
+				return p, planErr
+			}
+			return latest, problem("plan_stale", "The job already finished.")
+		}
+		if _, e = s.db.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'organization',?,'Library organization','track cleanup stopped by the owner')`, id); e != nil {
+			return p, e
+		}
+		return s.Plan(ctx, id)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	unlock := ReadMedia()

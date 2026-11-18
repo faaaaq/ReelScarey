@@ -127,6 +127,57 @@ func TestOrganizationRemovalDelegatesPermanentDeletion(t *testing.T) {
 	}
 }
 
+// A busy review must name the operation blocking it instead of a generic
+// refusal, so the owner can decide to wait or stop it.
+func TestBusyReviewNamesTheRunningOperation(t *testing.T) {
+	f := newOrganizationReviewFixture(t)
+	f.movie(t, 1, "Named fixture", "Movies/Named/one.mkv")
+	if _, err := f.db.Exec(`INSERT INTO organization_plans(id,state,snapshot,created_at,updated_at) VALUES('busy-1','running',?,1,2)`,
+		`{"id":"busy-1","phase":"planned","track_cleanup":{"request":{"mode":"all_subtitles"},"targets":[{"id":1,"path":"Movies/Named/one.mkv"}],"processed":12,"changed":9,"skipped":2,"dropped":34}}`); err != nil {
+		t.Fatal(err)
+	}
+	release := organization.WriteMedia()
+	defer release()
+	out := request(f.handler, "POST", "/api/v1/subtitles/track-cleanup", `{"mode":"all_subtitles"}`, &f.session, true)
+	if out.Code != 409 || !strings.Contains(out.Body.String(), "organization_busy") {
+		t.Fatalf("busy review: %d %s", out.Code, out.Body)
+	}
+	for _, want := range []string{"Removing media tracks", "12 of 1 videos reviewed", "34 tracks removed", "2 skipped", "stop it from there"} {
+		if !strings.Contains(out.Body.String(), want) {
+			t.Fatalf("busy message missing %q: %s", want, out.Body)
+		}
+	}
+}
+
+// Stopping a running track cleanup is a durable state change the worker honors
+// after the video in progress finishes; other running jobs are refused.
+func TestCancelStopsRunningTrackCleanupButNotOtherJobs(t *testing.T) {
+	f := newOrganizationReviewFixture(t)
+	insert := func(id string, snapshot string) {
+		t.Helper()
+		if _, err := f.db.Exec(`INSERT INTO organization_plans(id,state,snapshot,created_at,updated_at) VALUES(?,'running',?,1,2)`, id, snapshot); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert("stop-1", `{"id":"stop-1","phase":"planned","track_cleanup":{"request":{"mode":"all_subtitles"},"targets":[{"id":1,"path":"a.mkv"}],"processed":3,"total":0}}`)
+	out := request(f.handler, "POST", "/api/v1/organization/plans/stop-1/cancel", `{}`, &f.session, true)
+	if out.Code != 200 {
+		t.Fatalf("stop cleanup: %d %s", out.Code, out.Body)
+	}
+	var state, message string
+	if err := f.db.QueryRow(`SELECT state,message FROM organization_plans WHERE id='stop-1'`).Scan(&state, &message); err != nil {
+		t.Fatal(err)
+	}
+	if state != "review" || !strings.Contains(message, "Stopped by the owner") {
+		t.Fatalf("stop did not record cancellation: %s %q", state, message)
+	}
+	insert("stop-2", `{"id":"stop-2","phase":"planned","removal":{"media_id":1,"mode":"delete","paths":[]}}`)
+	out = request(f.handler, "POST", "/api/v1/organization/plans/stop-2/cancel", `{}`, &f.session, true)
+	if out.Code != 400 || !strings.Contains(out.Body.String(), "Only track cleanup") {
+		t.Fatalf("stop other job: %d %s", out.Code, out.Body)
+	}
+}
+
 func TestApplyDuringARunningPlanFailsFastInsteadOfBlocking(t *testing.T) {
 	f := newOrganizationReviewFixture(t)
 	f.movie(t, 1, "Busy film", "Movies/Busy/first.mkv")
