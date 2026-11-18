@@ -304,6 +304,8 @@ type ActivePlan struct {
 	Skipped   int      `json:"skipped"`
 	Dropped   int      `json:"dropped"`
 	Issues    []string `json:"issues,omitempty"`
+	// Stoppable reports that the owner can stop this plan while it runs.
+	Stoppable bool `json:"stoppable,omitempty"`
 }
 
 // activeKind names the plan payload so a global indicator can label the
@@ -322,6 +324,11 @@ func activeKind(p Plan) string {
 		return "organization"
 	}
 }
+
+// errOwnerStopped marks an execution the owner stopped mid-batch. The plan
+// keeps the owner's reviewed state and message instead of being recorded as a
+// failure, and its journal still resumes with a fresh apply.
+var errOwnerStopped = errors.New("organization: stopped by the owner")
 
 var activeLabels = map[string]string{
 	"track_cleanup": "Removing media tracks",
@@ -385,6 +392,8 @@ func (s *Service) Active(ctx context.Context) (ActivePlan, bool, error) {
 	if e := row.Scan(&out.State, &out.Message); e != nil {
 		return ActivePlan{}, false, e
 	}
+	out.Stoppable = out.State == "queued" || p.TrackCleanup != nil ||
+		(p.Removal != nil && p.Removal.Selection != "" && p.Removal.Mode == "delete")
 	return out, true, nil
 }
 
@@ -652,7 +661,14 @@ func (s *Service) Tick(ctx context.Context) error {
 	for {
 		e := s.db.QueryRowContext(ctx, `SELECT id FROM organization_plans WHERE state IN ('queued','running') AND id>? ORDER BY id LIMIT 1`, cursor).Scan(&id)
 		if errors.Is(e, sql.ErrNoRows) {
-			return s.queueRegisteredTitle(ctx)
+			// An automatic title update is queued inline so it can run in this
+			// same tick: with the in-place fast path each file is seconds, and
+			// waiting a tick per file would dominate the run time.
+			queued, qe := s.queueRegisteredTitle(ctx)
+			if qe != nil || !queued {
+				return qe
+			}
+			continue
 		}
 		if e != nil {
 			return e
@@ -666,12 +682,21 @@ func (s *Service) Tick(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
-	if _, e = s.db.ExecContext(ctx, `UPDATE organization_plans SET state='running',updated_at=unixepoch() WHERE id=?`, id); e != nil {
+	claimed, e := s.db.ExecContext(ctx, `UPDATE organization_plans SET state='running',updated_at=unixepoch() WHERE id=? AND state IN ('queued','running')`, id)
+	if e != nil {
 		return e
 	}
+	// An owner stop that landed between the claim query and this update leaves
+	// the plan in review: honor it instead of running it anyway.
+	if n, nerr := claimed.RowsAffected(); nerr != nil || n != 1 {
+		return nil
+	}
 	e = s.execute(ctx, &p)
-	if e != nil && !(p.TrackCleanup != nil && ctx.Err() != nil) {
+	if e != nil && !errors.Is(e, errOwnerStopped) && !(p.TrackCleanup != nil && ctx.Err() != nil) {
 		s.recordPlanFailure(ctx, &p, e)
+	}
+	if errors.Is(e, errOwnerStopped) {
+		return nil
 	}
 	return e
 }
@@ -774,9 +799,20 @@ func (s *Service) savePhase(ctx context.Context, p *Plan, phase string) error {
 	return e
 }
 
+// ownerStopped reports whether the owner stopped a running plan. The stop is
+// the durable state change back to review, which long batches check between
+// files so the remaining work is left intact.
+func (s *Service) ownerStopped(ctx context.Context, id string) (bool, error) {
+	var state string
+	if e := s.db.QueryRowContext(ctx, `SELECT state FROM organization_plans WHERE id=?`, id).Scan(&state); e != nil {
+		return false, e
+	}
+	return state != "running", nil
+}
+
 // CancelQueued returns an unstarted job to review, or stops a running track
-// cleanup back into review. Jobs with any journaled output or a moved folder
-// must instead finish or use their recovery flow.
+// cleanup or permanent deletion. Jobs with any journaled output or a moved
+// folder must instead finish or use their recovery flow.
 //
 // Stopping a running track cleanup is a single durable state change: the video
 // being rewritten finishes on its own journal (its completed work is kept) and
@@ -789,24 +825,45 @@ func (s *Service) CancelQueued(ctx context.Context, id string) (Plan, error) {
 		return p, err
 	}
 	if p.State == "running" {
-		if p.TrackCleanup == nil {
-			return p, problem("invalid_selection", "Only track cleanup can be stopped while it runs; other jobs finish the file they are working on.")
-		}
-		res, e := s.db.ExecContext(ctx, `UPDATE organization_plans SET state='review',message='Stopped by the owner. The video being rewritten finished safely and its completed changes were kept; the remaining videos are back in review. Apply again to continue, or leave it here.',updated_at=unixepoch() WHERE id=? AND state='running'`, id)
-		if e != nil {
-			return p, e
-		}
-		if n, e := res.RowsAffected(); e != nil || n != 1 {
-			latest, planErr := s.Plan(ctx, id)
-			if planErr != nil {
-				return p, planErr
+		switch {
+		case p.TrackCleanup != nil:
+			res, e := s.db.ExecContext(ctx, `UPDATE organization_plans SET state='review',message='Stopped by the owner. The video being rewritten finished safely and its completed changes were kept; the remaining videos are back in review. Apply again to continue, or leave it here.',updated_at=unixepoch() WHERE id=? AND state='running'`, id)
+			if e != nil {
+				return p, e
 			}
-			return latest, problem("plan_stale", "The job already finished.")
+			if n, e := res.RowsAffected(); e != nil || n != 1 {
+				latest, planErr := s.Plan(ctx, id)
+				if planErr != nil {
+					return p, planErr
+				}
+				return latest, problem("plan_stale", "The job already finished.")
+			}
+			if _, e = s.db.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'organization',?,'Library organization','track cleanup stopped by the owner')`, id); e != nil {
+				return p, e
+			}
+			return s.Plan(ctx, id)
+		case p.Removal != nil && p.Removal.Selection != "" && p.Removal.Mode == "delete":
+			// The worker checks this state between files, so a permanent
+			// deletion stops with the remaining files left in place. The
+			// catalog rows are already committed; a fresh apply resumes.
+			res, e := s.db.ExecContext(ctx, `UPDATE organization_plans SET state='review',message='Stopped by the owner. Files already removed stay removed; the remaining files were left in place. Apply again to finish the reviewed deletion.',updated_at=unixepoch() WHERE id=? AND state='running'`, id)
+			if e != nil {
+				return p, e
+			}
+			if n, e := res.RowsAffected(); e != nil || n != 1 {
+				latest, planErr := s.Plan(ctx, id)
+				if planErr != nil {
+					return p, planErr
+				}
+				return latest, problem("plan_stale", "The job already finished.")
+			}
+			if _, e = s.db.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'organization',?,'Library organization','permanent deletion stopped by the owner')`, id); e != nil {
+				return p, e
+			}
+			return s.Plan(ctx, id)
+		default:
+			return p, problem("invalid_selection", "Only track cleanup and permanent deletion can be stopped while they run; other jobs finish the file they are working on.")
 		}
-		if _, e = s.db.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'organization',?,'Library organization','track cleanup stopped by the owner')`, id); e != nil {
-			return p, e
-		}
-		return s.Plan(ctx, id)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -194,6 +195,110 @@ func (s *Service) previewEmbeddedTitle(ctx context.Context, fileID int64, parent
 	return p, tx.Commit()
 }
 
+// titleHeaderBackupBytes bounds the header backup kept in the journal stage
+// for an in-place title edit. Matroska keeps the segment header, seek head and
+// segment info within the first few megabytes of well-formed files; beyond
+// this bound the fast path is refused and the remux stage is used instead.
+const titleHeaderBackupBytes = 16 << 20
+
+func matroskaTitleExtension(extension string) bool {
+	switch strings.ToLower(extension) {
+	case ".mkv", ".webm":
+		return true
+	}
+	return false
+}
+
+// backupTitleHeader copies the leading bytes of the source into the journal
+// stage. Re-entrant prepare runs keep the existing backup: the source header
+// may be mid-edit, so its current bytes are not a valid recovery copy.
+func (s *Service) backupTitleHeader(ctx context.Context, stage, source *os.File, r *Replacement) error {
+	limit := r.Original.Size
+	if limit > titleHeaderBackupBytes {
+		limit = titleHeaderBackupBytes
+	}
+	if limit <= 0 {
+		return problem("unsafe_path", "The registered file has no content to back up.")
+	}
+	if info, e := stage.Stat(); e != nil {
+		return e
+	} else if info.Size() != limit {
+		// A fresh prepare leaves the stage empty; a re-entrant prepare keeps a
+		// completed backup. Otherwise the backup is rewritten from the source,
+		// which is the verified original at this point in the review.
+		if _, e := source.Seek(0, io.SeekStart); e != nil {
+			return e
+		}
+		if _, e := stage.Seek(0, io.SeekStart); e != nil {
+			return e
+		}
+		if e := stage.Truncate(0); e != nil {
+			return e
+		}
+		n, e := io.CopyN(stage, source, limit)
+		if e != nil {
+			return e
+		}
+		if n != limit {
+			return problem("source_changed", "The registered file ended before its header backup completed.")
+		}
+		if e = stage.Sync(); e != nil {
+			return e
+		}
+	}
+	id, e := identity(stage)
+	if e != nil {
+		return e
+	}
+	r.BackupIdentity = id
+	return nil
+}
+
+// restoreTitleHeader repairs a file whose in-place edit was interrupted or
+// refused: the backup bytes go back to offset zero, the file is truncated to
+// its reviewed size, and the modification time is restored so the reviewed
+// facts match again.
+func (s *Service) restoreTitleHeader(root *os.Root, stage *os.File, r *Replacement) error {
+	if _, e := stage.Seek(0, io.SeekStart); e != nil {
+		return e
+	}
+	data, e := io.ReadAll(io.LimitReader(stage, titleHeaderBackupBytes))
+	if e != nil {
+		return e
+	}
+	if int64(len(data)) < r.Original.Size && int64(len(data)) < titleHeaderBackupBytes {
+		return problem("staging_conflict", "The saved header backup is shorter than the reviewed file size.")
+	}
+	f, e := root.OpenFile(filepath.FromSlash(r.Original.Source), os.O_RDWR, 0)
+	if e != nil {
+		return e
+	}
+	defer f.Close()
+	if _, e = f.WriteAt(data, 0); e != nil {
+		return e
+	}
+	if e = f.Truncate(r.Original.Size); e != nil {
+		return e
+	}
+	if e = f.Sync(); e != nil {
+		return e
+	}
+	f.Close()
+	full := filepath.Join(root.Name(), filepath.FromSlash(r.Original.Source))
+	mtime := time.Unix(0, r.Original.Mtime)
+	return os.Chtimes(full, mtime, mtime)
+}
+
+// fileDigest hashes a registered file once for the catalog's change detection.
+func (s *Service) fileDigest(ctx context.Context, root *os.Root, name string) (string, error) {
+	f, e := root.Open(filepath.FromSlash(name))
+	if e != nil {
+		return "", e
+	}
+	defer f.Close()
+	return hash(ctx, f)
+}
+
 func (s *Service) prepareEmbeddedTitle(ctx context.Context, root *os.Root, p *Plan) error {
 	r := p.Replacement
 	if len(r.DropStreams) == 0 && s.tag == nil || len(r.DropStreams) > 0 && s.rewriteTracks == nil {
@@ -252,11 +357,58 @@ func (s *Service) prepareEmbeddedTitle(ctx context.Context, root *os.Root, p *Pl
 	if e != nil || sourceID != r.Original.Identity {
 		return problem("source_changed", "The original changed before metadata verification.")
 	}
+	// Matroska title edits go through mkvpropedit directly on the registered
+	// file: seconds per file instead of a full demux, remux and re-verify of
+	// every packet. The journal stage holds a bounded backup of the header so
+	// an interrupted edit can be repaired.
+	ext := strings.ToLower(path.Ext(r.Original.Source))
+	if len(r.DropStreams) == 0 && matroskaTitleExtension(ext) && s.inPlaceTagger != nil {
+		if e = s.backupTitleHeader(ctx, stage, source, r); e != nil {
+			return e
+		}
+		fullPath := filepath.Join(root.Name(), filepath.FromSlash(r.Original.Source))
+		// mkvpropedit opens its own handle on the path.
+		source.Close()
+		probe, err := s.inPlaceTagger(ctx, fullPath, ext, r.Before.Probe, r.TagTitle, r.Original.Size)
+		if err != nil {
+			if restoreErr := s.restoreTitleHeader(root, stage, r); restoreErr != nil {
+				return problem("staging_conflict", "The in-place title edit failed and the saved header backup could not be restored: "+restoreErr.Error())
+			}
+			// Fall back to the verified remux stage for this file; the slow
+			// path below reopens the restored source and rewrites the stage.
+			if source, e = root.Open(filepath.FromSlash(r.Original.Source)); e != nil {
+				return e
+			}
+			defer source.Close()
+		} else {
+			edited, e := inspect(root, r.Original.Source)
+			if e != nil {
+				return e
+			}
+			digest, e := s.fileDigest(ctx, root, r.Original.Source)
+			if e != nil {
+				return e
+			}
+			r.InPlace = true
+			r.Incoming = edited
+			r.Incoming.SHA = digest
+			r.After = r.Before
+			r.After.Size = edited.Size
+			r.After.SHA = digest
+			r.After.Probe = probe
+			r.After.Mtime = edited.Mtime
+			r.After.Identity = edited.Identity
+			if _, e = s.db.ExecContext(ctx, `UPDATE organization_outputs SET phase='published' WHERE plan_id=? AND destination=? AND identity=?`, p.ID, r.TagStage, saved); e != nil {
+				return e
+			}
+			return nil
+		}
+	}
 	var probe string
 	if len(r.DropStreams) > 0 {
 		probe, e = s.rewriteTracks(ctx, source, stage, path.Ext(r.Original.Source), r.DropStreams)
 	} else {
-		probe, e = s.tag(ctx, source, stage, path.Ext(r.Original.Source), r.TagTitle)
+		probe, e = s.tag(ctx, source, stage, ext, r.TagTitle)
 	}
 	if e != nil {
 		return e
@@ -336,8 +488,13 @@ func (s *Service) executeEmbeddedTitle(ctx context.Context, p *Plan) error {
 			if e = s.validateReplacement(ctx, root, s.db, *p); e != nil {
 				return e
 			}
-			if e = checkSource(ctx, root, p.Replacement.Original, true); e != nil {
-				return e
+			// An in-place edit has already changed the file, so comparing it
+			// against the pre-edit checksum would always fail; the plan's
+			// verified Incoming facts are the post-edit record instead.
+			if !p.Replacement.InPlace {
+				if e = checkSource(ctx, root, p.Replacement.Original, true); e != nil {
+					return e
+				}
 			}
 			if e = checkSource(ctx, root, p.Replacement.Incoming, true); e != nil {
 				return e
@@ -359,13 +516,13 @@ func (s *Service) executeEmbeddedTitle(ctx context.Context, p *Plan) error {
 		return problem("revision_conflict", "The embedded title update has an unexpected saved phase.")
 	}
 	r := p.Replacement
-	// The rename normally consumes the stage. Remove a leftover only when its
-	// identity still matches the verified journal entry.
+	// The rename normally consumes the stage. An in-place edit keeps only a
+	// header backup there, so it is removed by its own recorded identity.
 	if r.TagStage != "" {
 		if f, err := root.Open(filepath.FromSlash(r.TagStage)); err == nil {
 			actual, _ := identity(f)
 			f.Close()
-			if actual != "" && actual == r.Incoming.Identity {
+			if actual != "" && (actual == r.Incoming.Identity || actual == r.BackupIdentity) {
 				_ = root.Remove(filepath.FromSlash(r.TagStage))
 			}
 		}
@@ -411,8 +568,18 @@ func (s *Service) embeddedTitleAlreadyPublished(ctx context.Context, root *os.Ro
 // publishEmbeddedTitle replaces the original path with the verified stage.
 // Rename is the only write: on Linux the original either remains or is fully
 // replaced, and a torrent seeding hardlink continues to reference old bytes.
+// An in-place edit has no stage to swap: the registered file already carries
+// the verified title, so publish only confirms its recorded facts.
 func (s *Service) publishEmbeddedTitle(ctx context.Context, root *os.Root, p *Plan) error {
 	r := p.Replacement
+	if r.InPlace {
+		published := r.Incoming
+		published.Source = r.Original.Source
+		if e := checkSource(ctx, root, published, true); e != nil {
+			return problem("destination_changed", "The edited title file changed during verification. Review the file before retrying.")
+		}
+		return nil
+	}
 	if e := checkSource(ctx, root, r.Incoming, true); e != nil {
 		return e
 	}

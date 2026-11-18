@@ -418,6 +418,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/organization/plans/{id}/apply", method(http.MethodPost, s.organizationApply))
 	mux.HandleFunc("/api/v1/organization/plans/{id}/cancel", method(http.MethodPost, s.organizationCancel))
 	mux.HandleFunc("/api/v1/organization/active", method(http.MethodGet, s.organizationActive))
+	mux.HandleFunc("/api/v1/organization/title-queue", s.titleQueue)
+	mux.HandleFunc("/api/v1/organization/title-queue/discard", method(http.MethodPost, s.titleQueueDiscard))
 	mux.HandleFunc("/api/v1/library/items/{id}/organization", s.organizationAssignment)
 	mux.HandleFunc("/api/v1/library/items/{id}/create-folder", method(http.MethodPost, s.createTitleFolder))
 	mux.HandleFunc("/api/v1/library/items/{id}/collection", method(http.MethodGet, s.movieCollection))

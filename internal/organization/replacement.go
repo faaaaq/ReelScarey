@@ -19,30 +19,35 @@ import (
 // Metadata-only title updates keep no second copy: the verified stage replaces
 // the original in place, and PreviousTitle records the prior container title.
 type Replacement struct {
-	AutomaticTitle       bool                `json:"automatic_title,omitempty"`
-	DropStreams          []int               `json:"drop_streams,omitempty"`
-	AcquisitionSubtitles []AcquiredSubtitle  `json:"acquisition_subtitles,omitempty"`
-	AcquisitionKind      string              `json:"acquisition_kind,omitempty"`
-	AcquisitionJob       string              `json:"acquisition_job,omitempty"`
-	FileID               int64               `json:"media_file_id"`
-	MediaID              int64               `json:"media_id"`
-	Title                string              `json:"title"`
-	ScanFileID           string              `json:"scan_file_id,omitempty"`
-	RestoresPlan         string              `json:"restores_plan,omitempty"`
-	Recovering           bool                `json:"recovering,omitempty"`
-	MetadataOnly         bool                `json:"metadata_only,omitempty"`
-	PreviousTitle        *string             `json:"previous_title,omitempty"`
-	TagTitle             string              `json:"tag_title,omitempty"`
-	TagStage             string              `json:"tag_stage,omitempty"`
-	TagParent            string              `json:"tag_parent,omitempty"`
-	BeforeYouTube        *YouTubeVersion     `json:"before_youtube,omitempty"`
-	AfterYouTube         *YouTubeVersion     `json:"after_youtube,omitempty"`
-	Before               ReplacementMetadata `json:"before"`
-	After                ReplacementMetadata `json:"after"`
-	Original             Companion           `json:"original"`
-	Incoming             Companion           `json:"incoming"`
-	Backup               string              `json:"backup"`
-	Episodes             []Episode           `json:"episodes"`
+	AutomaticTitle       bool               `json:"automatic_title,omitempty"`
+	DropStreams          []int              `json:"drop_streams,omitempty"`
+	AcquisitionSubtitles []AcquiredSubtitle `json:"acquisition_subtitles,omitempty"`
+	AcquisitionKind      string             `json:"acquisition_kind,omitempty"`
+	AcquisitionJob       string             `json:"acquisition_job,omitempty"`
+	FileID               int64              `json:"media_file_id"`
+	MediaID              int64              `json:"media_id"`
+	Title                string             `json:"title"`
+	ScanFileID           string             `json:"scan_file_id,omitempty"`
+	RestoresPlan         string             `json:"restores_plan,omitempty"`
+	Recovering           bool               `json:"recovering,omitempty"`
+	MetadataOnly         bool               `json:"metadata_only,omitempty"`
+	// InPlace marks a Matroska title update edited by mkvpropedit directly on
+	// the registered file: no stage copy is swapped in, and the journal stage
+	// holds only the bounded header backup until the plan commits.
+	InPlace        bool                `json:"in_place,omitempty"`
+	BackupIdentity string              `json:"backup_identity,omitempty"`
+	PreviousTitle  *string             `json:"previous_title,omitempty"`
+	TagTitle       string              `json:"tag_title,omitempty"`
+	TagStage       string              `json:"tag_stage,omitempty"`
+	TagParent      string              `json:"tag_parent,omitempty"`
+	BeforeYouTube  *YouTubeVersion     `json:"before_youtube,omitempty"`
+	AfterYouTube   *YouTubeVersion     `json:"after_youtube,omitempty"`
+	Before         ReplacementMetadata `json:"before"`
+	After          ReplacementMetadata `json:"after"`
+	Original       Companion           `json:"original"`
+	Incoming       Companion           `json:"incoming"`
+	Backup         string              `json:"backup"`
+	Episodes       []Episode           `json:"episodes"`
 }
 type ReplacementMetadata struct {
 	Path       string  `json:"path"`
@@ -254,8 +259,12 @@ func (s *Service) validateReplacement(ctx context.Context, root *os.Root, q quer
 			return problem("revision_conflict", "The discovered file was registered after review.")
 		}
 	}
-	if e = checkSource(ctx, root, r.Original, false); e != nil {
-		return e
+	// An in-place edit already rewrote the original, so its pre-edit facts can
+	// no longer match; the verified Incoming facts are the post-edit record.
+	if !r.InPlace {
+		if e = checkSource(ctx, root, r.Original, false); e != nil {
+			return e
+		}
 	}
 	return checkSource(ctx, root, r.Incoming, false)
 }

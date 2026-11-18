@@ -121,6 +121,13 @@ func (s *Service) executePermanentDeletion(ctx context.Context, p *Plan) error {
 		p.Phase = "committed"
 	}
 	for _, asset := range p.Removal.Assets {
+		// The owner can stop a running deletion; the remaining files are left
+		// in place and a fresh apply resumes the reviewed journal.
+		if stopped, e := s.ownerStopped(ctx, p.ID); e != nil {
+			return e
+		} else if stopped {
+			return errOwnerStopped
+		}
 		if err = removeDeletionAsset(ctx, root, asset, deletionObservation(p.Removal, asset.Source)); err != nil {
 			return err
 		}

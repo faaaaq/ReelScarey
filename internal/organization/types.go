@@ -153,6 +153,10 @@ type Service struct {
 	link     func(*os.Root, string, string) error
 	probe    func(context.Context, *os.File) (string, error)
 	tag      func(context.Context, *os.File, *os.File, string, string) (string, error)
+	// inPlaceTagger edits a Matroska file's embedded title directly on the
+	// registered file (mkvpropedit). Nil means the tool is unavailable and
+	// every title update uses the verified remux stage.
+	inPlaceTagger func(ctx context.Context, path, extension, beforeProbe, title string, beforeSize int64) (string, error)
 }
 
 func New(db *sql.DB, cfg config.Config) *Service { return &Service{db: db, cfg: cfg} }
@@ -162,4 +166,10 @@ func (s *Service) SetProbe(probe func(context.Context, *os.File) (string, error)
 
 func (s *Service) SetTagger(tag func(context.Context, *os.File, *os.File, string, string) (string, error)) {
 	s.tag = tag
+}
+
+// SetInPlaceTagger supplies the fast in-place title editor for Matroska
+// containers. When nil, title updates use the verified remux stage.
+func (s *Service) SetInPlaceTagger(fn func(ctx context.Context, path, extension, beforeProbe, title string, beforeSize int64) (string, error)) {
+	s.inPlaceTagger = fn
 }

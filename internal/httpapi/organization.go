@@ -233,11 +233,16 @@ func (s *Server) organizationActive(w http.ResponseWriter, r *http.Request) {
 		s.organizationError(w, err)
 		return
 	}
-	if !active {
-		send(w, 200, map[string]any{"active": false})
+	queue, err := s.organization.TitleQueue(r.Context())
+	if err != nil {
+		s.organizationError(w, err)
 		return
 	}
-	send(w, 200, map[string]any{"active": true, "plan": plan})
+	if !active {
+		send(w, 200, map[string]any{"active": false, "title_queue": queue})
+		return
+	}
+	send(w, 200, map[string]any{"active": true, "plan": plan, "title_queue": queue})
 }
 
 type organizationFile struct {

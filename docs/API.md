@@ -1116,6 +1116,16 @@ plan snapshot are the durable change record, and metadata-only plans refuse
 `rollback`. Unsupported or changed streams fail without replacing the original.
 YouTube-origin provenance is retained and updated to the replacement checksum.
 
+Matroska (`.mkv`/`.webm`) title updates take a fast in-place path when
+`mkvpropedit` is available (the Docker image ships `mkvtoolnix`). The segment
+title is rewritten in the header area without reading or rewriting media
+packets, so a file takes seconds instead of a full demux/remux. The review still
+records the previous title and the post-edit size/checksum, verifies that no
+stream appeared, changed or disappeared, and keeps a bounded header backup in
+the journal stage until the plan commits. If the tool is unavailable or refuses
+the edit, the saved header is restored and the verified remux stage is used
+instead, so one unsupported file never fails the run.
+
 POST `/api/v1/organization/plans/{id}/rollback` with `{}` accepts completed
 file/title/folder moves and media replacements. Metadata-only embedded-title
 plans keep no video copy and refuse rollback; review a new title update instead.
@@ -1768,7 +1778,9 @@ files remain outside the operation.
   immediately instead of holding the request until the browser times out, and
   the message names the running operation and its progress. Track cleanup can
   be stopped from the progress banner while it runs; the video in progress
-  finishes safely and the plan returns to review.
+  finishes safely and the plan returns to review. A running permanent deletion
+  can be stopped the same way: files already removed stay removed and the
+  remaining reviewed files are left in place for a fresh apply to finish.
   Cleanup reports reviewed videos, tracks removed, and files needing
   attention. The worker verifies retained embedded streams before publishing
   the rewritten file. External subtitle files are permanently deleted. The
@@ -1780,6 +1792,15 @@ files remain outside the operation.
   `replacement`, `folder_move` or `organization`. Track-cleanup plans carry
   `processed`, `total`, `changed`, `skipped`, `dropped` and bounded `issues`,
   so any page can show live progress without downloading plan snapshots.
+  Each response also carries `title_queue:{paused,pending,active_plan_id?}`, the
+  durable automatic embedded-title queue, and `stoppable` on the plan reports
+  whether the owner can stop it while it runs (queued plans and running track
+  cleanups or permanent deletions).
+- `GET/PUT /api/v1/organization/title-queue` reads or sets the automatic
+  embedded-title queue. PUT `{paused:true}` stops the worker claiming new files;
+  the file in progress finishes safely and pending work stays queued.
+  `POST /api/v1/organization/title-queue/discard` drops every pending title
+  update without changing any media; a rewrite already running finishes.
 - Audio cleanup keeps the original language, the configured languages, and
   audio whose language tag is unknown. It skips a video when the original
   language cannot be determined or the operation would leave no audio.

@@ -170,12 +170,15 @@ func TestRegisteredVideoQueuesCanonicalEmbeddedTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.s.SetProbe(func(context.Context, *os.File) (string, error) { return "{}", nil })
+	// Planning must never rewrite the media: the reviewed plan is queued with
+	// the canonical title, and the file is untouched until the worker runs it.
 	f.s.SetTagger(func(context.Context, *os.File, *os.File, string, string) (string, error) {
 		t.Fatal("planning rewrote the source")
 		return "", nil
 	})
-	if err := f.s.Tick(ctx); err != nil {
-		t.Fatal(err)
+	plan, err := f.s.previewEmbeddedTitle(ctx, 1, "", true)
+	if err != nil || plan.State != "queued" || plan.Replacement.TagTitle != "Provider Title" {
+		t.Fatalf("queued title %+v: %v", plan.Replacement, err)
 	}
 	var raw string
 	if err := f.db.QueryRow(`SELECT json_extract(snapshot,'$.replacement.tag_title') FROM organization_plans WHERE state='queued'`).Scan(&raw); err != nil || raw != "Provider Title" {

@@ -44,7 +44,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.54.27"
+var version = "0.54.28"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -234,6 +234,23 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		data, err := json.Marshal(result)
 		return string(data), err
 	})
+	// Matroska title edits run in place through mkvpropedit when it is
+	// installed: seconds per file instead of a full demux, remux and packet
+	// verification. Every other container keeps the verified remux stage.
+	if transfer.InPlaceTitleToolAvailable() {
+		organizationService.SetInPlaceTagger(func(ctx context.Context, path, extension, beforeProbe, title string, beforeSize int64) (string, error) {
+			result, err := transfer.EditTitleInPlaceVerified(ctx, path, beforeProbe, title, beforeSize)
+			if err != nil {
+				var problem *transfer.Error
+				if errors.As(err, &problem) {
+					return "", &organization.Error{Code: problem.Code, Message: problem.Message}
+				}
+				return "", err
+			}
+			data, err := json.Marshal(result)
+			return string(data), err
+		})
+	}
 	organizationService.SetOriginalLanguageLookup(func(ctx context.Context, kind string, id int64) (string, error) {
 		if kind == "series" {
 			item, err := metadataService.Series(ctx, id)

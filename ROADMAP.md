@@ -21,6 +21,13 @@ Historical native and package results below remain as records of past work.
   flagged (restorable), and delete selected duplicate files through the reviewed
   deletion flow. Whole-season deletion joins the per-title, per-file and
   bulk-delete controls.
+- [x] Fast embedded-title rewrites and owner control over every batch: Matroska
+  title updates rewrite the header in place with `mkvpropedit` (seconds per
+  file, no demux/remux) with a verified remux fallback, and the durable
+  automatic-title queue can be paused, resumed or stopped outright without
+  changing any media. Any running track cleanup or permanent deletion can be
+  stopped from the persistent progress banner, and the busy message names the
+  running operation, its progress and how to stop it.
 
 - [x] Permanent library-file and external subtitle deletion after review, with
   an explicit keep-files option. Large movie reviews use bounded file checks;

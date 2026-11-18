@@ -76,8 +76,8 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	if e != nil {
 		t.Fatal(e)
 	}
-	// The schema version tracks the latest migration (107).
-	if m.Schema != 107 || len(m.Files) != 2 {
+	// The schema version tracks the latest migration (108).
+	if m.Schema != 108 || len(m.Files) != 2 {
 		t.Fatal(m)
 	}
 	if _, e = Verify(ctx, backup); e != nil {
