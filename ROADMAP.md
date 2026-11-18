@@ -13,6 +13,15 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
+- [x] Durable media-work progress on every page: track cleanup and other
+  organization plans report live progress that survives navigation and reloads,
+  and initiating work answers immediately instead of blocking behind a running
+  media operation.
+- [x] Duplicate review actions: dismiss reviewed groups so they stop being
+  flagged (restorable), and delete selected duplicate files through the reviewed
+  deletion flow. Whole-season deletion joins the per-title, per-file and
+  bulk-delete controls.
+
 - [x] Permanent library-file and external subtitle deletion after review, with
   an explicit keep-files option. Large movie reviews use bounded file checks;
   interrupted deletion resumes from its durable cleanup journal.
