@@ -16,6 +16,11 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/database"
 )
 
+const (
+	streamTestFFmpegStartedEnv = "REELSCAREY_TEST_FFMPEG_BACKGROUND_STARTED"
+	streamTestFFmpegGateEnv    = "REELSCAREY_TEST_FFMPEG_BACKGROUND_GATE"
+)
+
 // The fake "ffmpeg" is the test binary itself: a transcode child process is
 // always started with transcodeArgs, whose first argument is -hide_banner, so
 // TestMain re-executed as a child detects its own transcode role from the
@@ -33,6 +38,23 @@ func TestMain(m *testing.M) {
 			if dest != "pipe:1" {
 				file, err := os.Create(dest)
 				if err == nil {
+					// Only file-output children are background cache fills. Mark
+					// each start and optionally hold the encode before reading
+					// stdin, while pipe-mode live children remain responsive.
+					if marker := os.Getenv(streamTestFFmpegStartedEnv); marker != "" {
+						if mark, markErr := os.OpenFile(marker, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); markErr == nil {
+							_, _ = mark.Write([]byte("x"))
+							_ = mark.Close()
+						}
+					}
+					if gate := os.Getenv(streamTestFFmpegGateEnv); gate != "" {
+						for {
+							if _, statErr := os.Stat(gate); statErr == nil {
+								break
+							}
+							time.Sleep(2 * time.Millisecond)
+						}
+					}
 					_, _ = io.Copy(file, os.Stdin)
 					_ = file.Close()
 				}
@@ -103,6 +125,7 @@ func transcodeFixture(t *testing.T) (*Service, *sql.DB, int64) {
 		t.Fatal(err)
 	}
 	service := NewService(db, mediaDir)
+	t.Cleanup(func() { _ = service.Close() })
 	return service, db, fileID
 }
 
@@ -144,7 +167,9 @@ func brokenFFmpeg(t *testing.T) {
 
 func openTranscode(t *testing.T, s *Service, fileID int64) (PlaybackStream, error) {
 	t.Helper()
-	return s.OpenPlayback(context.Background(), fileID, "raw", 0, 0)
+	// Offset pipes deliberately bypass the cache, keeping these tests focused
+	// on process-slot accounting rather than detached cache-fill timing.
+	return s.OpenPlayback(context.Background(), fileID, "raw", 0, 1)
 }
 
 // NEW-A1: concurrent transcode requests must be bounded; over-limit callers
@@ -242,14 +267,14 @@ func TestTranscodeSlotReleasedOnCancel(t *testing.T) {
 	s, _, fileID := transcodeFixture(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	stream, err := s.OpenPlayback(ctx, fileID, "raw", 0, 0)
+	stream, err := s.OpenPlayback(ctx, fileID, "raw", 0, 1)
 	if err != nil {
 		t.Fatalf("first transcode: %v", err)
 	}
 	cancel()
 	stream.Close()
 
-	next, err := s.OpenPlayback(context.Background(), fileID, "raw", 0, 0)
+	next, err := s.OpenPlayback(context.Background(), fileID, "raw", 0, 1)
 	if err != nil {
 		t.Fatalf("slot not released after cancellation: %v", err)
 	}
@@ -347,13 +372,13 @@ func TestTranscodeAcquireRespectsCancelledContext(t *testing.T) {
 	var succeeded atomic.Int32
 	for i := 0; i < maxTranscodes; i++ {
 		go func() {
-			if stream, err := s.OpenPlayback(context.Background(), fileID, "raw", 0, 0); err == nil {
+			if stream, err := s.OpenPlayback(context.Background(), fileID, "raw", 0, 1); err == nil {
 				succeeded.Add(1)
 				stream.Close()
 			}
 		}()
 	}
-	_, err := s.OpenPlayback(ctx, fileID, "raw", 0, 0)
+	_, err := s.OpenPlayback(ctx, fileID, "raw", 0, 1)
 	if err == nil {
 		t.Fatal("cancelled request must fail")
 	}

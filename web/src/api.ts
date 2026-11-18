@@ -83,6 +83,7 @@ export type MusicArtist = {
   id?: number;
   musicbrainz_id: string;
   name: string;
+  name_overridden?: boolean;
   sort_name: string;
   disambiguation: string;
   country: string;
@@ -101,6 +102,8 @@ export type MusicAlbum = {
   artist_name?: string;
   musicbrainz_id: string;
   title: string;
+  title_overridden?: boolean;
+  year_overridden?: boolean;
   primary_type: string;
   secondary_types: string[];
   year: number | null;
@@ -201,7 +204,40 @@ export type MusicTopTrackPage = {
   message: string;
 };
 
+export type MusicAudioCandidateEvidence = {
+  candidate: {
+    id: string;
+    title: string;
+    channel: string;
+    duration_seconds: number;
+  };
+  score: number;
+  reasons: string[];
+  eligible: boolean;
+  duration_difference_seconds?: number;
+};
+
+export type MusicAudioSourceAttempt = {
+  id: number;
+  attempted_at: number;
+  source_id: string;
+  source_url: string;
+  outcome: string;
+  evidence?: MusicAudioCandidateEvidence[];
+};
+
 export type MusicAcquisitionTrackInput = {
+  target_album_id?: number;
+  target_track_id?: number;
+  recording_id?: string;
+  musicbrainz_track_id?: string;
+  release_group_id?: string;
+  release_id?: string;
+  version_qualifiers?: string;
+  candidate_evidence?: MusicAudioCandidateEvidence[];
+  selected_source_id?: string;
+  selected_source_url?: string;
+  attempts?: MusicAudioSourceAttempt[];
   title: string;
   artist: string;
   album: string;
@@ -801,6 +837,12 @@ export type StreamCacheStats = {
   limit_bytes: number;
   hits: number;
   misses: number;
+  direct_streams: number;
+  live_streams: number;
+  offset_streams: number;
+  active_transcodes: number;
+  active_cache_fills: number;
+  cache_fill_failures: number;
 };
 
 export type AnimePreferences = {
@@ -900,6 +942,20 @@ export type ProviderStatus = {
   updated_at: string;
   using_default?: boolean;
   default_available?: boolean;
+};
+
+export type TidalStatus = {
+  available: boolean;
+  logged_in: boolean;
+  quality?: string;
+  detail?: string;
+};
+
+export type TidalLoginState = {
+  phase: "idle" | "waiting" | "done" | (string & {});
+  result?: string;
+  error?: string;
+  lines?: string[];
 };
 export type IntegrationStatus = {
   configured: boolean;
@@ -1447,6 +1503,25 @@ export async function refreshMusicAlbum(id: number) {
   return api<MusicAlbumRefreshResult>(`/library/music/albums/${id}/refresh`, {
     method: "POST",
     body: JSON.stringify({}),
+    signal: AbortSignal.timeout(60000),
+  });
+}
+
+export async function restoreMusicArtistField(id: number, field: "name") {
+  return api<MusicArtistRefreshResult>(`/library/music/artists/${id}/restore`, {
+    method: "POST",
+    body: JSON.stringify({ field }),
+    signal: AbortSignal.timeout(60000),
+  });
+}
+
+export async function restoreMusicAlbumField(
+  id: number,
+  field: "title" | "year",
+) {
+  return api<MusicAlbumRefreshResult>(`/library/music/albums/${id}/restore`, {
+    method: "POST",
+    body: JSON.stringify({ field }),
     signal: AbortSignal.timeout(60000),
   });
 }

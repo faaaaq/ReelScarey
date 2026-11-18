@@ -21,7 +21,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 )
 
-const usage = "usage: reelscarey [version|healthcheck|setup-token|reset-password|doctor|backup NEW_FOLDER|backup-check BACKUP_FOLDER|restore BACKUP_FOLDER NEW_CONFIG_FOLDER|media-root-plan NEW_FOLDER|media-root-copy DIGEST|media-root-activate DIGEST|media-root-cancel DIGEST]"
+const usage = "usage: reelscarey [version|healthcheck|tidal-login|setup-token|reset-password|doctor|backup NEW_FOLDER|backup-check BACKUP_FOLDER|restore BACKUP_FOLDER NEW_CONFIG_FOLDER|media-root-plan NEW_FOLDER|media-root-copy DIGEST|media-root-activate DIGEST|media-root-cancel DIGEST]"
 
 func command(ctx context.Context, cfg config.Config, args []string) error {
 	if len(args) == 2 && strings.HasPrefix(args[0], "media-root-") {
@@ -51,6 +51,10 @@ func command(ctx context.Context, cfg config.Config, args []string) error {
 	switch {
 	case len(args) == 1 && args[0] == "healthcheck":
 		return healthcheck(cfg.ListenAddr)
+	case len(args) == 1 && args[0] == "tidal-login":
+		// TIDAL device login is interactive and is a local-owner action; it
+		// does not touch the database or the instance lock.
+		return tidalLogin(ctx, cfg)
 	case len(args) == 2 && args[0] == "backup":
 		m, e := maintenance.Backup(ctx, cfg, args[1], version)
 		if e != nil {

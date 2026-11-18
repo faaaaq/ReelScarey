@@ -41,6 +41,68 @@ export type PlayerTrack = {
   formatLabel?: string;
 };
 
+const PLAYER_STORAGE_KEY = "reelscarey:music-player:v1";
+
+type RestoredPlayer = {
+  queue: PlayerTrack[];
+  index: number;
+  position: number;
+  duration: number;
+  volume: number;
+  muted: boolean;
+};
+
+/** Restore only bounded, non-secret browser state; media paths never appear. */
+function restorePlayer(): RestoredPlayer {
+  const empty: RestoredPlayer = {
+    queue: [],
+    index: -1,
+    position: 0,
+    duration: 0,
+    volume: 0.8,
+    muted: false,
+  };
+  try {
+    const raw = window.localStorage.getItem(PLAYER_STORAGE_KEY);
+    if (!raw) return empty;
+    const value = JSON.parse(raw) as Partial<RestoredPlayer>;
+    if (!Array.isArray(value.queue)) return empty;
+    const queue = value.queue
+      .filter((track): track is PlayerTrack =>
+        Boolean(
+          track &&
+          typeof track === "object" &&
+          Number.isInteger(track.fileID) &&
+          track.fileID > 0 &&
+          typeof track.title === "string" &&
+          typeof track.artist === "string" &&
+          typeof track.album === "string",
+        ),
+      )
+      .slice(0, 500);
+    const index =
+      Number.isInteger(value.index) &&
+      (value.index as number) >= 0 &&
+      (value.index as number) < queue.length
+        ? (value.index as number)
+        : -1;
+    const finite = (candidate: unknown, fallback: number) =>
+      typeof candidate === "number" && Number.isFinite(candidate)
+        ? candidate
+        : fallback;
+    return {
+      queue,
+      index,
+      position: Math.max(0, Math.min(finite(value.position, 0), 86400)),
+      duration: Math.max(0, Math.min(finite(value.duration, 0), 86400)),
+      volume: Math.max(0, Math.min(finite(value.volume, 0.8), 1)),
+      muted: value.muted === true,
+    };
+  } catch {
+    return empty;
+  }
+}
+
 type PlayerValue = {
   current: PlayerTrack | null;
   queue: PlayerTrack[];
@@ -86,6 +148,17 @@ export function browserStreamSuffix(audio: HTMLAudioElement | null) {
   return "";
 }
 
+function seekableContains(audio: HTMLAudioElement, seconds: number) {
+  for (let index = 0; index < audio.seekable.length; index += 1) {
+    if (
+      seconds >= audio.seekable.start(index) &&
+      seconds <= audio.seekable.end(index)
+    )
+      return true;
+  }
+  return false;
+}
+
 function clock(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
   const whole = Math.floor(seconds);
@@ -99,20 +172,57 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   // already resolved; that stale rejection must not flip `playing` back to
   // false while the new track is actually playing.
   const playEpoch = useRef(0);
-  const [current, setCurrent] = useState<PlayerTrack | null>(null);
-  const [queue, setQueue] = useState<PlayerTrack[]>([]);
-  const [index, setIndex] = useState(-1);
+  // Offset responses contain only the remainder of a track. Keep their media
+  // timeline separate from the full-track position shown by the player.
+  const streamOffset = useRef(0);
+  const [restored] = useState(restorePlayer);
+  const [current, setCurrent] = useState<PlayerTrack | null>(() =>
+    restored.index >= 0 ? restored.queue[restored.index] : null,
+  );
+  const [queue, setQueue] = useState<PlayerTrack[]>(restored.queue);
+  const [index, setIndex] = useState(restored.index);
   const [playing, setPlaying] = useState(false);
-  const [position, setPosition] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(0.8);
-  const [muted, setMuted] = useState(false);
+  const [position, setPosition] = useState(restored.position);
+  const [duration, setDuration] = useState(restored.duration);
+  const [volume, setVolume] = useState(restored.volume);
+  const [muted, setMuted] = useState(restored.muted);
   const [error, setError] = useState("");
 
   useEffect(() => {
     document.body.classList.toggle("has-music-player", Boolean(current));
     return () => document.body.classList.remove("has-music-player");
   }, [current]);
+
+  // Reload restoration is deliberately browser-local, not cross-device server
+  // synchronization. Named Subsonic accounts use their durable server queues.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        if (!current) {
+          window.localStorage.removeItem(PLAYER_STORAGE_KEY);
+          return;
+        }
+        window.localStorage.setItem(
+          PLAYER_STORAGE_KEY,
+          JSON.stringify({ queue, index, position, duration, volume, muted }),
+        );
+      } catch {
+        // Storage may be unavailable in private/embedded browsing; playback
+        // remains functional and simply does not promise restoration.
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [current, queue, index, position, duration, volume, muted]);
+
+  useEffect(() => {
+    const clear = () => stop();
+    window.addEventListener("reelscarey:unauthorized", clear);
+    window.addEventListener("reelscarey:logout", clear);
+    return () => {
+      window.removeEventListener("reelscarey:unauthorized", clear);
+      window.removeEventListener("reelscarey:logout", clear);
+    };
+  }, []);
 
   /**
    * Requests playback and tracks the request generation. Setting `src` and
@@ -138,14 +248,28 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       });
   }
 
-  function start(track: PlayerTrack) {
+  function start(track: PlayerTrack, offset = 0) {
     const audio = audioRef.current;
     if (!audio) return;
+    const resumeAt = Math.max(0, offset);
     setCurrent(track);
-    setPosition(0);
-    setDuration(track.durationMS ? track.durationMS / 1000 : 0);
+    streamOffset.current = resumeAt;
+    setPosition(resumeAt);
+    setDuration((current) =>
+      resumeAt > 0 && current > resumeAt
+        ? current
+        : track.durationMS
+          ? track.durationMS / 1000
+          : 0,
+    );
     setError("");
-    audio.src = musicStreamURL(track.fileID) + browserStreamSuffix(audio);
+    const source = new URL(
+      musicStreamURL(track.fileID) + browserStreamSuffix(audio),
+      window.location.origin,
+    );
+    if (resumeAt > 0)
+      source.searchParams.set("timeOffset", String(Math.floor(resumeAt)));
+    audio.src = `${source.pathname}${source.search}`;
     audio.load();
     requestPlay(audio);
   }
@@ -167,6 +291,14 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     setQueue(nextQueue);
     setIndex(nextIndex);
     if (current?.fileID === track.fileID && audioRef.current) {
+      if (!audioRef.current.getAttribute("src")) {
+        start(track);
+        return;
+      }
+      if (streamOffset.current > 0) {
+        start(track);
+        return;
+      }
       setPosition(0);
       audioRef.current.currentTime = 0;
       setError("");
@@ -181,6 +313,10 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     if (!audio || !current) return;
     if (audio.paused) {
       setError("");
+      if (!audio.getAttribute("src")) {
+        start(current, position);
+        return;
+      }
       requestPlay(audio);
     } else {
       audio.pause();
@@ -202,9 +338,13 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   function previous() {
     const audio = audioRef.current;
     if (!audio) return;
-    if (audio.currentTime > 3) {
-      audio.currentTime = 0;
-      setPosition(0);
+    if (streamOffset.current + audio.currentTime > 3) {
+      if (current && streamOffset.current > 0) start(current);
+      else {
+        streamOffset.current = 0;
+        audio.currentTime = 0;
+        setPosition(0);
+      }
       return;
     }
     if (index > 0) {
@@ -213,17 +353,27 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       start(queue[previousIndex]);
       return;
     }
-    audio.currentTime = 0;
-    setPosition(0);
+    if (current && streamOffset.current > 0) start(current);
+    else {
+      streamOffset.current = 0;
+      audio.currentTime = 0;
+      setPosition(0);
+    }
   }
 
   function stop() {
     const audio = audioRef.current;
-    if (audio) {
+    if (audio?.getAttribute("src")) {
       audio.pause();
       audio.removeAttribute("src");
       audio.load();
     }
+    try {
+      window.localStorage.removeItem(PLAYER_STORAGE_KEY);
+    } catch {
+      // Playback teardown must not fail when browser storage is unavailable.
+    }
+    streamOffset.current = 0;
     setCurrent(null);
     setQueue([]);
     setIndex(-1);
@@ -235,10 +385,34 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
 
   function seek(seconds: number) {
     const audio = audioRef.current;
-    if (!audio) return;
-    const value = Math.max(0, Math.min(seconds, audio.duration || seconds));
-    audio.currentTime = value;
+    if (!audio || !current) return;
+    const total =
+      duration || (current.durationMS ? current.durationMS / 1000 : 0);
+    const value = Math.max(0, Math.min(seconds, total || seconds));
+    const relative = value - streamOffset.current;
+    if (relative >= 0 && seekableContains(audio, relative)) {
+      // File-backed direct/cache responses expose normal browser ranges. The
+      // element time is relative to any offset response already loaded.
+      audio.currentTime = relative;
+      setPosition(value);
+      return;
+    }
+
+    // A live FFmpeg pipe cannot satisfy an unbuffered byte-range seek. Reload
+    // from a media-time offset instead of pretending currentTime succeeded.
+    // Preserve capability/format parameters already chosen for this element.
+    const source = new URL(
+      audio.src || musicStreamURL(current.fileID),
+      window.location.origin,
+    );
+    source.searchParams.set("timeOffset", String(Math.floor(value)));
+    const resume = !audio.paused;
+    streamOffset.current = value;
+    audio.src = `${source.pathname}${source.search}`;
+    audio.load();
     setPosition(value);
+    setError("");
+    if (resume) requestPlay(audio);
   }
 
   function changeVolume(value: number) {
@@ -260,10 +434,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const updatePosition = () => setPosition(audio.currentTime || 0);
+    const updatePosition = () =>
+      setPosition(streamOffset.current + (audio.currentTime || 0));
     const updateDuration = () => {
       if (Number.isFinite(audio.duration) && audio.duration > 0) {
-        setDuration(audio.duration);
+        setDuration(streamOffset.current + audio.duration);
       }
     };
     const onPlay = () => setPlaying(true);

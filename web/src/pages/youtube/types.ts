@@ -76,6 +76,7 @@ export type CustomFile = {
 };
 export type ImportReview = {
   job_id: string;
+  source_file?: string;
   size_bytes: number;
   sha256: string;
   probe_json: string;

@@ -36,7 +36,26 @@ export type DetailFile = {
     width: number;
     height: number;
     duration_seconds: number;
-    audio_streams?: { codec: string; language: string; title: string }[] | null;
+    audio_streams?:
+      | {
+          index?: number;
+          codec: string;
+          language: string;
+          title: string;
+          default?: boolean;
+          forced?: boolean;
+        }[]
+      | null;
+    subtitle_streams?:
+      | {
+          index?: number;
+          language: string;
+          title: string;
+          default?: boolean;
+          forced?: boolean;
+          hearing_impaired?: boolean;
+        }[]
+      | null;
     embedded_title?: string | null;
   };
 };

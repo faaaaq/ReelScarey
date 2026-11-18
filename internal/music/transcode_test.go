@@ -59,6 +59,15 @@ func TestPlanTranscode(t *testing.T) {
 		{name: "unknown container converts", suffix: "", requested: "mp3", wantCodec: "mp3", wantRate: 192},
 		{name: "unsupported request keeps the native file", suffix: "flac", requested: "wavpack"},
 		{name: "opus native untouched", suffix: "opus", requested: "raw"},
+		{name: "raw ignores a cap", suffix: "mp3", requested: "raw", maxBitRate: 64},
+		{name: "raw lossless ignores a cap", suffix: "flac", requested: "raw", maxBitRate: 64},
+		{name: "same mp3 capped", suffix: "mp3", requested: "mp3", maxBitRate: 64, wantCodec: "mp3", wantRate: 64},
+		{name: "mp3 cap without format", suffix: "mp3", maxBitRate: 64, wantCodec: "mp3", wantRate: 64},
+		{name: "same aac capped", suffix: "m4a", requested: "aac", maxBitRate: 96, wantCodec: "aac", wantRate: 96},
+		{name: "same opus capped", suffix: "opus", requested: "opus", maxBitRate: 64, wantCodec: "opus", wantRate: 64},
+		{name: "lossless cap stays native", suffix: "flac", maxBitRate: 64},
+		{name: "small cap is not raised", suffix: "mp3", maxBitRate: 16, wantCodec: "mp3", wantRate: 16},
+		{name: "small ogg cap is not raised", suffix: "ogg", requested: "ogg", maxBitRate: 16, wantCodec: "ogg", wantRate: 16},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -68,6 +77,30 @@ func TestPlanTranscode(t *testing.T) {
 			}
 			if codec != "" && rate != tc.wantRate {
 				t.Fatalf("planTranscode(%q, %q, %d) bit rate = %d, want %d", tc.suffix, tc.requested, tc.maxBitRate, rate, tc.wantRate)
+			}
+		})
+	}
+}
+
+func TestPlanTranscodeUsesSourceBitrateEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name                   string
+		suffix, requested      string
+		maxBitRate, sourceRate int
+		wantCodec              string
+		wantRate               int
+	}{
+		{name: "native source already within cap", suffix: "mp3", maxBitRate: 128, sourceRate: 96},
+		{name: "same-family request already within cap", suffix: "m4a", requested: "aac", maxBitRate: 128, sourceRate: 128},
+		{name: "source above cap converts", suffix: "mp3", maxBitRate: 64, sourceRate: 128, wantCodec: "mp3", wantRate: 64},
+		{name: "unknown source is conservative", suffix: "mp3", maxBitRate: 64, wantCodec: "mp3", wantRate: 64},
+		{name: "raw wins over source evidence", suffix: "mp3", requested: "raw", maxBitRate: 64, sourceRate: 320},
+		{name: "cross-family cap still converts", suffix: "mp3", requested: "opus", maxBitRate: 128, sourceRate: 96, wantCodec: "opus", wantRate: 128},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			codec, rate := planTranscodeWithSource(tc.suffix, tc.requested, tc.maxBitRate, tc.sourceRate)
+			if codec != tc.wantCodec || rate != tc.wantRate {
+				t.Fatalf("plan = (%q, %d), want (%q, %d)", codec, rate, tc.wantCodec, tc.wantRate)
 			}
 		})
 	}
@@ -125,5 +158,12 @@ func TestTranscodeArgs(t *testing.T) {
 	flacArgs := strings.Join(transcodeArgs("flac", 320, 0), " ")
 	if !strings.Contains(flacArgs, "-c:a flac") || strings.Contains(flacArgs, "-ss") {
 		t.Fatalf("flac transcode args wrong: %s", flacArgs)
+	}
+	oggArgs := strings.Join(transcodeArgs("ogg", 16, 0), " ")
+	if !strings.Contains(oggArgs, "-c:a libvorbis") || !strings.Contains(oggArgs, "-b:a 16k") {
+		t.Fatalf("ogg transcode must honor its bitrate cap: %s", oggArgs)
+	}
+	if strings.Contains(oggArgs, "-q:a") {
+		t.Fatalf("quality-only Vorbis args bypass the requested cap: %s", oggArgs)
 	}
 }

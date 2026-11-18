@@ -659,14 +659,25 @@ func TestCacheEvictionWhileServingActiveRequest(t *testing.T) {
 	}
 }
 
-// End to end through OpenPlayback with the hermetic fake ffmpeg: ten
-// concurrent listeners of one uncached track must all be served from the
-// single published cache entry.
+// End to end through OpenPlayback with the hermetic fake ffmpeg: the cold
+// request is a live pipe, then ten later listeners share the published file.
 func TestOpenPlaybackConcurrentSameTrackPublishesOnce(t *testing.T) {
 	t.Setenv(streamTestFFmpegFileOutEnv, "1")
 	helperFFmpeg(t)
 	s, _, fileID := transcodeFixture(t)
 	ctx := context.Background()
+
+	cold, err := s.OpenPlayback(ctx, fileID, "opus", 96, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cold.Body == nil {
+		t.Fatal("the cold request must not wait for a complete cache file")
+	}
+	cold.Close()
+	waitForStreamCondition(t, "the detached cache fill", func() bool {
+		return cacheRowCount(t, s.store.db) == 1
+	})
 
 	const callers = 10
 	streams := make([]PlaybackStream, callers)
@@ -682,7 +693,6 @@ func TestOpenPlaybackConcurrentSameTrackPublishesOnce(t *testing.T) {
 	wg.Wait()
 
 	want := []byte("audio-bytes-for-conversion")
-	served := 0
 	for i, err := range errs {
 		if err != nil {
 			t.Fatalf("listener %d: %v", i+1, err)
@@ -698,10 +708,6 @@ func TestOpenPlaybackConcurrentSameTrackPublishesOnce(t *testing.T) {
 			t.Fatalf("listener %d bytes = %q", i+1, data)
 		}
 		streams[i].Close()
-		served++
-	}
-	if served != callers {
-		t.Fatalf("served %d of %d listeners", served, callers)
 	}
 	if rows := cacheRowCount(t, s.store.db); rows != 1 {
 		t.Fatalf("cache rows = %d, want exactly one published entry", rows)

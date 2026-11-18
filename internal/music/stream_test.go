@@ -48,7 +48,7 @@ func TestOpenAudioFileUsesRegisteredFileBelowMediaRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := db.Exec(`INSERT INTO music_files(artist_id,album_id,track_id,root,relative_path,size_bytes,sha256,format,bitrate,sample_rate,channels,duration_ms,tag_json,imported_at,origin,source_name)
-		VALUES(?,?,?,'Music',?,11,'sha','mp3',192,44100,2,1000,'{}',1,'existing','01 Song.mp3')`,
+		VALUES(?,?,?,'Music',?,11,'sha','mp3',192000,44100,2,1000,'{}',1,'existing','01 Song.mp3')`,
 		saved.ID, albums[0].ID, tracks[0].ID, relative)
 	if err != nil {
 		t.Fatal(err)
@@ -66,6 +66,9 @@ func TestOpenAudioFileUsesRegisteredFileBelowMediaRoot(t *testing.T) {
 	defer stream.File.Close()
 	if stream.ContentType != "audio/mpeg" || stream.Name != "01 Song.mp3" || stream.Size != 11 {
 		t.Fatal("stream metadata", stream)
+	}
+	if stream.Bitrate != 192 {
+		t.Fatalf("FFprobe bits/sec were not normalized to kbps: %d", stream.Bitrate)
 	}
 	body, err := io.ReadAll(stream.File)
 	if err != nil || string(body) != "audio-bytes" {

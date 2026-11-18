@@ -303,6 +303,12 @@ func (s *Service) prepareEmbeddedTitle(ctx context.Context, root *os.Root, p *Pl
 	r := p.Replacement
 	disableExt := matroskaTitleExtension(strings.ToLower(path.Ext(r.Original.Source)))
 	switch {
+	case len(r.TrackEdits) > 0 && (len(r.DropStreams) > 0 || len(r.DisableStreams) > 0):
+		return problem("invalid_selection", "Review track field edits separately from removing or disabling tracks.")
+	case len(r.TrackEdits) > 0 && s.matroskaTrackEditor == nil:
+		return problem("ffprobe_missing", "Editing Matroska track fields in place is unavailable on this server.")
+	case len(r.TrackEdits) > 0 && !disableExt:
+		return problem("unsupported_media", "In-place track field editing is supported only for Matroska (.mkv/.webm) files.")
 	case len(r.DropStreams) > 0 && s.rewriteTracks == nil:
 		return problem("ffprobe_missing", "The embedded metadata verifier is unavailable.")
 	case len(r.DropStreams) == 0 && len(r.DisableStreams) > 0 && s.matroskaDisabler == nil:
@@ -365,16 +371,26 @@ func (s *Service) prepareEmbeddedTitle(ctx context.Context, root *os.Root, p *Pl
 	if e != nil || sourceID != r.Original.Identity {
 		return problem("source_changed", "The original changed before metadata verification.")
 	}
+	links, e := mediaLinkCount(source)
+	if e != nil {
+		return e
+	}
+	if links > 1 && (len(r.TrackEdits) > 0 || len(r.DisableStreams) > 0) {
+		return problem("linked_source", fmt.Sprintf("This file gained another hardlink after review. Make an independent copy first; %d bytes of free space are required. No file was changed.", r.Original.Size))
+	}
 	// Matroska title edits go through mkvpropedit directly on the registered
 	// file: seconds per file instead of a full demux, remux and re-verify of
 	// every packet. The journal stage holds a bounded backup of the header so
 	// an interrupted edit can be repaired.
 	ext := strings.ToLower(path.Ext(r.Original.Source))
+	if len(r.TrackEdits) > 0 {
+		return s.editEmbeddedTrackMetadata(ctx, root, stage, source, p, saved)
+	}
 	// Disabling Matroska tracks in place: header-only flag edits, no remux.
 	if len(r.DropStreams) == 0 && len(r.DisableStreams) > 0 {
 		return s.disableEmbeddedTracks(ctx, root, stage, source, p, saved)
 	}
-	if len(r.DropStreams) == 0 && matroskaTitleExtension(ext) && s.inPlaceTagger != nil {
+	if len(r.DropStreams) == 0 && matroskaTitleExtension(ext) && s.inPlaceTagger != nil && links == 1 {
 		if e = s.backupTitleHeader(ctx, stage, source, r); e != nil {
 			return e
 		}
@@ -461,6 +477,43 @@ func (s *Service) prepareEmbeddedTitle(ctx context.Context, root *os.Root, p *Pl
 		return e
 	}
 	return nil
+}
+
+// editEmbeddedTrackMetadata applies reviewed audio/subtitle fields in place.
+// The caller holds the media gate and the shared stage owns header recovery.
+func (s *Service) editEmbeddedTrackMetadata(ctx context.Context, root *os.Root, stage, source *os.File, p *Plan, saved string) error {
+	r := p.Replacement
+	if e := s.backupTitleHeader(ctx, stage, source, r); e != nil {
+		return e
+	}
+	fullPath := filepath.Join(root.Name(), filepath.FromSlash(r.Original.Source))
+	source.Close()
+	probe, err := s.matroskaTrackEditor(ctx, fullPath, r.Before.Probe, r.TrackEdits, r.Original.Size)
+	if err != nil {
+		if restoreErr := s.restoreTitleHeader(root, stage, r); restoreErr != nil {
+			return problem("staging_conflict", "The in-place track edit failed and the saved header backup could not be restored: "+restoreErr.Error())
+		}
+		return err
+	}
+	edited, e := inspect(root, r.Original.Source)
+	if e != nil {
+		return e
+	}
+	digest, e := s.fileDigest(ctx, root, r.Original.Source)
+	if e != nil {
+		return e
+	}
+	r.InPlace = true
+	r.Incoming = edited
+	r.Incoming.SHA = digest
+	r.After = r.Before
+	r.After.Size = edited.Size
+	r.After.SHA = digest
+	r.After.Probe = probe
+	r.After.Mtime = edited.Mtime
+	r.After.Identity = edited.Identity
+	_, e = s.db.ExecContext(ctx, `UPDATE organization_outputs SET phase='published' WHERE plan_id=? AND destination=? AND identity=?`, p.ID, r.TagStage, saved)
+	return e
 }
 
 // disableEmbeddedTracks clears the Matroska enabled flag of the reviewed tracks

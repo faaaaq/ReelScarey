@@ -77,6 +77,18 @@ func TestSubsonicStreamRangeOnStreamableFile(t *testing.T) {
 	if !strings.Contains(out.Header().Get("Content-Range"), "bytes 2-5/10") {
 		t.Fatalf("Content-Range = %q", out.Header().Get("Content-Range"))
 	}
+	for name, expected := range map[string]string{
+		"X-ReelScarey-Requested-Format": "opus",
+		"X-ReelScarey-Delivered-Format": "mp3",
+		"X-ReelScarey-Playback-Path":    "direct",
+	} {
+		if out.Header().Get(name) != expected {
+			t.Fatalf("%s = %q, want %q", name, out.Header().Get(name), expected)
+		}
+	}
+	if out.Header().Get("X-ReelScarey-Playback-Reason") == "" || !strings.Contains(out.Header().Get("Server-Timing"), "stream-open;dur=") {
+		t.Fatal("stream diagnostics missing", out.Header())
+	}
 }
 
 // An on-the-fly conversion has no known length: the response must honestly
@@ -114,6 +126,9 @@ func TestWebPlayerStreamRangeOnStreamableFile(t *testing.T) {
 	}
 	if out.Header().Get("Accept-Ranges") != "bytes" {
 		t.Fatalf("Accept-Ranges = %q, want bytes", out.Header().Get("Accept-Ranges"))
+	}
+	if out.Header().Get("X-ReelScarey-Playback-Path") != "direct" || !strings.Contains(out.Header().Get("Server-Timing"), "stream-open;dur=") {
+		t.Fatal("browser stream diagnostics missing", out.Header())
 	}
 }
 

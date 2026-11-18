@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/music"
 	"github.com/faaaaq/ReelScarey/internal/organization"
@@ -486,6 +487,35 @@ func (s *Server) musicAcquisitionRetry(w http.ResponseWriter, r *http.Request) {
 	send(w, 200, job)
 }
 
+func (s *Server) musicAcquisitionTrackRetry(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	trackID, err := strconv.ParseInt(r.PathValue("track"), 10, 64)
+	if err != nil || trackID < 1 {
+		fail(w, 400, "invalid_music", "Choose a failed acquisition track.")
+		return
+	}
+	var body struct {
+		SourceURL string `json:"source_url"`
+		Reviewed  bool   `json:"reviewed"`
+	}
+	if !decodeBoundedJSON(w, r, &body, 8<<10) {
+		return
+	}
+	job, err := s.music.RetryAcquisitionTrack(r.Context(), id, trackID, body.SourceURL, body.Reviewed)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, job)
+}
+
 func (s *Server) musicLinkPreview(w http.ResponseWriter, r *http.Request) {
 	if s.music == nil {
 		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
@@ -711,14 +741,17 @@ func (s *Server) musicFileStream(w http.ResponseWriter, r *http.Request) {
 	// cannot decode the default container may request a compatible format
 	// explicitly (capability negotiation); the params are validated and
 	// clamped before they reach the planner.
+	started := time.Now()
 	playback, err := s.webPlayerStream(r.Context(), id,
 		music.NormalizeStreamFormat(r.URL.Query().Get("format")),
-		clampStreamBitRate(r.URL.Query().Get("maxBitRate")))
+		clampStreamBitRate(r.URL.Query().Get("maxBitRate")),
+		subsonicQueryInt(r, "timeOffset"))
 	if err != nil {
 		s.musicError(w, err)
 		return
 	}
 	defer playback.Close()
+	playbackDiagnosticHeaders(w, playback, started)
 	w.Header().Set("Content-Type", playback.ContentType)
 	w.Header().Set("Content-Disposition", "inline")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
@@ -727,6 +760,7 @@ func (s *Server) musicFileStream(w http.ResponseWriter, r *http.Request) {
 		// On-the-fly conversion output has no known length and is not
 		// range-seekable.
 		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Accept-Ranges", "none")
 		w.WriteHeader(http.StatusOK)
 		_, _ = io.Copy(w, playback.Body)
 		return
@@ -1007,6 +1041,52 @@ func (s *Server) musicAlbumRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := s.music.RefreshAlbumMetadata(r.Context(), id)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, result)
+}
+
+func (s *Server) musicAlbumRestore(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Field string `json:"field"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	result, err := s.music.RestoreAlbumMetadataField(r.Context(), id, body.Field)
+	if err != nil {
+		s.musicError(w, err)
+		return
+	}
+	send(w, 200, result)
+}
+
+func (s *Server) musicArtistRestore(w http.ResponseWriter, r *http.Request) {
+	if s.music == nil {
+		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Field string `json:"field"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	result, err := s.music.RestoreArtistMetadataField(r.Context(), id, body.Field)
 	if err != nil {
 		s.musicError(w, err)
 		return
@@ -2211,6 +2291,9 @@ func (s *Server) musicCache(w http.ResponseWriter, r *http.Request) {
 		send(w, 200, map[string]any{
 			"entries": stats.Entries, "size_bytes": stats.SizeBytes,
 			"limit_bytes": stats.LimitBytes, "hits": stats.Hits, "misses": stats.Misses,
+			"direct_streams": stats.DirectStreams, "live_streams": stats.LiveStreams,
+			"offset_streams": stats.OffsetStreams, "active_transcodes": stats.ActiveTranscodes,
+			"active_cache_fills": stats.ActiveCacheFills, "cache_fill_failures": stats.CacheFillFailures,
 		})
 	case http.MethodDelete:
 		if err := s.music.ClearStreamCache(r.Context()); err != nil {

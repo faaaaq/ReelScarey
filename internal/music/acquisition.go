@@ -3,6 +3,7 @@ package music
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -37,10 +38,24 @@ type AudioEntry struct {
 }
 
 type AudioCandidate struct {
-	ID              string
-	Title           string
-	Channel         string
-	DurationSeconds int64
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	Channel         string `json:"channel"`
+	DurationSeconds int64  `json:"duration_seconds"`
+}
+
+type AudioCandidateEvidence struct {
+	Candidate          AudioCandidate `json:"candidate"`
+	Score              int            `json:"score"`
+	Reasons            []string       `json:"reasons"`
+	Eligible           bool           `json:"eligible"`
+	DurationDifference *int64         `json:"duration_difference_seconds,omitempty"`
+}
+
+type AudioCandidateDecision struct {
+	Candidates []AudioCandidateEvidence `json:"candidates"`
+	Chosen     *AudioCandidate          `json:"chosen,omitempty"`
+	Reason     string                   `json:"reason"`
 }
 
 type AudioFile struct {
@@ -49,38 +64,65 @@ type AudioFile struct {
 }
 
 type AcquisitionTrackInput struct {
-	Title       string `json:"title"`
-	Artist      string `json:"artist"`
-	Album       string `json:"album"`
-	AlbumArtist string `json:"album_artist"`
-	Year        *int   `json:"year"`
-	TrackNumber int    `json:"track_number"`
-	DiscNumber  int    `json:"disc_number"`
-	DurationMS  int    `json:"duration_ms"`
-	CoverURL    string `json:"cover_url"`
-	SourceURL   string `json:"source_url"`
-	SearchQuery string `json:"search_query"`
+	TargetAlbumID  int64  `json:"target_album_id,omitempty"`
+	TargetTrackID  int64  `json:"target_track_id,omitempty"`
+	RecordingID    string `json:"recording_id,omitempty"`
+	TrackMBID      string `json:"musicbrainz_track_id,omitempty"`
+	ReleaseGroupID string `json:"release_group_id,omitempty"`
+	ReleaseID      string `json:"release_id,omitempty"`
+	Version        string `json:"version_qualifiers,omitempty"`
+	Title          string `json:"title"`
+	Artist         string `json:"artist"`
+	Album          string `json:"album"`
+	AlbumArtist    string `json:"album_artist"`
+	Year           *int   `json:"year"`
+	TrackNumber    int    `json:"track_number"`
+	DiscNumber     int    `json:"disc_number"`
+	DurationMS     int    `json:"duration_ms"`
+	CoverURL       string `json:"cover_url"`
+	SourceURL      string `json:"source_url"`
+	SearchQuery    string `json:"search_query"`
+}
+
+type AudioSourceAttempt struct {
+	ID          int64                    `json:"id"`
+	AttemptedAt int64                    `json:"attempted_at"`
+	SourceID    string                   `json:"source_id"`
+	SourceURL   string                   `json:"source_url"`
+	Outcome     string                   `json:"outcome"`
+	Evidence    []AudioCandidateEvidence `json:"evidence,omitempty"`
 }
 
 type AcquisitionTrack struct {
-	ID          int64  `json:"id"`
-	JobID       int64  `json:"job_id"`
-	Position    int    `json:"position"`
-	Title       string `json:"title"`
-	Artist      string `json:"artist"`
-	Album       string `json:"album"`
-	AlbumArtist string `json:"album_artist"`
-	Year        *int   `json:"year"`
-	TrackNumber int    `json:"track_number"`
-	DiscNumber  int    `json:"disc_number"`
-	DurationMS  int    `json:"duration_ms"`
-	CoverURL    string `json:"cover_url"`
-	SourceURL   string `json:"source_url"`
-	SearchQuery string `json:"search_query"`
-	State       string `json:"state"`
-	Error       string `json:"error"`
-	MusicFileID *int64 `json:"music_file_id"`
-	ImportJobID *int64 `json:"import_job_id"`
+	Attempts          []AudioSourceAttempt     `json:"attempts,omitempty"`
+	TargetAlbumID     int64                    `json:"target_album_id,omitempty"`
+	TargetTrackID     int64                    `json:"target_track_id,omitempty"`
+	RecordingID       string                   `json:"recording_id,omitempty"`
+	TrackMBID         string                   `json:"musicbrainz_track_id,omitempty"`
+	ReleaseGroupID    string                   `json:"release_group_id,omitempty"`
+	ReleaseID         string                   `json:"release_id,omitempty"`
+	Version           string                   `json:"version_qualifiers,omitempty"`
+	CandidateEvidence []AudioCandidateEvidence `json:"candidate_evidence,omitempty"`
+	SelectedSourceID  string                   `json:"selected_source_id,omitempty"`
+	SelectedSourceURL string                   `json:"selected_source_url,omitempty"`
+	ID                int64                    `json:"id"`
+	JobID             int64                    `json:"job_id"`
+	Position          int                      `json:"position"`
+	Title             string                   `json:"title"`
+	Artist            string                   `json:"artist"`
+	Album             string                   `json:"album"`
+	AlbumArtist       string                   `json:"album_artist"`
+	Year              *int                     `json:"year"`
+	TrackNumber       int                      `json:"track_number"`
+	DiscNumber        int                      `json:"disc_number"`
+	DurationMS        int                      `json:"duration_ms"`
+	CoverURL          string                   `json:"cover_url"`
+	SourceURL         string                   `json:"source_url"`
+	SearchQuery       string                   `json:"search_query"`
+	State             string                   `json:"state"`
+	Error             string                   `json:"error"`
+	MusicFileID       *int64                   `json:"music_file_id"`
+	ImportJobID       *int64                   `json:"import_job_id"`
 }
 
 type AcquisitionJob struct {
@@ -138,6 +180,8 @@ func (s *Service) StartAlbumAcquisition(ctx context.Context, albumID int64, root
 			continue
 		}
 		inputs = append(inputs, AcquisitionTrackInput{
+			TargetAlbumID: album.ID, TargetTrackID: track.ID, RecordingID: track.RecordingID,
+			TrackMBID: track.MusicBrainzID, ReleaseGroupID: album.MusicBrainzID,
 			Title: track.Title, Artist: album.ArtistName, Album: album.Title, AlbumArtist: album.ArtistName,
 			Year: album.Year, TrackNumber: track.Number, DiscNumber: track.Disc,
 			DurationMS: track.DurationMS, CoverURL: album.CoverURL,
@@ -149,7 +193,11 @@ func (s *Service) StartAlbumAcquisition(ctx context.Context, albumID int64, root
 	}
 	// The album identity makes a double-clicked or retried submit return the
 	// existing queued/running job instead of re-downloading every track.
-	return s.startAcquisition(ctx, "album:"+strconv.FormatInt(albumID, 10), "", "album", album.Title, root, format, inputs)
+	catalogSource := ""
+	if ValidMBID(album.MusicBrainzID) {
+		catalogSource = "https://musicbrainz.org/release-group/" + album.MusicBrainzID
+	}
+	return s.startAcquisition(ctx, "album:"+strconv.FormatInt(albumID, 10), catalogSource, "album", album.Title, root, format, inputs)
 }
 
 // StartProviderAlbumAcquisition resolves a public Deezer album link and queues
@@ -253,23 +301,11 @@ func (s *Service) resolveAcquisitionProfile(ctx context.Context, format string) 
 	return profile, profile.Name, nil
 }
 
-// acquisitionDownloadFormat maps a resolved profile onto the yt-dlp audio
-// format the downloader should produce. yt-dlp only re-encodes to a codec
-// family at its best quality; the precise bitrate and container conversion
-// happens in the import step against the saved profile.
-func acquisitionDownloadFormat(profile QualityProfile) string {
-	switch profile.Codec {
-	case "flac":
-		return "flac"
-	case "mp3":
-		return "mp3"
-	case "aac":
-		return "m4a"
-	case "opus":
-		return "opus"
-	}
-	return "source"
-}
+// acquisitionDownloadFormat always preserves the actual audio source. A
+// yt-dlp pre-transcode would destroy the lossless evidence and could turn a
+// lossy source into a FLAC that incorrectly passes a RequireLossless profile.
+// The existing import profile performs any requested conversion afterward.
+func acquisitionDownloadFormat(QualityProfile) string { return "source" }
 
 // MusicQualityProfile reports the album's effective download profile for the
 // transfer search path: the per-album override wins over the global download
@@ -406,9 +442,13 @@ func (s *Service) startAcquisition(ctx context.Context, dedupKey, sourceURL, sou
 		if track.DurationMS < 0 {
 			track.DurationMS = 0
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO music_acquisition_tracks(job_id,position,title,artist,album,album_artist,year,track_number,disc_number,duration_ms,cover_url,source_url,search_query,state,created_at,updated_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?)`,
-			jobID, i+1, track.Title, track.Artist, track.Album, track.AlbumArtist, track.Year, track.TrackNumber, track.DiscNumber, track.DurationMS, strings.TrimSpace(track.CoverURL), track.SourceURL, track.SearchQuery, now, now); err != nil {
+		version := strings.TrimSpace(track.Version)
+		if version == "" {
+			version = strings.Join(audioVersionQualifiers(track.Title), ",")
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO music_acquisition_tracks(job_id,position,title,artist,album,album_artist,year,track_number,disc_number,duration_ms,cover_url,source_url,search_query,state,created_at,updated_at,target_album_id,target_track_id,recording_id,musicbrainz_track_id,release_group_id,release_id,version_qualifiers)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?)`,
+			jobID, i+1, track.Title, track.Artist, track.Album, track.AlbumArtist, track.Year, track.TrackNumber, track.DiscNumber, track.DurationMS, strings.TrimSpace(track.CoverURL), track.SourceURL, track.SearchQuery, now, now, nullableAcquisitionID(track.TargetAlbumID), nullableAcquisitionID(track.TargetTrackID), strings.TrimSpace(track.RecordingID), strings.TrimSpace(track.TrackMBID), strings.TrimSpace(track.ReleaseGroupID), strings.TrimSpace(track.ReleaseID), version); err != nil {
 			return AcquisitionJob{}, err
 		}
 	}
@@ -420,6 +460,13 @@ func (s *Service) startAcquisition(ctx context.Context, dedupKey, sourceURL, sou
 
 // nullableText stores an optional dedup identity as NULL so pre-migration
 // rows and identity-less jobs never collide in the partial unique index.
+func nullableAcquisitionID(value int64) any {
+	if value <= 0 {
+		return nil
+	}
+	return value
+}
+
 func nullableText(value string) any {
 	if value == "" {
 		return nil
@@ -434,7 +481,7 @@ func (s *Service) Acquisition(ctx context.Context, id int64) (AcquisitionJob, er
 	if err != nil {
 		return AcquisitionJob{}, err
 	}
-	rows, err := s.store.db.QueryContext(ctx, `SELECT id,job_id,position,title,artist,album,album_artist,year,track_number,disc_number,duration_ms,cover_url,source_url,search_query,state,error,music_file_id,import_job_id FROM music_acquisition_tracks WHERE job_id=? ORDER BY position,id`, id)
+	rows, err := s.store.db.QueryContext(ctx, `SELECT id,job_id,position,title,artist,album,album_artist,year,track_number,disc_number,duration_ms,cover_url,source_url,search_query,state,error,music_file_id,import_job_id,target_album_id,target_track_id,recording_id,musicbrainz_track_id,release_group_id,release_id,version_qualifiers,candidate_evidence_json,selected_source_id,selected_source_url FROM music_acquisition_tracks WHERE job_id=? ORDER BY position,id`, id)
 	if err != nil {
 		return AcquisitionJob{}, err
 	}
@@ -443,9 +490,21 @@ func (s *Service) Acquisition(ctx context.Context, id int64) (AcquisitionJob, er
 	for rows.Next() {
 		var track AcquisitionTrack
 		var year sql.NullInt64
-		var musicFileID, importJobID sql.NullInt64
-		if err := rows.Scan(&track.ID, &track.JobID, &track.Position, &track.Title, &track.Artist, &track.Album, &track.AlbumArtist, &year, &track.TrackNumber, &track.DiscNumber, &track.DurationMS, &track.CoverURL, &track.SourceURL, &track.SearchQuery, &track.State, &track.Error, &musicFileID, &importJobID); err != nil {
+		var musicFileID, importJobID, targetAlbumID, targetTrackID sql.NullInt64
+		var evidence string
+		if err := rows.Scan(&track.ID, &track.JobID, &track.Position, &track.Title, &track.Artist, &track.Album, &track.AlbumArtist, &year, &track.TrackNumber, &track.DiscNumber, &track.DurationMS, &track.CoverURL, &track.SourceURL, &track.SearchQuery, &track.State, &track.Error, &musicFileID, &importJobID, &targetAlbumID, &targetTrackID, &track.RecordingID, &track.TrackMBID, &track.ReleaseGroupID, &track.ReleaseID, &track.Version, &evidence, &track.SelectedSourceID, &track.SelectedSourceURL); err != nil {
 			return AcquisitionJob{}, err
+		}
+		if targetAlbumID.Valid {
+			track.TargetAlbumID = targetAlbumID.Int64
+		}
+		if targetTrackID.Valid {
+			track.TargetTrackID = targetTrackID.Int64
+		}
+		if evidence != "" && evidence != "[]" {
+			if err := json.Unmarshal([]byte(evidence), &track.CandidateEvidence); err != nil {
+				return AcquisitionJob{}, err
+			}
 		}
 		if year.Valid {
 			value := int(year.Int64)
@@ -459,9 +518,37 @@ func (s *Service) Acquisition(ctx context.Context, id int64) (AcquisitionJob, er
 			value := importJobID.Int64
 			track.ImportJobID = &value
 		}
+		attempts, err := s.acquisitionAttempts(ctx, track.ID)
+		if err != nil {
+			return AcquisitionJob{}, err
+		}
+		track.Attempts = attempts
 		job.Tracks = append(job.Tracks, track)
 	}
 	return job, rows.Err()
+}
+
+func (s *Service) acquisitionAttempts(ctx context.Context, trackID int64) ([]AudioSourceAttempt, error) {
+	rows, err := s.store.db.QueryContext(ctx, `SELECT id,attempted_at,source_id,source_url,outcome,evidence_json FROM music_acquisition_attempts WHERE track_id=? ORDER BY id`, trackID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []AudioSourceAttempt{}
+	for rows.Next() {
+		var attempt AudioSourceAttempt
+		var evidence string
+		if err := rows.Scan(&attempt.ID, &attempt.AttemptedAt, &attempt.SourceID, &attempt.SourceURL, &attempt.Outcome, &evidence); err != nil {
+			return nil, err
+		}
+		if evidence != "" && evidence != "[]" {
+			if err := json.Unmarshal([]byte(evidence), &attempt.Evidence); err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, attempt)
+	}
+	return out, rows.Err()
 }
 
 func (s *Service) ListAcquisitions(ctx context.Context, page int) (AcquisitionJobList, error) {
@@ -572,6 +659,48 @@ func (s *Service) RetryAcquisitionTracks(ctx context.Context, id int64) (Acquisi
 	return s.Acquisition(ctx, id)
 }
 
+// RetryAcquisitionTrack requeues one failed track. A reviewed replacement
+// source becomes a new attempt; prior candidates, sources and failures remain
+// in the attempt journal, and every other track is left untouched.
+func (s *Service) RetryAcquisitionTrack(ctx context.Context, jobID, trackID int64, replacementSource string, reviewed bool) (AcquisitionJob, error) {
+	if jobID < 1 || trackID < 1 || !reviewed {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	replacementSource = strings.TrimSpace(replacementSource)
+	if len(replacementSource) > 2048 || strings.ContainsAny(replacementSource, "\x00\r\n") {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	tx, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return AcquisitionJob{}, err
+	}
+	defer tx.Rollback()
+	var jobState, trackState string
+	if err = tx.QueryRowContext(ctx, `SELECT j.state,t.state FROM music_acquisition_jobs j JOIN music_acquisition_tracks t ON t.job_id=j.id WHERE j.id=? AND t.id=?`, jobID, trackID).Scan(&jobState, &trackState); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return AcquisitionJob{}, ErrNotFound
+		}
+		return AcquisitionJob{}, err
+	}
+	if jobState == "queued" || jobState == "running" || trackState != "failed" {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE music_acquisition_tracks SET state='queued',error='',import_job_id=NULL,source_url=CASE WHEN ?<>'' THEN ? ELSE source_url END,updated_at=unixepoch() WHERE id=? AND job_id=? AND state='failed'`, replacementSource, replacementSource, trackID, jobID)
+	if err != nil {
+		return AcquisitionJob{}, err
+	}
+	if affected, err := result.RowsAffected(); err != nil || affected != 1 {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	if err = tx.Commit(); err != nil {
+		return AcquisitionJob{}, err
+	}
+	if err = s.refreshAcquisitionJob(ctx, jobID); err != nil {
+		return AcquisitionJob{}, err
+	}
+	return s.Acquisition(ctx, jobID)
+}
+
 // RunAcquisitions processes durable acquisition work. Downloads are never
 // started from an HTTP request and never depend on the request that queued
 // them remaining open.
@@ -654,6 +783,11 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 	if s.audio == nil {
 		return &Error{Code: "music_acquisition_unavailable", Message: "Audio downloading is unavailable because yt-dlp is not configured."}
 	}
+	if reused, err := s.reuseAcquiredRecording(ctx, track); err != nil {
+		return err
+	} else if reused {
+		return nil
+	}
 	stagingRoot := filepath.Join(s.downloadsDir, "music-acquisitions", fmt.Sprintf("%d", job.ID), fmt.Sprintf("%d", track.ID))
 	if !contained(s.downloadsDir, stagingRoot) {
 		return ErrInvalidInput
@@ -664,6 +798,7 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 	if err := os.MkdirAll(stagingRoot, 0o700); err != nil {
 		return err
 	}
+	evidence := []byte("[]")
 	videoID := strings.TrimSpace(track.SourceURL)
 	if videoID == "" {
 		query := strings.TrimSpace(track.SearchQuery)
@@ -677,16 +812,35 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 		if err != nil {
 			return &Error{Code: "music_acquisition_search", Message: "YouTube search failed for this track."}
 		}
-		chosen := chooseAudioCandidate(candidates, track.DurationMS, track.Title)
-		if chosen == nil {
-			return &Error{Code: "music_acquisition_match", Message: "No close enough YouTube audio match was found for this track."}
+		decision := evaluateAudioCandidates(candidates, AcquisitionTrackInput{
+			Title: track.Title, Artist: track.Artist, Version: track.Version, DurationMS: track.DurationMS,
+		})
+		var marshalErr error
+		evidence, marshalErr = json.Marshal(decision.Candidates)
+		if marshalErr != nil || len(evidence) > 256<<10 {
+			return &Error{Code: "music_acquisition_match", Message: "The audio candidate evidence could not be saved safely."}
 		}
-		videoID = chosen.ID
+		if _, err = s.store.db.ExecContext(ctx, `UPDATE music_acquisition_tracks SET candidate_evidence_json=?,updated_at=unixepoch() WHERE id=?`, evidence, track.ID); err != nil {
+			return err
+		}
+		if decision.Chosen == nil {
+			return &Error{Code: "music_acquisition_review", Message: decision.Reason}
+		}
+		videoID = decision.Chosen.ID
 	}
-	// The job's format column stores the resolved quality profile key (or a
-	// legacy yt-dlp value on pre-profile rows). yt-dlp itself only receives a
-	// codec family at its best quality; the saved profile's exact bitrate and
-	// container are applied by the import conversion step.
+	selectedURL := videoID
+	if !strings.Contains(videoID, "://") {
+		selectedURL = "https://www.youtube.com/watch?v=" + videoID
+	}
+	if _, err := s.store.db.ExecContext(ctx, `UPDATE music_acquisition_tracks SET selected_source_id=?,selected_source_url=?,updated_at=unixepoch() WHERE id=?`, videoID, selectedURL, track.ID); err != nil {
+		return err
+	}
+	if _, err := s.store.db.ExecContext(ctx, `INSERT INTO music_acquisition_attempts(track_id,attempted_at,source_id,source_url,outcome,evidence_json) VALUES(?,unixepoch(),?,?, 'selected',?)`, track.ID, videoID, selectedURL, evidence); err != nil {
+		return err
+	}
+	// The job's format column stores the resolved quality profile key. yt-dlp
+	// always downloads the original source so lossless approval sees honest
+	// evidence; the saved profile is applied only by the import step.
 	downloadFormat := "source"
 	if profile, _, err := s.resolveAcquisitionProfile(ctx, job.Format); err == nil {
 		downloadFormat = acquisitionDownloadFormat(profile)
@@ -706,6 +860,11 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 	albumID, acquiredTrackID, err := s.ensureAcquiredTrack(ctx, track)
 	if err != nil {
 		return err
+	}
+	if reused, reuseErr := s.reuseAcquiredRecording(ctx, track); reuseErr != nil {
+		return reuseErr
+	} else if reused {
+		return nil
 	}
 	importID, err := s.startAcquiredImport(ctx, albumID, acquiredTrackID, relative, job.Root)
 	if err != nil {
@@ -791,40 +950,72 @@ func stripTitleDecorations(title string) string {
 	return out.String()
 }
 
-// chooseAudioCandidate picks the closest-duration YouTube result that also
-// names the requested track. Timing alone is not evidence of identity: without
-// a title match the caller gets no candidate and reports an honest "no match"
-// instead of importing a different song.
-func chooseAudioCandidate(candidates []AudioCandidate, durationMS int, title string) *AudioCandidate {
-	if len(candidates) == 0 {
-		return nil
+// reuseAcquiredRecording fulfills work from a primary file that was already
+// registered when the worker executes. It never searches or downloads merely
+// because the job was queued before that file appeared.
+func (s *Service) reuseAcquiredRecording(ctx context.Context, track AcquisitionTrack) (bool, error) {
+	fileIDs := []int64{}
+	if track.TargetTrackID > 0 {
+		rows, err := s.store.db.QueryContext(ctx, `SELECT id FROM music_files WHERE track_id=? AND variant_role='primary' ORDER BY id LIMIT 2`, track.TargetTrackID)
+		if err != nil {
+			return false, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			if err = rows.Scan(&id); err != nil {
+				return false, err
+			}
+			fileIDs = append(fileIDs, id)
+		}
+		if err = rows.Err(); err != nil {
+			return false, err
+		}
+	} else if track.RecordingID != "" {
+		rows, err := s.store.db.QueryContext(ctx, `SELECT f.id FROM music_files f JOIN music_tracks t ON t.id=f.track_id JOIN music_albums a ON a.id=t.album_id WHERE t.recording_id=? AND f.variant_role='primary' AND (?='' OR a.musicbrainz_id=?) ORDER BY f.id LIMIT 2`, strings.ToLower(track.RecordingID), track.ReleaseGroupID, strings.ToLower(track.ReleaseGroupID))
+		if err != nil {
+			return false, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			if err = rows.Scan(&id); err != nil {
+				return false, err
+			}
+			fileIDs = append(fileIDs, id)
+		}
+		if err = rows.Err(); err != nil {
+			return false, err
+		}
+	} else {
+		return false, nil
 	}
-	expected := int64(durationMS / 1000)
-	var best *AudioCandidate
-	bestDiff := int64(11)
-	for i := range candidates {
-		candidate := &candidates[i]
-		if !audioCandidateMatchesTitle(candidate.Title, title) {
-			continue
-		}
-		if expected <= 0 {
-			return candidate
-		}
-		if candidate.DurationSeconds <= 0 {
-			continue
-		}
-		diff := candidate.DurationSeconds - expected
-		if diff < 0 {
-			diff = -diff
-		}
-		if diff < bestDiff {
-			best, bestDiff = candidate, diff
-		}
+	if len(fileIDs) == 0 {
+		return false, nil
 	}
-	return best
+	if len(fileIDs) != 1 {
+		return false, &Error{Code: "music_acquisition_review", Message: "More than one local recording matches this request. Review the editions before downloading a replacement."}
+	}
+	if _, err := s.store.db.ExecContext(ctx, `UPDATE music_acquisition_tracks SET state='completed',music_file_id=?,error='',updated_at=unixepoch() WHERE id=? AND state IN ('queued','downloading')`, fileIDs[0], track.ID); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Service) ensureAcquiredTrack(ctx context.Context, track AcquisitionTrack) (int64, int64, error) {
+	if track.TargetAlbumID > 0 || track.TargetTrackID > 0 {
+		if track.TargetAlbumID < 1 || track.TargetTrackID < 1 {
+			return 0, 0, ErrInvalidInput
+		}
+		var albumID int64
+		if err := s.store.db.QueryRowContext(ctx, `SELECT album_id FROM music_tracks WHERE id=?`, track.TargetTrackID).Scan(&albumID); err != nil {
+			return 0, 0, err
+		}
+		if albumID != track.TargetAlbumID {
+			return 0, 0, &Error{Code: "music_acquisition_identity", Message: "The requested catalog track no longer belongs to the requested album edition. Review the acquisition instead of merging it by title."}
+		}
+		return albumID, track.TargetTrackID, nil
+	}
 	catalog := newLocalCatalog(s)
 	number := track.TrackNumber
 	if number < 1 {
@@ -909,8 +1100,14 @@ func (s *Service) startAcquiredImport(ctx context.Context, albumID, trackID int6
 }
 
 func (s *Service) setAcquisitionTrackState(ctx context.Context, id int64, state, message string) error {
-	_, err := s.store.db.ExecContext(ctx, `UPDATE music_acquisition_tracks SET state=?,error=?,updated_at=unixepoch() WHERE id=?`, state, message, id)
-	return err
+	if _, err := s.store.db.ExecContext(ctx, `UPDATE music_acquisition_tracks SET state=?,error=?,updated_at=unixepoch() WHERE id=?`, state, message, id); err != nil {
+		return err
+	}
+	if state == "failed" {
+		_, err := s.store.db.ExecContext(ctx, `UPDATE music_acquisition_attempts SET outcome=? WHERE id=(SELECT id FROM music_acquisition_attempts WHERE track_id=? ORDER BY id DESC LIMIT 1)`, message, id)
+		return err
+	}
+	return nil
 }
 
 func (s *Service) reconcileAcquisitions(ctx context.Context) {

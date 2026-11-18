@@ -38,6 +38,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/requests"
 	"github.com/faaaaq/ReelScarey/internal/securestore"
 	"github.com/faaaaq/ReelScarey/internal/subtitle"
+	"github.com/faaaaq/ReelScarey/internal/tidal"
 	"github.com/faaaaq/ReelScarey/internal/transfer"
 	"github.com/faaaaq/ReelScarey/internal/vpn"
 	"github.com/faaaaq/ReelScarey/internal/youtube"
@@ -143,6 +144,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	metadataService.SetDefaultToken(cfg.TMDbToken)
 	metadataService.SetCooldownDB(db)
 	musicService := music.NewService(db, cfg.MediaDir)
+	// Detached stream-cache fills own independent source handles and FFmpeg
+	// processes. Stop and reap them before the database is closed; live streams
+	// remain request-owned and are drained by http.Server.Shutdown first.
+	defer func() {
+		if err := musicService.Close(); err != nil {
+			logger.Warn("music service shutdown failed", "error", err)
+		}
+	}()
 	musicService.SetDownloadsDir(cfg.DownloadsDir)
 	musicService.EnableiTunes()
 	musicService.SetArtworkDir(filepath.Join(cfg.ConfigDir, "artwork"))
@@ -265,6 +274,16 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			return probe, toOrganizationError(err)
 		})
 	}
+	if transfer.MatroskaDisableToolsAvailable() {
+		organizationService.SetMatroskaTrackEditor(func(ctx context.Context, path, beforeProbe string, edits []organization.TrackMetadataEdit, beforeSize int64) (string, error) {
+			converted := make([]transfer.MatroskaTrackEdit, 0, len(edits))
+			for _, edit := range edits {
+				converted = append(converted, transfer.MatroskaTrackEdit{Index: edit.Index, Title: edit.Title, Language: edit.Language, Default: edit.Default, Forced: edit.Forced})
+			}
+			probe, err := transfer.EditMatroskaTracksInPlaceVerified(ctx, path, beforeProbe, converted, beforeSize)
+			return probe, toOrganizationError(err)
+		})
+	}
 	organizationService.SetOriginalLanguageLookup(func(ctx context.Context, kind string, id int64) (string, error) {
 		if kind == "series" {
 			item, err := metadataService.Series(ctx, id)
@@ -309,6 +328,43 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if youtubeInspector != nil {
 		musicService.SetAudioSource(youtubeAudioSource{inspector: youtubeInspector})
 	}
+	// The TIDAL provider is opt-in: when it is configured it becomes the
+	// primary music acquisition source and YouTube stays as the fallback.
+	// A provider that exists but has no TIDAL session is an honest startup
+	// warning, not a silent fallback, so the owner knows why TIDAL is not
+	// being used.
+	var tidalProvider httpapi.TIDALProvider
+	tidalProviderPath := os.Getenv("REELSCAREY_TIDAL_PROVIDER")
+	if tidalProviderPath != "" {
+		tidalPython := os.Getenv("REELSCAREY_TIDAL_PYTHON")
+		if tidalPython == "" {
+			tidalPython = "python3"
+		}
+		tidalConfigDir := os.Getenv("REELSCAREY_TIDAL_CONFIG_DIR")
+		if tidalConfigDir == "" {
+			tidalConfigDir = filepath.Join(cfg.ConfigDir, "tidal")
+		}
+		tidalService, tidalServiceErr := tidal.New(tidalPython, tidalProviderPath, tidalConfigDir, os.Getenv("REELSCAREY_TIDAL_QUALITY"))
+		if tidalServiceErr != nil {
+			logger.Warn("TIDAL provider failed to configure; music acquisition uses the fallback source", "error", tidalServiceErr)
+		} else {
+			tidalProvider = tidalService
+			source := music.AudioSource(tidalAudioSource{service: tidalService})
+			if youtubeInspector != nil {
+				source = music.PriorityAudioSource{
+					Primary:  tidalAudioSource{service: tidalService},
+					Fallback: youtubeAudioSource{inspector: youtubeInspector},
+				}
+			}
+			musicService.SetAudioSource(source)
+			if status := tidalService.Status(ctx); !status.Available || !status.LoggedIn {
+				logger.Warn("TIDAL provider is configured but has no usable TIDAL session; music acquisition uses the fallback source until tidal-login completes",
+					"detail", status.Detail)
+			} else {
+				logger.Info("TIDAL provider is configured and logged in; music acquisition prefers TIDAL", "quality", status.Quality)
+			}
+		}
+	}
 	youtubeStaging := os.Getenv("REELSCAREY_YOUTUBE_STAGING_DIR")
 	if youtubeStaging == "" {
 		youtubeStaging = filepath.Join(filepath.Dir(cfg.ConfigDir), "youtube-staging", "work")
@@ -335,7 +391,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if err != nil {
 		return false, err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Music: musicService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, YouTubeSubtitles: httpYouTubeSubtitles, Secrets: secretStore, Notify: notifyService, TOTP: totpStore, Emby: embyService, EmbyMonitor: embyMonitor, Jellyfin: jellyfinService, Plex: plexService, VPN: vpnService, Announce: announceService, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Music: musicService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, YouTubeSubtitles: httpYouTubeSubtitles, TIDAL: tidalProvider, Secrets: secretStore, Notify: notifyService, TOTP: totpStore, Emby: embyService, EmbyMonitor: embyMonitor, Jellyfin: jellyfinService, Plex: plexService, VPN: vpnService, Announce: announceService, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return false, fmt.Errorf("listen: %w", err)

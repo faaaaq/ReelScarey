@@ -24,6 +24,7 @@ import (
 
 type ImportReview struct {
 	JobID       string           `json:"job_id"`
+	SourceFile  string           `json:"source_file"`
 	Size        int64            `json:"size_bytes"`
 	SHA256      string           `json:"sha256"`
 	Probe       string           `json:"probe_json"`
@@ -68,6 +69,7 @@ func (s *Store) reviewImportTx(ctx context.Context, tx *sql.Tx, cfg config.Confi
 		return r, ErrChanged
 	}
 	r.JobID = jobID
+	r.SourceFile = source
 	r.TargetLabel = label
 	ext := strings.ToLower(path.Ext(source))
 	switch ext {

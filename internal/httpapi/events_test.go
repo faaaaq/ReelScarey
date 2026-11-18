@@ -10,6 +10,42 @@ import (
 	"testing"
 )
 
+func TestMediaActivityIncludesOnlyRelatedEventsAndCandidateDecisions(t *testing.T) {
+	db, err := database.Open(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`INSERT INTO media_items(id,kind,tmdb_id,title,status) VALUES(1,'movie',1,'Owned fixture','missing'),(2,'movie',2,'Other title','missing');
+		INSERT INTO release_candidates(id,movie_id,title,size_bytes,published_at,payload,expires_at) VALUES('cand1',1,'Owned release',100,'2026-01-01T00:00:00Z',X'00',0),('cand2',2,'Other release',100,'2026-01-01T00:00:00Z',X'00',0);
+		INSERT INTO downloads(id,movie_id,release_id,title,info_hash,payload,client_url,save_path,state,created_at,updated_at,kind) VALUES('job1',1,'cand1','Owned release','hash',X'01','https://unused.invalid','/unused','failed',1,1,'movie'),('job2',2,'cand2','Other release','hash2',X'02','https://unused.invalid','/unused','failed',1,1,'movie');
+		INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(1,'download','job1','Owned release','verification failed'),(2,'download','job2','Other release','verification failed'),(3,'title','1','Owned fixture','metadata refreshed')`); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{db: db, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	out := httptest.NewRecorder()
+	s.activityEvents(out, httptest.NewRequest("GET", "/api/v1/events?media_id=1", nil))
+	var page struct {
+		Items      []activityEvent `json:"items"`
+		Candidates []struct {
+			ID         string `json:"id"`
+			State      string `json:"state"`
+			DownloadID string `json:"download_id"`
+		} `json:"candidates"`
+	}
+	if err = json.Unmarshal(out.Body.Bytes(), &page); err != nil || out.Code != 200 {
+		t.Fatal(out.Code, out.Body.String(), err)
+	}
+	if len(page.Items) < 2 || len(page.Candidates) != 1 || page.Candidates[0].ID != "cand1" || page.Candidates[0].State != "selected for download" || page.Candidates[0].DownloadID != "job1" {
+		t.Fatalf("unexpected media activity: %#v", page)
+	}
+	for _, item := range page.Items {
+		if item.Title == "Other release" {
+			t.Fatal("unrelated title activity leaked", page.Items)
+		}
+	}
+}
+
 func TestEventTimelineRecordsChangesAndPaginates(t *testing.T) {
 	db, e := database.Open(context.Background(), t.TempDir())
 	if e != nil {

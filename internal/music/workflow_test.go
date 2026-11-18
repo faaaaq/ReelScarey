@@ -63,7 +63,7 @@ func writeScanFixture(t *testing.T, media, relative string) string {
 func matchingScanTags() AudioTags {
 	return AudioTags{
 		Artist: "Artist", AlbumArtist: "Artist", Album: "Album", Title: "Song",
-		Track: intPtr(1), Disc: intPtr(1), Format: "flac", DurationMS: 1000,
+		Track: intPtr(1), TrackTotal: intPtr(1), Disc: intPtr(1), DiscTotal: intPtr(1), Format: "flac", DurationMS: 1000,
 		MusicBrainzArtistID: testMBID, MusicBrainzReleaseGroupID: testRGID,
 		MusicBrainzTrackID: testTrackID, MusicBrainzRecordingID: testRecordingID,
 	}

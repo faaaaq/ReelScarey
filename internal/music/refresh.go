@@ -89,8 +89,8 @@ func (s *Service) RefreshArtistMetadata(ctx context.Context, id int64) (ArtistRe
 		if err == nil {
 			if changed := s.updateArtistDetails(ctx, id, artist); changed {
 				result.ArtistUpdated = true
-				if name := strings.TrimSpace(artist.Name); name != "" {
-					result.Name = name
+				if saved, saveErr := s.store.Artist(ctx, id); saveErr == nil {
+					result.Name = saved.Name
 				}
 			}
 		} else if !providerSoftError(err) {
@@ -212,15 +212,19 @@ func (s *Service) verifiedDeezerArtistID(ctx context.Context, base, name string)
 // row when they changed. It never rewrites the identifier or monitoring.
 func (s *Service) updateArtistDetails(ctx context.Context, id int64, artist Artist) bool {
 	var name, sortName, disambiguation, overview string
-	if err := s.store.db.QueryRowContext(ctx, `SELECT name,sort_name,disambiguation,overview FROM music_artists WHERE id=?`, id).
-		Scan(&name, &sortName, &disambiguation, &overview); err != nil {
+	var nameOverridden bool
+	if err := s.store.db.QueryRowContext(ctx, `SELECT name,name_overridden,sort_name,disambiguation,overview FROM music_artists WHERE id=?`, id).
+		Scan(&name, &nameOverridden, &sortName, &disambiguation, &overview); err != nil {
 		return false
+	}
+	if nameOverridden {
+		artist.Name = name
 	}
 	if name == artist.Name && sortName == artist.SortName &&
 		disambiguation == artist.Disambiguation && overview == artist.Overview {
 		return false
 	}
-	if _, err := s.store.db.ExecContext(ctx, `UPDATE music_artists SET name=?,sort_name=?,disambiguation=?,overview=?,updated_at=unixepoch() WHERE id=?`,
+	if _, err := s.store.db.ExecContext(ctx, `UPDATE music_artists SET name=CASE WHEN name_overridden=0 THEN ? ELSE name END,sort_name=?,disambiguation=?,overview=?,updated_at=unixepoch() WHERE id=?`,
 		artist.Name, artist.SortName, artist.Disambiguation, artist.Overview, id); err != nil {
 		return false
 	}
@@ -256,8 +260,9 @@ func (s *Service) RefreshAlbumMetadata(ctx context.Context, id int64) (AlbumRefr
 		if err == nil {
 			var currentYear any
 			var currentTitle, primaryType string
-			if err := s.store.db.QueryRowContext(ctx, `SELECT title,year,primary_type FROM music_albums WHERE id=?`, id).
-				Scan(&currentTitle, &currentYear, &primaryType); err == nil {
+			var titleOverridden, yearOverridden bool
+			if err := s.store.db.QueryRowContext(ctx, `SELECT title,year,primary_type,title_overridden,year_overridden FROM music_albums WHERE id=?`, id).
+				Scan(&currentTitle, &currentYear, &primaryType, &titleOverridden, &yearOverridden); err == nil {
 				year := any(nil)
 				if album.Year != nil {
 					year = *album.Year
@@ -268,10 +273,19 @@ func (s *Service) RefreshAlbumMetadata(ctx context.Context, id int64) (AlbumRefr
 				} else if !ok {
 					sameYear = album.Year == nil
 				}
-				if currentTitle != album.Title || !sameYear {
-					if _, err := s.store.db.ExecContext(ctx, `UPDATE music_albums SET title=?,year=?,updated_at=unixepoch() WHERE id=?`, album.Title, year, id); err == nil {
+				nextTitle := album.Title
+				if titleOverridden {
+					nextTitle = currentTitle
+				}
+				nextYear := year
+				if yearOverridden {
+					nextYear = currentYear
+					sameYear = true
+				}
+				if currentTitle != nextTitle || !sameYear {
+					if _, err := s.store.db.ExecContext(ctx, `UPDATE music_albums SET title=?,year=?,updated_at=unixepoch() WHERE id=?`, nextTitle, nextYear, id); err == nil {
 						result.AlbumUpdate = true
-						result.Title = album.Title
+						result.Title = nextTitle
 					}
 				}
 			}

@@ -1,0 +1,84 @@
+# Hash-pinned closure for the bundled TIDAL provider (tidaler).
+# Generated from tidaler==0.1.8 with pip download for CPython 3.12 on
+# manylinux2014 x86_64 and aarch64; pyaes and ratelimit ship as locally
+# built universal wheels because PyPI only publishes their sdists.
+# Regenerate by repeating that download after any version bump.
+ansi2html==1.9.5 \
+  --hash=sha256:fff3d25b149951474a688c7e22240f93e69ac5aa023c44ab5dce806befcba281
+backports-datetime-fromisoformat==2.0.3 \
+  --hash=sha256:ec1b95986430e789c076610aea704db20874f0781b8624f648ca9fb6ef67c6e1 \
+    --hash=sha256:ffe5f793db59e2f1d45ec35a1cf51404fdd69df9f6952a0c87c3060af4c00e32
+certifi==2026.10.23 \
+  --hash=sha256:e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1
+charset-normalizer==3.5.2 \
+  --hash=sha256:3d31298449090ab8d47b7b1b2a555ff73cac7ed438a08b7ac160980c7ebed649 \
+    --hash=sha256:b91363207bd9dc966a691e959bb47f64b30f7ac4b072be9968b366982f7db77c
+click==8.5.1 \
+  --hash=sha256:8bb5376d2006950386f8c6427613334a2acadc5f559cb80e638d00b4df957e37
+coloredlogs==15.0.1 \
+  --hash=sha256:612ee75c546f53e92e70049c9dbfcc18c935a2b9a53b66085ce9ef6a6e5c0934
+dataclasses-json==0.6.7 \
+  --hash=sha256:0dbf33f26c8d5305befd61b39d2b3414e8a407bedc2834dea9b8d642666fb40a
+humanfriendly==10.0 \
+  --hash=sha256:1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477
+idna==3.20 \
+  --hash=sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c
+isodate==0.7.2 \
+  --hash=sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15
+m3u8==6.0.0 \
+  --hash=sha256:566d0748739c552dad10f8c87150078de6a0ec25071fa48e6968e96fc6dcba5d
+markdown-it-py==4.3.0 \
+  --hash=sha256:7aa1511a46c39138de78d9eba92ce47e63124d8003fc98b3a351909e04239efa
+marshmallow==3.26.2 \
+  --hash=sha256:013fa8a3c4c276c24d26d84ce934dc964e2aa794345a0f8c7e5a7191482c8a73
+mdurl==0.1.2 \
+  --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8
+mpegdash==0.4.1 \
+  --hash=sha256:788e559b73acbf9175422548c58a4c441486c0ce0633fa10f77097bfffeaad4d
+mutagen==1.48.1 \
+  --hash=sha256:4f077fe87d3fc7fba259aa63d8c026b18382ca6a42ef37c61e16f1b1b5b82fe7
+mypy-extensions==1.2.0 \
+  --hash=sha256:993e7a20aa5671eb41a7132cf555af30062da99729601601b9a8382b11cae768
+packaging==26.3 \
+  --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+pathvalidate==3.3.1 \
+  --hash=sha256:5263baab691f8e1af96092fa5137ee17df5bdfbd6cff1fcac4d6ef4bc2e1735f
+pyaes==1.6.1 \
+  --hash=sha256:f896c6240480ec5eb4d458fde6c648890a452317346f9231f7a6134ebbb9d84a
+pycryptodome==3.24.1 \
+  --hash=sha256:5cac508283b5a1126945816613748a92395fbcdc70044b2c0cf2151caac5cdc9 \
+    --hash=sha256:93619c3117a8f14ea1267b427e465d152a66c89c3d3c643262070c05b2855aae
+pyee==16.1.0 \
+  --hash=sha256:45aaa35313906a780c539bd640ffba106d86dd63d3fd46b76d718bd611682995
+pygments==2.21.0 \
+  --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9
+pyreadline3==3.5.6 \
+  --hash=sha256:8449b734232e42a5dcd74048e39b60db2839a4c38cf3ae2bf7707d58b5389c0d
+python-dateutil==2.9.0.post0 \
+  --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
+python-ffmpeg==2.0.12 \
+  --hash=sha256:d86697da8dfb39335183e336d31baf42fb217468adf5ac97fd743898240faae3
+ratelimit==2.2.1 \
+  --hash=sha256:b332dabb46247d6ce6bcfe199c029b9e2348b9eb4a1c638040faa82c547d9558
+requests==2.32.5 \
+  --hash=sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6
+rich==14.3.4 \
+  --hash=sha256:07e7adb4690f68864777b1450859253bed81a99a31ac321ac1817b2313558952
+shellingham==1.5.4 \
+  --hash=sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686
+six==1.17.0 \
+  --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274
+tidalapi==0.8.11 \
+  --hash=sha256:1ed2485bb4634907afc434163fba22dc8a323d90cc92306973ab68bcdfef5c54
+tidaler==0.1.8 \
+  --hash=sha256:d6d8fb73d86ce0d7c8b67928160327c6ad8970bebe9b43fe4045108e351df9bd
+toml==0.10.2 \
+  --hash=sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b
+typer==0.20.1 \
+  --hash=sha256:4b3bde918a67c8e03d861aa02deca90a95bbac572e71b1b9be56ff49affdb5a8
+typing-extensions==4.16.0 \
+  --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+typing-inspect==0.9.0 \
+  --hash=sha256:9ee6fc59062311ef8547596ab6b955e1b8aa46242d854bfc78f4f6b0eff35f9f
+urllib3==2.8.0 \
+  --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3

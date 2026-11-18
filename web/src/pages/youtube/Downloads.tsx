@@ -3,6 +3,10 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@radix-ui/themes";
 import { api, messageFor } from "../../api";
 import { PageHeading, RequestState } from "../../components";
+import {
+  ImportReviewFacts,
+  ImportReviewSummary,
+} from "../../components/ImportReview";
 import { PageBody } from "../../ui";
 import { useLiveResource } from "../../useLiveResource";
 import { JobCard } from "./JobCard";
@@ -212,6 +216,17 @@ export function Downloads() {
         {!counts && items.length >= 200 && (
           <p className="rs-form-help">Showing the latest 200 downloads.</p>
         )}
+        <ImportReviewSummary
+          ready={
+            counts?.awaiting_review ??
+            items.filter((job) => job.state === "awaiting_review").length
+          }
+          needsDecision={
+            counts?.failed ??
+            items.filter((job) => job.state === "failed").length
+          }
+          skipped={items.filter((job) => job.state === "cancelled").length}
+        />
         <section className="rs-panel yt-queue" aria-label="YouTube downloads">
           <div className="rs-panel-header">
             <h2>Downloads</h2>
@@ -263,7 +278,24 @@ export function Downloads() {
           {importReview && (
             <div className="review-box" aria-label="Import review">
               <h3>{importReview.target_label}</h3>
-              <p className="rs-form-help">{importReview.destination}</p>
+              <p className="rs-form-help">
+                Source file:{" "}
+                {importReview.source_file ??
+                  "Verified staging file (source path unavailable in this older review)"}
+              </p>
+              <ImportReviewFacts
+                identity={importReview.target_label}
+                destination={importReview.destination}
+                operation="Publish the already downloaded, verified video and selected subtitles through the durable import journal; do not redownload the video."
+                evidence={[
+                  `Verified video SHA-256: ${importReview.sha256}`,
+                  `${bytes(importReview.size_bytes)} downloaded and inspected.`,
+                  ...importReview.subtitles.map(
+                    (sub) =>
+                      `${sub.language} subtitles verified at ${sub.destination} (SHA-256 ${sub.sha256}).`,
+                  ),
+                ]}
+              />
               <p>
                 {bytes(importReview.size_bytes)} · SHA-256{" "}
                 {importReview.sha256.slice(0, 16)}…

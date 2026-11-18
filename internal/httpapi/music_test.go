@@ -65,6 +65,7 @@ type fakeMusic struct {
 	exportProfile      string
 	exportPriority     int
 	cacheStats         music.StreamCacheStats
+	transcodeErr       error
 	cacheCleared       bool
 	customProfileName  string
 	customProfileCodec string
@@ -158,6 +159,10 @@ func (f *fakeMusic) AcknowledgeAcquisition(context.Context, int64) (music.Acquis
 func (f *fakeMusic) RetryAcquisitionTracks(context.Context, int64) (music.AcquisitionJob, error) {
 	return music.AcquisitionJob{ID: 1, State: "running", Tracks: []music.AcquisitionTrack{}}, f.err
 }
+func (f *fakeMusic) RetryAcquisitionTrack(context.Context, int64, int64, string, bool) (music.AcquisitionJob, error) {
+	return music.AcquisitionJob{ID: 1, State: "running", Tracks: []music.AcquisitionTrack{}}, f.err
+}
+
 func (f *fakeMusic) ServerAlbum(context.Context, int64) (music.AlbumDetails, error) {
 	if f.serverAlbumDetail.Album.Title != "" {
 		return f.serverAlbumDetail, f.err
@@ -261,15 +266,18 @@ func (f *fakeMusic) OpenAudioFile(context.Context, int64) (music.AudioStream, er
 
 // OpenPlayback mirrors OpenAudioFile: the fake has no transcoding pipeline, so
 // it always returns the registered file for a direct byte-for-byte stream.
-func (f *fakeMusic) OpenPlayback(ctx context.Context, id int64, _ string, _, _ int) (music.PlaybackStream, error) {
+func (f *fakeMusic) OpenPlayback(ctx context.Context, id int64, format string, _, _ int) (music.PlaybackStream, error) {
 	if f.transcodeBusy {
 		return music.PlaybackStream{}, &music.Error{Code: "music_transcode_busy", Message: "The server is already converting too many songs. Wait a moment and try again."}
+	}
+	if f.transcodeErr != nil {
+		return music.PlaybackStream{}, f.transcodeErr
 	}
 	stream, err := f.OpenAudioFile(ctx, id)
 	if err != nil {
 		return music.PlaybackStream{}, err
 	}
-	return music.PlaybackStream{Name: stream.Name, ContentType: stream.ContentType, Size: stream.Size, ModTime: stream.ModTime, File: stream.File}, nil
+	return music.PlaybackStream{Name: stream.Name, ContentType: stream.ContentType, Size: stream.Size, ModTime: stream.ModTime, File: stream.File, Codec: strings.TrimPrefix(strings.ToLower(filepath.Ext(stream.Name)), "."), Mode: "direct", Reason: "Direct fixture playback.", RequestedFormat: format}, nil
 }
 
 func (f *fakeMusic) ArtistImage(context.Context, int64) (music.Artwork, error) {
@@ -288,6 +296,20 @@ func (f *fakeMusic) RefreshAlbumMetadata(context.Context, int64) (music.AlbumRef
 		return music.AlbumRefreshResult{}, f.err
 	}
 	return music.AlbumRefreshResult{CoverUpdate: true}, nil
+}
+
+func (f *fakeMusic) RestoreArtistMetadataField(context.Context, int64, string) (music.ArtistRefreshResult, error) {
+	if f.err != nil {
+		return music.ArtistRefreshResult{}, f.err
+	}
+	return music.ArtistRefreshResult{ArtistUpdated: true}, nil
+}
+
+func (f *fakeMusic) RestoreAlbumMetadataField(context.Context, int64, string) (music.AlbumRefreshResult, error) {
+	if f.err != nil {
+		return music.AlbumRefreshResult{}, f.err
+	}
+	return music.AlbumRefreshResult{AlbumUpdate: true}, nil
 }
 
 func (f *fakeMusic) RefreshLibraryMetadataBatch(context.Context, int64) (music.LibraryRefreshResult, error) {
@@ -586,6 +608,18 @@ func TestMusicMetadataRefreshRoutes(t *testing.T) {
 	if out := request(handler, "POST", "/api/v1/library/music/albums/50/refresh", "", session, true); out.Code != 200 || !strings.Contains(out.Body.String(), `"cover_updated":true`) {
 		t.Fatal("album refresh", out.Code, out.Body.String())
 	}
+	if out := request(handler, "POST", "/api/v1/library/music/artists/15/restore", `{"field":"name"}`, session, false); out.Code != 403 {
+		t.Fatal("artist restore without CSRF", out.Code)
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/albums/50/restore", `{"field":"title"}`, session, false); out.Code != 403 {
+		t.Fatal("album restore without CSRF", out.Code)
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/artists/15/restore", `{"field":"name"}`, session, true); out.Code != 200 || !strings.Contains(out.Body.String(), `"artist_updated":true`) {
+		t.Fatal("artist restore", out.Code, out.Body.String())
+	}
+	if out := request(handler, "POST", "/api/v1/library/music/albums/50/restore", `{"field":"title"}`, session, true); out.Code != 200 || !strings.Contains(out.Body.String(), `"album_updated":true`) {
+		t.Fatal("album restore", out.Code, out.Body.String())
+	}
 	out := request(handler, "POST", "/api/v1/library/music/metadata/refresh", `{"cursor":0}`, session, true)
 	if out.Code != 200 || !strings.Contains(out.Body.String(), `"done":true`) {
 		t.Fatal("library refresh batch", out.Code, out.Body.String())
@@ -742,12 +776,12 @@ func TestSubsonicOpenSubsonicCapabilities(t *testing.T) {
 	if out.Code != 200 || !strings.Contains(body, `openSubsonicExtension`) {
 		t.Fatalf("extensions: %d %s", out.Code, body)
 	}
-	for _, name := range []string{"transcodeOffset", "topSongsByArtistId"} {
+	for _, name := range []string{"transcodeOffset", "topSongsByArtistId", "indexBasedQueue"} {
 		if !strings.Contains(body, `name="`+name+`"`) {
 			t.Fatalf("missing extension %q in %s", name, body)
 		}
 	}
-	for _, unsupported := range []string{"indexBasedQueue", "formPost", "songLyrics", "playbackReport", "apikeyauth"} {
+	for _, unsupported := range []string{"formPost", "songLyrics", "playbackReport", "apikeyauth"} {
 		if strings.Contains(body, `name="`+unsupported+`"`) {
 			t.Fatalf("must not advertise unimplemented extension %q", unsupported)
 		}

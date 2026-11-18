@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/securestore"
@@ -58,8 +59,24 @@ type Service struct {
 	// transcodeSem bounds simultaneous ffmpeg conversions. It is created
 	// lazily (transcodeSlots) so hand-built test Services work too; it is
 	// never replaced after creation. transcodeMu guards the lazy init.
-	transcodeMu  sync.Mutex
-	transcodeSem chan struct{}
+	transcodeMu      sync.Mutex
+	transcodeSem     chan struct{}
+	transcodeActive  atomic.Int64
+	playbackDirect   atomic.Int64
+	playbackLive     atomic.Int64
+	playbackOffset   atomic.Int64
+	streamFillFailed atomic.Int64
+
+	// streamFill* owns detached cache fills independently of request contexts.
+	// Add and shutdown are serialized by streamFillMu so Wait cannot race a new
+	// Add after closure. The semaphore above remains the single four-process
+	// limit shared by live and background FFmpeg conversions.
+	streamFillMu     sync.Mutex
+	streamFillCtx    context.Context
+	streamFillCancel context.CancelFunc
+	streamFillWG     sync.WaitGroup
+	streamFills      map[string]struct{}
+	streamFillClosed bool
 }
 
 func (s *Service) SetDownloadsDir(dir string) { s.downloadsDir = dir }
@@ -98,6 +115,7 @@ func (s *Service) acquireTranscodeSlot(ctx context.Context) (func(), error) {
 			return nil, &Error{Code: "music_transcode_busy", Message: "The server is already converting too many songs. Wait a moment and try again."}
 		}
 	}
+	s.transcodeActive.Add(1)
 	released := false
 	return func() {
 		if released {
@@ -105,6 +123,7 @@ func (s *Service) acquireTranscodeSlot(ctx context.Context) (func(), error) {
 		}
 		released = true
 		<-slots
+		s.transcodeActive.Add(-1)
 	}, nil
 }
 

@@ -648,16 +648,26 @@ Full-file converted streams are cached in `.reelscarey-stream-cache` inside the
 media root (a dotted directory that scans never walk).
 
 - A cached entry is keyed by (file, codec, bitrate) and invalidated when the
-  source file's SHA-256 changes. Cache misses encode into the cache; a cache
-  hit serves the encoded bytes with byte-range support. Offset/Range seeking
-  within a response that is still being transcoded keeps the existing
-  decode-and-discard path: a cached encode covers only the whole track.
+  source file's SHA-256 changes. A cache hit serves the encoded bytes with
+  byte-range support. A cold miss returns a live FFmpeg pipe immediately while
+  one deduplicated, service-owned cache fill encodes through an independently
+  opened source handle. Listener disconnects do not cancel that fill. At most
+  32 distinct fills are pending, each has a 30-minute bound, and live plus
+  background FFmpeg processes share the four-slot conversion limit. Graceful
+  shutdown cancels and waits for fills; startup pruning removes crash staging.
+- Offset requests bypass the whole-track cache and use decode-and-discard
+  output seeking. Browser seeks use ordinary ranges when the requested position
+  is seekable; an unbuffered live-pipe seek reloads with `timeOffset` instead of
+  pretending a byte range succeeded.
 - Entries are evicted least-recently-used until the cache fits the
   `cache_limit_mb` preference (64-4096 MB, default 512). A cache miss or
   failure never fails the stream: the request falls back to on-the-fly piping.
-- Stats report entry count, total size, the configured limit and process
-  hit/miss counters. The counters reset on restart. Deleting the cache removes
-  only cached files and their rows, never registered music content.
+- Stats report entry count, total size, the configured limit, process hit/miss
+  and playback-mode counters, active conversions/fills and fill failures.
+  Process counters reset on restart. Response headers expose the bounded
+  playback path/format and stream-open timing; a separate safe log records
+  actual first-byte latency. Deleting the cache removes only cached files and
+  their rows, never registered music content.
 
 ### Streaming quality
 
@@ -679,8 +689,12 @@ global), then the global streaming quality preference, then the `balanced`
 default. The authenticated web player uses the same resolution; it
 additionally negotiates capability when the browser reports no Ogg/Opus
 support (`canPlayType`), requesting an MP3 stream from the same endpoint so
-incompatible browsers never receive audio they cannot decode. Converted
-streams strip tags and artwork; only file conversions preserve tags.
+incompatible browsers never receive audio they cannot decode. A rate-only
+`maxBitRate` cap is honored for lossy same-family sources, including the web
+player; known sources already within the cap remain direct. `format=raw` is an
+explicit passthrough. Small caps are not silently raised, and Vorbis receives
+an actual bitrate argument. Converted streams strip tags and artwork; only
+file conversions preserve tags.
 
 ### Export
 
@@ -977,11 +991,15 @@ script was not re-run for this change.
 ### Authenticated web player
 
 The Music library plays registered files through an authenticated streaming
-endpoint with HTTP Range support. The persistent player bar provides queue,
-seek, volume, previous/next and close controls. Playback addresses catalog file
-IDs; stored media paths are never sent to the browser. Album and artist views
-also expose play actions. This uses the existing ReelScarey web port and
-session.
+endpoint with HTTP Range support for direct and cached responses. The persistent
+player bar provides queue, seek, volume, previous/next and close controls.
+Queue/index/position/volume restore after a browser reload using bounded local
+browser storage, cleared on logout/session expiry; this is not cross-device
+server synchronization. Unbuffered seeks on live conversions use the
+`timeOffset` fallback. Playback addresses catalog file IDs; stored media paths
+are never sent to the browser.
+Album and artist views also expose play actions. This uses the existing
+ReelScarey web port and session.
 
 ### Optional Subsonic-compatible endpoint
 
@@ -1004,14 +1022,23 @@ for third-party clients.
 Supported subset: ping, license, music folders, indexes, artists, artist (with
 its albums), album, album list, music directory, song, search, random songs,
 top songs, genres, scan status, user, cover art, avatar, and stream/download
-with Range support. Playlists, play queue, now-playing, starred, lyrics,
-bookmarks, shares, podcasts, internet radio, chat and video collections are
-answered with empty, well-formed responses so clients that probe them do not
-report an unsupported or unconfigured server; similar-songs and songs-by-genre
-likewise return empty lists. `startScan` is a no-op and `getScanStatus` reports
-the number of playable songs. Scrobble, star/unstar, rating and play-queue
-writes are accepted and ignored. Actions outside this subset still fail with
-the standard Subsonic "not implemented" error.
+with Range support on direct/cached responses. Named music-server accounts have
+persistent per-user stars, 0-5 user ratings, playlists, saved ID/index queues,
+play counts/history and now-playing state. Public playlists are readable by
+other accounts but remain owner-only for mutation. Index queues preserve the
+exact current entry across duplicate songs. Scrobble batches are transactional,
+respect the account's scrobbling permission and retain now-playing entries for
+ten minutes. Starred/highest/frequent/recent album lists use only the requesting
+account's marks/events.
+
+The legacy shared token has no private per-user namespace: its state writes
+fail explicitly, while public playlists and global now-playing remain readable.
+Lyrics, bookmarks, shares, podcasts, internet radio, chat and video collections
+return empty, well-formed responses; similar-songs and songs-by-genre likewise
+return empty lists. Public sharing is not implemented and no revocable public
+URL is fabricated. `startScan` is a no-op and `getScanStatus` reports the number
+of playable songs. Actions outside the supported subset fail with the standard
+Subsonic "not implemented" error.
 
 IDs are opaque and namespaced with a two-letter prefix so an artist and an
 album can never share a number: artists are `ar<id>`, albums `al<id>` and songs
@@ -1036,6 +1063,55 @@ reviewed import worker. That worker tags and publishes without overwrite.
 Single-track and unsupported-source downloads stay local and explicit. The
 worker never replaces an existing registered file. YouTube/Spotify/Deezer terms,
 availability and account restrictions remain external constraints.
+
+### TIDAL as the primary source
+
+When the TIDAL provider is configured, music acquisition prefers TIDAL and
+keeps YouTube as the fallback source. The provider bundles
+[tidaler](https://github.com/maya-doshi/tidaler) (AGPL-3.0), which performs the
+TIDAL login, catalog search and full-quality download inside its own isolated
+Python environment.
+
+Configuration (all optional; unset means TIDAL sourcing is unavailable and
+YouTube remains the source):
+
+- `REELSCAREY_TIDAL_PROVIDER` - path to `tidal-provider.py`. The bundled
+  Docker image sets this automatically.
+- `REELSCAREY_TIDAL_PYTHON` - Python interpreter for the provider environment.
+- `REELSCAREY_TIDAL_CONFIG_DIR` - where tidaler keeps its TIDAL token. The
+  default is inside the ReelScarey config directory, so the token is backed up
+  with the configuration. The token never appears in logs or API responses.
+- `REELSCAREY_TIDAL_QUALITY` - requested audio quality: `HI_RES_LOSSLESS`
+  (default, TIDAL MAX up to 24-bit/192 kHz), `LOSSLESS`, `HIGH` or `LOW`.
+  TIDAL serves the best the account and track actually have; a 16-bit track is
+  never fabricated into a 24-bit file.
+
+Logging in is an explicit local-owner command because TIDAL device
+authorization is interactive by design:
+
+    reelscarey tidal-login
+
+The command prints the TIDAL link and device code, waits until TIDAL accepts
+it, and reports success or failure. Until that login succeeds, acquisition
+honestly falls back to YouTube and the startup log states why TIDAL is not in
+use.
+
+How the sources are chosen:
+
+- Every acquisition track search queries TIDAL first. TIDAL catalog results
+  are much closer matches to MusicBrainz catalog metadata than video search
+  results, and each candidate is a concrete TIDAL track.
+- If TIDAL is unavailable, not logged in, or genuinely has no result, the
+  search falls back to YouTube. When both sides fail, the recorded error names
+  both sources.
+- A TIDAL candidate is always downloaded from TIDAL. A failed TIDAL download
+  never silently reroutes to YouTube, because that would return unrelated
+  audio; the track fails with its error and can be retried.
+- Downloads always preserve the original audio file (including HiRes FLAC).
+  Any requested conversion still happens only in the reviewed import step, so
+  lossless evidence is never destroyed before the profile decision.
+- Every attempt is recorded in the existing acquisition attempt journal, with
+  the tidal.com track URL as the source identity.
 
 ### Charts and playlist monitor
 

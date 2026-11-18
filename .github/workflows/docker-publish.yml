@@ -374,6 +374,25 @@ jobs:
           case "$platforms" in *linux/arm64*) ;; *) echo "missing linux/arm64: $platforms" >&2; exit 1 ;; esac
           printf 'Published multi-arch manifest `%s` @ `%s` (%s)\n' "$image" "$digest" "$platforms" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Pull and verify every published Compose tag
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          RELEASE_TAGS: ${{ steps.tags.outputs.value }}
+          RELEASE_DIGEST: ${{ steps.merge.outputs.digest }}
+        run: |
+          set -euo pipefail
+          # Compose users consume these exact tags, not merely the source
+          # digests. Prove each final tag is pullable before the release can
+          # succeed, and fail if it resolves to a different manifest.
+          oldIFS=$IFS; IFS=','
+          for tag in $RELEASE_TAGS; do
+            docker pull "$tag"
+            actual=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')
+            test "$actual" = "$RELEASE_DIGEST"
+            printf 'Pulled and verified Compose tag %s @ %s\n' "$tag" "$actual" >> "$GITHUB_STEP_SUMMARY"
+          done
+          IFS=$oldIFS
+
       # Private repositories require Enterprise Cloud for GitHub attestations.
       # The attestation signs the MERGED manifest digest — the object the tags
       # resolve to — not a per-architecture digest. The merged index carries no

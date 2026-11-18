@@ -461,15 +461,17 @@ export function MusicLibrary() {
                 Select all shown
               </label>
               <strong>{selected.length} selected</strong>
-              <LibraryDeletion
-                selection={view}
-                ids={selected}
-                label={`Delete selected (${selected.length})`}
-                onDone={() => {
-                  setSelected([]);
-                  reload();
-                }}
-              />
+              {selected.length > 0 && (
+                <LibraryDeletion
+                  selection={view}
+                  ids={selected}
+                  label={`Delete selected (${selected.length})`}
+                  onDone={() => {
+                    setSelected([]);
+                    reload();
+                  }}
+                />
+              )}
             </div>
           </div>
         )}

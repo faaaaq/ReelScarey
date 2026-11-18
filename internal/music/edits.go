@@ -67,6 +67,29 @@ func (o EditOverrides) empty() bool {
 	return o.Year <= 0 && strings.TrimSpace(o.Album) == "" && strings.TrimSpace(o.Artist) == ""
 }
 
+func (o EditOverrides) fields() string {
+	fields := []string{}
+	if o.Year > 0 {
+		fields = append(fields, "year")
+	}
+	if strings.TrimSpace(o.Album) != "" {
+		fields = append(fields, "album")
+	}
+	if strings.TrimSpace(o.Artist) != "" {
+		fields = append(fields, "artist")
+	}
+	return strings.Join(fields, ",")
+}
+
+func hasOverrideField(mask, field string) bool {
+	for _, saved := range strings.Split(mask, ",") {
+		if saved == field {
+			return true
+		}
+	}
+	return false
+}
+
 type EditJob struct {
 	ID        int64         `json:"id"`
 	State     string        `json:"state"`
@@ -271,6 +294,15 @@ func needsRetag(currentJSON string, target EditTags) bool {
 	if target.Year > 0 && (current.Year == nil || *current.Year != target.Year) {
 		return true
 	}
+	// Older saved observations have no total fields. Do not turn that lack of
+	// evidence into a needless rewrite; current FFprobe observations and any
+	// actual conflicting total are still checked, and every write is verified.
+	if target.TrackTotal > 0 && (current.TrackTotal != nil && *current.TrackTotal != target.TrackTotal || current.Version >= audioTagVersion && current.TrackTotal == nil) {
+		return true
+	}
+	if target.DiscTotal > 0 && (current.DiscTotal != nil && *current.DiscTotal != target.DiscTotal || current.Version >= audioTagVersion && current.DiscTotal == nil) {
+		return true
+	}
 	for _, pair := range [][2]string{
 		{current.MusicBrainzArtistID, target.MusicBrainzArtistID},
 		{current.MusicBrainzReleaseGroupID, target.MusicBrainzReleaseGroupID},
@@ -337,7 +369,7 @@ func (s *Service) ApplyEditsWith(ctx context.Context, fileIDs []int64, planHash 
 		return EditJob{}, err
 	}
 	defer tx.Rollback()
-	jobID, err := persistEditJob(ctx, tx, plan.Files, false)
+	jobID, err := persistEditJob(ctx, tx, plan.Files, false, overrides.fields())
 	if err != nil {
 		return EditJob{}, err
 	}
@@ -348,9 +380,13 @@ func (s *Service) ApplyEditsWith(ctx context.Context, fileIDs []int64, planHash 
 	return s.EditJob(ctx, jobID)
 }
 
-func persistEditJob(ctx context.Context, tx *sql.Tx, files []EditFile, automatic bool) (int64, error) {
+func persistEditJob(ctx context.Context, tx *sql.Tx, files []EditFile, automatic bool, overrideMask ...string) (int64, error) {
 	now := time.Now().Unix()
-	result, err := tx.ExecContext(ctx, `INSERT INTO music_edit_jobs(state,file_count,created_at,updated_at,automatic_title) VALUES('running',?,?,?,?)`, len(files), now, now, automatic)
+	mask := ""
+	if len(overrideMask) > 0 {
+		mask = overrideMask[0]
+	}
+	result, err := tx.ExecContext(ctx, `INSERT INTO music_edit_jobs(state,file_count,created_at,updated_at,automatic_title,override_fields) VALUES('running',?,?,?,?,?)`, len(files), now, now, automatic, mask)
 	if err != nil {
 		return 0, err
 	}
@@ -500,7 +536,8 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		return err
 	}
 	var automatic bool
-	if err := s.store.db.QueryRowContext(ctx, `SELECT automatic_title FROM music_edit_jobs WHERE id=?`, jobID).Scan(&automatic); err != nil {
+	var overrideMask string
+	if err := s.store.db.QueryRowContext(ctx, `SELECT automatic_title,override_fields FROM music_edit_jobs WHERE id=?`, jobID).Scan(&automatic, &overrideMask); err != nil {
 		return err
 	}
 	if automatic {
@@ -672,17 +709,17 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		// tag_json is the source of truth; without this the library, Subsonic
 		// clients and the web UI keep showing the stale (e.g. year 6666) values.
 		if !automatic && tags.Year > 0 {
-			if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET year=?,updated_at=unixepoch() WHERE id=(SELECT album_id FROM music_files WHERE id=?)`, tags.Year, musicFileID); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET year=?,year_overridden=CASE WHEN ? THEN 1 ELSE year_overridden END,updated_at=unixepoch() WHERE id=(SELECT album_id FROM music_files WHERE id=?)`, tags.Year, hasOverrideField(overrideMask, "year"), musicFileID); err != nil {
 				return err
 			}
 		}
 		if !automatic && strings.TrimSpace(tags.Album) != "" {
-			if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET title=?,updated_at=unixepoch() WHERE id=(SELECT album_id FROM music_files WHERE id=?)`, tags.Album, musicFileID); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET title=?,title_overridden=CASE WHEN ? THEN 1 ELSE title_overridden END,updated_at=unixepoch() WHERE id=(SELECT album_id FROM music_files WHERE id=?)`, tags.Album, hasOverrideField(overrideMask, "album"), musicFileID); err != nil {
 				return err
 			}
 		}
 		if !automatic && strings.TrimSpace(tags.Artist) != "" {
-			if _, err := tx.ExecContext(ctx, `UPDATE music_artists SET name=?,updated_at=unixepoch() WHERE id=(SELECT artist_id FROM music_files WHERE id=?)`, tags.Artist, musicFileID); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE music_artists SET name=?,name_overridden=CASE WHEN ? THEN 1 ELSE name_overridden END,updated_at=unixepoch() WHERE id=(SELECT artist_id FROM music_files WHERE id=?)`, tags.Artist, hasOverrideField(overrideMask, "artist"), musicFileID); err != nil {
 				return err
 			}
 		}
@@ -752,11 +789,31 @@ func writeTags(ctx context.Context, source, stage string, tags EditTags, ext str
 }
 
 func verifyEditTags(actual AudioTags, tags EditTags) error {
-	if !equalFold(actual.Artist, tags.Artist) || !equalFold(actual.Album, tags.Album) || actual.Title != tags.Title {
-		return &Error{Code: "music_tag_verify", Message: "The written tags did not match the catalog. The original was retained."}
+	mismatch := func(message string) error {
+		return &Error{Code: "music_tag_verify", Message: message + " The original was retained."}
+	}
+	if !equalFold(actual.Artist, tags.Artist) || !equalFold(actual.AlbumArtist, tags.AlbumArtist) || !equalFold(actual.Album, tags.Album) || actual.Title != tags.Title {
+		return mismatch("The written artist, album artist, album or title did not match the reviewed edit.")
 	}
 	if actual.Track == nil || *actual.Track != tags.Track || actual.Disc == nil || *actual.Disc != tags.Disc {
-		return &Error{Code: "music_tag_verify", Message: "The written track or disc number did not match the catalog. The original was retained."}
+		return mismatch("The written track or disc number did not match the reviewed edit.")
+	}
+	if tags.TrackTotal > 0 && (actual.TrackTotal == nil || *actual.TrackTotal != tags.TrackTotal) || tags.DiscTotal > 0 && (actual.DiscTotal == nil || *actual.DiscTotal != tags.DiscTotal) {
+		return mismatch("The written track or disc total did not match the reviewed edit.")
+	}
+	if tags.Year > 0 && (actual.Year == nil || *actual.Year != tags.Year) {
+		return mismatch("The written year did not match the reviewed edit.")
+	}
+	for _, pair := range [][2]string{
+		{actual.MusicBrainzArtistID, tags.MusicBrainzArtistID},
+		{actual.MusicBrainzAlbumID, tags.MusicBrainzAlbumID},
+		{actual.MusicBrainzReleaseGroupID, tags.MusicBrainzReleaseGroupID},
+		{actual.MusicBrainzTrackID, tags.MusicBrainzTrackID},
+		{actual.MusicBrainzRecordingID, tags.MusicBrainzRecordingID},
+	} {
+		if pair[1] != "" && !equalFold(pair[0], pair[1]) {
+			return mismatch("A written MusicBrainz identifier did not match the reviewed edit.")
+		}
 	}
 	return nil
 }

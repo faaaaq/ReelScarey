@@ -48,13 +48,18 @@ type AudioVerification struct {
 	Languages []string `json:"languages,omitempty"`
 }
 type AudioStream struct {
+	Index    int    `json:"index,omitempty"`
 	Codec    string `json:"codec"`
 	Language string `json:"language"`
 	Title    string `json:"title"`
+	Default  bool   `json:"default"`
+	Forced   bool   `json:"forced"`
 }
 type SubtitleStream struct {
+	Index           int    `json:"index,omitempty"`
 	Language        string `json:"language"`
 	Title           string `json:"title"`
+	Default         bool   `json:"default"`
 	Forced          bool   `json:"forced"`
 	HearingImpaired bool   `json:"hearing_impaired"`
 }
@@ -87,7 +92,7 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 	if strings.TrimSpace(binary) == "" {
 		binary = "ffprobe"
 	}
-	cmd := exec.CommandContext(ctx, binary, "-v", "error", "-protocol_whitelist", probeProtocols(), "-format_whitelist", "mov,matroska,webm,avi,mpegts", "-enable_drefs", "0", "-use_absolute_path", "0", "-probesize", "16777216", "-analyzeduration", "10000000", "-show_entries", "format=duration:format_tags=title:stream=codec_type,codec_name,width,height,color_transfer:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags=language,title", "-of", "json", "-i", probeInput())
+	cmd := exec.CommandContext(ctx, binary, "-v", "error", "-protocol_whitelist", probeProtocols(), "-format_whitelist", "mov,matroska,webm,avi,mpegts", "-enable_drefs", "0", "-use_absolute_path", "0", "-probesize", "16777216", "-analyzeduration", "10000000", "-show_entries", "format=duration:format_tags=title:stream=index,codec_type,codec_name,width,height,color_transfer:stream_disposition=attached_pic,default,forced,hearing_impaired:stream_tags=language,title", "-of", "json", "-i", probeInput())
 	hideProbeWindow(cmd)
 	var output limitedBuffer
 	output.max = 64 << 10
@@ -108,6 +113,7 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 			} `json:"tags"`
 		} `json:"format"`
 		Streams []struct {
+			Index         int    `json:"index"`
 			Type          string `json:"codec_type"`
 			Codec         string `json:"codec_name"`
 			Width         int    `json:"width"`
@@ -115,6 +121,7 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 			ColorTransfer string `json:"color_transfer"`
 			Disposition   struct {
 				Attached int `json:"attached_pic"`
+				Default  int `json:"default"`
 				Forced   int `json:"forced"`
 				Hearing  int `json:"hearing_impaired"`
 			} `json:"disposition"`
@@ -135,10 +142,10 @@ func (FFprobe) Probe(ctx context.Context, file *os.File) (Probe, error) {
 	audio := []AudioStream{}
 	for _, stream := range raw.Streams {
 		if stream.Type == "subtitle" && len(subtitles) < 100 {
-			subtitles = append(subtitles, SubtitleStream{Language: stream.Tags.Language, Title: stream.Tags.Title, Forced: stream.Disposition.Forced != 0, HearingImpaired: stream.Disposition.Hearing != 0})
+			subtitles = append(subtitles, SubtitleStream{Index: stream.Index, Language: stream.Tags.Language, Title: stream.Tags.Title, Default: stream.Disposition.Default != 0, Forced: stream.Disposition.Forced != 0, HearingImpaired: stream.Disposition.Hearing != 0})
 		}
 		if stream.Type == "audio" && len(audio) < 100 {
-			audio = append(audio, AudioStream{Codec: stream.Codec, Language: stream.Tags.Language, Title: stream.Tags.Title})
+			audio = append(audio, AudioStream{Index: stream.Index, Codec: stream.Codec, Language: stream.Tags.Language, Title: stream.Tags.Title, Default: stream.Disposition.Default != 0, Forced: stream.Disposition.Forced != 0})
 		}
 	}
 	for _, stream := range raw.Streams {

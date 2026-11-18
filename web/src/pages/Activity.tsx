@@ -17,6 +17,10 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api, messageFor, type DownloadJob, type DownloadPage } from "../api";
 import { PageHeading, RequestState } from "../components";
 import {
+  ImportReviewFacts,
+  ImportReviewSummary,
+} from "../components/ImportReview";
+import {
   Alert,
   ConfirmDialog,
   DescriptionItem,
@@ -230,6 +234,15 @@ export function Activity() {
           title="Activity"
           description="Tracked downloads and items that need attention."
         />
+        {data && (
+          <ImportReviewSummary
+            ready={data.items.filter((job) => job.state === "importing").length}
+            needsDecision={data.items.filter(needsAttention).length}
+            skipped={
+              data.items.filter((job) => job.state === "cancelled").length
+            }
+          />
+        )}
         <p className="rs-muted rs-small">
           Finished downloads and stopped tracking events appear in{" "}
           <Link to="/timeline">History</Link>.
@@ -613,6 +626,54 @@ function JobDetails({
           {job.error_message}
         </Alert>
       )}
+      <details className="act-import-review" open={attention}>
+        <summary>Import review</summary>
+        <ImportReviewFacts
+          identity={`${job.movie_title}${
+            job.kind === "series" && targetSummary(job)
+              ? ` — ${targetSummary(job)}`
+              : ""
+          }${
+            job.movie_version
+              ? ` — ${versionNames[job.movie_version] || job.movie_version}`
+              : ""
+          }`}
+          destination={
+            job.state === "completed"
+              ? "Registered destination is available under Files & tracks."
+              : "Derived and confirmed by this import review; no unreviewed destination is assumed."
+          }
+          operation={
+            job.state === "completed"
+              ? "Imported through the durable journal; completed work is not duplicated."
+              : job.error_code === "map_episodes"
+                ? "Map or skip each completed source file, then resume verification and import without redownloading."
+                : job.error_code === "choose_file"
+                  ? "Choose one completed source file, then resume verification and import without redownloading."
+                  : attention
+                    ? "Resolve this exception and resume the saved download and verification work."
+                    : "Continue the saved verification and import workflow; registration does not imply rename, move or retag."
+          }
+          evidence={[
+            `Known download target: catalog item ${job.movie_id}.`,
+            `Selected release: ${job.title}.`,
+            `${job.protocol === "usenet" ? "Usenet" : "Torrent"} client: ${clientName(job)}.`,
+            ...(job.choices.length > 0
+              ? [
+                  `Completed source files: ${job.choices
+                    .map((file) => file.name)
+                    .join(", ")}`,
+                ]
+              : ["Completed file choices are not available yet."]),
+            ...(job.anime_order
+              ? [
+                  `Saved Anime order revision ${job.anime_order.revision} is immutable for this download.`,
+                ]
+              : []),
+            ...(job.error_message ? [job.error_message] : []),
+          ]}
+        />
+      </details>
       {/* Recovery actions sit directly under the error so they are never
          below the fold of the scrolling details list. */}
       {job.error_code === "replacement_review" && (

@@ -90,10 +90,10 @@ func TestResolveAcquisitionProfile(t *testing.T) {
 func TestAcquisitionDownloadFormat(t *testing.T) {
 	cases := map[string]string{
 		"original": "source",
-		"flac":     "flac",
-		"mp3":      "mp3",
-		"aac":      "m4a",
-		"opus":     "opus",
+		"flac":     "source",
+		"mp3":      "source",
+		"aac":      "source",
+		"opus":     "source",
 	}
 	for codec, want := range cases {
 		if got := acquisitionDownloadFormat(QualityProfile{Codec: codec}); got != want {
@@ -132,8 +132,8 @@ func TestStartAcquisitionStoresResolvedProfileKey(t *testing.T) {
 	if worked, err := service.ProcessAcquisition(ctx); err != nil || !worked {
 		t.Fatal("process", worked, err)
 	}
-	if len(formats) != 1 || formats[0] != "opus" {
-		t.Fatalf("downloader formats = %v, want [opus]", formats)
+	if len(formats) != 1 || formats[0] != "source" {
+		t.Fatalf("downloader formats = %v, want original source", formats)
 	}
 
 	// A legacy value maps onto its builtin equivalent but still downloads the
@@ -148,8 +148,8 @@ func TestStartAcquisitionStoresResolvedProfileKey(t *testing.T) {
 	if worked, err := service.ProcessAcquisition(ctx); err != nil || !worked {
 		t.Fatal("process", worked, err)
 	}
-	if len(formats) != 2 || formats[1] != "m4a" {
-		t.Fatalf("downloader formats = %v, want the legacy m4a behavior", formats)
+	if len(formats) != 2 || formats[1] != "source" {
+		t.Fatalf("downloader formats = %v, want original source for the legacy profile", formats)
 	}
 
 	// An empty format stays open so the import step can apply the per-album
@@ -373,7 +373,9 @@ func profileImportTags(format string, bitrate int) AudioTags {
 		Version: audioTagVersion, Format: format, DurationMS: 1000, Bitrate: bitrate,
 		SampleRate: 44100, Channels: 2,
 		Artist: "Artist", AlbumArtist: "Artist", Album: "Album", Title: "Song",
-		Track: intPtr(1), Disc: intPtr(1),
+		Track: intPtr(1), TrackTotal: intPtr(1), Disc: intPtr(1), DiscTotal: intPtr(1),
+		MusicBrainzArtistID: testMBID, MusicBrainzReleaseGroupID: testRGID,
+		MusicBrainzTrackID: testTrackID, MusicBrainzRecordingID: testRecordingID,
 	}
 }
 

@@ -21,6 +21,10 @@ type AudioStream struct {
 	Size        int64
 	ModTime     time.Time
 	SHA256      string
+	// Bitrate is normalized source evidence in kbit/s. FFprobe/catalog rows
+	// normally store bits/sec, while older fixtures may contain kbps; zero means
+	// unknown. Playback uses it only to avoid a needless same-family re-encode.
+	Bitrate int
 }
 
 // OpenAudioFile opens a registered music file below the media root. os.Root
@@ -31,8 +35,9 @@ func (s *Service) OpenAudioFile(ctx context.Context, id int64) (AudioStream, err
 		return AudioStream{}, ErrInvalidInput
 	}
 	var relative, format, sha string
-	err := s.store.db.QueryRowContext(ctx, `SELECT relative_path,format,sha256 FROM music_files WHERE id=?`, id).
-		Scan(&relative, &format, &sha)
+	var bitrate int
+	err := s.store.db.QueryRowContext(ctx, `SELECT relative_path,format,sha256,COALESCE(bitrate,0) FROM music_files WHERE id=?`, id).
+		Scan(&relative, &format, &sha, &bitrate)
 	if err != nil {
 		return AudioStream{}, err
 	}
@@ -67,6 +72,7 @@ func (s *Service) OpenAudioFile(ctx context.Context, id int64) (AudioStream, err
 		Size:        info.Size(),
 		ModTime:     info.ModTime(),
 		SHA256:      sha,
+		Bitrate:     probedKbps(AudioTags{Bitrate: bitrate}),
 	}, nil
 }
 

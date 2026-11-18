@@ -1,0 +1,11 @@
+ALTER TABLE music_acquisition_tracks ADD COLUMN target_album_id INTEGER REFERENCES music_albums(id);
+ALTER TABLE music_acquisition_tracks ADD COLUMN target_track_id INTEGER REFERENCES music_tracks(id);
+ALTER TABLE music_acquisition_tracks ADD COLUMN recording_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE music_acquisition_tracks ADD COLUMN musicbrainz_track_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE music_acquisition_tracks ADD COLUMN release_group_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE music_acquisition_tracks ADD COLUMN release_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE music_acquisition_tracks ADD COLUMN version_qualifiers TEXT NOT NULL DEFAULT '';
+ALTER TABLE music_acquisition_tracks ADD COLUMN candidate_evidence_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE music_acquisition_tracks ADD COLUMN selected_source_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE music_acquisition_tracks ADD COLUMN selected_source_url TEXT NOT NULL DEFAULT '';
+CREATE INDEX music_acquisition_target_track ON music_acquisition_tracks(target_track_id,state);

@@ -1,4 +1,11 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -39,6 +46,7 @@ function Harness() {
 
 describe("music player", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
@@ -128,6 +136,119 @@ describe("music player", () => {
       "/api/v1/library/music/files/7/stream",
     );
     maybe.mockRestore();
+  });
+
+  it("reloads an unbuffered live seek with a media-time offset", async () => {
+    render(
+      <MusicPlayerProvider>
+        <MemoryRouter>
+          <Harness />
+          <MusicPlayerBar />
+        </MemoryRouter>
+      </MusicPlayerProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "duration", {
+      configurable: true,
+      value: 120,
+    });
+    Object.defineProperty(audio, "seekable", {
+      configurable: true,
+      value: { length: 0 },
+    });
+    fireEvent(audio, new Event("durationchange"));
+    fireEvent.change(screen.getByRole("slider", { name: "Seek" }), {
+      target: { value: "42" },
+    });
+    expect(audio.getAttribute("src")).toContain("timeOffset=42");
+    expect(audio.getAttribute("src")).toContain("format=mp3");
+    expect(screen.getByRole("slider", { name: "Seek" })).toHaveValue("42");
+  });
+
+  it("uses native ranges when the requested position is seekable", async () => {
+    render(
+      <MusicPlayerProvider>
+        <MemoryRouter>
+          <Harness />
+          <MusicPlayerBar />
+        </MemoryRouter>
+      </MusicPlayerProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "duration", {
+      configurable: true,
+      value: 120,
+    });
+    Object.defineProperty(audio, "seekable", {
+      configurable: true,
+      value: { length: 1, start: () => 0, end: () => 120 },
+    });
+    fireEvent(audio, new Event("durationchange"));
+    fireEvent.change(screen.getByRole("slider", { name: "Seek" }), {
+      target: { value: "42" },
+    });
+    expect(audio.currentTime).toBe(42);
+    expect(audio.getAttribute("src")).not.toContain("timeOffset");
+  });
+
+  it("restores queue, position and volume on reload and clears on session expiry", async () => {
+    const renderPlayer = () =>
+      render(
+        <MusicPlayerProvider>
+          <MemoryRouter>
+            <Harness />
+            <MusicPlayerBar />
+          </MemoryRouter>
+        </MusicPlayerProvider>,
+      );
+    renderPlayer();
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "duration", {
+      configurable: true,
+      value: 120,
+    });
+    Object.defineProperty(audio, "seekable", {
+      configurable: true,
+      value: { length: 0 },
+    });
+    fireEvent(audio, new Event("durationchange"));
+    fireEvent.change(screen.getByRole("slider", { name: "Seek" }), {
+      target: { value: "42" },
+    });
+    fireEvent.change(screen.getByRole("slider", { name: "Volume" }), {
+      target: { value: "0.35" },
+    });
+    await waitFor(() => {
+      const saved = JSON.parse(
+        window.localStorage.getItem("reelscarey:music-player:v1") ?? "null",
+      );
+      expect(saved?.position).toBe(42);
+      expect(saved?.volume).toBe(0.35);
+      expect(saved?.queue).toHaveLength(2);
+    });
+
+    cleanup();
+    renderPlayer();
+    expect(await screen.findByText("Airbag")).toBeVisible();
+    expect(screen.getByRole("slider", { name: "Seek" })).toHaveValue("42");
+    expect(screen.getByRole("slider", { name: "Volume" })).toHaveValue("0.35");
+    const restoredAudio = document.querySelector("audio") as HTMLAudioElement;
+    expect(restoredAudio.getAttribute("src")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Play" }));
+    expect(restoredAudio.getAttribute("src")).toContain("timeOffset=42");
+
+    window.dispatchEvent(new Event("reelscarey:unauthorized"));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", { name: "Music player" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      window.localStorage.getItem("reelscarey:music-player:v1"),
+    ).toBeNull();
   });
 
   it("ignores a stale play() rejection when tracks are skipped rapidly", async () => {

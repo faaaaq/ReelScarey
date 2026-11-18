@@ -121,6 +121,12 @@ describe("music transcoding settings", () => {
           limit_bytes: 536870912,
           hits: 5,
           misses: 1,
+          direct_streams: 3,
+          live_streams: 4,
+          offset_streams: 2,
+          active_transcodes: 1,
+          active_cache_fills: 1,
+          cache_fill_failures: 0,
         });
       }
       if (
@@ -154,6 +160,8 @@ describe("music transcoding settings", () => {
       "512",
     );
     expect(screen.getByText(/2 cached streams/)).toBeVisible();
+    expect(screen.getByText(/Direct 3/)).toBeVisible();
+    expect(screen.getByText(/Active conversions 1/)).toBeVisible();
 
     await userEvent.selectOptions(
       screen.getByLabelText("Streaming quality"),
@@ -196,6 +204,12 @@ describe("music transcoding settings", () => {
           limit_bytes: 536870912,
           hits: 0,
           misses: 0,
+          direct_streams: 0,
+          live_streams: 0,
+          offset_streams: 0,
+          active_transcodes: 0,
+          active_cache_fills: 0,
+          cache_fill_failures: 0,
         });
       }
       if (

@@ -31,6 +31,8 @@ import {
   type MusicStreamingQuality,
   type QualityProfile,
   type StreamCacheStats,
+  type TidalLoginState,
+  type TidalStatus,
 } from "../api";
 import { useResource } from "../useResource";
 import {
@@ -47,9 +49,7 @@ type CustomCodec = (typeof CUSTOM_CODECS)[number];
 function clampInt(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, Math.round(value)));
-}
-
-/** Create/edit form for a custom quality profile. */
+} /** Create/edit form for a custom quality profile. */
 function ProfileEditor({
   editing,
   onClose,
@@ -220,6 +220,140 @@ function ProfileEditor({
       />
       {error && <Alert kind="danger">{error}</Alert>}
     </Modal>
+  );
+}
+
+const TIDAL_QUALITY_LABELS: Record<string, string> = {
+  HI_RES_LOSSLESS: "TIDAL MAX (HiRes FLAC, up to 24-bit / 192 kHz)",
+  LOSSLESS: "Lossless (FLAC, 16-bit / 44.1 kHz)",
+  HIGH: "High (AAC, 320 kbps)",
+  LOW: "Low (AAC, 96 kbps)",
+};
+
+/** TIDAL connection status and interactive device-flow login. */
+function TidalSection() {
+  const status = useResource<TidalStatus>("/library/music/tidal/status");
+  const [loginPath, setLoginPath] = useState<string | null>(null);
+  const login = useResource<TidalLoginState>(loginPath);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState("");
+
+  const phase = login.data?.phase;
+  const waiting = phase === "waiting";
+  const finished = phase === "done";
+  const succeeded = finished && login.data?.result === "success";
+
+  // Poll the login state while the device flow is open; the interval stops
+  // itself as soon as the phase leaves "waiting".
+  useEffect(() => {
+    if (!waiting) return;
+    const id = window.setInterval(() => login.reload(), 2000);
+    return () => window.clearInterval(id);
+  }, [waiting, login.reload]);
+
+  async function connect() {
+    if (starting || waiting) return;
+    setStarting(true);
+    setError("");
+    try {
+      await api<TidalLoginState>("/library/music/tidal/login", {
+        method: "POST",
+      });
+      setLoginPath("/library/music/tidal/login");
+    } catch (e) {
+      setError(messageFor(e));
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  function qualityLabel(value?: string) {
+    return (
+      TIDAL_QUALITY_LABELS[value ?? ""] ??
+      (value
+        ? `Requested quality: ${value}`
+        : "Requested quality is the server default.")
+    );
+  }
+
+  return (
+    <FieldSet
+      legend="TIDAL source"
+      description="When connected, TIDAL is the primary download source and the default source stays as the fallback. Original full-quality files are preserved through import."
+    >
+      <RequestState
+        loading={status.loading}
+        error={status.error}
+        code={status.code}
+        retry={status.reload}
+      />
+      {status.data && !status.data.available && (
+        <Alert kind="info" title="TIDAL provider not installed">
+          {status.data.detail ||
+            "Set REELSCAREY_TIDAL_PROVIDER and restart the server to enable TIDAL sourcing."}
+        </Alert>
+      )}
+      {status.data?.available && (
+        <>
+          <p className="rs-muted">
+            {status.data.logged_in
+              ? "TIDAL is connected."
+              : "TIDAL is not connected."}{" "}
+            {qualityLabel(status.data.quality)}
+          </p>
+          {status.data.logged_in ? (
+            <Alert kind="success" title="Connected">
+              Music acquisition prefers TIDAL and falls back to the default
+              source when a track is unavailable.
+            </Alert>
+          ) : (
+            <>
+              <Button
+                variant="soft"
+                disabled={starting || waiting}
+                onClick={() => void connect()}
+              >
+                {starting
+                  ? "Starting…"
+                  : waiting
+                    ? "Waiting for login…"
+                    : "Connect TIDAL"}
+              </Button>
+              {waiting && (
+                <Alert kind="info" title="Finish the login in your browser">
+                  {(login.data?.lines ?? []).length > 0 ? (
+                    (login.data?.lines ?? []).map((line, index) =>
+                      line.startsWith("http") ? (
+                        <p key={index}>
+                          <a href={line} target="_blank" rel="noreferrer">
+                            {line}
+                          </a>
+                        </p>
+                      ) : (
+                        <p key={index}>{line}</p>
+                      ),
+                    )
+                  ) : (
+                    <p>Waiting for the TIDAL device code…</p>
+                  )}
+                </Alert>
+              )}
+              {succeeded && (
+                <Alert kind="success" title="Connected">
+                  TIDAL login succeeded.
+                </Alert>
+              )}
+              {finished && !succeeded && (
+                <Alert kind="danger" title="Login failed">
+                  {login.data?.error || "TIDAL did not accept the login."}
+                </Alert>
+              )}
+              {error && <Alert kind="danger">{error}</Alert>}
+            </>
+          )}
+        </>
+      )}
+    </FieldSet>
   );
 }
 
@@ -572,6 +706,16 @@ export function MusicSettings() {
               <span>
                 Hits {cache.data.hits} · Misses {cache.data.misses}
               </span>
+              <span>
+                Direct {cache.data.direct_streams ?? 0} · Live{" "}
+                {cache.data.live_streams ?? 0} · Offset{" "}
+                {cache.data.offset_streams ?? 0}
+              </span>
+              <span>
+                Active conversions {cache.data.active_transcodes ?? 0} · Cache
+                fills {cache.data.active_cache_fills ?? 0} · Fill failures{" "}
+                {cache.data.cache_fill_failures ?? 0}
+              </span>
               <ConfirmDialog
                 trigger={
                   <Button size="1" variant="soft" color="red">
@@ -590,7 +734,10 @@ export function MusicSettings() {
           )}
         </FieldSet>
 
+        <TidalSection />
+
         <FieldSet legend="Where these settings apply" headingLevel={3}>
+          {" "}
           <p className="rs-muted">
             Per-download profile overrides live on the download dialogs, the
             conversion queue lives on the{" "}

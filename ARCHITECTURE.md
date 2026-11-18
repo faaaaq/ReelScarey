@@ -497,5 +497,11 @@ indexer fan-out with the audio category and stores short-lived sealed
 candidates; a selected release is queued through the existing client adapters,
 a leased worker reconciles it and imports the completed folder through a
 reviewed copy/tag/publish path, and a wanted-album schedule reuses the same
-queue. Audio preferences filter automatic choices. See
-[music catalog](docs/MUSIC.md).
+queue. Audio preferences filter automatic choices. Migration 112 adds
+named-account playback marks, playlists, queues, play events and expiring
+now-playing state; `internal/music/playback_state.go` owns transactional,
+user-scoped persistence while `internal/httpapi` owns the Subsonic wire
+contract. Playback streams use synchronous persistent-cache hits and immediate
+live pipes for cold misses; detached, deduplicated cache fills reopen the source
+independently and are cancelled and joined by the composition root on shutdown.
+See [music catalog](docs/MUSIC.md).

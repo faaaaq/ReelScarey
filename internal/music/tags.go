@@ -14,7 +14,7 @@ import (
 // audioTagVersion is stored with every tag document. A scan reuses a saved
 // observation only when the document was produced by the current parser, so a
 // new tag field is not hidden behind an unchanged file from an older scan.
-const audioTagVersion = 2
+const audioTagVersion = 3
 
 // AudioTags is the bounded tag and stream information read from one audio
 // file. It is evidence for matching, not a verified identity.
@@ -30,7 +30,9 @@ type AudioTags struct {
 	Album                     string `json:"album"`
 	Title                     string `json:"title"`
 	Track                     *int   `json:"track"`
+	TrackTotal                *int   `json:"track_total"`
 	Disc                      *int   `json:"disc"`
+	DiscTotal                 *int   `json:"disc_total"`
 	Year                      *int   `json:"year"`
 	MusicBrainzArtistID       string `json:"musicbrainz_artist_id"`
 	MusicBrainzAlbumArtistID  string `json:"musicbrainz_album_artist_id"`
@@ -124,7 +126,9 @@ func parseAudioProbe(body []byte) (AudioTags, error) {
 		Album:                     tags["album"],
 		Title:                     tags["title"],
 		Track:                     leadingInt(tags["track"], tags["tracknumber"]),
+		TrackTotal:                trailingInt(tags["track"], tags["tracknumber"]),
 		Disc:                      leadingInt(tags["disc"], tags["discnumber"]),
+		DiscTotal:                 trailingInt(tags["disc"], tags["discnumber"]),
 		Year:                      yearValue(tags["date"], tags["year"], tags["originaldate"]),
 		MusicBrainzArtistID:       mbidValue(tags["musicbrainz_artistid"], tags["musicbrainz artist id"]),
 		MusicBrainzAlbumArtistID:  mbidValue(tags["musicbrainz_albumartistid"], tags["musicbrainz album artist id"]),
@@ -172,6 +176,20 @@ func leadingInt(values ...string) *int {
 			value = value[:slash]
 		}
 		if n, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && n > 0 && n <= 100000 {
+			return &n
+		}
+	}
+	return nil
+}
+
+func trailingInt(values ...string) *int {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		slash := strings.IndexByte(value, '/')
+		if slash < 0 {
+			continue
+		}
+		if n, err := strconv.Atoi(strings.TrimSpace(value[slash+1:])); err == nil && n > 0 && n <= 100000 {
 			return &n
 		}
 	}

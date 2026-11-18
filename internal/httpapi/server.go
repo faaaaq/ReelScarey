@@ -80,6 +80,7 @@ type Server struct {
 	youtube          *youtube.Store
 	youtubeInspector YouTubeInspector
 	youtubeSubtitles YouTubeSubtitleRetrier
+	tidal            TIDALProvider
 	backups          *backups.Service
 	metadataRefresh  *automation.MetadataRefresher
 	totp             *auth.TOTPStore
@@ -102,6 +103,7 @@ type Dependencies struct {
 	// without redownloading the video. Wired from the composition root with
 	// the live worker; nil disables the retry route.
 	YouTubeSubtitles YouTubeSubtitleRetrier
+	TIDAL            TIDALProvider
 	Secrets          *securestore.Store
 	Notify           *notify.Store
 	Emby             *emby.Service
@@ -147,6 +149,7 @@ type MusicService interface {
 	ListAcquisitions(context.Context, int) (music.AcquisitionJobList, error)
 	AcknowledgeAcquisition(context.Context, int64) (music.AcquisitionJob, error)
 	RetryAcquisitionTracks(context.Context, int64) (music.AcquisitionJob, error)
+	RetryAcquisitionTrack(context.Context, int64, int64, string, bool) (music.AcquisitionJob, error)
 	MonitorSettings(context.Context) (music.MusicMonitorSettings, error)
 	SaveMonitorSettings(context.Context, bool, int, int) (music.MusicMonitorSettings, error)
 	ListMonitorSources(context.Context) (music.MusicMonitorSourceList, error)
@@ -160,6 +163,8 @@ type MusicService interface {
 	AlbumImage(context.Context, int64) (music.Artwork, error)
 	RefreshArtistMetadata(context.Context, int64) (music.ArtistRefreshResult, error)
 	RefreshAlbumMetadata(context.Context, int64) (music.AlbumRefreshResult, error)
+	RestoreArtistMetadataField(context.Context, int64, string) (music.ArtistRefreshResult, error)
+	RestoreAlbumMetadataField(context.Context, int64, string) (music.AlbumRefreshResult, error)
 	RefreshLibraryMetadataBatch(context.Context, int64) (music.LibraryRefreshResult, error)
 	Album(context.Context, int64) (music.AlbumDetails, error)
 	ServerAlbum(context.Context, int64) (music.AlbumDetails, error)
@@ -259,6 +264,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	}
 	s.youtubeInspector = deps.YouTubeInspector
 	s.youtubeSubtitles = deps.YouTubeSubtitles
+	s.tidal = deps.TIDAL
 	s.bot = deps.Bot
 	s.franchises = deps.Franchises
 	if s.franchises == nil {
@@ -412,6 +418,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/organization/acquisition", method(http.MethodPost, s.organizationAcquisition))
 	mux.HandleFunc("/api/v1/organization/replacements", s.organizationReplacement)
 	mux.HandleFunc("/api/v1/organization/embedded-title", method(http.MethodPost, s.organizationEmbeddedTitle))
+	mux.HandleFunc("/api/v1/organization/track-metadata", method(http.MethodPost, s.organizationTrackMetadata))
 	mux.HandleFunc("/api/v1/organization/plans/{id}/rollback", method(http.MethodPost, s.organizationRollback))
 	mux.HandleFunc("/api/v1/organization/plans/{id}/recover-replacement", method(http.MethodPost, s.organizationRecoverReplacement))
 	mux.HandleFunc("/api/v1/organization/plans/{id}", method(http.MethodGet, s.organizationPlan))
@@ -544,10 +551,12 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/artists/{id}/discography", method(http.MethodGet, s.musicArtistDiscography))
 	mux.HandleFunc("/api/v1/library/music/artists/{id}/image", method(http.MethodGet, s.musicArtistImage))
 	mux.HandleFunc("/api/v1/library/music/artists/{id}/refresh", method(http.MethodPost, s.musicArtistRefresh))
+	mux.HandleFunc("/api/v1/library/music/artists/{id}/restore", method(http.MethodPost, s.musicArtistRestore))
 	mux.HandleFunc("/api/v1/library/music/acquisitions", s.musicAcquisitions)
 	mux.HandleFunc("/api/v1/library/music/acquisitions/{id}", method(http.MethodGet, s.musicAcquisition))
 	mux.HandleFunc("/api/v1/library/music/acquisitions/{id}/acknowledge", method(http.MethodPost, s.musicAcquisitionAcknowledge))
 	mux.HandleFunc("/api/v1/library/music/acquisitions/{id}/retry", method(http.MethodPost, s.musicAcquisitionRetry))
+	mux.HandleFunc("/api/v1/library/music/acquisitions/{id}/tracks/{track}/retry", method(http.MethodPost, s.musicAcquisitionTrackRetry))
 	mux.HandleFunc("/api/v1/library/music/links/preview", method(http.MethodPost, s.musicLinkPreview))
 	mux.HandleFunc("/api/v1/library/music/links", method(http.MethodPost, s.musicLinkAcquire))
 	mux.HandleFunc("/api/v1/library/music/charts", method(http.MethodGet, s.musicCharts))
@@ -555,10 +564,13 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/monitor/sources", s.musicMonitorSources)
 	mux.HandleFunc("/api/v1/library/music/monitor/sources/{id}", s.musicMonitorSource)
 	mux.HandleFunc("/api/v1/library/music/monitor/run", method(http.MethodPost, s.musicMonitorRun))
+	mux.HandleFunc("/api/v1/library/music/tidal/status", method(http.MethodGet, s.tidalStatus))
+	mux.HandleFunc("/api/v1/library/music/tidal/login", s.tidalLogin)
 	mux.HandleFunc("/api/v1/library/music/albums", method(http.MethodGet, s.musicAlbums))
 	mux.HandleFunc("/api/v1/library/music/albums/{id}", method(http.MethodGet, s.musicAlbum))
 	mux.HandleFunc("/api/v1/library/music/albums/{id}/cover", method(http.MethodGet, s.musicAlbumCover))
 	mux.HandleFunc("/api/v1/library/music/albums/{id}/refresh", method(http.MethodPost, s.musicAlbumRefresh))
+	mux.HandleFunc("/api/v1/library/music/albums/{id}/restore", method(http.MethodPost, s.musicAlbumRestore))
 	mux.HandleFunc("/api/v1/library/music/metadata/refresh", method(http.MethodPost, s.musicLibraryMetadataRefresh))
 	mux.HandleFunc("/api/v1/library/music/albums/{id}/acquire", method(http.MethodPost, s.musicAlbumAcquire))
 	mux.HandleFunc("/api/v1/library/music/provider-albums/{id}/acquire", method(http.MethodPost, s.musicProviderAlbumAcquire))
@@ -929,7 +941,8 @@ func frontend(assets fs.FS) http.HandlerFunc {
 
 type responseWriter struct {
 	http.ResponseWriter
-	status int
+	status    int
+	firstByte time.Time
 }
 
 func (w *responseWriter) WriteHeader(code int) {
@@ -942,7 +955,11 @@ func (w *responseWriter) Write(body []byte) (int, error) {
 	if w.status == 0 {
 		w.WriteHeader(200)
 	}
-	return w.ResponseWriter.Write(body)
+	n, err := w.ResponseWriter.Write(body)
+	if n > 0 && w.firstByte.IsZero() {
+		w.firstByte = time.Now()
+	}
+	return n, err
 }
 func (w *responseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
@@ -970,6 +987,12 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			}
 			if s.instruments != nil {
 				s.instruments.ObserveHTTPRequest(r.Method, routePattern(r), status)
+			}
+			// Stream-open headers measure negotiation work; this separate event
+			// records the actual first response byte rather than total listening
+			// time. The mode is a bounded enum and no user or path is included.
+			if mode := w.Header().Get("X-ReelScarey-Playback-Path"); mode != "" && !wrapped.firstByte.IsZero() {
+				s.logger.Info("music playback first byte", "mode", mode, "duration_ms", wrapped.firstByte.Sub(start).Milliseconds())
 			}
 			// Health probes run every few seconds; only log them when they fail.
 			if (r.URL.Path == "/readyz" || r.URL.Path == "/healthz") && status < 400 {

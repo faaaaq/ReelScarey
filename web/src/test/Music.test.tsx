@@ -107,6 +107,9 @@ describe("music", () => {
     ).toHaveAttribute("href", "/music/artists/1");
     async function checkSelection(target: HTMLElement, name: string) {
       await userEvent.click(screen.getByRole("button", { name: "Select" }));
+      expect(
+        screen.queryByRole("button", { name: /Delete selected/ }),
+      ).not.toBeInTheDocument();
       await userEvent.click(target);
       expect(
         screen.getByRole("checkbox", { name: `Select ${name}` }),
@@ -120,10 +123,13 @@ describe("music", () => {
       expect(
         screen.getByRole("checkbox", { name: `Select ${name}` }),
       ).not.toBeChecked();
+      expect(
+        screen.queryByRole("button", { name: /Delete selected/ }),
+      ).not.toBeInTheDocument();
       await userEvent.click(screen.getByRole("button", { name: "Select" }));
     }
     await checkSelection(
-      screen.getByRole("link", { name: "Radiohead" }),
+      screen.getByRole("link", { name: "Open Radiohead" }),
       "Radiohead",
     );
     await userEvent.click(screen.getByRole("button", { name: "Albums" }));
@@ -131,7 +137,7 @@ describe("music", () => {
       (await screen.findAllByRole("link", { name: "OK Computer" }))[0],
     ).toHaveAttribute("href", "/music/albums/2");
     await checkSelection(
-      screen.getByRole("link", { name: "OK Computer" }),
+      screen.getByRole("link", { name: "Open OK Computer" }),
       "OK Computer",
     );
     await userEvent.click(screen.getByRole("button", { name: "Tracks" }));

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -396,20 +397,24 @@ func (s *Service) RemoveLibraryScan(ctx context.Context, id string) error {
 }
 
 type DiscoveredFile struct {
-	ID          string `json:"id"`
-	ScanID      string `json:"scan_id"`
-	Path        string `json:"path"`
-	FullPath    string `json:"full_path"`
-	Hint        string `json:"hint"`
-	Size        int64  `json:"size_bytes"`
-	Mtime       int64  `json:"mtime"`
-	State       string `json:"state"`
-	MediaID     *int64 `json:"media_id"`
-	MediaFileID *int64 `json:"media_file_id"`
-	Message     string `json:"message"`
-	targets     []TVTarget
-	owner       string
-	identity    string
+	ID               string   `json:"id"`
+	ScanID           string   `json:"scan_id"`
+	Path             string   `json:"path"`
+	FullPath         string   `json:"full_path"`
+	Hint             string   `json:"hint"`
+	Size             int64    `json:"size_bytes"`
+	Mtime            int64    `json:"mtime"`
+	State            string   `json:"state"`
+	MediaID          *int64   `json:"media_id"`
+	MediaFileID      *int64   `json:"media_file_id"`
+	Message          string   `json:"message"`
+	ProposedIdentity string   `json:"proposed_identity"`
+	Destination      string   `json:"destination"`
+	PlannedOperation string   `json:"planned_operation"`
+	MatchEvidence    []string `json:"match_evidence"`
+	targets          []TVTarget
+	owner            string
+	identity         string
 }
 
 const discoveredColumns = `id,scan_id,relative_path,size_bytes,mtime,state,media_id,media_file_id,message,targets,lease_owner,file_identity`
@@ -450,12 +455,19 @@ func discoveryHint(name, kind string) string {
 	return base
 }
 
+type ImportReviewCounts struct {
+	Ready         int `json:"ready"`
+	NeedsDecision int `json:"needs_decision"`
+	Skipped       int `json:"skipped"`
+}
+
 type DiscoveredPage struct {
-	Items []DiscoveredFile `json:"items"`
-	Page  int              `json:"page"`
-	Total int              `json:"total"`
-	Limit int              `json:"limit"`
-	Scan  LibraryScan      `json:"scan"`
+	Items  []DiscoveredFile   `json:"items"`
+	Page   int                `json:"page"`
+	Total  int                `json:"total"`
+	Limit  int                `json:"limit"`
+	Scan   LibraryScan        `json:"scan"`
+	Review ImportReviewCounts `json:"review"`
 }
 
 func (s *Service) DiscoveredFiles(ctx context.Context, id string, page int, state string) (DiscoveredPage, error) {
@@ -471,6 +483,9 @@ func (s *Service) DiscoveredFiles(ctx context.Context, id string, page int, stat
 	condition := `scan_id=?`
 	args := []any{id}
 	ready := `EXISTS(SELECT 1 FROM library_match_candidates c WHERE c.file_id=library_scan_files.id AND c.state='ready')`
+	if e = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(state='review' AND `+ready+`),0),COALESCE(SUM(state='blocked' OR (state='review' AND NOT `+ready+`)),0),COALESCE(SUM(state='skipped'),0) FROM library_scan_files WHERE scan_id=?`, id).Scan(&out.Review.Ready, &out.Review.NeedsDecision, &out.Review.Skipped); e != nil {
+		return out, e
+	}
 	if state == "matched" {
 		condition += ` AND state='review' AND ` + ready
 	} else if state == "review" {
@@ -484,7 +499,13 @@ func (s *Service) DiscoveredFiles(ctx context.Context, id string, page int, stat
 	}
 	args = append(args, (page-1)*50)
 	columns := strings.Replace(discoveredColumns, ",state,", ",CASE WHEN state='review' AND "+ready+" THEN 'matched' ELSE state END,", 1)
-	rows, e := s.db.QueryContext(ctx, `SELECT `+columns+` FROM library_scan_files WHERE `+condition+` ORDER BY relative_path LIMIT 50 OFFSET ?`, args...)
+	order := `relative_path`
+	if state == "" {
+		// The unfiltered review is an exceptions queue. Registration in place and
+		// skipped files remain available below the rows that need an owner.
+		order = `CASE WHEN state='blocked' THEN 0 WHEN state='review' AND NOT ` + ready + ` THEN 1 WHEN state='review' THEN 2 WHEN state IN ('queued','verifying') THEN 3 WHEN state='registered' THEN 4 ELSE 5 END,relative_path`
+	}
+	rows, e := s.db.QueryContext(ctx, `SELECT `+columns+` FROM library_scan_files WHERE `+condition+` ORDER BY `+order+` LIMIT 50 OFFSET ?`, args...)
 	if e != nil {
 		return out, e
 	}
@@ -499,10 +520,87 @@ func (s *Service) DiscoveredFiles(ctx context.Context, id string, page int, stat
 		}
 		f.FullPath = filepath.Join(scan.MediaRoot, filepath.FromSlash(f.Path))
 		f.Hint = discoveryHint(f.Path, scan.Kind)
+		if e = s.decorateDiscoveredReview(ctx, &f); e != nil {
+			return out, e
+		}
 		out.Items = append(out.Items, f)
 	}
 	return out, rows.Err()
 }
+
+// decorateDiscoveredReview is a read-only projection over the durable scan and
+// match snapshots. Registration remains independent of organization: its
+// destination is the discovered file itself and no rename, move or retag is
+// implied by presenting a proposed catalog identity.
+func (s *Service) decorateDiscoveredReview(ctx context.Context, f *DiscoveredFile) error {
+	f.Destination = f.FullPath
+	f.MatchEvidence = []string{}
+	if f.Hint != "" {
+		f.MatchEvidence = append(f.MatchEvidence, "Filename hint (supporting evidence): "+f.Hint)
+	}
+	var raw, candidateMessage string
+	var candidate automaticCandidate
+	err := s.db.QueryRowContext(ctx, `SELECT payload,message FROM library_match_candidates WHERE file_id=?`, f.ID).Scan(&raw, &candidateMessage)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	hasCandidate := err == nil && json.Unmarshal([]byte(raw), &candidate) == nil && candidate.Snapshot.Choice.FileID == f.ID
+	title := ""
+	targets := f.targets
+	if hasCandidate {
+		title = candidate.Snapshot.Title
+		if len(targets) == 0 {
+			targets = candidate.Snapshot.EpisodeSnapshot
+		}
+		if candidate.Note != "" {
+			f.MatchEvidence = append(f.MatchEvidence, candidate.Note)
+		}
+	}
+	if title == "" && f.MediaID != nil {
+		if err = s.db.QueryRowContext(ctx, `SELECT title FROM media_items WHERE id=?`, *f.MediaID).Scan(&title); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
+	if title == "" {
+		f.ProposedIdentity = "Unconfirmed filename hint: " + f.Hint
+	} else {
+		f.ProposedIdentity = title
+	}
+	if len(targets) > 0 {
+		labels := make([]string, 0, len(targets))
+		for _, target := range targets {
+			labels = append(labels, fmt.Sprintf("S%02dE%02d", target.Season, target.Number))
+		}
+		f.ProposedIdentity += " — " + strings.Join(labels, ", ")
+	}
+	if candidateMessage != "" && candidateMessage != f.Message {
+		f.MatchEvidence = append(f.MatchEvidence, candidateMessage)
+	}
+	if f.Message != "" {
+		f.MatchEvidence = append(f.MatchEvidence, f.Message)
+	}
+	switch f.State {
+	case "registered":
+		f.PlannedOperation = "Registered in place; no rename, move or retag was performed."
+		f.MatchEvidence = append(f.MatchEvidence, "Persisted mapping and verified file identity.")
+	case "queued", "verifying":
+		f.PlannedOperation = "Verify and register in place; do not rename, move or retag."
+		f.MatchEvidence = append(f.MatchEvidence, "Saved catalog mapping and canonical episode snapshot; file identity is rechecked before registration.")
+	case "skipped":
+		f.PlannedOperation = "Skipped; the file is unchanged and remains outside the library."
+	case "blocked":
+		f.PlannedOperation = "No file operation until the exception is reviewed and resolved."
+	default:
+		if hasCandidate {
+			f.PlannedOperation = "Verify and register in place; do not rename, move or retag."
+			f.MatchEvidence = append(f.MatchEvidence, "Saved catalog mapping and canonical episode snapshot; file identity is rechecked before registration.")
+		} else {
+			f.PlannedOperation = "After confirmation, verify and register in place; rename, move and retag remain separate choices."
+		}
+	}
+	return nil
+}
+
 func (s *Service) SkipDiscovered(ctx context.Context, id string) error {
 	defer organization.ReadMedia()()
 	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {

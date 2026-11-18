@@ -97,9 +97,9 @@ func TestSubsonicStreamExplicitMaxBitRateOnlyIsUntouched(t *testing.T) {
 	}
 }
 
-// The web player path applies the global streaming quality as its default:
-// a converted target reaches OpenPlayback, while "original" keeps the
-// byte-for-byte OpenAudioFile passthrough.
+// The web player path applies the global streaming quality as its default.
+// Original also reaches the common planner with an empty format/rate, which
+// serves playable sources byte-for-byte while retaining compatibility fallback.
 func TestWebPlayerStreamQuality(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "song.mp3")
 	if err := os.WriteFile(path, []byte("0123456789"), 0o600); err != nil {
@@ -119,7 +119,32 @@ func TestWebPlayerStreamQuality(t *testing.T) {
 	if out := request(handler, "GET", "/api/v1/library/music/files/1/stream", "", session, false); out.Code != 200 {
 		t.Fatal("stream", out.Code, out.Body.String())
 	}
-	if original.gotFormats != 0 {
-		t.Fatal("original quality must stream the pristine file without OpenPlayback")
+	if original.gotFormats != 1 || original.gotFormat != "" || original.gotRate != 0 {
+		t.Fatalf("original quality must use the direct planner without a conversion target: calls=%d format=%q rate=%d", original.gotFormats, original.gotFormat, original.gotRate)
+	}
+}
+
+func TestWebPlayerExplicitRateAndOffsetReachPlanner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(path, []byte("0123456789"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, query, format string
+		rate, offset        int
+	}{
+		{name: "rate only cap", query: "?maxBitRate=16", rate: 16},
+		{name: "original quality active seek", query: "?timeOffset=42", offset: 42},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := &recordingMusic{fakeMusic: &fakeMusic{audioPath: path}, prefs: music.MusicPreferences{StreamingQuality: "original"}}
+			handler, session := musicFixture(t, service)
+			if out := request(handler, "GET", "/api/v1/library/music/files/1/stream"+tc.query, "", session, false); out.Code != 200 {
+				t.Fatal("stream", out.Code, out.Body.String())
+			}
+			if service.gotFormat != tc.format || service.gotRate != tc.rate || service.gotOffset != tc.offset {
+				t.Fatalf("planner received format=%q rate=%d offset=%d", service.gotFormat, service.gotRate, service.gotOffset)
+			}
+		})
 	}
 }

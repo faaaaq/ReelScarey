@@ -20,6 +20,10 @@ import {
 } from "../ui";
 import { PageHeading, RequestState } from "../components";
 import {
+  ImportReviewFacts,
+  ImportReviewSummary,
+} from "../components/ImportReview";
+import {
   APIError,
   api,
   messageFor,
@@ -1161,6 +1165,11 @@ export function MusicImport() {
                 ))}
               </Alert>
             )}
+            <ImportReviewSummary
+              ready={matchedCount}
+              needsDecision={unresolvedCount}
+              skipped={skippedCount}
+            />
             <div
               className="mus-scan-summary"
               role="group"
@@ -1236,6 +1245,52 @@ export function MusicImport() {
                       </td>
                       <td>
                         <span className="mus-path">{file.relative_path}</span>
+                        <details>
+                          <summary>Import review</summary>
+                          <ImportReviewFacts
+                            identity={`${
+                              file.track_id
+                                ? `Catalog track #${file.track_id}`
+                                : "Unconfirmed tags"
+                            } — ${
+                              [
+                                file.tag_album_artist || file.tag_artist,
+                                file.tag_album,
+                                file.tag_title,
+                              ]
+                                .filter(Boolean)
+                                .join(" — ") || "No tagged identity"
+                            }`}
+                            destination={`${file.relative_path} (registration in place)`}
+                            operation={
+                              file.state === "matched"
+                                ? "Finalize can verify and register in place. Rename, move and retag remain separately reviewed organization choices."
+                                : file.state === "registered"
+                                  ? "Registered; completed files are not imported again."
+                                  : file.state === "skipped"
+                                    ? "Skipped; the file is unchanged."
+                                    : "No file operation until the match is confirmed or the row is skipped."
+                            }
+                            evidence={[
+                              `Embedded tags: ${
+                                [
+                                  file.tag_artist,
+                                  file.tag_album,
+                                  file.tag_title,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" — ") || "unavailable"
+                              }`,
+                              file.tag_musicbrainz_recording
+                                ? `MusicBrainz recording ID: ${file.tag_musicbrainz_recording}`
+                                : "No embedded MusicBrainz recording ID.",
+                              file.duration_ms > 0
+                                ? `Measured duration: ${Math.round(file.duration_ms / 1000)} seconds.`
+                                : "Duration unavailable; other evidence remains reviewable.",
+                              ...(file.error ? [file.error] : []),
+                            ]}
+                          />
+                        </details>
                         {file.error && (
                           <span className="rs-muted"> · {file.error}</span>
                         )}

@@ -80,11 +80,17 @@ const maxEncodeFailureMemos = 1024
 // reset on restart and are best-effort observability, never a source of
 // truth.
 type StreamCacheStats struct {
-	Entries    int64
-	SizeBytes  int64
-	LimitBytes int64
-	Hits       int64
-	Misses     int64
+	Entries           int64
+	SizeBytes         int64
+	LimitBytes        int64
+	Hits              int64
+	Misses            int64
+	DirectStreams     int64
+	LiveStreams       int64
+	OffsetStreams     int64
+	ActiveTranscodes  int64
+	ActiveCacheFills  int64
+	CacheFillFailures int64
 }
 
 // streamCacheRuntime holds the per-Service in-process cache state: the
@@ -98,6 +104,10 @@ type streamCacheRuntime struct {
 	holds  map[string]int
 	hits   atomic.Int64
 	misses atomic.Int64
+	// encodeStarted distinguishes startup crash cleanup from routine pruning.
+	// Before this service has started an encode, every .part is restart residue;
+	// afterwards fresh staging files may belong to an in-flight encoder.
+	encodeStarted atomic.Bool
 
 	// failMu guards the short-lived per-key encode-failure memo. Entries
 	// expire after cacheFailureMemoTTL and disappear when a later encode
@@ -403,7 +413,10 @@ func encodeFailureMemoizable(err error) bool {
 // The cache dir is <mediaDir>/.reelscarey-stream-cache, created lazily via
 // os.MkdirAll. Every file access goes through os.Root on that dir, mirroring
 // OpenAudioFile's containment, so a tampered relative_path can never escape.
-func (s *Service) OpenCachedStream(ctx context.Context, fileID int64, codec string, bitrate int, sourceSHA string, encode func(ctx context.Context, dest string) error) (*os.File, os.FileInfo, string, error) {
+func (s *Service) OpenCachedStream(ctx context.Context, fileID int64, codec string, bitrate int, sourceSHA string, encode func(ctx context.Context, dest string) error, mode ...*string) (*os.File, os.FileInfo, string, error) {
+	if len(mode) > 0 && mode[0] != nil {
+		*mode[0] = "cache-encode"
+	}
 	profileKey, valid := cacheProfileKey(codec, bitrate)
 	if fileID < 1 || !valid {
 		return nil, nil, "", ErrInvalidInput
@@ -420,6 +433,9 @@ func (s *Service) OpenCachedStream(ctx context.Context, fileID int64, codec stri
 			// The source changed, so the cached bytes are stale.
 			_ = s.deleteCacheEntry(ctx, fileID, profileKey, row.RelativePath)
 		} else if file, info, err := s.openCacheFile(fileID, profileKey, row.RelativePath); err == nil {
+			if len(mode) > 0 && mode[0] != nil {
+				*mode[0] = "cache-hit"
+			}
 			s.streamCache().hits.Add(1)
 			s.touchCache(ctx, row.ID)
 			return file, info, profileKey, nil
@@ -451,6 +467,9 @@ func (s *Service) OpenCachedStream(ctx context.Context, fileID int64, codec stri
 		if errors.Is(err, ErrCacheBusy) {
 			if row, cached, rowErr := s.cacheRow(ctx, fileID, profileKey); rowErr == nil && cached && row.SourceSHA == sourceSHA {
 				if file, info, openErr := s.openCacheFile(fileID, profileKey, row.RelativePath); openErr == nil {
+					if len(mode) > 0 && mode[0] != nil {
+						*mode[0] = "cache-hit"
+					}
 					s.streamCache().hits.Add(1)
 					s.touchCache(ctx, row.ID)
 					return file, info, profileKey, nil
@@ -464,6 +483,9 @@ func (s *Service) OpenCachedStream(ctx context.Context, fileID int64, codec stri
 	if row, cached, err := s.cacheRow(ctx, fileID, profileKey); err == nil && cached {
 		if row.SourceSHA == sourceSHA {
 			if file, info, err := s.openCacheFile(fileID, profileKey, row.RelativePath); err == nil {
+				if len(mode) > 0 && mode[0] != nil {
+					*mode[0] = "cache-hit"
+				}
 				s.streamCache().hits.Add(1)
 				s.touchCache(ctx, row.ID)
 				return file, info, profileKey, nil
@@ -496,6 +518,11 @@ func (s *Service) OpenCachedStream(ctx context.Context, fileID int64, codec stri
 		return nil, nil, "", err
 	}
 	defer root.Close()
+	// Every post-encode error path (sync, close, rename, or an interrupted
+	// detached fill) must reclaim staging. After a successful rename this is
+	// simply a best-effort removal of a name that no longer exists.
+	defer func() { _ = root.Remove(part) }()
+	rt.encodeStarted.Store(true)
 	if err := encode(ctx, dest); err != nil {
 		// Remove the in-flight entry and delete the partial temp file, then
 		// return the typed encode failure with the cause attached. Transient
@@ -604,6 +631,14 @@ func (s *Service) StreamCacheStats(ctx context.Context) (StreamCacheStats, error
 	rt := s.streamCache()
 	stats.Hits = rt.hits.Load()
 	stats.Misses = rt.misses.Load()
+	stats.DirectStreams = s.playbackDirect.Load()
+	stats.LiveStreams = s.playbackLive.Load()
+	stats.OffsetStreams = s.playbackOffset.Load()
+	stats.ActiveTranscodes = s.transcodeActive.Load()
+	stats.CacheFillFailures = s.streamFillFailed.Load()
+	s.streamFillMu.Lock()
+	stats.ActiveCacheFills = int64(len(s.streamFills))
+	s.streamFillMu.Unlock()
 	stats.LimitBytes = s.streamCacheLimitBytes(ctx)
 	return stats, nil
 }
@@ -768,6 +803,10 @@ func (s *Service) PruneStreamCache(ctx context.Context, stale time.Duration) err
 	}
 	refRows.Close()
 	deadline := time.Now().Add(-stale)
+	// main prunes immediately after constructing the service. No encoder can
+	// belong to this service before encodeStarted, so even a freshly written
+	// .part is crash residue and must not survive until another restart.
+	startupCleanup := !s.streamCache().encodeStarted.Load()
 	for _, dir := range dirs {
 		if !dir.IsDir() {
 			continue
@@ -787,9 +826,9 @@ func (s *Service) PruneStreamCache(ctx context.Context, stale time.Duration) err
 				empty = false
 				continue
 			}
-			if strings.HasSuffix(f.Name(), ".part") {
-				// Staging garbage: only old enough files, so an encode that
-				// is writing its .part right now keeps it.
+			if strings.HasSuffix(f.Name(), ".part") && !startupCleanup {
+				// During routine pruning, only old enough staging is garbage;
+				// an encode that is writing its .part right now keeps it.
 				if info, err := f.Info(); err != nil || info.ModTime().After(deadline) {
 					empty = false
 					continue

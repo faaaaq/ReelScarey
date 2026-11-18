@@ -23,6 +23,10 @@ import {
   type TVSeasonDetails,
 } from "../api";
 import { PageHeading, RequestState } from "../components";
+import {
+  ImportReviewFacts,
+  ImportReviewSummary,
+} from "../components/ImportReview";
 import { Pagination } from "../movieComponents";
 import { useLiveResource } from "../useLiveResource";
 import { useResource } from "../useResource";
@@ -70,6 +74,10 @@ export type DiscoveredFile = {
   media_id: number | null;
   media_file_id: number | null;
   message: string;
+  proposed_identity?: string;
+  destination?: string;
+  planned_operation?: string;
+  match_evidence?: string[];
 };
 export type DiscoveredPage = {
   items: DiscoveredFile[];
@@ -77,6 +85,11 @@ export type DiscoveredPage = {
   page: number;
   total: number;
   limit: number;
+  review?: {
+    ready: number;
+    needs_decision: number;
+    skipped: number;
+  };
 };
 export type DuplicateEpisode = {
   episode_id: number;
@@ -556,7 +569,7 @@ function ScanReview({
   forgotten: () => void;
 }) {
   const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState("review");
+  const [filter, setFilter] = useState("");
   const [file, setFile] = useState<DiscoveredFile>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -906,6 +919,13 @@ function ScanReview({
           {error}
         </p>
       )}
+      {result.data?.review && (
+        <ImportReviewSummary
+          ready={result.data.review.ready}
+          needsDecision={result.data.review.needs_decision}
+          skipped={result.data.review.skipped}
+        />
+      )}
       <div className="scan-file-toolbar">
         <div>
           <h2>Files in this scan</h2>
@@ -977,6 +997,17 @@ function ScanReview({
                 {item.message && (
                   <p className="scan-file-message">{item.message}</p>
                 )}
+                <ImportReviewFacts
+                  identity={item.proposed_identity ?? item.hint}
+                  destination={item.destination ?? item.full_path}
+                  operation={
+                    item.planned_operation ??
+                    "Review the mapping before registering this file in place."
+                  }
+                  evidence={
+                    item.match_evidence ?? (item.message ? [item.message] : [])
+                  }
+                />
                 <div className="scan-file-actions">
                   {["review", "blocked"].includes(item.state) && (
                     <>

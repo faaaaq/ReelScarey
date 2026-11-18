@@ -50,6 +50,7 @@ type Artist struct {
 	ID             int64  `json:"id,omitempty"`
 	MusicBrainzID  string `json:"musicbrainz_id"`
 	Name           string `json:"name"`
+	NameOverridden bool   `json:"name_overridden"`
 	SortName       string `json:"sort_name"`
 	Disambiguation string `json:"disambiguation"`
 	Country        string `json:"country"`
@@ -63,19 +64,21 @@ type Artist struct {
 }
 
 type Album struct {
-	ID             int64    `json:"id,omitempty"`
-	ArtistID       int64    `json:"artist_id,omitempty"`
-	ArtistName     string   `json:"artist_name,omitempty"`
-	MusicBrainzID  string   `json:"musicbrainz_id"`
-	Title          string   `json:"title"`
-	PrimaryType    string   `json:"primary_type"`
-	SecondaryTypes []string `json:"secondary_types"`
-	Year           *int     `json:"year"`
-	ReleaseDate    string   `json:"release_date"`
-	CoverURL       string   `json:"cover_url"`
-	Monitored      bool     `json:"monitored"`
-	Status         string   `json:"status"`
-	TrackCount     int      `json:"track_count"`
+	ID              int64    `json:"id,omitempty"`
+	ArtistID        int64    `json:"artist_id,omitempty"`
+	ArtistName      string   `json:"artist_name,omitempty"`
+	MusicBrainzID   string   `json:"musicbrainz_id"`
+	Title           string   `json:"title"`
+	TitleOverridden bool     `json:"title_overridden"`
+	YearOverridden  bool     `json:"year_overridden"`
+	PrimaryType     string   `json:"primary_type"`
+	SecondaryTypes  []string `json:"secondary_types"`
+	Year            *int     `json:"year"`
+	ReleaseDate     string   `json:"release_date"`
+	CoverURL        string   `json:"cover_url"`
+	Monitored       bool     `json:"monitored"`
+	Status          string   `json:"status"`
+	TrackCount      int      `json:"track_count"`
 	// DurationMS is the summed catalog track duration. It is only populated by
 	// the file-backed server queries (server_data.go) that feed the Subsonic
 	// API, so catalog-only reads leave it at zero.

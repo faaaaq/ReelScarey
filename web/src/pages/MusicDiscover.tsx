@@ -15,6 +15,7 @@ import {
   EmptyState,
   FieldSet,
   Label,
+  Modal,
   PageBody,
   PageToolbar,
   Table,
@@ -39,6 +40,7 @@ import { useLiveResource } from "../useLiveResource";
 import { useMusicPlayer, type PlayerTrack } from "../musicPlayer";
 import { albumCoverURL } from "../musicArtwork";
 import { formatTrackDuration } from "../ui/format";
+import { AcquisitionProgress } from "../musicDownload";
 import "./Music.css";
 
 function trackPlayer(track: MusicTopTrack): PlayerTrack | null {
@@ -164,6 +166,11 @@ export function MusicDiscover() {
     chartDownloadID ? `/library/music/acquisitions/${chartDownloadID}` : null,
     2000,
   );
+  const [reviewJobID, setReviewJobID] = useState<number | null>(null);
+  const reviewJob = useLiveResource<MusicAcquisitionJob>(
+    reviewJobID ? `/library/music/acquisitions/${reviewJobID}` : null,
+    2000,
+  );
 
   useEffect(() => {
     if (monitor.data) setIntervalHours(String(monitor.data.interval_hours));
@@ -264,6 +271,24 @@ export function MusicDiscover() {
       jobs.reload();
     } catch (e) {
       setJobActionError(messageFor(e));
+    }
+  }
+
+  async function retryTrack(jobID: number, trackID: number, sourceURL: string) {
+    setJobActionError("");
+    try {
+      await api(
+        `/library/music/acquisitions/${jobID}/tracks/${trackID}/retry`,
+        {
+          method: "POST",
+          body: JSON.stringify({ source_url: sourceURL, reviewed: true }),
+        },
+      );
+      reviewJob.reload();
+      jobs.reload();
+    } catch (e) {
+      setJobActionError(messageFor(e));
+      throw e;
     }
   }
 
@@ -771,6 +796,13 @@ export function MusicDiscover() {
                       </td>
                       <td>{item.error || "—"}</td>
                       <td>
+                        <Button
+                          size="1"
+                          variant="soft"
+                          onClick={() => setReviewJobID(item.id)}
+                        >
+                          Review
+                        </Button>
                         {retryable && (
                           <Button
                             size="1"
@@ -799,6 +831,35 @@ export function MusicDiscover() {
             </Table>
           )}
         </FieldSet>
+        <Modal
+          open={reviewJobID !== null}
+          onOpenChange={(open) => {
+            if (!open) setReviewJobID(null);
+          }}
+          title={reviewJob.data?.title || `Acquisition #${reviewJobID ?? ""}`}
+          description="Catalog origin, actual audio sources, candidate evidence and per-track recovery."
+          footer={
+            <Button variant="soft" onClick={() => setReviewJobID(null)}>
+              Close
+            </Button>
+          }
+        >
+          <RequestState
+            loading={reviewJob.loading}
+            error={reviewJob.error}
+            retry={reviewJob.reload}
+          />
+          {reviewJob.data && (
+            <AcquisitionProgress
+              job={reviewJob.data}
+              onRetry={(trackID, sourceURL) =>
+                reviewJobID
+                  ? retryTrack(reviewJobID, trackID, sourceURL)
+                  : Promise.resolve()
+              }
+            />
+          )}
+        </Modal>
       </PageBody>
     </>
   );

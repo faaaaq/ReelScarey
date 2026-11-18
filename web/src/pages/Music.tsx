@@ -33,6 +33,8 @@ import {
   messageFor,
   refreshMusicAlbum,
   refreshMusicArtist,
+  restoreMusicAlbumField,
+  restoreMusicArtistField,
   type MusicAlbum,
   type MusicAlbumDetails,
   type MusicAlbumPreferences,
@@ -864,6 +866,27 @@ function MusicArtistDetail({ id }: { id?: string }) {
     }
   }
 
+  async function restoreArtistName() {
+    if (!id || refreshPending) return;
+    setRefreshPending(true);
+    setRefreshError("");
+    setRefreshNotice("");
+    try {
+      const result = await restoreMusicArtistField(Number(id), "name");
+      setRefreshNotice(result.message);
+      await Promise.all([
+        details.reload(),
+        discography.reload(),
+        topTracks.reload(),
+        libraryTracks.reload(),
+      ]);
+    } catch (e) {
+      setRefreshError(messageFor(e));
+    } finally {
+      setRefreshPending(false);
+    }
+  }
+
   async function startTopDownload() {
     if (!downloadTrack || downloadPending) return;
     setDownloadPending(true);
@@ -988,6 +1011,15 @@ function MusicArtistDetail({ id }: { id?: string }) {
             spinning={refreshPending}
             onClick={refreshArtist}
           />
+          {artist?.name_overridden && (
+            <ToolbarButton
+              icon={RefreshCw}
+              label="Use MusicBrainz name"
+              title="Restore the provider artist name in the catalog only; audio files are not retagged"
+              spinning={refreshPending}
+              onClick={restoreArtistName}
+            />
+          )}
           {artist?.id && (
             <LibraryDeletion
               selection="artists"
@@ -1010,6 +1042,11 @@ function MusicArtistDetail({ id }: { id?: string }) {
               : undefined
           }
         >
+          {artist?.name_overridden && (
+            <Label kind="info" outline>
+              Artist name: owner override
+            </Label>
+          )}
           {artist?.id ? (
             <img
               className="mus-heading-cover"
@@ -1461,6 +1498,22 @@ export function MusicAlbumPage() {
     }
   }
 
+  async function restoreAlbumField(field: "title" | "year") {
+    if (!id || refreshPending) return;
+    setRefreshPending(true);
+    setRefreshError("");
+    setRefreshNotice("");
+    try {
+      const result = await restoreMusicAlbumField(Number(id), field);
+      setRefreshNotice(result.message);
+      await details.reload();
+    } catch (e) {
+      setRefreshError(messageFor(e));
+    } finally {
+      setRefreshPending(false);
+    }
+  }
+
   async function searchReleases(e: FormEvent) {
     e.preventDefault();
     if (searching || !id) return;
@@ -1714,6 +1767,24 @@ export function MusicAlbumPage() {
             spinning={refreshPending}
             onClick={refreshAlbum}
           />
+          {album?.title_overridden && (
+            <ToolbarButton
+              icon={RefreshCw}
+              label="Use MusicBrainz title"
+              title="Restore the provider album title in the catalog only; audio files are not retagged"
+              spinning={refreshPending}
+              onClick={() => void restoreAlbumField("title")}
+            />
+          )}
+          {album?.year_overridden && (
+            <ToolbarButton
+              icon={RefreshCw}
+              label="Use MusicBrainz year"
+              title="Restore the provider release year in the catalog only; audio files are not retagged"
+              spinning={refreshPending}
+              onClick={() => void restoreAlbumField("year")}
+            />
+          )}
           {album?.id && (
             <LibraryDeletion
               selection="albums"
@@ -1757,6 +1828,16 @@ export function MusicAlbumPage() {
                   ? "In library"
                   : "No registered files"}
               </Label>
+              {album.title_overridden && (
+                <Label kind="info" outline>
+                  Album title: owner override
+                </Label>
+              )}
+              {album.year_overridden && (
+                <Label kind="info" outline>
+                  Release year: owner override
+                </Label>
+              )}
               {albumCover && (
                 <img
                   className="mus-heading-cover"

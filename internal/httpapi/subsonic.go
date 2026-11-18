@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -65,6 +66,8 @@ type subsonicArtist struct {
 	Name       string `xml:"name,attr" json:"name"`
 	AlbumCount int    `xml:"albumCount,attr" json:"albumCount"`
 	CoverArt   string `xml:"coverArt,attr,omitempty" json:"coverArt,omitempty"`
+	Starred    string `xml:"starred,attr,omitempty" json:"starred,omitempty"`
+	UserRating int    `xml:"userRating,attr,omitempty" json:"userRating,omitempty"`
 }
 
 type subsonicIndex struct {
@@ -86,17 +89,20 @@ type subsonicArtistWithAlbums struct {
 }
 
 type subsonicAlbum struct {
-	ID        string         `xml:"id,attr" json:"id"`
-	Name      string         `xml:"name,attr" json:"name"`
-	Artist    string         `xml:"artist,attr" json:"artist"`
-	ArtistID  string         `xml:"artistId,attr" json:"artistId"`
-	CoverArt  string         `xml:"coverArt,attr,omitempty" json:"coverArt,omitempty"`
-	SongCount int            `xml:"songCount,attr" json:"songCount"`
-	Duration  int            `xml:"duration,attr" json:"duration"`
-	Year      *int           `xml:"year,attr,omitempty" json:"year,omitempty"`
-	Created   string         `xml:"created,attr,omitempty" json:"created,omitempty"`
-	Songs     []subsonicSong `xml:"song" json:"song,omitempty"`
-	PlayCount int            `xml:"playCount,attr" json:"playCount"`
+	ID         string         `xml:"id,attr" json:"id"`
+	Name       string         `xml:"name,attr" json:"name"`
+	Artist     string         `xml:"artist,attr" json:"artist"`
+	ArtistID   string         `xml:"artistId,attr" json:"artistId"`
+	CoverArt   string         `xml:"coverArt,attr,omitempty" json:"coverArt,omitempty"`
+	SongCount  int            `xml:"songCount,attr" json:"songCount"`
+	Duration   int            `xml:"duration,attr" json:"duration"`
+	Year       *int           `xml:"year,attr,omitempty" json:"year,omitempty"`
+	Created    string         `xml:"created,attr,omitempty" json:"created,omitempty"`
+	Songs      []subsonicSong `xml:"song" json:"song,omitempty"`
+	PlayCount  int            `xml:"playCount,attr" json:"playCount"`
+	Played     string         `xml:"played,attr,omitempty" json:"played,omitempty"`
+	Starred    string         `xml:"starred,attr,omitempty" json:"starred,omitempty"`
+	UserRating int            `xml:"userRating,attr,omitempty" json:"userRating,omitempty"`
 }
 
 // subsonicSong is used both for the <song> element and for the <child> element
@@ -119,6 +125,12 @@ type subsonicSong struct {
 	CoverArt    string `xml:"coverArt,attr,omitempty" json:"coverArt,omitempty"`
 	IsDir       bool   `xml:"isDir,attr" json:"isDir"`
 	SongCount   int    `xml:"songCount,attr,omitempty" json:"songCount,omitempty"`
+	Starred     string `xml:"starred,attr,omitempty" json:"starred,omitempty"`
+	UserRating  int    `xml:"userRating,attr,omitempty" json:"userRating,omitempty"`
+	PlayCount   int    `xml:"playCount,attr,omitempty" json:"playCount,omitempty"`
+	Played      string `xml:"played,attr,omitempty" json:"played,omitempty"`
+	Username    string `xml:"username,attr,omitempty" json:"username,omitempty"`
+	MinutesAgo  *int   `xml:"minutesAgo,attr,omitempty" json:"minutesAgo,omitempty"`
 }
 
 type subsonicDirectory struct {
@@ -144,10 +156,14 @@ type subsonicSongs struct {
 
 type subsonicPlaylist struct {
 	ID        string         `xml:"id,attr" json:"id"`
+	Owner     string         `xml:"owner,attr" json:"owner"`
 	Name      string         `xml:"name,attr" json:"name"`
+	Comment   string         `xml:"comment,attr,omitempty" json:"comment,omitempty"`
+	Public    bool           `xml:"public,attr" json:"public"`
 	SongCount int            `xml:"songCount,attr" json:"songCount"`
 	Duration  int            `xml:"duration,attr" json:"duration"`
 	Created   string         `xml:"created,attr,omitempty" json:"created,omitempty"`
+	Changed   string         `xml:"changed,attr,omitempty" json:"changed,omitempty"`
 	Entry     []subsonicSong `xml:"entry" json:"entry,omitempty"`
 }
 
@@ -162,6 +178,15 @@ type subsonicPlayQueue struct {
 	Changed   string         `xml:"changed,attr,omitempty" json:"changed,omitempty"`
 	ChangedBy string         `xml:"changedBy,attr,omitempty" json:"changedBy,omitempty"`
 	Entry     []subsonicSong `xml:"entry" json:"entry,omitempty"`
+}
+
+type subsonicPlayQueueByIndex struct {
+	CurrentIndex *int           `xml:"currentIndex,attr,omitempty" json:"currentIndex,omitempty"`
+	Position     int64          `xml:"position,attr,omitempty" json:"position,omitempty"`
+	Username     string         `xml:"username,attr,omitempty" json:"username,omitempty"`
+	Changed      string         `xml:"changed,attr,omitempty" json:"changed,omitempty"`
+	ChangedBy    string         `xml:"changedBy,attr,omitempty" json:"changedBy,omitempty"`
+	Entry        []subsonicSong `xml:"entry" json:"entry,omitempty"`
 }
 
 type subsonicNowPlaying struct {
@@ -269,11 +294,12 @@ type subsonicOpenSubsonicExtensions struct {
 //     songs to that artist (see Server.subsonicTopSongs).
 //
 // Do not add extensions for actions that only return an empty or inert
-// payload, such as indexBasedQueue, songLyrics, formPost or playbackReport.
+// payload, such as songLyrics, formPost or playbackReport.
 func subsonicSupportedExtensions() []subsonicOpenSubsonicExtension {
 	return []subsonicOpenSubsonicExtension{
 		{Name: "transcodeOffset", Versions: []int{1}},
 		{Name: "topSongsByArtistId", Versions: []int{1}},
+		{Name: "indexBasedQueue", Versions: []int{1}},
 	}
 }
 
@@ -310,6 +336,7 @@ type subsonicResponse struct {
 	Playlists             *subsonicPlaylists              `xml:"playlists,omitempty" json:"playlists,omitempty"`
 	Playlist              *subsonicPlaylist               `xml:"playlist,omitempty" json:"playlist,omitempty"`
 	PlayQueue             *subsonicPlayQueue              `xml:"playQueue,omitempty" json:"playQueue,omitempty"`
+	PlayQueueByIndex      *subsonicPlayQueueByIndex       `xml:"playQueueByIndex,omitempty" json:"playQueueByIndex,omitempty"`
 	NowPlaying            *subsonicNowPlaying             `xml:"nowPlaying,omitempty" json:"nowPlaying,omitempty"`
 	Starred               *subsonicStarred                `xml:"starred,omitempty" json:"starred,omitempty"`
 	Starred2              *subsonicStarred                `xml:"starred2,omitempty" json:"starred2,omitempty"`
@@ -424,36 +451,25 @@ func (s *Server) globalStreamingQuality(ctx context.Context) string {
 }
 
 // webPlayerStream opens one registered audio file for the browser player. The
-// saved global streaming quality is the default conversion target (the
-// browser player has no per-account quality of its own); "original" — or a
-// missing concrete service or an unreadable preference row — streams the
-// pristine file byte-for-byte exactly as the player always did. The
-// compatibility fallback for containers browsers cannot decode keeps working
-// underneath via the same planner the Subsonic endpoint uses.
-// explicitFormat (capability negotiation from the player) overrides the
-// quality-derived codec; explicitRate clamps the conversion bitrate.
-func (s *Server) webPlayerStream(ctx context.Context, id int64, explicitFormat string, explicitRate int) (music.PlaybackStream, error) {
-	if explicitFormat != "" {
-		return s.music.OpenPlayback(ctx, id, explicitFormat, explicitRate, 0)
+// saved global streaming quality is the default conversion target. Explicit
+// format/rate parameters win; original quality still uses the common planner
+// so playable files remain direct and incompatible containers convert honestly.
+func (s *Server) webPlayerStream(ctx context.Context, id int64, explicitFormat string, explicitRate, timeOffset int) (music.PlaybackStream, error) {
+	// An explicit format or a rate-only cap takes precedence over saved quality.
+	if explicitFormat != "" || explicitRate > 0 {
+		return s.music.OpenPlayback(ctx, id, explicitFormat, explicitRate, timeOffset)
 	}
 	if svc, ok := s.musicPreferenceReader(); ok {
 		prefs, err := svc.GetPreferences(ctx)
 		if err == nil && !strings.EqualFold(strings.TrimSpace(prefs.StreamingQuality), "original") {
 			format, rate := music.StreamingQualityParams(prefs.StreamingQuality)
-			return s.music.OpenPlayback(ctx, id, format, rate, 0)
+			return s.music.OpenPlayback(ctx, id, format, rate, timeOffset)
 		}
 	}
-	stream, err := s.music.OpenAudioFile(ctx, id)
-	if err != nil {
-		return music.PlaybackStream{}, err
-	}
-	return music.PlaybackStream{
-		Name:        stream.Name,
-		ContentType: stream.ContentType,
-		Size:        stream.Size,
-		ModTime:     stream.ModTime,
-		File:        stream.File,
-	}, nil
+	// Original-quality playback still uses the common planner: playable files
+	// remain byte-for-byte direct, incompatible containers and active seeks get
+	// the same honest compatibility conversion as Subsonic clients.
+	return s.music.OpenPlayback(ctx, id, "", 0, timeOffset)
 }
 
 // clampStreamBitRate parses a client-supplied stream bitrate, falling back to
@@ -462,9 +478,6 @@ func clampStreamBitRate(value string) int {
 	n, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil || n <= 0 {
 		return 0
-	}
-	if n < 32 {
-		return 32
 	}
 	if n > 320 {
 		return 320
@@ -593,35 +606,21 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 			s.subsonicDenied(w, r)
 			return
 		}
-		s.subsonicPlaylists(w, r)
+		s.subsonicStatePlaylists(w, r)
 	case "getplaylist":
 		if !user.CanPlaylist() {
 			s.subsonicDenied(w, r)
 			return
 		}
-		s.subsonicPlaylist(w, r)
+		s.subsonicStatePlaylist(w, r)
 	case "getplayqueue", "getplayqueuebyindex":
-		// OpenSubsonic marks username, changed and changedBy as required on
-		// playQueue. ReelScarey does not persist a server-side queue yet, so the
-		// entry list is empty and current is legitimately omitted (the spec only
-		// requires current when entry is non-empty). Reporting the requesting
-		// account and client keeps strict OpenSubsonic parsers happy.
-		out := subsonicResponseFor(s.version)
-		out.PlayQueue = &subsonicPlayQueue{
-			Username:  subsonicUserParam(r),
-			Changed:   time.Now().UTC().Format(time.RFC3339),
-			ChangedBy: strings.TrimSpace(r.URL.Query().Get("c")),
-			Entry:     []subsonicSong{},
-		}
-		writeSubsonic(w, r, out)
+		s.subsonicStateQueue(w, r)
 	case "getnowplaying":
-		out := subsonicResponseFor(s.version)
-		out.NowPlaying = &subsonicNowPlaying{Entry: []subsonicSong{}}
-		writeSubsonic(w, r, out)
+		s.subsonicStateNowPlaying(w, r)
 	case "getstarred":
-		s.subsonicStarred(w, r, false)
+		s.subsonicStateStarred(w, r, false)
 	case "getstarred2":
-		s.subsonicStarred(w, r, true)
+		s.subsonicStateStarred(w, r, true)
 	case "getgenres":
 		out := subsonicResponseFor(s.version)
 		out.Genres = &subsonicGenres{Genres: []subsonicGenre{}}
@@ -672,16 +671,17 @@ func (s *Server) subsonic(w http.ResponseWriter, r *http.Request) {
 			s.subsonicDenied(w, r)
 			return
 		}
-		// Playlist writes are not implemented. A silent ok made clients believe
-		// their data was saved while nothing was persisted (RS-0002), so the
-		// OpenSubsonic "not authorized for this operation" error is returned
-		// explicitly instead.
-		writeSubsonic(w, r, subsonicFailure(s.version, 50, "Playlist changes are not implemented; this server stores no playlist data."))
-	case "scrobble", "star", "unstar", "setrating", "saveplayqueue", "saveplayqueuebyindex":
-		// Playback-state writes are not implemented and previously reported ok
-		// while discarding the client's data (RS-0002); they now fail
-		// explicitly with the OpenSubsonic not-authorized code.
-		writeSubsonic(w, r, subsonicFailure(s.version, 50, "Playback-state changes are not implemented; this server stores no star, rating or play-queue data."))
+		s.subsonicStatePlaylistWrite(w, r)
+	case "scrobble":
+		s.subsonicStateScrobble(w, r)
+	case "star":
+		s.subsonicStateStar(w, r, true)
+	case "unstar":
+		s.subsonicStateStar(w, r, false)
+	case "setrating":
+		s.subsonicStateRating(w, r)
+	case "saveplayqueue", "saveplayqueuebyindex":
+		s.subsonicStateSaveQueue(w, r)
 	default:
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "This Subsonic action is not implemented."))
 	}
@@ -786,16 +786,17 @@ func subsonicArtistChild(artist music.Artist) subsonicSong {
 
 // --- handlers ---------------------------------------------------------------
 
-func (s *Server) subsonicArtistGroups(ctx context.Context) ([]subsonicIndex, error) {
+func (s *Server) subsonicArtistGroups(r *http.Request) ([]subsonicIndex, error) {
 	groups := map[string][]subsonicArtist{}
+	d := s.playbackDecoration(r)
 	for page := 1; page <= 200; page++ {
-		list, err := s.music.ListArtists(ctx, "", page)
+		list, err := s.music.ListArtists(r.Context(), "", page)
 		if err != nil {
 			return nil, err
 		}
 		for _, artist := range list.Items {
 			key := subsonicIndexName(artist.Name)
-			groups[key] = append(groups[key], subsonicArtistFrom(artist))
+			groups[key] = append(groups[key], d.artist(subsonicArtistFrom(artist)))
 		}
 		if len(list.Items) < list.Limit || len(list.Items) == 0 || page*list.Limit >= list.Total {
 			break
@@ -809,7 +810,7 @@ func (s *Server) subsonicArtistGroups(ctx context.Context) ([]subsonicIndex, err
 }
 
 func (s *Server) subsonicArtists(w http.ResponseWriter, r *http.Request) {
-	indexes, err := s.subsonicArtistGroups(r.Context())
+	indexes, err := s.subsonicArtistGroups(r)
 	if err != nil {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "Could not read artists."))
 		return
@@ -820,7 +821,7 @@ func (s *Server) subsonicArtists(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) subsonicIndexes(w http.ResponseWriter, r *http.Request) {
-	indexes, err := s.subsonicArtistGroups(r.Context())
+	indexes, err := s.subsonicArtistGroups(r)
 	if err != nil {
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "Could not read artists."))
 		return
@@ -842,10 +843,11 @@ func (s *Server) subsonicArtist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := subsonicResponseFor(s.version)
-	artist := subsonicArtistFrom(details.Artist)
+	d := s.playbackDecoration(r)
+	artist := d.artist(subsonicArtistFrom(details.Artist))
 	withAlbums := &subsonicArtistWithAlbums{subsonicArtist: artist, Album: []subsonicAlbum{}}
 	for _, album := range details.Albums {
-		withAlbums.Album = append(withAlbums.Album, subsonicAlbumFrom(album))
+		withAlbums.Album = append(withAlbums.Album, d.album(subsonicAlbumFrom(album)))
 	}
 	out.Artist = withAlbums
 	writeSubsonic(w, r, out)
@@ -879,7 +881,8 @@ func (s *Server) subsonicAlbum(w http.ResponseWriter, r *http.Request) {
 		writeSubsonic(w, r, subsonicFailure(s.version, 70, "Album not found."))
 		return
 	}
-	entry := subsonicAlbumFrom(album.Album)
+	d := s.playbackDecoration(r)
+	entry := d.album(subsonicAlbumFrom(album.Album))
 	entry.Songs = []subsonicSong{}
 	if songs, err := s.music.ServerAlbumSongs(r.Context(), id); err == nil {
 		for _, song := range songs {
@@ -904,6 +907,9 @@ func (s *Server) subsonicAlbum(w http.ResponseWriter, r *http.Request) {
 				CoverArt:   subsonicAlbumID(album.Album.ID),
 			})
 		}
+	}
+	for i := range entry.Songs {
+		entry.Songs[i] = d.song(entry.Songs[i])
 	}
 	entry.SongCount = len(entry.Songs)
 	// Report the playable total rather than the catalog sum so the album
@@ -944,9 +950,13 @@ func (s *Server) subsonicDirectory(w http.ResponseWriter, r *http.Request) {
 			writeSubsonic(w, r, subsonicFailure(s.version, 70, "Directory not found."))
 			return
 		}
+		d := s.playbackDecoration(r)
 		dir := &subsonicDirectory{ID: raw, Parent: strconv.Itoa(subsonicFolderID), Name: details.Artist.Name, Children: []subsonicSong{}}
 		for _, album := range details.Albums {
 			dir.Children = append(dir.Children, subsonicAlbumChild(album, subsonicArtistID(details.Artist.ID)))
+		}
+		for i := range dir.Children {
+			dir.Children[i] = d.child(dir.Children[i])
 		}
 		out := subsonicResponseFor(s.version)
 		out.Directory = dir
@@ -959,11 +969,15 @@ func (s *Server) subsonicDirectory(w http.ResponseWriter, r *http.Request) {
 			writeSubsonic(w, r, subsonicFailure(s.version, 70, "Directory not found."))
 			return
 		}
+		d := s.playbackDecoration(r)
 		dir := &subsonicDirectory{ID: raw, Parent: subsonicArtistID(album.Album.ArtistID), Name: album.Album.Title, Children: []subsonicSong{}}
 		if songs, err := s.music.ServerAlbumSongs(r.Context(), id); err == nil {
 			for _, song := range songs {
 				dir.Children = append(dir.Children, subsonicSongFrom(song))
 			}
+		}
+		for i := range dir.Children {
+			dir.Children[i] = d.song(dir.Children[i])
 		}
 		out := subsonicResponseFor(s.version)
 		out.Directory = dir
@@ -972,10 +986,10 @@ func (s *Server) subsonicDirectory(w http.ResponseWriter, r *http.Request) {
 	}
 	if raw == strconv.Itoa(subsonicFolderID) || strings.EqualFold(raw, "root") {
 		dir := &subsonicDirectory{ID: strconv.Itoa(subsonicFolderID), Name: subsonicFolderName, Children: []subsonicSong{}}
-		if indexes, err := s.subsonicArtistGroups(r.Context()); err == nil {
+		if indexes, err := s.subsonicArtistGroups(r); err == nil {
 			for _, index := range indexes {
 				for _, artist := range index.Artists {
-					dir.Children = append(dir.Children, subsonicSong{ID: artist.ID, Parent: dir.ID, Title: artist.Name, Artist: artist.Name, IsDir: true})
+					dir.Children = append(dir.Children, subsonicSong{ID: artist.ID, Parent: dir.ID, Title: artist.Name, Artist: artist.Name, IsDir: true, Starred: artist.Starred, UserRating: artist.UserRating})
 				}
 			}
 		}
@@ -1005,23 +1019,26 @@ func (s *Server) subsonicAlbumInfo(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) subsonicAlbumList(w http.ResponseWriter, r *http.Request, second bool) {
 	size := subsonicCount(r, "size", 50, 500)
-	offset := 0
-	if value, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && value > 0 {
-		offset = value
-	}
-	if offset > subsonicAllSongsOffsetCap {
-		offset = subsonicAllSongsOffsetCap
+	offset := subsonicCount(r, "offset", 0, subsonicAllSongsOffsetCap)
+	out := subsonicResponseFor(s.version)
+	if albums, handled, err := s.subsonicStatefulAlbums(r, size, offset); handled {
+		if err != nil {
+			subsonicStateError(w, r, err)
+			return
+		}
+		list := &subsonicAlbumList{Albums: albums}
+		if second {
+			out.AlbumList2 = list
+		} else {
+			out.AlbumList = list
+		}
+		writeSubsonic(w, r, out)
+		return
 	}
 	order := "alphabeticalByName"
 	switch r.URL.Query().Get("type") {
 	case "newest":
 		order = "newest"
-	case "recent":
-		order = "recent"
-	case "frequent":
-		order = "frequent"
-	case "highest", "starred":
-		order = "starred"
 	case "byYear":
 		order = "byYear"
 	case "alphabeticalByArtist":
@@ -1034,11 +1051,11 @@ func (s *Server) subsonicAlbumList(w http.ResponseWriter, r *http.Request, secon
 		writeSubsonic(w, r, subsonicFailure(s.version, 0, "Could not read albums."))
 		return
 	}
-	out := subsonicResponseFor(s.version)
 	list := &subsonicAlbumList{Albums: []subsonicAlbum{}}
 	for _, album := range albums {
 		list.Albums = append(list.Albums, subsonicAlbumFrom(album))
 	}
+	s.decorateSubsonicAlbums(r, list.Albums)
 	if second {
 		out.AlbumList2 = list
 	} else {
@@ -1058,8 +1075,8 @@ func (s *Server) subsonicSong(w http.ResponseWriter, r *http.Request) {
 		writeSubsonic(w, r, subsonicFailure(s.version, 70, "Song not found."))
 		return
 	}
+	entry := s.playbackDecoration(r).song(subsonicSongFrom(song))
 	out := subsonicResponseFor(s.version)
-	entry := subsonicSongFrom(song)
 	out.Song = &entry
 	writeSubsonic(w, r, out)
 }
@@ -1088,6 +1105,16 @@ func (s *Server) subsonicSearch(w http.ResponseWriter, r *http.Request, third bo
 		for _, song := range songs {
 			result.Songs = append(result.Songs, subsonicSongFrom(song))
 		}
+	}
+	d := s.playbackDecoration(r)
+	for i := range result.Artists {
+		result.Artists[i] = d.artist(result.Artists[i])
+	}
+	for i := range result.Albums {
+		result.Albums[i] = d.album(result.Albums[i])
+	}
+	for i := range result.Songs {
+		result.Songs[i] = d.song(result.Songs[i])
 	}
 	if third {
 		out.SearchResult3 = result
@@ -1137,6 +1164,7 @@ func (s *Server) subsonicAllSongs(w http.ResponseWriter, r *http.Request) {
 	for _, song := range songs {
 		list.Songs = append(list.Songs, subsonicSongFrom(song))
 	}
+	s.decorateSubsonicSongs(r, list.Songs)
 	out.Songs = list
 	writeSubsonic(w, r, out)
 }
@@ -1153,6 +1181,7 @@ func (s *Server) subsonicRandomSongs(w http.ResponseWriter, r *http.Request) {
 	for _, song := range songs {
 		list.Songs = append(list.Songs, subsonicSongFrom(song))
 	}
+	s.decorateSubsonicSongs(r, list.Songs)
 	out.RandomSongs = list
 	writeSubsonic(w, r, out)
 }
@@ -1179,6 +1208,7 @@ func (s *Server) subsonicTopSongs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	s.decorateSubsonicSongs(r, list.Songs)
 	out.TopSongs = list
 	writeSubsonic(w, r, out)
 }
@@ -1311,21 +1341,34 @@ func (s *Server) subsonicStream(w http.ResponseWriter, r *http.Request) {
 	// Convert when the client asked for another format or when the native
 	// container is one the client cannot decode; the pristine file is streamed
 	// byte-for-byte otherwise.
+	started := time.Now()
 	playback, err := s.music.OpenPlayback(r.Context(), id, requested,
 		maxBitRate, subsonicQueryInt(r, "timeOffset"))
 	if err != nil {
 		// NEW-A1: an over-limit transcode request is not a missing song; it
 		// gets an honest busy failure instead of the not-found code.
 		var musicErr *music.Error
-		if errors.As(err, &musicErr) && musicErr.Code == "music_transcode_busy" {
-			w.Header().Set("Retry-After", "2")
-			writeSubsonic(w, r, subsonicFailure(s.version, 50, "The server is at its concurrent conversion limit. Wait a moment and try again."))
+		if errors.As(err, &musicErr) {
+			switch musicErr.Code {
+			case "music_transcode_busy":
+				w.Header().Set("Retry-After", "2")
+				writeSubsonic(w, r, subsonicFailure(s.version, 50, "The server is at its concurrent conversion limit. Wait a moment and try again."))
+			case "music_file_missing":
+				writeSubsonic(w, r, subsonicFailure(s.version, 70, "Song file not found."))
+			default:
+				writeSubsonic(w, r, subsonicFailure(s.version, 0, musicErr.Message))
+			}
 			return
 		}
-		writeSubsonic(w, r, subsonicFailure(s.version, 70, "Song file not found."))
+		if errors.Is(err, sql.ErrNoRows) {
+			writeSubsonic(w, r, subsonicFailure(s.version, 70, "Song file not found."))
+			return
+		}
+		writeSubsonic(w, r, subsonicFailure(s.version, 0, "The song could not be opened for playback."))
 		return
 	}
 	defer playback.Close()
+	playbackDiagnosticHeaders(w, playback, started)
 	w.Header().Set("Content-Type", playback.ContentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if playback.Body != nil {

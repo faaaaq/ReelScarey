@@ -159,7 +159,8 @@ type Service struct {
 	inPlaceTagger func(ctx context.Context, path, extension, beforeProbe, title string, beforeSize int64) (string, error)
 	// matroskaDisabler clears a Matroska track's enabled flag in place. Nil
 	// means disabling is unavailable for the running build.
-	matroskaDisabler func(ctx context.Context, path, beforeProbe string, drop []int, beforeSize int64) (string, error)
+	matroskaDisabler    func(ctx context.Context, path, beforeProbe string, drop []int, beforeSize int64) (string, error)
+	matroskaTrackEditor func(ctx context.Context, path, beforeProbe string, edits []TrackMetadataEdit, beforeSize int64) (string, error)
 }
 
 func New(db *sql.DB, cfg config.Config) *Service { return &Service{db: db, cfg: cfg} }
@@ -181,4 +182,8 @@ func (s *Service) SetInPlaceTagger(fn func(ctx context.Context, path, extension,
 // (mkvpropedit). When nil, the disable action is unavailable.
 func (s *Service) SetMatroskaTrackDisabler(fn func(ctx context.Context, path, beforeProbe string, drop []int, beforeSize int64) (string, error)) {
 	s.matroskaDisabler = fn
+}
+
+func (s *Service) SetMatroskaTrackEditor(fn func(ctx context.Context, path, beforeProbe string, edits []TrackMetadataEdit, beforeSize int64) (string, error)) {
+	s.matroskaTrackEditor = fn
 }

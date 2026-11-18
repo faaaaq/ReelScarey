@@ -24,6 +24,8 @@ import {
   type Kind,
 } from "../../ui";
 import type { DetailFile, ItemDetailsState } from "./useItemDetails";
+import { TrackMetadataEditor } from "./TrackMetadataEditor";
+import { MediaActivity } from "./MediaActivity";
 import "./Details.css";
 
 export function External({
@@ -309,6 +311,28 @@ function audioText(file: DetailFile) {
     .join(", ")}`;
 }
 
+function combinedTrackText(file: DetailFile) {
+  const streams = file.probe.subtitle_streams;
+  if (streams == null) return `${audioText(file)} · Subtitles: not inspected`;
+  if (streams.length === 0)
+    return `${audioText(file)} · Subtitles: none reported`;
+  return `${audioText(file)} · Subtitles: ${streams
+    .map((stream) =>
+      [
+        stream.language && stream.language !== "und"
+          ? stream.language
+          : "language unknown",
+        stream.title || "untitled",
+        stream.default ? "default" : "",
+        stream.forced ? "forced" : "",
+        stream.hearing_impaired ? "SDH" : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    )
+    .join(", ")}`;
+}
+
 function originLabel(origin?: string) {
   if (origin === "existing") return "Existing file";
   if (origin === "youtube") return "YouTube";
@@ -426,7 +450,7 @@ export function FilesSection({
                                 ? "Title: none"
                                 : `Title: ${title}`}
                           </span>
-                          <span>{audioText(file)}</span>
+                          <span>{combinedTrackText(file)}</span>
                           {differs && (
                             <Label kind="warning" outline>
                               Differs from the saved title
@@ -476,6 +500,10 @@ export function FilesSection({
                           ? "Inspecting…"
                           : "Inspect embedded tags"}
                       </Button>
+                      <TrackMetadataEditor
+                        file={file}
+                        onDone={onFilesChanged ?? details.reload}
+                      />
                       {movie && (
                         <Button
                           size="1"
@@ -596,71 +624,76 @@ function stateKind(state: string): Kind {
 export function HistorySection({ details }: { details: ItemDetailsState }) {
   const data = details.data!;
   return (
-    <FieldSet legend="History">
-      {data.history.length ? (
-        <Table label="Download history">
-          <thead>
-            <tr>
-              <th scope="col">Release</th>
-              <th scope="col">Indexer</th>
-              <th scope="col">Protocol</th>
-              <th scope="col" className="is-numeric">
-                Size
-              </th>
-              <th scope="col" className="is-numeric">
-                Progress
-              </th>
-              <th scope="col">State</th>
-              <th scope="col">Added</th>
-              <th scope="col" className="is-actions">
-                <span className="sr-only">Details</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.history.map((job) => (
-              <tr key={job.id}>
-                <td className="det-file-cell">
-                  <span>{job.title}</span>
-                  {job.error && (
-                    <span className="rs-danger-text rs-small">{job.error}</span>
-                  )}
-                </td>
-                <td>
-                  {job.indexer || (
-                    <span className="rs-muted">Not recorded</span>
-                  )}
-                </td>
-                <td>{job.protocol === "usenet" ? "Usenet" : "Torrent"}</td>
-                <td className="is-numeric">{formatBytes(job.size_bytes)}</td>
-                <td className="is-numeric">
-                  {Math.round(job.progress * 100)}%
-                </td>
-                <td>
-                  <Label kind={stateKind(job.state)}>
-                    {job.state.replaceAll("_", " ")}
-                  </Label>
-                </td>
-                <td title={`Updated ${formatTimestamp(job.updated_at)}`}>
-                  {formatTimestamp(job.created_at)}
-                </td>
-                <td className="is-actions">
-                  <Link to={`/activity?job=${encodeURIComponent(job.id)}`}>
-                    Details
-                  </Link>
-                </td>
+    <>
+      <FieldSet legend="History">
+        {data.history.length ? (
+          <Table label="Download history">
+            <thead>
+              <tr>
+                <th scope="col">Release</th>
+                <th scope="col">Indexer</th>
+                <th scope="col">Protocol</th>
+                <th scope="col" className="is-numeric">
+                  Size
+                </th>
+                <th scope="col" className="is-numeric">
+                  Progress
+                </th>
+                <th scope="col">State</th>
+                <th scope="col">Added</th>
+                <th scope="col" className="is-actions">
+                  <span className="sr-only">Details</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
-      ) : (
-        <p className="rs-muted">
-          {data.history_count
-            ? "No downloads on this page."
-            : "Nothing has been downloaded for this title yet."}
-        </p>
-      )}
-    </FieldSet>
+            </thead>
+            <tbody>
+              {data.history.map((job) => (
+                <tr key={job.id}>
+                  <td className="det-file-cell">
+                    <span>{job.title}</span>
+                    {job.error && (
+                      <span className="rs-danger-text rs-small">
+                        {job.error}
+                      </span>
+                    )}
+                  </td>
+                  <td>
+                    {job.indexer || (
+                      <span className="rs-muted">Not recorded</span>
+                    )}
+                  </td>
+                  <td>{job.protocol === "usenet" ? "Usenet" : "Torrent"}</td>
+                  <td className="is-numeric">{formatBytes(job.size_bytes)}</td>
+                  <td className="is-numeric">
+                    {Math.round(job.progress * 100)}%
+                  </td>
+                  <td>
+                    <Label kind={stateKind(job.state)}>
+                      {job.state.replaceAll("_", " ")}
+                    </Label>
+                  </td>
+                  <td title={`Updated ${formatTimestamp(job.updated_at)}`}>
+                    {formatTimestamp(job.created_at)}
+                  </td>
+                  <td className="is-actions">
+                    <Link to={`/activity?job=${encodeURIComponent(job.id)}`}>
+                      Details
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        ) : (
+          <p className="rs-muted">
+            {data.history_count
+              ? "No downloads on this page."
+              : "Nothing has been downloaded for this title yet."}
+          </p>
+        )}
+      </FieldSet>
+      <MediaActivity mediaID={data.item.id} />
+    </>
   );
 }
 

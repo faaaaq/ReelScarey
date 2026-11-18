@@ -95,11 +95,12 @@ describe("YouTube downloads page", () => {
     await userEvent.click(review);
     expect(review).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("Queued one")).not.toBeInTheDocument();
-    expect(screen.getByText("Ready")).toBeVisible();
+    const queue = screen.getByRole("region", { name: "YouTube downloads" });
+    expect(within(queue).getByText("Ready")).toBeVisible();
     const failed = within(group).getByRole("button", { name: "Failed (1)" });
     await userEvent.click(failed);
     expect(screen.getByText("Download failed")).toBeVisible();
-    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
+    expect(within(queue).queryByText("Ready")).not.toBeInTheDocument();
   });
 
   it("computes chip counts client-side and captions truncation without server counts", async () => {

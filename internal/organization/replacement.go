@@ -18,9 +18,18 @@ import (
 // Backup for media replacements and the discovered source is never removed.
 // Metadata-only title updates keep no second copy: the verified stage replaces
 // the original in place, and PreviousTitle records the prior container title.
+type TrackMetadataEdit struct {
+	Index    int     `json:"index"`
+	Title    *string `json:"title,omitempty"`
+	Language *string `json:"language,omitempty"`
+	Default  *bool   `json:"default,omitempty"`
+	Forced   *bool   `json:"forced,omitempty"`
+}
+
 type Replacement struct {
-	AutomaticTitle bool  `json:"automatic_title,omitempty"`
-	DropStreams    []int `json:"drop_streams,omitempty"`
+	AutomaticTitle bool                `json:"automatic_title,omitempty"`
+	DropStreams    []int               `json:"drop_streams,omitempty"`
+	TrackEdits     []TrackMetadataEdit `json:"track_edits,omitempty"`
 	// DisableStreams hides Matroska tracks in place by clearing their enabled
 	// flag (mkvpropedit) instead of removing them. No packets are rewritten.
 	DisableStreams       []int              `json:"disable_streams,omitempty"`

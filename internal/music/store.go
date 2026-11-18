@@ -16,11 +16,11 @@ type Store struct{ db *sql.DB }
 
 func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 
-const artistColumns = `id, musicbrainz_id, name, sort_name, disambiguation, country, artist_type, overview, image_url, monitored, status`
+const artistColumns = `id, musicbrainz_id, name, name_overridden, sort_name, disambiguation, country, artist_type, overview, image_url, monitored, status`
 
 func scanArtist(row interface{ Scan(...any) error }) (Artist, error) {
 	var artist Artist
-	if err := row.Scan(&artist.ID, &artist.MusicBrainzID, &artist.Name, &artist.SortName, &artist.Disambiguation, &artist.Country, &artist.Type, &artist.Overview, &artist.ImageURL, &artist.Monitored, &artist.Status, &artist.AlbumCount); err != nil {
+	if err := row.Scan(&artist.ID, &artist.MusicBrainzID, &artist.Name, &artist.NameOverridden, &artist.SortName, &artist.Disambiguation, &artist.Country, &artist.Type, &artist.Overview, &artist.ImageURL, &artist.Monitored, &artist.Status, &artist.AlbumCount); err != nil {
 		return Artist{}, err
 	}
 	return artist, nil
@@ -98,7 +98,7 @@ func (s *Store) ListAllArtists(ctx context.Context, query string) (ArtistPage, e
 	return out, rows.Err()
 }
 
-const albumColumns = `a.id, a.artist_id, a.musicbrainz_id, a.title, a.primary_type, a.secondary_types, a.year, a.release_date, a.cover_url, a.monitored, a.status, ar.name`
+const albumColumns = `a.id, a.artist_id, a.musicbrainz_id, a.title, a.title_overridden, a.year_overridden, a.primary_type, a.secondary_types, a.year, a.release_date, a.cover_url, a.monitored, a.status, ar.name`
 
 // scanAlbum reads the shared album column list. extra destinations are appended
 // to the scan targets so callers that select additional aggregate columns (for
@@ -106,7 +106,7 @@ const albumColumns = `a.id, a.artist_id, a.musicbrainz_id, a.title, a.primary_ty
 func scanAlbum(row interface{ Scan(...any) error }, extra ...any) (Album, error) {
 	var album Album
 	var secondary string
-	dest := []any{&album.ID, &album.ArtistID, &album.MusicBrainzID, &album.Title, &album.PrimaryType, &secondary, &album.Year, &album.ReleaseDate, &album.CoverURL, &album.Monitored, &album.Status, &album.ArtistName, &album.TrackCount}
+	dest := []any{&album.ID, &album.ArtistID, &album.MusicBrainzID, &album.Title, &album.TitleOverridden, &album.YearOverridden, &album.PrimaryType, &secondary, &album.Year, &album.ReleaseDate, &album.CoverURL, &album.Monitored, &album.Status, &album.ArtistName, &album.TrackCount}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return Album{}, err
@@ -400,7 +400,7 @@ func (s *Store) SaveArtist(ctx context.Context, artist Artist, albums []Album) (
 	now := time.Now().Unix()
 	if _, err = tx.ExecContext(ctx, `INSERT INTO music_artists(musicbrainz_id,name,sort_name,disambiguation,country,artist_type,overview,image_url,monitored,status,created_at,updated_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(musicbrainz_id) DO UPDATE SET name=excluded.name,sort_name=excluded.sort_name,disambiguation=excluded.disambiguation,country=excluded.country,artist_type=excluded.artist_type,overview=excluded.overview,image_url=excluded.image_url,updated_at=excluded.updated_at`,
+		ON CONFLICT(musicbrainz_id) DO UPDATE SET name=CASE WHEN music_artists.name_overridden=0 THEN excluded.name ELSE music_artists.name END,sort_name=excluded.sort_name,disambiguation=excluded.disambiguation,country=excluded.country,artist_type=excluded.artist_type,overview=excluded.overview,image_url=excluded.image_url,updated_at=excluded.updated_at`,
 		artist.MusicBrainzID, artist.Name, artist.SortName, artist.Disambiguation, artist.Country, artist.Type, artist.Overview, artist.ImageURL, boolInt(artist.Monitored), artist.Status, now, now); err != nil {
 		return Artist{}, err
 	}
@@ -423,7 +423,7 @@ func (s *Store) SaveArtist(ctx context.Context, artist Artist, albums []Album) (
 		secondary := strings.Join(album.SecondaryTypes, ", ")
 		if _, err = tx.ExecContext(ctx, `INSERT INTO music_albums(artist_id,musicbrainz_id,title,primary_type,secondary_types,year,release_date,cover_url,monitored,status,created_at,updated_at)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-			ON CONFLICT(artist_id,musicbrainz_id) DO UPDATE SET title=excluded.title,primary_type=excluded.primary_type,secondary_types=excluded.secondary_types,year=excluded.year,release_date=excluded.release_date,cover_url=excluded.cover_url,updated_at=excluded.updated_at`,
+			ON CONFLICT(artist_id,musicbrainz_id) DO UPDATE SET title=CASE WHEN music_albums.title_overridden=0 THEN excluded.title ELSE music_albums.title END,primary_type=excluded.primary_type,secondary_types=excluded.secondary_types,year=CASE WHEN music_albums.year_overridden=0 THEN excluded.year ELSE music_albums.year END,release_date=excluded.release_date,cover_url=excluded.cover_url,updated_at=excluded.updated_at`,
 			id, album.MusicBrainzID, album.Title, album.PrimaryType, secondary, album.Year, album.ReleaseDate, album.CoverURL, boolInt(album.Monitored), album.Status, now, now); err != nil {
 			return Artist{}, err
 		}

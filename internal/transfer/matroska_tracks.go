@@ -38,6 +38,9 @@ func MatroskaDisableToolsAvailable() bool {
 type mkvTrackProps struct {
 	Enabled  *bool  `json:"enabled_track"`
 	Language string `json:"language"`
+	Name     string `json:"track_name"`
+	Default  *bool  `json:"default_track"`
+	Forced   *bool  `json:"forced_track"`
 }
 
 type mkvTrackInfo struct {
@@ -153,6 +156,12 @@ func enabledOf(t mkvTrackInfo) bool {
 	return t.Props.Enabled == nil || *t.Props.Enabled
 }
 
+func defaultOf(t mkvTrackInfo) bool { return t.Props.Default == nil || *t.Props.Default }
+func forcedOf(t mkvTrackInfo) bool  { return t.Props.Forced != nil && *t.Props.Forced }
+func sameMkvFlag(a, b *bool) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
+}
+
 // verifyDisabled proves an in-place flag edit changed exactly the reviewed
 // tracks and nothing else: the track list, ids, order, types and languages are
 // unchanged, and the enabled flag flipped only for the targets.
@@ -167,7 +176,7 @@ func verifyDisabled(before, after mkvIdentify, targets []mkvTarget) error {
 	counts := map[string]int{}
 	for i, t := range after.Tracks {
 		b := before.Tracks[i]
-		if b.ID != t.ID || b.Type != t.Type || !strings.EqualFold(b.Props.Language, t.Props.Language) {
+		if b.ID != t.ID || b.Type != t.Type || !strings.EqualFold(b.Props.Language, t.Props.Language) || b.Props.Name != t.Props.Name || !sameMkvFlag(b.Props.Default, t.Props.Default) || !sameMkvFlag(b.Props.Forced, t.Props.Forced) {
 			return problem("metadata_changed_streams", "Disabling tracks changed the track list; the file was left unchanged.")
 		}
 		counts[t.Type]++

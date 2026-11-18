@@ -118,9 +118,10 @@ func clampBitRate(bitRate int) int {
 	if bitRate <= 0 {
 		return 192
 	}
-	if bitRate < 32 {
-		return 32
-	}
+	// maxBitRate is a ceiling, not a request to raise a small value to the
+	// server's preferred minimum. FFmpeg remains responsible for rejecting a
+	// codec/bitrate combination it cannot encode; silently returning 32k for a
+	// 16k request would violate the client's cap before FFmpeg even runs.
 	if bitRate > 320 {
 		return 320
 	}
@@ -178,8 +179,23 @@ func ResolveStreamQuality(user, global string) string {
 // which codec. The codec is empty when the registered file can be served
 // unchanged.
 func planTranscode(suffix, requested string, maxBitRate int) (codec string, bitRate int) {
+	return planTranscodeWithSource(suffix, requested, maxBitRate, 0)
+}
+
+// planTranscodeWithSource is planTranscode with optional source bitrate
+// evidence in kbit/s. Unknown or invalid evidence is zero and deliberately
+// takes the conservative path. A known lossy source already at or below the
+// requested cap needs no same-family re-encode.
+func planTranscodeWithSource(suffix, requested string, maxBitRate, sourceBitRate int) (codec string, bitRate int) {
 	requested = strings.ToLower(strings.TrimSpace(requested))
-	if requested == "raw" {
+	raw := requested == "raw"
+	if raw {
+		// Raw explicitly opts out of requested-format and bitrate conversion.
+		// Preserve the existing compatibility fallback for containers clients
+		// cannot decode at all; a playable native file is always passthrough.
+		if clientPlayableSuffix(suffix) {
+			return "", 0
+		}
 		requested = ""
 	}
 	if !clientPlayableSuffix(suffix) {
@@ -188,11 +204,31 @@ func planTranscode(suffix, requested string, maxBitRate int) (codec string, bitR
 		}
 		return "mp3", bitRateFor("mp3", maxBitRate)
 	}
+	lossySourceWithinCap := func(out string) bool {
+		return maxBitRate > 0 && sourceBitRate > 0 && sourceBitRate <= maxBitRate &&
+			out != "flac" && out != "wav" && audioFamily(out) == audioFamily(suffix)
+	}
 	if requested == "" {
+		// A cap is meaningful even without a format parameter. Without source
+		// bitrate evidence, re-encode a lossy native stream conservatively
+		// instead of claiming the original already satisfies the cap.
+		out := outputCodec(suffix)
+		if maxBitRate > 0 && out != "" && out != "flac" && out != "wav" {
+			if lossySourceWithinCap(out) {
+				return "", 0
+			}
+			return out, bitRateFor(out, maxBitRate)
+		}
 		return "", 0
 	}
 	out := outputCodec(requested)
-	if out == "" || audioFamily(out) == audioFamily(suffix) {
+	if out == "" {
+		return "", 0
+	}
+	if audioFamily(out) == audioFamily(suffix) {
+		if maxBitRate > 0 && out != "flac" && out != "wav" && !lossySourceWithinCap(out) {
+			return out, bitRateFor(out, maxBitRate)
+		}
 		return "", 0
 	}
 	return out, bitRateFor(out, maxBitRate)
@@ -260,7 +296,10 @@ func transcodeCodecArgs(codec string, bitRate, timeOffset int) []string {
 	case "opus":
 		args = append(args, "-c:a", "libopus", "-b:a", strconv.Itoa(bitRate)+"k", "-f", "ogg")
 	case "ogg":
-		args = append(args, "-c:a", "libvorbis", "-q:a", "5", "-f", "ogg")
+		// Vorbis is still a capped lossy output. A quality-only argument lets
+		// the encoder exceed maxBitRate, so pass the same effective ceiling as
+		// the other lossy encoders instead of silently ignoring it.
+		args = append(args, "-c:a", "libvorbis", "-b:a", strconv.Itoa(bitRate)+"k", "-f", "ogg")
 	case "wav":
 		args = append(args, "-c:a", "pcm_s16le", "-f", "wav")
 	}
@@ -279,13 +318,16 @@ func NormalizeStreamFormat(requested string) string {
 // converting the file; File is set when the registered file is served as-is.
 // Close releases both the process and the underlying file.
 type PlaybackStream struct {
-	Name        string
-	ContentType string
-	Size        int64
-	ModTime     time.Time
-	File        *os.File
-	Body        io.ReadCloser
-	Codec       string
+	Name            string
+	ContentType     string
+	Size            int64
+	ModTime         time.Time
+	File            *os.File
+	Body            io.ReadCloser
+	Codec           string
+	Mode            string
+	Reason          string
+	RequestedFormat string
 
 	cmd     *exec.Cmd
 	release func()
@@ -321,51 +363,60 @@ func (s *Service) OpenPlayback(ctx context.Context, id int64, requestedFormat st
 		return PlaybackStream{}, err
 	}
 	suffix := audioSuffix("", native.Name)
-	codec, bitRate := planTranscode(suffix, requestedFormat, maxBitRate)
+	codec, bitRate := planTranscodeWithSource(suffix, requestedFormat, maxBitRate, native.Bitrate)
+	if timeOffset > 0 && codec == "" {
+		// A byte-range direct stream starts at byte zero; it cannot honor a
+		// media-time offset. Decode same-format input through the existing
+		// output-seek path instead of silently returning the whole track.
+		codec = outputCodec(suffix)
+		bitRate = bitRateFor(codec, maxBitRate)
+	}
 	ffmpeg := ffmpegPath()
+	if timeOffset > 0 && ffmpeg == "" {
+		_ = native.File.Close()
+		return PlaybackStream{}, &Error{Code: "music_transcode_unavailable", Message: "Seeking during playback requires FFmpeg on the server."}
+	}
 	if codec == "" || ffmpeg == "" {
+		s.playbackDirect.Add(1)
+		reason := "The registered source format was accepted for direct play."
+		if codec != "" && ffmpeg == "" {
+			reason = "FFmpeg is unavailable; the registered source is being served directly instead of the requested conversion."
+		}
 		return PlaybackStream{
-			Name:        native.Name,
-			ContentType: native.ContentType,
-			Size:        native.Size,
-			ModTime:     native.ModTime,
-			File:        native.File,
-			Codec:       suffix,
+			Name:            native.Name,
+			ContentType:     native.ContentType,
+			Size:            native.Size,
+			ModTime:         native.ModTime,
+			File:            native.File,
+			Codec:           suffix,
+			Mode:            "direct",
+			Reason:          reason,
+			RequestedFormat: requestedFormat,
 		}, nil
 	}
 
-	// Stream cache: a full-file conversion (no offset seek) is served from
-	// the persistent cache when possible, encoding into it on a miss. The
-	// cache is strictly an optimization: any cache failure (miss with a
-	// failed encode, unreadable cache dir, database error) falls through to
-	// the on-the-fly pipe below so the stream endpoint never fails because
-	// the cache failed. Offset requests stay on the pipe with output
-	// seeking: a cached encode covers only the whole track, and seeking into
-	// a re-encoded ogg/opus container would need timestamp-aware range math
-	// the existing decode-and-discard path already gets right, so a seek is
-	// deliberately never answered from the cache.
+	// Full-file cache hits stay synchronous regular files so the HTTP layer
+	// retains normal range support. A miss is deliberately hit-only: waiting
+	// for a complete cache encode before returning used to delay the first
+	// audio byte by an entire track. The live pipe below starts immediately;
+	// once it is running, a detached deduplicated fill repopulates the cache.
+	// Offset requests never use the whole-track cache and retain output seek.
 	if timeOffset == 0 {
-		if cached, info, _, err := s.OpenCachedStream(ctx, id, codec, bitRate, native.SHA256,
-			s.cacheEncodeFunc(ctx, ffmpeg, native.File, codec, bitRate)); err == nil {
-			// The registered source file is no longer needed once the cache
-			// owns the bytes the client will read.
+		cacheMode := ""
+		if cached, info, _, err := s.OpenCachedStream(ctx, id, codec, bitRate, native.SHA256, nil, &cacheMode); err == nil {
 			_ = native.File.Close()
 			return PlaybackStream{
-				Name:        transcodedName(native.Name, codec),
-				ContentType: transcodeContentType(codec),
-				Size:        info.Size(),
-				ModTime:     info.ModTime(),
-				File:        cached,
-				Codec:       codec,
+				Name:            transcodedName(native.Name, codec),
+				ContentType:     transcodeContentType(codec),
+				Size:            info.Size(),
+				ModTime:         info.ModTime(),
+				File:            cached,
+				Codec:           codec,
+				Mode:            cacheMode,
+				Reason:          "Full-file conversion served from the persistent transcode cache.",
+				RequestedFormat: requestedFormat,
 			}, nil
 		}
-		// The cache encode above reads the registered file on stdin, and the
-		// two processes share the open file description: a cache attempt that
-		// got as far as running ffmpeg and then failed to publish has already
-		// advanced the file offset, possibly to EOF. Rewind it so the
-		// on-the-fly pipe below converts the whole file instead of encoding
-		// silence from an exhausted handle.
-		_, _ = native.File.Seek(0, io.SeekStart)
 	}
 
 	// NEW-A1: bound simultaneous ffmpeg conversions. The slot is taken only
@@ -382,14 +433,30 @@ func (s *Service) OpenPlayback(ctx context.Context, id int64, requestedFormat st
 		_ = native.File.Close()
 		return PlaybackStream{}, &Error{Code: "music_transcode_failed", Message: "The server could not convert this file for playback."}
 	}
+	mode := "live-miss"
+	reason := "The conversion was not cached; streaming it live while a detached cache fill proceeds."
+	if timeOffset > 0 {
+		mode = "offset-live"
+		s.playbackOffset.Add(1)
+		reason = "A time offset was requested; decoding the registered source from that offset."
+	} else {
+		s.playbackLive.Add(1)
+		// Schedule only after the live encoder owns its slot and its source.
+		// The fill opens fileID again and therefore never shares native.File,
+		// its offset, or the request's cancellation lifecycle.
+		s.startStreamCacheFill(id, codec, bitRate, native.SHA256, ffmpeg)
+	}
 	return PlaybackStream{
-		Name:        transcodedName(native.Name, codec),
-		ContentType: transcodeContentType(codec),
-		File:        native.File,
-		Body:        stdout.body,
-		Codec:       codec,
-		cmd:         stdout.cmd,
-		release:     release,
+		Name:            transcodedName(native.Name, codec),
+		ContentType:     transcodeContentType(codec),
+		File:            native.File,
+		Body:            stdout.body,
+		Codec:           codec,
+		Mode:            mode,
+		Reason:          reason,
+		RequestedFormat: requestedFormat,
+		cmd:             stdout.cmd,
+		release:         release,
 	}, nil
 }
 
@@ -430,8 +497,98 @@ func (s *Service) cacheEncodeFunc(ctx context.Context, ffmpeg string, input *os.
 			return err
 		}
 		defer release()
-		// Cache encodes are always full-file: OpenPlayback only routes
-		// timeOffset==0 requests into the cache, so no output seek applies.
+		// Cache encodes are always full-file; offset requests never enter the
+		// cache. ctx belongs to the fill, never to the disconnected listener.
 		return runTranscodeFile(ctx, ffmpeg, input, codec, bitRate, 0, dest)
 	}
+}
+
+// Detached fills are an optimization, not an unbounded work queue. Distinct
+// cold keys may each have one fill; excess keys simply remain live-only until
+// a later request retries. Every running/waiting fill also has a hard lifetime.
+const maxDetachedStreamCacheFills = 32
+
+var streamCacheFillTimeout = 30 * time.Minute
+
+// startStreamCacheFill schedules one service-owned cache encode for a key.
+// It returns false when the key is already running, the bounded fill set is
+// full, or the service is shutting down. Live playback never depends on the
+// result. The source is opened inside the goroutine with the detached context.
+func (s *Service) startStreamCacheFill(fileID int64, codec string, bitRate int, sourceSHA, ffmpeg string) bool {
+	profileKey, valid := cacheProfileKey(codec, bitRate)
+	if fileID < 1 || !valid || ffmpeg == "" {
+		return false
+	}
+	key := cacheRelativePath(fileID, profileKey)
+
+	s.streamFillMu.Lock()
+	if s.streamFillClosed || len(s.streamFills) >= maxDetachedStreamCacheFills {
+		s.streamFillMu.Unlock()
+		return false
+	}
+	if _, running := s.streamFills[key]; running {
+		s.streamFillMu.Unlock()
+		return false
+	}
+	if s.streamFillCtx == nil {
+		s.streamFillCtx, s.streamFillCancel = context.WithCancel(context.Background())
+	}
+	if s.streamFills == nil {
+		s.streamFills = make(map[string]struct{})
+	}
+	s.streamFills[key] = struct{}{}
+	fillContext := s.streamFillCtx
+	s.streamFillWG.Add(1)
+	s.streamFillMu.Unlock()
+
+	go func() {
+		defer func() {
+			s.streamFillMu.Lock()
+			delete(s.streamFills, key)
+			s.streamFillMu.Unlock()
+			s.streamFillWG.Done()
+		}()
+		ctx, cancel := context.WithTimeout(fillContext, streamCacheFillTimeout)
+		defer cancel()
+
+		// This handle has an independent open file description and lifetime.
+		// In particular, a live listener reading or closing its own handle can
+		// neither move this encoder's offset nor EOF its stdin.
+		source, err := s.OpenAudioFile(ctx, fileID)
+		if err != nil {
+			return
+		}
+		defer source.File.Close()
+		if sourceSHA != "" && source.SHA256 != sourceSHA {
+			// The catalog source changed after the cache-miss decision. Do not
+			// publish bytes under identity evidence from a different request.
+			return
+		}
+		cached, _, _, cacheErr := s.OpenCachedStream(ctx, fileID, codec, bitRate, source.SHA256,
+			s.cacheEncodeFunc(ctx, ffmpeg, source.File, codec, bitRate))
+		if cached != nil {
+			_ = cached.Close()
+		}
+		if cacheErr != nil && ctx.Err() == nil {
+			s.streamFillFailed.Add(1)
+		}
+	}()
+	return true
+}
+
+// Close stops detached cache fills, waits for their FFmpeg processes and
+// staging cleanup, and prevents new fills. It is idempotent and does not close
+// the catalog database, whose lifetime belongs to the application composition
+// root. Live streams remain request-owned and are closed by their callers.
+func (s *Service) Close() error {
+	s.streamFillMu.Lock()
+	if !s.streamFillClosed {
+		s.streamFillClosed = true
+		if s.streamFillCancel != nil {
+			s.streamFillCancel()
+		}
+	}
+	s.streamFillMu.Unlock()
+	s.streamFillWG.Wait()
+	return nil
 }

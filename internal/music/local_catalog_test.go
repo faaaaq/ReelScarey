@@ -601,7 +601,7 @@ func TestFinalizeLocalTagRowsMovesAndNeverWritesSyntheticIDs(t *testing.T) {
 	service.SetProber(&mapCountingProber{tags: map[string]AudioTags{
 		"Song.flac": {
 			Artist: "Local Artist", AlbumArtist: "Local Artist", Album: "Local Album", Title: "Song",
-			Track: intPtr(1), Disc: intPtr(1), Format: "flac", DurationMS: 1000,
+			Track: intPtr(1), TrackTotal: intPtr(1), Disc: intPtr(1), DiscTotal: intPtr(1), Format: "flac", DurationMS: 1000,
 		},
 	}})
 	writeScanFixture(t, media, "Music/Local Artist/Local Album/Song.flac")

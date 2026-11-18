@@ -1008,7 +1008,8 @@ capabilities are implemented and documented in `docs/`:
   public Spotify/Deezer/YouTube track downloads, monitored playlists and an
   optional Subsonic-compatible endpoint. See [MUSIC.md](docs/MUSIC.md).
 - Music quality profiles, post-download conversion, a durable conversion queue,
-  cached on-the-fly Opus streaming, per-user Subsonic streaming quality,
+  live-first cold streaming with a detached persistent cache, per-user Subsonic
+  streaming quality, stars, ratings, playlists, saved queues and play history,
   multi-format track variants, existing-library optimization with a dry run and
   converted export downloads. See [MUSIC.md](docs/MUSIC.md).
 - Request accounts, approvals, public/private TMDb and Trakt lists, MDBList

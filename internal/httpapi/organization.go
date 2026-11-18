@@ -400,6 +400,28 @@ func (s *Server) organizationEmbeddedTitle(w http.ResponseWriter, r *http.Reques
 	send(w, 201, out)
 }
 
+func (s *Server) organizationTrackMetadata(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		FileID int64                            `json:"media_file_id"`
+		Edits  []organization.TrackMetadataEdit `json:"edits"`
+	}
+	if !decodeBoundedJSON(w, r, &in, 256<<10) {
+		return
+	}
+	if in.FileID < 1 {
+		fail(w, 400, "invalid_selection", "Choose a registered Matroska file.")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	out, err := s.organization.PreviewTrackMetadata(ctx, in.FileID, in.Edits)
+	if err != nil {
+		s.organizationError(w, err)
+		return
+	}
+	send(w, 201, out)
+}
+
 func (s *Server) organizationRollback(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &struct{}{}) {
 		return

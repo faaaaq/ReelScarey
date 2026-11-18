@@ -120,14 +120,19 @@ export function acquisitionStatus(job: MusicAcquisitionJob): string {
 export function AcquisitionProgress({
   job,
   label = "Music download progress",
+  onRetry,
 }: {
   job: MusicAcquisitionJob;
   label?: string;
+  onRetry?: (trackID: number, sourceURL: string) => Promise<void>;
 }) {
+  const [replacement, setReplacement] = useState<Record<number, string>>({});
+  const [retrying, setRetrying] = useState(0);
+  const [retryError, setRetryError] = useState("");
   const total = job.track_count || 0;
   const done = job.completed_count || 0;
   const fraction = total > 0 ? Math.min(1, done / total) : 0;
-  const failed = (job.tracks ?? []).filter((track) => track.state === "failed");
+  const tracks = job.tracks ?? [];
   const settled = job.state === "completed" || job.state === "failed";
   return (
     <div className="mus-progress">
@@ -150,18 +155,103 @@ export function AcquisitionProgress({
       {job.error && job.state !== "failed" && (
         <p className="rs-muted rs-small">{job.error}</p>
       )}
-      {failed.length > 0 && (
+      {job.source_url && (
+        <p className="rs-muted rs-small">
+          Catalog source:{" "}
+          <a href={job.source_url} target="_blank" rel="noreferrer">
+            {job.source_url}
+          </a>
+        </p>
+      )}
+      {tracks.length > 0 && (
         <ul className="mus-progress-failed">
-          {failed.map((track) => (
+          {tracks.map((track) => (
             <li key={track.id}>
               <span>{track.title || `Track ${track.position}`}</span>
               {track.error ? (
                 <span className="rs-muted"> · {track.error}</span>
               ) : null}
+              {track.selected_source_url && (
+                <div className="rs-small">
+                  Actual audio source:{" "}
+                  <a
+                    href={track.selected_source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {track.selected_source_url}
+                  </a>
+                </div>
+              )}
+              {!!track.candidate_evidence?.length && (
+                <details>
+                  <summary>
+                    Candidate evidence ({track.candidate_evidence.length})
+                  </summary>
+                  <ul>
+                    {track.candidate_evidence.map((item) => (
+                      <li key={item.candidate.id}>
+                        <strong>{item.candidate.title}</strong> —{" "}
+                        {item.candidate.channel || "channel unknown"} — score{" "}
+                        {item.score}
+                        <ul>
+                          {item.reasons.map((reason) => (
+                            <li key={reason}>{reason}</li>
+                          ))}
+                        </ul>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              {!!track.attempts?.length && (
+                <details>
+                  <summary>Source attempts ({track.attempts.length})</summary>
+                  <ol>
+                    {track.attempts.map((attempt) => (
+                      <li key={attempt.id}>
+                        {attempt.source_url || attempt.source_id}:{" "}
+                        {attempt.outcome}
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
+              {track.state === "failed" && onRetry && (
+                <div className="rs-form-actions">
+                  <TextField.Root
+                    aria-label={`Replacement source for ${track.title}`}
+                    placeholder="Optional replacement YouTube/source URL or ID"
+                    value={replacement[track.id] ?? ""}
+                    onChange={(event) =>
+                      setReplacement((current) => ({
+                        ...current,
+                        [track.id]: event.target.value,
+                      }))
+                    }
+                  />
+                  <Button
+                    size="1"
+                    disabled={retrying > 0}
+                    onClick={() => {
+                      setRetrying(track.id);
+                      setRetryError("");
+                      void onRetry(track.id, replacement[track.id] ?? "")
+                        .catch((error) => setRetryError(messageFor(error)))
+                        .finally(() => setRetrying(0));
+                    }}
+                  >
+                    {retrying === track.id
+                      ? "Retrying…"
+                      : "Retry only this track"}
+                  </Button>
+                </div>
+              )}
             </li>
           ))}
         </ul>
       )}
+      {retryError && <Alert kind="danger">{retryError}</Alert>}
     </div>
   );
 }
@@ -217,7 +307,7 @@ export function AlbumDownloadModal({
         method: "POST",
         body: JSON.stringify({
           root: root.trim() || "Music",
-          format: profileKey || "source",
+          format: profileKey,
           reviewed: true,
         }),
       });

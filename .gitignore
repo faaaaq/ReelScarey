@@ -22,3 +22,6 @@ setup-token
 # Local OpenCode permission config, not part of the application
 /opencode.jsonc
 web/tsconfig.tsbuildinfo
+
+# Python bytecode from the bundled provider tooling
+__pycache__/

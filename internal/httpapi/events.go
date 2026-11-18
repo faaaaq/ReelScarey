@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"database/sql"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type activityEvent struct {
@@ -31,7 +33,28 @@ func (s *Server) activityEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	rows, e := s.db.QueryContext(r.Context(), `SELECT id,occurred_at,kind,object_id,title,state FROM activity_events WHERE (?=0 OR occurred_at<? OR (occurred_at=? AND id<?)) ORDER BY occurred_at DESC,id DESC LIMIT 51`, beforeTime, beforeTime, beforeTime, beforeID)
+	mediaID := int64(0)
+	if raw := strings.TrimSpace(r.URL.Query().Get("media_id")); raw != "" {
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value < 1 {
+			fail(w, 400, "invalid_media", "Choose a valid library item.")
+			return
+		}
+		mediaID = value
+	}
+	condition := `(?=0 OR occurred_at<? OR (occurred_at=? AND id<?))`
+	args := []any{beforeTime, beforeTime, beforeTime, beforeID}
+	if mediaID > 0 {
+		condition += ` AND (
+			(kind IN ('title','playback') AND object_id=?) OR
+			(kind='download' AND EXISTS(SELECT 1 FROM downloads d WHERE d.id=activity_events.object_id AND d.movie_id=?)) OR
+			(kind='youtube' AND EXISTS(SELECT 1 FROM youtube_jobs y WHERE y.id=activity_events.object_id AND y.media_id=?)) OR
+			(kind='organization' AND EXISTS(SELECT 1 FROM organization_plans p WHERE p.id=activity_events.object_id AND (json_extract(p.snapshot,'$.replacement.media_id')=? OR json_extract(p.snapshot,'$.media_id')=?))) OR
+			(kind='subtitle' AND (EXISTS(SELECT 1 FROM media_files f WHERE f.id=CAST(activity_events.object_id AS INTEGER) AND COALESCE(f.movie_id,f.series_id)=?) OR EXISTS(SELECT 1 FROM subtitle_jobs j JOIN media_files mf ON mf.id=j.media_file_id WHERE j.id=CAST(activity_events.object_id AS INTEGER) AND COALESCE(mf.movie_id,mf.series_id)=?)))
+		)`
+		args = append(args, strconv.FormatInt(mediaID, 10), mediaID, mediaID, mediaID, mediaID, mediaID, mediaID)
+	}
+	rows, e := s.db.QueryContext(r.Context(), `SELECT id,occurred_at,kind,object_id,title,state FROM activity_events WHERE `+condition+` ORDER BY occurred_at DESC,id DESC LIMIT 51`, args...)
 	if e != nil {
 		s.internal(w, "events", e)
 		return
@@ -56,5 +79,40 @@ func (s *Server) activityEvents(w http.ResponseWriter, r *http.Request) {
 		cursor := strconv.FormatInt(items[49].Time, 10) + ":" + strconv.FormatInt(items[49].ID, 10)
 		next = &cursor
 	}
-	send(w, 200, map[string]any{"items": items, "next": next})
+	response := map[string]any{"items": items, "next": next}
+	if mediaID > 0 {
+		candidates := []map[string]any{}
+		rows, err := s.db.QueryContext(r.Context(), `SELECT id,title,scope,published_at,expires_at,(SELECT d.id FROM downloads d WHERE d.release_id=release_candidates.id ORDER BY d.created_at DESC LIMIT 1) FROM release_candidates WHERE movie_id=? ORDER BY published_at DESC,id LIMIT 50`, mediaID)
+		if err != nil {
+			s.internal(w, "release_candidates", err)
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id, title, scope, published string
+			var expires int64
+			var downloadID sql.NullString
+			if err := rows.Scan(&id, &title, &scope, &published, &expires, &downloadID); err != nil {
+				s.internal(w, "release_candidates", err)
+				return
+			}
+			state := "available candidate"
+			if downloadID.Valid {
+				state = "selected for download"
+			} else if expires > 0 && expires < time.Now().Unix() {
+				state = "expired candidate"
+			}
+			candidate := map[string]any{"id": id, "title": title, "scope": scope, "published_at": published, "state": state}
+			if downloadID.Valid {
+				candidate["download_id"] = downloadID.String
+			}
+			candidates = append(candidates, candidate)
+		}
+		if err := rows.Err(); err != nil {
+			s.internal(w, "release_candidates", err)
+			return
+		}
+		response["candidates"] = candidates
+	}
+	send(w, 200, response)
 }

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/faaaaq/ReelScarey/internal/quality"
 )
@@ -53,7 +54,14 @@ func parseAutomaticTitle(raw string) (automaticHint, error) {
 		if prefix == "" {
 			continue
 		}
-		h.Year, _ = strconv.Atoi(raw[at[0]:at[1]])
+		candidateYear, _ := strconv.Atoi(raw[at[0]:at[1]])
+		// A far-future trailing token is commonly part of the title (for
+		// example Blade Runner 2049), not evidence of a release year. Leave it
+		// in the title and require a real year or trusted ID for a loose file.
+		if candidateYear > time.Now().UTC().Year()+1 {
+			continue
+		}
+		h.Year = candidateYear
 		raw = prefix
 		break
 	}
@@ -287,6 +295,21 @@ func episodeTitleTail(base, show string) string {
 			}
 		}
 		if isNumber {
+			// A zero-padded or delimiter-separated number is an episode
+			// container marker ("02 - Pilot"). A number directly followed by
+			// title text is part of that title ("15 Minutes", "2 Ava 2 Fest").
+			nextHasText := false
+			if i+1 < len(tokens) {
+				for _, r := range tokens[i+1] {
+					if r < '0' || r > '9' {
+						nextHasText = true
+						break
+					}
+				}
+			}
+			if nextHasText && !strings.HasPrefix(tokens[i], "0") && strings.Contains(raw, tokens[i]+" "+tokens[i+1]) {
+				return strings.TrimSpace(strings.Join(tokens[i:], " "))
+			}
 			continue
 		}
 		return strings.TrimSpace(strings.Join(tokens[i:], " "))

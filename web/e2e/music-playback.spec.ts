@@ -9,8 +9,9 @@ import { ServerFixture, login } from "./helpers/server";
  * Browser playback compatibility against the REAL server and REAL audio.
  *
  * What is honestly verifiable headlessly: the audio element receives the
- * negotiated stream URL, metadata/decoding progresses (readyState >= 1, a
- * finite duration), buffered data exists, error events stay absent, the
+ * negotiated stream URL, metadata/decoding progresses (readyState >= 1),
+ * buffered data exists (a live pipe may initially have unknown duration),
+ * error events stay absent, the
  * visible error state appears when the stream fails and clears on recovery.
  * A headless run cannot prove "sounds correct"; it proves the element decodes
  * the served bytes without a media error, which is the strongest headless
@@ -33,6 +34,7 @@ type AudioState = {
   src: string | null;
   readyState: number;
   duration: number;
+  currentTime: number;
   bufferedEnd: number;
   errorCode: number;
 };
@@ -45,6 +47,7 @@ async function audioState(page: Page): Promise<AudioState | null> {
       src: audio.getAttribute("src"),
       readyState: audio.readyState,
       duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+      currentTime: audio.currentTime,
       bufferedEnd: audio.buffered.length
         ? audio.buffered.end(audio.buffered.length - 1)
         : 0,
@@ -158,7 +161,9 @@ test.describe.serial("Music playback compatibility", () => {
     // Default preferences (balanced) transcode through ffmpeg to Ogg/Opus.
     expect(state.src).toBe("/api/v1/library/music/files/1/stream");
     expect(state.errorCode).toBe(0);
-    expect(state.duration).toBeGreaterThan(0);
+    await expect
+      .poll(async () => (await audioState(page))?.bufferedEnd ?? 0)
+      .toBeGreaterThan(0);
     expect(
       page.getByText("Playback is unavailable for this file."),
     ).toHaveCount(0);
@@ -219,16 +224,22 @@ test.describe.serial("Music playback compatibility", () => {
       .click();
     await expect(toggle).toBeVisible();
 
-    // Seek through the visible control; the served transcode is not
-    // range-seekable, so only assert honest outcomes: no error event, no
-    // visible failure, and the position control still tracks the element.
+    await expect
+      .poll(async () => (await audioState(page))?.bufferedEnd ?? 0)
+      .toBeGreaterThan(0);
+    // Prove the media timeline actually moved and decoding continued. This is
+    // intentionally stronger than merely checking that no error was rendered.
     const seek = page.getByRole("slider", { name: "Seek" });
     await seek.fill("1");
+    await expect
+      .poll(async () => (await audioState(page))?.currentTime ?? 0)
+      .toBeGreaterThanOrEqual(0.9);
     await expect(
       page.getByText("Playback is unavailable for this file."),
     ).toHaveCount(0);
     const state = await audioState(page);
     expect(state?.errorCode).toBe(0);
+    expect(state?.bufferedEnd).toBeGreaterThan(0);
     expect(pageErrors).toEqual([]);
   });
 

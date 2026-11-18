@@ -166,6 +166,16 @@ GET `/acquisitions/{id}` returns one. GET
 GET/POST `/monitor/sources` and PUT/DELETE `/monitor/sources/{id}` manage
 saved playlist/artist links; POST `/monitor/run` requests one bounded run.
 
+GET `/api/v1/library/music/tidal/status` reports the optional TIDAL provider's
+honest state: `available` (provider installed), `logged_in` and the requested
+audio quality; an unconfigured provider reports `available:false` with detail.
+GET `/api/v1/library/music/tidal/login` returns the device-login state
+(`phase`, `result`, `error`, instruction lines including the TIDAL link and
+code); POST on the same path starts the interactive device flow. Downloads
+always preserve the original stream, up to TIDAL MAX HiRes FLAC; TIDAL is the
+primary acquisition source when configured and logged in, with the default
+source as fallback.
+
 GET/PUT `/api/v1/library/music/server` reads or changes the opt-in
 Subsonic-compatible endpoint. POST/DELETE `/server/token` creates or removes the
 client token; the token is returned only on creation. The token is 20 characters
@@ -356,7 +366,13 @@ global again. `stream_quality` accepts the same quality names as the global
 preference and `download_profile` accepts empty or a builtin profile key. At
 stream time an explicit client `format`/`maxBitRate` request still wins,
 then the account's `stream_quality`, then the global preference, then
-`balanced`. GET `/wanted?page=` lists
+`balanced`. A rate-only cap reaches the same-family conversion planner rather
+than being discarded, including on the authenticated browser stream. Named
+music-server accounts also own persistent stars, user ratings, playlists,
+ID/index-based play queues, play history and now-playing state through `/rest/*`.
+Public playlists are cross-user readable but owner-only for writes. The legacy
+shared token cannot write private per-user state. See
+[music scope and limits](MUSIC.md). GET `/wanted?page=` lists
 monitored albums with no registered files. GET/PUT `/schedule` manages the
 wanted-album schedule and POST `/schedule/run` performs one bounded run.
 GET/PUT/DELETE `/albums/{id}/preferences` reads, saves or resets a per-album

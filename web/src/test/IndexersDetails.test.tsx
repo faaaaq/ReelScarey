@@ -54,6 +54,10 @@ function setup(
         uhd_download: "",
       });
     if (url.endsWith("/quality-profiles")) return Response.json({ items: [] });
+    // The details pages mount MediaActivity, which reads the title's event
+    // feed; the fixture library records no events.
+    if (url.includes("/events?media_id="))
+      return Response.json({ items: [], next: null });
     return (
       extra(url, options) ??
       Response.json(
@@ -187,7 +191,7 @@ describe("indexers and library details", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Inspect embedded tags" }),
     );
-    await screen.findByText("Audio: jpn · aac");
+    await screen.findByText("Audio: jpn · aac · Subtitles: not inspected");
     expect(screen.getByText("Title: Wrong fixture title")).toBeVisible();
     expect(screen.getByText(/differs from the saved title/i)).toBeVisible();
     expect(fetch).toHaveBeenCalledWith(

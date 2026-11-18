@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/faaaaq/ReelScarey/internal/music"
 )
 
 func TestSubsonicStreamReportsBusyTranscode(t *testing.T) {
@@ -28,5 +30,22 @@ func TestSubsonicStreamReportsBusyTranscode(t *testing.T) {
 	}
 	if strings.Contains(out.Body.String(), `code="70"`) {
 		t.Fatal("busy must not be misreported as song-not-found")
+	}
+}
+
+func TestSubsonicStreamReportsTranscodeUnavailable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(path, []byte("0123456789"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler, _ := musicFixture(t, &fakeMusic{serverTokenOK: true, audioPath: path, transcodeErr: &music.Error{
+		Code: "music_transcode_unavailable", Message: "Seeking during playback requires FFmpeg on the server.",
+	}})
+	r := httptest.NewRequest("GET", "/rest/stream.view?u=reelscarey&p=test-token&v=1.16.1&c=test&id=9&timeOffset=30", nil)
+	out := httptest.NewRecorder()
+	handler.ServeHTTP(out, r)
+	body := out.Body.String()
+	if !strings.Contains(body, `code="0"`) || !strings.Contains(body, "requires FFmpeg") || strings.Contains(body, `code="70"`) {
+		t.Fatalf("transcode availability must not be misreported as a missing song: %d %s", out.Code, body)
 	}
 }

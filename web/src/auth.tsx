@@ -86,6 +86,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }, []);
   const signOut = useCallback(async () => {
     await api("/auth/logout", { method: "POST", body: "{}" });
+    window.dispatchEvent(new Event("reelscarey:logout"));
     setCSRFToken("");
     setSession(undefined);
     setHadSession(false);
