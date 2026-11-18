@@ -11,7 +11,7 @@ import {
 import { useLiveResource } from "../useLiveResource";
 import { useResource } from "../useResource";
 
-const actions = [
+const modes = [
   ["all_subtitles", "All subtitles"],
   ["other_subtitles", "Subtitles outside configured languages"],
   ["other_non_forced", "Non-forced subtitles outside configured languages"],
@@ -28,6 +28,7 @@ type CleanupPlan = {
     changed: number;
     skipped: number;
     dropped: number;
+    disabled: number;
     issues?: string[];
   };
 };
@@ -43,20 +44,24 @@ export function TrackCleanup({
   onDone?: () => void;
   kind?: "all" | "subtitles" | "audio";
 }) {
-  const available = actions.filter(
+  const available = modes.filter(
     ([value]) =>
       kind === "all" || (kind === "audio") === (value === "other_audio"),
   );
   const title =
     kind === "subtitles"
-      ? "Delete subtitles"
+      ? "Subtitle tracks"
       : kind === "audio"
-        ? "Delete audio tracks"
-        : "Remove media tracks";
+        ? "Audio tracks"
+        : "Media tracks";
   const libraries = useResource<{ libraries: { key: string; name: string }[] }>(
     mediaID ? null : "/organization",
   );
   const [mode, setMode] = useState<string>(available[0][0]);
+  // Hiding is the default: it only exposes the languages the viewer needs
+  // without deleting anything. Removing rewrites the container (and deletes
+  // matching external subtitles) and remains an explicit choice.
+  const [action, setAction] = useState("disable");
   const [library, setLibrary] = useState("");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -97,6 +102,7 @@ export function TrackCleanup({
     (!id && plan && plan.kind !== "track_cleanup")
       ? plan
       : undefined;
+  const disable = action === "disable";
 
   useEffect(() => {
     if (adopted && plan) setID(plan.id);
@@ -130,6 +136,7 @@ export function TrackCleanup({
             method: "POST",
             body: JSON.stringify({
               mode,
+              action,
               library,
               ...(mediaID ? { media_id: mediaID } : {}),
             }),
@@ -180,7 +187,11 @@ export function TrackCleanup({
   return (
     <FieldSet
       legend={title}
-      description="Embedded tracks are removed by rewriting the video container. Selected external subtitles are permanently deleted."
+      description={
+        disable
+          ? "Unwanted track languages are hidden in place on Matroska (.mkv/.webm) files: the container header is edited without rewriting the video, and no files are deleted. Other containers are skipped and can be removed instead."
+          : "Embedded tracks are removed by rewriting the video container. Selected external subtitles are permanently deleted."
+      }
     >
       <Modal
         open={open}
@@ -209,7 +220,7 @@ export function TrackCleanup({
               !blocking &&
               status.data?.state !== "completed" && (
                 <Button
-                  color="red"
+                  color={disable ? undefined : "red"}
                   disabled={busy}
                   onClick={() => void submit()}
                 >
@@ -218,7 +229,9 @@ export function TrackCleanup({
                     : id
                       ? "Resume cleanup"
                       : review
-                        ? "Remove tracks"
+                        ? disable
+                          ? "Hide tracks"
+                          : "Remove tracks"
                         : "Review cleanup"}
                 </Button>
               )}
@@ -227,9 +240,10 @@ export function TrackCleanup({
       >
         {review ? (
           <>
-            <p>{actions.find(([value]) => value === mode)?.[1]}</p>
+            <p>{modes.find(([value]) => value === mode)?.[1]}</p>
             <p>
-              {review.track_cleanup.targets.length} registered videos in scope.
+              {review.track_cleanup.targets.length} registered videos in scope.{" "}
+              {disable ? "Hide in place" : "Remove"}.
             </p>
             {!id && (
               <Button
@@ -260,7 +274,17 @@ export function TrackCleanup({
               </label>
             )}
             <label>
-              Remove{" "}
+              Action{" "}
+              <select
+                value={action}
+                onChange={(event) => setAction(event.target.value)}
+              >
+                <option value="disable">Hide in place (recommended)</option>
+                <option value="remove">Remove (rewrite the video)</option>
+              </select>
+            </label>
+            <label>
+              Tracks{" "}
               <select
                 value={mode}
                 onChange={(event) => setMode(event.target.value)}
@@ -273,6 +297,13 @@ export function TrackCleanup({
               </select>
             </label>
           </div>
+        )}
+        {disable && !review && (
+          <p className="rs-muted rs-small">
+            Hide keeps every track: it clears the Matroska “enabled” flag so
+            players stop offering the language. Only Matroska (.mkv/.webm) files
+            are changed; others are reported as skipped.
+          </p>
         )}
         {mode === "other_audio" && (
           <p>
@@ -317,8 +348,10 @@ export function TrackCleanup({
         {id && (
           <p role="status">
             {progress?.processed ?? 0} of {total} videos reviewed.{" "}
-            {progress?.dropped ?? 0} tracks removed across{" "}
-            {progress?.changed ?? 0} videos.{" "}
+            {progress?.disabled
+              ? `${progress.disabled} tracks hidden`
+              : `${progress?.dropped ?? 0} tracks removed`}{" "}
+            across {progress?.changed ?? 0} videos.{" "}
             {progress?.skipped ? `${progress.skipped} skipped.` : ""}
           </p>
         )}

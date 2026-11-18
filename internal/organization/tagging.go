@@ -301,7 +301,15 @@ func (s *Service) fileDigest(ctx context.Context, root *os.Root, name string) (s
 
 func (s *Service) prepareEmbeddedTitle(ctx context.Context, root *os.Root, p *Plan) error {
 	r := p.Replacement
-	if len(r.DropStreams) == 0 && s.tag == nil || len(r.DropStreams) > 0 && s.rewriteTracks == nil {
+	disableExt := matroskaTitleExtension(strings.ToLower(path.Ext(r.Original.Source)))
+	switch {
+	case len(r.DropStreams) > 0 && s.rewriteTracks == nil:
+		return problem("ffprobe_missing", "The embedded metadata verifier is unavailable.")
+	case len(r.DropStreams) == 0 && len(r.DisableStreams) > 0 && s.matroskaDisabler == nil:
+		return problem("ffprobe_missing", "Disabling tracks in place is unavailable on this server.")
+	case len(r.DropStreams) == 0 && len(r.DisableStreams) > 0 && !disableExt:
+		return problem("unsupported_media", "Disabling tracks in place is supported only for Matroska (.mkv/.webm) files; choose Remove for this file.")
+	case len(r.DropStreams) == 0 && len(r.DisableStreams) == 0 && s.tag == nil:
 		return problem("ffprobe_missing", "The embedded metadata verifier is unavailable.")
 	}
 	dir := path.Dir(r.TagStage)
@@ -362,6 +370,10 @@ func (s *Service) prepareEmbeddedTitle(ctx context.Context, root *os.Root, p *Pl
 	// every packet. The journal stage holds a bounded backup of the header so
 	// an interrupted edit can be repaired.
 	ext := strings.ToLower(path.Ext(r.Original.Source))
+	// Disabling Matroska tracks in place: header-only flag edits, no remux.
+	if len(r.DropStreams) == 0 && len(r.DisableStreams) > 0 {
+		return s.disableEmbeddedTracks(ctx, root, stage, source, p, saved)
+	}
 	if len(r.DropStreams) == 0 && matroskaTitleExtension(ext) && s.inPlaceTagger != nil {
 		if e = s.backupTitleHeader(ctx, stage, source, r); e != nil {
 			return e
@@ -406,7 +418,7 @@ func (s *Service) prepareEmbeddedTitle(ctx context.Context, root *os.Root, p *Pl
 	}
 	var probe string
 	if len(r.DropStreams) > 0 {
-		probe, e = s.rewriteTracks(ctx, source, stage, path.Ext(r.Original.Source), r.DropStreams)
+		probe, e = s.rewriteTracks(ctx, source, stage, ext, r.DropStreams)
 	} else {
 		probe, e = s.tag(ctx, source, stage, ext, r.TagTitle)
 	}
@@ -449,6 +461,46 @@ func (s *Service) prepareEmbeddedTitle(ctx context.Context, root *os.Root, p *Pl
 		return e
 	}
 	return nil
+}
+
+// disableEmbeddedTracks clears the Matroska enabled flag of the reviewed tracks
+// in place. It mirrors the in-place title edit: the journal stage holds a
+// bounded header backup that repairs an interrupted edit, and the plan keeps no
+// second copy of the video. Caller holds the media gate.
+func (s *Service) disableEmbeddedTracks(ctx context.Context, root *os.Root, stage, source *os.File, p *Plan, saved string) error {
+	r := p.Replacement
+	if e := s.backupTitleHeader(ctx, stage, source, r); e != nil {
+		return e
+	}
+	fullPath := filepath.Join(root.Name(), filepath.FromSlash(r.Original.Source))
+	// mkvpropedit opens its own handle on the path.
+	source.Close()
+	probe, err := s.matroskaDisabler(ctx, fullPath, r.Before.Probe, r.DisableStreams, r.Original.Size)
+	if err != nil {
+		if restoreErr := s.restoreTitleHeader(root, stage, r); restoreErr != nil {
+			return problem("staging_conflict", "The in-place track edit failed and the saved header backup could not be restored: "+restoreErr.Error())
+		}
+		return err
+	}
+	edited, e := inspect(root, r.Original.Source)
+	if e != nil {
+		return e
+	}
+	digest, e := s.fileDigest(ctx, root, r.Original.Source)
+	if e != nil {
+		return e
+	}
+	r.InPlace = true
+	r.Incoming = edited
+	r.Incoming.SHA = digest
+	r.After = r.Before
+	r.After.Size = edited.Size
+	r.After.SHA = digest
+	r.After.Probe = probe
+	r.After.Mtime = edited.Mtime
+	r.After.Identity = edited.Identity
+	_, e = s.db.ExecContext(ctx, `UPDATE organization_outputs SET phase='published' WHERE plan_id=? AND destination=? AND identity=?`, p.ID, r.TagStage, saved)
+	return e
 }
 
 // executeEmbeddedTitle applies a reviewed metadata-only title rewrite. It keeps

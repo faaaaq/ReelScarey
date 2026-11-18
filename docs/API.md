@@ -1771,6 +1771,17 @@ files remain outside the operation.
   `other_non_forced`, or `other_audio`. The optional `library` is a saved
   organization library key. An optional `media_id` or `file_id` narrows the
   scope. Omitting these fields covers all registered video libraries.
+  `action` chooses the outcome: `remove` (default) rewrites the container
+  without those tracks and permanently deletes matching external subtitles;
+  `disable` hides them in place by clearing the Matroska track enabled flag with
+  `mkvpropedit`. Disable changes only the container header (seconds per file, no
+  packet rewrite), keeps every track and every external subtitle, and is
+  verified against `mkvmerge`'s track list and the recorded probe. It applies to
+  Matroska (`.mkv`/`.webm`) only; other containers are reported as skipped and
+  can be `remove`d instead. The plan reports `dropped` (removed) and `disabled`
+  (hidden) track counts separately. Removal stays on the verified ffmpeg remux
+  (`-copyts` preserves every packet exactly); `mkvmerge` is used only to read the
+  Matroska track list and verify the flag change.
 - Apply a review with `POST /api/v1/organization/plans/{id}/apply` and read
   progress via `GET /api/v1/organization/plans/{id}`. Applying only validates
   and queues; it never waits for a running media operation. When another

@@ -159,9 +159,9 @@ describe("subtitles", () => {
     });
     mount();
     await userEvent.click(
-      await screen.findByRole("button", { name: "Delete subtitles" }),
+      await screen.findByRole("button", { name: "Subtitle tracks" }),
     );
-    const dialog = screen.getByRole("dialog", { name: "Delete subtitles" });
+    const dialog = screen.getByRole("dialog", { name: "Subtitle tracks" });
     expect(
       within(dialog).getByRole("option", { name: "All subtitles" }),
     ).toBeInTheDocument();
@@ -190,11 +190,11 @@ describe("subtitles", () => {
     );
     mount();
     await userEvent.click(
-      await screen.findByRole("button", { name: "Delete audio tracks" }),
+      await screen.findByRole("button", { name: "Audio tracks" }),
     );
-    const dialog = screen.getByRole("dialog", { name: "Delete audio tracks" });
+    const dialog = screen.getByRole("dialog", { name: "Audio tracks" });
     expect(
-      within(dialog).getByRole("combobox", { name: "Remove" }),
+      within(dialog).getByRole("combobox", { name: "Tracks" }),
     ).toHaveValue("other_audio");
     expect(
       within(dialog).queryByRole("option", { name: "All subtitles" }),
@@ -511,9 +511,9 @@ describe("subtitles", () => {
     void fetch;
     mount();
     await userEvent.click(
-      await screen.findByRole("button", { name: "Delete subtitles" }),
+      await screen.findByRole("button", { name: "Subtitle tracks" }),
     );
-    const dialog = screen.getByRole("dialog", { name: "Delete subtitles" });
+    const dialog = screen.getByRole("dialog", { name: "Subtitle tracks" });
     expect(
       await within(dialog).findByText(/is using the library/),
     ).toBeVisible();
@@ -532,5 +532,58 @@ describe("subtitles", () => {
         within(dialog).queryByRole("button", { name: "Review cleanup" }),
       ).toBeInTheDocument();
     });
+  });
+  it("hides tracks in place by default and only removes them when asked", async () => {
+    const bodies: string[] = [];
+    setup((url, o) => {
+      if (url.endsWith("/organization"))
+        return Response.json({ libraries: [] });
+      if (url.endsWith("/subtitles/track-cleanup") && o?.method === "POST") {
+        bodies.push(String(o.body));
+        return Response.json(
+          {
+            id: "cleanup-9",
+            state: "review",
+            track_cleanup: {
+              targets: [{ id: 1, path: "Movies/Film/film.mkv" }],
+              processed: 0,
+              changed: 0,
+              skipped: 0,
+              dropped: 0,
+              disabled: 0,
+            },
+          },
+          { status: 201 },
+        );
+      }
+      return undefined;
+    });
+    mount();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Subtitle tracks" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Subtitle tracks" });
+    // Hiding is the default and never a destructive action.
+    expect(
+      within(dialog).getByRole("combobox", { name: "Action" }),
+    ).toHaveValue("disable");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Review cleanup" }),
+    );
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(JSON.parse(bodies[0]).action).toBe("disable");
+    // Removing is an explicit choice.
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Change selection" }),
+    );
+    await userEvent.selectOptions(
+      within(dialog).getByRole("combobox", { name: "Action" }),
+      "remove",
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Review cleanup" }),
+    );
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(JSON.parse(bodies[1]).action).toBe("remove");
   });
 });

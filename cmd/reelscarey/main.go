@@ -44,7 +44,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.54.28"
+var version = "0.54.29"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -234,6 +234,16 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		data, err := json.Marshal(result)
 		return string(data), err
 	})
+	toOrganizationError := func(err error) error {
+		if err == nil {
+			return nil
+		}
+		var problem *transfer.Error
+		if errors.As(err, &problem) {
+			return &organization.Error{Code: problem.Code, Message: problem.Message}
+		}
+		return err
+	}
 	// Matroska title edits run in place through mkvpropedit when it is
 	// installed: seconds per file instead of a full demux, remux and packet
 	// verification. Every other container keeps the verified remux stage.
@@ -241,14 +251,18 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		organizationService.SetInPlaceTagger(func(ctx context.Context, path, extension, beforeProbe, title string, beforeSize int64) (string, error) {
 			result, err := transfer.EditTitleInPlaceVerified(ctx, path, beforeProbe, title, beforeSize)
 			if err != nil {
-				var problem *transfer.Error
-				if errors.As(err, &problem) {
-					return "", &organization.Error{Code: problem.Code, Message: problem.Message}
-				}
-				return "", err
+				return "", toOrganizationError(err)
 			}
 			data, err := json.Marshal(result)
 			return string(data), err
+		})
+	}
+	// Disabling tracks in place hides unwanted languages without deleting
+	// anything: mkvpropedit clears the enabled flag and mkvmerge verifies it.
+	if transfer.MatroskaDisableToolsAvailable() {
+		organizationService.SetMatroskaTrackDisabler(func(ctx context.Context, path, beforeProbe string, drop []int, beforeSize int64) (string, error) {
+			probe, err := transfer.DisableTracksMatroskaInPlaceVerified(ctx, path, beforeProbe, drop, beforeSize)
+			return probe, toOrganizationError(err)
 		})
 	}
 	organizationService.SetOriginalLanguageLookup(func(ctx context.Context, kind string, id int64) (string, error) {

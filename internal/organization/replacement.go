@@ -19,8 +19,11 @@ import (
 // Metadata-only title updates keep no second copy: the verified stage replaces
 // the original in place, and PreviousTitle records the prior container title.
 type Replacement struct {
-	AutomaticTitle       bool               `json:"automatic_title,omitempty"`
-	DropStreams          []int              `json:"drop_streams,omitempty"`
+	AutomaticTitle bool  `json:"automatic_title,omitempty"`
+	DropStreams    []int `json:"drop_streams,omitempty"`
+	// DisableStreams hides Matroska tracks in place by clearing their enabled
+	// flag (mkvpropedit) instead of removing them. No packets are rewritten.
+	DisableStreams       []int              `json:"disable_streams,omitempty"`
 	AcquisitionSubtitles []AcquiredSubtitle `json:"acquisition_subtitles,omitempty"`
 	AcquisitionKind      string             `json:"acquisition_kind,omitempty"`
 	AcquisitionJob       string             `json:"acquisition_job,omitempty"`

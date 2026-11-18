@@ -23,7 +23,10 @@ type TrackStream struct {
 }
 
 type TrackCleanupRequest struct {
-	Mode    string `json:"mode"`
+	Mode string `json:"mode"`
+	// Action is "remove" (default) or "disable". Disable hides Matroska tracks
+	// in place by clearing their enabled flag; remove rewrites the file.
+	Action  string `json:"action,omitempty"`
 	Library string `json:"library"`
 	MediaID int64  `json:"media_id,omitempty"`
 	FileID  int64  `json:"file_id,omitempty"`
@@ -46,6 +49,7 @@ type TrackCleanup struct {
 	Examples  []string            `json:"issues,omitempty"`
 	Sidecars  []Companion         `json:"sidecars,omitempty"`
 	Dropped   int                 `json:"dropped"`
+	Disabled  int                 `json:"disabled"`
 }
 
 func (s *Service) SetTrackCleaner(read func(context.Context, *os.File) ([]TrackStream, error), rewrite func(context.Context, *os.File, *os.File, string, []int) (string, error)) {
@@ -85,6 +89,12 @@ func (s *Service) PreviewTrackCleanup(ctx context.Context, request TrackCleanupR
 		request.MediaID < 0 || request.FileID < 0 || request.MediaID > 0 && request.FileID > 0 {
 		return Plan{}, problem("invalid_selection", "Choose a library and a track cleanup option.")
 	}
+	if request.Action == "" {
+		request.Action = "remove"
+	}
+	if request.Action != "remove" && request.Action != "disable" {
+		return Plan{}, problem("invalid_selection", "Choose whether to remove or disable the unwanted tracks.")
+	}
 	root, resolved, err := s.openRoot("")
 	if err != nil {
 		return Plan{}, err
@@ -104,7 +114,7 @@ func (s *Service) PreviewTrackCleanup(ctx context.Context, request TrackCleanupR
 			return Plan{}, problem("invalid_selection", "Choose a configured video library.")
 		}
 	}
-	cleanup := &TrackCleanup{Request: request, Targets: []cleanupTarget{}, Permanent: true}
+	cleanup := &TrackCleanup{Request: request, Targets: []cleanupTarget{}, Permanent: request.Action != "disable"}
 	// Effective language choices follow the per-item and default library profile,
 	// then the existing show override and global Languages & tracks settings.
 	rows, err := tx.QueryContext(ctx, `WITH registered AS (
@@ -307,11 +317,15 @@ func (s *Service) prepareCleanupFile(ctx context.Context, root *os.Root, p *Plan
 		input.Close()
 		return problem("source_changed", "The registered video changed before track cleanup.")
 	}
+	disable := p.TrackCleanup.Request.Action == "disable"
 	var streams []TrackStream
 	var trackErr error
-	if s.readTracks == nil || s.rewriteTracks == nil {
+	switch {
+	case s.readTracks == nil || !disable && s.rewriteTracks == nil:
 		trackErr = problem("ffprobe_missing", "The embedded track tools are unavailable.")
-	} else {
+	case disable && s.matroskaDisabler == nil:
+		trackErr = problem("ffprobe_missing", "Disabling tracks in place is unavailable on this server.")
+	default:
 		streams, trackErr = s.readTracks(ctx, input)
 	}
 	input.Close()
@@ -320,7 +334,9 @@ func (s *Service) prepareCleanupFile(ctx context.Context, root *os.Root, p *Plan
 	}
 	mode := p.TrackCleanup.Request.Mode
 	var sidecars []Companion
-	if mode != "other_audio" {
+	// Disabling hides embedded Matroska tracks in place; external subtitle files
+	// are left in place and never deleted.
+	if mode != "other_audio" && !disable {
 		sidecars, err = s.cleanupSidecars(ctx, root, target, mode, p.ID)
 		if err != nil {
 			return err
@@ -365,8 +381,14 @@ func (s *Service) prepareCleanupFile(ctx context.Context, root *os.Root, p *Plan
 		if err != nil {
 			return err
 		}
-		p.Replacement = &Replacement{FileID: target.ID, MediaID: owner, Title: title.Title, Before: r, BeforeYouTube: provenance, Original: old, Incoming: old,
-			MetadataOnly: true, TagStage: path.Join(path.Dir(r.Path), ".reelscarey-tag-"+id()), Episodes: episodes, DropStreams: drop}
+		replacement := &Replacement{FileID: target.ID, MediaID: owner, Title: title.Title, Before: r, BeforeYouTube: provenance, Original: old, Incoming: old,
+			MetadataOnly: true, TagStage: path.Join(path.Dir(r.Path), ".reelscarey-tag-"+id()), Episodes: episodes}
+		if disable {
+			replacement.DisableStreams = drop
+		} else {
+			replacement.DropStreams = drop
+		}
+		p.Replacement = replacement
 	}
 	p.TrackCleanup.Sidecars = sidecars
 	return s.savePhase(ctx, p, "track_ready")
@@ -449,6 +471,7 @@ func (s *Service) executeTrackCleanup(ctx context.Context, p *Plan) error {
 		job.Dropped += len(job.Sidecars)
 		if p.Replacement != nil {
 			job.Dropped += len(p.Replacement.DropStreams)
+			job.Disabled += len(p.Replacement.DisableStreams)
 		}
 	}
 	return s.nextCleanupFile(ctx, p)

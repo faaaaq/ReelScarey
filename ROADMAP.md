@@ -28,6 +28,10 @@ Historical native and package results below remain as records of past work.
   changing any media. Any running track cleanup or permanent deletion can be
   stopped from the persistent progress banner, and the busy message names the
   running operation, its progress and how to stop it.
+- [x] Hide unwanted audio/subtitle languages without deleting anything: the
+  track cleanup action `disable` clears the Matroska track enabled flag in place
+  with `mkvpropedit` (seconds, no rewrite, every track and external subtitle
+  kept), for Matroska files, verified against `mkvmerge`.
 
 - [x] Permanent library-file and external subtitle deletion after review, with
   an explicit keep-files option. Large movie reviews use bounded file checks;
