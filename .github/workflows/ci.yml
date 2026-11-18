@@ -22,6 +22,10 @@ jobs:
   # workflow builds the same Dockerfile and runs the release-candidate smoke
   # scripts, so tag pushes do not need this job.
   test:
+    # Let platform/UI checks start first so the shared Linux runner can publish
+    # the release candidate. Keep Go checks enabled even if a platform check fails.
+    needs: [windows-smoke, browser-e2e]
+    if: ${{ always() && !cancelled() }}
     # Pull requests can come from forks, so they never run on a self-hosted
     # machine. Push/schedule/dispatch jobs use the configured runner label;
     # the default stays the existing self-hosted Linux x64 runner.

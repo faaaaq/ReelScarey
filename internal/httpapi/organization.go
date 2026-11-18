@@ -205,6 +205,15 @@ func (s *Server) organizationApply(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &in) {
 		return
 	}
+	saved, err := s.organization.Plan(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.organizationError(w, err)
+		return
+	}
+	if saved.State == "review" && saved.Removal != nil && saved.Removal.Mode == "trash" {
+		fail(w, http.StatusConflict, "reload_required", "Refresh the page and create a new deletion review. This old review would retain files in trash.")
+		return
+	}
 	out, e := s.organization.Apply(r.Context(), r.PathValue("id"))
 	if e != nil {
 		s.organizationError(w, e)
@@ -390,7 +399,12 @@ func (s *Server) organizationRemoval(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &in) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	if in.Mode == "trash" {
+		fail(w, http.StatusConflict, "reload_required", "Refresh the page before reviewing deletion. Choose permanent deletion or keep files on disk.")
+		return
+	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(5 * time.Minute))
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
 	out, err := s.organization.PreviewRemoval(ctx, in.MediaID, in.Mode)
 	if err != nil {

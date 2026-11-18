@@ -82,8 +82,10 @@ export function LibraryDeletion({
         await api(`/organization/plans/${review.id}/apply`, {
           method: "POST",
           body: "{}",
+          signal: AbortSignal.timeout(300000),
         });
         setJobID(review.id);
+        status.reload();
       } else {
         setReview(
           await api<DeletionPlan>("/library/deletion", {
@@ -91,13 +93,23 @@ export function LibraryDeletion({
             body: JSON.stringify({
               selection,
               ids,
-              mode: keep ? "keep" : "trash",
+              mode: keep ? "keep" : "delete",
             }),
+            signal: AbortSignal.timeout(300000),
           }),
         );
       }
     } catch (e) {
-      setError(messageFor(e));
+      const timedOut =
+        typeof e === "object" &&
+        e !== null &&
+        "name" in e &&
+        e.name === "TimeoutError";
+      setError(
+        !review && timedOut
+          ? "The deletion review timed out. No files were deleted. Try again after active media work finishes."
+          : messageFor(e),
+      );
     } finally {
       setBusy(false);
     }
@@ -124,9 +136,15 @@ export function LibraryDeletion({
           >
             {jobID ? "Close" : "Cancel"}
           </Button>
-          {!jobID && (
+          {(!jobID || state === "failed") && (
             <Button color="red" disabled={busy} onClick={() => void submit()}>
-              {busy ? "Working…" : review ? "Delete" : "Review deletion"}
+              {busy
+                ? "Working…"
+                : state === "failed"
+                  ? "Resume deletion"
+                  : review
+                    ? "Delete"
+                    : "Review deletion"}
             </Button>
           )}
         </>
@@ -145,6 +163,7 @@ export function LibraryDeletion({
           <input
             type="checkbox"
             checked={keep}
+            disabled={busy}
             onChange={(event) => setKeep(event.target.checked)}
           />
           Keep files on disk
@@ -153,7 +172,7 @@ export function LibraryDeletion({
       <p>
         {keep
           ? "The library registrations will be removed and the files will remain on disk."
-          : "Registered files will move to .reelscarey-trash inside the media root."}
+          : "Registered files and their recognized subtitle files will be permanently deleted. This cannot be undone."}
       </p>
       {review && (
         <>

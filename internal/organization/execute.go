@@ -78,6 +78,9 @@ func allFiles(p Plan) []Companion {
 	return out
 }
 func (s *Service) execute(ctx context.Context, p *Plan) error {
+	if p.Removal != nil && p.Removal.Mode == "delete" {
+		return s.executePermanentDeletion(ctx, p)
+	}
 	if p.TrackCleanup != nil {
 		return s.executeTrackCleanup(ctx, p)
 	}

@@ -16,14 +16,21 @@
 | Artist albums and singles | Artist pages initially show albums with registered files. **Show all albums** opens the rest of the discography. Single releases are grouped in one expandable **Singles** item. |
 | Stopped downloads | **Tracking stopped** entries are excluded from Activity Queue and retained in **History**. |
 
-Deletion first presents a review. By default registered files move to the media
-trash; **Keep files on disk** removes the catalog registrations while retaining
-the files. Download-client sources remain intact.
+Deletion first presents a review. By default registered files and recognized
+subtitle companions are permanently deleted after confirmation. **Keep files on
+disk** removes the catalog registrations while retaining the files.
+Download-client sources remain intact. Permanent deletion cannot be undone.
 
 Embedded metadata and track changes use a verified container rewrite that keeps
-the retained media packets. External subtitles move to the media trash. Cleanup
+the retained media packets. Selected external subtitles are permanently deleted. Cleanup
 does not require a subtitle-provider account or a successful provider settings
 request. Save Languages & tracks changes before reviewing cleanup.
+
+Permanent deletion reviews use file identity, size, modification time, and bounded
+content observations instead of reading entire movies. A busy media worker is
+reported immediately. The confirmed plan records outstanding file deletions so
+an interrupted job can resume; replaced or changed files are refused. Existing
+plans explicitly reviewed as retained-trash moves keep their original behavior.
 
 Metadata checks run in the background and can take time for a large existing
 collection. Pending organization or recovery work delays these workers. No

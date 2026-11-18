@@ -61,7 +61,13 @@ func deletionFiles(ctx context.Context, q query, kind string, ids []int64) ([]in
 	case "music_files":
 		return ids, nil
 	}
-	rows, err := q.QueryContext(ctx, "SELECT id FROM "+table+" WHERE "+match+" IN ("+numbers(ids)+") ORDER BY id")
+	condition := match + " IN (" + numbers(ids) + ")"
+	if kind == "artists" {
+		// Album ownership also selects guest/featured-artist registrations that
+		// the catalog cascade will remove with this artist's albums.
+		condition += " OR album_id IN (SELECT id FROM music_albums WHERE artist_id IN (" + numbers(ids) + "))"
+	}
+	rows, err := q.QueryContext(ctx, "SELECT id FROM "+table+" WHERE "+condition+" ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +84,10 @@ func deletionFiles(ctx context.Context, q query, kind string, ids []int64) ([]in
 }
 
 func (s *Service) PreviewDeletion(ctx context.Context, request DeletionRequest) (Plan, error) {
-	defer ReadMedia()()
+	if !mediaGate.TryRLock() {
+		return Plan{}, problem("organization_busy", "Another media operation is running. Wait for it to finish, then review deletion again.")
+	}
+	defer mediaGate.RUnlock()
 	if err := EnsureMediaAvailable(ctx, s.db); err != nil {
 		return Plan{}, err
 	}
@@ -87,7 +96,7 @@ func (s *Service) PreviewDeletion(ctx context.Context, request DeletionRequest) 
 	slices.Sort(ids)
 	if table == "" || len(ids) == 0 || len(ids) > 5000 || ids[0] < 1 ||
 		len(slices.Compact(slices.Clone(ids))) != len(ids) ||
-		(request.Mode != "keep" && request.Mode != "trash") {
+		(request.Mode != "keep" && request.Mode != "trash" && request.Mode != "delete") {
 		return Plan{}, problem("invalid_selection", "Choose saved items and a file removal option.")
 	}
 	root, resolved, err := s.openRoot("")
@@ -136,6 +145,9 @@ func (s *Service) PreviewDeletion(ctx context.Context, request DeletionRequest) 
 		title = "1 " + label
 	}
 	r := &Removal{Title: title, Mode: request.Mode, Selection: request.Selection, IDs: ids, Paths: []string{}}
+	if request.Mode == "delete" {
+		r.Observations = map[string]filecheck.Snapshot{}
+	}
 	now := time.Now().Unix()
 	p := Plan{ID: id(), State: "review", Root: resolved, Phase: "planned", Files: []PlannedFile{}, Created: now, Updated: now, Removal: r}
 	seen := map[string]bool{}
@@ -151,31 +163,47 @@ func (s *Service) PreviewDeletion(ctx context.Context, request DeletionRequest) 
 		}
 		asset, err := inspect(root, name)
 		if err != nil || asset.Size != size {
-			return Plan{}, problem("source_changed", "A registered file is missing or its size changed. Review the file before moving it to trash.")
+			return Plan{}, problem("source_changed", "A registered file is missing or its size changed. Review its registration before deleting it.")
 		}
-		if sha == "" {
+		if request.Mode == "trash" && sha == "" {
 			sha, err = assetDigest(ctx, root, name)
 			if err != nil {
 				return Plan{}, err
 			}
 		}
 		asset.SHA = sha
-		asset.Destination = path.Join(".reelscarey-trash", p.ID, name)
+		if request.Mode == "trash" {
+			asset.Destination = path.Join(".reelscarey-trash", p.ID, name)
+		}
 		seen[name] = true
 		r.Assets = append(r.Assets, asset)
 		if video {
-			subs, err := removableSidecars(ctx, root, tx, fileID, name, files)
+			subs, err := removableSidecars(ctx, root, tx, fileID, name, files, request.Mode == "delete")
 			if err != nil {
 				return Plan{}, err
 			}
 			for _, sub := range subs {
 				if !seen[sub.Source] {
-					sub.Destination = path.Join(".reelscarey-trash", p.ID, sub.Source)
+					if request.Mode == "trash" {
+						sub.Destination = path.Join(".reelscarey-trash", p.ID, sub.Source)
+					}
 					r.Assets = append(r.Assets, sub)
 					r.Paths = append(r.Paths, sub.Source)
 					seen[sub.Source] = true
 				}
 			}
+		}
+	}
+	if request.Mode == "delete" {
+		for _, asset := range r.Assets {
+			if asset.Size == 0 {
+				continue
+			}
+			observation, err := observeDeletionAsset(ctx, root, asset)
+			if err != nil {
+				return Plan{}, err
+			}
+			r.Observations[asset.Source] = observation
 		}
 	}
 	r.Rows, err = deletionRows(ctx, tx, r, files)
@@ -279,6 +307,12 @@ func (s *Service) validateDeletion(ctx context.Context, root *os.Root, q query, 
 		return err
 	}
 	for _, asset := range r.Assets {
+		if r.Mode == "delete" {
+			if err = verifyDeletionAsset(ctx, root, asset, deletionObservation(r, asset.Source), false); err != nil {
+				return err
+			}
+			continue
+		}
 		if err = checkSource(ctx, root, asset, false); err != nil {
 			return err
 		}
@@ -370,13 +404,20 @@ func deleteSelectionRows(ctx context.Context, tx *sql.Tx, r *Removal) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'title',?,?,?)`, fmt.Sprint(r.IDs[0]), r.Title, "deleted from library")
+	message := "deleted from library"
+	if r.Mode == "delete" {
+		message = "deletion confirmed; file cleanup pending"
+	}
+	if r.Mode == "keep" {
+		message = "removed from library; files kept"
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO activity_events(occurred_at,kind,object_id,title,state) VALUES(unixepoch(),'title',?,?,?)`, fmt.Sprint(r.IDs[0]), r.Title, message)
 	return err
 }
 
 // Match a sidecar to its video by basename or an explicit registration. A
 // sidecar shared with an unselected registration stays at its original path.
-func removableSidecars(ctx context.Context, root *os.Root, q query, fileID int64, video string, selected []int64) ([]Companion, error) {
+func removableSidecars(ctx context.Context, root *os.Root, q query, fileID int64, video string, selected []int64, bounded ...bool) ([]Companion, error) {
 	stem := strings.TrimSuffix(video, path.Ext(video))
 	folder, err := root.Open(filepath.FromSlash(path.Dir(video)))
 	if err != nil {
@@ -442,9 +483,11 @@ func removableSidecars(ctx context.Context, root *os.Root, q query, fileID int64
 		if err != nil {
 			return nil, err
 		}
-		asset.SHA, err = assetDigest(ctx, root, name)
-		if err != nil {
-			return nil, err
+		if len(bounded) == 0 || !bounded[0] {
+			asset.SHA, err = assetDigest(ctx, root, name)
+			if err != nil {
+				return nil, err
+			}
 		}
 		out = append(out, asset)
 	}

@@ -13,6 +13,10 @@ func (s *Server) libraryDeletion(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &in) {
 		return
 	}
+	if in.Mode == "trash" {
+		fail(w, http.StatusConflict, "reload_required", "Refresh the page before reviewing deletion. Choose permanent deletion or keep files on disk.")
+		return
+	}
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(5 * time.Minute))
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()

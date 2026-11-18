@@ -423,6 +423,7 @@ function Reorganize({ config }: { config: Config }) {
       setPlan(
         await api<Plan>("/organization/removal", {
           method: "POST",
+          signal: AbortSignal.timeout(300000),
           body: JSON.stringify({
             media_id: Number(mediaID),
             mode: removalMode,
@@ -1151,7 +1152,9 @@ function Reorganize({ config }: { config: Config }) {
               <p>
                 {plan.removal.mode === "keep"
                   ? "Keep all library files in place."
-                  : "Move registered videos and recognized subtitle companions to retained .reelscarey-trash storage. Extras stay in place."}{" "}
+                  : plan.removal.mode === "delete"
+                    ? "Permanently delete registered files and recognized subtitle companions. This cannot be undone. Extras stay in place."
+                    : "Move registered videos and recognized subtitle companions to retained .reelscarey-trash storage. Extras stay in place."}{" "}
                 Related download/import history and catalog associations will be
                 removed. Download-client sources and retained versions stay
                 untouched.
@@ -1226,7 +1229,7 @@ function Reorganize({ config }: { config: Config }) {
                 onChange={(e) => setRemovalMode(e.target.value)}
               >
                 <option value="keep">Keep files in place</option>
-                <option value="trash">Remove to retained trash</option>
+                <option value="delete">Permanently delete files</option>
               </select>
             </label>
             <Button

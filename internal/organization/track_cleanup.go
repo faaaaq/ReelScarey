@@ -37,6 +37,7 @@ type cleanupTarget struct {
 }
 
 type TrackCleanup struct {
+	Permanent bool                `json:"permanent,omitempty"`
 	Request   TrackCleanupRequest `json:"request"`
 	Targets   []cleanupTarget     `json:"targets"`
 	Processed int                 `json:"processed"`
@@ -73,7 +74,10 @@ func (s *Service) resolveOriginalLanguage(ctx context.Context, mediaID int64) (s
 }
 
 func (s *Service) PreviewTrackCleanup(ctx context.Context, request TrackCleanupRequest) (Plan, error) {
-	defer ReadMedia()()
+	if !mediaGate.TryRLock() {
+		return Plan{}, problem("organization_busy", "Another media operation is running. Wait for it to finish, then review cleanup again.")
+	}
+	defer mediaGate.RUnlock()
 	if err := EnsureMediaAvailable(ctx, s.db); err != nil {
 		return Plan{}, err
 	}
@@ -100,7 +104,7 @@ func (s *Service) PreviewTrackCleanup(ctx context.Context, request TrackCleanupR
 			return Plan{}, problem("invalid_selection", "Choose a configured video library.")
 		}
 	}
-	cleanup := &TrackCleanup{Request: request, Targets: []cleanupTarget{}}
+	cleanup := &TrackCleanup{Request: request, Targets: []cleanupTarget{}, Permanent: true}
 	// Effective language choices follow the per-item and default library profile,
 	// then the existing show override and global Languages & tracks settings.
 	rows, err := tx.QueryContext(ctx, `WITH registered AS (
@@ -328,6 +332,11 @@ func (s *Service) prepareCleanupFile(ctx context.Context, root *os.Root, p *Plan
 		}
 		s.noteCleanupIssue(p, target, trackErr)
 	}
+	if p.TrackCleanup.Permanent {
+		for i := range sidecars {
+			sidecars[i].Destination = ""
+		}
+	}
 	drop := dropEmbedded(mode, target, streams)
 	if mode == "other_audio" && len(drop) == 0 {
 		var matching, known bool
@@ -411,11 +420,13 @@ func (s *Service) executeTrackCleanup(ctx context.Context, p *Plan) error {
 			if err = checkSource(ctx, root, asset, true); err != nil {
 				return err
 			}
-			if err = s.publish(ctx, root, *p, asset, i); err != nil {
-				return err
-			}
-			if err = s.checkOutput(ctx, root, s.db, p.ID, asset); err != nil {
-				return err
+			if !job.Permanent {
+				if err = s.publish(ctx, root, *p, asset, i); err != nil {
+					return err
+				}
+				if err = s.checkOutput(ctx, root, s.db, p.ID, asset); err != nil {
+					return err
+				}
 			}
 		}
 		if err = s.commitCleanupSidecars(ctx, p, target.ID); err != nil {
@@ -423,7 +434,12 @@ func (s *Service) executeTrackCleanup(ctx context.Context, p *Plan) error {
 		}
 	}
 	for i, asset := range job.Sidecars {
-		if err = s.cleanPublishedSource(ctx, root, *p, asset, i); err != nil {
+		if job.Permanent {
+			err = removeDeletionAsset(ctx, root, asset, nil)
+		} else {
+			err = s.cleanPublishedSource(ctx, root, *p, asset, i)
+		}
+		if err != nil {
 			return err
 		}
 	}

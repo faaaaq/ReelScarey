@@ -315,10 +315,31 @@ func (s *Service) Plans(ctx context.Context) ([]Plan, error) {
 	return out, nil
 }
 func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
-	s.mu.Lock()
+	initial, err := s.Plan(ctx, id)
+	if err != nil {
+		return Plan{}, err
+	}
+	permanent := initial.Removal != nil && initial.Removal.Mode == "delete"
+	if permanent && (initial.State == "completed" || initial.State == "queued" || initial.State == "running") {
+		return initial, nil
+	}
+	if permanent {
+		if !s.mu.TryLock() {
+			return initial, problem("organization_busy", "Another media operation is running. Wait for it to finish, then apply deletion again.")
+		}
+	} else {
+		s.mu.Lock()
+	}
 	defer s.mu.Unlock()
-	unlock := ReadMedia()
-	defer unlock()
+	if permanent {
+		if !mediaGate.TryRLock() {
+			return initial, problem("organization_busy", "Another media operation is running. Wait for it to finish, then apply deletion again.")
+		}
+		defer mediaGate.RUnlock()
+	} else {
+		unlock := ReadMedia()
+		defer unlock()
+	}
 	p, e := s.Plan(ctx, id)
 	if e != nil {
 		return p, e
@@ -570,6 +591,9 @@ func (s *Service) journalRecoverySkipped(ctx context.Context) {
 func (s *Service) recordPlanFailure(ctx context.Context, p *Plan, execErr error) {
 	withoutCancel := context.WithoutCancel(ctx)
 	message := "Organization stopped safely. Original files and verified outputs were retained; review the failure before retrying."
+	if p.Removal != nil && p.Removal.Mode == "delete" && p.Phase == "committed" {
+		message = "Permanent deletion did not finish. Some files may already be deleted. Resolve the issue, then resume the saved deletion."
+	}
 	var failure *Error
 	if errors.As(execErr, &failure) {
 		message = failure.Message

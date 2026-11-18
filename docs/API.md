@@ -1145,16 +1145,18 @@ mandatory before replacing video. Selected VTT copies have source-specific paths
 existing sidecars and both versions remain. Rollback restores video provenance
 and retains subtitle bytes without claiming timing synchronization.
 
-POST `/organization/removal` with `{media_id,mode}` (`keep` or `trash`) returns a
-201 review containing title, registered paths and hashed dependent-record
-snapshots. It accepts at most 100 files and 10,000 dependent rows. Apply rechecks
+POST `/organization/removal` with `{media_id,mode}` (`keep` or `delete`) returns
+a 201 review containing title, registered paths and dependent-record snapshots.
+`delete` uses the shared library deletion flow described below. Apply rechecks
 the complete dependency closure and refuses pending media work, scans and active
-automation. `keep` removes catalog rows/history only; `trash` journals moves of
-registered files and recognized subtitle companions under `.reelscarey-trash`.
-Unregistered extras, client sources and retained versions are preserved. No
-permanent file-purge endpoint exists. Partial work retains verified outputs;
-failed cleanup remains fenced for recovery. Removed titles must be re-added
-and their retained media explicitly registered if desired.
+automation. `keep` removes catalog rows/history only. `delete` permanently
+unlinks the reviewed registered files and recognized subtitle companions.
+Unregistered extras, client sources and retained versions are preserved.
+Already confirmed legacy `trash` jobs retain their reviewed behavior. New API reviews
+require `keep` or `delete`; old browser requests receive `409 reload_required`
+instead of silently retaining files or changing a trash choice into permanent
+deletion. Failed cleanup remains fenced for recovery.
+Unconfirmed old trash reviews also require reloading and a fresh review.
 
 Requester list creation accepts providers `tmdb_private`/`trakt_private` with
 write-only `access_token`; Trakt also needs `client_id` and owner/list slug. Tokens
@@ -1725,15 +1727,20 @@ detail-page, subtitle, audio, and music actions.
 The video and music libraries let an administrator delete a reviewed selection.
 Movie, show, artist and album pages also expose deletion of the saved entry or
 individual registered files. Music tracks can be removed with all their
-registered copies. The default moves registered files to
-`.reelscarey-trash/<plan-id>/` under the media root. The review can also remove
-the registrations while keeping the files. Download-client copies and unrelated
+registered copies. The default permanently deletes registered files and
+recognized subtitle companions. The review can also remove the registrations
+while keeping the files. Download-client copies and unrelated
 files remain outside the operation.
 
 - `POST /api/v1/library/deletion` creates an organization review with
-  `{"selection":"titles","ids":[12,15],"mode":"trash"}`. The other selections
+  `{"selection":"titles","ids":[12,15],"mode":"delete"}`. The other selections
   are `video_files`, `artists`, `albums`, `tracks`, and `music_files`.
   Use `mode:"keep"` to retain the files at their current paths.
+  Permanent reviews use file identity and bounded change observations rather
+  than reading entire movies. Confirmation atomically removes catalog records
+  and saves the cleanup journal before unlinking files. Interrupted cleanup
+  resumes only the reviewed paths and refuses changed/replaced files. Existing
+  legacy `mode:"trash"` plans retain their reviewed behavior.
 - `POST /api/v1/subtitles/track-cleanup` reviews a video scope and language
   policy. Set `mode` to `all_subtitles`, `other_subtitles`,
   `other_non_forced`, or `other_audio`. The optional `library` is a saved
@@ -1743,7 +1750,7 @@ files remain outside the operation.
   progress via `GET /api/v1/organization/plans/{id}`. Cleanup reports reviewed
   videos, tracks removed, and files needing attention. The worker verifies
   retained embedded streams before publishing the rewritten file. External
-  subtitle files go to the media trash.
+  subtitle files are permanently deleted.
 - Audio cleanup keeps the original language, the configured languages, and
   audio whose language tag is unknown. It skips a video when the original
   language cannot be determined or the operation would leave no audio.

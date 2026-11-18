@@ -12,20 +12,23 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
 )
 
 // Removal preserves the durable review, while deleting the catalog's dependent
-// rows atomically. Only registered media and recognized companions are moved;
-// extras, client sources and version backups are never deleted.
+// rows atomically. The reviewed mode controls permanent deletion, retained legacy
+// trash, or keeping files. Extras, client sources and version backups are preserved.
 type Removal struct {
-	MediaID   int64         `json:"media_id"`
-	Title     string        `json:"title"`
-	Mode      string        `json:"mode"`
-	Paths     []string      `json:"paths"`
-	Rows      []RemovalRows `json:"affected_records"`
-	Selection string        `json:"selection,omitempty"`
-	IDs       []int64       `json:"ids,omitempty"`
-	Assets    []Companion   `json:"assets,omitempty"`
+	MediaID      int64                         `json:"media_id"`
+	Title        string                        `json:"title"`
+	Mode         string                        `json:"mode"`
+	Paths        []string                      `json:"paths"`
+	Rows         []RemovalRows                 `json:"affected_records"`
+	Selection    string                        `json:"selection,omitempty"`
+	IDs          []int64                       `json:"ids,omitempty"`
+	Assets       []Companion                   `json:"assets,omitempty"`
+	Observations map[string]filecheck.Snapshot `json:"observations,omitempty"`
 }
 type RemovalRows struct {
 	Table  string  `json:"table"`
@@ -238,6 +241,9 @@ func (s *Service) validateRemoval(ctx context.Context, q query, p Plan) error {
 }
 
 func (s *Service) PreviewRemoval(ctx context.Context, mediaID int64, mode string) (Plan, error) {
+	if mode == "delete" {
+		return s.PreviewDeletion(ctx, DeletionRequest{Selection: "titles", IDs: []int64{mediaID}, Mode: mode})
+	}
 	unlock := ReadMedia()
 	defer unlock()
 	if err := EnsureMediaAvailable(ctx, s.db); err != nil {

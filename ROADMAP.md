@@ -13,6 +13,10 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
+- [x] Permanent library-file and external subtitle deletion after review, with
+  an explicit keep-files option. Large movie reviews use bounded file checks;
+  interrupted deletion resumes from its durable cleanup journal.
+
 - [x] Follow through on existing collections: queue older registered video and
   matched music files for canonical metadata checks; correct music album/artist
   tags even when the track title already matches, and retain failed writes for

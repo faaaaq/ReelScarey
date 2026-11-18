@@ -133,6 +133,9 @@ func TestTrackCleanupScopeAndForcedSidecarPolicy(t *testing.T) {
 			t.Fatalf("%s was retained: %v", suffix, err)
 		}
 	}
+	if _, err = os.Stat(filepath.Join(f.cfg.MediaDir, ".reelscarey-trash")); !os.IsNotExist(err) {
+		t.Fatalf("subtitle cleanup retained a trash copy: %v", err)
+	}
 }
 
 func TestTrackCleanupProtectsOriginalConfiguredAndUnknownAudio(t *testing.T) {

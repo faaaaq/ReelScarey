@@ -1,6 +1,7 @@
 // Package filecheck records bounded observations of existing files. Observations
-// are change detection, not full-content checksums. Mutating media workflows must
+// are change detection, not full-content checksums. Copy/rewrite workflows must
 // promote them to a full SHA-256 before creating their durable operation plans.
+// Reviewed permanent unlink uses bounded observations and the saved file identity.
 package filecheck
 
 import (

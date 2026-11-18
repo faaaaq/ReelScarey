@@ -344,10 +344,12 @@ fixed TMDb/Trakt origins. Rebuilding the list table restores its event triggers.
 Catalog removal is another immutable organization plan. A bounded foreign-key
 dependency closure captures row IDs and content hashes without exposing payloads.
 Apply compares the entire closure; commit deletes dependent rows in one deferred-
-constraint transaction. File removal uses journaled no-overwrite moves into
-retained trash, preserving client sources, extras and versions. Failed cleanup
-holds the media gate durably. No arbitrary SQL or filesystem path is accepted
-from the review client, and no permanent purge endpoint exists.
+constraint transaction. Reviewed file deletion now commits a cleanup journal
+and permanently unlinks the selected registered files, preserving client sources,
+extras and retained versions. Bounded observations and file identity avoid full
+movie reads during deletion review. Failed cleanup holds the media gate durably
+and resumes only its reviewed paths. Legacy retained-trash plans preserve their
+original behavior. Clients never supply arbitrary SQL or filesystem paths.
 
 Process environment controls bind address, browser origin, config location, and
 media/download roots. SQLite stores preferences, account state and encrypted

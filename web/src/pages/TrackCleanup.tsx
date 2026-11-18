@@ -116,7 +116,7 @@ export function TrackCleanup({
   return (
     <FieldSet
       legend={title}
-      description="Embedded tracks are removed by rewriting the video container. External subtitles move to the media trash."
+      description="Embedded tracks are removed by rewriting the video container. Selected external subtitles are permanently deleted."
     >
       <Modal
         open={open}
