@@ -33,7 +33,13 @@ func (s *Server) trackCleanup(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &in) {
 		return
 	}
-	plan, err := s.organization.PreviewTrackCleanup(r.Context(), in)
+	// A review over a whole library reads every registered path before it can
+	// answer; the server-wide write deadline would otherwise cut the response
+	// off mid-flight and the browser would report a page timeout.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(5 * time.Minute))
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	plan, err := s.organization.PreviewTrackCleanup(ctx, in)
 	if err != nil {
 		s.organizationError(w, err)
 		return

@@ -205,7 +205,12 @@ func (s *Server) organizationApply(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &in) {
 		return
 	}
-	saved, err := s.organization.Plan(r.Context(), r.PathValue("id"))
+	// Validation can hash reviewed sources; keep the response alive past the
+	// server-wide write deadline while it works.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(5 * time.Minute))
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	saved, err := s.organization.Plan(ctx, r.PathValue("id"))
 	if err != nil {
 		s.organizationError(w, err)
 		return
@@ -214,12 +219,25 @@ func (s *Server) organizationApply(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusConflict, "reload_required", "Refresh the page and create a new deletion review. This old review would retain files in trash.")
 		return
 	}
-	out, e := s.organization.Apply(r.Context(), r.PathValue("id"))
+	out, e := s.organization.Apply(ctx, r.PathValue("id"))
 	if e != nil {
 		s.organizationError(w, e)
 		return
 	}
 	send(w, 202, out)
+}
+
+func (s *Server) organizationActive(w http.ResponseWriter, r *http.Request) {
+	plan, active, err := s.organization.Active(r.Context())
+	if err != nil {
+		s.organizationError(w, err)
+		return
+	}
+	if !active {
+		send(w, 200, map[string]any{"active": false})
+		return
+	}
+	send(w, 200, map[string]any{"active": true, "plan": plan})
 }
 
 type organizationFile struct {

@@ -1653,8 +1653,18 @@ infohash or SHA-256 NZB identity, never a credential.
 Administrator GET `/api/v1/duplicates?limit=100` returns a read-only duplicate
 review. Groups are joined by movie or episode identity; `probable_duplicate`
 requires every file to match on size, SHA-256 and inspected resolution.
-Anything else is `needs_attention` with the first failed check. The endpoint
-never deletes, moves or changes files. The limit is bounded to 500.
+Anything else is `needs_attention` with the first failed check. The limit is
+bounded to 500. Groups the owner dismissed are excluded from the report and
+its `total` unless the request adds `include_dismissed=1`, which lists them
+again with a `dismissed` flag.
+
+POST `/api/v1/duplicates/dismiss` with `{kind,media_id,episode_id?}` records
+an owner decision to stop flagging one group; it changes only that remembered
+decision and never files or catalog rows. POST
+`/api/v1/duplicates/dismiss/restore` with the same body reverses it. Deleting
+files out of a group goes through the reviewed deletion flow below
+(`POST /api/v1/library/deletion` with `selection:"video_files"`), which names
+every path before anything is removed.
 
 Administrator GET `/api/v1/metrics` returns Prometheus text exposition for
 current download and music queue state. It exposes no titles, paths or
@@ -1747,10 +1757,21 @@ files remain outside the operation.
   organization library key. An optional `media_id` or `file_id` narrows the
   scope. Omitting these fields covers all registered video libraries.
 - Apply a review with `POST /api/v1/organization/plans/{id}/apply` and read
-  progress via `GET /api/v1/organization/plans/{id}`. Cleanup reports reviewed
-  videos, tracks removed, and files needing attention. The worker verifies
-  retained embedded streams before publishing the rewritten file. External
-  subtitle files are permanently deleted.
+  progress via `GET /api/v1/organization/plans/{id}`. Applying only validates
+  and queues; it never waits for a running media operation. When another
+  organization batch is active the apply answers `409 organization_busy`
+  immediately instead of holding the request until the browser times out.
+  Cleanup reports reviewed videos, tracks removed, and files needing
+  attention. The worker verifies retained embedded streams before publishing
+  the rewritten file. External subtitle files are permanently deleted. The
+  worker processes one video per tick, and the saved plan is the progress
+  record: progress survives page changes and reloads.
+- `GET /api/v1/organization/active` returns `{active:false}` or
+  `{active:true,plan:{id,state,phase,kind,updated_at,...}}` for the one plan
+  the worker is running or has queued. `kind` is `track_cleanup`, `deletion`,
+  `replacement`, `folder_move` or `organization`. Track-cleanup plans carry
+  `processed`, `total`, `changed`, `skipped`, `dropped` and bounded `issues`,
+  so any page can show live progress without downloading plan snapshots.
 - Audio cleanup keeps the original language, the configured languages, and
   audio whose language tag is unknown. It skips a video when the original
   language cannot be determined or the operation would leave no audio.

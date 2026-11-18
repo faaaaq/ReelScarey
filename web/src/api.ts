@@ -1025,6 +1025,8 @@ export type DuplicateGroup = {
   status: "probable_duplicate" | "needs_attention";
   reason: string;
   files: DuplicateFile[];
+  /** Present when the report includes groups the owner dismissed. */
+  dismissed?: boolean;
 };
 
 export type DuplicateReport = {

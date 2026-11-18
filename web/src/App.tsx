@@ -17,6 +17,7 @@ import { MusicPlayerBar, MusicPlayerProvider } from "./musicPlayer";
 import { AuthGate, useAuth } from "./auth";
 import { childActive, navigation, pageTitle, type Place } from "./navigation";
 import { YouTubeReviewBadge } from "./pages/youtube/ReviewBadge";
+import { MediaWorkBanner } from "./components/MediaWorkBanner";
 import { Alert, EmptyState, LoadingIndicator, PageBody } from "./ui";
 
 const Dashboard = lazy(() =>
@@ -477,6 +478,7 @@ function AppShell() {
             </Routes>
           </Suspense>
         </main>
+        <MediaWorkBanner />
         <MusicPlayerBar />
       </div>
     </MusicPlayerProvider>

@@ -26,6 +26,16 @@ type CleanupPlan = {
   };
 };
 
+type ActivePlan = {
+  id: string;
+  state: string;
+  kind: string;
+  message?: string;
+};
+
+/** One media operation runs at a time; this is the one the worker is on. */
+type ActiveResponse = { active: boolean; plan?: ActivePlan };
+
 export function TrackCleanup({
   mediaID,
   onDone,
@@ -55,17 +65,37 @@ export function TrackCleanup({
   const [error, setError] = useState("");
   const [review, setReview] = useState<CleanupPlan>();
   const [id, setID] = useState("");
+  // The worker runs every plan through one shared queue. Watching the active
+  // plan keeps this control honest about work started elsewhere — including a
+  // cleanup started on another page or before a reload.
+  const active = useLiveResource<ActiveResponse>("/organization/active", 3000);
+  const adopted =
+    !id &&
+    !review &&
+    active.data?.active &&
+    active.data.plan?.kind === "track_cleanup" &&
+    (active.data.plan.state === "queued" ||
+      active.data.plan.state === "running");
+  const [reported, setReported] = useState("");
   const status = useLiveResource<CleanupPlan>(
     id ? `/organization/plans/${id}` : null,
     2000,
   );
   const progress = status.data?.track_cleanup;
+  const total =
+    status.data?.track_cleanup.targets.length ??
+    review?.track_cleanup.targets.length ??
+    0;
   const ended =
     status.data?.state === "completed" ||
     status.data?.state === "failed" ||
     status.data?.state === "cancelled";
   const running = !!id && !ended;
-  const [reported, setReported] = useState("");
+
+  useEffect(() => {
+    if (adopted && active.data?.plan) setID(active.data.plan.id);
+  }, [adopted, active.data?.plan]);
+
   useEffect(() => {
     if (id && status.data?.state === "completed" && reported !== id) {
       setReported(id);
@@ -78,9 +108,12 @@ export function TrackCleanup({
     setError("");
     try {
       if (review) {
+        // Applying never runs the cleanup inside the request; it validates and
+        // queues, then the worker reports progress through the plan poll.
         await api(`/organization/plans/${review.id}/apply`, {
           method: "POST",
           body: "{}",
+          signal: AbortSignal.timeout(300000),
         });
         setID(review.id);
         status.reload();
@@ -93,6 +126,7 @@ export function TrackCleanup({
               library,
               ...(mediaID ? { media_id: mediaID } : {}),
             }),
+            signal: AbortSignal.timeout(120000),
           }),
         );
       }
@@ -106,13 +140,20 @@ export function TrackCleanup({
   function changeOpen(value: boolean) {
     if (busy) return;
     setOpen(value);
-    if (!value && ended) {
-      setID("");
-      setReview(undefined);
+    if (!value && (ended || !id)) {
+      if (!running) {
+        setID("");
+        setReview(undefined);
+      }
       setError("");
     }
   }
 
+  const busyElsewhere =
+    active.data?.active &&
+    active.data.plan &&
+    active.data.plan.kind !== "track_cleanup" &&
+    !id;
   return (
     <FieldSet
       legend={title}
@@ -124,7 +165,7 @@ export function TrackCleanup({
         title={title}
         trigger={
           <Button variant="soft">
-            {running
+            {running || adopted
               ? "View cleanup progress"
               : kind === "all"
                 ? "Open track cleanup"
@@ -140,17 +181,24 @@ export function TrackCleanup({
             >
               {id ? "Close" : "Cancel"}
             </Button>
-            {!running && status.data?.state !== "completed" && (
-              <Button color="red" disabled={busy} onClick={() => void submit()}>
-                {busy
-                  ? "Working…"
-                  : id
-                    ? "Resume cleanup"
-                    : review
-                      ? "Remove tracks"
-                      : "Review cleanup"}
-              </Button>
-            )}
+            {!running &&
+              !adopted &&
+              status.data?.state !== "completed" &&
+              !busyElsewhere && (
+                <Button
+                  color="red"
+                  disabled={busy}
+                  onClick={() => void submit()}
+                >
+                  {busy
+                    ? "Working…"
+                    : id
+                      ? "Resume cleanup"
+                      : review
+                        ? "Remove tracks"
+                        : "Review cleanup"}
+                </Button>
+              )}
           </>
         }
       >
@@ -209,10 +257,15 @@ export function TrackCleanup({
             safely kept are skipped.
           </p>
         )}
+        {busyElsewhere && (
+          <p role="status">
+            Another media operation is running. This review can start once it
+            finishes; its progress is shown on any page.
+          </p>
+        )}
         {id && (
           <p role="status">
-            {progress?.processed ?? 0} of{" "}
-            {review?.track_cleanup.targets.length ?? 0} videos reviewed.{" "}
+            {progress?.processed ?? 0} of {total} videos reviewed.{" "}
             {progress?.dropped ?? 0} tracks removed across{" "}
             {progress?.changed ?? 0} videos.{" "}
             {progress?.skipped ? `${progress.skipped} skipped.` : ""}

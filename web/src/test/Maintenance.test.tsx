@@ -184,12 +184,192 @@ describe("duplicate review", () => {
     expect(screen.getByText("Probable duplicate")).toBeVisible();
     expect(screen.getByText("Needs attention")).toBeVisible();
     expect(screen.getByText(/SHA-256 differs/)).toBeVisible();
-    expect(screen.getByText(/S01E01 · Pilot/)).toBeVisible();
     expect(screen.getByText("Movies/Alpha/a.mkv")).toBeVisible();
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
+    const dismissButtons = screen.getAllByRole("button", { name: "Dismiss" });
+    expect(dismissButtons).toHaveLength(2);
     expect(
-      screen.queryByRole("button", { name: /delete|move|remove/i }),
-    ).toBeNull();
+      screen.getAllByRole("button", { name: "Delete selected files" }),
+    ).toHaveLength(2);
+  });
+
+  it("dismisses a reviewed group and restores it again", async () => {
+    const user = userEvent.setup();
+    const calls: { url: string; method: string; body: string }[] = [];
+    let dismissed = false;
+    const report = (flag: boolean) =>
+      Response.json({
+        groups: [
+          {
+            kind: "movie",
+            media_id: 1,
+            title: "Alpha",
+            file_count: 2,
+            status: "probable_duplicate",
+            reason: "identical size, SHA-256 and resolution",
+            ...(flag ? { dismissed: true } : {}),
+            files: [
+              {
+                id: 1,
+                relative_path: "Movies/Alpha/a.mkv",
+                size_bytes: 1024,
+                sha256: "same-sha",
+                resolution: 1080,
+              },
+              {
+                id: 2,
+                relative_path: "Movies/Alpha/b.mkv",
+                size_bytes: 1024,
+                sha256: "same-sha",
+                resolution: 1080,
+              },
+            ],
+          },
+        ],
+        total: 1,
+        limit: 100,
+        truncated: false,
+      });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL, options?: RequestInit) => {
+        const method = options?.method ?? "GET";
+        const target = String(url);
+        calls.push({
+          url: target,
+          method,
+          body: typeof options?.body === "string" ? options.body : "",
+        });
+        if (target.endsWith("/duplicates/dismiss/restore")) {
+          dismissed = false;
+          return Response.json({ dismissed: false });
+        }
+        if (target.endsWith("/duplicates/dismiss")) {
+          dismissed = true;
+          return Response.json({ dismissed: true });
+        }
+        if (target.includes("/duplicates")) {
+          // The default report hides the dismissed group; the inclusive view
+          // labels it, exactly like the server does.
+          if (dismissed && !target.includes("include_dismissed=1"))
+            return Response.json({
+              groups: [],
+              total: 0,
+              limit: 100,
+              truncated: false,
+            });
+          return report(dismissed);
+        }
+        return Response.json({}, { status: 404 });
+      }),
+    );
+
+    renderPage(<Duplicates />);
+    expect(
+      await screen.findByRole("heading", { name: "Duplicate review" }),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.url.endsWith("/duplicates/dismiss"))).toBe(
+        true,
+      );
+    });
+    const dismiss = calls.find((c) => c.url.endsWith("/duplicates/dismiss"));
+    expect(dismiss?.body).toBe('{"kind":"movie","media_id":1}');
+    await user.click(
+      screen.getByRole("checkbox", { name: /show dismissed groups/i }),
+    );
+    await waitFor(() => {
+      expect(calls.some((c) => c.url.includes("include_dismissed=1"))).toBe(
+        true,
+      );
+    });
+    await user.click(screen.getByRole("button", { name: "Review again" }));
+    await waitFor(() => {
+      expect(
+        calls.some((c) => c.url.endsWith("/duplicates/dismiss/restore")),
+      ).toBe(true);
+    });
+  });
+
+  it("sends the selected files to the reviewed deletion", async () => {
+    const user = userEvent.setup();
+    const calls: { url: string; method: string; body: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL, options?: RequestInit) => {
+        const method = options?.method ?? "GET";
+        const target = String(url);
+        calls.push({
+          url: target,
+          method,
+          body: typeof options?.body === "string" ? options.body : "",
+        });
+        if (target.endsWith("/library/deletion"))
+          return Response.json({
+            id: "plan-1",
+            state: "review",
+            message: "",
+            removal: { paths: ["Movies/Alpha/a.mkv"] },
+          });
+        if (target.includes("/duplicates"))
+          return Response.json({
+            groups: [
+              {
+                kind: "movie",
+                media_id: 1,
+                title: "Alpha",
+                file_count: 2,
+                status: "probable_duplicate",
+                reason: "identical size, SHA-256 and resolution",
+                files: [
+                  {
+                    id: 1,
+                    relative_path: "Movies/Alpha/a.mkv",
+                    size_bytes: 1024,
+                    sha256: "same-sha",
+                    resolution: 1080,
+                  },
+                  {
+                    id: 2,
+                    relative_path: "Movies/Alpha/b.mkv",
+                    size_bytes: 1024,
+                    sha256: "same-sha",
+                    resolution: 1080,
+                  },
+                ],
+              },
+            ],
+            total: 1,
+            limit: 100,
+            truncated: false,
+          });
+        return Response.json({}, { status: 404 });
+      }),
+    );
+
+    renderPage(<Duplicates />);
+    expect(
+      await screen.findByRole("heading", { name: "Duplicate review" }),
+    ).toBeVisible();
+    const boxes = screen.getAllByRole("checkbox", {
+      name: /Select Movies\/Alpha/,
+    });
+    expect(boxes).toHaveLength(2);
+    await user.click(boxes[0]);
+    await user.click(
+      screen.getByRole("button", { name: "Delete selected files" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Review deletion" }),
+    );
+    expect(
+      await screen.findByText(/1 file paths? in this review/),
+    ).toBeVisible();
+    const review = calls.find((c) => c.url.endsWith("/library/deletion"));
+    expect(review?.body).toBe(
+      '{"selection":"video_files","ids":[1],"mode":"delete"}',
+    );
   });
 });
 

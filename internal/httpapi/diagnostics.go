@@ -19,12 +19,48 @@ func (s *Server) duplicateReview(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = value
 	}
-	report, err := duplicates.Review(r.Context(), s.db, limit)
+	includeDismissed := false
+	if raw := r.URL.Query().Get("include_dismissed"); raw != "" {
+		if raw != "1" && raw != "true" && raw != "0" && raw != "false" {
+			fail(w, 400, "invalid_limit", "Choose include_dismissed of 1 or 0.")
+			return
+		}
+		includeDismissed = raw == "1" || raw == "true"
+	}
+	report, err := duplicates.Review(r.Context(), s.db, limit, includeDismissed)
 	if err != nil {
 		s.internal(w, "duplicate_review", err)
 		return
 	}
 	send(w, 200, report)
+}
+
+// duplicateDismiss records an owner decision to stop flagging one review
+// group. It changes only this remembered decision; files and catalog rows are
+// untouched, exactly like the read-only review itself.
+func (s *Server) duplicateDismiss(w http.ResponseWriter, r *http.Request) {
+	var in duplicates.Key
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	if err := duplicates.Dismiss(r.Context(), s.db, in); err != nil {
+		fail(w, 400, "invalid_selection", "Choose a duplicate group to dismiss.")
+		return
+	}
+	send(w, 200, map[string]bool{"dismissed": true})
+}
+
+// duplicateRestore removes a dismissal so the group is reviewed again.
+func (s *Server) duplicateRestore(w http.ResponseWriter, r *http.Request) {
+	var in duplicates.Key
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	if err := duplicates.Restore(r.Context(), s.db, in); err != nil {
+		fail(w, 400, "invalid_selection", "Choose a dismissed duplicate group to restore.")
+		return
+	}
+	send(w, 200, map[string]bool{"dismissed": false})
 }
 
 // prometheusMetrics publishes a bounded snapshot of durable queue state. It is

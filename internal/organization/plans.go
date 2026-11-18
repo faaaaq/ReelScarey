@@ -285,6 +285,77 @@ func readPlan(ctx context.Context, q query, id string) (Plan, error) {
 	p.Updated = updated
 	return p, nil
 }
+
+// ActivePlan is a bounded summary of the one plan the organization worker is
+// currently executing or about to execute. It exists so any page can show
+// live progress without downloading every saved plan snapshot.
+type ActivePlan struct {
+	ID        string `json:"id"`
+	State     string `json:"state"`
+	Phase     string `json:"phase"`
+	Message   string `json:"message,omitempty"`
+	Kind      string `json:"kind"`
+	UpdatedAt int64  `json:"updated_at"`
+	// Track-cleanup progress; zero for every other plan kind.
+	Processed int      `json:"processed"`
+	Total     int      `json:"total"`
+	Changed   int      `json:"changed"`
+	Skipped   int      `json:"skipped"`
+	Dropped   int      `json:"dropped"`
+	Issues    []string `json:"issues,omitempty"`
+}
+
+// activeKind names the plan payload so a global indicator can label the
+// running work without interpreting the whole snapshot.
+func activeKind(p Plan) string {
+	switch {
+	case p.TrackCleanup != nil:
+		return "track_cleanup"
+	case p.Removal != nil:
+		return "deletion"
+	case p.Replacement != nil:
+		return "replacement"
+	case p.FolderMove != nil:
+		return "folder_move"
+	default:
+		return "organization"
+	}
+}
+
+// Active returns the plan the organization worker is currently running or has
+// queued, if any. Only one plan runs at a time; queued plans wait behind it.
+func (s *Service) Active(ctx context.Context) (ActivePlan, bool, error) {
+	var id, raw string
+	var updated int64
+	err := s.db.QueryRowContext(ctx, `SELECT id,snapshot,updated_at FROM organization_plans WHERE state IN ('queued','running') ORDER BY id LIMIT 1`).Scan(&id, &raw, &updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ActivePlan{}, false, nil
+	}
+	if err != nil {
+		return ActivePlan{}, false, err
+	}
+	var p Plan
+	if e := json.Unmarshal([]byte(raw), &p); e != nil {
+		return ActivePlan{}, false, e
+	}
+	out := ActivePlan{ID: id, State: "queued", Phase: p.Phase, Kind: activeKind(p), UpdatedAt: updated}
+	if p.TrackCleanup != nil {
+		out.Processed = p.TrackCleanup.Processed
+		out.Total = len(p.TrackCleanup.Targets)
+		out.Changed = p.TrackCleanup.Changed
+		out.Skipped = p.TrackCleanup.Skipped
+		out.Dropped = p.TrackCleanup.Dropped
+		out.Issues = p.TrackCleanup.Examples
+	}
+	// The durable state column is authoritative; a snapshot read between
+	// writes can briefly disagree with it.
+	row := s.db.QueryRowContext(ctx, `SELECT state,message FROM organization_plans WHERE id=?`, id)
+	if e := row.Scan(&out.State, &out.Message); e != nil {
+		return ActivePlan{}, false, e
+	}
+	return out, true, nil
+}
+
 func (s *Service) Plans(ctx context.Context) ([]Plan, error) {
 	rows, e := s.db.QueryContext(ctx, `SELECT id FROM organization_plans ORDER BY CASE WHEN state IN ('queued','running') OR (state='failed' AND `+unsafeOrganizationFailure+`) THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT 20`)
 	if e != nil {
@@ -323,12 +394,12 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 	if permanent && (initial.State == "completed" || initial.State == "queued" || initial.State == "running") {
 		return initial, nil
 	}
-	if permanent {
-		if !s.mu.TryLock() {
-			return initial, problem("organization_busy", "Another media operation is running. Wait for it to finish, then apply deletion again.")
-		}
-	} else {
-		s.mu.Lock()
+	// Applying never waits for a running media operation. The worker holds the
+	// service lock for a whole file rewrite (minutes for a large video), and a
+	// blocked apply only ends in a client-side timeout. Fail closed with a
+	// bounded error the UI can surface immediately instead.
+	if !s.mu.TryLock() {
+		return initial, problem("organization_busy", "Another media operation is running. Wait for it to finish, then apply again.")
 	}
 	defer s.mu.Unlock()
 	if permanent {
@@ -337,7 +408,10 @@ func (s *Service) Apply(ctx context.Context, id string) (Plan, error) {
 		}
 		defer mediaGate.RUnlock()
 	} else {
-		unlock := ReadMedia()
+		unlock, ok := TryReadMedia()
+		if !ok {
+			return initial, problem("organization_busy", "Another media operation is running. Wait for it to finish, then apply again.")
+		}
 		defer unlock()
 	}
 	p, e := s.Plan(ctx, id)

@@ -118,7 +118,7 @@ func (s *Server) storageInsightsHandler(w http.ResponseWriter, r *http.Request) 
 		unresolved = 0
 	}
 	out.Unresolved = unresolved
-	report, _ := duplicates.Review(ctx, s.db, 500)
+	report, _ := duplicates.Review(ctx, s.db, 500, false)
 	out.Summary = map[string]any{
 		"registered_files": totalFiles, "registered_bytes": totalBytes,
 		"duplicate_groups": report.Total, "below_cutoff": len(out.BelowCutoff),

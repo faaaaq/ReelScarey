@@ -14,6 +14,16 @@ var mediaGate sync.RWMutex
 // One application owns a configuration directory through the OS instance lock.
 func ReadMedia() func() { mediaGate.RLock(); return mediaGate.RUnlock }
 
+// TryReadMedia is the non-blocking form of ReadMedia. Reviewers use it so a
+// queued apply answers immediately instead of holding an HTTP request open
+// behind an unrelated media rewrite.
+func TryReadMedia() (func(), bool) {
+	if !mediaGate.TryRLock() {
+		return nil, false
+	}
+	return mediaGate.RUnlock, true
+}
+
 // WriteMedia serializes reviewed sidecar edits with organization and ordinary
 // media workers. Durable reservations supply the corresponding crash barrier.
 func WriteMedia() func() { mediaGate.Lock(); return mediaGate.Unlock }

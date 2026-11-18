@@ -59,6 +59,9 @@ type Group struct {
 	Files        []File `json:"files"`
 	Status       string `json:"status"`
 	Reason       string `json:"reason"`
+	// Dismissed marks a group the owner decided to stop flagging. It is only
+	// present when the report includes dismissed groups.
+	Dismissed bool `json:"dismissed,omitempty"`
 }
 
 // Report is a bounded page of duplicate review groups.
@@ -92,8 +95,10 @@ const candidateCTE = `WITH candidates AS (
 // Review returns up to limit movie and episode identity groups whose identity
 // has more than one registered file. A non-positive limit uses DefaultLimit;
 // larger values are clamped to MaxLimit. The report's Total counts every
-// candidate identity, not just the returned page.
-func Review(ctx context.Context, db *sql.DB, limit int) (Report, error) {
+// candidate identity, not just the returned page. Groups the owner dismissed
+// are excluded unless includeDismissed is set; dismissed groups in an
+// included report carry the Dismissed flag.
+func Review(ctx context.Context, db *sql.DB, limit int, includeDismissed bool) (Report, error) {
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
@@ -110,11 +115,25 @@ func Review(ctx context.Context, db *sql.DB, limit int) (Report, error) {
 	// Read-only usage: the transaction is only a consistent snapshot.
 	defer func() { _ = tx.Rollback() }()
 
-	if err = tx.QueryRowContext(ctx, candidateCTE+` SELECT COUNT(*) FROM candidates`).Scan(&out.Total); err != nil {
+	dismissed, err := dismissedGroups(ctx, tx)
+	if err != nil {
+		return Report{}, err
+	}
+
+	// Dismissed groups are excluded from the default report, including its
+	// Total, so the page never promises groups the owner already cleared. The
+	// includeDismissed report lists every candidate and labels the dismissed
+	// ones instead.
+	filter := ` WHERE NOT EXISTS (SELECT 1 FROM duplicate_dismissals d
+		WHERE d.kind=c.kind AND d.media_id=c.media_id AND d.episode_id=COALESCE(c.episode_id,0))`
+	if includeDismissed {
+		filter = ""
+	}
+	if err = tx.QueryRowContext(ctx, candidateCTE+` SELECT COUNT(*) FROM candidates c`+filter).Scan(&out.Total); err != nil {
 		return Report{}, err
 	}
 	rows, err := tx.QueryContext(ctx, candidateCTE+` SELECT kind,media_id,episode_id,title,season,episode,episode_title
- FROM candidates
+ FROM candidates c`+filter+`
  ORDER BY title COLLATE NOCASE,kind,media_id,COALESCE(episode_id,0)
  LIMIT ?`, limit)
 	if err != nil {
@@ -140,6 +159,9 @@ func Review(ctx context.Context, db *sql.DB, limit int) (Report, error) {
 		if episode.Valid {
 			v := int(episode.Int64)
 			g.Episode = &v
+		}
+		if dismissed[groupKey(g)] {
+			g.Dismissed = true
 		}
 		out.Groups = append(out.Groups, g)
 	}

@@ -89,7 +89,7 @@ func setupDuplicates(t *testing.T) *sql.DB {
 
 func TestReviewClassifiesMovieGroups(t *testing.T) {
 	db := setupDuplicates(t)
-	report, err := Review(context.Background(), db, 10)
+	report, err := Review(context.Background(), db, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestReviewClassifiesMovieGroups(t *testing.T) {
 
 func TestReviewDoesNotMergeEpisodeIdentities(t *testing.T) {
 	db := setupDuplicates(t)
-	report, err := Review(context.Background(), db, 50)
+	report, err := Review(context.Background(), db, 50, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestReviewDoesNotMergeEpisodeIdentities(t *testing.T) {
 
 	// A shared file serving several episodes is also not a duplicate of itself.
 	exec(t, db, `INSERT INTO episode_files(episode_id,media_file_id) VALUES(2,20) ON CONFLICT(episode_id) DO UPDATE SET media_file_id=20`)
-	report, err = Review(context.Background(), db, 50)
+	report, err = Review(context.Background(), db, 50, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,21 +151,21 @@ func TestReviewDoesNotMergeEpisodeIdentities(t *testing.T) {
 
 func TestReviewLimitIsBoundedAndReportsTruncation(t *testing.T) {
 	db := setupDuplicates(t)
-	report, err := Review(context.Background(), db, 2)
+	report, err := Review(context.Background(), db, 2, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(report.Groups) != 2 || report.Total != 5 || !report.Truncated || report.Limit != 2 {
 		t.Fatalf("unexpected bounded report: %+v", report)
 	}
-	report, err = Review(context.Background(), db, 0)
+	report, err = Review(context.Background(), db, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if report.Limit != DefaultLimit || len(report.Groups) != 5 || report.Truncated {
 		t.Fatalf("unexpected default report: %+v", report)
 	}
-	report, err = Review(context.Background(), db, MaxLimit+1000)
+	report, err = Review(context.Background(), db, MaxLimit+1000, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestReviewIsReadOnly(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM episode_files`).Scan(&beforeEpisodes); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Review(context.Background(), db, 50); err != nil {
+	if _, err := Review(context.Background(), db, 50, false); err != nil {
 		t.Fatal(err)
 	}
 	var afterFiles, afterEpisodes int
@@ -206,7 +206,7 @@ func TestReviewHonorsCancellation(t *testing.T) {
 	db := setupDuplicates(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := Review(ctx, db, 10); !errors.Is(err, context.Canceled) {
+	if _, err := Review(ctx, db, 10, false); !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected cancellation, got %v", err)
 	}
 }

@@ -1655,3 +1655,53 @@ html[data-theme="light"] .rs-label.is-disabled {
   color: var(--rs-text-strong);
   background: var(--rs-hover);
 }
+
+/* Persistent media-work banner. The organization worker runs one reviewed
+   plan at a time; this fixed pill keeps its progress visible on every page
+   and survives navigation and reloads because the state is the saved plan. */
+.rs-work-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 112px;
+  transform: translateX(-50%);
+  z-index: 41;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 560px);
+  padding: 8px 14px;
+  border: 1px solid var(--rs-border);
+  border-radius: 999px;
+  background: var(--rs-surface-2);
+  color: var(--rs-text);
+  box-shadow: var(--rs-shadow);
+  font-size: 13px;
+}
+.rs-work-banner .rs-work-spinner {
+  flex: none;
+  color: var(--rs-info);
+  animation: rs-work-spin 1.1s linear infinite;
+}
+.rs-work-banner .rs-work-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rs-work-banner .rs-work-link {
+  flex: none;
+  color: var(--rs-link);
+  text-decoration: underline;
+}
+.rs-work-banner .rs-work-link:hover {
+  color: var(--rs-link-hover);
+}
+@keyframes rs-work-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 720px) {
+  .rs-work-banner {
+    bottom: 12px;
+  }
+}

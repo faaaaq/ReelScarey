@@ -28,8 +28,10 @@ Historical native and package results below remain as records of past work.
   music imports queue canonical embedded titles, and stopped download tracking
   appears in History.
 - [x] Library and title-scoped embedded subtitle, external subtitle, and audio
-  cleanup under Subtitles. TheTVDB provides TV series and default episode order
-  when selected as a fallback source. See [API](docs/API.md).
+  cleanup under Subtitles. The cleanup runs as a durable organization plan whose
+  progress is shown on every page and survives navigation and reloads; applying
+  never blocks on another running media operation. TheTVDB provides TV series
+  and default episode order when selected as a fallback source. See [API](docs/API.md).
 
 
 - [x] Integration surface: scoped API keys with one-time tokens and revocation,
@@ -67,9 +69,10 @@ Historical native and package results below remain as records of past work.
 
 - [x] Optional library analysis and metadata export: bounded background FFprobe
   analysis on registered media, opt-in Jellyfin-compatible `.nfo` sidecars that
-  never replace existing files, a read-only duplicate review page and an
-  authenticated Prometheus metrics snapshot. Two-factor administrator login
-  uses RFC 6238 TOTP with encrypted secrets and one-time recovery codes.
+  never replace existing files, a duplicate review page with owner dismissals
+  and reviewed file deletion, and an authenticated Prometheus metrics snapshot.
+  Two-factor administrator login uses RFC 6238 TOTP with encrypted secrets and
+  one-time recovery codes.
 
 - [x] Sonarr/Radarr-style configuration/library database backup manager: live
   snapshots, paused-by-default schedules, count/age retention, ZIP download/upload,
