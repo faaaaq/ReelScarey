@@ -1005,8 +1005,10 @@ capabilities are implemented and documented in `docs/`:
   recovery codes. See [OPERATIONS.md](docs/OPERATIONS.md).
 - Music catalog, scanning, reviewed registration and organization, tag rewrites
   with rollback, audio release search/import, wanted albums, Deezer charts,
-  public Spotify/Deezer/YouTube track downloads, monitored playlists and an
-  optional Subsonic-compatible endpoint. See [MUSIC.md](docs/MUSIC.md).
+  public Spotify/Deezer/YouTube track downloads, monitored playlists, optional
+  TIDAL sourcing that prefers a connected TIDAL account's full-quality files
+  over the default source, and an optional Subsonic-compatible endpoint. See
+  [MUSIC.md](docs/MUSIC.md).
 - Music quality profiles, post-download conversion, a durable conversion queue,
   live-first cold streaming with a detached persistent cache, per-user Subsonic
   streaming quality, stars, ratings, playlists, saved queues and play history,
