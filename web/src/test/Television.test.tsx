@@ -583,4 +583,78 @@ describe("TV catalog and monitoring", () => {
       screen.queryByRole("button", { name: "Download" }),
     ).not.toBeInTheDocument();
   });
+
+  it("sends a whole-season deletion to the reviewed deletion flow", async () => {
+    const season = {
+      ...show.seasons[0],
+      loaded_at: "2026-10-22",
+      episode_count: 2,
+      known_episodes: 2,
+      available_episodes: 2,
+    };
+    const calls: { url: string; body: string }[] = [];
+    setup((url, options) => {
+      if (url.endsWith("/library/series/7"))
+        return Response.json({ ...show, seasons: [season] });
+      if (url.endsWith("/seasons/1"))
+        return Response.json({
+          season,
+          revision: 1,
+          series_monitored: true,
+          episodes: [
+            {
+              id: 9,
+              number: 1,
+              title: "Pilot",
+              available: true,
+              file_id: 31,
+              file_path: "TV/Test TV series/Season 01/Pilot.mkv",
+            },
+            {
+              id: 10,
+              number: 2,
+              title: "Return",
+              available: true,
+              file_id: 32,
+              file_path: "TV/Test TV series/Season 01/S01E02.mkv",
+            },
+          ],
+        });
+      if (url.endsWith("/library/deletion")) {
+        calls.push({
+          url,
+          body: typeof options?.body === "string" ? options.body : "",
+        });
+        return Response.json({
+          id: "plan-season",
+          state: "review",
+          message: "",
+          removal: {
+            paths: [
+              "TV/Test TV series/Season 01/Pilot.mkv",
+              "TV/Test TV series/Season 01/S01E02.mkv",
+            ],
+          },
+        });
+      }
+      return undefined;
+    });
+    mount("/series/7");
+    await screen.findByText("2 / 2 on disk");
+    await userEvent.click(screen.getByRole("button", { name: "Season 1" }));
+    await screen.findByRole("table", { name: "Season 1 episodes" });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Delete season" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Review deletion" }),
+    );
+    expect(
+      await screen.findByText(/2 file paths in this review/),
+    ).toBeVisible();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body).toBe(
+      '{"selection":"video_files","ids":[31,32],"mode":"delete"}',
+    );
+  });
 });

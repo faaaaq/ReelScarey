@@ -834,6 +834,9 @@ function SeasonEpisodes({
       />
     );
   const episodes = resource.data.episodes;
+  const seasonFiles = episodes.flatMap((episode) =>
+    episode.available && episode.file_id ? [episode.file_id] : [],
+  );
   return (
     <>
       <div className="det-season-tools">
@@ -847,6 +850,19 @@ function SeasonEpisodes({
         >
           {season.loaded_at ? "Refresh episodes" : "Load episodes from TMDb"}
         </Button>
+        {seasonFiles.length > 0 && (
+          <LibraryDeletion
+            selection="video_files"
+            ids={seasonFiles}
+            label="Delete season"
+            name={season.title}
+            onDone={() => {
+              setSelectedEpisodes([]);
+              reloadEpisodes();
+              onFileDeleted?.();
+            }}
+          />
+        )}
         {episodes.length > 0 && (
           <>
             <Button

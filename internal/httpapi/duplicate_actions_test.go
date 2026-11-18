@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -91,6 +94,36 @@ func TestOrganizationActiveReportsTheRunningPlan(t *testing.T) {
 		payload.Plan.Total != 1 || payload.Plan.Changed != 2 || payload.Plan.Skipped != 1 || payload.Plan.Dropped != 4 ||
 		len(payload.Plan.Issues) != 1 {
 		t.Fatalf("unexpected active plan: %+v", payload.Plan)
+	}
+}
+
+// The legacy title-removal endpoint shares the permanent deletion flow when
+// the owner asks for it, exactly as documented.
+func TestOrganizationRemovalDelegatesPermanentDeletion(t *testing.T) {
+	f := newOrganizationReviewFixture(t)
+	f.movie(t, 1, "Permanent fixture", "Movies/Fixture/file.mkv")
+
+	out := request(f.handler, "POST", "/api/v1/organization/removal", `{"media_id":1,"mode":"delete"}`, &f.session, true)
+	var plan organization.Plan
+	if out.Code != 201 || json.Unmarshal(out.Body.Bytes(), &plan) != nil ||
+		plan.Removal == nil || plan.Removal.Mode != "delete" || plan.Removal.Selection != "titles" {
+		t.Fatalf("removal review: %d %s", out.Code, out.Body)
+	}
+	if plan.Removal.Title != "Permanent fixture" {
+		t.Fatalf("review did not name the title: %q", plan.Removal.Title)
+	}
+	out = request(f.handler, "POST", "/api/v1/organization/plans/"+plan.ID+"/apply", `{}`, &f.session, true)
+	if out.Code != 202 {
+		t.Fatalf("apply: %d %s", out.Code, out.Body)
+	}
+	if err := f.s.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.cfg.MediaDir, "Movies", "Fixture", "file.mkv")); !os.IsNotExist(err) {
+		t.Fatal("file not permanently deleted", err)
+	}
+	if _, err := os.Stat(filepath.Join(f.cfg.MediaDir, ".reelscarey-trash")); !os.IsNotExist(err) {
+		t.Fatal("trash retained", err)
 	}
 }
 

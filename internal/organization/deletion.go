@@ -144,6 +144,18 @@ func (s *Service) PreviewDeletion(ctx context.Context, request DeletionRequest) 
 	if count == 1 {
 		title = "1 " + label
 	}
+	// A single saved title is named, not counted, so the review header and the
+	// activity event say which title the owner reviewed.
+	if request.Selection == "titles" && len(ids) == 1 {
+		var name string
+		if err = tx.QueryRowContext(ctx, `SELECT title FROM media_items WHERE id=?`, ids[0]).Scan(&name); err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return Plan{}, err
+			}
+		} else if strings.TrimSpace(name) != "" {
+			title = name
+		}
+	}
 	r := &Removal{Title: title, Mode: request.Mode, Selection: request.Selection, IDs: ids, Paths: []string{}}
 	if request.Mode == "delete" {
 		r.Observations = map[string]filecheck.Snapshot{}
