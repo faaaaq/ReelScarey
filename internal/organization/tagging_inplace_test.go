@@ -22,9 +22,9 @@ func TestInPlaceEmbeddedTitleUpdatesHeaderWithoutASecondCopy(t *testing.T) {
 	f.movie(t, 1, rel, before)
 
 	var sawPath string
-	f.s.SetInPlaceTagger(func(ctx context.Context, path, extension, beforeProbe, title string, beforeSize int64) (string, error) {
-		if extension != ".mkv" || title != "Review movie" || beforeProbe != "{}" || beforeSize != int64(len(before)) {
-			t.Fatalf("in-place call: ext=%q title=%q before=%q size=%d", extension, title, beforeProbe, beforeSize)
+	f.s.SetInPlaceTagger(func(ctx context.Context, path, extension, title string, beforeSize int64) (string, error) {
+		if extension != ".mkv" || title != "Review movie" || beforeSize != int64(len(before)) {
+			t.Fatalf("in-place call: ext=%q title=%q size=%d", extension, title, beforeSize)
 		}
 		sawPath = path
 		if e := os.WriteFile(path, after, 0600); e != nil {
@@ -81,7 +81,7 @@ func TestInPlaceTitleFailureRestoresHeaderAndFallsBackToRemux(t *testing.T) {
 	const rel = "Movies/Film/Film.mkv"
 	f.movie(t, 1, rel, original)
 
-	f.s.SetInPlaceTagger(func(ctx context.Context, path, extension, beforeProbe, title string, beforeSize int64) (string, error) {
+	f.s.SetInPlaceTagger(func(ctx context.Context, path, extension, title string, beforeSize int64) (string, error) {
 		// Simulate a tool that began editing then failed: the header is dirty.
 		if e := os.WriteFile(path, []byte("clobbered"), 0600); e != nil {
 			return "", e

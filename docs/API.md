@@ -1134,13 +1134,13 @@ YouTube-origin provenance is retained and updated to the replacement checksum.
 
 Matroska (`.mkv`/`.webm`) title updates take a fast in-place path when
 `mkvpropedit` is available (the Docker image ships `mkvtoolnix`). The segment
-title is rewritten in the header area without reading or rewriting media
-packets, so a file takes seconds instead of a full demux/remux. The review still
-records the previous title and the post-edit size/checksum, verifies that no
-stream appeared, changed or disappeared, and keeps a bounded header backup in
-the journal stage until the plan commits. If the tool is unavailable or refuses
-the edit, the saved header is restored and the verified remux stage is used
-instead, so one unsupported file never fails the run.
+title is edited in the header. ReelScarey compares fresh FFprobe inspections
+immediately before and after the edit, so older catalog records can be used
+without a rescan. It verifies the new title and stream facts, records the
+post-edit size and checksum, and keeps a bounded header backup until the plan
+commits. If the in-place edit fails, ReelScarey restores the saved header.
+When the editor is unavailable or the edit fails, the verified remux stage
+must pass its preservation checks before it can replace the original.
 
 POST `/api/v1/organization/plans/{id}/rollback` with `{}` accepts completed
 file/title/folder moves and media replacements. Metadata-only embedded-title

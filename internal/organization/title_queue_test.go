@@ -54,7 +54,7 @@ func TestTitleQueuePauseBlocksClaimingAndDiscardEmptiesIt(t *testing.T) {
 	if _, err = f.db.Exec(`INSERT INTO video_title_updates(media_file_id,next_attempt) VALUES(1,0)`); err != nil {
 		t.Fatal(err)
 	}
-	f.s.SetInPlaceTagger(func(ctx context.Context, path, extension, beforeProbe, title string, beforeSize int64) (string, error) {
+	f.s.SetInPlaceTagger(func(ctx context.Context, path, extension, title string, beforeSize int64) (string, error) {
 		if e := os.WriteFile(path, []byte("edited-in-place"), 0600); e != nil {
 			return "", e
 		}
