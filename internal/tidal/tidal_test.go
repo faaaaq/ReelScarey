@@ -21,7 +21,7 @@ func testService(t *testing.T, responses map[string]string, recorded *[][]string
 		if recorded != nil {
 			*recorded = append(*recorded, args)
 		}
-		if response, ok := responses[args[1]]; ok {
+		if response, ok := responses[args[2]]; ok {
 			return response, nil
 		}
 		return "", errors.New("unexpected command")
@@ -79,7 +79,7 @@ func TestSearchAudioValidatesAndParses(t *testing.T) {
 	if len(candidates) != 1 || candidates[0].Title != "Song" {
 		t.Fatalf("unexpected candidates: %+v", candidates)
 	}
-	if len(calls) != 1 || calls[0][1] != "search" || calls[0][2] != "Artist Song" || calls[0][3] != "10" {
+	if len(calls) != 1 || calls[0][1] != "/opt/tidal-provider.py" || calls[0][2] != "search" || calls[0][3] != "Artist Song" || calls[0][4] != "10" {
 		t.Fatalf("unexpected call arguments: %v", calls)
 	}
 	for _, bad := range []string{"", "line\nbreak", strings.Repeat("a", 301)} {
@@ -190,6 +190,25 @@ func TestLoginStatusBoundsLines(t *testing.T) {
 		if len(line) > 400 {
 			t.Fatalf("a line exceeded its bound: %d", len(line))
 		}
+	}
+}
+
+// The runner must exec the configured python interpreter with the script as
+// its argument. Executing the script directly would follow its shebang
+// through PATH and run the system python, whose site-packages lack the
+// provider's dependencies.
+func TestCallExecutesPythonBeforeScript(t *testing.T) {
+	var calls [][]string
+	service := testService(t, map[string]string{"status": `{"available":true,"logged_in":false}`}, &calls)
+	service.Status(context.Background())
+	if len(calls) != 1 {
+		t.Fatalf("unexpected calls: %v", calls)
+	}
+	if calls[0][0] != "python3" {
+		t.Fatalf("the interpreter must be argv[0], got %q", calls[0][0])
+	}
+	if calls[0][1] != "/opt/tidal-provider.py" || calls[0][2] != "status" {
+		t.Fatalf("wrong argv: %v", calls[0])
 	}
 }
 

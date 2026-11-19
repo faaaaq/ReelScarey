@@ -127,7 +127,10 @@ func (s *Service) call(ctx context.Context, timeout time.Duration, args ...strin
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
-	return s.run(ctx, timeout, s.env(), append([]string{s.script}, args...))
+	// The configured python interpreter must exec the script: the script's own
+	// shebang resolves through PATH and would pick the system python, whose
+	// site-packages do not contain the provider's dependencies.
+	return s.run(ctx, timeout, s.env(), append([]string{s.python, s.script}, args...))
 }
 
 // Status asks the provider whether it can run and whether a TIDAL session
