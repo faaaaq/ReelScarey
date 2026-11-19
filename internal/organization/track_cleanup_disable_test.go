@@ -3,6 +3,7 @@ package organization
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/faaaaq/ReelScarey/internal/filecheck"
 	"os"
 	"path/filepath"
@@ -250,5 +251,16 @@ func TestProgressIsDurableWithoutChangingOwnerStop(t *testing.T) {
 	}
 	if state != "review" || saved.Progress == nil || saved.Progress.BytesDone != 100 || saved.Progress.File != "Movies/Film.mkv" {
 		t.Fatalf("progress %s %s", state, raw)
+	}
+}
+
+func TestCleanupRetainsEverySkipBeyondTwenty(t *testing.T) {
+	s := newReviewFixture(t).s
+	p := Plan{TrackCleanup: &TrackCleanup{Targets: make([]cleanupTarget, 30)}}
+	for i := range 30 {
+		s.noteCleanupIssue(&p, cleanupTarget{ID: int64(i), Path: fmt.Sprintf("Movies/%d.mkv", i)}, problem("invalid_media", "Unreadable video"))
+	}
+	if p.TrackCleanup.Skipped != 30 || len(p.TrackCleanup.Examples) != 30 {
+		t.Fatal(p.TrackCleanup)
 	}
 }

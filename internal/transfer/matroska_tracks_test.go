@@ -1,6 +1,11 @@
 package transfer
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func track(id int, kind, language string, enabled bool) mkvTrackInfo {
 	return mkvTrackInfo{ID: id, Type: kind, Props: mkvTrackProps{Language: language, Enabled: &enabled}}
@@ -134,5 +139,37 @@ func TestVerifyDisabledRequiresExactlyTheReviewedFlags(t *testing.T) {
 	}}
 	if problemCode(verifyDisabled(before, missing, targets)) != "metadata_changed_streams" {
 		t.Fatal("track removal accepted")
+	}
+}
+
+func TestProbeTracksDoesNotMapCoverArtAsVideo(t *testing.T) {
+	var manifest tagManifest
+	if err := json.Unmarshal([]byte(`{"streams":[{"index":0,"codec_type":"video"},{"index":1,"codec_type":"subtitle"},{"index":2,"codec_type":"video","disposition":{"attached_pic":1}}]}`), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	streams := probeTracks(manifest)
+	ident := mkvIdentify{Tracks: []mkvTrackInfo{track(0, "video", "und", true), track(1, "subtitles", "eng", true)}}
+	if _, err := mapMatroskaTargets(streams, ident, []int{1}); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestVerifyDisabledPreservesAlreadyDisabledUnselectedTrack(t *testing.T) {
+	before := mkvIdentify{Tracks: []mkvTrackInfo{track(0, "video", "und", true), track(1, "subtitles", "eng", false), track(2, "subtitles", "spa", true)}}
+	after := mkvIdentify{Tracks: []mkvTrackInfo{track(0, "video", "und", true), track(1, "subtitles", "eng", false), track(2, "subtitles", "spa", false)}}
+	if err := verifyDisabled(before, after, []mkvTarget{{Kind: "subtitles", Ordinal: 2}}); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestMatroskaCommandForcesUTF8Locale(t *testing.T) {
+	t.Setenv("LC_ALL", "C")
+	cmd := matroskaCommand(context.Background(), "unused")
+	last := ""
+	for _, env := range cmd.Env {
+		if strings.HasPrefix(env, "LC_ALL=") {
+			last = env
+		}
+	}
+	if last != "LC_ALL=C.UTF-8" {
+		t.Fatal(cmd.Env)
 	}
 }

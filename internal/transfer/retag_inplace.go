@@ -52,7 +52,7 @@ func EditTitleInPlaceVerified(ctx context.Context, path, title string, beforeSiz
 	if e != nil {
 		return Probe{}, e
 	}
-	cmd := exec.CommandContext(ctx, tool, path, "--edit", "info", "--set", "title="+title)
+	cmd := matroskaCommand(ctx, tool, path, "--edit", "info", "--set", "title="+title)
 	hideProbeWindow(cmd)
 	var stderr limitedBuffer
 	stderr.max = 16 << 10

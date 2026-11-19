@@ -1861,3 +1861,8 @@ include `tvdb_id`, which can be sent as the identity on
 `POST /api/v1/library/series`. The existing numeric provider lookup field uses
 a negative value for TheTVDB series and episode identities to distinguish them
 from TMDb. Catalog IDs and registered-file APIs remain provider-independent.
+
+Track cleanup retains a reason for every newly skipped target (older jobs may
+have only their first 20 historical messages). MKVToolNix runs with a UTF-8
+locale, excludes cover attachments from video mapping, and preserves already
+disabled tracks outside the selected edit.

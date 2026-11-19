@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"math"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -244,7 +243,7 @@ func EditMatroskaTracksInPlaceVerified(ctx context.Context, path, beforeProbe st
 			args = append(args, "--set", "flag-forced="+mkvFlag(*edit.Forced))
 		}
 	}
-	cmd := exec.CommandContext(ctx, trackTool("REELSCAREY_MKVPROPEDIT_PATH", "mkvpropedit"), args...)
+	cmd := matroskaCommand(ctx, trackTool("REELSCAREY_MKVPROPEDIT_PATH", "mkvpropedit"), args...)
 	hideProbeWindow(cmd)
 	var stderr limitedBuffer
 	stderr.max = 16 << 10

@@ -55,9 +55,16 @@ type mkvIdentify struct {
 
 // matroskaIdentify reads mkvmerge's JSON track list, which is the only place
 // the Matroska "track enabled" flag is visible.
+func matroskaCommand(ctx context.Context, name string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, name, args...)
+	// MKVToolNix otherwise truncates non-ASCII paths and JSON text under C.
+	cmd.Env = append(os.Environ(), "LC_ALL=C.UTF-8")
+	return cmd
+}
+
 func matroskaIdentify(ctx context.Context, path string) (mkvIdentify, error) {
 	var out mkvIdentify
-	cmd := exec.CommandContext(ctx, trackTool("REELSCAREY_MKVMERGE_PATH", "mkvmerge"), "-J", path)
+	cmd := matroskaCommand(ctx, trackTool("REELSCAREY_MKVMERGE_PATH", "mkvmerge"), "-J", path)
 	hideProbeWindow(cmd)
 	var stdout, stderr limitedBuffer
 	stdout.max = 1 << 20
@@ -94,6 +101,9 @@ func matroskaKind(ffprobeType string) string {
 func probeTracks(m tagManifest) []probeTrack {
 	out := make([]probeTrack, 0, len(m.Streams))
 	for _, s := range m.Streams {
+		if s.Type == "video" && s.Disposition["attached_pic"] != 0 {
+			continue
+		}
 		out = append(out, probeTrack{Index: s.Index, Kind: matroskaKind(s.Type), Language: s.Tags["language"]})
 	}
 	return out
@@ -182,7 +192,11 @@ func verifyDisabled(before, after mkvIdentify, targets []mkvTarget) error {
 		counts[t.Type]++
 		enabled := enabledOf(t)
 		if t.Type == "audio" || t.Type == "subtitles" {
-			if enabled != !want[t.Type+":"+strconv.Itoa(counts[t.Type])] {
+			expected := enabledOf(b)
+			if want[t.Type+":"+strconv.Itoa(counts[t.Type])] {
+				expected = false
+			}
+			if enabled != expected {
 				return problem("metadata_changed_streams", "The disabled tracks did not match the reviewed selection; the file was left unchanged.")
 			}
 			continue
@@ -234,7 +248,7 @@ func DisableTracksMatroskaInPlaceVerified(ctx context.Context, path, _ string, d
 		}
 		args = append(args, "--edit", selector+strconv.Itoa(t.Ordinal), "--set", "flag-enabled=0")
 	}
-	cmd := exec.CommandContext(ctx, trackTool("REELSCAREY_MKVPROPEDIT_PATH", "mkvpropedit"), args...)
+	cmd := matroskaCommand(ctx, trackTool("REELSCAREY_MKVPROPEDIT_PATH", "mkvpropedit"), args...)
 	hideProbeWindow(cmd)
 	var stderr limitedBuffer
 	stderr.max = 16 << 10

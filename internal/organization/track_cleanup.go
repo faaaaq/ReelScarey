@@ -529,8 +529,14 @@ func (s *Service) skipCleanup(ctx context.Context, p *Plan, target cleanupTarget
 
 func (s *Service) noteCleanupIssue(p *Plan, target cleanupTarget, err error) {
 	p.TrackCleanup.Skipped++
-	if len(p.TrackCleanup.Examples) < 20 {
+	if len(p.TrackCleanup.Examples) < len(p.TrackCleanup.Targets) {
 		message := "Could not safely inspect or rewrite this video."
+		if errors.Is(err, os.ErrNotExist) {
+			message = "The registered video is missing at its saved path."
+		}
+		if errors.Is(err, os.ErrPermission) {
+			message = "The server cannot access the registered video."
+		}
 		var typed *Error
 		if errors.As(err, &typed) {
 			message = typed.Message

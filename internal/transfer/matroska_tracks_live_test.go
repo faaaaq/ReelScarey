@@ -330,3 +330,26 @@ func TestLiveMatroskaBoundedCleanupJournal(t *testing.T) {
 		}
 	}
 }
+
+func TestLiveMatroskaUnicodePathWithCLocale(t *testing.T) {
+	if os.Getenv("REELSCAREY_LIVE_TRACKS") != "1" {
+		t.Skip("requires real MKVToolNix")
+	}
+	t.Setenv("LC_ALL", "C")
+	path := filepath.Join(t.TempDir(), "Nausicaä – 字幕.mkv")
+	generateTrackFixture(t, path)
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DisableTracksMatroskaInPlaceVerified(context.Background(), path, `{}`, []int{4}, info.Size()); err != nil {
+		t.Fatal(err)
+	}
+	ident, err := matroskaIdentify(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enabledOf(ident.Tracks[4]) {
+		t.Fatal("unicode path track remained enabled")
+	}
+}
