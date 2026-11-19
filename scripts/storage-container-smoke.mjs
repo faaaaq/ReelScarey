@@ -16,6 +16,12 @@ csrf=session.csrf_token
 if(mode==='before'){
  const settings=await call('/settings')
  await call('/settings',{library_name:'Storage migration fixture',movie_folder:settings.movie_folder,series_folder:settings.series_folder,episode_naming:settings.episode_naming,revision:settings.revision},200,'PUT')
+ // Saving settings queues automatic embedded-title updates for registered
+ // files. The migration exercise verifies that media bytes are copied
+ // exactly, so pause the durable title queue: otherwise a pending update
+ // may legitimately rewrite a registered file after the activation restart
+ // and the original-vs-copied byte comparison below would race it.
+ await call('/organization/title-queue',{paused:true},200,'PUT')
 }
 const browser=await call('/system/storage')
 assert.ok(browser.items.some(v=>v.name==='Movies'&&v.kind==='directory'))
