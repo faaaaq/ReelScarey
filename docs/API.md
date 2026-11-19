@@ -1792,7 +1792,9 @@ files remain outside the operation.
   `disable` hides them in place by clearing the Matroska track enabled flag with
   `mkvpropedit`. Disable changes only the container header (seconds per file, no
   packet rewrite), keeps every track and every external subtitle, and is
-  verified against `mkvmerge`'s track list and the recorded probe. It applies to
+  verified against `mkvmerge`'s track list and fresh probes taken before and
+  after the edit. Older catalog probes do not need a library-wide refresh;
+  successful edits save the verified current probe. It applies to
   Matroska (`.mkv`/`.webm`) only; other containers are reported as skipped and
   can be `remove`d instead. The plan reports `dropped` (removed) and `disabled`
   (hidden) track counts separately. Removal stays on the verified ffmpeg remux

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -38,6 +39,111 @@ func generateTrackFixture(t *testing.T, path string) {
 	}
 	if b, err := exec.Command("ffmpeg", args...).CombinedOutput(); err != nil {
 		t.Fatalf("ffmpeg: %v %s", err, b)
+	}
+}
+
+func TestLiveMatroskaDisableTracksWithLegacyProbe(t *testing.T) {
+	if os.Getenv("REELSCAREY_LIVE_TRACKS") != "1" {
+		t.Skip("requires ffmpeg and mkvtoolnix")
+	}
+	if !MatroskaDisableToolsAvailable() {
+		t.Fatal("mkvmerge/mkvpropedit missing")
+	}
+	ctx := context.Background()
+	src := filepath.Join(t.TempDir(), "original.mkv")
+	generateTrackFixture(t, src)
+	f, err := os.Open(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := (FFprobe{}).Probe(ctx, f)
+	f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate catalog JSON written before indexes and default/forced flags
+	// were recorded, rather than merely zeroing the current Go fields.
+	raw, err := json.Marshal(live)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacy map[string]any
+	if err = json.Unmarshal(raw, &legacy); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"audio_streams", "subtitle_streams"} {
+		for _, value := range legacy[key].([]any) {
+			stream := value.(map[string]any)
+			delete(stream, "index")
+			delete(stream, "default")
+			delete(stream, "forced")
+		}
+	}
+	raw, err = json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var old Probe
+	if err = json.Unmarshal(raw, &old); err != nil {
+		t.Fatal(err)
+	}
+	if verifyUnchangedStreams(old, live) == nil {
+		t.Fatal("fixture does not reproduce the legacy comparison mismatch")
+	}
+	for _, mode := range []string{"audio", "subtitles", "unexpected_audio_change"} {
+		t.Run(mode, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "edit.mkv")
+			copyFixture(t, src, path)
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			beforeIdent, err := matroskaIdentify(ctx, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			index, kind := 4, "subtitles"
+			if mode == "audio" {
+				index, kind = 2, "audio"
+			}
+			if mode == "unexpected_audio_change" {
+				tool, err := exec.LookPath("mkvpropedit")
+				if err != nil {
+					t.Fatal(err)
+				}
+				wrapper := filepath.Join(t.TempDir(), "editor")
+				body := "#!/bin/sh\nset -eu\n\"$REAL_MKVPROPEDIT\" \"$@\"\n\"$REAL_MKVPROPEDIT\" \"$1\" --edit track:a1 --set language=fra\n"
+				if err := os.WriteFile(wrapper, []byte(body), 0700); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("REAL_MKVPROPEDIT", tool)
+				t.Setenv("REELSCAREY_MKVPROPEDIT_PATH", wrapper)
+			}
+			result, err := DisableTracksMatroskaInPlaceVerified(ctx, path, string(raw), []int{index}, info.Size())
+			if mode == "unexpected_audio_change" {
+				if problemCode(err) != "metadata_changed_streams" {
+					t.Fatalf("unexpected audio change accepted: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var current Probe
+			if err := json.Unmarshal([]byte(result), &current); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(current, live) {
+				t.Fatalf("returned probe lost current indexes/flags: got %+v want %+v", current, live)
+			}
+			afterIdent, err := matroskaIdentify(ctx, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := verifyDisabled(beforeIdent, afterIdent, []mkvTarget{{Kind: kind, Ordinal: 2}}); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

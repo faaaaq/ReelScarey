@@ -197,26 +197,28 @@ func verifyDisabled(before, after mkvIdentify, targets []mkvTarget) error {
 // DisableTracksMatroskaInPlaceVerified hides the reviewed tracks by clearing
 // their Matroska enabled flag with mkvpropedit. Only the container header
 // changes: no packet is read or rewritten, so it takes seconds. The edit is
-// verified against mkvmerge's track list and the recorded ffprobe facts, and a
-// bounded size change is required. It returns the (unchanged) probe JSON.
-func DisableTracksMatroskaInPlaceVerified(ctx context.Context, path, beforeProbe string, drop []int, beforeSize int64) (string, error) {
+// verified against mkvmerge's track list and fresh before/after ffprobe facts,
+// and a bounded size change is required. The catalog probe is intentionally
+// ignored: older records lack stream indexes and disposition flags. It returns
+// the verified current probe JSON for the caller to persist.
+func DisableTracksMatroskaInPlaceVerified(ctx context.Context, path, _ string, drop []int, beforeSize int64) (string, error) {
 	if len(drop) == 0 {
 		return "", problem("invalid_selection", "Choose tracks to disable.")
-	}
-	var probe Probe
-	if e := json.Unmarshal([]byte(beforeProbe), &probe); e != nil {
-		return "", problem("invalid_media", "The recorded media information could not be read.")
-	}
-	beforeIdent, e := matroskaIdentify(ctx, path)
-	if e != nil {
-		return "", e
 	}
 	source, e := os.Open(path)
 	if e != nil {
 		return "", e
 	}
+	defer source.Close()
+	probe, e := (FFprobe{}).Probe(ctx, source)
+	if e != nil {
+		return "", e
+	}
+	beforeIdent, e := matroskaIdentify(ctx, path)
+	if e != nil {
+		return "", e
+	}
 	manifest, e := inspectManifest(ctx, source)
-	source.Close()
 	if e != nil {
 		return "", e
 	}

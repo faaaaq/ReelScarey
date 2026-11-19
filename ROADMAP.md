@@ -31,7 +31,8 @@ Historical native and package results below remain as records of past work.
 - [x] Hide unwanted audio/subtitle languages without deleting anything: the
   track cleanup action `disable` clears the Matroska track enabled flag in place
   with `mkvpropedit` (seconds, no rewrite, every track and external subtitle
-  kept), for Matroska files, verified against `mkvmerge`.
+  kept), for Matroska files, verified against `mkvmerge` and live before/after
+  probes so older catalog records without indexes or flags remain supported.
 
 - [x] Permanent library-file and external subtitle deletion after review, with
   an explicit keep-files option. Large movie reviews use bounded file checks;
