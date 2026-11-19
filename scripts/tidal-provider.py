@@ -201,8 +201,12 @@ def login_run():
     try:
         settings = Settings()
         tidal = Tidal(settings)
-        result = tidal.session.login_oauth_session(fn_print=fn_print)
-        if result and tidal.login_finalize():
+        # tidaler 0.1.8 exposes login_oauth_simple, which returns None after
+        # the future completes. login_finalize performs the actual session
+        # check and persists the token; do not treat its return as the OAuth
+        # result itself.
+        tidal.session.login_oauth_simple(fn_print=fn_print)
+        if tidal.login_finalize():
             state.update({"phase": "done", "result": "success"})
         else:
             state.update({"phase": "done", "result": "failed",

@@ -323,11 +323,24 @@ function TidalSection() {
                 <Alert kind="info" title="Finish the login in your browser">
                   {(login.data?.lines ?? []).length > 0 ? (
                     (login.data?.lines ?? []).map((line, index) =>
-                      line.startsWith("http") ? (
+                      /https:\/\/[^\s]+/.test(line) ? (
                         <p key={index}>
-                          <a href={line} target="_blank" rel="noreferrer">
-                            {line}
-                          </a>
+                          {line
+                            .split(/(https:\/\/[^\s]+)/)
+                            .map((part, partIndex) =>
+                              part.startsWith("https://") ? (
+                                <a
+                                  key={partIndex}
+                                  href={part}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {part}
+                                </a>
+                              ) : (
+                                part
+                              ),
+                            )}
                         </p>
                       ) : (
                         <p key={index}>{line}</p>

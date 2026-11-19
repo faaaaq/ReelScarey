@@ -295,12 +295,18 @@ describe("TIDAL device login", () => {
             ? {
                 phase: "done",
                 result: "success",
-                lines: ["https://tidal.test/device", "Code: OFFLINE-TEST"],
+                lines: [
+                  "Visit https://tidal.test/device to log in, the code will expire in 300 seconds",
+                  "Code: OFFLINE-TEST",
+                ],
               }
             : {
                 phase: "waiting",
                 result: "",
-                lines: ["https://tidal.test/device", "Code: OFFLINE-TEST"],
+                lines: [
+                  "Visit https://tidal.test/device to log in, the code will expire in 300 seconds",
+                  "Code: OFFLINE-TEST",
+                ],
               },
         );
       }

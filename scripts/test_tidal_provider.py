@@ -88,14 +88,15 @@ class Settings:
 
 
 class FakeSession:
-    def login_oauth_session(self, fn_print):
+    def login_oauth_simple(self, fn_print):
         fn_print("https://tidal.test/device")
         fn_print("Code: OFFLINE-TEST")
         marker = os.path.join(path_config_base(), "authorized")
         deadline = time.time() + 10
         while not os.path.exists(marker) and time.time() < deadline:
             time.sleep(0.02)
-        return os.path.exists(marker)
+        if not os.path.exists(marker):
+            raise TimeoutError("offline authorization was not completed")
 
 
 class Tidal:
