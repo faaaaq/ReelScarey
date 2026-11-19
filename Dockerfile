@@ -68,6 +68,9 @@ COPY --from=youtube-tools /opt/reelscarey-yt-dlp /opt/reelscarey-yt-dlp
 # tidal-tools base image into /usr/local so the venv's absolute symlinks
 # resolve; bookworm glibc matches, and apt python3 in /usr/bin is untouched.
 COPY --from=tidal-tools /usr/local/bin/python3.12 /usr/local/bin/python3.12
+# The venv's symlinks target /usr/local/bin/python3 and /usr/local/bin/python,
+# so both must exist beside the real interpreter or every provider call fails.
+RUN ln -sf python3.12 /usr/local/bin/python3 && ln -sf python3.12 /usr/local/bin/python
 COPY --from=tidal-tools /usr/local/lib/libpython3.12.so.1.0 /usr/local/lib/
 COPY --from=tidal-tools /usr/local/lib/python3.12 /usr/local/lib/python3.12
 RUN ldconfig
