@@ -25,9 +25,16 @@ func TestProviderScriptLoginLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	script := filepath.Join(root, "scripts", "test_tidal_provider.py")
+	if _, err := os.Stat(script); err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("provider sources are not copied into the backend-only Docker build stage")
+		}
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, python, filepath.Join(root, "scripts", "test_tidal_provider.py"))
+	cmd := exec.CommandContext(ctx, python, script)
 	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1")
 	output, err := cmd.CombinedOutput()
 	if ctx.Err() != nil {
