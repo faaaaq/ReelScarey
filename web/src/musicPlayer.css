@@ -84,6 +84,28 @@
   color: var(--rs-danger);
 }
 
+.music-player-copy > .music-player-error {
+  white-space: normal;
+}
+.music-player-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  font-size: 12px;
+}
+.music-player-error-actions button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--rs-link);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.music-player-error-actions a {
+  color: var(--rs-link);
+}
+
 .music-player-center {
   display: flex;
   flex-direction: column;

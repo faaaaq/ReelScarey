@@ -143,7 +143,9 @@ describe("TV catalog and monitoring", () => {
     });
     mount("/series/7");
     await screen.findByRole("heading", { name: "Test TV series" });
-    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Run automatic search" }),
+    );
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(posts[0].body).toEqual({ media_id: 7 });
     await userEvent.click(

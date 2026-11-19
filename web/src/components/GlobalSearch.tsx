@@ -1,5 +1,12 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ArrowRight, Film, Search, Tv } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  Film,
+  Search,
+  Settings2,
+  Tv,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api, type LibraryPage } from "../api";
 import { navigation } from "../navigation";
@@ -13,16 +20,24 @@ type Option = {
   path: string;
 };
 
-const pages = navigation.flatMap((item) => [
-  { label: item.label, path: item.to, icon: item.icon },
-  ...(item.children ?? [])
-    .filter((child) => child.to !== item.to)
-    .map((child) => ({
-      label: `${item.label}: ${child.label}`,
-      path: child.to,
-      icon: item.icon,
-    })),
-]);
+const pages = [
+  ...navigation.flatMap((item) => [
+    { label: item.label, path: item.to, icon: item.icon },
+    ...(item.children ?? [])
+      .filter((child) => child.to !== item.to)
+      .map((child) => ({
+        label: `${item.label}: ${child.label}`,
+        path: child.to,
+        icon: item.icon,
+      })),
+  ]),
+  {
+    label: "Settings: Organization — reorganize registered files",
+    path: "/organization",
+    icon: Settings2,
+  },
+  { label: "Activity: Release search", path: "/releases", icon: Activity },
+];
 
 function useLibraryMatches(query: string) {
   const [items, setItems] = useState<Option[]>([]);

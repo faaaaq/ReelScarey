@@ -12,6 +12,8 @@ import { Link } from "react-router-dom";
 import {
   type Dashboard as DashboardData,
   type DownloadPage,
+  type MusicAcquisitionJob,
+  type MusicAcquisitionJobList,
   type System,
 } from "../api";
 import { PageHeading, RequestState } from "../components";
@@ -120,12 +122,24 @@ function progressKind(state: string): "primary" | "warning" | "danger" {
   return "primary";
 }
 
+function musicIssueError(job: MusicAcquisitionJob) {
+  const detail = job.error.trim();
+  if (detail) return detail;
+  if (job.state === "failed")
+    return "The acquisition failed without a reported error.";
+  const incomplete = Math.max(0, job.track_count - job.completed_count);
+  return `${incomplete} ${incomplete === 1 ? "track" : "tracks"} did not complete; no further error was reported.`;
+}
+
 export function Dashboard() {
   const dashboard = useResource<DashboardData>("/dashboard");
   const system = useResource<System>("/system");
   const wanted = useResource<PlanningData>("/wanted");
   const upcoming = useResource<PlanningData>("/calendar?status=upcoming");
   const downloads = useResource<DownloadPage>("/downloads?page=1");
+  const musicDownloads = useResource<MusicAcquisitionJobList>(
+    "/library/music/acquisitions?page=1",
+  );
   const events = useResource<EventPage>("/events");
   const error = dashboard.error || system.error;
   const loading = dashboard.loading || system.loading;
@@ -135,6 +149,7 @@ export function Dashboard() {
     wanted.reload();
     upcoming.reload();
     downloads.reload();
+    musicDownloads.reload();
     events.reload();
   }
   const counts = dashboard.data?.counts;
@@ -159,6 +174,18 @@ export function Dashboard() {
   const attentionJobs = active.filter(
     (job) => job.state === "blocked" || job.state === "failed",
   );
+  const musicIssueJobs = (musicDownloads.data?.items ?? []).filter(
+    (job) =>
+      job.acknowledged_at === 0 &&
+      (job.state === "failed" ||
+        (job.state === "completed" && job.completed_count < job.track_count)),
+  );
+  // The backend issue count covers every page; the dashboard shows only a
+  // bounded sample from the newest page and links to the complete queue.
+  const musicIssueCount = musicDownloads.data
+    ? (musicDownloads.data.issues ?? musicIssueJobs.length)
+    : 0;
+  const visibleMusicIssues = musicIssueJobs.slice(0, 3);
   const queueItems = [...active].sort(
     (a, b) =>
       Number(b.state === "blocked" || b.state === "failed") -
@@ -229,7 +256,7 @@ export function Dashboard() {
                 <span className="dash-status-value">
                   {wanted.error ? "—" : (missing ?? "—")}
                 </span>
-                <span className="dash-status-label">missing</span>
+                <span className="dash-status-label">missing videos</span>
               </Link>
               <Link className="dash-status-item" to="/calendar">
                 <CalendarDays size={16} aria-hidden="true" />
@@ -260,6 +287,55 @@ export function Dashboard() {
                 <span className="rs-muted rs-small">
                   each row shows the reason and its recovery action.
                 </span>
+              </Alert>
+            )}
+
+            {musicDownloads.error && (
+              <Alert kind="danger" title="Music download status unavailable">
+                <p>{musicDownloads.error}</p>
+              </Alert>
+            )}
+
+            {musicIssueCount > 0 && (
+              <Alert kind="warning" title="Music downloads need attention">
+                <p>
+                  {musicIssueCount}{" "}
+                  {musicIssueCount === 1 ? "job has" : "jobs have"} failed or
+                  incomplete tracks.{" "}
+                  <Link to="/music/discover">Review download queue</Link> to
+                  retry failed tracks or clear resolved jobs.
+                </p>
+                {visibleMusicIssues.length > 0 && (
+                  <ul
+                    className="dash-music-issues"
+                    aria-label="Failed or incomplete music downloads"
+                  >
+                    {visibleMusicIssues.map((job) => (
+                      <li key={job.id}>
+                        <div className="dash-music-issue-head">
+                          <strong>
+                            {job.title || `Acquisition #${job.id}`}
+                          </strong>
+                          <span className="rs-muted rs-small">
+                            {job.completed_count}/{job.track_count}{" "}
+                            {job.track_count === 1 ? "track" : "tracks"}
+                            {" completed"}
+                          </span>
+                        </div>
+                        <p className="dash-music-issue-error">
+                          {musicIssueError(job)}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {visibleMusicIssues.length > 0 &&
+                  musicIssueCount > visibleMusicIssues.length && (
+                    <p className="rs-muted rs-small">
+                      Showing {visibleMusicIssues.length} of {musicIssueCount}{" "}
+                      affected jobs. Open the queue to review every job.
+                    </p>
+                  )}
               </Alert>
             )}
 

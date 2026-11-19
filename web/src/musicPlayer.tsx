@@ -112,7 +112,9 @@ type PlayerValue = {
   volume: number;
   muted: boolean;
   error: string;
+  errorRecovery: "" | "music-import";
   play: (track: PlayerTrack, queue?: PlayerTrack[]) => void;
+  retry: () => void;
   toggle: () => void;
   next: () => void;
   previous: () => void;
@@ -186,7 +188,12 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const [duration, setDuration] = useState(restored.duration);
   const [volume, setVolume] = useState(restored.volume);
   const [muted, setMuted] = useState(restored.muted);
-  const [error, setError] = useState("");
+  const [error, setErrorState] = useState("");
+  const [errorRecovery, setErrorRecovery] = useState<"" | "music-import">("");
+  function setError(message: string, recovery: "" | "music-import" = "") {
+    setErrorState(message);
+    setErrorRecovery(recovery);
+  }
 
   useEffect(() => {
     document.body.classList.toggle("has-music-player", Boolean(current));
@@ -306,6 +313,10 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     start(track);
+  }
+
+  function retry() {
+    if (current) start(current, position);
   }
 
   function toggle() {
@@ -454,14 +465,34 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       setError("Playback is unavailable for this file.");
       if (!source) return;
       void fetch(source, { headers: { Range: "bytes=0-0" } }).then(
-        (response) => {
+        async (response) => {
+          let code = "";
+          if (!response.ok) {
+            try {
+              const body = (await response.json()) as {
+                error?: { code?: string };
+              };
+              code = body.error?.code ?? "";
+            } catch {
+              // Some proxies replace the structured API error with plain text.
+            }
+          }
           if (response.status === 401) {
             window.dispatchEvent(new Event("reelscarey:unauthorized"));
             setError("Sign in again to keep listening.");
           } else if (response.status === 403) {
             setError("This account cannot play music files.");
           } else if (response.status === 404) {
-            setError("This file is no longer registered in the music library.");
+            if (code === "music_file_missing") {
+              setError(
+                "The registered file is missing or unreadable on the server. Restore it or import a replacement, then retry.",
+                "music-import",
+              );
+            } else {
+              setError(
+                "This file is no longer registered in the music library.",
+              );
+            }
           } else if (!response.ok) {
             setError("Playback is unavailable for this file.");
           }
@@ -498,7 +529,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     volume,
     muted,
     error,
+    errorRecovery,
     play,
+    retry,
     toggle,
     next,
     previous,
@@ -636,6 +669,16 @@ export function MusicPlayerBar() {
           {player.error && (
             <span className="music-player-error" role="status">
               {player.error}
+            </span>
+          )}
+          {player.error && (
+            <span className="music-player-error-actions">
+              <button type="button" onClick={player.retry}>
+                Retry playback
+              </button>
+              {player.errorRecovery === "music-import" && (
+                <Link to="/music/import">Open Music Import</Link>
+              )}
             </span>
           )}
         </div>

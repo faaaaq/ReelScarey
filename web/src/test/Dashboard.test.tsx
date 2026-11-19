@@ -77,6 +77,14 @@ function setup(
       state: "added",
     },
   ],
+  musicDownloads: unknown = {
+    items: [],
+    page: 1,
+    total: 0,
+    limit: 20,
+    active: 0,
+    issues: 0,
+  },
 ) {
   const fetch = vi.fn(async (url: string) => {
     if (url.endsWith("/dashboard"))
@@ -110,6 +118,10 @@ function setup(
       });
     if (url.endsWith("/downloads?page=1"))
       return Response.json({ ...downloads, page: 1, limit: 24 });
+    if (url.endsWith("/library/music/acquisitions?page=1"))
+      return musicDownloads instanceof Response
+        ? musicDownloads
+        : Response.json(musicDownloads as object);
     if (url.endsWith("/events"))
       return Response.json({ items: events, next: null });
     return Response.json(
@@ -248,5 +260,116 @@ describe("dashboard overview", () => {
     const queue = screen.getByRole("list", { name: "Active downloads" });
     const first = within(queue).getAllByRole("listitem")[0];
     expect(within(first).getByText("Stuck download")).toBeVisible();
+  });
+
+  it("shows bounded failed music acquisition details and a queue recovery link", async () => {
+    const failed = {
+      id: 5,
+      source_url: "",
+      source_kind: "album",
+      title: "Failed album",
+      root: "Music",
+      format: "source",
+      state: "failed",
+      track_count: 4,
+      completed_count: 1,
+      error: "No approved audio source remained.",
+      created_at: 1,
+      updated_at: 1,
+      acknowledged_at: 0,
+    };
+    setup({ items: [], total: 0 }, [], {
+      items: [
+        failed,
+        {
+          ...failed,
+          id: 4,
+          title: "Incomplete album",
+          state: "completed",
+          track_count: 3,
+          completed_count: 2,
+          error: "One track could not be acquired.",
+        },
+        { ...failed, id: 3, title: "Another failed album" },
+        { ...failed, id: 2, title: "Oldest failed album" },
+      ],
+      page: 1,
+      total: 4,
+      limit: 20,
+      active: 0,
+      issues: 4,
+    });
+    mount();
+
+    const title = await screen.findByText("Music downloads need attention");
+    const alert = title.closest('[role="status"]') as HTMLElement;
+    expect(alert).not.toBeNull();
+    const rows = within(alert).getAllByRole("listitem");
+    expect(rows).toHaveLength(3);
+    expect(within(rows[0]).getByText("Failed album")).toBeVisible();
+    expect(within(rows[0]).getByText("1/4 tracks completed")).toBeVisible();
+    expect(
+      within(rows[0]).getByText("No approved audio source remained."),
+    ).toBeVisible();
+    expect(within(rows[1]).getByText("Incomplete album")).toBeVisible();
+    expect(within(rows[1]).getByText("2/3 tracks completed")).toBeVisible();
+    expect(
+      within(rows[1]).getByText("One track could not be acquired."),
+    ).toBeVisible();
+    expect(
+      within(alert).getByRole("link", { name: "Review download queue" }),
+    ).toHaveAttribute("href", "/music/discover");
+    expect(within(alert).getAllByRole("listitem")).toHaveLength(3);
+    expect(
+      within(alert).queryByText("Oldest failed album"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(alert).getByText(/Showing 3 of 4 affected jobs/),
+    ).toBeVisible();
+    // Music attention does not replace the existing video queue panel.
+    expect(await screen.findByText("No active downloads.")).toBeVisible();
+  });
+
+  it("does not show music attention for a clean acquisition queue", async () => {
+    setup({ items: [], total: 0 }, [], {
+      items: [],
+      page: 1,
+      total: 0,
+      limit: 20,
+      active: 0,
+      issues: 0,
+    });
+    mount();
+    await screen.findByRole("heading", { name: "Test library" });
+    expect(await screen.findByText("No active downloads.")).toBeVisible();
+    expect(
+      screen.queryByText("Music downloads need attention"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("list", {
+        name: "Failed or incomplete music downloads",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reports a music acquisition API error without hiding video status", async () => {
+    setup(
+      { items: [], total: 0 },
+      [],
+      Response.json(
+        { error: { message: "Music acquisitions are offline." } },
+        { status: 503 },
+      ),
+    );
+    mount();
+
+    expect(
+      await screen.findByText("Music acquisitions are offline."),
+    ).toBeVisible();
+    expect(screen.getByText("Music download status unavailable")).toBeVisible();
+    expect(
+      screen.queryByText("Music downloads need attention"),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText("No active downloads.")).toBeVisible();
   });
 });
