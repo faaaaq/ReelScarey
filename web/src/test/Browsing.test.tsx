@@ -492,6 +492,15 @@ describe("catalog browsing", () => {
           });
         if (url.endsWith("/downloads?page=1"))
           return Response.json({ items: [], page: 1, total: 0, limit: 24 });
+        if (url.endsWith("/library/music/acquisitions?page=1"))
+          return Response.json({
+            items: [],
+            page: 1,
+            total: 0,
+            limit: 20,
+            active: 0,
+            issues: 0,
+          });
         if (url.endsWith("/events"))
           return Response.json({ items: [], next: null });
         return Response.json(

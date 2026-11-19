@@ -74,7 +74,7 @@ const groups: { name: string; items: Area[] }[] = [
         title: "Duplicate Review",
         to: "/duplicates",
         description:
-          "Inspect files that may be duplicates without changing anything.",
+          "Inspect probable duplicates, dismiss reviewed groups, or permanently delete selected files after reviewing every path.",
       },
       {
         title: "Music Import",
@@ -580,8 +580,9 @@ function MediaSettings() {
           <li>
             <Link to="/duplicates">Duplicate review</Link>
             <p>
-              Inspect probable duplicates and files whose checks disagree. This
-              review is read-only.
+              Inspect probable duplicates and files whose checks disagree.
+              Dismiss or restore reviewed groups, or permanently delete selected
+              files after reviewing every path.
             </p>
           </li>
           <li>

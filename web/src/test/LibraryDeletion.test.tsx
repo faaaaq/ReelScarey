@@ -99,6 +99,18 @@ describe("library file deletion", () => {
     expect(JSON.parse(String(request?.[1]?.body)).mode).toBe("keep");
   });
 
+  it("restores focus to the invoking control after Cancel and Escape", async () => {
+    mount();
+    const trigger = screen.getByRole("button", { name: "Delete file" });
+    await userEvent.click(trigger);
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+
+    await userEvent.click(trigger);
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
   it("explains that a timed-out review has not applied deletion", async () => {
     const { fetch } = mount();
     fetch.mockRejectedValueOnce(

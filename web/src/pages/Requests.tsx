@@ -15,7 +15,7 @@ import {
 } from "../ui";
 import { Pagination } from "../movieComponents";
 import "./Admin.css";
-import { api, messageFor } from "../api";
+import { APIError, api, messageFor } from "../api";
 import { useAuth } from "../auth";
 import { PageHeading, RequestState } from "../components";
 import { useResource } from "../useResource";
@@ -93,7 +93,11 @@ export function RequesterHome() {
       setPage(nextPage);
       setTotalPages(data.total_pages || 1);
     } catch (e) {
-      setError(messageFor(e));
+      setError(
+        e instanceof APIError && e.code === "tmdb_not_configured"
+          ? "Title search is unavailable until an administrator connects TMDb. Contact the administrator."
+          : messageFor(e),
+      );
     } finally {
       setPending(false);
     }
@@ -947,7 +951,7 @@ export function AdminRequests() {
                                 </Button>
                               }
                               title={`Decline "${item.title}"?`}
-                              description="The request is declined and the requester is notified. They can submit it again."
+                              description="The request will be declined. The requester can see this status on their Requests page and can submit it again."
                               confirmLabel="Decline request"
                               onConfirm={() => act(item.id, "decline")}
                             />

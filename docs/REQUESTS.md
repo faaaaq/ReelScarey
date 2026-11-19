@@ -6,8 +6,11 @@ interface. They cannot access administrator APIs. The administrator can disable
 an account, which immediately revokes its sessions. Share initial passwords
 privately. Request users can change their own password; doing so signs out all
 of their request sessions. The administrator can approve or decline requests; approval adds the
-canonical title to the catalog, with monitoring enabled. Downloads still depend
-on the configured automation and download services.
+canonical title to the catalog, with monitoring enabled. Declining updates the
+requester's in-app status and does not claim that an external notification was
+delivered. If TMDb is not configured, requesters are told to contact the
+administrator rather than being sent to administrator-only Settings. Downloads
+still depend on the configured automation and download services.
 
 Request users can search TMDb for a movie or show and submit it. Duplicate
 requests from the same account are retained as one request. Request status and

@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useId, useState, type MouseEvent } from "react";
 import { Button } from "@radix-ui/themes";
 import { Trash2 } from "lucide-react";
 import { api, messageFor } from "../api";
@@ -40,6 +40,7 @@ export function LibraryDeletion({
   name?: string;
   onDone: () => void;
 }) {
+  const triggerID = useId();
   const [open, setOpen] = useState(false);
   const [keep, setKeep] = useState(false);
   const [review, setReview] = useState<DeletionPlan | null>(null);
@@ -67,6 +68,15 @@ export function LibraryDeletion({
   function changeOpen(value: boolean) {
     if (busy) return;
     setOpen(value);
+    if (!value) {
+      // Controlled closes do not consistently restore focus through every
+      // Radix Themes path. Return keyboard users to the invoking control
+      // after React has closed the dialog, provided that control still exists.
+      window.setTimeout(() => {
+        const trigger = document.getElementById(triggerID);
+        if (trigger?.isConnected) trigger.focus();
+      }, 0);
+    }
     if (running) return;
     setReview(null);
     setJobID("");
@@ -121,7 +131,13 @@ export function LibraryDeletion({
       onOpenChange={changeOpen}
       title={name ? `Delete ${name}?` : label}
       trigger={
-        <Button size="1" color="red" variant="soft" disabled={!ids.length}>
+        <Button
+          id={triggerID}
+          size="1"
+          color="red"
+          variant="soft"
+          disabled={!ids.length}
+        >
           <Trash2 size={14} aria-hidden="true" />
           {label}
         </Button>
