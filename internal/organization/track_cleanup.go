@@ -326,6 +326,7 @@ func (s *Service) prepareCleanupFile(ctx context.Context, root *os.Root, p *Plan
 		return err
 	}
 	if bounded {
+		reportWork(ctx, "Checking file identity and samples", 0, 0)
 		observation, e := filecheck.Capture(ctx, input)
 		if e != nil {
 			input.Close()

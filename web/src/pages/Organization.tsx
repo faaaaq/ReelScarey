@@ -1310,7 +1310,8 @@ function Reorganize({
               open={p.state === "running" || p.state === "queued"}
             >
               <summary>
-                {p.state} ·{" "}
+                {p.state === "review" && p.track_cleanup ? "Stopped" : p.state}{" "}
+                ·{" "}
                 {p.track_cleanup
                   ? p.track_cleanup.request.action === "disable"
                     ? "Hide tracks"
@@ -1330,7 +1331,8 @@ function Reorganize({
               {p.track_cleanup && (
                 <>
                   <p>
-                    {p.track_cleanup.changed} videos changed ·{" "}
+                    {p.track_cleanup.changed} video
+                    {p.track_cleanup.changed === 1 ? "" : "s"} changed ·{" "}
                     {p.track_cleanup.disabled} tracks hidden ·{" "}
                     {p.track_cleanup.dropped} removed ·{" "}
                     {p.track_cleanup.skipped} skipped

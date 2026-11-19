@@ -29,7 +29,7 @@ export function BatchProgress({
             value={processed ?? 0}
           />
           <span>
-            {processed ?? 0} of {total} files complete ·{" "}
+            {processed ?? 0} of {total} files processed ·{" "}
             {Math.floor((100 * (processed ?? 0)) / total)}%
           </span>
         </>
@@ -54,9 +54,9 @@ export function BatchProgress({
             </>
           )}
           <small>
-            Step updated{" "}
-            {new Date(progress.updated_at * 1000).toLocaleTimeString()} · file
-            started {new Date(progress.started_at * 1000).toLocaleTimeString()}
+            {Math.max(0, Math.floor(Date.now() / 1000) - progress.started_at)}s
+            on current file · updated{" "}
+            {new Date(progress.updated_at * 1000).toLocaleTimeString()}
           </small>
         </>
       )}
