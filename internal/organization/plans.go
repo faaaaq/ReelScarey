@@ -291,12 +291,16 @@ func readPlan(ctx context.Context, q query, id string) (Plan, error) {
 // currently executing or about to execute. It exists so any page can show
 // live progress without downloading every saved plan snapshot.
 type ActivePlan struct {
-	ID        string `json:"id"`
-	State     string `json:"state"`
-	Phase     string `json:"phase"`
-	Message   string `json:"message,omitempty"`
-	Kind      string `json:"kind"`
-	UpdatedAt int64  `json:"updated_at"`
+	Progress  *WorkProgress `json:"progress,omitempty"`
+	Disabled  int           `json:"disabled"`
+	Action    string        `json:"action,omitempty"`
+	Mode      string        `json:"mode,omitempty"`
+	ID        string        `json:"id"`
+	State     string        `json:"state"`
+	Phase     string        `json:"phase"`
+	Message   string        `json:"message,omitempty"`
+	Kind      string        `json:"kind"`
+	UpdatedAt int64         `json:"updated_at"`
 	// Track-cleanup progress; zero for every other plan kind.
 	Processed int      `json:"processed"`
 	Total     int      `json:"total"`
@@ -349,7 +353,12 @@ func (s *Service) busyProblem(ctx context.Context, retry string) error {
 	label := activeLabels[plan.Kind]
 	detail := ""
 	if plan.Kind == "track_cleanup" {
-		detail = fmt.Sprintf(" — %d of %d videos reviewed, %d tracks removed", plan.Processed, plan.Total, plan.Dropped)
+		count, action := plan.Dropped, "removed"
+		if plan.Action == "disable" {
+			label = "Hiding media tracks"
+			count, action = plan.Disabled, "hidden"
+		}
+		detail = fmt.Sprintf(" — %d of %d videos reviewed, %d tracks %s", plan.Processed, plan.Total, count, action)
 		if plan.Skipped > 0 {
 			detail += fmt.Sprintf(", %d skipped", plan.Skipped)
 		}
@@ -377,10 +386,13 @@ func (s *Service) Active(ctx context.Context) (ActivePlan, bool, error) {
 	if e := json.Unmarshal([]byte(raw), &p); e != nil {
 		return ActivePlan{}, false, e
 	}
-	out := ActivePlan{ID: id, State: "queued", Phase: p.Phase, Kind: activeKind(p), UpdatedAt: updated}
+	out := ActivePlan{Progress: p.Progress, ID: id, State: "queued", Phase: p.Phase, Kind: activeKind(p), UpdatedAt: updated}
 	if p.TrackCleanup != nil {
 		out.Processed = p.TrackCleanup.Processed
 		out.Total = len(p.TrackCleanup.Targets)
+		out.Disabled = p.TrackCleanup.Disabled
+		out.Mode = p.TrackCleanup.Request.Mode
+		out.Action = p.TrackCleanup.Request.Action
 		out.Changed = p.TrackCleanup.Changed
 		out.Skipped = p.TrackCleanup.Skipped
 		out.Dropped = p.TrackCleanup.Dropped
@@ -691,6 +703,7 @@ func (s *Service) Tick(ctx context.Context) error {
 	if n, nerr := claimed.RowsAffected(); nerr != nil || n != 1 {
 		return nil
 	}
+	ctx = s.withWorkProgress(ctx, &p)
 	e = s.execute(ctx, &p)
 	if e != nil && !errors.Is(e, errOwnerStopped) && !(p.TrackCleanup != nil && ctx.Err() != nil) {
 		s.recordPlanFailure(ctx, &p, e)

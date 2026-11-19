@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
 	"os"
 	"path"
 	"path/filepath"
@@ -62,15 +63,16 @@ type Replacement struct {
 	Episodes       []Episode           `json:"episodes"`
 }
 type ReplacementMetadata struct {
-	Path       string  `json:"path"`
-	Size       int64   `json:"size_bytes"`
-	SHA        string  `json:"sha256"`
-	Probe      string  `json:"probe_json"`
-	DownloadID *string `json:"download_id"`
-	FileIndex  int     `json:"file_index"`
-	ImportedAt int64   `json:"imported_at"`
-	Origin     string  `json:"origin"`
-	SourceName string  `json:"source_name"`
+	Observation *filecheck.Snapshot `json:"observation,omitempty"`
+	Path        string              `json:"path"`
+	Size        int64               `json:"size_bytes"`
+	SHA         string              `json:"sha256"`
+	Probe       string              `json:"probe_json"`
+	DownloadID  *string             `json:"download_id"`
+	FileIndex   int                 `json:"file_index"`
+	ImportedAt  int64               `json:"imported_at"`
+	Origin      string              `json:"origin"`
+	SourceName  string              `json:"source_name"`
 	// Mtime and Identity describe a verified replacement output. They are not
 	// stored in media_files, so Before records leave them zero.
 	Mtime    int64  `json:"mtime,omitempty"`
@@ -78,7 +80,7 @@ type ReplacementMetadata struct {
 }
 
 func (m ReplacementMetadata) companion(source string) Companion {
-	return Companion{Source: source, Size: m.Size, Mtime: m.Mtime, SHA: m.SHA, Identity: m.Identity}
+	return Companion{Source: source, Size: m.Size, Mtime: m.Mtime, SHA: m.SHA, Identity: m.Identity, Observation: m.Observation}
 }
 
 type YouTubeVersion struct {

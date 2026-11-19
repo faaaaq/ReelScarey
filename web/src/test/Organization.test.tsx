@@ -417,7 +417,7 @@ describe("Reviewed library organization", () => {
           restores_plan: "completed-move",
         });
     });
-    mount();
+    mount("/organization?view=jobs");
     await userEvent.click(
       await screen.findByRole("button", { name: "Review undo move" }),
     );
@@ -685,6 +685,9 @@ describe("Reviewed library organization", () => {
     await screen.findByRole("checkbox", {
       name: "Select file 41: First feature",
     });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Jobs & history" }),
+    );
     await userEvent.click(await screen.findByText(/failed · 1 file ·/));
     await userEvent.click(
       screen.getByRole("button", { name: "Resume saved job" }),
@@ -693,6 +696,9 @@ describe("Reviewed library organization", () => {
     expect(
       screen.queryByRole("checkbox", { name: /Select file 999/ }),
     ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Move & organize files" }),
+    );
     expect(
       screen.getByRole("checkbox", { name: "Select file 41: First feature" }),
     ).not.toBeChecked();
@@ -781,6 +787,9 @@ describe("Reviewed library organization", () => {
     expect(applied?.[0]).toBe("/api/v1/organization/plans/plan-1/apply");
     expect(applied?.[1]?.method).toBe("POST");
     expect(applied?.[1]?.body).toBe("{}");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Move & organize files" }),
+    );
     expect(
       screen.getByRole("checkbox", { name: "Select file 41: First feature" }),
     ).not.toBeChecked();
@@ -933,4 +942,52 @@ describe("Reviewed library organization", () => {
     });
     expect(body.libraries[3].key).toMatch(/^collection_/);
   });
+});
+
+it("shows a running cleanup as a batch with the current file and hidden tracks", async () => {
+  setup((url, options, fixture) => {
+    if (url.endsWith("/organization/plans") && !options?.method)
+      return Response.json({
+        items: [
+          {
+            ...fixture.plan([], "cleanup"),
+            state: "running",
+            progress: {
+              file: "Movies/Example/example.mkv",
+              stage: "Editing and verifying MKV header",
+              started_at: 100,
+              updated_at: 101,
+            },
+            track_cleanup: {
+              request: { action: "disable", mode: "other_subtitles" },
+              targets: [
+                { id: 41, path: "Movies/Example/example.mkv" },
+                { id: 42, path: "Movies/Second.mkv" },
+              ],
+              processed: 1,
+              changed: 1,
+              disabled: 2,
+              dropped: 0,
+              skipped: 0,
+            },
+          },
+        ],
+      });
+  });
+  mount("/organization?view=jobs");
+  const jobs = await screen.findByRole("region", { name: "Organization jobs" });
+  expect(
+    await within(jobs).findByText("Editing and verifying MKV header"),
+  ).toBeVisible();
+  expect(within(jobs).getByText("Movies/Example/example.mkv")).toBeVisible();
+  expect(within(jobs).getByText(/2 tracks hidden/)).toBeVisible();
+  expect(
+    within(jobs).getByRole("progressbar", { name: "Batch completion" }),
+  ).toHaveAttribute("value", "1");
+  expect(
+    within(jobs).getByRole("button", { name: "Stop after current file" }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("checkbox", { name: "Select file 41: First feature" }),
+  ).not.toBeInTheDocument();
 });

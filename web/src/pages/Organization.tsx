@@ -1,3 +1,5 @@
+import { BatchProgress, type WorkProgress } from "../components/BatchProgress";
+import { TrackCleanup } from "./TrackCleanup";
 import { ConfirmDialog, PageBody } from "../ui";
 import { useEffect, useRef, useState } from "react";
 import { Button, TextField } from "@radix-ui/themes";
@@ -49,6 +51,17 @@ type Planned = {
   companions: { source: string; destination: string; size_bytes: number }[];
 };
 type Plan = {
+  progress?: WorkProgress;
+  track_cleanup?: {
+    request: { action: string; mode: string };
+    targets: { id: number; path: string }[];
+    processed: number;
+    changed: number;
+    skipped: number;
+    dropped: number;
+    disabled: number;
+    issues?: string[];
+  };
   removal?: {
     media_id: number;
     title: string;
@@ -104,7 +117,13 @@ const templates = {
 
 export function Organization() {
   const config = useResource<Config>("/organization");
-  const [tab, setTab] = useState("files");
+  const [viewParams, setViewParams] = useSearchParams();
+  const tab = viewParams.get("view") ?? "files";
+  const setTab = (view: string) => {
+    const next = new URLSearchParams(viewParams);
+    next.set("view", view);
+    setViewParams(next);
+  };
   return (
     <PageBody>
       <PageHeading title="Organize Files" />
@@ -116,16 +135,6 @@ export function Organization() {
       />
       {config.data && (
         <>
-          <section className="rs-panel organization-root">
-            <h2>Main media directory</h2>
-            <code>{config.data.main_root}</code>
-            <p className="rs-form-help">
-              All collection folders are inside this directory. Set
-              REELSCAREY_MEDIA_DIR when starting ReelScarey. Changing the main
-              directory requires stopping the app and migrating the entire media
-              tree; saving naming preferences moves no files.
-            </p>
-          </section>
           <nav className="search-kind" aria-label="Organization views">
             <button
               type="button"
@@ -141,7 +150,24 @@ export function Organization() {
             >
               Folders & naming
             </button>
+            <button
+              type="button"
+              aria-pressed={tab === "jobs"}
+              onClick={() => setTab("jobs")}
+            >
+              Jobs & history
+            </button>
           </nav>
+          {tab === "settings" && (
+            <details className="rs-panel organization-root">
+              <summary>Media storage location</summary>
+              <code>{config.data.main_root}</code>
+              <p>
+                Storage paths are configured in the deployment. Naming
+                preferences do not move existing files.
+              </p>
+            </details>
+          )}
           {tab === "settings" ? (
             <Naming
               key={config.data.revision}
@@ -149,7 +175,7 @@ export function Organization() {
               saved={config.reload}
             />
           ) : (
-            <Reorganize config={config.data} />
+            <Reorganize config={config.data} view={tab} />
           )}
         </>
       )}
@@ -366,7 +392,13 @@ function Naming({ config, saved }: { config: Config; saved: () => void }) {
     </section>
   );
 }
-function Reorganize({ config }: { config: Config }) {
+function Reorganize({
+  config,
+  view = "files",
+}: {
+  config: Config;
+  view?: string;
+}) {
   const [params, setParams] = useSearchParams(),
     [input, setInput] = useState(params.get("query") ?? "");
   const query = params.get("query") ?? "",
@@ -749,14 +781,15 @@ function Reorganize({ config }: { config: Config }) {
   }
   return (
     <>
-      <section className="rs-panel organization-selection">
+      <section
+        hidden={view === "jobs"}
+        className="rs-panel organization-selection"
+      >
         <h2>Move or organize registered files</h2>
         <p>
-          Review up to 50 files from this page. The plan checks video identity,
-          subtitles, conflicts and current naming rules. Downloads and seeding
-          sources stay in place. Unrelated extras and empty folders are
-          retained. File integrity checks read the entire file and can take a
-          while.
+          Select files, choose a destination collection, then review the
+          proposed paths before applying. Use Jobs & history to manage batches
+          and track cleanup.
         </p>
         <form
           className="movie-search-form"
@@ -994,6 +1027,7 @@ function Reorganize({ config }: { config: Config }) {
         >
           Review embedded title update
         </Button>
+        <h3>Move selected files</h3>
         <fieldset disabled={!!pending}>
           <label>
             Destination collection
@@ -1034,12 +1068,9 @@ function Reorganize({ config }: { config: Config }) {
           Also update embedded titles after organization
         </label>
         <p className="rs-form-help">
-          Choose MP4, M4V, Matroska, MOV, AVI or WebM files, or review an entire
-          title folder. The verified title update replaces the original in place
-          and records the previous title in the job history. No duplicate video
-          copy is kept. A temporary verified stage is written on the same
-          filesystem and consumed by the replacement, so allow free space equal
-          to the video during the update.
+          Matroska title edits use the container header when possible. Other
+          containers may need a temporary copy as large as the video. Every
+          proposed change is reviewed before it runs.
         </p>
         {mediaID && (
           <>
@@ -1078,7 +1109,8 @@ function Reorganize({ config }: { config: Config }) {
         </Button>
         {running && (
           <p role="status">
-            An organization job is active. Its saved progress appears below.
+            An organization job is active. Open Jobs & history for progress and
+            stop controls.
           </p>
         )}
         {error && (
@@ -1217,7 +1249,21 @@ function Reorganize({ config }: { config: Config }) {
           )}
         </section>
       )}
-      <section className="rs-panel rs-stack">
+      <section
+        hidden={view !== "jobs" && !mediaID}
+        className="rs-panel rs-stack"
+        aria-label="Organization jobs"
+      >
+        <h2>Jobs & history</h2>
+        <p>
+          Progress and stop controls stay available when you leave this page.
+          Stopping finishes the current file safely.
+        </p>
+        <details className="organization-new-task">
+          <summary>Start a track cleanup</summary>
+          <TrackCleanup kind="subtitles" />
+          <TrackCleanup kind="audio" />
+        </details>
         {mediaID && (
           <div>
             <h2>Remove this title</h2>
@@ -1250,18 +1296,77 @@ function Reorganize({ config }: { config: Config }) {
           retry={history.reload}
         />
         {history.data?.items
-          .filter((p) => p.state !== "review")
+          .filter((p) => p.state !== "review" || p.track_cleanup)
+          .sort(
+            (a, b) =>
+              Number(b.state === "running" || b.state === "queued") -
+                Number(a.state === "running" || a.state === "queued") ||
+              b.updated_at - a.updated_at,
+          )
           .map((p) => (
-            <details className="organization-job" key={p.id}>
+            <details
+              className="organization-job"
+              key={p.id}
+              open={p.state === "running" || p.state === "queued"}
+            >
               <summary>
                 {p.state} ·{" "}
-                {p.replacement
-                  ? "replacement"
-                  : `${p.files.length} ${p.files.length === 1 ? "file" : "files"}`}{" "}
+                {p.track_cleanup
+                  ? p.track_cleanup.request.action === "disable"
+                    ? "Hide tracks"
+                    : "Remove tracks"
+                  : p.replacement
+                    ? "replacement"
+                    : `${p.files.length} ${p.files.length === 1 ? "file" : "files"}`}{" "}
                 · {new Date(p.updated_at * 1000).toLocaleString()}
               </summary>
               <p>{p.message}</p>
+              <BatchProgress
+                progress={p.progress}
+                processed={p.track_cleanup?.processed}
+                total={p.track_cleanup?.targets.length}
+                state={p.state}
+              />
+              {p.track_cleanup && (
+                <>
+                  <p>
+                    {p.track_cleanup.changed} videos changed ·{" "}
+                    {p.track_cleanup.disabled} tracks hidden ·{" "}
+                    {p.track_cleanup.dropped} removed ·{" "}
+                    {p.track_cleanup.skipped} skipped
+                  </p>
+                  {!!p.track_cleanup.issues?.length && (
+                    <details>
+                      <summary>
+                        Skipped files ({p.track_cleanup.skipped})
+                      </summary>
+                      <ul>
+                        {p.track_cleanup.issues.map((issue) => (
+                          <li key={issue}>{issue}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </>
+              )}
               <PlanFiles plan={p} />
+              {p.track_cleanup && p.state === "running" && (
+                <Button
+                  variant="soft"
+                  disabled={!!pending}
+                  onClick={() => void cancelQueued(p)}
+                >
+                  Stop after current file
+                </Button>
+              )}
+              {p.track_cleanup && p.state === "review" && (
+                <Button
+                  disabled={!!pending || running}
+                  onClick={() => void resume(p)}
+                >
+                  Resume cleanup
+                </Button>
+              )}
               {p.state === "queued" && p.phase === "planned" && (
                 <Button
                   variant="soft"

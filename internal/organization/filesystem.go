@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
+	hashpkg "hash"
 	"io"
 	"os"
 	"path"
@@ -91,12 +94,30 @@ func (r contextReader) Read(b []byte) (int, error) {
 	}
 	return r.r.Read(b)
 }
+
+type digestProgress struct {
+	ctx context.Context
+	hashpkg.Hash
+	done, total int64
+}
+
+func (w *digestProgress) Write(p []byte) (int, error) {
+	n, e := w.Hash.Write(p)
+	w.done += int64(n)
+	reportWork(w.ctx, "Reading full checksum", w.done, w.total)
+	return n, e
+}
 func hash(ctx context.Context, f *os.File) (string, error) {
 	if _, e := f.Seek(0, 0); e != nil {
 		return "", e
 	}
 	h := sha256.New()
-	if _, e := io.Copy(h, contextReader{ctx, f}); e != nil {
+	info, e := f.Stat()
+	if e != nil {
+		return "", e
+	}
+	reportWork(ctx, "Reading full checksum", 0, info.Size())
+	if _, e := io.Copy(&digestProgress{ctx: ctx, Hash: h, total: info.Size()}, contextReader{ctx, f}); e != nil {
 		return "", e
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
@@ -138,6 +159,18 @@ func checkSource(ctx context.Context, root *os.Root, v Companion, verifyHash boo
 	}
 	if a.Identity != v.Identity || a.Size != v.Size || a.Mtime != v.Mtime {
 		return problem("source_changed", "A reviewed file changed. Its original path was left unchanged.")
+	}
+	if verifyHash && v.Observation != nil {
+		f, err := root.Open(filepath.FromSlash(v.Source))
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		raw, _ := json.Marshal(v.Observation)
+		if err := filecheck.Verify(ctx, f, string(raw)); err != nil {
+			return problem("source_changed", "The observed file changed during the header edit.")
+		}
+		return nil
 	}
 	if verifyHash {
 		f, e := root.Open(filepath.FromSlash(v.Source))

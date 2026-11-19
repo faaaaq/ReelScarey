@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
 	"os"
 	"path"
 	"path/filepath"
@@ -23,7 +24,8 @@ type TrackStream struct {
 }
 
 type TrackCleanupRequest struct {
-	Mode string `json:"mode"`
+	Mode         string `json:"mode"`
+	Verification string `json:"verification,omitempty"`
 	// Action is "remove" (default) or "disable". Disable hides Matroska tracks
 	// in place by clearing their enabled flag; remove rewrites the file.
 	Action  string `json:"action,omitempty"`
@@ -91,6 +93,9 @@ func (s *Service) PreviewTrackCleanup(ctx context.Context, request TrackCleanupR
 	}
 	if request.Action == "" {
 		request.Action = "remove"
+	}
+	if request.Verification != "" && request.Verification != "bounded" && request.Verification != "full" {
+		return Plan{}, problem("invalid_selection", "Choose fast header checks or full checksum verification.")
 	}
 	if request.Action != "remove" && request.Action != "disable" {
 		return Plan{}, problem("invalid_selection", "Choose whether to remove or disable the unwanted tracks.")
@@ -293,8 +298,16 @@ func (s *Service) prepareCleanupFile(ctx context.Context, root *os.Root, p *Plan
 			return problem("unknown_language", "The original language is missing. Refresh the title metadata first.")
 		}
 	}
-	if err = s.prepareChecksums(ctx, root, []int64{target.ID}, 0); err != nil {
+	bounded := p.TrackCleanup.Request.Action == "disable" && p.TrackCleanup.Request.Verification != "full"
+	var youtube int
+	if err = s.db.QueryRowContext(ctx, `SELECT count(*) FROM youtube_files WHERE media_file_id=?`, target.ID).Scan(&youtube); err != nil {
 		return err
+	}
+	bounded = bounded && youtube == 0
+	if !bounded {
+		if err = s.prepareChecksums(ctx, root, []int64{target.ID}, 0); err != nil {
+			return err
+		}
 	}
 	r, owner, err = replacementMetadata(ctx, s.db, target.ID)
 	if err != nil {
@@ -312,10 +325,29 @@ func (s *Service) prepareCleanupFile(ctx context.Context, root *os.Root, p *Plan
 	if err != nil {
 		return err
 	}
-	digest, err := hash(ctx, input)
-	if err != nil || digest != r.SHA {
-		input.Close()
-		return problem("source_changed", "The registered video changed before track cleanup.")
+	if bounded {
+		observation, e := filecheck.Capture(ctx, input)
+		if e != nil {
+			input.Close()
+			return e
+		}
+		var raw string
+		if e = s.db.QueryRowContext(ctx, `SELECT verification_json FROM media_files WHERE id=?`, target.ID).Scan(&raw); e != nil {
+			input.Close()
+			return e
+		}
+		var saved filecheck.Snapshot
+		if json.Unmarshal([]byte(raw), &saved) == nil && saved.Sample != "" && !filecheck.SameContent(saved, observation) {
+			input.Close()
+			return problem("source_changed", "The registered file changed since its last observation.")
+		}
+		old.Observation = &observation
+	} else {
+		digest, e := hash(ctx, input)
+		if e != nil || digest != r.SHA {
+			input.Close()
+			return problem("source_changed", "The registered video changed before track cleanup.")
+		}
 	}
 	disable := p.TrackCleanup.Request.Action == "disable"
 	var streams []TrackStream

@@ -1,3 +1,4 @@
+import { BatchProgress, type WorkProgress } from "../components/BatchProgress";
 import { useEffect, useState } from "react";
 import { Button } from "@radix-ui/themes";
 import { api, messageFor, APIError } from "../api";
@@ -19,10 +20,12 @@ const modes = [
 ] as const;
 
 type CleanupPlan = {
+  progress?: WorkProgress;
   id: string;
   state: string;
   message: string;
   track_cleanup: {
+    request?: { action: string };
     targets: { id: number; path: string }[];
     processed: number;
     changed: number;
@@ -62,6 +65,7 @@ export function TrackCleanup({
   // without deleting anything. Removing rewrites the container (and deletes
   // matching external subtitles) and remains an explicit choice.
   const [action, setAction] = useState("disable");
+  const [verification, setVerification] = useState("bounded");
   const [library, setLibrary] = useState("");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -88,12 +92,19 @@ export function TrackCleanup({
     status.data?.state === "completed" ||
     status.data?.state === "failed" ||
     status.data?.state === "cancelled";
-  const running = !!id && !ended;
+  const running =
+    !!id &&
+    (!status.data ||
+      status.data.state === "queued" ||
+      status.data.state === "running");
   const plan = active.data?.plan;
   const adopted =
     !id &&
     !review &&
     plan?.kind === "track_cleanup" &&
+    (!plan.mode ||
+      kind === "all" ||
+      (kind === "audio") === (plan.mode === "other_audio")) &&
     (plan.state === "queued" || plan.state === "running");
   // A refused request names the operation that is using the library; the same
   // active-plan poll shows its live progress and offers the stop control.
@@ -135,6 +146,7 @@ export function TrackCleanup({
           await api<CleanupPlan>("/subtitles/track-cleanup", {
             method: "POST",
             body: JSON.stringify({
+              verification,
               mode,
               action,
               library,
@@ -283,6 +295,25 @@ export function TrackCleanup({
                 <option value="remove">Remove (rewrite the video)</option>
               </select>
             </label>
+            {disable && (
+              <label>
+                Verification{" "}
+                <select
+                  value={verification}
+                  onChange={(e) => setVerification(e.target.value)}
+                >
+                  <option value="bounded">
+                    Header and track checks (fast)
+                  </option>
+                  <option value="full">Full file checksums (slow)</option>
+                </select>
+                <span className="rs-form-help">
+                  Fast checks use file identity, sampled fingerprints and live
+                  track comparisons. They do not prove every media byte is
+                  unchanged.
+                </span>
+              </label>
+            )}
             <label>
               Tracks{" "}
               <select
@@ -346,10 +377,19 @@ export function TrackCleanup({
           </div>
         )}
         {id && (
+          <BatchProgress
+            progress={status.data?.progress}
+            processed={progress?.processed}
+            total={total}
+            state={status.data?.state ?? "queued"}
+          />
+        )}
+        {id && (
           <p role="status">
             {progress?.processed ?? 0} of {total} videos reviewed.{" "}
-            {progress?.disabled
-              ? `${progress.disabled} tracks hidden`
+            {(status.data?.track_cleanup.request?.action ?? action) ===
+            "disable"
+              ? `${progress?.disabled ?? 0} tracks hidden`
               : `${progress?.dropped ?? 0} tracks removed`}{" "}
             across {progress?.changed ?? 0} videos.{" "}
             {progress?.skipped ? `${progress.skipped} skipped.` : ""}

@@ -3,7 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { MediaWorkBanner } from "../components/MediaWorkBanner";
+import {
+  MediaWorkBanner,
+  activePlanDetail,
+} from "../components/MediaWorkBanner";
 import { setCSRFToken } from "../api";
 
 function mount() {
@@ -149,4 +152,21 @@ describe("media work banner", () => {
       expect(calls).toEqual([JSON.stringify({ paused: false })]),
     );
   });
+});
+
+it("reports disabled tracks without calling them removed", () => {
+  expect(
+    activePlanDetail({
+      id: "cleanup",
+      state: "running",
+      kind: "track_cleanup",
+      action: "disable",
+      processed: 23,
+      total: 1592,
+      changed: 1,
+      skipped: 8,
+      dropped: 0,
+      disabled: 2,
+    }),
+  ).toContain("2 tracks hidden");
 });

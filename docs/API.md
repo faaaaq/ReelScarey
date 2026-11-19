@@ -1794,7 +1794,13 @@ files remain outside the operation.
   packet rewrite), keeps every track and every external subtitle, and is
   verified against `mkvmerge`'s track list and fresh probes taken before and
   after the edit. Older catalog probes do not need a library-wide refresh;
-  successful edits save the verified current probe. It applies to
+  successful edits save the verified current probe. `verification` is `bounded`
+  by default for disable: file identity, size, timestamps, sampled fingerprints,
+  live stream/flag checks and journaled header recovery. It does not claim
+  whole-payload integrity. The old full SHA is cleared and a separate bounded
+  observation is recorded, allowing later copy/rewrite operations to promote it
+  to a full checksum. Choose `verification:"full"` for full-content checksums.
+  YouTube provenance edits and track removal retain full verification. It applies to
   Matroska (`.mkv`/`.webm`) only; other containers are reported as skipped and
   can be `remove`d instead. The plan reports `dropped` (removed) and `disabled`
   (hidden) track counts separately. Removal stays on the verified ffmpeg remux
@@ -1820,7 +1826,11 @@ files remain outside the operation.
   attention. The worker verifies retained embedded streams before publishing
   the rewritten file. External subtitle files are permanently deleted. The
   worker processes one video per tick, and the saved plan is the progress
-  record: progress survives page changes and reloads.
+  record: progress survives page changes and reloads. `progress` includes the
+  current `file`, human-readable `stage`, `started_at`, `updated_at` and, during
+  full hashing, `bytes_done` and `bytes_total`. It never changes the journal
+  phase or the owner stop state. The active-plan summary also exposes `action`,
+  `mode`, and separate `disabled`/`dropped` counts.
 - `GET /api/v1/organization/active` returns `{active:false}` or
   `{active:true,plan:{id,state,phase,kind,updated_at,...}}` for the one plan
   the worker is running or has queued. `kind` is `track_cleanup`, `deletion`,

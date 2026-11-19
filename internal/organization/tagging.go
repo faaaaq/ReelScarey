@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
 	"io"
 	"os"
 	"path"
@@ -528,6 +529,7 @@ func (s *Service) disableEmbeddedTracks(ctx context.Context, root *os.Root, stag
 	fullPath := filepath.Join(root.Name(), filepath.FromSlash(r.Original.Source))
 	// mkvpropedit opens its own handle on the path.
 	source.Close()
+	reportWork(ctx, "Editing and verifying MKV header", 0, 0)
 	probe, err := s.matroskaDisabler(ctx, fullPath, r.Before.Probe, r.DisableStreams, r.Original.Size)
 	if err != nil {
 		if restoreErr := s.restoreTitleHeader(root, stage, r); restoreErr != nil {
@@ -539,9 +541,23 @@ func (s *Service) disableEmbeddedTracks(ctx context.Context, root *os.Root, stag
 	if e != nil {
 		return e
 	}
-	digest, e := s.fileDigest(ctx, root, r.Original.Source)
-	if e != nil {
-		return e
+	var digest string
+	if r.Original.Observation != nil {
+		f, err := root.Open(filepath.FromSlash(r.Original.Source))
+		if err != nil {
+			return err
+		}
+		observation, err := filecheck.Capture(ctx, f)
+		f.Close()
+		if err != nil {
+			return err
+		}
+		edited.Observation = &observation
+	} else {
+		digest, e = s.fileDigest(ctx, root, r.Original.Source)
+		if e != nil {
+			return e
+		}
 	}
 	r.InPlace = true
 	r.Incoming = edited
@@ -552,6 +568,7 @@ func (s *Service) disableEmbeddedTracks(ctx context.Context, root *os.Root, stag
 	r.After.Probe = probe
 	r.After.Mtime = edited.Mtime
 	r.After.Identity = edited.Identity
+	r.After.Observation = edited.Observation
 	_, e = s.db.ExecContext(ctx, `UPDATE organization_outputs SET phase='published' WHERE plan_id=? AND destination=? AND identity=?`, p.ID, r.TagStage, saved)
 	return e
 }
@@ -705,6 +722,7 @@ func (s *Service) publishEmbeddedTitle(ctx context.Context, root *os.Root, p *Pl
 // commitEmbeddedTitle records the verified replacement facts in one transaction.
 // The previous title stays in the plan snapshot as the durable change record.
 func (s *Service) commitEmbeddedTitle(ctx context.Context, root *os.Root, p *Plan) error {
+	reportWork(ctx, "Saving verified results", 0, 0)
 	r := p.Replacement
 	after := r.After.companion(r.Original.Source)
 	if e := checkSource(ctx, root, after, true); e != nil {
@@ -740,7 +758,15 @@ func (s *Service) commitEmbeddedTitle(ctx context.Context, root *os.Root, p *Pla
 		return problem("revision_conflict", "YouTube provenance changed during the title update.")
 	}
 	a := r.After
-	result, e := tx.ExecContext(ctx, `UPDATE media_files SET relative_path=?,size_bytes=?,sha256=?,probe_json=?,verification_json='{}' WHERE id=? AND relative_path=? AND sha256=?`, a.Path, a.Size, a.SHA, a.Probe, r.FileID, r.Before.Path, r.Before.SHA)
+	verification := "{}"
+	if a.Observation != nil {
+		raw, err := json.Marshal(a.Observation)
+		if err != nil {
+			return err
+		}
+		verification = string(raw)
+	}
+	result, e := tx.ExecContext(ctx, `UPDATE media_files SET relative_path=?,size_bytes=?,sha256=?,probe_json=?,verification_json=? WHERE id=? AND relative_path=? AND sha256=?`, a.Path, a.Size, a.SHA, a.Probe, verification, r.FileID, r.Before.Path, r.Before.SHA)
 	if e != nil {
 		return e
 	}

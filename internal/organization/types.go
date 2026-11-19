@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/faaaaq/ReelScarey/internal/config"
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
 	"os"
 	"sync"
 )
@@ -87,12 +88,13 @@ type Snapshot struct {
 	LegacyEpisodeNaming string  `json:"legacy_episode_naming"`
 }
 type Companion struct {
-	Source      string `json:"source"`
-	Destination string `json:"destination"`
-	Size        int64  `json:"size_bytes"`
-	Mtime       int64  `json:"mtime"`
-	SHA         string `json:"sha256"`
-	Identity    string `json:"identity"`
+	Observation *filecheck.Snapshot `json:"observation,omitempty"`
+	Source      string              `json:"source"`
+	Destination string              `json:"destination"`
+	Size        int64               `json:"size_bytes"`
+	Mtime       int64               `json:"mtime"`
+	SHA         string              `json:"sha256"`
+	Identity    string              `json:"identity"`
 }
 type PlannedFile struct {
 	EmbeddedTitle string      `json:"embedded_title,omitempty"`
@@ -111,6 +113,7 @@ type PlannedFile struct {
 	Unchanged     bool        `json:"unchanged"`
 }
 type Plan struct {
+	Progress            *WorkProgress `json:"progress,omitempty"`
 	TrackCleanup        *TrackCleanup `json:"track_cleanup,omitempty"`
 	Removal             *Removal      `json:"removal,omitempty"`
 	RestoresPlan        string        `json:"restores_plan,omitempty"`

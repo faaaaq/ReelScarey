@@ -1,3 +1,4 @@
+import { BatchProgress, type WorkProgress } from "./BatchProgress";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@radix-ui/themes";
@@ -7,6 +8,10 @@ import { ConfirmDialog } from "../ui";
 import { useLiveResource } from "../useLiveResource";
 
 export type ActivePlan = {
+  progress?: WorkProgress;
+  disabled?: number;
+  action?: string;
+  mode?: string;
   id: string;
   state: string;
   kind: string;
@@ -47,9 +52,11 @@ export function activePlanLabel(kind: string) {
 
 export function activePlanDetail(plan: ActivePlan) {
   if (plan.kind === "track_cleanup") {
-    return `${plan.processed} of ${plan.total} videos · ${plan.dropped} track${
-      plan.dropped === 1 ? "" : "s"
-    } removed${plan.skipped ? ` · ${plan.skipped} skipped` : ""}`;
+    const count =
+      plan.action === "disable" ? (plan.disabled ?? 0) : plan.dropped;
+    return `${plan.processed} of ${plan.total} videos · ${count} track${
+      count === 1 ? "" : "s"
+    } ${plan.action === "disable" ? "hidden" : "removed"}${plan.skipped ? ` · ${plan.skipped} skipped` : ""}`;
   }
   return plan.state === "queued" ? "Waiting to start" : "In progress";
 }
@@ -89,7 +96,11 @@ export function MediaWorkBanner() {
   // A queue with work is only worth a control when it is not just the file the
   // worker is already rewriting right now.
   const showQueue = !!queue && (queue.pending > 0 || queue.paused);
-  const label = plan ? activePlanLabel(plan.kind) : "";
+  const label = plan
+    ? plan.kind === "track_cleanup" && plan.action === "disable"
+      ? "Hiding media tracks"
+      : activePlanLabel(plan.kind)
+    : "";
   const detail = plan ? activePlanDetail(plan) : "";
   const stoppable = !!plan && activePlanStoppable(plan);
 
@@ -137,6 +148,17 @@ export function MediaWorkBanner() {
         <span className="rs-work-label">
           {label} · {detail}
         </span>
+      )}
+      {plan && (
+        <details className="rs-work-details">
+          <summary>{plan.progress?.stage ?? "Progress details"}</summary>
+          <BatchProgress
+            progress={plan.progress}
+            processed={plan.processed}
+            total={plan.total}
+            state={plan.state}
+          />
+        </details>
       )}
       {stoppable && plan && (
         <Button
@@ -212,7 +234,7 @@ export function MediaWorkBanner() {
           {error}
         </span>
       )}
-      <Link to="/organization" className="rs-work-link">
+      <Link to="/organization?view=jobs" className="rs-work-link">
         Open organization
       </Link>
     </aside>

@@ -5,6 +5,8 @@ package transfer
 import (
 	"context"
 	"encoding/json"
+	"github.com/faaaaq/ReelScarey/internal/filecheck"
+	"github.com/faaaaq/ReelScarey/internal/organization"
 	"io"
 	"os"
 	"os/exec"
@@ -253,5 +255,78 @@ func TestLiveMatroskaDisableTracksInPlace(t *testing.T) {
 	}
 	if delta := after.Size() - info.Size(); delta > 1<<20 || delta < -1<<20 {
 		t.Fatalf("unexpected size change: %d", delta)
+	}
+}
+
+func TestLiveMatroskaBoundedCleanupJournal(t *testing.T) {
+	if os.Getenv("REELSCAREY_LIVE_TRACKS") != "1" {
+		t.Skip("requires real MKVToolNix")
+	}
+	ctx := context.Background()
+	f := setupWorkflow(t)
+	const rel = "Movies/Fixture/movie.mkv"
+	full := filepath.Join(f.cfg.MediaDir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(full), 0700); err != nil {
+		t.Fatal(err)
+	}
+	generateTrackFixture(t, full)
+	input, err := os.Open(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe, err := (FFprobe{}).Probe(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := filecheck.Capture(ctx, input)
+	input.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(probe)
+	verification, _ := json.Marshal(observation)
+	_, err = f.db.Exec(`INSERT INTO media_files(id,movie_id,relative_path,size_bytes,sha256,probe_json,verification_json,imported_at,origin,source_name) VALUES(1,?,?,?,'',?,?,1,'existing','movie.mkv')`, f.movie.ID, rel, observation.Size, string(raw), string(verification))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := organization.New(f.db, f.cfg)
+	service.SetTrackCleaner(ReadCleanupStreams, nil)
+	service.SetMatroskaTrackDisabler(DisableTracksMatroskaInPlaceVerified)
+	plan, err := service.PreviewTrackCleanup(ctx, organization.TrackCleanupRequest{Mode: "all_subtitles", Action: "disable"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Apply(ctx, plan.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = service.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	service = organization.New(f.db, f.cfg)
+	if err = service.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	plan, err = service.Plan(ctx, plan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.State != "completed" || plan.TrackCleanup.Disabled != 2 || plan.TrackCleanup.Skipped != 0 {
+		t.Fatalf("cleanup state=%s result=%+v", plan.State, plan.TrackCleanup)
+	}
+	var sha, saved string
+	if err = f.db.QueryRow(`SELECT sha256,verification_json FROM media_files WHERE id=1`).Scan(&sha, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if sha != "" || saved == "{}" {
+		t.Fatalf("full checksum claimed for bounded edit: %q %s", sha, saved)
+	}
+	ident, err := matroskaIdentify(ctx, full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, track := range ident.Tracks {
+		if enabledOf(track) == (track.Type == "subtitles") {
+			t.Fatalf("unexpected enabled flag: %+v", track)
+		}
 	}
 }

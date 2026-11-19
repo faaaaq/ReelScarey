@@ -1705,3 +1705,48 @@ html[data-theme="light"] .rs-label.is-disabled {
     bottom: 12px;
   }
 }
+
+/* Keep batch details expandable so the cross-page indicator stays compact. */
+.rs-work-banner {
+  flex-wrap: wrap;
+  border-radius: 10px;
+  width: min(92vw, 520px);
+  max-height: 35vh;
+  overflow: auto;
+}
+.rs-work-banner .rs-work-label {
+  flex: 1 1 75%;
+  white-space: normal;
+}
+.rs-work-details {
+  flex-basis: 100%;
+  order: 5;
+  min-width: 0;
+}
+.rs-work-details summary {
+  cursor: pointer;
+  color: var(--rs-text-muted);
+}
+.rs-work-details .organization-progress {
+  padding-top: 0.5rem;
+}
+.rs-work-link {
+  margin-left: auto;
+}
+
+.organization-progress {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding-block: 0.5rem;
+}
+.organization-progress progress {
+  width: 100%;
+  max-width: 36rem;
+  height: 0.5rem;
+  accent-color: var(--rs-brand);
+}
+.organization-current-file {
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+}

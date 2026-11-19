@@ -13,6 +13,12 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
+- [x] Header-only track disabling defaults to bounded verification, with explicit
+  full-checksum mode and separately recorded observations. Organization separates
+  file actions, jobs/history and naming; batch progress names the current file
+  and stage and reports hidden tracks separately from removed tracks.
+
+
 - [x] Durable media-work progress on every page: track cleanup and other
   organization plans report live progress that survives navigation and reloads,
   and initiating work answers immediately instead of blocking behind a running
