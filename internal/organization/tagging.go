@@ -397,7 +397,7 @@ func (s *Service) prepareEmbeddedTitle(ctx context.Context, root *os.Root, p *Pl
 		fullPath := filepath.Join(root.Name(), filepath.FromSlash(r.Original.Source))
 		// mkvpropedit opens its own handle on the path.
 		source.Close()
-		probe, err := s.inPlaceTagger(ctx, fullPath, ext, r.Before.Probe, r.TagTitle, r.Original.Size)
+		probe, err := s.inPlaceTagger(ctx, fullPath, ext, r.TagTitle, r.Original.Size)
 		if err != nil {
 			if restoreErr := s.restoreTitleHeader(root, stage, r); restoreErr != nil {
 				return problem("staging_conflict", "The in-place title edit failed and the saved header backup could not be restored: "+restoreErr.Error())

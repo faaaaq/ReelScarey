@@ -257,8 +257,8 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	// installed: seconds per file instead of a full demux, remux and packet
 	// verification. Every other container keeps the verified remux stage.
 	if transfer.InPlaceTitleToolAvailable() {
-		organizationService.SetInPlaceTagger(func(ctx context.Context, path, extension, beforeProbe, title string, beforeSize int64) (string, error) {
-			result, err := transfer.EditTitleInPlaceVerified(ctx, path, beforeProbe, title, beforeSize)
+		organizationService.SetInPlaceTagger(func(ctx context.Context, path, extension, title string, beforeSize int64) (string, error) {
+			result, err := transfer.EditTitleInPlaceVerified(ctx, path, title, beforeSize)
 			if err != nil {
 				return "", toOrganizationError(err)
 			}

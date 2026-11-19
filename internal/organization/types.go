@@ -156,7 +156,7 @@ type Service struct {
 	// inPlaceTagger edits a Matroska file's embedded title directly on the
 	// registered file (mkvpropedit). Nil means the tool is unavailable and
 	// every title update uses the verified remux stage.
-	inPlaceTagger func(ctx context.Context, path, extension, beforeProbe, title string, beforeSize int64) (string, error)
+	inPlaceTagger func(ctx context.Context, path, extension, title string, beforeSize int64) (string, error)
 	// matroskaDisabler clears a Matroska track's enabled flag in place. Nil
 	// means disabling is unavailable for the running build.
 	matroskaDisabler    func(ctx context.Context, path, beforeProbe string, drop []int, beforeSize int64) (string, error)
@@ -174,7 +174,7 @@ func (s *Service) SetTagger(tag func(context.Context, *os.File, *os.File, string
 
 // SetInPlaceTagger supplies the fast in-place title editor for Matroska
 // containers. When nil, title updates use the verified remux stage.
-func (s *Service) SetInPlaceTagger(fn func(ctx context.Context, path, extension, beforeProbe, title string, beforeSize int64) (string, error)) {
+func (s *Service) SetInPlaceTagger(fn func(ctx context.Context, path, extension, title string, beforeSize int64) (string, error)) {
 	s.inPlaceTagger = fn
 }
 

@@ -2,7 +2,6 @@ package transfer
 
 import (
 	"context"
-	"encoding/json"
 	"math"
 	"os"
 	"os/exec"
@@ -34,22 +33,24 @@ func InPlaceTitleToolAvailable() bool {
 }
 
 // EditTitleInPlaceVerified rewrites a Matroska file's embedded title in place
-// and verifies the result. The before probe is the recorded pre-edit
-// inspection; the returned probe is the post-edit inspection. Verification is
-// targeted by design: an in-place edit can only touch the container header, so
-// the check confirms the new title landed and no stream disappeared or changed
-// rather than re-reading every packet.
-func EditTitleInPlaceVerified(ctx context.Context, path, beforeProbe, title string, beforeSize int64) (Probe, error) {
+// and compares live stream information on either side of the edit. Older
+// catalog inspections can lack track indexes that the current FFprobe records.
+func EditTitleInPlaceVerified(ctx context.Context, path, title string, beforeSize int64) (Probe, error) {
 	if strings.TrimSpace(title) == "" || len(title) > 1024 || strings.ContainsAny(title, "\x00\r\n") {
 		return Probe{}, problem("invalid_metadata", "The saved title cannot be written safely.")
-	}
-	var before Probe
-	if e := json.Unmarshal([]byte(beforeProbe), &before); e != nil {
-		return Probe{}, problem("invalid_media", "The recorded media information could not be read.")
 	}
 	tool := trackTool("REELSCAREY_MKVPROPEDIT_PATH", "mkvpropedit")
 	if _, e := exec.LookPath(tool); e != nil {
 		return Probe{}, problem("tool_missing", "mkvpropedit is not installed on the server.")
+	}
+	f, e := os.Open(path)
+	if e != nil {
+		return Probe{}, e
+	}
+	defer f.Close()
+	before, e := (FFprobe{}).Probe(ctx, f)
+	if e != nil {
+		return Probe{}, e
 	}
 	cmd := exec.CommandContext(ctx, tool, path, "--edit", "info", "--set", "title="+title)
 	hideProbeWindow(cmd)
@@ -59,11 +60,6 @@ func EditTitleInPlaceVerified(ctx context.Context, path, beforeProbe, title stri
 	if e := cmd.Run(); e != nil {
 		return Probe{}, problem("metadata_unsupported", "mkvpropedit could not update this file's title in place. The original header was restored.")
 	}
-	f, e := os.Open(path)
-	if e != nil {
-		return Probe{}, e
-	}
-	defer f.Close()
 	after, e := (FFprobe{}).Probe(ctx, f)
 	if e != nil {
 		return Probe{}, e
