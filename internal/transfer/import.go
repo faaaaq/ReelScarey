@@ -371,7 +371,7 @@ func syncParent(parent *os.File) error {
 func (i *Importer) Execute(ctx context.Context, j Job, source string, size int64) error {
 	defer organization.ReadMedia()()
 	s := i.service
-	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
+	if e := organization.EnsureAcquisitionAvailable(ctx, s.db, j.MovieID); e != nil {
 		return e
 	}
 	srcRoot, dstRoot, e := roots(s.cfg.DownloadsDir, s.cfg.MediaDir, s.cfg.ConfigDir)

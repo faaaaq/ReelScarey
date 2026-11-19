@@ -145,7 +145,7 @@ func (s *Service) owned(ctx context.Context, j Job, query string, args ...any) e
 	return e
 }
 func (s *Service) claim(ctx context.Context) (Job, error) {
-	if e := organization.EnsureMediaAvailable(ctx, s.db); e != nil {
+	if e := organization.EnsureAcquisitionAvailable(ctx, s.db, 0); e != nil {
 		return Job{}, e
 	}
 	owner := ID()
@@ -154,7 +154,7 @@ func (s *Service) claim(ctx context.Context) (Job, error) {
 	// separate re-read races the claim. SQLite RETURNING cannot reference a
 	// joined table, so the media title is supplied by a correlated subquery
 	// matching jobColumns' scan order.
-	j, e := scanJob(s.db.QueryRowContext(ctx, `UPDATE downloads SET lease_owner=?,lease_until=? WHERE id=(SELECT id FROM downloads WHERE state IN ('queued','submitting','downloading','importing') AND next_run<=? AND lease_until<? ORDER BY next_run,created_at,id LIMIT 1) RETURNING `+claimReturningColumns, owner, now+60, now, now))
+	j, e := scanJob(s.db.QueryRowContext(ctx, `UPDATE downloads SET lease_owner=?,lease_until=? WHERE id=(SELECT id FROM downloads WHERE state IN ('queued','submitting','downloading','importing') AND next_run<=? AND lease_until<? AND NOT EXISTS (SELECT 1 FROM organization_plans p, json_each(p.snapshot,'$.track_cleanup.targets') target JOIN media_files f ON f.id=json_extract(target.value,'$.id') WHERE p.state IN ('queued','running') AND COALESCE(f.movie_id,f.series_id)=downloads.movie_id) ORDER BY next_run,created_at,id LIMIT 1) RETURNING `+claimReturningColumns, owner, now+60, now, now))
 	if e != nil {
 		return Job{}, e
 	}

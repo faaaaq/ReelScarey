@@ -1800,6 +1800,12 @@ files remain outside the operation.
   (hidden) track counts separately. Removal stays on the verified ffmpeg remux
   (`-copyts` preserves every packet exactly); `mkvmerge` is used only to read the
   Matroska track list and verify the flag change.
+  Catalog additions and movie/TV release searches remain available during
+  cleanup; search candidates do not acquire the filesystem-work gate. Download
+  reservations and imports are fenced against titles owning files in the saved
+  cleanup selection; other titles can download. Remote polling skips reserved
+  titles. Other organization operations and unsafe recovery keep their broader
+  fence, and filesystem operations still serialize with the current file edit.
 - Apply a review with `POST /api/v1/organization/plans/{id}/apply` and read
   progress via `GET /api/v1/organization/plans/{id}`. Applying only validates
   and queues; it never waits for a running media operation. When another

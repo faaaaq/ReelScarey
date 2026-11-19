@@ -29,6 +29,39 @@ func ensureMediaAvailable(ctx context.Context, db query) error {
 	if e := ensureOrganizationAvailable(ctx, db); e != nil {
 		return e
 	}
+	return ensureSubtitlesAvailable(ctx, db)
+}
+
+// EnsureAcquisitionAvailable fences a title against the files selected by an
+// active cleanup, while ordinary organization/recovery stays library-wide.
+// A zero title is for remote download polling only; imports must supply a title.
+func EnsureAcquisitionAvailable(ctx context.Context, db *sql.DB, mediaID int64) error {
+	return ensureAcquisitionAvailable(ctx, db, mediaID)
+}
+
+func EnsureAcquisitionAvailableTx(ctx context.Context, tx *sql.Tx, mediaID int64) error {
+	return ensureAcquisitionAvailable(ctx, tx, mediaID)
+}
+
+func ensureAcquisitionAvailable(ctx context.Context, db query, mediaID int64) error {
+	var n int
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM organization_plans p WHERE
+	 (state IN ('queued','running') AND (
+	 json_extract(snapshot,'$.track_cleanup') IS NULL OR EXISTS (
+	 SELECT 1 FROM json_each(p.snapshot,'$.track_cleanup.targets') target
+	 JOIN media_files f ON f.id=json_extract(target.value,'$.id')
+	 WHERE COALESCE(f.movie_id,f.series_id)=?)))
+	 OR (state='failed' AND `+unsafeOrganizationFailure+`)`, mediaID).Scan(&n)
+	if err != nil {
+		return err
+	}
+	if n != 0 {
+		return problem("organization_busy", "This title is reserved by library work. Other titles can still be searched and downloaded.")
+	}
+	return ensureSubtitlesAvailable(ctx, db)
+}
+
+func ensureSubtitlesAvailable(ctx context.Context, db query) error {
 	var n int
 	if e := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM subtitle_edits WHERE state IN ('queued','running') OR (state='blocked' AND phase<>'planned' AND phase<>'committed')`).Scan(&n); e != nil {
 		return e

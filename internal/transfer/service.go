@@ -421,9 +421,8 @@ func (s *Service) Search(ctx context.Context, movieID int64, query string) ([]Re
 		return nil, e
 	}
 	defer tx.Rollback()
-	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
-		return nil, e
-	}
+	// Search candidates do not read or mutate library files. Keep searching
+	// available while an organization worker owns the media gate.
 	if _, e = tx.ExecContext(ctx, `DELETE FROM release_candidates WHERE scope<>'announce:iptorrents' AND NOT EXISTS (SELECT 1 FROM downloads d WHERE d.release_id=release_candidates.id) AND (movie_id=? OR expires_at<?)`, movieID, now); e != nil {
 		return nil, e
 	}
@@ -681,7 +680,7 @@ func (s *Service) queueVersion(ctx context.Context, releaseID string, guard Queu
 		return Job{}, false, e
 	}
 	defer tx.Rollback()
-	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+	if e = organization.EnsureAcquisitionAvailableTx(ctx, tx, v.MovieID); e != nil {
 		return Job{}, false, e
 	}
 	if e = validateSelectedClient(ctx, tx, client); e != nil {

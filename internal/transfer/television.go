@@ -112,9 +112,7 @@ func (s *Service) searchTV(ctx context.Context, seriesID int64, season, episode 
 		return nil, e
 	}
 	defer tx.Rollback()
-	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
-		return nil, e
-	}
+	// Saving search candidates is independent of filesystem organization.
 	now := time.Now().Unix()
 	scope := fmt.Sprintf("tv:%d:%d", season, episode)
 	if _, e = tx.ExecContext(ctx, `DELETE FROM release_candidates WHERE scope<>'announce:iptorrents' AND NOT EXISTS (SELECT 1 FROM downloads d WHERE d.release_id=release_candidates.id) AND ((movie_id=? AND scope=?) OR expires_at<?)`, seriesID, scope, now); e != nil {
@@ -241,7 +239,7 @@ func (s *Service) queueTV(ctx context.Context, v Candidate, releaseID string, se
 		return Job{}, false, e
 	}
 	defer tx.Rollback()
-	if e = organization.EnsureMediaAvailableTx(ctx, tx); e != nil {
+	if e = organization.EnsureAcquisitionAvailableTx(ctx, tx, v.MovieID); e != nil {
 		return Job{}, false, e
 	}
 	if e = validateSelectedClient(ctx, tx, client); e != nil {
