@@ -56,13 +56,21 @@ titles dated before today start unselected. See
 
 - **Header** (fixed, 60px): logo, global search, recent activity, theme toggle
   and the account menu (sign out). Global search (`Ctrl/Cmd+K` or `/`) finds
-  saved titles, jumps to pages and offers "Search TMDb" for new titles.
+  saved titles, jumps to pages and offers "Search TMDb" for new titles. Page
+  aliases include **Settings: Organization — reorganize registered files** and
+  **Activity: Release search** without adding sidebar duplicates.
 - **Sidebar** (210px): Dashboard, Movies, TV Shows, Anime, Music, YouTube,
   Calendar,
   Activity, Wanted, Torrents, Usenet, Requests, Settings and System. Like
   Sonarr, a section shows its child links only while it is active. The structure
   is defined once in `web/src/navigation.ts`, along with document titles.
 - Mobile (≤768px): the sidebar becomes a drawer opened from the header.
+- Movie details keep the desktop action toolbar on wide screens. At 900px and
+  below, a labeled **Actions** disclosure contains **Reload metadata**,
+  **Find releases**, **Run automatic search**, **Import file**, **Organize**
+  and **Delete movie**, so destructive actions never depend on horizontal
+  toolbar scrolling. The automatic-search note explains when a download may be
+  queued; **Find releases** always opens release review.
 
 ## Page anatomy
 
@@ -165,9 +173,11 @@ Do not add global element selectors in page files.
   Automation. The completed result message stays visible until the owner
   dismisses it or starts another search.
 - Series details offer Search (one title), Search All Monitored (every monitored
-  missing episode) and per-episode automatic search, manual search, Replace and
-  Remove from library (the file stays on disk). Seasons list newest first.
-  Season release searches list packs first and label them. Search All Monitored
+  missing episode) and per-episode automatic search, manual search and Replace.
+  Seasons list newest first. Season release searches list packs first and label
+  them. Delete a show with **Delete series**; choose **Keep files on disk** in
+  the review to remove only its registrations. There is no separate
+  Remove-from-library toolbar action. Search All Monitored
   tries one qualifying season pack per season before individual episodes. A
   labeled pack imports automatically when every reserved episode has exactly one
   matching file; unmatched or ambiguous files wait for mapping review.
@@ -234,7 +244,9 @@ Do not add global element selectors in page files.
 - The Dashboard is a compact working overview: a status strip (active
   downloads, missing, next seven days, system health), an Activity panel with
   live queue progress and recent History when idle, Wanted and Upcoming panels,
-  and quiet Library counts with recent title events. Every value comes from an
+  and quiet Library counts with recent title events. A bounded music-attention
+  alert names failed or incomplete acquisitions, their track counts and error,
+  and links to the full Music download queue. Every value comes from an
   existing endpoint; empty states say what is actually missing.
 
 ## Usenet page

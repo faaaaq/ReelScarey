@@ -165,4 +165,59 @@ describe("request accounts", () => {
     expect(await screen.findByText("Webhook saved.")).toBeVisible();
     expect(screen.getByLabelText("Discord webhook URL")).toHaveValue("");
   });
+
+  it("gives requesters actionable guidance when TMDb is not configured", async () => {
+    const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+      if (url.endsWith("/auth/session"))
+        return Response.json({
+          authenticated: true,
+          setup_required: false,
+          session: {
+            username: "viewer",
+            role: "requester",
+            account_id: 1,
+            csrf_token: "csrf",
+            expires_at: 9999999999,
+          },
+        });
+      if (url.includes("/requester/search/movies"))
+        return Response.json(
+          {
+            error: {
+              code: "tmdb_not_configured",
+              message: "Connect TMDb in Settings before searching.",
+            },
+          },
+          { status: 409 },
+        );
+      if (url.endsWith("/requester/lists"))
+        return Response.json(
+          options?.method === "POST" ? { id: 1 } : { items: [] },
+        );
+      if (url.endsWith("/requester/discord"))
+        return Response.json({ configured: false });
+      if (url.endsWith("/requester/requests"))
+        return Response.json({ items: [] });
+      return Response.json({ items: [] });
+    });
+    vi.stubGlobal("fetch", fetch);
+    render(
+      <Theme>
+        <MemoryRouter>
+          <App />
+        </MemoryRouter>
+      </Theme>,
+    );
+    await screen.findByRole("heading", { name: "My requests" });
+    await userEvent.type(screen.getByLabelText("Title"), "Example");
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(
+      await screen.findByText(
+        "Title search is unavailable until an administrator connects TMDb. Contact the administrator.",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByText(/Connect TMDb in Settings before searching/),
+    ).not.toBeInTheDocument();
+  });
 });

@@ -42,7 +42,48 @@
   width: 100%;
   height: 100%;
   color: var(--rs-faint);
-  background: linear-gradient(135deg, var(--rs-surface-2), var(--rs-surface-3));
+  background: var(--rs-surface-2);
+}
+
+.mus-record-sleeve {
+  position: relative;
+  pointer-events: none;
+}
+.mus-tile-anchor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  padding: 4px 7px;
+  background: var(--rs-primary);
+  color: var(--rs-accent-ink);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.mus-record {
+  display: grid;
+  place-items: center;
+  width: 72%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: repeating-radial-gradient(
+    circle,
+    var(--rs-text-strong) 0 2px,
+    var(--rs-text) 3px 4px
+  );
+  box-shadow: 6px 0 0 var(--rs-surface-3);
+}
+.mus-record-label {
+  display: grid;
+  place-items: center;
+  width: 36%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--rs-primary);
+  color: var(--rs-accent-ink);
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .mus-tile-initial {

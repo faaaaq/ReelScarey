@@ -36,14 +36,20 @@ completed folder, and runs wanted-album searches on a schedule.
 
 - Search MusicBrainz artists and add one idempotently.
 - Browse saved artists as a tile grid grouped A–Z, then open an artist for
-  album tiles. An artist page also lists up to 15 tracks that have registered
+  album tiles. The first artist tile in each letter group carries a visual
+  anchor; missing artist and album artwork uses a non-interactive record-sleeve
+  fallback. A–Z jump targets are at least 24 CSS pixels in both themes.
+  An artist page also lists up to 15 tracks that have registered
   files, newest albums first, with an explicit all-tracks view. This is a
   library selection, not a play-count or provider popularity ranking.
 - Browse albums and on-demand album tracks.
 - Stream registered tracks in the authenticated web player with HTTP Range
   seeking, queue/next/previous, volume, and a persistent player bar. Playback
   addresses catalog file IDs; the stored media path is never sent to the
-  browser.
+  browser. A registered-but-missing or unreadable file is distinguished from
+  an unknown registration and offers Retry playback and Music Import recovery.
+- Dashboard surfaces bounded failed or incomplete music acquisitions with the
+  title, track counts, reported error and a link to the full download queue.
 - Scan a folder below the media root:
   - bounded walk (20,000 audio files, 24 folder levels, no symlinks);
   - a name-only pre-count before the walk feeds a live progress bar;

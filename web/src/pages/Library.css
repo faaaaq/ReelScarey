@@ -288,8 +288,8 @@
   transform: translateY(-50%);
 }
 .lib-az button {
-  min-width: 22px;
-  height: 20px;
+  min-width: 24px;
+  height: 24px;
   padding: 0 2px;
   border: 0;
   border-radius: 3px;
@@ -433,9 +433,9 @@
     padding: 4px 2px;
   }
   .lib-az button {
-    min-width: 18px;
-    height: 18px;
-    font-size: 11px;
+    min-width: 24px;
+    height: 24px;
+    font-size: 12px;
   }
 }
 

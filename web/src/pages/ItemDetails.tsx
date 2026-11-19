@@ -1,6 +1,8 @@
 import { LibraryDeletion } from "../components/LibraryDeletion";
 import {
   Bookmark,
+  ChevronDown,
+  ChevronUp,
   FolderTree,
   HardDriveDownload,
   RefreshCw,
@@ -68,57 +70,115 @@ function MovieView({ id }: { id: number }) {
   const item = data?.item;
   const search = useItemSearch();
   const [importOpen, setImportOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const deleteMovie = () =>
+    item ? (
+      <LibraryDeletion
+        selection="titles"
+        ids={[id]}
+        label="Delete movie"
+        name={item.title}
+        onDone={() =>
+          navigate(item.category === "anime" ? "/anime" : "/movies")
+        }
+      />
+    ) : null;
   return (
     <>
       <PageToolbar>
+        <div className="det-toolbar-desktop">
+          <ToolbarSection>
+            <ToolbarButton
+              icon={RefreshCw}
+              label="Reload metadata"
+              title="Refresh metadata from TMDb"
+              spinning={details.busy}
+              disabled={details.busy || !data}
+              onClick={() => void details.refresh()}
+            />
+            {item?.kind === "movie" && (
+              <ToolbarButton
+                icon={Search}
+                label="Find releases"
+                title="Review matching releases without automatically queueing a download"
+                className="is-primary"
+                to={`/releases?movie=${id}`}
+              />
+            )}
+            <TitleSearchButton
+              mediaID={Number(id)}
+              pending={!!search.pending}
+              onTrigger={(mediaID) => search.trigger(mediaID)}
+            />
+            <ToolbarButton
+              icon={HardDriveDownload}
+              label="Import file"
+              title="Point at a video already on disk and register it for this title"
+              disabled={!item}
+              onClick={() => setImportOpen(true)}
+            />
+            <ToolbarSeparator />
+            <ToolbarButton
+              icon={FolderTree}
+              label="Organize"
+              to={`/organization?media_id=${id}`}
+            />
+            {deleteMovie()}
+          </ToolbarSection>
+        </div>
         <ToolbarSection>
+          <div className="det-actions-mobile">
+            <ToolbarButton
+              icon={actionsOpen ? ChevronUp : ChevronDown}
+              label="Actions"
+              aria-expanded={actionsOpen}
+              aria-controls="movie-actions"
+              onClick={() => setActionsOpen((value) => !value)}
+            />
+          </div>
+        </ToolbarSection>
+      </PageToolbar>
+      {actionsOpen && item && (
+        <div
+          id="movie-actions"
+          className="det-mobile-actions"
+          aria-label="Movie actions"
+        >
           <ToolbarButton
             icon={RefreshCw}
-            label="Refresh"
-            title="Refresh metadata from TMDb"
+            label="Reload metadata"
             spinning={details.busy}
-            disabled={details.busy || !data}
+            disabled={details.busy}
             onClick={() => void details.refresh()}
           />
-          {item?.kind === "movie" && (
-            <ToolbarButton
-              icon={Search}
-              label="Manual Search"
-              className="is-primary"
-              to={`/releases?movie=${id}`}
-            />
-          )}
+          <ToolbarButton
+            icon={Search}
+            label="Find releases"
+            title="Review matching releases without automatically queueing a download"
+            to={`/releases?movie=${id}`}
+          />
           <TitleSearchButton
             mediaID={Number(id)}
             pending={!!search.pending}
             onTrigger={(mediaID) => search.trigger(mediaID)}
           />
+          <p className="det-action-note">
+            Automatic search uses the saved policy. Download mode can queue the
+            best match; search-only mode saves results for review.
+          </p>
           <ToolbarButton
             icon={HardDriveDownload}
             label="Import file"
-            title="Point at a video already on disk and register it for this title"
-            disabled={!item}
             onClick={() => setImportOpen(true)}
           />
-          <ToolbarSeparator />
           <ToolbarButton
             icon={FolderTree}
             label="Organize"
             to={`/organization?media_id=${id}`}
           />
-          {item && (
-            <LibraryDeletion
-              selection="titles"
-              ids={[id]}
-              label="Delete movie"
-              name={item.title}
-              onDone={() =>
-                navigate(item.category === "anime" ? "/anime" : "/movies")
-              }
-            />
-          )}
-        </ToolbarSection>
-      </PageToolbar>{" "}
+          <div className="det-mobile-delete">{deleteMovie()}</div>
+        </div>
+      )}{" "}
       {search.result && (
         <PageBody>
           <ItemSearchResultAlert

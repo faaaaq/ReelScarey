@@ -294,10 +294,10 @@ export function TitleSearchButton({
     <ToolbarSection>
       <ToolbarButton
         icon={pending ? Loader2 : SearchCheck}
-        label="Search"
+        label="Run automatic search"
         spinning={pending}
         disabled={pending}
-        title="Search for this title now: download mode queues the best match, search-only mode saves results for review"
+        title="Run the saved automatic policy now: download mode can queue the best match; search-only mode saves results for review"
         onClick={() => onTrigger(mediaID)}
       />
     </ToolbarSection>

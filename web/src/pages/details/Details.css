@@ -451,6 +451,56 @@
   }
 }
 
+.det-toolbar-desktop {
+  display: contents;
+}
+.det-actions-mobile,
+.det-mobile-actions {
+  display: none;
+}
+.det-action-note {
+  margin: 0;
+  color: var(--rs-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+@media (max-width: 900px) {
+  .det-toolbar-desktop {
+    display: none;
+  }
+  .det-actions-mobile {
+    display: block;
+  }
+  .det-mobile-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 8px 0 12px;
+    background: var(--rs-toolbar-bg);
+    border-bottom: 1px solid var(--rs-toolbar-border);
+  }
+  .det-mobile-actions .rs-toolbar-section {
+    width: 100%;
+  }
+  .det-mobile-actions .rs-toolbar-button {
+    flex-direction: row;
+    justify-content: flex-start;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 16px;
+  }
+  .det-mobile-actions .det-action-note {
+    padding: 0 16px 8px;
+  }
+  .det-mobile-delete {
+    padding: 8px 16px 0;
+  }
+  .det-mobile-delete button {
+    min-height: 40px;
+  }
+}
+
 @media (max-width: 540px) {
   .det-header-inner {
     row-gap: 10px;

@@ -318,4 +318,84 @@ describe("music player", () => {
     expect(screen.getByRole("button", { name: "Next track" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Play" })).toBeEnabled();
   });
+
+  it("explains a registered-but-missing file and offers import and retry recovery", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async () =>
+        Response.json(
+          {
+            error: {
+              code: "music_file_missing",
+              message: "The registered file cannot be opened.",
+            },
+          },
+          { status: 404 },
+        ),
+      ),
+    );
+    render(
+      <MusicPlayerProvider>
+        <MemoryRouter>
+          <Harness />
+          <MusicPlayerBar />
+        </MemoryRouter>
+      </MusicPlayerProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const audio = document.querySelector("audio");
+    await act(async () => {
+      audio?.dispatchEvent(new Event("error"));
+    });
+    expect(
+      await screen.findByText(/registered file is missing or unreadable/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Open Music Import" }),
+    ).toHaveAttribute("href", "/music/import");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Retry playback" }),
+    );
+    expect(
+      screen.queryByText(/registered file is missing or unreadable/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps an unknown registration distinct from missing file bytes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockImplementation(async () =>
+          Response.json(
+            { error: { code: "not_found", message: "No such registration." } },
+            { status: 404 },
+          ),
+        ),
+    );
+    render(
+      <MusicPlayerProvider>
+        <MemoryRouter>
+          <Harness />
+          <MusicPlayerBar />
+        </MemoryRouter>
+      </MusicPlayerProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const audio = document.querySelector("audio");
+    await act(async () => {
+      audio?.dispatchEvent(new Event("error"));
+    });
+    expect(
+      await screen.findByText(
+        "This file is no longer registered in the music library.",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: "Open Music Import" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Retry playback" }),
+    ).toBeEnabled();
+  });
 });

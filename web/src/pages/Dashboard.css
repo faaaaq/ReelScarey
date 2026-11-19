@@ -90,6 +90,32 @@
   display: block;
   margin-top: 2px;
 }
+.dash-music-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dash-music-issues > li {
+  border-top: 1px solid var(--rs-border);
+  padding-top: 8px;
+}
+.dash-music-issue-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.dash-music-issue-head strong,
+.dash-music-issue-error {
+  overflow-wrap: anywhere;
+}
+.dash-music-issue-error {
+  margin: 2px 0 0;
+}
 .dash-events {
   display: flex;
   flex-direction: column;

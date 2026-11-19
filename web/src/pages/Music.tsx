@@ -3,7 +3,6 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import {
   ArrowLeft,
-  Disc3,
   Download,
   ExternalLink,
   FolderInput,
@@ -93,12 +92,31 @@ function SelectionBox({
   );
 }
 
+function RecordSleeve({
+  initial,
+  anchor,
+}: {
+  initial: string;
+  anchor?: string;
+}) {
+  return (
+    <span className="mus-tile-fallback mus-record-sleeve" aria-hidden="true">
+      {anchor && <span className="mus-tile-anchor">{anchor}</span>}
+      <span className="mus-record">
+        <span className="mus-record-label">{initial}</span>
+      </span>
+    </span>
+  );
+}
+
 export function ArtistTile({
   artist,
   selection,
+  anchor,
 }: {
   artist: MusicArtist;
   selection?: TileSelection;
+  anchor?: string;
 }) {
   const [failed, setFailed] = useState(false);
   const initial = artist.name.trim().charAt(0).toUpperCase() || "?";
@@ -122,9 +140,7 @@ export function ArtistTile({
         tabIndex={selection ? -1 : undefined}
         aria-label={`Open ${artist.name}`}
       >
-        <span className="mus-tile-fallback mus-tile-initial" aria-hidden="true">
-          {initial}
-        </span>
+        <RecordSleeve initial={initial} anchor={anchor} />
         {imageURL && !failed && (
           <img
             className="mus-tile-img"
@@ -205,9 +221,9 @@ export function AlbumTile({
         tabIndex={selection ? -1 : undefined}
         aria-label={`Open ${album.title}`}
       >
-        <span className="mus-tile-fallback" aria-hidden="true">
-          <Disc3 size={34} strokeWidth={1} />
-        </span>
+        <RecordSleeve
+          initial={album.title.trim().charAt(0).toUpperCase() || "?"}
+        />
         {coverURL && !failed && (
           <img
             className="mus-tile-img"
@@ -590,9 +606,9 @@ function DiscographyTile({
   return (
     <li className="lib-card">
       <div className="lib-card-art mus-card-art">
-        <span className="mus-tile-fallback" aria-hidden="true">
-          <Disc3 size={34} strokeWidth={1} />
-        </span>
+        <RecordSleeve
+          initial={album.title.trim().charAt(0).toUpperCase() || "?"}
+        />
         {coverURL && !failed && (
           <img
             className="mus-tile-img"

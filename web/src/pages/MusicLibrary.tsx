@@ -300,14 +300,15 @@ export function MusicLibrary() {
           />
           <ToolbarButton
             icon={RefreshCw}
-            label="Refresh"
+            label="Reload library list"
+            title="Reload the saved library list without contacting metadata providers"
             spinning={activeResource.loading}
             onClick={reload}
           />
           <ToolbarButton
             icon={RefreshCw}
-            label="Refresh metadata"
-            title="Re-resolve every artist image and album cover from the providers"
+            label="Update artist & album artwork"
+            title="Contact metadata providers to re-resolve every artist image and album cover"
             spinning={metadataPending}
             disabled={metadataPending}
             onClick={refreshMetadata}
@@ -555,10 +556,11 @@ export function MusicLibrary() {
                         {letter}
                       </h2>
                     </li>
-                    {rows.map((artist) => (
+                    {rows.map((artist, index) => (
                       <ArtistTile
                         key={artist.id}
                         artist={artist}
+                        anchor={index === 0 ? letter : undefined}
                         selection={
                           selecting && artist.id
                             ? selection(artist.id)
