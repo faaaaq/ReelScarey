@@ -1750,3 +1750,14 @@ html[data-theme="light"] .rs-label.is-disabled {
   overflow-wrap: anywhere;
   font-size: 0.8rem;
 }
+
+.cleanup-skip-details li {
+  margin-block: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.cleanup-skip-details li p {
+  margin-block: 0.25rem;
+}
+.cleanup-skip-details summary {
+  cursor: pointer;
+}

@@ -1866,3 +1866,21 @@ Track cleanup retains a reason for every newly skipped target (older jobs may
 have only their first 20 historical messages). MKVToolNix runs with a UTF-8
 locale, excludes cover attachments from video mapping, and preserves already
 disabled tracks outside the selected edit.
+
+### Cleanup skip resolution
+
+`track_cleanup.skipped` and the active summary's `skipped` count unresolved
+videos, not historical attempts. Multiple failed attempts on one video count
+once. `skip_attempts` retains the number of failures; `skip_history` retains
+file IDs, paths, reasons, and millisecond `occurred_at` timestamps (zero for an
+unknown legacy timestamp). A successful same-file, same-path, same-action,
+same-mode and equivalent-language-policy retry records `resolved_by` and
+`resolved_at` without deleting the failed attempt. Successful no-op retries
+also resolve earlier skips. `recovered` counts resolved videos. Partial or
+failed retries, earlier outcomes, and different policies do not resolve them.
+
+New per-file successful outcomes are committed with cleanup progress. Legacy
+completed batches with zero failures can also prove success; mixed legacy
+batches cannot identify their successful files. `untracked_skips` explicitly
+retains unresolved legacy failures whose capped diagnostics lack file IDs.
+Reads reconcile these counts without overwriting an active worker snapshot.

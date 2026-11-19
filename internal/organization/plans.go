@@ -284,6 +284,9 @@ func readPlan(ctx context.Context, q query, id string) (Plan, error) {
 	p.State = state
 	p.Message = message
 	p.Updated = updated
+	if err := reconcileCleanupSkips(ctx, q, &p); err != nil {
+		return p, err
+	}
 	return p, nil
 }
 
@@ -291,16 +294,18 @@ func readPlan(ctx context.Context, q query, id string) (Plan, error) {
 // currently executing or about to execute. It exists so any page can show
 // live progress without downloading every saved plan snapshot.
 type ActivePlan struct {
-	Progress  *WorkProgress `json:"progress,omitempty"`
-	Disabled  int           `json:"disabled"`
-	Action    string        `json:"action,omitempty"`
-	Mode      string        `json:"mode,omitempty"`
-	ID        string        `json:"id"`
-	State     string        `json:"state"`
-	Phase     string        `json:"phase"`
-	Message   string        `json:"message,omitempty"`
-	Kind      string        `json:"kind"`
-	UpdatedAt int64         `json:"updated_at"`
+	SkipAttempts int           `json:"skip_attempts"`
+	Recovered    int           `json:"recovered"`
+	Progress     *WorkProgress `json:"progress,omitempty"`
+	Disabled     int           `json:"disabled"`
+	Action       string        `json:"action,omitempty"`
+	Mode         string        `json:"mode,omitempty"`
+	ID           string        `json:"id"`
+	State        string        `json:"state"`
+	Phase        string        `json:"phase"`
+	Message      string        `json:"message,omitempty"`
+	Kind         string        `json:"kind"`
+	UpdatedAt    int64         `json:"updated_at"`
 	// Track-cleanup progress; zero for every other plan kind.
 	Processed int      `json:"processed"`
 	Total     int      `json:"total"`
@@ -386,6 +391,9 @@ func (s *Service) Active(ctx context.Context) (ActivePlan, bool, error) {
 	if e := json.Unmarshal([]byte(raw), &p); e != nil {
 		return ActivePlan{}, false, e
 	}
+	if err := reconcileCleanupSkips(ctx, s.db, &p); err != nil {
+		return ActivePlan{}, false, err
+	}
 	out := ActivePlan{Progress: p.Progress, ID: id, State: "queued", Phase: p.Phase, Kind: activeKind(p), UpdatedAt: updated}
 	if p.TrackCleanup != nil {
 		out.Processed = p.TrackCleanup.Processed
@@ -394,6 +402,8 @@ func (s *Service) Active(ctx context.Context) (ActivePlan, bool, error) {
 		out.Mode = p.TrackCleanup.Request.Mode
 		out.Action = p.TrackCleanup.Request.Action
 		out.Changed = p.TrackCleanup.Changed
+		out.SkipAttempts = p.TrackCleanup.SkipAttempts
+		out.Recovered = p.TrackCleanup.Recovered
 		out.Skipped = p.TrackCleanup.Skipped
 		out.Dropped = p.TrackCleanup.Dropped
 		out.Issues = p.TrackCleanup.Examples

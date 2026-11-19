@@ -55,7 +55,7 @@ describe("media work banner", () => {
     mount();
     expect(
       await screen.findByText(
-        "Removing media tracks · 2 of 5 videos · 3 tracks removed · 1 skipped",
+        "Removing media tracks · 2 of 5 videos · 3 tracks removed · 1 unresolved skip",
       ),
     ).toBeVisible();
     await user.click(

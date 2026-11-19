@@ -42,16 +42,21 @@ type cleanupTarget struct {
 }
 
 type TrackCleanup struct {
-	Permanent bool                `json:"permanent,omitempty"`
-	Request   TrackCleanupRequest `json:"request"`
-	Targets   []cleanupTarget     `json:"targets"`
-	Processed int                 `json:"processed"`
-	Changed   int                 `json:"changed"`
-	Skipped   int                 `json:"skipped"`
-	Examples  []string            `json:"issues,omitempty"`
-	Sidecars  []Companion         `json:"sidecars,omitempty"`
-	Dropped   int                 `json:"dropped"`
-	Disabled  int                 `json:"disabled"`
+	SkipAttempts   int                  `json:"skip_attempts"`
+	SkipHistory    []CleanupSkipAttempt `json:"skip_history,omitempty"`
+	Successes      []CleanupSuccess     `json:"successes,omitempty"`
+	Recovered      int                  `json:"recovered"`
+	UntrackedSkips int                  `json:"untracked_skips,omitempty"`
+	Permanent      bool                 `json:"permanent,omitempty"`
+	Request        TrackCleanupRequest  `json:"request"`
+	Targets        []cleanupTarget      `json:"targets"`
+	Processed      int                  `json:"processed"`
+	Changed        int                  `json:"changed"`
+	Skipped        int                  `json:"skipped"`
+	Examples       []string             `json:"issues,omitempty"`
+	Sidecars       []Companion          `json:"sidecars,omitempty"`
+	Dropped        int                  `json:"dropped"`
+	Disabled       int                  `json:"disabled"`
 }
 
 func (s *Service) SetTrackCleaner(read func(context.Context, *os.File) ([]TrackStream, error), rewrite func(context.Context, *os.File, *os.File, string, []int) (string, error)) {
@@ -507,7 +512,7 @@ func (s *Service) executeTrackCleanup(ctx context.Context, p *Plan) error {
 			job.Disabled += len(p.Replacement.DisableStreams)
 		}
 	}
-	return s.nextCleanupFile(ctx, p)
+	return s.nextCleanupFile(ctx, p, true)
 }
 
 func (s *Service) removeCleanupStage(ctx context.Context, root *os.Root, p *Plan) {
@@ -524,28 +529,33 @@ func (s *Service) removeCleanupStage(ctx context.Context, root *os.Root, p *Plan
 
 func (s *Service) skipCleanup(ctx context.Context, p *Plan, target cleanupTarget, err error) error {
 	s.noteCleanupIssue(p, target, err)
-	return s.nextCleanupFile(ctx, p)
+	return s.nextCleanupFile(ctx, p, false)
 }
 
 func (s *Service) noteCleanupIssue(p *Plan, target cleanupTarget, err error) {
-	p.TrackCleanup.Skipped++
-	if len(p.TrackCleanup.Examples) < len(p.TrackCleanup.Targets) {
-		message := "Could not safely inspect or rewrite this video."
-		if errors.Is(err, os.ErrNotExist) {
-			message = "The registered video is missing at its saved path."
-		}
-		if errors.Is(err, os.ErrPermission) {
-			message = "The server cannot access the registered video."
-		}
-		var typed *Error
-		if errors.As(err, &typed) {
-			message = typed.Message
-		}
-		p.TrackCleanup.Examples = append(p.TrackCleanup.Examples, fmt.Sprintf("%s: %s", target.Path, message))
+	hydrateCleanupSkips(p)
+	j := p.TrackCleanup
+	j.SkipAttempts++
+	message := "Could not safely inspect or rewrite this video."
+	if errors.Is(err, os.ErrNotExist) {
+		message = "The registered video is missing at its saved path."
 	}
+	if errors.Is(err, os.ErrPermission) {
+		message = "The server cannot access the registered video."
+	}
+	var typed *Error
+	if errors.As(err, &typed) {
+		message = typed.Message
+	}
+	j.Examples = append(j.Examples, fmt.Sprintf("%s: %s", target.Path, message))
+	j.SkipHistory = append(j.SkipHistory, CleanupSkipAttempt{FileID: target.ID, Path: target.Path, Message: message, OccurredAt: time.Now().UnixMilli()})
+	countCleanupSkips(j)
 }
 
-func (s *Service) nextCleanupFile(ctx context.Context, p *Plan) error {
+func (s *Service) nextCleanupFile(ctx context.Context, p *Plan, succeeded bool) error {
+	if succeeded {
+		recordCleanupSuccess(p)
+	}
 	p.TrackCleanup.Processed++
 	p.TrackCleanup.Sidecars = nil
 	p.Replacement = nil

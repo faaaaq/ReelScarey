@@ -1,3 +1,7 @@
+import {
+  CleanupSkipDetails,
+  type CleanupSkipReport,
+} from "../components/CleanupSkipDetails";
 import { BatchProgress, type WorkProgress } from "../components/BatchProgress";
 import { TrackCleanup } from "./TrackCleanup";
 import { ConfirmDialog, PageBody } from "../ui";
@@ -52,7 +56,7 @@ type Planned = {
 };
 type Plan = {
   progress?: WorkProgress;
-  track_cleanup?: {
+  track_cleanup?: CleanupSkipReport & {
     request: { action: string; mode: string };
     targets: { id: number; path: string }[];
     processed: number;
@@ -408,6 +412,17 @@ function Reorganize({
   const path = `/organization/files?page=${page}&query=${encodeURIComponent(query)}${mediaID ? `&media_id=${encodeURIComponent(mediaID)}` : ""}`;
   const files = useResource<Files>(path),
     history = useLiveResource<{ items: Plan[] }>("/organization/plans", 5000);
+  const linkedPlan = useLiveResource<Plan>(
+    params.get("plan")
+      ? `/organization/plans/${encodeURIComponent(params.get("plan")!)}`
+      : null,
+    5000,
+  );
+  const jobs =
+    linkedPlan.data &&
+    !history.data?.items.some((item) => item.id === linkedPlan.data?.id)
+      ? [linkedPlan.data, ...(history.data?.items ?? [])]
+      : history.data?.items;
   const [versionsFile, setVersionsFile] = useState<number>();
   const versions = useResource<{ items: Plan[] }>(
     versionsFile
@@ -1295,8 +1310,8 @@ function Reorganize({
           code={history.code}
           retry={history.reload}
         />
-        {history.data?.items
-          .filter((p) => p.state !== "review" || p.track_cleanup)
+        {jobs
+          ?.filter((p) => p.state !== "review" || p.track_cleanup)
           .sort(
             (a, b) =>
               Number(b.state === "running" || b.state === "queued") -
@@ -1307,7 +1322,11 @@ function Reorganize({
             <details
               className="organization-job"
               key={p.id}
-              open={p.state === "running" || p.state === "queued"}
+              open={
+                p.state === "running" ||
+                p.state === "queued" ||
+                p.id === params.get("plan")
+              }
             >
               <summary>
                 {p.state === "review" && p.track_cleanup ? "Stopped" : p.state}{" "}
@@ -1335,20 +1354,13 @@ function Reorganize({
                     {p.track_cleanup.changed === 1 ? "" : "s"} changed ·{" "}
                     {p.track_cleanup.disabled} tracks hidden ·{" "}
                     {p.track_cleanup.dropped} removed ·{" "}
-                    {p.track_cleanup.skipped} skipped
+                    {p.track_cleanup.skipped} unresolved skip
+                    {p.track_cleanup.skipped === 1 ? "" : "s"}
+                    {p.track_cleanup.recovered
+                      ? ` · ${p.track_cleanup.recovered} recovered`
+                      : ""}
                   </p>
-                  {!!p.track_cleanup.issues?.length && (
-                    <details>
-                      <summary>
-                        Skipped files ({p.track_cleanup.skipped})
-                      </summary>
-                      <ul>
-                        {p.track_cleanup.issues.map((issue) => (
-                          <li key={issue}>{issue}</li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
+                  <CleanupSkipDetails cleanup={p.track_cleanup} />
                 </>
               )}
               <PlanFiles plan={p} />

@@ -20,6 +20,8 @@ export type ActivePlan = {
   total: number;
   changed: number;
   skipped: number;
+  skip_attempts?: number;
+  recovered?: number;
   dropped: number;
   // The server decides whether the owner can stop this plan while it runs.
   stoppable?: boolean;
@@ -56,7 +58,7 @@ export function activePlanDetail(plan: ActivePlan) {
       plan.action === "disable" ? (plan.disabled ?? 0) : plan.dropped;
     return `${plan.processed} of ${plan.total} videos · ${count} track${
       count === 1 ? "" : "s"
-    } ${plan.action === "disable" ? "hidden" : "removed"}${plan.skipped ? ` · ${plan.skipped} skipped` : ""}`;
+    } ${plan.action === "disable" ? "hidden" : "removed"} · ${plan.skipped} unresolved skip${plan.skipped === 1 ? "" : "s"}${plan.recovered ? ` · ${plan.recovered} recovered` : ""}`;
   }
   return plan.state === "queued" ? "Waiting to start" : "In progress";
 }

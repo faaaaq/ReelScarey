@@ -1,3 +1,7 @@
+import {
+  CleanupSkipDetails,
+  type CleanupSkipReport,
+} from "../components/CleanupSkipDetails";
 import { BatchProgress, type WorkProgress } from "../components/BatchProgress";
 import { useEffect, useState } from "react";
 import { Button } from "@radix-ui/themes";
@@ -24,7 +28,7 @@ type CleanupPlan = {
   id: string;
   state: string;
   message: string;
-  track_cleanup: {
+  track_cleanup: CleanupSkipReport & {
     request?: { action: string };
     targets: { id: number; path: string }[];
     processed: number;
@@ -392,19 +396,12 @@ export function TrackCleanup({
               ? `${progress?.disabled ?? 0} tracks hidden`
               : `${progress?.dropped ?? 0} tracks removed`}{" "}
             across {progress?.changed ?? 0} videos.{" "}
-            {progress?.skipped ? `${progress.skipped} skipped.` : ""}
+            {progress?.skipped
+              ? `${progress.skipped} unresolved skip${progress.skipped === 1 ? "" : "s"}.`
+              : ""}
           </p>
         )}
-        {!!progress?.issues?.length && (
-          <details>
-            <summary>Skipped videos</summary>
-            <ul>
-              {progress.issues.map((issue) => (
-                <li key={issue}>{issue}</li>
-              ))}
-            </ul>
-          </details>
-        )}
+        {progress && <CleanupSkipDetails cleanup={progress} />}
         {!blocking &&
           (error ||
             status.error ||

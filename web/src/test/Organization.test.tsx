@@ -991,3 +991,18 @@ it("shows a running cleanup as a batch with the current file and hidden tracks",
     screen.queryByRole("checkbox", { name: "Select file 41: First feature" }),
   ).not.toBeInTheDocument();
 });
+
+it("opens a linked retry even when it is older than the recent job list", async () => {
+  setup((url, options, fixture) => {
+    if (url.endsWith("/organization/plans") && !options?.method)
+      return Response.json({ items: [] });
+    if (url.endsWith("/organization/plans/older-retry"))
+      return Response.json({
+        ...fixture.plan([], "older-retry"),
+        state: "completed",
+        message: "Successful historical retry",
+      });
+  });
+  mount("/organization?view=jobs&plan=older-retry");
+  expect(await screen.findByText("Successful historical retry")).toBeVisible();
+});
