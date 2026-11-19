@@ -183,12 +183,19 @@ func (s *Service) LoginBegin(ctx context.Context) error {
 	var parsed struct {
 		Started bool   `json:"started"`
 		Reason  string `json:"reason"`
+		Error   string `json:"error"`
 	}
 	if json.Unmarshal([]byte(body), &parsed) != nil {
 		return errors.New("the TIDAL provider returned an unreadable login response")
 	}
+	if parsed.Error != "" {
+		return errors.New(short(parsed.Error))
+	}
 	if !parsed.Started {
-		return fmt.Errorf("a TIDAL login is already in progress (%s)", parsed.Reason)
+		if parsed.Reason == "already_running" {
+			return errors.New("a TIDAL login is already in progress")
+		}
+		return fmt.Errorf("the TIDAL login could not start (%s)", parsed.Reason)
 	}
 	return nil
 }

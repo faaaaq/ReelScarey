@@ -247,6 +247,101 @@ describe("music transcoding settings", () => {
   });
 });
 
+describe("TIDAL device login", () => {
+  it("shows the device link, polls while waiting and reports completion", async () => {
+    let loginReads = 0;
+    let loginPosts = 0;
+    let authorized = false;
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/preferences" && !options?.method) {
+        return Response.json(preferences);
+      }
+      if (path === "/api/v1/library/music/profiles") {
+        return Response.json(profiles);
+      }
+      if (path === "/api/v1/library/music/cache") {
+        return Response.json({
+          entries: 0,
+          size_bytes: 0,
+          limit_bytes: 0,
+          hits: 0,
+          misses: 0,
+          direct_streams: 0,
+          live_streams: 0,
+          offset_streams: 0,
+          active_transcodes: 0,
+          active_cache_fills: 0,
+          cache_fill_failures: 0,
+        });
+      }
+      if (path === "/api/v1/library/music/tidal/status") {
+        return Response.json({
+          available: true,
+          logged_in: false,
+          quality: "LOSSLESS",
+        });
+      }
+      if (path === "/api/v1/library/music/tidal/login") {
+        if (options?.method === "POST") {
+          loginPosts += 1;
+          return Response.json(
+            { phase: "waiting", lines: [], result: "" },
+            { status: 202 },
+          );
+        }
+        loginReads += 1;
+        return Response.json(
+          authorized
+            ? {
+                phase: "done",
+                result: "success",
+                lines: ["https://tidal.test/device", "Code: OFFLINE-TEST"],
+              }
+            : {
+                phase: "waiting",
+                result: "",
+                lines: ["https://tidal.test/device", "Code: OFFLINE-TEST"],
+              },
+        );
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MemoryRouter initialEntries={["/music/settings"]}>
+          <MusicSettings />
+        </MemoryRouter>
+      </Theme>,
+    );
+
+    const connect = await screen.findByRole("button", {
+      name: "Connect TIDAL",
+    });
+    await userEvent.click(connect);
+    expect(loginPosts).toBe(1);
+    const link = await screen.findByRole("link", {
+      name: "https://tidal.test/device",
+    });
+    expect(link).toHaveAttribute("href", "https://tidal.test/device");
+    expect(screen.getByText("Code: OFFLINE-TEST")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: /Waiting for login/ }),
+    ).toBeDisabled();
+
+    await waitFor(() => expect(loginReads).toBeGreaterThanOrEqual(2), {
+      timeout: 4000,
+    });
+    authorized = true;
+    expect(
+      await screen.findByText("TIDAL login succeeded.", undefined, {
+        timeout: 5000,
+      }),
+    ).toBeVisible();
+    expect(fetch).toHaveBeenCalled();
+  });
+});
+
 describe("download profile selector", () => {
   it("marks the default profile and sends the chosen key", async () => {
     const fetch = mockFetch((path, options) => {

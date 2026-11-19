@@ -17,11 +17,18 @@ Secrets (the TIDAL token) live only in tidaler's token.json inside the
 configured XDG config dir and are never printed. Errors go to stderr as text.
 """
 
+import contextlib
 import io
 import json
 import os
+import subprocess
 import sys
-import threading
+import time
+
+try:
+    import fcntl
+except ImportError:  # Windows development harness; Docker uses fcntl.
+    fcntl = None
 
 # The provider must print exactly one JSON object on stdout. All library
 # chatter goes to a captured sink; uncaught errors go to stderr.
@@ -39,7 +46,7 @@ from tidaler.helper.wrapper import LoggerWrapped
 QUALITIES = {"LOW", "HIGH", "LOSSLESS", "HI_RES_LOSSLESS"}
 AUDIO_EXTENSIONS = {".flac", ".m4a", ".mp3", ".mp4", ".ogg", ".alac"}
 LOGIN_STATE = "reelscarey-login-state.json"
-LOGIN_LOCK = threading.Lock()
+LOGIN_START_GRACE_SECONDS = 10
 
 
 def out(payload):
@@ -79,53 +86,141 @@ def verify():
     out({"logged_in": True, "quality": str(tidal.settings.data.quality_audio)})
 
 
+def _read_login_state(state_path):
+    try:
+        with open(state_path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {"phase": "idle"}
+
+
+def _login_pid_path(state_path):
+    return state_path + ".pid"
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _login_process_alive(state_path):
+    try:
+        with open(_login_pid_path(state_path), encoding="ascii") as f:
+            return _pid_alive(int(f.read().strip()))
+    except (OSError, ValueError):
+        return False
+
+
+def _login_stale(state_path, state):
+    if state.get("phase") != "waiting" or _login_process_alive(state_path):
+        return False
+    try:
+        started_at = float(state.get("started_at", 0))
+    except (TypeError, ValueError):
+        started_at = 0
+    return time.time() - started_at > LOGIN_START_GRACE_SECONDS
+
+
+@contextlib.contextmanager
+def _login_lock(state_path):
+    # Each provider invocation is a separate process, so a thread lock cannot
+    # prevent two clicks from starting competing OAuth flows. Docker uses an
+    # flock; the development-only Windows fallback still uses the state fence.
+    with open(state_path + ".lock", "a", encoding="ascii") as handle:
+        if fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _remove_login_pid(state_path):
+    try:
+        os.remove(_login_pid_path(state_path))
+    except FileNotFoundError:
+        pass
+
+
 def login_begin():
-    with LOGIN_LOCK:
-        state_path = os.path.join(path_config_base(), LOGIN_STATE)
-        if os.path.isfile(state_path):
-            try:
-                with open(state_path, encoding="utf-8") as f:
-                    state = json.load(f)
-                if state.get("phase") == "waiting":
-                    out({"started": False, "reason": "already_running"})
-                    return
-            except (OSError, ValueError):
-                pass
-        lines = []
+    state_path = os.path.join(path_config_base(), LOGIN_STATE)
+    os.makedirs(path_config_base(), exist_ok=True)
+    with _login_lock(state_path):
+        state = _read_login_state(state_path)
+        if state.get("phase") == "waiting" and not _login_stale(state_path, state):
+            out({"started": False, "reason": "already_running"})
+            return
 
-        def fn_print(message=""):
-            lines.append(str(message))
-            # Rewrite the state file as the device link and code appear, so
-            # the login UI can show them while the flow is still waiting.
-            _write_state(state_path, {"phase": "waiting", "lines": lines, "result": ""})
-
-        def worker():
-            state = {"phase": "waiting", "lines": lines, "result": ""}
+        # Persist the waiting state before starting the child. The previous
+        # daemon-thread implementation exited with the short-lived provider
+        # process, often before this file or the device link ever existed.
+        state = {"phase": "waiting", "lines": [], "result": "",
+                 "started_at": time.time()}
+        _write_state(state_path, state)
+        try:
+            kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
+                      "stderr": subprocess.DEVNULL, "close_fds": True}
+            if os.name == "nt":
+                kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            else:
+                kwargs["start_new_session"] = True
+            process = subprocess.Popen(
+                [sys.executable, os.path.abspath(__file__), "login-run"], **kwargs)
+        except Exception as error:  # noqa: BLE001 - report an actionable start failure
+            state.update({"phase": "done", "result": "failed",
+                          "error": "The TIDAL login process could not start: " + str(error)[:240]})
             _write_state(state_path, state)
-            try:
-                settings = Settings()
-                tidal = Tidal(settings)
-                result = tidal.session.login_oauth_session(fn_print=fn_print)
-                if result and tidal.login_finalize():
-                    state.update({"phase": "done", "result": "success"})
-                else:
-                    state.update({"phase": "done", "result": "failed",
-                                  "error": "TIDAL device authorization did not complete. Try again."})
-            except Exception as error:  # noqa: BLE001 - the owner sees the message
-                state.update({"phase": "done", "result": "failed", "error": str(error)[:300]})
-            _write_state(state_path, state)
-
-        threading.Thread(target=worker, daemon=True).start()
+            out({"started": False, "reason": "start_failed", "error": state["error"]})
+            return
+        with open(_login_pid_path(state_path), "w", encoding="ascii") as f:
+            f.write(str(process.pid))
         out({"started": True})
+
+
+def login_run():
+    # Internal child command: this process intentionally remains alive until
+    # the owner finishes (or TIDAL rejects) device authorization.
+    state_path = os.path.join(path_config_base(), LOGIN_STATE)
+    state = _read_login_state(state_path)
+    state.setdefault("started_at", time.time())
+    lines = state.get("lines") or []
+
+    def fn_print(message=""):
+        lines.append(str(message))
+        state.update({"phase": "waiting", "lines": lines, "result": ""})
+        _write_state(state_path, state)
+
+    try:
+        settings = Settings()
+        tidal = Tidal(settings)
+        result = tidal.session.login_oauth_session(fn_print=fn_print)
+        if result and tidal.login_finalize():
+            state.update({"phase": "done", "result": "success"})
+        else:
+            state.update({"phase": "done", "result": "failed",
+                          "error": "TIDAL device authorization did not complete. Try again."})
+    except Exception as error:  # noqa: BLE001 - the owner sees the message
+        state.update({"phase": "done", "result": "failed", "error": str(error)[:300]})
+    _write_state(state_path, state)
+    _remove_login_pid(state_path)
 
 
 def login_status():
     state_path = os.path.join(path_config_base(), LOGIN_STATE)
-    try:
-        with open(state_path, encoding="utf-8") as f:
-            state = json.load(f)
-    except (OSError, ValueError):
-        state = {"phase": "idle"}
+    state = _read_login_state(state_path)
+    if _login_stale(state_path, state):
+        state.update({"phase": "done", "result": "failed",
+                      "error": "The TIDAL login provider stopped before authorization completed. Try again."})
+        _write_state(state_path, state)
+        _remove_login_pid(state_path)
     out(state)
 
 
@@ -277,6 +372,8 @@ def main():
             login_begin()
         elif command == "login-status":
             login_status()
+        elif command == "login-run":
+            login_run()
         elif command == "search" and len(argv) >= 3:
             search(argv[1], max(1, min(int(argv[2]), 25)))
         elif command == "download" and len(argv) >= 3:
