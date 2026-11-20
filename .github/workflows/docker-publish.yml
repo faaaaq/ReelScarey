@@ -20,15 +20,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # ---- amd64 leg (existing self-hosted runner; behavior preserved) ----
+  # ---- amd64 leg ----
   publish:
     if: github.ref == 'refs/heads/codex/foundation' || startsWith(github.ref, 'refs/tags/v')
-    # Publish runs on every primary-branch push, on a v* tag or on an explicit
-    # manual dispatch, so it may use a self-hosted runner.
-    # REELSCAREY_PUBLISH_RUNNER lets the owner put releases on a second machine
-    # so they no longer queue behind a long checks/acceptance run on
-    # REELSCAREY_RUNNER.
-    runs-on: ${{ vars.REELSCAREY_PUBLISH_RUNNER || vars.REELSCAREY_RUNNER || 'reelscarey-ci' }}
+    # Keep publishing independent of the runner used for application checks.
+    runs-on: ${{ vars.REELSCAREY_PUBLISH_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 120
 
     steps:
