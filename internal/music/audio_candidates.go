@@ -48,6 +48,31 @@ func sameAudioVersion(a, b []string) bool {
 	return strings.Join(a, ",") == strings.Join(b, ",")
 }
 
+// audioReleaseVariants are version words that re-release the same recording —
+// a remaster or a deluxe edition — rather than describe a different
+// performance of it. Provider titles carry them constantly ("Copacabana
+// (Remastered)") while YouTube uploads of the same recording almost never
+// do, so their absence never makes a candidate ineligible; the duration and
+// channel evidence still bound the match. Recording-type qualifiers (live,
+// remix, cover, instrumental, acoustic, demo, sped up, radio edit, extended)
+// describe a different performance and stay strict in both directions.
+var audioReleaseVariants = map[string]bool{
+	"remastered": true,
+	"deluxe":     true,
+}
+
+// audioRecordingQualifiers drops release-variant words so the strict
+// recording comparison ignores them.
+func audioRecordingQualifiers(qualifiers []string) []string {
+	out := []string{}
+	for _, qualifier := range qualifiers {
+		if !audioReleaseVariants[qualifier] {
+			out = append(out, qualifier)
+		}
+	}
+	return out
+}
+
 func audioChannelMatchesArtist(channel, artist string) bool {
 	channel = strings.TrimSpace(channel)
 	artist = strings.TrimSpace(artist)
@@ -84,12 +109,20 @@ func evaluateAudioCandidates(candidates []AudioCandidate, request AcquisitionTra
 			evidence.Reasons = append(evidence.Reasons, "Track title matches on token boundaries.")
 		}
 		candidateVersion := audioVersionQualifiers(candidate.Title)
-		if !sameAudioVersion(requestedVersion, candidateVersion) {
+		// Only recording-type qualifiers make a candidate ineligible. A
+		// remaster/deluxe release variant may be named in the request and
+		// absent from the candidate (or the reverse) without contradicting
+		// the recording; agreeing on the full set still ranks higher.
+		requestedRecording := audioRecordingQualifiers(requestedVersion)
+		candidateRecording := audioRecordingQualifiers(candidateVersion)
+		if !sameAudioVersion(requestedRecording, candidateRecording) {
 			evidence.Eligible = false
 			evidence.Reasons = append(evidence.Reasons, fmt.Sprintf("Version differs: requested %v, candidate %v.", requestedVersion, candidateVersion))
-		} else {
+		} else if sameAudioVersion(requestedVersion, candidateVersion) {
 			evidence.Score += 40
 			evidence.Reasons = append(evidence.Reasons, "Version qualifiers agree.")
+		} else {
+			evidence.Reasons = append(evidence.Reasons, "Recording version matches; release qualifiers such as remaster or deluxe differ and stay eligible.")
 		}
 		if strings.TrimSpace(request.Artist) != "" && strings.TrimSpace(candidate.Channel) != "" {
 			if audioChannelMatchesArtist(candidate.Channel, request.Artist) {

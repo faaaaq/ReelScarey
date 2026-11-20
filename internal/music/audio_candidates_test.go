@@ -62,6 +62,42 @@ func TestAudioCandidateEvaluationRefusesEqualEvidence(t *testing.T) {
 	}
 }
 
+func TestAudioCandidateEvaluationAcceptsReleaseVariantTitles(t *testing.T) {
+	// Real-world shape captured from a live failure: the provider title
+	// carries "(Remastered)" while no YouTube upload of the same recording
+	// does. The official channel upload must be chosen instead of failing
+	// every candidate, and remix/live performances must stay ineligible.
+	candidates := []AudioCandidate{
+		{ID: "official", Title: "Copacabana (At the Copa) (Short Version)", Channel: "Barry Manilow", DurationSeconds: 237},
+		{ID: "reupload", Title: "Barry Manilow - Copacabana (At the Copa) (Long Version)", Channel: "Top Squad", DurationSeconds: 345},
+		{ID: "remix", Title: "Barry Manilow - Copacabana (At the Copa) ((Remix)(Official Video))", Channel: "Barry Manilow", DurationSeconds: 241},
+		{ID: "live", Title: "Barry Manilow - Copacabana (Live from The 1978 BBC Special)", Channel: "Barry Manilow", DurationSeconds: 481},
+	}
+	decision := evaluateAudioCandidates(candidates, AcquisitionTrackInput{Title: "Copacabana (Remastered)", Artist: "Barry Manilow", DurationMS: 245000})
+	if decision.Chosen == nil || decision.Chosen.ID != "official" {
+		t.Fatalf("release-variant request was not matched to the official recording: %#v", decision)
+	}
+	for _, evidence := range decision.Candidates {
+		if (evidence.Candidate.ID == "remix" || evidence.Candidate.ID == "live") && evidence.Eligible {
+			t.Fatalf("%s must stay ineligible: %#v", evidence.Candidate.ID, evidence)
+		}
+	}
+	// When a candidate does carry the requested release variant it outranks
+	// the plain recording.
+	tagged := append(append([]AudioCandidate{}, candidates...), AudioCandidate{ID: "tagged", Title: "Copacabana (Remastered)", Channel: "Barry Manilow", DurationSeconds: 245})
+	decision = evaluateAudioCandidates(tagged, AcquisitionTrackInput{Title: "Copacabana (Remastered)", Artist: "Barry Manilow", DurationMS: 245000})
+	if decision.Chosen == nil || decision.Chosen.ID != "tagged" {
+		t.Fatalf("explicit remaster tag was not preferred: %#v", decision)
+	}
+	// The reverse direction: a plain catalog title may be satisfied by the
+	// remastered official upload of the same recording.
+	decision = evaluateAudioCandidates([]AudioCandidate{{ID: "remaster", Title: "Artist - Song (Remastered 2011)", Channel: "Artist - Topic", DurationSeconds: 200}},
+		AcquisitionTrackInput{Title: "Song", Artist: "Artist", DurationMS: 200000})
+	if decision.Chosen == nil || decision.Chosen.ID != "remaster" {
+		t.Fatalf("plain request refused a remastered upload of the same recording: %#v", decision)
+	}
+}
+
 type evidenceAudioSource struct {
 	candidates []AudioCandidate
 	downloads  int

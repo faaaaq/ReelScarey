@@ -81,6 +81,76 @@ func TestResolveDeezerArtistPrefersCatalogCorroborationOverPopularity(t *testing
 	}
 }
 
+func TestResolveDeezerArtistCorroboratesCompilationCatalogsByTrackEvidence(t *testing.T) {
+	// Real-world shape: Deezer's artist album list omits compilation
+	// releases entirely ("The Very Best of Cher" never appears in
+	// /artist/{id}/albums) and album search does not surface the compilation
+	// either, so a "Best of"-only catalog can only be corroborated by the
+	// saved tracks, which still name the artist.
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/search/artist":
+			_, _ = w.Write([]byte(`{"data":[{"id":3156,"name":"Cher","nb_fan":565070}]}`))
+		case "/artist/3156/albums":
+			_, _ = w.Write([]byte(`{"data":[{"title":"Believe"},{"title":"Living Proof"}]}`))
+		case "/search/album":
+			_, _ = w.Write([]byte(`{"data":[{"title":"The Very Best of Chicago","artist":{"id":2592,"name":"Chicago"}}]}`))
+		case "/search/track":
+			_, _ = w.Write([]byte(`{"data":[{"id":786717,"title":"Believe","artist":{"id":3156,"name":"Cher"}}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer provider.Close()
+	ctx := context.Background()
+	db, err := database.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := NewStore(db)
+	saved, err := store.SaveArtist(ctx,
+		Artist{MusicBrainzID: testMBID, Name: "Cher", Monitored: true, Status: "missing"},
+		[]Album{{MusicBrainzID: testRGID, Title: "The Very Best of Cher", Monitored: true, Status: "missing"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	albums, err := store.Albums(ctx, saved.ID)
+	if err != nil || len(albums) != 1 {
+		t.Fatal(albums, err)
+	}
+	if err := store.SaveTracks(ctx, albums[0].ID, []Track{{Disc: 1, Number: 1, Title: "Believe", DurationMS: 239000}}); err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{store: NewStore(db), topBaseURL: provider.URL}
+	id, verified, err := service.resolveDeezerArtist(ctx, provider.URL, "Cher")
+	if err != nil || id != 3156 || !verified {
+		t.Fatalf("track evidence did not corroborate the compilation catalog: id=%d verified=%v err=%v", id, verified, err)
+	}
+
+	// When the tracks belong to nobody on Deezer the resolution is refused;
+	// a popular same-named stranger must still not own the page.
+	refusing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/search/artist":
+			_, _ = w.Write([]byte(`{"data":[{"id":3156,"name":"Cher","nb_fan":565070}]}`))
+		case "/artist/3156/albums":
+			_, _ = w.Write([]byte(`{"data":[{"title":"Believe"},{"title":"Living Proof"}]}`))
+		case "/search/album":
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		case "/search/track":
+			_, _ = w.Write([]byte(`{"data":[{"id":1,"title":"Believe","artist":{"id":999,"name":"Sher"}}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer refusing.Close()
+	id, verified, err = service.resolveDeezerArtist(ctx, refusing.URL, "Cher")
+	if err != nil || id != 0 || verified {
+		t.Fatalf("unattributed track evidence must refuse the resolution: id=%d verified=%v err=%v", id, verified, err)
+	}
+}
+
 func TestArtistTopTracksUsesProviderOverallTracksAndMarksLibraryMatches(t *testing.T) {
 	ctx := context.Background()
 	db, err := database.Open(ctx, t.TempDir())

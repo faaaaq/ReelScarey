@@ -142,32 +142,56 @@ func (s *Service) resolveDeezerArtist(ctx context.Context, base, name string) (i
 			return candidate.id, true, nil
 		}
 	}
-	// Same-named candidates do not carry the catalog's albums. The display
-	// name may differ from the catalog name (a stage-name alias, such as
-	// "ABK" versus "Anybody Killa"), so the catalog's own album titles are
-	// searched instead: whoever owns the catalog's albums on Deezer is the
-	// artist, regardless of the display name.
-	id := s.deezerArtistByCatalogAlbums(ctx, base, titles)
-	if id != 0 {
-		return id, true, nil
+	// Same-named candidates do not carry the catalog's albums in their own
+	// album lists. Deezer's artist album list omits compilation releases
+	// entirely, so an artist whose saved albums are compilations ("The Very
+	// Best of …") can never be corroborated by that list. Attribute the
+	// catalog's album titles through album search instead: whoever owns an
+	// exact-titled album on Deezer is the artist, regardless of the display
+	// name.
+	attributions := s.catalogAlbumAttributions(ctx, base, titles)
+	if len(attributions) > 0 {
+		for i, candidate := range candidates {
+			if i >= 4 {
+				break
+			}
+			if attributions[candidate.id] > 0 {
+				return candidate.id, true, nil
+			}
+		}
+		// The display name may differ from the catalog name (a stage-name
+		// alias, such as "ABK" versus "Anybody Killa"), so the best
+		// attributed artist must still carry an exact catalog title in its
+		// own album list before it may own the page; a tribute release named
+		// like a catalog album cannot win by a search hit alone.
+		if id := s.verifiedAlbumOwner(ctx, base, attributions, titles); id != 0 {
+			return id, true, nil
+		}
+	}
+	// Compilations are also often missing from album search results, but the
+	// tracks themselves still name the artist. A saved catalog track title
+	// that Deezer attributes to a same-named candidate corroborates it.
+	trackTitles, trackEvidence, trackErr := s.catalogTrackTitles(ctx, name)
+	if trackErr != nil {
+		return 0, false, trackErr
+	}
+	if trackEvidence && len(trackTitles) > 0 {
+		if id := s.deezerArtistByCatalogTracks(ctx, base, candidates, trackTitles); id != 0 {
+			return id, true, nil
+		}
 	}
 	// Nothing on Deezer carries the saved catalog's albums; a popular
 	// same-named stranger must not own the page.
 	return 0, false, nil
 }
 
-// deezerArtistByCatalogAlbums searches the catalog's album titles and returns
-// the Deezer artist that owns the most of them. An album-title search result
-// alone is not enough — the candidate's own album list must contain the
-// catalog album, and when several catalog albums exist the majority wins.
-func (s *Service) deezerArtistByCatalogAlbums(ctx context.Context, base string, titles []string) int64 {
-	type deezerTally struct {
-		name  string
-		hits  int
-		order int
-	}
-	tallies := map[int64]*deezerTally{}
-	order := 0
+// catalogAlbumAttributions searches the catalog's album titles on Deezer and
+// counts, per Deezer artist id, how many exact-titled catalog albums the
+// search attributes to it. A search hit alone never verifies an alias owner,
+// but it does corroborate a same-named candidate whose own album list cannot
+// show the release, because Deezer omits compilations from that list.
+func (s *Service) catalogAlbumAttributions(ctx context.Context, base string, titles []string) map[int64]int {
+	attributions := map[int64]int{}
 	checked := 0
 	for _, title := range titles {
 		if checked >= 3 {
@@ -178,69 +202,123 @@ func (s *Service) deezerArtistByCatalogAlbums(ctx context.Context, base string, 
 			Data []struct {
 				Title  string `json:"title"`
 				Artist struct {
-					ID   int64  `json:"id"`
-					Name string `json:"name"`
+					ID int64 `json:"id"`
 				} `json:"artist"`
 			} `json:"data"`
 		}
-		if err := deezerGet(ctx, base+"/search/album?limit=10&q="+url.QueryEscape(title), &body); err != nil {
-			return 0
-		}
-		for _, album := range body.Data {
-			if album.Artist.ID <= 0 || !matchNameEqual(album.Title, title) {
-				continue
-			}
-			tally := tallies[album.Artist.ID]
-			if tally == nil {
-				tally = &deezerTally{name: album.Artist.Name, order: order}
-				order++
-				tallies[album.Artist.ID] = tally
-			}
-		}
-	}
-	if len(tallies) == 0 {
-		return 0
-	}
-	// Verify each candidate's own album list before trusting a search hit.
-	type verified struct {
-		id    int64
-		hits  int
-		name  string
-		order int
-	}
-	candidates := []verified{}
-	for id, tally := range tallies {
-		hits := 0
-		var body struct {
-			Data []struct {
-				Title string `json:"title"`
-			} `json:"data"`
-		}
-		if err := deezerGet(ctx, base+"/artist/"+strconv.FormatInt(id, 10)+"/albums?limit=100", &body); err != nil {
+		if err := deezerGet(ctx, base+"/search/album?limit=25&q="+url.QueryEscape(title), &body); err != nil {
 			continue
 		}
+		seen := map[int64]bool{}
 		for _, album := range body.Data {
-			for _, title := range titles {
-				if matchNameEqual(album.Title, title) {
-					hits++
-					break
-				}
+			if album.Artist.ID <= 0 || seen[album.Artist.ID] || !matchNameEqual(album.Title, title) {
+				continue
+			}
+			seen[album.Artist.ID] = true
+			attributions[album.Artist.ID]++
+		}
+	}
+	return attributions
+}
+
+// verifiedAlbumOwner returns the attributed artist whose own album list also
+// carries an exact catalog title, preferring the artist attributed the most
+// catalog albums. This keeps a tribute release named like a catalog album
+// from owning the page when the catalog name is only an alias.
+func (s *Service) verifiedAlbumOwner(ctx context.Context, base string, attributions map[int64]int, titles []string) int64 {
+	ids := make([]int64, 0, len(attributions))
+	for id := range attributions {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		if attributions[ids[i]] != attributions[ids[j]] {
+			return attributions[ids[i]] > attributions[ids[j]]
+		}
+		return ids[i] < ids[j]
+	})
+	for _, id := range ids {
+		if s.deezerAlbumsContain(ctx, base, id, titles) {
+			return id
+		}
+	}
+	return 0
+}
+
+// catalogTrackTitles returns saved track titles of the catalog artist with
+// the given name, longest first so the most distinctive titles corroborate
+// first. The bool reports whether track evidence can be used: it is false
+// when several catalog artists share the name, because the tracks could
+// belong to any of them, and when the artist has no saved tracks at all.
+func (s *Service) catalogTrackTitles(ctx context.Context, name string) ([]string, bool, error) {
+	rows, err := s.store.db.QueryContext(ctx, `SELECT ar.id, t.title FROM music_artists ar
+		JOIN music_albums a ON a.artist_id=ar.id JOIN music_tracks t ON t.album_id=a.id
+		WHERE lower(trim(ar.name))=lower(trim(?))
+		ORDER BY length(trim(t.title)) DESC, t.id LIMIT 6`, name)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	artistIDs := map[int64]bool{}
+	titles := []string{}
+	for rows.Next() {
+		var artistID int64
+		var title string
+		if err := rows.Scan(&artistID, &title); err != nil {
+			return nil, false, err
+		}
+		artistIDs[artistID] = true
+		if title = strings.TrimSpace(title); title != "" {
+			titles = append(titles, title)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	if len(artistIDs) > 1 || len(titles) == 0 {
+		return nil, false, nil
+	}
+	return titles, true, nil
+}
+
+// deezerArtistByCatalogTracks searches saved catalog track titles and accepts
+// a same-named candidate when Deezer attributes an exact-titled track to it.
+// This is the last corroboration tier for compilation-only catalogs, where
+// neither the artist's album list nor album search surfaces the saved
+// releases but every track still names its artist.
+func (s *Service) deezerArtistByCatalogTracks(ctx context.Context, base string, candidates []deezerCandidate, trackTitles []string) int64 {
+	attributed := map[int64]bool{}
+	checked := 0
+	for _, title := range trackTitles {
+		if checked >= 3 {
+			break
+		}
+		checked++
+		var body struct {
+			Data []struct {
+				Title  string `json:"title"`
+				Artist struct {
+					ID int64 `json:"id"`
+				} `json:"artist"`
+			} `json:"data"`
+		}
+		if err := deezerGet(ctx, base+"/search/track?limit=5&q="+url.QueryEscape(title), &body); err != nil {
+			continue
+		}
+		for _, track := range body.Data {
+			if track.Artist.ID > 0 && matchNameEqual(track.Title, title) {
+				attributed[track.Artist.ID] = true
 			}
 		}
-		if hits > 0 {
-			candidates = append(candidates, verified{id: id, hits: hits, name: tally.name, order: tally.order})
+	}
+	for i, candidate := range candidates {
+		if i >= 4 {
+			break
+		}
+		if attributed[candidate.id] {
+			return candidate.id
 		}
 	}
-	if len(candidates) == 0 {
-		return 0
-	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		if candidates[i].hits != candidates[j].hits {
-			return candidates[i].hits > candidates[j].hits
-		}
-		return candidates[i].order < candidates[j].order
-	})
-	return candidates[0].id
+	return 0
 }
 
 // deezerAlbumsContain reports whether the candidate artist's bounded album

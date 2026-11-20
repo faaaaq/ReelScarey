@@ -1373,7 +1373,9 @@ function MusicArtistDetail({ id }: { id?: string }) {
               >
                 <p>
                   {downloadJob.data.state}
-                  {topTrackState ? ` · ${topTrackState}` : ""}
+                  {topTrackState && topTrackState !== downloadJob.data.state
+                    ? ` · ${topTrackState}`
+                    : ""}
                 </p>
                 {downloadJob.data.error && <p>{downloadJob.data.error}</p>}
                 {topTrackError && <p>{topTrackError}</p>}

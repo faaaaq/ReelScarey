@@ -1142,12 +1142,18 @@ image.
   normalized artist-name match, then cached.
 - The artist page's full Deezer discography and top tracks are name-resolved
   with catalog evidence: every exact and normalized same-named candidate is
-  checked against the saved catalog's albums, and when no candidate carries
-  them, the catalog's own album titles are searched to find the artist that
-  owns them (covering stage-name aliases such as "ABK" versus
-  "Anybody Killa"). When nothing on Deezer carries the saved albums, the page
-  keeps the saved catalog albums and says the discography could not be
-  verified instead of showing a popular same-named stranger's albums.
+  checked against the saved catalog's albums, then the catalog's own album
+  titles are attributed through Deezer album search (Deezer's per-artist
+  album list omits compilation releases entirely, so a "Best of"-only catalog
+  cannot be verified from that list alone), and finally saved catalog track
+  titles are attributed through Deezer track search for compilations that
+  album search does not surface. A same-named candidate corroborated by any
+  tier owns the page; a differently named owner found by album search (a
+  stage-name alias such as "ABK" versus "Anybody Killa") must still carry an
+  exact catalog title in its own album list, so a tribute release cannot win
+  by a search hit alone. When nothing on Deezer carries the saved albums,
+  the page keeps the saved catalog albums and says the discography could not
+  be verified instead of showing a popular same-named stranger's albums.
 - Album covers use the saved Cover Art Archive/provider URL first. If a local or
   imported album has no cover URL, an exact Deezer album search supplies one;
   MusicBrainz release groups fall back to the Cover Art Archive.
@@ -1179,9 +1185,15 @@ The Music index is one library page with Albums, Artists and Tracks views, match
 
 Album tiles and the album page can queue an automatic album download. Missing tracks are matched, downloaded and imported by the durable worker; existing files are skipped and never replaced. The artist page lists the full Deezer discography even when an album is not in the local catalog, and each missing album can be downloaded. Artist top tracks can be selected in bulk and queued as one acquisition job. The confirmation popup shows the queued job's live progress, and the artist, album and library pages keep a progress panel (state, percentage, current track and failed tracks) that polls `GET /api/v1/library/music/acquisitions/{id}` until the job completes, so a download stays trackable without leaving the page.
 Artist top tracks use Deezer's top list first, then Deezer track search, then
-iTunes search when the earlier providers return no usable tracks. The discovery
-page shows active jobs and any job that needs attention, so normal processing
-needs no user intervention.
+iTunes search when the earlier providers return no usable tracks. When the
+worker searches YouTube for a top track, a candidate is accepted only on
+compatible title, artist and duration evidence. Recording-type version
+qualifiers (live, remix, cover, instrumental, acoustic, demo, sped up, radio
+edit, extended) must agree in both directions; release-variant qualifiers
+(remastered, deluxe) describe the same recording and never disqualify a
+candidate — an explicit remaster tag still ranks higher when one exists. The
+discovery page shows active jobs and any job that needs attention, so normal
+processing needs no user intervention.
 
 ## Scan stability on network and FUSE folders
 
