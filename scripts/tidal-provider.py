@@ -61,12 +61,17 @@ def silent_progress():
 
 
 def session_ready():
-    settings = Settings()
-    tidal = Tidal(settings)
-    if not tidal.login_token(do_pkce=True):
-        return None, tidal
-    if not tidal.login_finalize():
-        return None, tidal
+    # tidaler/tidalapi may print login or token-refresh chatter while a device
+    # flow is still waiting. stdout is ReelScarey's JSON protocol, so isolate
+    # library output just as the download progress sink does. Without this,
+    # verify can return device text plus JSON and the Go adapter cannot parse it.
+    with contextlib.redirect_stdout(io.StringIO()):
+        settings = Settings()
+        tidal = Tidal(settings)
+        if not tidal.login_token(do_pkce=True):
+            return None, tidal
+        if not tidal.login_finalize():
+            return None, tidal
     return tidal, tidal
 
 

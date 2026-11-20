@@ -103,6 +103,10 @@ class Tidal:
     def __init__(self, settings):
         self.session = FakeSession()
 
+    def login_token(self, do_pkce=True):
+        print("offline library chatter that must not enter the JSON protocol")
+        return False
+
     def login_finalize(self):
         return True
 
@@ -128,6 +132,8 @@ def invoke(provider, env, *args):
     lines = completed.stdout.strip().splitlines()
     if not lines:
         raise AssertionError(f"provider {args} returned no JSON: {completed.stderr!r}")
+    if len(lines) != 1:
+        raise AssertionError(f"provider {args} leaked non-protocol stdout lines: {len(lines)}")
     return json.loads(lines[-1])
 
 

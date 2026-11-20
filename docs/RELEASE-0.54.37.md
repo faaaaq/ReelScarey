@@ -28,6 +28,11 @@ source. Credential-like assignment values are redacted from provider error text.
 TIDAL-only submission is disabled in the popup until a current verified session
 is available, with a direct link to Music settings.
 
+Provider library chatter is isolated from the JSON protocol during token/session
+checks, including the transition while device authorization is still waiting.
+Verification therefore returns a structured result rather than device text mixed
+with JSON. The offline protocol harness rejects any additional stdout line.
+
 Offline and real-server coverage includes source routing without fallback calls,
 persisted source retries after a service reload, saved defaults, unavailable
 providers, duplicate-source conflicts, additive migration, authenticated API
