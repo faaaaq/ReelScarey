@@ -45,7 +45,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.54.36"
+var version = "0.54.37"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -326,13 +326,14 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			"executable", youtubePath)
 	}
 	if youtubeInspector != nil {
-		musicService.SetAudioSource(youtubeAudioSource{inspector: youtubeInspector})
+		youtubeSource := youtubeAudioSource{inspector: youtubeInspector}
+		musicService.SetAudioSource(youtubeSource)
+		musicService.SetNamedAudioSource("youtube", youtubeSource)
 	}
-	// The TIDAL provider is opt-in: when it is configured it becomes the
-	// primary music acquisition source and YouTube stays as the fallback.
-	// A provider that exists but has no TIDAL session is an honest startup
-	// warning, not a silent fallback, so the owner knows why TIDAL is not
-	// being used.
+	// The TIDAL provider is opt-in. Installation controls availability, not a
+	// token file: automatic acquisition can fall back after a failed session,
+	// while an explicitly selected TIDAL job reports that provider's error.
+	// Settings performs the remote session verification on demand.
 	var tidalProvider httpapi.TIDALProvider
 	tidalProviderPath := os.Getenv("REELSCAREY_TIDAL_PROVIDER")
 	if tidalProviderPath != "" {
@@ -349,19 +350,27 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 			logger.Warn("TIDAL provider failed to configure; music acquisition uses the fallback source", "error", tidalServiceErr)
 		} else {
 			tidalProvider = tidalService
-			source := music.AudioSource(tidalAudioSource{service: tidalService})
-			if youtubeInspector != nil {
-				source = music.PriorityAudioSource{
-					Primary:  tidalAudioSource{service: tidalService},
-					Fallback: youtubeAudioSource{inspector: youtubeInspector},
+			if prefs, err := musicService.GetPreferences(ctx); err == nil {
+				if err := tidalService.SetQuality(prefs.TidalQuality); err != nil {
+					logger.Warn("TIDAL quality preference could not be applied", "error", err)
 				}
 			}
-			musicService.SetAudioSource(source)
-			if status := tidalService.Status(ctx); !status.Available || !status.LoggedIn {
-				logger.Warn("TIDAL provider is configured but has no usable TIDAL session; music acquisition uses the fallback source until tidal-login completes",
-					"detail", status.Detail)
+			tidalSource := tidalAudioSource{service: tidalService}
+			musicService.SetNamedAudioSource("tidal", tidalSource)
+			if youtubeInspector != nil {
+				musicService.SetAudioSource(music.PriorityAudioSource{
+					Primary:  tidalSource,
+					Fallback: youtubeAudioSource{inspector: youtubeInspector},
+				})
 			} else {
-				logger.Info("TIDAL provider is configured and logged in; music acquisition prefers TIDAL", "quality", status.Quality)
+				musicService.SetAudioSource(tidalSource)
+			}
+			if status := tidalService.Status(ctx); !status.Available {
+				logger.Warn("TIDAL provider is configured but unavailable; automatic acquisition will use the fallback", "detail", status.Detail)
+			} else if status.TokenPresent {
+				logger.Info("TIDAL credential file is present; account verification is available in Music settings", "quality", status.Quality)
+			} else {
+				logger.Info("TIDAL provider is installed but not connected; automatic acquisition will use the fallback")
 			}
 		}
 	}
