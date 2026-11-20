@@ -15,6 +15,68 @@
   flex: 1;
 }
 
+.mus-download-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.mus-download-options label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.mus-tidal-status {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px 20px;
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--rs-border);
+  border-radius: 8px;
+  background: var(--rs-surface-2);
+}
+
+.mus-tidal-status div {
+  min-width: 0;
+}
+
+.mus-tidal-status dt {
+  color: var(--rs-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.mus-tidal-status dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.mus-tidal-settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-top: 16px;
+}
+
+.mus-tidal-settings label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.mus-tidal-settings button {
+  justify-self: start;
+}
+
 .mus-card-art {
   position: relative;
   aspect-ratio: 1 / 1;

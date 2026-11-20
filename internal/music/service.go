@@ -47,7 +47,9 @@ type Service struct {
 	acoustid         *AcoustIDClient
 	secrets          *securestore.Store
 	brainz           *musicbrainzStore
+	audioMu          sync.RWMutex
 	audio            AudioSource
+	audioSources     map[string]AudioSource
 	topBaseURL       string
 	artworkDir       string
 	artworkMu        sync.Mutex

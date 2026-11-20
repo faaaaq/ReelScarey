@@ -56,6 +56,8 @@ const preferences = {
   transcoding_enabled: true,
   cache_limit_mb: 512,
   max_conversions: 2,
+  download_source: "",
+  tidal_quality: "",
   revision: 3,
 };
 
@@ -278,6 +280,8 @@ describe("TIDAL device login", () => {
         return Response.json({
           available: true,
           logged_in: false,
+          token_present: false,
+          verification_state: "not_checked",
           quality: "LOSSLESS",
         });
       }
@@ -340,11 +344,111 @@ describe("TIDAL device login", () => {
     });
     authorized = true;
     expect(
-      await screen.findByText("TIDAL login succeeded.", undefined, {
+      await screen.findByText(/TIDAL login succeeded\./, undefined, {
         timeout: 5000,
       }),
     ).toBeVisible();
     expect(fetch).toHaveBeenCalled();
+    expect(
+      screen.queryByText("Connected — session verified"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not equate a token file with login and saves visible source settings", async () => {
+    let verified = false;
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/preferences" && !options?.method) {
+        return Response.json(preferences);
+      }
+      if (
+        path === "/api/v1/library/music/preferences" &&
+        options?.method === "PUT"
+      ) {
+        return Response.json({
+          ...preferences,
+          ...JSON.parse(String(options.body)),
+          revision: 4,
+        });
+      }
+      if (path === "/api/v1/library/music/profiles")
+        return Response.json(profiles);
+      if (path === "/api/v1/library/music/cache") {
+        return Response.json({ entries: 0, size_bytes: 0, limit_bytes: 0 });
+      }
+      if (path === "/api/v1/library/music/tidal/status") {
+        return Response.json(
+          verified
+            ? {
+                available: true,
+                logged_in: true,
+                token_present: true,
+                verification_state: "verified",
+                verified_at: 2000000000,
+                quality: "LOSSLESS",
+                detail: "TIDAL accepted the stored session.",
+              }
+            : {
+                available: true,
+                logged_in: false,
+                token_present: true,
+                verification_state: "failed",
+                verified_at: 2000000000,
+                quality: "HI_RES_LOSSLESS",
+                detail: "TIDAL rejected the stored session.",
+              },
+        );
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MemoryRouter initialEntries={["/music/settings"]}>
+          <MusicSettings />
+        </MemoryRouter>
+      </Theme>,
+    );
+
+    expect(
+      await screen.findByText("TIDAL session is not verified"),
+    ).toBeVisible();
+    expect(screen.getByText("Present — not proof of login")).toBeVisible();
+    expect(
+      screen.getAllByText(/TIDAL rejected the stored session/).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryByText("Connected — session verified"),
+    ).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Default download source"),
+      "tidal",
+    );
+    await userEvent.selectOptions(
+      screen.getByLabelText("TIDAL requested quality"),
+      "LOSSLESS",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save TIDAL settings" }),
+    );
+    await waitFor(() => {
+      const bodies = bodiesFor(
+        fetch,
+        "/api/v1/library/music/preferences",
+        "PUT",
+      );
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0]).toMatchObject({
+        download_source: "tidal",
+        tidal_quality: "LOSSLESS",
+      });
+    });
+
+    verified = true;
+    await userEvent.click(screen.getByRole("button", { name: "Verify again" }));
+    expect(
+      await screen.findByText("Connected — session verified"),
+    ).toBeVisible();
   });
 });
 
@@ -409,6 +513,10 @@ describe("download profile selector", () => {
     ).toBe(true);
 
     await userEvent.selectOptions(select, "mp3-compatible");
+    await userEvent.selectOptions(
+      within(dialog).getByLabelText("Album audio source"),
+      "youtube",
+    );
     await userEvent.click(
       within(dialog).getByRole("button", { name: "Download album" }),
     );
@@ -419,7 +527,57 @@ describe("download profile selector", () => {
         "POST",
       );
       expect(bodies[0]?.format).toBe("mp3-compatible");
+      expect(bodies[0]?.audio_source).toBe("youtube");
     });
+  });
+
+  it("blocks TIDAL-only submission until the session is verified", async () => {
+    const fetch = mockFetch((path) => {
+      if (path === "/api/v1/library/music/profiles")
+        return Response.json(profiles);
+      if (path === "/api/v1/library/music/preferences")
+        return Response.json(preferences);
+      if (path === "/api/v1/library/music/tidal/status") {
+        return Response.json({
+          available: true,
+          logged_in: false,
+          token_present: true,
+          verification_state: "failed",
+          detail: "TIDAL rejected the stored session.",
+        });
+      }
+      return undefined;
+    });
+    render(
+      <Theme>
+        <MemoryRouter>
+          <AlbumDownloadModal
+            target={{ albumID: 9, title: "Kid A", artist: "Radiohead" }}
+            onClose={() => {}}
+          />
+        </MemoryRouter>
+      </Theme>,
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.selectOptions(
+      await within(dialog).findByLabelText("Album audio source"),
+      "tidal",
+    );
+    expect(
+      await within(dialog).findByText(
+        "TIDAL-only download requires verification",
+      ),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByRole("button", { name: "Download album" }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("link", { name: "Open Music settings" }),
+    ).toHaveAttribute("href", "/music/settings");
+    expect(fetch).not.toHaveBeenCalledWith(
+      "/api/v1/library/music/albums/9/acquire",
+      expect.anything(),
+    );
   });
 });
 

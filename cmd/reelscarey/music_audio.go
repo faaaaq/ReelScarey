@@ -15,6 +15,8 @@ type youtubeAudioSource struct {
 	inspector *youtube.Inspector
 }
 
+func (a youtubeAudioSource) AudioSourceName() string { return "YouTube" }
+
 func (a youtubeAudioSource) SearchAudio(ctx context.Context, query string, limit int) ([]music.AudioCandidate, error) {
 	items, err := a.inspector.SearchAudio(ctx, query, limit)
 	if err != nil {
@@ -58,6 +60,8 @@ func (a youtubeAudioSource) InspectAudio(ctx context.Context, rawURL string) (mu
 type tidalAudioSource struct {
 	service *tidal.Service
 }
+
+func (a tidalAudioSource) AudioSourceName() string { return "TIDAL" }
 
 func (a tidalAudioSource) SearchAudio(ctx context.Context, query string, limit int) ([]music.AudioCandidate, error) {
 	candidates, err := a.service.SearchAudio(ctx, query, limit)

@@ -43,6 +43,12 @@ func TestAcquisitionDeduplicatesActiveJobsAndAllowsResubmission(t *testing.T) {
 		t.Fatal("duplicate album submits created multiple jobs", jobs, err)
 	}
 
+	// A different explicit source must not silently reuse the automatic job.
+	s.SetNamedAudioSource("tidal", fakeAudioSource{})
+	if _, err := s.StartAlbumAcquisition(ctx, 2, "Music", "source", "tidal"); err == nil {
+		t.Fatal("an active automatic job was reused for a different TIDAL request")
+	}
+
 	// Sequential duplicate link submits deduplicate on the source URL.
 	first, err := s.StartAcquisition(ctx, "https://www.deezer.com/track/42", "monitor", "Song", "Music", "source", tracks)
 	if err != nil {

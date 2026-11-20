@@ -59,11 +59,43 @@ func TestStatusReportsProviderFailure(t *testing.T) {
 	}
 }
 
-func TestStatusParsesProviderState(t *testing.T) {
-	service := testService(t, map[string]string{"status": `{"available":true,"logged_in":false,"quality":"HI_RES_LOSSLESS"}`}, nil)
+func TestStatusParsesProviderStateWithoutTrustingLocalLogin(t *testing.T) {
+	service := testService(t, map[string]string{"status": `{"available":true,"logged_in":true,"token_present":true,"verification_state":"not_checked","quality":"HI_RES_LOSSLESS"}`}, nil)
 	status := service.Status(context.Background())
-	if !status.Available || status.LoggedIn || status.Quality != "HI_RES_LOSSLESS" {
-		t.Fatalf("unexpected status: %+v", status)
+	if !status.Available || status.LoggedIn || !status.TokenPresent || status.VerificationState != "not_checked" || status.Quality != "HI_RES_LOSSLESS" {
+		t.Fatalf("local token presence became a verified login: %+v", status)
+	}
+}
+
+func TestVerifyAloneEstablishesLoggedInState(t *testing.T) {
+	service := testService(t, map[string]string{
+		"verify": `{"available":true,"logged_in":true,"token_present":true,"verification_state":"verified","verified_at":123,"quality":"LOSSLESS"}`,
+	}, nil)
+	status := service.Verify(context.Background())
+	if !status.Available || !status.LoggedIn || !status.TokenPresent || status.VerificationState != "verified" || status.VerifiedAt != 123 || status.Quality != "LOSSLESS" {
+		t.Fatalf("successful verification was not preserved: %+v", status)
+	}
+}
+
+func TestSetQualityUpdatesAndRestoresEnvironmentDefault(t *testing.T) {
+	service, err := New("python3", "script.py", t.TempDir(), "HIGH")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetQuality("lossless"); err != nil {
+		t.Fatal(err)
+	}
+	if env := strings.Join(service.env(), "\n"); !strings.Contains(env, "REELSCAREY_TIDAL_QUALITY=LOSSLESS") {
+		t.Fatalf("updated quality missing from environment: %s", env)
+	}
+	if err := service.SetQuality(""); err != nil {
+		t.Fatal(err)
+	}
+	if env := strings.Join(service.env(), "\n"); !strings.Contains(env, "REELSCAREY_TIDAL_QUALITY=HIGH") {
+		t.Fatalf("server default was not restored: %s", env)
+	}
+	if err := service.SetQuality("ULTRA"); err == nil {
+		t.Fatal("invalid quality was accepted")
 	}
 }
 

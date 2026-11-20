@@ -17,6 +17,7 @@ import {
   ToolbarSection,
 } from "../ui";
 import { PageHeading, RequestState } from "../components";
+import { TidalSection } from "../components/TidalSettings";
 import {
   api,
   messageFor,
@@ -25,14 +26,14 @@ import {
   deleteCustomProfile,
   saveCustomProfile,
   updateCustomProfile,
+  type MusicDownloadSource,
   type MusicFallbackPolicy,
   type MusicOriginalRetention,
   type MusicPreferences,
   type MusicStreamingQuality,
   type QualityProfile,
   type StreamCacheStats,
-  type TidalLoginState,
-  type TidalStatus,
+  type TidalQuality,
 } from "../api";
 import { useResource } from "../useResource";
 import {
@@ -223,153 +224,6 @@ function ProfileEditor({
   );
 }
 
-const TIDAL_QUALITY_LABELS: Record<string, string> = {
-  HI_RES_LOSSLESS: "TIDAL MAX (HiRes FLAC, up to 24-bit / 192 kHz)",
-  LOSSLESS: "Lossless (FLAC, 16-bit / 44.1 kHz)",
-  HIGH: "High (AAC, 320 kbps)",
-  LOW: "Low (AAC, 96 kbps)",
-};
-
-/** TIDAL connection status and interactive device-flow login. */
-function TidalSection() {
-  const status = useResource<TidalStatus>("/library/music/tidal/status");
-  const [loginPath, setLoginPath] = useState<string | null>(null);
-  const login = useResource<TidalLoginState>(loginPath);
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState("");
-
-  const phase = login.data?.phase;
-  const waiting = phase === "waiting";
-  const finished = phase === "done";
-  const succeeded = finished && login.data?.result === "success";
-
-  // Poll the login state while the device flow is open; the interval stops
-  // itself as soon as the phase leaves "waiting".
-  useEffect(() => {
-    if (!waiting) return;
-    const id = window.setInterval(() => login.reload(), 2000);
-    return () => window.clearInterval(id);
-  }, [waiting, login.reload]);
-
-  async function connect() {
-    if (starting || waiting) return;
-    setStarting(true);
-    setError("");
-    try {
-      await api<TidalLoginState>("/library/music/tidal/login", {
-        method: "POST",
-      });
-      setLoginPath("/library/music/tidal/login");
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setStarting(false);
-    }
-  }
-
-  function qualityLabel(value?: string) {
-    return (
-      TIDAL_QUALITY_LABELS[value ?? ""] ??
-      (value
-        ? `Requested quality: ${value}`
-        : "Requested quality is the server default.")
-    );
-  }
-
-  return (
-    <FieldSet
-      legend="TIDAL source"
-      description="When connected, TIDAL is the primary download source and the default source stays as the fallback. Original full-quality files are preserved through import."
-    >
-      <RequestState
-        loading={status.loading}
-        error={status.error}
-        code={status.code}
-        retry={status.reload}
-      />
-      {status.data && !status.data.available && (
-        <Alert kind="info" title="TIDAL provider not installed">
-          {status.data.detail ||
-            "Set REELSCAREY_TIDAL_PROVIDER and restart the server to enable TIDAL sourcing."}
-        </Alert>
-      )}
-      {status.data?.available && (
-        <>
-          <p className="rs-muted">
-            {status.data.logged_in
-              ? "TIDAL is connected."
-              : "TIDAL is not connected."}{" "}
-            {qualityLabel(status.data.quality)}
-          </p>
-          {status.data.logged_in ? (
-            <Alert kind="success" title="Connected">
-              Music acquisition prefers TIDAL and falls back to the default
-              source when a track is unavailable.
-            </Alert>
-          ) : (
-            <>
-              <Button
-                variant="soft"
-                disabled={starting || waiting}
-                onClick={() => void connect()}
-              >
-                {starting
-                  ? "Starting…"
-                  : waiting
-                    ? "Waiting for login…"
-                    : "Connect TIDAL"}
-              </Button>
-              {waiting && (
-                <Alert kind="info" title="Finish the login in your browser">
-                  {(login.data?.lines ?? []).length > 0 ? (
-                    (login.data?.lines ?? []).map((line, index) =>
-                      /https:\/\/[^\s]+/.test(line) ? (
-                        <p key={index}>
-                          {line
-                            .split(/(https:\/\/[^\s]+)/)
-                            .map((part, partIndex) =>
-                              part.startsWith("https://") ? (
-                                <a
-                                  key={partIndex}
-                                  href={part}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  {part}
-                                </a>
-                              ) : (
-                                part
-                              ),
-                            )}
-                        </p>
-                      ) : (
-                        <p key={index}>{line}</p>
-                      ),
-                    )
-                  ) : (
-                    <p>Waiting for the TIDAL device code…</p>
-                  )}
-                </Alert>
-              )}
-              {succeeded && (
-                <Alert kind="success" title="Connected">
-                  TIDAL login succeeded.
-                </Alert>
-              )}
-              {finished && !succeeded && (
-                <Alert kind="danger" title="Login failed">
-                  {login.data?.error || "TIDAL did not accept the login."}
-                </Alert>
-              )}
-              {error && <Alert kind="danger">{error}</Alert>}
-            </>
-          )}
-        </>
-      )}
-    </FieldSet>
-  );
-}
-
 export function MusicSettings() {
   const prefs = useResource<MusicPreferences>("/library/music/preferences");
   const profiles = useMusicProfiles();
@@ -383,6 +237,8 @@ export function MusicSettings() {
   const [transcodingEnabled, setTranscodingEnabled] = useState(true);
   const [cacheLimit, setCacheLimit] = useState("512");
   const [maxConversions, setMaxConversions] = useState("2");
+  const [downloadSource, setDownloadSource] = useState<MusicDownloadSource>("");
+  const [tidalQuality, setTidalQuality] = useState<TidalQuality>("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -399,6 +255,8 @@ export function MusicSettings() {
     setTranscodingEnabled(prefs.data.transcoding_enabled);
     setCacheLimit(String(prefs.data.cache_limit_mb));
     setMaxConversions(String(prefs.data.max_conversions));
+    setDownloadSource(prefs.data.download_source || "");
+    setTidalQuality(prefs.data.tidal_quality || "");
   }, [prefs.data]);
 
   function preferencesBody(downloadProfile: string) {
@@ -414,12 +272,14 @@ export function MusicSettings() {
       transcoding_enabled: transcodingEnabled,
       cache_limit_mb: clampInt(Number.parseInt(cacheLimit, 10), 64, 4096),
       max_conversions: clampInt(Number.parseInt(maxConversions, 10), 1, 4),
+      download_source: downloadSource,
+      tidal_quality: tidalQuality,
       revision: prefs.data.revision,
     };
   }
 
-  async function savePreferences(e: FormEvent) {
-    e.preventDefault();
+  async function savePreferences(e?: FormEvent) {
+    e?.preventDefault();
     const body = preferencesBody(downloadProfile);
     if (!body || pending) return;
     setPending(true);
@@ -431,7 +291,7 @@ export function MusicSettings() {
         body: JSON.stringify(body),
       });
       prefs.reload();
-      setMessage("Transcoding settings saved.");
+      setMessage("Music settings saved.");
     } catch (e) {
       if (
         e instanceof APIError &&
@@ -747,7 +607,15 @@ export function MusicSettings() {
           )}
         </FieldSet>
 
-        <TidalSection />
+        <TidalSection
+          downloadSource={downloadSource}
+          quality={tidalQuality}
+          preferencesReady={Boolean(prefs.data)}
+          saving={pending}
+          onDownloadSourceChange={setDownloadSource}
+          onQualityChange={setTidalQuality}
+          onSave={() => savePreferences()}
+        />
 
         <FieldSet legend="Where these settings apply" headingLevel={3}>
           {" "}

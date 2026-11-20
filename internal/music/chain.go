@@ -25,6 +25,8 @@ type PriorityAudioSource struct {
 	Fallback AudioSource
 }
 
+func (p PriorityAudioSource) AudioSourceName() string { return "Automatic source chain" }
+
 // SearchAudio returns the primary's candidates when it answers with at least
 // one usable row; otherwise it falls back. An empty primary result with no
 // error still falls back, because catalogs differ and a track that the
@@ -48,7 +50,7 @@ func (p PriorityAudioSource) SearchAudio(ctx context.Context, query string, limi
 		return fallback, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("primary audio source: %v; fallback audio source: %v", err, fallbackErr)
+		return nil, fmt.Errorf("%s search: %v; %s search: %v", audioSourceName(p.Primary), err, audioSourceName(p.Fallback), fallbackErr)
 	}
 	return nil, fallbackErr
 }

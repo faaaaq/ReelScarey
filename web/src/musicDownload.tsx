@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { Button, DropdownMenu, TextField } from "@radix-ui/themes";
 import { Download } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Alert, Label, Modal, ProgressBar } from "./ui";
 import {
   api,
   exportFileURL,
   messageFor,
   type MusicAcquisitionJob,
+  type MusicDownloadSource,
   type MusicPreferences,
+  type TidalStatus,
 } from "./api";
 import { useLiveResource } from "./useLiveResource";
 import { useResource } from "./useResource";
@@ -155,6 +158,14 @@ export function AcquisitionProgress({
       {job.error && job.state !== "failed" && (
         <p className="rs-muted rs-small">{job.error}</p>
       )}
+      <p className="rs-muted rs-small">
+        Requested audio source:{" "}
+        {job.audio_source === "tidal"
+          ? "TIDAL only"
+          : job.audio_source === "youtube"
+            ? "YouTube only"
+            : "Automatic (TIDAL, then YouTube)"}
+      </p>
       {job.source_url && (
         <p className="rs-muted rs-small">
           Catalog source:{" "}
@@ -278,6 +289,17 @@ export function AlbumDownloadModal({
   );
   const profiles = useMusicProfiles();
   const prefs = useResource<MusicPreferences>("/library/music/preferences");
+  const tidal = useResource<TidalStatus>(
+    target ? "/library/music/tidal/status" : null,
+    {
+      retain: true,
+      timeoutMs: 120000,
+    },
+  );
+  /** Null inherits the saved default until this dialog explicitly overrides it. */
+  const [sourceOverride, setSourceOverride] =
+    useState<MusicDownloadSource | null>(null);
+  const audioSource = sourceOverride ?? prefs.data?.download_source ?? "";
   /** Empty until the user overrides the global default for this download. */
   const [profileKey, setProfileKey] = useState("");
   const defaultProfile = profiles.profiles.find(
@@ -290,11 +312,20 @@ export function AlbumDownloadModal({
       setError("");
       setPending(false);
       setProfileKey("");
+      setSourceOverride(null);
     }
   }, [target]);
 
+  const tidalVerified = Boolean(
+    !tidal.error &&
+    tidal.data?.available &&
+    tidal.data.logged_in &&
+    tidal.data.verification_state === "verified",
+  );
+  const tidalChoiceBlocked = audioSource === "tidal" && !tidalVerified;
+
   async function start() {
-    if (!target || pending) return;
+    if (!target || pending || tidalChoiceBlocked) return;
     setPending(true);
     setError("");
     try {
@@ -308,6 +339,7 @@ export function AlbumDownloadModal({
         body: JSON.stringify({
           root: root.trim() || "Music",
           format: profileKey,
+          audio_source: audioSource,
           reviewed: true,
         }),
       });
@@ -335,7 +367,7 @@ export function AlbumDownloadModal({
             Close
           </Button>
           <Button
-            disabled={pending || Boolean(jobID)}
+            disabled={pending || Boolean(jobID) || tidalChoiceBlocked}
             onClick={() => void start()}
           >
             <Download size={15} aria-hidden="true" />
@@ -350,7 +382,27 @@ export function AlbumDownloadModal({
             <strong>{target.title}</strong>
             {target.artist ? ` · ${target.artist}` : ""}
           </p>
-          <div className="mus-search">
+          <div className="mus-download-options">
+            <label>
+              Audio source{" "}
+              <select
+                aria-label="Album audio source"
+                value={audioSource}
+                onChange={(event) =>
+                  setSourceOverride(event.target.value as MusicDownloadSource)
+                }
+                disabled={Boolean(jobID)}
+              >
+                <option value="">Automatic (TIDAL, then YouTube)</option>
+                <option
+                  value="tidal"
+                  disabled={tidal.data?.available === false}
+                >
+                  TIDAL only
+                </option>
+                <option value="youtube">YouTube only</option>
+              </select>
+            </label>
             <label>
               Profile{" "}
               <select
@@ -377,19 +429,41 @@ export function AlbumDownloadModal({
                   ))}
               </select>
             </label>
-            <TextField.Root
-              aria-label="Album destination root"
-              value={root}
-              onChange={(event) => setRoot(event.target.value)}
-              disabled={Boolean(jobID)}
-            />
+            <label>
+              Destination root{" "}
+              <TextField.Root
+                aria-label="Album destination root"
+                value={root}
+                onChange={(event) => setRoot(event.target.value)}
+                disabled={Boolean(jobID)}
+              />
+            </label>
           </div>
-          <Alert kind="info" title="Automatic and reviewed">
-            The worker searches YouTube for each missing track, requires a close
-            duration match, and imports through the existing tagged no-overwrite
-            pipeline. Existing files are never replaced. If a track cannot be
-            matched, the job reports the issue instead of guessing.
+          <Alert kind="info" title="Source and import behavior">
+            {audioSource === "tidal"
+              ? "Only TIDAL will be searched for each missing track. TIDAL failures are reported and never silently rerouted to YouTube. "
+              : audioSource === "youtube"
+                ? "Only YouTube will be searched for each missing track. TIDAL is not used, even when it is connected. "
+                : "Automatic tries TIDAL first when installed and uses YouTube if TIDAL cannot supply a match. "}
+            Matching requires a compatible title and close duration. Import uses
+            the existing tagged no-overwrite pipeline; existing files are never
+            replaced. If a track cannot be matched, the job reports the issue
+            instead of guessing.
           </Alert>
+          {tidalChoiceBlocked && (
+            <Alert
+              kind="info"
+              title="TIDAL-only download requires verification"
+            >
+              {tidal.error
+                ? `The current TIDAL check failed: ${tidal.error}`
+                : tidal.data?.detail ||
+                  "TIDAL has not reported a verified account session. Connect and verify TIDAL before starting a TIDAL-only download."}{" "}
+              <Link to="/music/settings" onClick={onClose}>
+                Open Music settings
+              </Link>
+            </Alert>
+          )}
           {error && <Alert kind="danger">{error}</Alert>}
           {job.data && (
             <>

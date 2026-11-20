@@ -69,6 +69,7 @@ type fakeMusic struct {
 	cacheCleared       bool
 	customProfileName  string
 	customProfileCodec string
+	acquiredSource     string
 }
 
 func (f *fakeMusic) SearchArtists(context.Context, string, int) (music.SearchResults, error) {
@@ -110,11 +111,17 @@ func (f *fakeMusic) ArtistTopTracks(context.Context, int64, int) (music.TopTrack
 func (f *fakeMusic) ArtistDiscography(context.Context, int64, int) (music.DiscographyPage, error) {
 	return music.DiscographyPage{Source: "Deezer", Items: []music.DiscographyAlbum{}}, f.err
 }
-func (f *fakeMusic) StartAlbumAcquisition(_ context.Context, _ int64, _, _ string) (music.AcquisitionJob, error) {
-	return music.AcquisitionJob{ID: 1, State: "queued", TrackCount: 1}, f.err
+func (f *fakeMusic) StartAlbumAcquisition(_ context.Context, _ int64, _, _ string, source ...string) (music.AcquisitionJob, error) {
+	if len(source) == 1 {
+		f.acquiredSource = source[0]
+	}
+	return music.AcquisitionJob{ID: 1, State: "queued", TrackCount: 1, AudioSource: f.acquiredSource}, f.err
 }
-func (f *fakeMusic) StartProviderAlbumAcquisition(_ context.Context, _, _, _ string) (music.AcquisitionJob, error) {
-	return music.AcquisitionJob{ID: 1, State: "queued", TrackCount: 1}, f.err
+func (f *fakeMusic) StartProviderAlbumAcquisition(_ context.Context, _, _, _ string, source ...string) (music.AcquisitionJob, error) {
+	if len(source) == 1 {
+		f.acquiredSource = source[0]
+	}
+	return music.AcquisitionJob{ID: 1, State: "queued", TrackCount: 1, AudioSource: f.acquiredSource}, f.err
 }
 func (f *fakeMusic) ResolveLink(context.Context, string) (music.LinkPreview, error) {
 	return music.LinkPreview{Source: "Spotify", Kind: "track", Title: "Track", Tracks: []music.LinkTrack{{
@@ -144,7 +151,7 @@ func (f *fakeMusic) DeleteMonitorSource(context.Context, int64) error { return f
 func (f *fakeMusic) TriggerMonitor(context.Context) (music.MusicMonitorSettings, error) {
 	return music.MusicMonitorSettings{IntervalHours: 24, Revision: 1}, f.err
 }
-func (f *fakeMusic) StartAcquisition(_ context.Context, _, _, _, _, _ string, _ []music.AcquisitionTrackInput) (music.AcquisitionJob, error) {
+func (f *fakeMusic) StartAcquisition(_ context.Context, _, _, _, _, _ string, _ []music.AcquisitionTrackInput, _ ...string) (music.AcquisitionJob, error) {
 	return music.AcquisitionJob{ID: 1, State: "queued", TrackCount: 1}, f.err
 }
 func (f *fakeMusic) Acquisition(context.Context, int64) (music.AcquisitionJob, error) {
@@ -1082,6 +1089,23 @@ func TestSubsonicAdminRoleOverrides(t *testing.T) {
 	handler.ServeHTTP(out, r)
 	if out.Code != 200 || out.Body.String() != "0123456789" {
 		t.Fatal("admin stream", out.Code, out.Body.String())
+	}
+}
+
+func TestMusicAlbumAcquisitionRoutesPassSelectedSource(t *testing.T) {
+	service := &fakeMusic{}
+	handler, session := musicFixture(t, service)
+	for _, path := range []string{
+		"/api/v1/library/music/albums/9/acquire",
+		"/api/v1/library/music/provider-albums/42/acquire",
+	} {
+		out := request(handler, "POST", path, `{"root":"Music","format":"source","audio_source":"tidal","reviewed":true}`, session, true)
+		if out.Code != http.StatusAccepted {
+			t.Fatalf("%s: %d %s", path, out.Code, out.Body.String())
+		}
+		if service.acquiredSource != "tidal" || !strings.Contains(out.Body.String(), `"audio_source":"tidal"`) {
+			t.Fatalf("%s did not pass/return selected source: service=%q body=%s", path, service.acquiredSource, out.Body.String())
+		}
 	}
 }
 

@@ -24,6 +24,8 @@ type MusicPreferences struct {
 	TranscodingEnabled bool     `json:"transcoding_enabled"`
 	CacheLimitMB       int      `json:"cache_limit_mb"`
 	MaxConversions     int      `json:"max_conversions"`
+	DownloadSource     string   `json:"download_source"`
+	TidalQuality       string   `json:"tidal_quality"`
 	Revision           int      `json:"revision"`
 }
 
@@ -43,8 +45,8 @@ func knownFormat(value string) bool {
 func (s *Service) GetPreferences(ctx context.Context) (MusicPreferences, error) {
 	var prefs MusicPreferences
 	var formats string
-	err := s.store.db.QueryRowContext(ctx, `SELECT allow_lossless, min_bitrate, preferred_formats, download_profile, streaming_quality, original_retention, fallback_policy, transcoding_enabled, cache_limit_mb, max_conversions, revision FROM music_preferences WHERE id=1`).
-		Scan(&prefs.AllowLossless, &prefs.MinBitrate, &formats, &prefs.DownloadProfile, &prefs.StreamingQuality, &prefs.OriginalRetention, &prefs.FallbackPolicy, &prefs.TranscodingEnabled, &prefs.CacheLimitMB, &prefs.MaxConversions, &prefs.Revision)
+	err := s.store.db.QueryRowContext(ctx, `SELECT allow_lossless, min_bitrate, preferred_formats, download_profile, streaming_quality, original_retention, fallback_policy, transcoding_enabled, cache_limit_mb, max_conversions, download_source, tidal_quality, revision FROM music_preferences WHERE id=1`).
+		Scan(&prefs.AllowLossless, &prefs.MinBitrate, &formats, &prefs.DownloadProfile, &prefs.StreamingQuality, &prefs.OriginalRetention, &prefs.FallbackPolicy, &prefs.TranscodingEnabled, &prefs.CacheLimitMB, &prefs.MaxConversions, &prefs.DownloadSource, &prefs.TidalQuality, &prefs.Revision)
 	if err != nil {
 		return MusicPreferences{}, err
 	}
@@ -99,6 +101,17 @@ func (s *Service) SavePreferences(ctx context.Context, in MusicPreferences) (Mus
 	if in.MaxConversions < 1 || in.MaxConversions > 4 {
 		return MusicPreferences{}, ErrInvalidInput
 	}
+	in.DownloadSource = strings.ToLower(strings.TrimSpace(in.DownloadSource))
+	if in.DownloadSource == "automatic" {
+		in.DownloadSource = ""
+	}
+	if err := validateEnum(in.DownloadSource, audioSourceValues); err != nil {
+		return MusicPreferences{}, ErrInvalidInput
+	}
+	in.TidalQuality = strings.ToUpper(strings.TrimSpace(in.TidalQuality))
+	if err := validateEnum(in.TidalQuality, tidalQualityValues); err != nil {
+		return MusicPreferences{}, ErrInvalidInput
+	}
 	tx, err := s.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return MusicPreferences{}, err
@@ -112,9 +125,9 @@ func (s *Service) SavePreferences(ctx context.Context, in MusicPreferences) (Mus
 		return MusicPreferences{}, ErrRevisionConflict
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE music_preferences
-		SET allow_lossless=?, min_bitrate=?, preferred_formats=?, download_profile=?, streaming_quality=?, original_retention=?, fallback_policy=?, transcoding_enabled=?, cache_limit_mb=?, max_conversions=?, revision=revision+1, updated_at=unixepoch()
+		SET allow_lossless=?, min_bitrate=?, preferred_formats=?, download_profile=?, streaming_quality=?, original_retention=?, fallback_policy=?, transcoding_enabled=?, cache_limit_mb=?, max_conversions=?, download_source=?, tidal_quality=?, revision=revision+1, updated_at=unixepoch()
 		WHERE id=1 AND revision=?`,
-		boolInt(in.AllowLossless), in.MinBitrate, strings.Join(formats, ","), in.DownloadProfile, in.StreamingQuality, in.OriginalRetention, in.FallbackPolicy, boolInt(in.TranscodingEnabled), in.CacheLimitMB, in.MaxConversions, in.Revision)
+		boolInt(in.AllowLossless), in.MinBitrate, strings.Join(formats, ","), in.DownloadProfile, in.StreamingQuality, in.OriginalRetention, in.FallbackPolicy, boolInt(in.TranscodingEnabled), in.CacheLimitMB, in.MaxConversions, in.DownloadSource, in.TidalQuality, in.Revision)
 	if err != nil {
 		return MusicPreferences{}, err
 	}
@@ -134,6 +147,8 @@ func (s *Service) SavePreferences(ctx context.Context, in MusicPreferences) (Mus
 var streamingQualityValues = []string{"auto", "data-saver", "balanced", "high", "premium", "original"}
 var originalRetentionValues = []string{"keep", "delete", "ask"}
 var fallbackPolicyValues = []string{"best", "skip", "approve"}
+var audioSourceValues = []string{"tidal", "youtube"}
+var tidalQualityValues = []string{"LOW", "HIGH", "LOSSLESS", "HI_RES_LOSSLESS"}
 
 const (
 	defaultStreamingQuality  = "balanced"

@@ -69,6 +69,12 @@ func (s *Server) musicPreferences(w http.ResponseWriter, r *http.Request) {
 			s.musicAutomationError(w, err)
 			return
 		}
+		if s.tidal != nil {
+			if err := s.tidal.SetQuality(prefs.TidalQuality); err != nil {
+				fail(w, http.StatusInternalServerError, "tidal_quality_apply_failed", "The preference was saved, but the running TIDAL provider could not apply it. Restart the server and verify the setting.")
+				return
+			}
+		}
 		send(w, http.StatusOK, prefs)
 	default:
 		w.Header().Set("Allow", "GET, PUT")

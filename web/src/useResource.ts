@@ -3,7 +3,7 @@ import { APIError, api, messageFor } from "./api";
 
 export function useResource<T>(
   path: string | null,
-  options?: { retain?: boolean },
+  options?: { retain?: boolean; timeoutMs?: number },
 ) {
   // `retain` keeps the previous data on the screen while a reload is in
   // flight (background-refresh semantics, like useLiveResource) so callers
@@ -11,6 +11,8 @@ export function useResource<T>(
   // action notices — stay stable.
   const retainRef = useRef(options?.retain ?? false);
   retainRef.current = options?.retain ?? false;
+  const timeoutRef = useRef(options?.timeoutMs ?? 30000);
+  timeoutRef.current = options?.timeoutMs ?? 30000;
   const [data, setData] = useState<T>();
   const [error, setError] = useState("");
   const [code, setCode] = useState("");
@@ -33,7 +35,10 @@ export function useResource<T>(
     setData((current) => (retainRef.current ? current : undefined));
     api<T>(path, {
       // Matches api()'s default read timeout.
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]),
+      signal: AbortSignal.any([
+        controller.signal,
+        AbortSignal.timeout(timeoutRef.current),
+      ]),
     })
       .then((value) => {
         if (!controller.signal.aborted) setData(value);

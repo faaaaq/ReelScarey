@@ -70,20 +70,48 @@ def session_ready():
     return tidal, tidal
 
 
-def status():
-    logged_in = os.path.isfile(path_file_token())
+def requested_quality():
     quality = os.environ.get("REELSCAREY_TIDAL_QUALITY", "HI_RES_LOSSLESS").upper()
-    if quality not in QUALITIES:
-        quality = "HI_RES_LOSSLESS"
-    out({"available": True, "logged_in": logged_in, "quality": quality})
+    return quality if quality in QUALITIES else "HI_RES_LOSSLESS"
+
+
+def status():
+    # A file can be stale, malformed, copied from another installation or left
+    # behind by a failed login. It is credential presence, never proof of a
+    # verified account session.
+    token_present = os.path.isfile(path_file_token())
+    quality = requested_quality()
+    detail = ("No TIDAL credential file is stored. Connect TIDAL to authorize this server."
+              if not token_present else
+              "A TIDAL credential file is present, but the session has not been verified by this local check.")
+    out({"available": True, "logged_in": False, "token_present": token_present,
+         "verification_state": "not_checked", "quality": quality, "detail": detail})
 
 
 def verify():
-    tidal, _ = session_ready()
-    if tidal is None:
-        out({"logged_in": False, "detail": "No valid TIDAL session. Run tidal-login again."})
+    token_present = os.path.isfile(path_file_token())
+    checked_at = int(time.time())
+    if not token_present:
+        out({"available": True, "logged_in": False, "token_present": False,
+             "verification_state": "not_checked", "verified_at": checked_at,
+             "detail": "No TIDAL credential file is stored. Connect TIDAL to authorize this server."})
         return
-    out({"logged_in": True, "quality": str(tidal.settings.data.quality_audio)})
+    try:
+        tidal, _ = session_ready()
+        if tidal is None:
+            out({"available": True, "logged_in": False, "token_present": True,
+                 "verification_state": "failed", "verified_at": checked_at,
+                 "detail": "TIDAL did not accept the stored session. Reconnect TIDAL; do not assume the credential file is valid."})
+            return
+        out({"available": True, "logged_in": True, "token_present": True,
+             "verification_state": "verified", "verified_at": checked_at,
+             "quality": requested_quality(),
+             "detail": "TIDAL accepted the stored session. The account connection is verified."})
+    except Exception as error:  # noqa: BLE001 - actionable, bounded provider detail
+        out({"available": True, "logged_in": False, "token_present": token_present,
+             "verification_state": "failed", "verified_at": checked_at,
+             "detail": "TIDAL session verification failed: " + str(error)[:240] +
+                       ". Reconnect TIDAL or check the network and try again."})
 
 
 def _read_login_state(state_path):
@@ -295,9 +323,7 @@ def download(url, directory):
         return
     os.makedirs(directory, exist_ok=True)
     settings = Settings()
-    quality = os.environ.get("REELSCAREY_TIDAL_QUALITY", "HI_RES_LOSSLESS").upper()
-    if quality not in QUALITIES:
-        quality = "HI_RES_LOSSLESS"
+    quality = requested_quality()
     settings.data.download_base_path = directory
     settings.data.quality_audio = Quality(quality)
     settings.data.video_download = False

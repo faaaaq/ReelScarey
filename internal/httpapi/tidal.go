@@ -14,6 +14,8 @@ import (
 // ownership, so this interface never exposes them.
 type TIDALProvider interface {
 	Status(ctx context.Context) tidal.Status
+	Verify(ctx context.Context) tidal.Status
+	SetQuality(quality string) error
 	LoginBegin(ctx context.Context) error
 	LoginStatus(ctx context.Context) (tidal.LoginState, error)
 }
@@ -26,18 +28,52 @@ func tidalDetail(err error) string {
 	return value
 }
 
-// tidalStatus reports whether the TIDAL provider is installed, logged in and
-// which quality it requests. When the provider is not configured the response
-// says so honestly instead of implying a hidden feature.
+// tidalStatus distinguishes provider installation, device authorization,
+// credential-file presence and a real remote session check. A token file is
+// only a reason to verify; it is never sufficient to claim a connection.
 func (s *Server) tidalStatus(w http.ResponseWriter, r *http.Request) {
 	if s.tidal == nil {
 		send(w, 200, tidal.Status{
-			Available: false,
-			Detail:    "The TIDAL provider is not installed. Music acquisition uses the default source until it is configured.",
+			Available:         false,
+			VerificationState: "unavailable",
+			Detail:            "The TIDAL provider is not installed. Music acquisition uses the default source until it is configured.",
 		})
 		return
 	}
-	send(w, 200, s.tidal.Status(r.Context()))
+	current := s.tidal.Status(r.Context())
+	if !current.Available {
+		current.LoggedIn = false
+		current.VerificationState = "unavailable"
+		send(w, 200, current)
+		return
+	}
+	if login, err := s.tidal.LoginStatus(r.Context()); err == nil {
+		current.Login = &login
+	} else if current.Detail == "" {
+		current.Detail = "The provider is installed, but its device-authorization state could not be read: " + tidalDetail(err)
+	}
+	if current.TokenPresent {
+		verified := s.tidal.Verify(r.Context())
+		verified.TokenPresent = current.TokenPresent
+		verified.Login = current.Login
+		if verified.Quality == "" {
+			verified.Quality = current.Quality
+		}
+		if verified.VerificationState == "" {
+			verified.VerificationState = "failed"
+		}
+		if verified.VerificationState != "verified" {
+			verified.LoggedIn = false
+		}
+		current = verified
+	} else {
+		current.LoggedIn = false
+		current.VerificationState = "not_checked"
+		if current.Detail == "" {
+			current.Detail = "No TIDAL credential file is stored. Connect TIDAL to authorize this server."
+		}
+	}
+	send(w, 200, current)
 }
 
 // tidalLogin starts TIDAL's device login (POST) and reports the current

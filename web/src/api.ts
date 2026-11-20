@@ -268,6 +268,8 @@ export type MusicAcquisitionJob = {
   title: string;
   root: string;
   format: string;
+  /** Requested audio provider; empty means the automatic source chain. */
+  audio_source: MusicDownloadSource;
   state: string;
   track_count: number;
   completed_count: number;
@@ -667,6 +669,9 @@ export type MusicOriginalRetention = "keep" | "delete" | "ask";
 
 export type MusicFallbackPolicy = "best" | "skip" | "approve";
 
+export type MusicDownloadSource = "" | "tidal" | "youtube";
+export type TidalQuality = "" | "LOW" | "HIGH" | "LOSSLESS" | "HI_RES_LOSSLESS";
+
 export type MusicPreferences = {
   allow_lossless: boolean;
   min_bitrate: number;
@@ -679,6 +684,10 @@ export type MusicPreferences = {
   transcoding_enabled: boolean;
   cache_limit_mb: number;
   max_conversions: number;
+  /** Empty uses the automatic provider chain; explicit choices never silently reroute. */
+  download_source: MusicDownloadSource;
+  /** Empty inherits the server's environment-configured TIDAL quality. */
+  tidal_quality: TidalQuality;
   revision: number;
 };
 
@@ -946,9 +955,17 @@ export type ProviderStatus = {
 
 export type TidalStatus = {
   available: boolean;
+  /** True only after a real provider session check succeeds. */
   logged_in: boolean;
-  quality?: string;
+  /** Local file presence only; never proof of an authenticated session. */
+  token_present: boolean;
+  quality?: TidalQuality;
+  verification_state:
+    "not_checked" | "verified" | "failed" | "unavailable" | (string & {});
+  /** Unix timestamp of the latest attempted session check. */
+  verified_at?: number;
   detail?: string;
+  login?: TidalLoginState;
 };
 
 export type TidalLoginState = {

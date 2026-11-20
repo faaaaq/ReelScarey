@@ -37,6 +37,9 @@ func TestPopulatedDatabaseUpgradeAddsEvidenceAndPlaybackState(t *testing.T) {
 	}
 	_, err = raw.Exec(`PRAGMA foreign_keys=OFF;
 		DELETE FROM schema_migrations WHERE version>=109;
+		ALTER TABLE music_acquisition_jobs DROP COLUMN audio_source;
+		ALTER TABLE music_preferences DROP COLUMN download_source;
+		ALTER TABLE music_preferences DROP COLUMN tidal_quality;
 		ALTER TABLE music_albums DROP COLUMN title_overridden;
 		ALTER TABLE music_albums DROP COLUMN year_overridden;
 		ALTER TABLE music_artists DROP COLUMN name_overridden;
@@ -78,8 +81,8 @@ func TestPopulatedDatabaseUpgradeAddsEvidenceAndPlaybackState(t *testing.T) {
 	}
 	defer upgraded.Close()
 	version, err := database.Version(ctx, upgraded)
-	if err != nil || version != 112 {
-		t.Fatalf("schema version = %d, want 112: %v", version, err)
+	if err != nil || version != 113 {
+		t.Fatalf("schema version = %d, want 113: %v", version, err)
 	}
 	var title, origin, evidence string
 	var duration int

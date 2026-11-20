@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -132,6 +133,7 @@ type AcquisitionJob struct {
 	Title          string `json:"title"`
 	Root           string `json:"root"`
 	Format         string `json:"format"`
+	AudioSource    string `json:"audio_source"`
 	State          string `json:"state"`
 	TrackCount     int    `json:"track_count"`
 	CompletedCount int    `json:"completed_count"`
@@ -158,11 +160,95 @@ type AcquisitionJobList struct {
 	Issues int `json:"issues"`
 }
 
-func (s *Service) SetAudioSource(source AudioSource) { s.audio = source }
+func (s *Service) SetAudioSource(source AudioSource) {
+	s.audioMu.Lock()
+	defer s.audioMu.Unlock()
+	s.audio = source
+}
+
+// SetNamedAudioSource registers an explicit provider choice for acquisition
+// jobs. The default source remains the automatic priority/fallback chain.
+func (s *Service) SetNamedAudioSource(name string, source AudioSource) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if validateEnum(name, audioSourceValues) != nil || source == nil {
+		return
+	}
+	s.audioMu.Lock()
+	defer s.audioMu.Unlock()
+	if s.audioSources == nil {
+		s.audioSources = map[string]AudioSource{}
+	}
+	s.audioSources[name] = source
+}
+
+func (s *Service) selectAudioSource(name string) (AudioSource, error) {
+	s.audioMu.RLock()
+	defer s.audioMu.RUnlock()
+	if name == "" || name == "automatic" {
+		if s.audio == nil {
+			return nil, &Error{Code: "music_acquisition_unavailable", Message: "Audio downloading is unavailable. Configure YouTube/yt-dlp or TIDAL, then try again."}
+		}
+		return s.audio, nil
+	}
+	if source := s.audioSources[name]; source != nil {
+		return source, nil
+	}
+	return nil, &Error{Code: "music_acquisition_source_unavailable", Message: fmt.Sprintf("The selected audio source %q is not configured. Choose another source or configure it in Settings > Music.", name)}
+}
+
+// AudioSourceNamer lets provider adapters identify themselves in actionable
+// errors without making the music package depend on a concrete provider.
+type AudioSourceNamer interface{ AudioSourceName() string }
+
+func audioSourceName(source AudioSource) string {
+	if named, ok := source.(AudioSourceNamer); ok && strings.TrimSpace(named.AudioSourceName()) != "" {
+		return named.AudioSourceName()
+	}
+	return "selected audio source"
+}
+
+var sensitiveProviderValue = regexp.MustCompile(`(?i)(access_token|refresh_token|authorization|device_code)=([^&\s]+)`)
+
+func audioSourceFailure(source AudioSource, action string, err error) string {
+	detail := sensitiveProviderValue.ReplaceAllString(strings.TrimSpace(err.Error()), "$1=[redacted]")
+	if len(detail) > 600 {
+		detail = detail[:600]
+	}
+	if detail == "" {
+		detail = "The provider returned no diagnostic detail."
+	}
+	message := fmt.Sprintf("%s %s failed: %s", audioSourceName(source), action, detail)
+	lower := strings.ToLower(detail)
+	if strings.Contains(lower, "session") || strings.Contains(lower, "log in") || strings.Contains(lower, "login") || strings.Contains(lower, "authoriz") {
+		message += " Open Settings > Music to verify or reconnect the source, or choose another download source."
+	} else {
+		message += " Review the source settings and provider response, then try again."
+	}
+	return message
+}
+
+func (s *Service) acquisitionDedupResult(ctx context.Context, id int64, sourceName string) (AcquisitionJob, error) {
+	job, err := s.Acquisition(ctx, id)
+	if err != nil {
+		return AcquisitionJob{}, err
+	}
+	if job.AudioSource != sourceName {
+		existing := job.AudioSource
+		if existing == "" {
+			existing = "automatic"
+		}
+		requested := sourceName
+		if requested == "" {
+			requested = "automatic"
+		}
+		return AcquisitionJob{}, &Error{Code: "music_acquisition_source_conflict", Message: fmt.Sprintf("This acquisition is already active with the %s source, not %s. Let it finish or review the active job before choosing another source.", existing, requested)}
+	}
+	return job, nil
+}
 
 // StartAlbumAcquisition queues every catalog track in one album that has no
 // registered file. It is used by the unified library and the album page.
-func (s *Service) StartAlbumAcquisition(ctx context.Context, albumID int64, root, format string) (AcquisitionJob, error) {
+func (s *Service) StartAlbumAcquisition(ctx context.Context, albumID int64, root, format string, audioSource ...string) (AcquisitionJob, error) {
 	if albumID < 1 {
 		return AcquisitionJob{}, ErrInvalidInput
 	}
@@ -197,13 +283,13 @@ func (s *Service) StartAlbumAcquisition(ctx context.Context, albumID int64, root
 	if ValidMBID(album.MusicBrainzID) {
 		catalogSource = "https://musicbrainz.org/release-group/" + album.MusicBrainzID
 	}
-	return s.startAcquisition(ctx, "album:"+strconv.FormatInt(albumID, 10), catalogSource, "album", album.Title, root, format, inputs)
+	return s.startAcquisition(ctx, "album:"+strconv.FormatInt(albumID, 10), catalogSource, "album", album.Title, root, format, inputs, audioSource...)
 }
 
 // StartProviderAlbumAcquisition resolves a public Deezer album link and queues
 // all of its tracks. It is used for albums shown in the full discography that
 // are not yet in the local catalog.
-func (s *Service) StartProviderAlbumAcquisition(ctx context.Context, providerID, root, format string) (AcquisitionJob, error) {
+func (s *Service) StartProviderAlbumAcquisition(ctx context.Context, providerID, root, format string, audioSource ...string) (AcquisitionJob, error) {
 	providerID = strings.TrimSpace(providerID)
 	if providerID == "" || len(providerID) > 32 {
 		return AcquisitionJob{}, ErrInvalidInput
@@ -231,7 +317,7 @@ func (s *Service) StartProviderAlbumAcquisition(ctx context.Context, providerID,
 	if len(inputs) == 0 {
 		return AcquisitionJob{}, &Error{Code: "music_link_empty", Message: "Deezer returned no tracks for this album."}
 	}
-	return s.StartAcquisition(ctx, "https://www.deezer.com/album/"+providerID, "deezer_album", preview.Title, root, format, inputs)
+	return s.StartAcquisition(ctx, "https://www.deezer.com/album/"+providerID, "deezer_album", preview.Title, root, format, inputs, audioSource...)
 }
 
 func validAcquisitionFormat(format string) bool {
@@ -349,13 +435,33 @@ func (s *Service) resolveStoredProfile(ctx context.Context, prefs MusicPreferenc
 	return s.ResolveProfileKey(ctx, key)
 }
 
-func (s *Service) StartAcquisition(ctx context.Context, sourceURL, sourceKind, title, root, format string, tracks []AcquisitionTrackInput) (AcquisitionJob, error) {
-	return s.startAcquisition(ctx, "", sourceURL, sourceKind, title, root, format, tracks)
+func (s *Service) StartAcquisition(ctx context.Context, sourceURL, sourceKind, title, root, format string, tracks []AcquisitionTrackInput, audioSource ...string) (AcquisitionJob, error) {
+	return s.startAcquisition(ctx, "", sourceURL, sourceKind, title, root, format, tracks, audioSource...)
 }
 
-func (s *Service) startAcquisition(ctx context.Context, dedupKey, sourceURL, sourceKind, title, root, format string, tracks []AcquisitionTrackInput) (AcquisitionJob, error) {
-	if s.audio == nil {
-		return AcquisitionJob{}, &Error{Code: "music_acquisition_unavailable", Message: "Audio downloading is unavailable because yt-dlp is not configured."}
+func (s *Service) startAcquisition(ctx context.Context, dedupKey, sourceURL, sourceKind, title, root, format string, tracks []AcquisitionTrackInput, requestedSource ...string) (AcquisitionJob, error) {
+	if len(requestedSource) > 1 {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	sourceName := ""
+	if len(requestedSource) == 1 {
+		sourceName = strings.ToLower(strings.TrimSpace(requestedSource[0]))
+	}
+	if sourceName == "automatic" {
+		sourceName = ""
+	}
+	if sourceName == "" {
+		prefs, err := s.GetPreferences(ctx)
+		if err != nil {
+			return AcquisitionJob{}, err
+		}
+		sourceName = prefs.DownloadSource
+	}
+	if err := validateEnum(sourceName, audioSourceValues); err != nil {
+		return AcquisitionJob{}, ErrInvalidInput
+	}
+	if _, err := s.selectAudioSource(sourceName); err != nil {
+		return AcquisitionJob{}, err
 	}
 	if len(tracks) == 0 || len(tracks) > 100 {
 		return AcquisitionJob{}, ErrInvalidInput
@@ -392,15 +498,15 @@ func (s *Service) startAcquisition(ctx context.Context, dedupKey, sourceURL, sou
 		err := tx.QueryRowContext(ctx, `SELECT id FROM music_acquisition_jobs WHERE dedup_key=? AND state IN ('queued','running') LIMIT 1`, dedupKey).Scan(&existing)
 		if err == nil {
 			tx.Rollback()
-			return s.Acquisition(ctx, existing)
+			return s.acquisitionDedupResult(ctx, existing, sourceName)
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
 			return AcquisitionJob{}, err
 		}
 	}
 	now := time.Now().Unix()
-	result, err := tx.ExecContext(ctx, `INSERT INTO music_acquisition_jobs(dedup_key,source_url,source_kind,title,root,format,state,track_count,created_at,updated_at) VALUES(?,?,?,?,?,?,'queued',?,?,?)`,
-		nullableText(dedupKey), strings.TrimSpace(sourceURL), strings.TrimSpace(sourceKind), strings.TrimSpace(title), root, format, len(tracks), now, now)
+	result, err := tx.ExecContext(ctx, `INSERT INTO music_acquisition_jobs(dedup_key,source_url,source_kind,title,root,format,audio_source,state,track_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'queued',?,?,?)`,
+		nullableText(dedupKey), strings.TrimSpace(sourceURL), strings.TrimSpace(sourceKind), strings.TrimSpace(title), root, format, sourceName, len(tracks), now, now)
 	if err != nil {
 		// The partial unique index is the cross-process backstop for the
 		// in-transaction check above (CS-7).
@@ -408,7 +514,7 @@ func (s *Service) startAcquisition(ctx context.Context, dedupKey, sourceURL, sou
 			var existing int64
 			if e := tx.QueryRowContext(ctx, `SELECT id FROM music_acquisition_jobs WHERE dedup_key=? AND state IN ('queued','running') LIMIT 1`, dedupKey).Scan(&existing); e == nil {
 				tx.Rollback()
-				return s.Acquisition(ctx, existing)
+				return s.acquisitionDedupResult(ctx, existing, sourceName)
 			}
 		}
 		return AcquisitionJob{}, err
@@ -476,8 +582,8 @@ func nullableText(value string) any {
 
 func (s *Service) Acquisition(ctx context.Context, id int64) (AcquisitionJob, error) {
 	var job AcquisitionJob
-	err := s.store.db.QueryRowContext(ctx, `SELECT id,source_url,source_kind,title,root,format,state,track_count,completed_count,error,created_at,updated_at,acknowledged_at FROM music_acquisition_jobs WHERE id=?`, id).
-		Scan(&job.ID, &job.SourceURL, &job.SourceKind, &job.Title, &job.Root, &job.Format, &job.State, &job.TrackCount, &job.CompletedCount, &job.Error, &job.CreatedAt, &job.UpdatedAt, &job.AcknowledgedAt)
+	err := s.store.db.QueryRowContext(ctx, `SELECT id,source_url,source_kind,title,root,format,audio_source,state,track_count,completed_count,error,created_at,updated_at,acknowledged_at FROM music_acquisition_jobs WHERE id=?`, id).
+		Scan(&job.ID, &job.SourceURL, &job.SourceKind, &job.Title, &job.Root, &job.Format, &job.AudioSource, &job.State, &job.TrackCount, &job.CompletedCount, &job.Error, &job.CreatedAt, &job.UpdatedAt, &job.AcknowledgedAt)
 	if err != nil {
 		return AcquisitionJob{}, err
 	}
@@ -773,15 +879,16 @@ func (s *Service) acquisitionTrack(ctx context.Context, trackID int64) (Acquisit
 
 func (s *Service) acquisitionJobForTrack(ctx context.Context, trackID int64) (AcquisitionJob, error) {
 	var job AcquisitionJob
-	err := s.store.db.QueryRowContext(ctx, `SELECT j.id,j.source_url,j.source_kind,j.title,j.root,j.format,j.state,j.track_count,j.completed_count,j.error,j.created_at,j.updated_at
+	err := s.store.db.QueryRowContext(ctx, `SELECT j.id,j.source_url,j.source_kind,j.title,j.root,j.format,j.audio_source,j.state,j.track_count,j.completed_count,j.error,j.created_at,j.updated_at
 		FROM music_acquisition_jobs j JOIN music_acquisition_tracks t ON t.job_id=j.id WHERE t.id=?`, trackID).
-		Scan(&job.ID, &job.SourceURL, &job.SourceKind, &job.Title, &job.Root, &job.Format, &job.State, &job.TrackCount, &job.CompletedCount, &job.Error, &job.CreatedAt, &job.UpdatedAt)
+		Scan(&job.ID, &job.SourceURL, &job.SourceKind, &job.Title, &job.Root, &job.Format, &job.AudioSource, &job.State, &job.TrackCount, &job.CompletedCount, &job.Error, &job.CreatedAt, &job.UpdatedAt)
 	return job, err
 }
 
 func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job AcquisitionJob) error {
-	if s.audio == nil {
-		return &Error{Code: "music_acquisition_unavailable", Message: "Audio downloading is unavailable because yt-dlp is not configured."}
+	source, err := s.selectAudioSource(job.AudioSource)
+	if err != nil {
+		return err
 	}
 	if reused, err := s.reuseAcquiredRecording(ctx, track); err != nil {
 		return err
@@ -800,6 +907,12 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 	}
 	evidence := []byte("[]")
 	videoID := strings.TrimSpace(track.SourceURL)
+	// Deezer album links identify the catalog, not the requested audio
+	// provider. An explicit source must search that provider instead of
+	// handing a foreign catalog URL to its downloader.
+	if job.AudioSource != "" && (job.SourceKind == "deezer_album" || job.SourceKind == "album") {
+		videoID = ""
+	}
 	if videoID == "" {
 		query := strings.TrimSpace(track.SearchQuery)
 		if query == "" {
@@ -808,9 +921,9 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 		// The query may carry album context, but the track title is always the
 		// authoritative name to match: audio belonging to a different track or
 		// album is never accepted on duration or album-name evidence alone.
-		candidates, err := s.audio.SearchAudio(ctx, query, 10)
+		candidates, err := source.SearchAudio(ctx, query, 10)
 		if err != nil {
-			return &Error{Code: "music_acquisition_search", Message: "YouTube search failed for this track."}
+			return &Error{Code: "music_acquisition_search", Message: audioSourceFailure(source, "search", err)}
 		}
 		decision := evaluateAudioCandidates(candidates, AcquisitionTrackInput{
 			Title: track.Title, Artist: track.Artist, Version: track.Version, DurationMS: track.DurationMS,
@@ -845,9 +958,9 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 	if profile, _, err := s.resolveAcquisitionProfile(ctx, job.Format); err == nil {
 		downloadFormat = acquisitionDownloadFormat(profile)
 	}
-	audio, err := s.audio.DownloadAudio(ctx, videoID, stagingRoot, downloadFormat)
+	audio, err := source.DownloadAudio(ctx, videoID, stagingRoot, downloadFormat)
 	if err != nil {
-		return &Error{Code: "music_acquisition_download", Message: "yt-dlp could not download or convert this track."}
+		return &Error{Code: "music_acquisition_download", Message: audioSourceFailure(source, "download", err)}
 	}
 	if !contained(stagingRoot, audio.Path) {
 		return ErrInvalidInput

@@ -155,6 +155,25 @@ def main():
             "HOME": directory,
         })
 
+        initial = invoke(provider, env, "status")
+        assert initial.get("available") is True, initial
+        assert initial.get("logged_in") is False, initial
+        assert initial.get("token_present") is False, initial
+        assert initial.get("verification_state") == "not_checked", initial
+
+        # A leftover file is not an authenticated session. Verify must perform
+        # its own check and retain a useful failure instead of trusting status.
+        (root / "token.json").write_text("{}", encoding="ascii")
+        local = invoke(provider, env, "status")
+        assert local.get("logged_in") is False, local
+        assert local.get("token_present") is True, local
+        assert local.get("verification_state") == "not_checked", local
+        checked = invoke(provider, env, "verify")
+        assert checked.get("logged_in") is False, checked
+        assert checked.get("verification_state") == "failed", checked
+        assert checked.get("verified_at", 0) > 0, checked
+        assert checked.get("detail"), checked
+
         started = invoke(provider, env, "login-begin")
         assert started.get("started") is True, started
         state_path = root / "reelscarey-login-state.json"

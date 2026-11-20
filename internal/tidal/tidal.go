@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 )
@@ -30,14 +31,18 @@ var qualities = map[string]bool{"LOW": true, "HIGH": true, "LOSSLESS": true, "HI
 // accepts. Non-track links are rejected before any process is started.
 var TrackURL = regexp.MustCompile(`^https://(www\.)?tidal\.com/browse/track/[0-9]{1,20}$`)
 
-// Status reports whether the provider can run and whether a TIDAL session
-// exists. Available means the provider script ran, not that the account is
-// usable; LoggedIn is the honest session state.
+// Status separates installation, local credential presence and remote session
+// verification. LoggedIn is true only after Verify has successfully used the
+// session; TokenPresent alone never means that the owner is connected.
 type Status struct {
-	Available bool   `json:"available"`
-	LoggedIn  bool   `json:"logged_in"`
-	Quality   string `json:"quality,omitempty"`
-	Detail    string `json:"detail,omitempty"`
+	Available         bool        `json:"available"`
+	LoggedIn          bool        `json:"logged_in"`
+	TokenPresent      bool        `json:"token_present"`
+	Quality           string      `json:"quality,omitempty"`
+	VerificationState string      `json:"verification_state"`
+	VerifiedAt        int64       `json:"verified_at,omitempty"`
+	Detail            string      `json:"detail,omitempty"`
+	Login             *LoginState `json:"login,omitempty"`
 }
 
 // Candidate is one bounded TIDAL search hit. ID is the tidal.com track URL
@@ -81,11 +86,13 @@ type Runner func(ctx context.Context, timeout time.Duration, env []string, args 
 // Service is the tidal provider adapter. All methods are safe for concurrent
 // use because each invocation is an independent process.
 type Service struct {
-	python    string
-	script    string
-	configDir string
-	quality   string
-	run       Runner
+	python         string
+	script         string
+	configDir      string
+	defaultQuality string
+	qualityMu      sync.RWMutex
+	quality        string
+	run            Runner
 }
 
 // New validates configuration and returns a provider service. python and
@@ -106,17 +113,37 @@ func New(python, script, configDir, quality string) (*Service, error) {
 	if err != nil || strings.ContainsRune(absolute, 0) || utf8.RuneCountInString(absolute) > 1024 {
 		return nil, errors.New("tidal provider config directory must be a valid path")
 	}
-	return &Service{python: python, script: script, configDir: absolute, quality: quality, run: realRun}, nil
+	return &Service{python: python, script: script, configDir: absolute, defaultQuality: quality, quality: quality, run: realRun}, nil
+}
+
+// SetQuality applies a reviewed preference to subsequent provider processes.
+// An empty value restores the server environment's configured default. The
+// lock keeps a save from racing an acquisition's environment snapshot.
+func (s *Service) SetQuality(quality string) error {
+	quality = strings.ToUpper(strings.TrimSpace(quality))
+	if quality != "" && !qualities[quality] {
+		return errors.New("TIDAL quality must be LOW, HIGH, LOSSLESS or HI_RES_LOSSLESS")
+	}
+	s.qualityMu.Lock()
+	defer s.qualityMu.Unlock()
+	if quality == "" {
+		quality = s.defaultQuality
+	}
+	s.quality = quality
+	return nil
 }
 
 // env isolates the provider: its TIDAL token lives under the configured
 // ReelScarey config directory (so backups include it) and it never sees the
 // owner's shell environment beyond the explicit handoff below.
 func (s *Service) env() []string {
+	s.qualityMu.RLock()
+	quality := s.quality
+	s.qualityMu.RUnlock()
 	return []string{
 		"XDG_CONFIG_HOME=" + s.configDir,
 		"HOME=" + s.configDir,
-		"REELSCAREY_TIDAL_QUALITY=" + s.quality,
+		"REELSCAREY_TIDAL_QUALITY=" + quality,
 		"PYTHONNOUSERSITE=1",
 		"PYTHONWARNINGS=ignore",
 		"PATH=/usr/local/bin:/usr/bin:/bin",
@@ -147,8 +174,12 @@ func (s *Service) Status(ctx context.Context) Status {
 	if json.Unmarshal([]byte(body), &parsed) != nil {
 		return Status{Detail: "the TIDAL provider returned an unreadable status"}
 	}
-	if !parsed.Available {
-		parsed.Detail = short(parsed.Detail)
+	parsed.Detail = short(parsed.Detail)
+	// Local status is deliberately not a login verification. Older provider
+	// scripts may still send logged_in based on a file, so never trust it here.
+	parsed.LoggedIn = false
+	if parsed.VerificationState == "" {
+		parsed.VerificationState = "not_checked"
 	}
 	return parsed
 }
@@ -160,13 +191,26 @@ func (s *Service) Verify(ctx context.Context) Status {
 	defer cancel()
 	body, err := s.call(ctx, 80*time.Second, "verify")
 	if err != nil {
-		return Status{Available: true, Detail: short(err.Error())}
+		return Status{Available: true, VerificationState: "failed", VerifiedAt: time.Now().Unix(), Detail: short(err.Error())}
 	}
 	var parsed Status
 	if json.Unmarshal([]byte(body), &parsed) != nil {
-		return Status{Available: true, Detail: "the TIDAL provider returned an unreadable verification"}
+		return Status{Available: true, VerificationState: "failed", VerifiedAt: time.Now().Unix(), Detail: "the TIDAL provider returned an unreadable verification"}
 	}
 	parsed.Available = true
+	if parsed.VerifiedAt == 0 {
+		parsed.VerifiedAt = time.Now().Unix()
+	}
+	parsed.Detail = short(parsed.Detail)
+	if parsed.VerificationState == "" {
+		parsed.VerificationState = "failed"
+		if parsed.LoggedIn {
+			parsed.VerificationState = "verified"
+		}
+	}
+	if parsed.VerificationState != "verified" {
+		parsed.LoggedIn = false
+	}
 	return parsed
 }
 

@@ -315,9 +315,10 @@ func (s *Server) musicAlbumAcquire(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Root     string `json:"root"`
-		Format   string `json:"format"`
-		Reviewed bool   `json:"reviewed"`
+		Root        string `json:"root"`
+		Format      string `json:"format"`
+		AudioSource string `json:"audio_source"`
+		Reviewed    bool   `json:"reviewed"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -326,7 +327,7 @@ func (s *Server) musicAlbumAcquire(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "review_required", "Review the album before starting the download.")
 		return
 	}
-	job, err := s.music.StartAlbumAcquisition(r.Context(), id, body.Root, body.Format)
+	job, err := s.music.StartAlbumAcquisition(r.Context(), id, body.Root, body.Format, body.AudioSource)
 	if err != nil {
 		s.musicError(w, err)
 		return
@@ -344,9 +345,10 @@ func (s *Server) musicProviderAlbumAcquire(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var body struct {
-		Root     string `json:"root"`
-		Format   string `json:"format"`
-		Reviewed bool   `json:"reviewed"`
+		Root        string `json:"root"`
+		Format      string `json:"format"`
+		AudioSource string `json:"audio_source"`
+		Reviewed    bool   `json:"reviewed"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -355,7 +357,7 @@ func (s *Server) musicProviderAlbumAcquire(w http.ResponseWriter, r *http.Reques
 		fail(w, 400, "review_required", "Review the album before starting the download.")
 		return
 	}
-	job, err := s.music.StartProviderAlbumAcquisition(r.Context(), strconv.FormatInt(id, 10), body.Root, body.Format)
+	job, err := s.music.StartProviderAlbumAcquisition(r.Context(), strconv.FormatInt(id, 10), body.Root, body.Format, body.AudioSource)
 	if err != nil {
 		s.musicError(w, err)
 		return
