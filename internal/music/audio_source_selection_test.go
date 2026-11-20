@@ -149,6 +149,10 @@ func TestAcquisitionUsesSavedDefaultAndRejectsUnavailableSource(t *testing.T) {
 	if youtube.searchCalls != 1 {
 		t.Fatalf("saved default did not reach the worker: %+v", youtube)
 	}
+	automaticJob, err := service.StartAcquisition(context.Background(), "", "top_track", "Automatic override", "Music", "source", sourceSelectionInput(), "automatic")
+	if err != nil || automaticJob.AudioSource != "" {
+		t.Fatalf("explicit automatic did not override the provider-only default: job=%+v err=%v", automaticJob, err)
+	}
 
 	unavailable := NewService(service.store.db, t.TempDir())
 	unavailable.SetAudioSource(&routingAudioSource{name: "YouTube", id: "abcdefghijk"})

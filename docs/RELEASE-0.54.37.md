@@ -15,7 +15,9 @@ quality is not represented as an upsampling guarantee.
 
 Album download dialogs now offer Automatic, TIDAL only and YouTube only. The
 choice is sent as `audio_source`, persisted on the acquisition job and honored by
-search, download, restart recovery and retries. Automatic retains TIDAL-first
+search, download, restart recovery and retries. Choosing Automatic explicitly
+also overrides a saved provider-only default; leaving the selector untouched
+inherits that default. Automatic retains TIDAL-first
 fallback behavior when installed. An explicit provider does not silently reroute
 to another source. A duplicate active job with a different source returns an
 honest conflict instead of reusing the wrong request. Schema 113 adds these

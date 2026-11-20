@@ -339,7 +339,8 @@ export function AlbumDownloadModal({
         body: JSON.stringify({
           root: root.trim() || "Music",
           format: profileKey,
-          audio_source: audioSource,
+          audio_source:
+            sourceOverride === null ? audioSource : audioSource || "automatic",
           reviewed: true,
         }),
       });

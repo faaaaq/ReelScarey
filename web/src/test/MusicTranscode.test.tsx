@@ -531,6 +531,73 @@ describe("download profile selector", () => {
     });
   });
 
+  it("lets explicit Automatic override a provider-only saved default", async () => {
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/profiles")
+        return Response.json(profiles);
+      if (path === "/api/v1/library/music/preferences") {
+        return Response.json({ ...preferences, download_source: "youtube" });
+      }
+      if (path === "/api/v1/library/music/tidal/status") {
+        return Response.json({
+          available: false,
+          logged_in: false,
+          token_present: false,
+        });
+      }
+      if (
+        path === "/api/v1/library/music/albums/9/acquire" &&
+        options?.method === "POST"
+      ) {
+        return Response.json({
+          id: 13,
+          source_url: "",
+          source_kind: "album",
+          title: "Kid A",
+          root: "Music",
+          format: "",
+          audio_source: "",
+          state: "queued",
+          track_count: 1,
+          completed_count: 0,
+          error: "",
+          created_at: 1,
+          updated_at: 1,
+          acknowledged_at: 0,
+        });
+      }
+      return undefined;
+    });
+    render(
+      <Theme>
+        <MemoryRouter>
+          <AlbumDownloadModal
+            target={{ albumID: 9, title: "Kid A", artist: "Radiohead" }}
+            onClose={() => {}}
+          />
+        </MemoryRouter>
+      </Theme>,
+    );
+    const dialog = await screen.findByRole("dialog");
+    const source = (await within(dialog).findByLabelText(
+      "Album audio source",
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(source.value).toBe("youtube"));
+    await userEvent.selectOptions(source, "");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Download album" }),
+    );
+    await waitFor(() => {
+      const bodies = bodiesFor(
+        fetch,
+        "/api/v1/library/music/albums/9/acquire",
+        "POST",
+      );
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0].audio_source).toBe("automatic");
+    });
+  });
+
   it("blocks TIDAL-only submission until the session is verified", async () => {
     const fetch = mockFetch((path) => {
       if (path === "/api/v1/library/music/profiles")

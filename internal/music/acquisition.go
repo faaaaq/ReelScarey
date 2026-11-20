@@ -444,13 +444,17 @@ func (s *Service) startAcquisition(ctx context.Context, dedupKey, sourceURL, sou
 		return AcquisitionJob{}, ErrInvalidInput
 	}
 	sourceName := ""
+	useSavedDefault := len(requestedSource) == 0
 	if len(requestedSource) == 1 {
 		sourceName = strings.ToLower(strings.TrimSpace(requestedSource[0]))
+		// An omitted/empty API field inherits the saved default. The explicit
+		// automatic value overrides a provider-only default with the chain.
+		useSavedDefault = sourceName == ""
 	}
 	if sourceName == "automatic" {
 		sourceName = ""
 	}
-	if sourceName == "" {
+	if useSavedDefault {
 		prefs, err := s.GetPreferences(ctx)
 		if err != nil {
 			return AcquisitionJob{}, err
