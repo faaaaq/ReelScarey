@@ -115,6 +115,27 @@ export function acquisitionStatus(job: MusicAcquisitionJob): string {
   return `${trackVerb(current.state)} ${index} of ${total} · ${name}`;
 }
 
+function audioCandidateHref(id: string): string {
+  if (/^[A-Za-z0-9_-]{11}$/.test(id)) {
+    return `https://www.youtube.com/watch?v=${id}`;
+  }
+  return id.startsWith("https://") ? id : "";
+}
+
+export async function retryMusicAcquisitionTrack(
+  jobID: number,
+  trackID: number,
+  sourceURL: string,
+): Promise<MusicAcquisitionJob> {
+  return api<MusicAcquisitionJob>(
+    `/library/music/acquisitions/${jobID}/tracks/${trackID}/retry`,
+    {
+      method: "POST",
+      body: JSON.stringify({ source_url: sourceURL, reviewed: true }),
+    },
+  );
+}
+
 /**
  * Live progress for a queued music acquisition. Shared by the download
  * confirmation popup and the artist, album and library pages so a download can
@@ -137,6 +158,20 @@ export function AcquisitionProgress({
   const fraction = total > 0 ? Math.min(1, done / total) : 0;
   const tracks = job.tracks ?? [];
   const settled = job.state === "completed" || job.state === "failed";
+
+  async function retry(trackID: number, sourceURL: string) {
+    if (!onRetry || retrying > 0) return;
+    setRetrying(trackID);
+    setRetryError("");
+    try {
+      await onRetry(trackID, sourceURL);
+    } catch (error) {
+      setRetryError(messageFor(error));
+    } finally {
+      setRetrying(0);
+    }
+  }
+
   return (
     <div className="mus-progress">
       <div className="mus-progress-head">
@@ -195,21 +230,68 @@ export function AcquisitionProgress({
                 </div>
               )}
               {!!track.candidate_evidence?.length && (
-                <details>
+                <details
+                  open={
+                    track.state === "failed" &&
+                    track.candidate_evidence.some((item) => item.eligible)
+                  }
+                >
                   <summary>
-                    Candidate evidence ({track.candidate_evidence.length})
+                    Review candidates (
+                    {
+                      track.candidate_evidence.filter((item) => item.eligible)
+                        .length
+                    }{" "}
+                    eligible of {track.candidate_evidence.length})
                   </summary>
+                  {track.state === "failed" && onRetry && (
+                    <p className="rs-muted rs-small">
+                      Automatic matching could not choose safely. Review an
+                      eligible candidate and select Download this candidate, or
+                      provide a different source below.
+                    </p>
+                  )}
                   <ul>
                     {track.candidate_evidence.map((item) => (
                       <li key={item.candidate.id}>
                         <strong>{item.candidate.title}</strong> —{" "}
                         {item.candidate.channel || "channel unknown"} — score{" "}
                         {item.score}
+                        {audioCandidateHref(item.candidate.id) && (
+                          <>
+                            {" "}
+                            <a
+                              href={audioCandidateHref(item.candidate.id)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Open candidate
+                            </a>
+                          </>
+                        )}
                         <ul>
                           {item.reasons.map((reason) => (
                             <li key={reason}>{reason}</li>
                           ))}
                         </ul>
+                        {track.state === "failed" &&
+                          item.eligible &&
+                          onRetry && (
+                            <Button
+                              size="1"
+                              variant="soft"
+                              className="mus-candidate-download"
+                              disabled={retrying > 0}
+                              aria-label={`Download candidate ${item.candidate.title} for ${track.title}`}
+                              onClick={() =>
+                                void retry(track.id, item.candidate.id)
+                              }
+                            >
+                              {retrying === track.id
+                                ? "Starting…"
+                                : "Download this candidate"}
+                            </Button>
+                          )}
                       </li>
                     ))}
                   </ul>
@@ -244,13 +326,9 @@ export function AcquisitionProgress({
                   <Button
                     size="1"
                     disabled={retrying > 0}
-                    onClick={() => {
-                      setRetrying(track.id);
-                      setRetryError("");
-                      void onRetry(track.id, replacement[track.id] ?? "")
-                        .catch((error) => setRetryError(messageFor(error)))
-                        .finally(() => setRetrying(0));
-                    }}
+                    onClick={() =>
+                      void retry(track.id, replacement[track.id] ?? "")
+                    }
                   >
                     {retrying === track.id
                       ? "Retrying…"
@@ -352,6 +430,16 @@ export function AlbumDownloadModal({
     } finally {
       setPending(false);
     }
+  }
+
+  async function retryTrack(trackID: number, sourceURL: string) {
+    if (!jobID)
+      throw new Error(
+        "The acquisition is no longer available. Reload and try again.",
+      );
+    const updated = await retryMusicAcquisitionTrack(jobID, trackID, sourceURL);
+    onJob?.(updated);
+    job.reload();
   }
 
   return (
@@ -477,6 +565,7 @@ export function AlbumDownloadModal({
               <AcquisitionProgress
                 job={job.data}
                 label="Album download progress"
+                onRetry={retryTrack}
               />
             </>
           )}

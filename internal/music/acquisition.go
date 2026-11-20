@@ -913,8 +913,9 @@ func (s *Service) acquireTrack(ctx context.Context, track AcquisitionTrack, job 
 	videoID := strings.TrimSpace(track.SourceURL)
 	// Deezer album links identify the catalog, not the requested audio
 	// provider. An explicit source must search that provider instead of
-	// handing a foreign catalog URL to its downloader.
-	if job.AudioSource != "" && (job.SourceKind == "deezer_album" || job.SourceKind == "album") {
+	// handing a foreign catalog URL to its downloader. A later reviewed
+	// replacement is not a Deezer catalog link and must remain direct.
+	if job.AudioSource != "" && job.SourceKind == "deezer_album" && strings.Contains(videoID, "deezer.com/") {
 		videoID = ""
 	}
 	if videoID == "" {

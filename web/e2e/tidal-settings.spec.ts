@@ -19,6 +19,38 @@ test.describe.serial("TIDAL status and acquisition source UX", () => {
       db.exec(
         "INSERT INTO music_tracks(id,album_id,disc,number,title,duration_ms,created_at,updated_at) VALUES(1,1,1,1,'Missing Song',180000,unixepoch(),unixepoch())",
       );
+      db.exec(
+        "INSERT INTO music_acquisition_jobs(id,source_url,source_kind,title,root,format,state,track_count,completed_count,error,created_at,updated_at) VALUES(5,'','album','Review Candidate Album','Music','source','failed',1,0,'No tracks completed.',unixepoch(),unixepoch())",
+      );
+      const evidence = JSON.stringify([
+        {
+          candidate: {
+            id: "abcdefghijk",
+            title: "Candidate One",
+            channel: "Source Test Artist",
+            duration_seconds: 181,
+          },
+          score: 179,
+          eligible: true,
+          reasons: ["Track title matches on token boundaries."],
+          duration_difference_seconds: 1,
+        },
+        {
+          candidate: {
+            id: "zyxwvutsrqp",
+            title: "Candidate Two",
+            channel: "Source Test Artist",
+            duration_seconds: 181,
+          },
+          score: 179,
+          eligible: true,
+          reasons: ["Track title matches on token boundaries."],
+          duration_difference_seconds: 1,
+        },
+      ]);
+      db.prepare(
+        "INSERT INTO music_acquisition_tracks(id,job_id,position,title,artist,album,track_number,disc_number,duration_ms,source_url,search_query,state,error,candidate_evidence_json,created_at,updated_at) VALUES(6,5,1,'Missing Song','Source Test Artist','Review Candidate Album',1,1,180000,'','Source Test Artist Missing Song','failed','Multiple candidates have equally strong evidence. Choose a source explicitly; ReelScarey will not use search order to decide.',?,unixepoch(),unixepoch())",
+      ).run(evidence);
     });
   });
 
@@ -94,6 +126,42 @@ test.describe.serial("TIDAL status and acquisition source UX", () => {
     expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
     await dialog.getByRole("button", { name: "Close" }).last().click();
     await expect(dialog).toHaveCount(0);
+  });
+
+  test("an eligible reviewed candidate resolves the ambiguous job", async ({
+    page,
+  }) => {
+    await login(page, server);
+    await page.goto(server.url("/music/discover"));
+    const table = page.getByRole("table", { name: "Recent music downloads" });
+    const row = table
+      .getByRole("row")
+      .filter({ hasText: "Review Candidate Album" });
+    await row.getByRole("button", { name: "Review" }).click();
+    const dialog = page.getByRole("dialog", { name: "Review Candidate Album" });
+    await expect(
+      dialog.getByText(/Review candidates \(2 eligible of 2\)/),
+    ).toBeVisible();
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response
+          .url()
+          .includes("/api/v1/library/music/acquisitions/5/tracks/6/retry") &&
+        response.request().method() === "POST",
+    );
+    await dialog
+      .getByRole("button", {
+        name: "Download candidate Candidate Two for Missing Song",
+      })
+      .click();
+    const response = await responsePromise;
+    expect(response.status()).toBe(200);
+    await server.withDatabase((db) => {
+      const source = db
+        .prepare("SELECT source_url FROM music_acquisition_tracks WHERE id=6")
+        .get() as { source_url: string };
+      expect(source.source_url).toBe("zyxwvutsrqp");
+    });
   });
 
   test("status details remain readable at desktop width", async ({ page }) => {

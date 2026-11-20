@@ -47,6 +47,7 @@ import { useLiveResource } from "../useLiveResource";
 import {
   AcquisitionProgress,
   AlbumDownloadModal,
+  retryMusicAcquisitionTrack,
   type AlbumDownloadTarget,
 } from "../musicDownload";
 import { AlbumTile, ArtistTile, LibraryTrackTable } from "./Music";
@@ -422,6 +423,15 @@ export function MusicLibrary() {
             <AcquisitionProgress
               job={albumJob.data}
               label="Album download progress"
+              onRetry={async (trackID, sourceURL) => {
+                if (!albumJobID) return;
+                await retryMusicAcquisitionTrack(
+                  albumJobID,
+                  trackID,
+                  sourceURL,
+                );
+                albumJob.reload();
+              }}
             />
           </FieldSet>
         )}

@@ -531,6 +531,155 @@ describe("download profile selector", () => {
     });
   });
 
+  it("lets the owner resolve an ambiguous match with an eligible candidate", async () => {
+    let retried = false;
+    const failedJob = {
+      id: 14,
+      source_url: "",
+      source_kind: "album",
+      title: "Kid A",
+      root: "Music",
+      format: "",
+      audio_source: "",
+      state: "failed",
+      track_count: 1,
+      completed_count: 0,
+      error: "No tracks completed.",
+      created_at: 1,
+      updated_at: 1,
+      acknowledged_at: 0,
+      tracks: [
+        {
+          id: 31,
+          job_id: 14,
+          position: 1,
+          title: "Song",
+          artist: "Artist",
+          album: "Kid A",
+          album_artist: "Artist",
+          track_number: 1,
+          disc_number: 1,
+          duration_ms: 200000,
+          cover_url: "",
+          source_url: "",
+          search_query: "Artist Song",
+          state: "failed",
+          error:
+            "Multiple candidates have equally strong evidence. Choose a source explicitly; ReelScarey will not use search order to decide.",
+          music_file_id: null,
+          import_job_id: null,
+          candidate_evidence: [
+            {
+              candidate: {
+                id: "abcdefghijk",
+                title: "Official Song",
+                channel: "Artist",
+                duration_seconds: 201,
+              },
+              score: 179,
+              eligible: true,
+              reasons: ["Track title matches on token boundaries."],
+              duration_difference_seconds: 1,
+            },
+            {
+              candidate: {
+                id: "lmnopqrstuv",
+                title: "Wrong Song",
+                channel: "Other",
+                duration_seconds: 250,
+              },
+              score: 40,
+              eligible: false,
+              reasons: ["Track title does not match the requested recording."],
+              duration_difference_seconds: 50,
+            },
+          ],
+        },
+      ],
+    };
+    const queuedJob = {
+      ...failedJob,
+      state: "queued",
+      error: "",
+      tracks: [{ ...failedJob.tracks[0], state: "queued", error: "" }],
+    };
+    const onJob = vi.fn();
+    const fetch = mockFetch((path, options) => {
+      if (path === "/api/v1/library/music/profiles")
+        return Response.json(profiles);
+      if (path === "/api/v1/library/music/preferences")
+        return Response.json(preferences);
+      if (path === "/api/v1/library/music/tidal/status") {
+        return Response.json({
+          available: false,
+          logged_in: false,
+          token_present: false,
+        });
+      }
+      if (
+        path === "/api/v1/library/music/albums/9/acquire" &&
+        options?.method === "POST"
+      ) {
+        return Response.json({ ...queuedJob, tracks: undefined });
+      }
+      if (path === "/api/v1/library/music/acquisitions/14") {
+        return Response.json(retried ? queuedJob : failedJob);
+      }
+      if (
+        path === "/api/v1/library/music/acquisitions/14/tracks/31/retry" &&
+        options?.method === "POST"
+      ) {
+        retried = true;
+        return Response.json(queuedJob);
+      }
+      return undefined;
+    });
+
+    render(
+      <Theme>
+        <MemoryRouter>
+          <AlbumDownloadModal
+            target={{ albumID: 9, title: "Kid A", artist: "Radiohead" }}
+            onClose={() => {}}
+            onJob={onJob}
+          />
+        </MemoryRouter>
+      </Theme>,
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Download album" }),
+    );
+    expect(
+      await within(dialog).findByText(/Review candidates \(1 eligible of 2\)/),
+    ).toBeVisible();
+    expect(
+      within(dialog).getAllByRole("button", { name: /Download candidate/ }),
+    ).toHaveLength(1);
+    expect(
+      within(dialog).queryByRole("button", {
+        name: /Download candidate Wrong Song/,
+      }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Download candidate Official Song for Song",
+      }),
+    );
+    await waitFor(() => {
+      const bodies = bodiesFor(
+        fetch,
+        "/api/v1/library/music/acquisitions/14/tracks/31/retry",
+        "POST",
+      );
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0]).toEqual({ source_url: "abcdefghijk", reviewed: true });
+    });
+    expect(onJob).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 14, state: "queued" }),
+    );
+  });
+
   it("lets explicit Automatic override a provider-only saved default", async () => {
     const fetch = mockFetch((path, options) => {
       if (path === "/api/v1/library/music/profiles")

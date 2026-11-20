@@ -61,6 +61,7 @@ import {
   AcquisitionProgress,
   AlbumDownloadModal,
   MusicExportMenu,
+  retryMusicAcquisitionTrack,
   type AlbumDownloadTarget,
 } from "../musicDownload";
 import { useMusicProfiles } from "../musicProfiles";
@@ -1109,6 +1110,15 @@ function MusicArtistDetail({ id }: { id?: string }) {
             <AcquisitionProgress
               job={albumJob.data}
               label="Album download progress"
+              onRetry={async (trackID, sourceURL) => {
+                if (!albumJobID) return;
+                await retryMusicAcquisitionTrack(
+                  albumJobID,
+                  trackID,
+                  sourceURL,
+                );
+                albumJob.reload();
+              }}
             />
           </FieldSet>
         )}
@@ -1902,6 +1912,15 @@ export function MusicAlbumPage() {
             <AcquisitionProgress
               job={albumJob.data}
               label="Album download progress"
+              onRetry={async (trackID, sourceURL) => {
+                if (!albumJobID) return;
+                await retryMusicAcquisitionTrack(
+                  albumJobID,
+                  trackID,
+                  sourceURL,
+                );
+                albumJob.reload();
+              }}
             />
           </FieldSet>
         )}

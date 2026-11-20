@@ -17,16 +17,35 @@ type routingAudioSource struct {
 	searchErr     error
 	searchCalls   int
 	downloadCalls int
+	candidateIDs  []string
 }
 
 func (f *routingAudioSource) AudioSourceName() string { return f.name }
-func (f *routingAudioSource) Owns(id string) bool     { return id == f.id }
+func (f *routingAudioSource) Owns(id string) bool {
+	if id == f.id {
+		return true
+	}
+	for _, candidateID := range f.candidateIDs {
+		if id == candidateID {
+			return true
+		}
+	}
+	return false
+}
 func (f *routingAudioSource) SearchAudio(context.Context, string, int) ([]AudioCandidate, error) {
 	f.searchCalls++
 	if f.searchErr != nil {
 		return nil, f.searchErr
 	}
-	return []AudioCandidate{{ID: f.id, Title: "Artist - Song (Official Audio)", DurationSeconds: 200}}, nil
+	ids := f.candidateIDs
+	if len(ids) == 0 {
+		ids = []string{f.id}
+	}
+	out := make([]AudioCandidate, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, AudioCandidate{ID: id, Title: "Artist - Song (Official Audio)", Channel: "Artist", DurationSeconds: 200})
+	}
+	return out, nil
 }
 func (f *routingAudioSource) DownloadAudio(_ context.Context, _ string, directory, _ string) (AudioFile, error) {
 	f.downloadCalls++
@@ -121,6 +140,40 @@ func TestAcquisitionSourceAndProviderErrorSurviveReloadAndRetry(t *testing.T) {
 	}
 	if newTidal.searchCalls != 1 || newTidal.downloadCalls != 1 || newYouTube.searchCalls != 0 || newYouTube.downloadCalls != 0 {
 		t.Fatalf("retry did not honor persisted source: tidal=%+v youtube=%+v", newTidal, newYouTube)
+	}
+}
+
+func TestReviewedCandidateRetryUsesExactSourceWithoutSearchingAgain(t *testing.T) {
+	service, tidal, youtube := sourceSelectionFixture(t)
+	tidal.candidateIDs = []string{"https://tidal.com/browse/track/123", "https://tidal.com/browse/track/456"}
+	job, err := service.StartAcquisition(context.Background(), "", "album", "Song", "Music", "source", sourceSelectionInput(), "tidal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if worked, err := service.ProcessAcquisition(context.Background()); err != nil || !worked {
+		t.Fatalf("ambiguous process: worked=%v err=%v", worked, err)
+	}
+	failed, err := service.Acquisition(context.Background(), job.ID)
+	if err != nil || failed.Tracks[0].State != "failed" || !strings.Contains(failed.Tracks[0].Error, "Multiple candidates") {
+		t.Fatalf("expected an ambiguous review failure: job=%+v err=%v", failed, err)
+	}
+	trackID := failed.Tracks[0].ID
+	if _, err = service.RetryAcquisitionTrack(context.Background(), job.ID, trackID, tidal.candidateIDs[1], true); err != nil {
+		t.Fatal(err)
+	}
+	if worked, err := service.ProcessAcquisition(context.Background()); err != nil || !worked {
+		t.Fatalf("reviewed retry process: worked=%v err=%v", worked, err)
+	}
+	if tidal.searchCalls != 1 || tidal.downloadCalls != 1 || youtube.searchCalls != 0 || youtube.downloadCalls != 0 {
+		t.Fatalf("reviewed candidate was not used directly: tidal=%+v youtube=%+v", tidal, youtube)
+	}
+	completed, err := service.Acquisition(context.Background(), job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	track := completed.Tracks[0]
+	if track.SelectedSourceID != tidal.candidateIDs[1] || track.State != "importing" || len(track.Attempts) != 1 || track.Attempts[0].SourceID != tidal.candidateIDs[1] {
+		t.Fatalf("reviewed candidate was not journaled: %+v", track)
 	}
 }
 
