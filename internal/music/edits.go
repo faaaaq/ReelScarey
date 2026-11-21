@@ -309,7 +309,9 @@ func needsRetag(currentJSON string, target EditTags) bool {
 		{current.MusicBrainzTrackID, target.MusicBrainzTrackID},
 		{current.MusicBrainzRecordingID, target.MusicBrainzRecordingID},
 	} {
-		if pair[1] != "" && !equalFold(pair[0], pair[1]) {
+		// Local pseudo-identifiers are not file tags (see writeTags), so their
+		// absence is not evidence of a needed rewrite either.
+		if ValidMBID(pair[1]) && !equalFold(pair[0], pair[1]) {
 			return true
 		}
 	}
@@ -765,7 +767,12 @@ func writeTags(ctx context.Context, source, stage string, tags EditTags, ext str
 		{"musicbrainz_trackid", tags.MusicBrainzTrackID},
 		{"musicbrainz_recordingid", tags.MusicBrainzRecordingID},
 	} {
-		if pair[1] != "" {
+		// Only genuine MusicBrainz UUIDs become musicbrainz_* file tags.
+		// Local catalog pseudo-identifiers ("local-album:…", "local-track:…")
+		// are database identity, not MusicBrainz evidence: writing them would
+		// mislabel the file, and the tag reader drops non-MBID values, so the
+		// write would also fail verification every time.
+		if ValidMBID(pair[1]) {
 			args = append(args, "-metadata", pair[0]+"="+pair[1])
 		}
 	}
@@ -811,7 +818,10 @@ func verifyEditTags(actual AudioTags, tags EditTags) error {
 		{actual.MusicBrainzTrackID, tags.MusicBrainzTrackID},
 		{actual.MusicBrainzRecordingID, tags.MusicBrainzRecordingID},
 	} {
-		if pair[1] != "" && !equalFold(pair[0], pair[1]) {
+		// Verification requires exactly the genuine MBIDs that writeTags
+		// writes; a local pseudo-identifier is never written and therefore
+		// never required, so imports into tag-derived local albums complete.
+		if ValidMBID(pair[1]) && !equalFold(pair[0], pair[1]) {
 			return mismatch("A written MusicBrainz identifier did not match the reviewed edit.")
 		}
 	}

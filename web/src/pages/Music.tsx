@@ -1299,7 +1299,7 @@ function MusicArtistDetail({ id }: { id?: string }) {
           }
         }}
         title="Download top track"
-        description="Search YouTube and import the matched audio through the reviewed music import pipeline."
+        description="Import the matched audio through the reviewed music import pipeline."
         footer={
           <>
             <Button
@@ -1354,10 +1354,11 @@ function MusicArtistDetail({ id }: { id?: string }) {
               />
             </div>
             <Alert kind="info" title="Review before downloading">
-              The worker searches YouTube for this track and imports only a
-              close duration match. Nothing replaces an existing library file.
-              This uses the same yt-dlp and FFmpeg tools as the rest of
-              ReelScarey, not a Spotify account.
+              TIDAL is the default download source whenever a TIDAL account is
+              connected in Music settings; otherwise the worker searches
+              YouTube. Only a close duration match is imported, and an existing
+              library file is never replaced. The source preference in Music
+              settings can also restrict downloads to one provider.
             </Alert>
             {downloadError && <Alert kind="danger">{downloadError}</Alert>}
             {downloadJob.data && (

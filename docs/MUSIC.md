@@ -1065,6 +1065,11 @@ durable acquisition jobs. The acquisition worker searches YouTube (or uses a
 direct YouTube video ID), chooses a close duration match, creates tag-derived
 local catalog rows when needed, and hands the downloaded file to the existing
 reviewed import worker. That worker tags and publishes without overwrite.
+Only genuine MusicBrainz UUIDs become `musicbrainz_*` file tags: local
+catalog pseudo-identifiers (`local-album:`/`local-track:`) are database
+identity, not MusicBrainz evidence, so they are never written to files and
+never required by the write-then-verify step. Imports into tag-derived local
+albums therefore complete instead of failing the identifier check.
 
 Single-track and unsupported-source downloads stay local and explicit. The
 worker never replaces an existing registered file. YouTube/Spotify/Deezer terms,
