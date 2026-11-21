@@ -83,15 +83,27 @@ release-candidate and the publishing build because the application checks
 already ran the full Go suite natively, including the race suite in acceptance.
 
 Tag pushes do not trigger `ci.yml` (`push.branches` does not match tags), so
-the publish workflow cannot wait for a checks run. Skipping the in-image copy
-is only safe when the tag points at a commit whose branch push passed the
-checks workflow; nothing in the publish workflow re-runs the Go suite. The
-remaining image gates are the release-candidate smoke scripts (startup,
-Compose, backup/restore, seven-feature, automatic-library and storage
-recovery), the digest pull with its source-label check, and the backup smoke
-against the published digest. If a release ever needs a Go test gate inside
-the publish workflow, drop `RUN_GO_TESTS=0` from the release-candidate build
-rather than publishing an image that was never tested.
+the publish workflow cannot wait for a checks run, and nothing in the publish
+workflow re-runs the Go suite. **Routine releases do not wait for the branch
+checks to finish.** A targeted fix, provider adjustment, documentation or UI
+copy change is tagged and published as soon as the local validation gates pass
+(`go test ./...`, `go vet ./...`, Go build, frontend format/check/test/build),
+with CI verifying the same commit in parallel. Only a **substantial core
+change** must still wait for the branch checks to pass before its tag is
+published: schema or migration changes, authentication/session and other
+security boundaries, downloader/importer/organization write paths, public API
+contracts, or anything whose failure could strand owner media. When a routine
+release's later checks fail, fix forward with a new patch release or roll back
+the published tag, and never describe an unverified image as verified. The
+in-image Go suite stays skipped (`RUN_GO_TESTS=0`) because the same suite runs
+locally and in the checks workflow; the release-candidate smoke scripts still
+gate every publication. The remaining image gates are the release-candidate
+smoke scripts (startup, Compose, backup/restore, seven-feature,
+automatic-library and storage recovery), the digest pull with its source-label
+check, and the backup smoke against the published digest. If a release ever
+needs a Go test gate inside the publish workflow, drop `RUN_GO_TESTS=0` from
+the release-candidate build rather than publishing an image that was never
+tested.
 
 On the QEMU-emulated runner the following stay unavoidable: the runtime stage's
 apt installs, the frontend stage's `npm ci`, formatting/type/test/build gates

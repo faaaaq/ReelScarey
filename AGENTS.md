@@ -244,6 +244,12 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - Run gofmt on Go changes and `npm run format` for the frontend. Keep dependencies locked and explain additions.
 - Record validation failures and environment limits; never mark an unrun check
   as passed. Use local Git commits for stable milestones.
+- Routine releases are tagged and published as soon as those local gates pass;
+  only substantial core changes (schema/migrations, authentication/session and
+  other security boundaries, downloader/importer/organization write paths,
+  public API contracts) must wait for the branch checks to pass before tagging.
+  After a release is published, update the live compose image to the new
+  release tag, never a branch/sha candidate. See docs/RELEASING.md.
 
 ## Version 0.26 contributor boundaries
 
@@ -268,10 +274,14 @@ with the dedicated acceptance key, never a default key:
 after the leading `f`.
 
 The key has no passphrase; non-interactive BatchMode and docker exec are the
-normal working pattern. The live stack runs Compose from ~/reelscarey-live as
-container reelscarey and must stay untouched during acceptance work; inspect it
-with read-only commands only, and never restart or rebuild it without explicit
-user authorization.
+normal working pattern. The live stack runs Compose from `/home/faaaaq/configs/reelscarey/compose.yml`
+as container reelscarey. Standing owner instruction for routine releases: once
+a release is published, update that file's image to the new release tag (never
+a branch/sha candidate), back up the compose file and configuration first,
+recreate the container, and verify the reported version and health. Every other
+live change still needs explicit user authorization, and acceptance work never
+touches the live stack: inspect it with read-only commands only, and never
+restart or rebuild it outside that release-upgrade path.
 
 Acceptance testing runs an isolated container (reelscarey-accept) from its own
 ~/reelscarey-accept directory tree with ports bound to 127.0.0.1 and an SSH
