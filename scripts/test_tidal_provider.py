@@ -58,7 +58,7 @@ class Progress:
 
 sys.modules["rich.console"].Console = Console
 sys.modules["rich.progress"].Progress = Progress
-module("tidalapi", Quality=lambda value: value)
+module("tidalapi", Quality=lambda value: value, Track=type("Track", (), {}))
 module("tidaler")
 module("tidaler.constants", MediaType=type("MediaType", (), {"TRACK": "track", "ALBUM": "album"}))
 module("tidaler.download", Download=type("Download", (), {"__init__": lambda self, *args, **kwargs: None}))

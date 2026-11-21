@@ -34,7 +34,7 @@ except ImportError:  # Windows development harness; Docker uses fcntl.
 # chatter goes to a captured sink; uncaught errors go to stderr.
 from rich.console import Console
 from rich.progress import Progress
-from tidalapi import Quality
+from tidalapi import Quality, Track
 
 from tidaler.config import Settings, Tidal
 from tidaler.constants import MediaType
@@ -273,7 +273,10 @@ def search(query, limit):
     if tidal is None:
         out({"candidates": [], "error": "No valid TIDAL session."})
         return
-    result = tidal.session.search("track", query)
+    # tidalapi 0.8.x: search(query, models=[Track]). Passing the type as the
+    # first positional argument made every search fail with "Tried to search
+    # for an invalid type", silently pushing acquisition onto YouTube.
+    result = tidal.session.search(query, models=[Track])
     tracks = []
     for match in (result or {}).get("tracks") or []:
         artists = ", ".join(a.name for a in getattr(match, "artists", []) or [] if getattr(a, "name", None))
