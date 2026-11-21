@@ -1092,21 +1092,33 @@ YouTube remains the source):
   TIDAL serves the best the account and track actually have; a 16-bit track is
   never fabricated into a 24-bit file.
 
-Logging in is an explicit local-owner command because TIDAL device
-authorization is interactive by design:
+Logging in is an explicit owner action because TIDAL device authorization is
+interactive by design. Either run the local command
 
     reelscarey tidal-login
 
-The command prints the TIDAL link and device code, waits until TIDAL accepts
-it, and reports success or failure. Until that login succeeds, acquisition
-honestly falls back to YouTube and the startup log states why TIDAL is not in
-use.
+or use **Settings -> Music -> TIDAL source -> Connect TIDAL** in the UI. Both
+print the TIDAL link and device code, wait until TIDAL accepts them, and
+report success or failure. The provider runs the device flow in a detached
+child process (`login-run`) that outlives the short `login-begin` call, so the
+link actually appears and the flow survives to completion; a lock rejects
+duplicate starts, and a waiting state whose worker died becomes an actionable
+failure instead of an indefinite wait. The UI then verifies the resulting
+session before displaying Connected. The lifecycle is covered by an offline
+stub test that needs no TIDAL account or network:
+
+    python scripts/test_tidal_provider.py
+
+Until that login succeeds, acquisition honestly falls back to YouTube and the
+startup log states why TIDAL is not in use. A login completed in the UI takes
+effect immediately; no restart is needed.
 
 How the sources are chosen:
 
 - Every acquisition track search queries TIDAL first. TIDAL catalog results
   are much closer matches to MusicBrainz catalog metadata than video search
-  results, and each candidate is a concrete TIDAL track.
+  results, and each candidate is a concrete TIDAL track whose title, artist,
+  album and duration feed the existing candidate-evidence decision.
 - If TIDAL is unavailable, not logged in, or genuinely has no result, the
   search falls back to YouTube. When both sides fail, the recorded error names
   both sources.
