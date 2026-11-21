@@ -24,6 +24,7 @@ import os
 import subprocess
 import sys
 import time
+from threading import Event
 
 try:
     import fcntl
@@ -340,6 +341,12 @@ def download(url, directory):
     settings.data.format_track = "{artist_name} - {track_title}{track_explicit}"
     settings.data.format_album = "{artist_name} - {track_title}{track_explicit}"
     sink = silent_progress()
+    # tidaler 0.1.8 dereferences both events: event_abort must exist and
+    # event_run must already be set, otherwise the worker either crashes
+    # with "'NoneType' object has no attribute 'is_set'" or waits forever.
+    abort_event = Event()
+    run_event = Event()
+    run_event.set()
     dl = Download(
         tidal_obj=tidal,
         skip_existing=settings.data.skip_existing,
@@ -347,6 +354,8 @@ def download(url, directory):
         fn_logger=LoggerWrapped(sink.print),
         progress=Progress(console=sink),
         progress_overall=Progress(console=sink),
+        event_abort=abort_event,
+        event_run=run_event,
     )
     try:
         dl.item(media=media, file_template=settings.data.format_track,
