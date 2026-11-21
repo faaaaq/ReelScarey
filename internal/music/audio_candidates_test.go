@@ -62,6 +62,38 @@ func TestAudioCandidateEvaluationRefusesEqualEvidence(t *testing.T) {
 	}
 }
 
+func TestAudioCandidateEvaluationCollaborationChannelsAreNeutral(t *testing.T) {
+	// Real evidence from the failed "1Train" acquisition: the catalog names
+	// featured guest Yelawolf, while every upload is credited to A$AP Rocky
+	// or a re-uploader. Those channels are neutral for a collaboration, so
+	// the recordings become reviewable/eligible instead of all failing.
+	request := AcquisitionTrackInput{
+		Title:      "1Train (feat. Kendrick Lamar, Joey Bada$$, Yelawolf, Danny Brown, Action Bronson & Big K.R.I.T.)",
+		Artist:     "Yelawolf",
+		DurationMS: 372000,
+	}
+	candidates := []AudioCandidate{
+		{ID: "primary", Title: "A$AP Rocky - 1Train (feat. Joey Bada$$, Kendrick Lamar, Danny Brown)", Channel: "A$AP Rocky", DurationSeconds: 373},
+		{ID: "reupload", Title: "A$AP Rocky - 1Train (feat. Kendrick Lamar, Joey Bada$$, Yelawolf)", Channel: "PlutoJuice", DurationSeconds: 373},
+		{ID: "short", Title: "Yelawolf - 1 Train Verse", Channel: "CudiRager", DurationSeconds: 47},
+	}
+	decision := evaluateAudioCandidates(candidates, request)
+	for _, evidence := range decision.Candidates {
+		if evidence.Candidate.ID == "short" && evidence.Eligible {
+			t.Fatal("a 47-second verse must not satisfy the full recording")
+		}
+		if evidence.Candidate.ID != "short" && !evidence.Eligible {
+			t.Fatalf("collaboration channel was treated as a conflict: %#v", evidence)
+		}
+	}
+	// A non-collaboration request still refuses a conflicting channel.
+	single := evaluateAudioCandidates([]AudioCandidate{{ID: "cover", Title: "Other - Song", Channel: "Other - Topic", DurationSeconds: 200}},
+		AcquisitionTrackInput{Artist: "Artist", Title: "Song", DurationMS: 200000})
+	if single.Chosen != nil {
+		t.Fatal("a conflicting channel was accepted for a non-collaboration")
+	}
+}
+
 func TestAudioCandidateEvaluationAcceptsReleaseVariantTitles(t *testing.T) {
 	// Real-world shape captured from a live failure: the provider title
 	// carries "(Remastered)" while no YouTube upload of the same recording

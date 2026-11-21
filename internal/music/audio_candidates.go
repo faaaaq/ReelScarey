@@ -88,6 +88,20 @@ func audioChannelMatchesArtist(channel, artist string) bool {
 	return channelKey != "" && artistKey != "" && (channelKey == artistKey || len(artistKey) >= 4 && strings.Contains(channelKey, artistKey))
 }
 
+// audioCollaborationTitle reports whether the requested recording is a
+// collaboration ("feat.", "ft.", "featuring", "with"). Those tracks are often
+// credited to the primary artist on YouTube while the catalog names a
+// featured guest, so the channel is a preference, never a disqualifier.
+func audioCollaborationTitle(title string) bool {
+	lower := " " + normalizeMatchName(title) + " "
+	for _, marker := range []string{" feat ", " ft ", " featuring ", " with "} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 // evaluateAudioCandidates ranks all evidence but auto-selects only a unique
 // eligible winner. Missing duration contributes no points and never makes the
 // first title match authoritative. Contradictory artist/version evidence makes
@@ -128,6 +142,12 @@ func evaluateAudioCandidates(candidates []AudioCandidate, request AcquisitionTra
 			if audioChannelMatchesArtist(candidate.Channel, request.Artist) {
 				evidence.Score += 20
 				evidence.Reasons = append(evidence.Reasons, "Channel agrees with the requested artist.")
+			} else if audioCollaborationTitle(request.Title) {
+				// A collaboration is routinely uploaded by the primary artist
+				// while the catalog names a featured guest. The channel then
+				// contributes no points but never blocks the match; title and
+				// duration evidence still decide.
+				evidence.Reasons = append(evidence.Reasons, "Collaboration recording: a different contributor's channel is neutral, not a conflict.")
 			} else {
 				evidence.Eligible = false
 				evidence.Reasons = append(evidence.Reasons, "Channel conflicts with the requested artist; review instead of assuming identity.")

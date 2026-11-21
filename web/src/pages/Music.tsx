@@ -991,6 +991,18 @@ function MusicArtistDetail({ id }: { id?: string }) {
     }
   }
 
+  async function retryTopTrack(trackID: number, sourceURL: string) {
+    if (!downloadJobID) return;
+    await retryMusicAcquisitionTrack(downloadJobID, trackID, sourceURL);
+    await downloadJob.reload();
+  }
+
+  async function retryBatchTrack(trackID: number, sourceURL: string) {
+    if (!batchJobID) return;
+    await retryMusicAcquisitionTrack(batchJobID, trackID, sourceURL);
+    await batchJob.reload();
+  }
+
   function toggleTopTrack(providerID: string, checked: boolean) {
     setSelectedTopTracks((current) =>
       checked
@@ -1219,20 +1231,27 @@ function MusicArtistDetail({ id }: { id?: string }) {
               <Alert kind="danger">{downloadError}</Alert>
             )}
             {batchJob.data && (
-              <Alert
-                kind={
-                  batchJob.data.state === "completed"
-                    ? "success"
-                    : batchJob.data.state === "failed"
-                      ? "danger"
-                      : "info"
-                }
-                title={`Batch acquisition #${batchJob.data.id}`}
-              >
-                {batchJob.data.state} · {batchJob.data.completed_count}/
-                {batchJob.data.track_count} completed
-                {batchJob.data.error ? ` · ${batchJob.data.error}` : ""}
-              </Alert>
+              <>
+                <Alert
+                  kind={
+                    batchJob.data.state === "completed"
+                      ? "success"
+                      : batchJob.data.state === "failed"
+                        ? "danger"
+                        : "info"
+                  }
+                  title={`Batch acquisition #${batchJob.data.id}`}
+                >
+                  {batchJob.data.state} · {batchJob.data.completed_count}/
+                  {batchJob.data.track_count} completed
+                  {batchJob.data.error ? ` · ${batchJob.data.error}` : ""}
+                </Alert>
+                <AcquisitionProgress
+                  job={batchJob.data}
+                  label="Batch download progress"
+                  onRetry={retryBatchTrack}
+                />
+              </>
             )}
           </section>
         )}
@@ -1362,25 +1381,32 @@ function MusicArtistDetail({ id }: { id?: string }) {
             </Alert>
             {downloadError && <Alert kind="danger">{downloadError}</Alert>}
             {downloadJob.data && (
-              <Alert
-                kind={
-                  downloadJob.data.state === "completed"
-                    ? "success"
-                    : downloadJob.data.state === "failed"
-                      ? "danger"
-                      : "info"
-                }
-                title={`Acquisition #${downloadJob.data.id}`}
-              >
-                <p>
-                  {downloadJob.data.state}
-                  {topTrackState && topTrackState !== downloadJob.data.state
-                    ? ` · ${topTrackState}`
-                    : ""}
-                </p>
-                {downloadJob.data.error && <p>{downloadJob.data.error}</p>}
-                {topTrackError && <p>{topTrackError}</p>}
-              </Alert>
+              <>
+                <Alert
+                  kind={
+                    downloadJob.data.state === "completed"
+                      ? "success"
+                      : downloadJob.data.state === "failed"
+                        ? "danger"
+                        : "info"
+                  }
+                  title={`Acquisition #${downloadJob.data.id}`}
+                >
+                  <p>
+                    {downloadJob.data.state}
+                    {topTrackState && topTrackState !== downloadJob.data.state
+                      ? ` · ${topTrackState}`
+                      : ""}
+                  </p>
+                  {downloadJob.data.error && <p>{downloadJob.data.error}</p>}
+                  {topTrackError && <p>{topTrackError}</p>}
+                </Alert>
+                <AcquisitionProgress
+                  job={downloadJob.data}
+                  label="Top track download progress"
+                  onRetry={retryTopTrack}
+                />
+              </>
             )}
           </>
         )}
