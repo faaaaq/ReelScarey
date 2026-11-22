@@ -70,7 +70,9 @@ describe("AcquisitionProgress candidate review", () => {
       </Theme>,
     );
     expect(screen.getByText("No tracks completed.")).toBeVisible();
-    expect(screen.getByText(/Multiple candidates have equally strong/)).toBeVisible();
+    expect(
+      screen.getByText(/Multiple candidates have equally strong/),
+    ).toBeVisible();
     expect(screen.getByText(/Review candidates/)).toBeVisible();
     // The ineligible candidate stays visible for diagnosis but cannot be chosen.
     expect(

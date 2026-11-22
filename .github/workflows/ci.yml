@@ -22,10 +22,6 @@ jobs:
   # workflow builds the same Dockerfile and runs the release-candidate smoke
   # scripts, so tag pushes do not need this job.
   test:
-    # Let platform/UI checks start first so the shared Linux runner can publish
-    # the release candidate. Keep Go checks enabled even if a platform check fails.
-    needs: [windows-smoke, browser-e2e]
-    if: ${{ always() && !cancelled() }}
     # Pull requests can come from forks, so they never run on a self-hosted
     # machine. Push/schedule/dispatch jobs use the configured runner label;
     # the default stays the existing self-hosted Linux x64 runner.
@@ -64,7 +60,7 @@ jobs:
         # bounded to the most concurrency-sensitive code: revision-fenced
         # organization reviews, metadata provider clients, the database WAL
         # pool under sustained load, and transfer lease/claim/reservation
-        # fences. The full -race suite stays nightly-only (acceptance job).
+        # fences. The full -race suite stays in nightly and manual acceptance.
         # organization + metadata under -race measured 600s+ on the
         # self-hosted runner (runs 43513383237 and 43565762772 both hit the
         # former 10m test alarm mid-package with no failure and no race), so
@@ -90,19 +86,13 @@ jobs:
   # builds/smokes containers. It runs nightly and on manual dispatch. Run it
   # before a release with `gh workflow run ci.yml`; the publish workflow also
   # runs its release-candidate smoke scripts before pushing.
-  acceptance:
+  acceptance-race:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     needs: test
-    # Only manual dispatch and the nightly schedule reach this job, so it may
-    # use a self-hosted runner. Point REELSCAREY_ACCEPTANCE_RUNNER (or
-    # REELSCAREY_RUNNER) at a second machine to stop releases queueing behind
-    # a long acceptance run.
-    runs-on: ${{ vars.REELSCAREY_ACCEPTANCE_RUNNER || vars.REELSCAREY_RUNNER || 'reelscarey-ci' }}
-    timeout-minutes: 180
+    runs-on: ${{ vars.REELSCAREY_RUNNER || 'reelscarey-ci' }}
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -130,6 +120,32 @@ jobs:
         # 20-60m race runtime without silently hiding a hang: per-test
         # timings show no single pathological test (max 1.5s without -race).
         run: go test -race ./... -timeout=60m
+
+  acceptance-live:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    needs: test
+    runs-on: ${{ vars.REELSCAREY_ACCEPTANCE_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the embedded frontend
+        # web/embed.go declares //go:embed all:dist and web/dist/ is
+        # gitignored, so every Go compile in this job fails with
+        # "pattern all:dist: no matching files found" until the frontend is
+        # built (observed on run 42449545070).
+        run: npm ci && npm run build
+        working-directory: web
       - name: Public AniList identity and title-search acceptance
         run: go test -race ./internal/metadata -run TestLiveAniListIdentity -count=1 -v -timeout=30s
         env:
@@ -147,7 +163,7 @@ jobs:
             printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
           fi
           sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update
-          sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y --no-install-recommends qbittorrent-nox ffmpeg par2 unrar
+          sudo apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y --no-install-recommends qbittorrent-nox ffmpeg par2 unrar python3-venv
       - name: Real qBittorrent movie and TV downloads and safe imports
         run: go test -race ./internal/transfer -run TestRealQBittorrent -count=1 -v -timeout=8m
         env:
@@ -219,10 +235,7 @@ jobs:
           load: true
           platforms: linux/amd64
           tags: reelscarey:ci
-          # The acceptance job already ran the race suite natively, so this
-          # build keeps the Dockerfile default (RUN_GO_TESTS=1) as an
-          # independent check of the image; the persistent cache only avoids
-          # re-downloading base layers and rebuilding unchanged stages.
+          # Keep the in-image Go checks independent of the parallel race suite.
           cache-from: type=gha,scope=reelscarey-ci
           cache-to: type=gha,mode=max,scope=reelscarey-ci,ignore-error=true
           provenance: false
@@ -257,6 +270,22 @@ jobs:
         run: bash scripts/music-transcode-container-smoke.sh reelscarey:ci
       - name: Constrained container read and write budget
         run: bash scripts/container-workload.sh reelscarey:ci 60
+
+  # Preserve the acceptance check name and require both jobs to pass.
+  acceptance:
+    needs: [acceptance-race, acceptance-live]
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify both acceptance results
+        env:
+          RACE_RESULT: ${{ needs.acceptance-race.result }}
+          LIVE_RESULT: ${{ needs.acceptance-live.result }}
+        run: |
+          echo "Go race suite: $RACE_RESULT"
+          echo "Live acceptance: $LIVE_RESULT"
+          [[ "$RACE_RESULT" == success && "$LIVE_RESULT" == success ]]
 
   # RS-0015 remainder: a real Windows smoke. The hosted Windows runner builds
   # the binary natively, validates the CLI/config-path behavior on Windows
