@@ -149,6 +149,13 @@ search and iTunes search when the artist's top list is empty. GET
 Deezer album list with local album matches. GET `/api/v1/library/music/albums`
 and `/api/v1/library/music/tracks` power the unified Albums and Tracks views;
 both accept `page`, `query` and an optional `limit`.
+
+Album, artist, unified-track, top-track and chart track objects include
+`bitrate`, `size_bytes`, `format` and `relative_path` when those properties are
+available for the preferred primary playback file. These optional additive
+fields are omitted for provider-only tracks and unknown values; `file_id`
+continues to identify the same primary file.
+
 POST `/api/v1/library/music/albums/{id}/acquire` queues every missing catalog
 track for one album. POST
 `/api/v1/library/music/provider-albums/{id}/acquire` resolves a Deezer album

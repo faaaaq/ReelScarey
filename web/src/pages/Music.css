@@ -159,6 +159,27 @@
   color: var(--rs-muted);
 }
 
+.mus-track-options {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 6px;
+}
+
+.mus-track-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--rs-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.mus-track-filename {
+  min-width: 180px;
+  max-width: 360px;
+  overflow-wrap: anywhere;
+}
+
 .mus-section {
   margin-top: 26px;
   padding-top: 18px;

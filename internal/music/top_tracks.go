@@ -28,6 +28,11 @@ type TopTrack struct {
 	FileID     *int64 `json:"file_id"`
 	AlbumID    *int64 `json:"album_id"`
 	TrackID    *int64 `json:"track_id"`
+	// File properties are populated only for the matched primary library file.
+	Bitrate      int    `json:"bitrate,omitempty"`
+	SizeBytes    int64  `json:"size_bytes,omitempty"`
+	Format       string `json:"format,omitempty"`
+	RelativePath string `json:"relative_path,omitempty"`
 }
 
 type TopTrackPage struct {
@@ -449,6 +454,9 @@ func (s *Service) ArtistTopTracks(ctx context.Context, artistID int64, limit int
 			value := fileID.Int64
 			track.FileID = &value
 			track.InLibrary = true
+			if err := s.loadTopTrackFileMetadata(ctx, &track); err != nil {
+				return TopTrackPage{}, err
+			}
 		}
 		out.Items = append(out.Items, track)
 	}
@@ -503,6 +511,9 @@ func (s *Service) searchTopTracks(ctx context.Context, base, artistName string, 
 				value := fileID.Int64
 				track.FileID = &value
 				track.InLibrary = true
+				if err := s.loadTopTrackFileMetadata(ctx, &track); err != nil {
+					return nil, "", err
+				}
 			}
 			items = append(items, track)
 			if len(items) >= limit {
@@ -555,6 +566,9 @@ func (s *Service) searchTopTracks(ctx context.Context, base, artistName string, 
 				value := fileID.Int64
 				track.FileID = &value
 				track.InLibrary = true
+				if err := s.loadTopTrackFileMetadata(ctx, &track); err != nil {
+					return nil, "", err
+				}
 			}
 			items = append(items, track)
 			if len(items) >= limit {
@@ -566,6 +580,17 @@ func (s *Service) searchTopTracks(ctx context.Context, base, artistName string, 
 		return items, "iTunes search", nil
 	}
 	return nil, "", nil
+}
+
+// loadTopTrackFileMetadata describes the exact primary file selected for
+// playback. Provider-only tracks deliberately keep empty file properties.
+func (s *Service) loadTopTrackFileMetadata(ctx context.Context, track *TopTrack) error {
+	if track.FileID == nil {
+		return nil
+	}
+	return s.store.db.QueryRowContext(ctx, `SELECT COALESCE(bitrate,0),COALESCE(size_bytes,0),COALESCE(format,''),COALESCE(relative_path,'')
+		FROM music_files WHERE id=? AND variant_role='primary'`, *track.FileID).
+		Scan(&track.Bitrate, &track.SizeBytes, &track.Format, &track.RelativePath)
 }
 
 func (s *Service) libraryMatch(ctx context.Context, title, artist, album string) (sql.NullInt64, sql.NullInt64, sql.NullInt64, error) {
@@ -624,6 +649,9 @@ func (s *Service) ChartTracks(ctx context.Context, limit int) (TopTrackPage, err
 			value := fileID.Int64
 			track.FileID = &value
 			track.InLibrary = true
+			if err := s.loadTopTrackFileMetadata(ctx, &track); err != nil {
+				return TopTrackPage{}, err
+			}
 		}
 		out.Items = append(out.Items, track)
 	}

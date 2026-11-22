@@ -68,6 +68,11 @@ import { useMusicProfiles } from "../musicProfiles";
 import "./Library.css";
 import "./Music.css";
 import { formatBytes, formatTrackDuration } from "../ui/format";
+import {
+  MusicFileCells,
+  MusicFileColumnHeadings,
+  MusicFilenameToggle,
+} from "../musicFile";
 
 function statusKind(status: string, monitored: boolean) {
   if (status === "available") return "success";
@@ -288,100 +293,109 @@ export function LibraryTrackTable({
   onDeleted?: () => void;
 }) {
   const player = useMusicPlayer();
+  const [showFilenames, setShowFilenames] = useState(false);
   const playable = tracks
     .map((track) => artistPlayerTrack(track, track.artist_name ?? ""))
     .filter((track): track is PlayerTrack => track !== null);
   return (
-    <Table label="Music tracks">
-      <thead>
-        <tr>
-          {select && (
-            <th scope="col">
-              <span className="sr-only">Select</span>
+    <>
+      <MusicFilenameToggle
+        checked={showFilenames}
+        onChange={setShowFilenames}
+      />
+      <Table label="Music tracks">
+        <thead>
+          <tr>
+            {select && (
+              <th scope="col">
+                <span className="sr-only">Select</span>
+              </th>
+            )}
+            <th scope="col" className="is-shrink">
+              #
             </th>
-          )}
-          <th scope="col" className="is-shrink">
-            #
-          </th>
-          <th scope="col">Title</th>
-          <th scope="col">Artist</th>
-          <th scope="col">Album</th>
-          <th scope="col">Duration</th>
-          <th scope="col" className="is-actions">
-            <span className="sr-only">Play</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {tracks.map((track) => {
-          const fileID = track.file_id;
-          const selection = select && track.id ? select(track.id) : undefined;
-          return (
-            <tr
-              data-selecting={!!selection || undefined}
-              className={selection?.checked ? "is-selected" : undefined}
-              onClickCapture={selection && selectionClick(selection.toggle)}
-              key={
-                track.id ??
-                `${track.album_id}-${track.disc}-${track.number}-${track.title}`
-              }
-            >
-              {select && (
+            <th scope="col">Title</th>
+            <th scope="col">Artist</th>
+            <th scope="col">Album</th>
+            <th scope="col">Duration</th>
+            <MusicFileColumnHeadings showFilename={showFilenames} />
+            <th scope="col" className="is-actions">
+              <span className="sr-only">Play</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {tracks.map((track) => {
+            const fileID = track.file_id;
+            const selection = select && track.id ? select(track.id) : undefined;
+            return (
+              <tr
+                data-selecting={!!selection || undefined}
+                className={selection?.checked ? "is-selected" : undefined}
+                onClickCapture={selection && selectionClick(selection.toggle)}
+                key={
+                  track.id ??
+                  `${track.album_id}-${track.disc}-${track.number}-${track.title}`
+                }
+              >
+                {select && (
+                  <td>
+                    {selection && (
+                      <SelectionBox selection={selection} name={track.title} />
+                    )}
+                  </td>
+                )}
                 <td>
-                  {selection && (
-                    <SelectionBox selection={selection} name={track.title} />
+                  {track.disc > 1
+                    ? `${track.disc}.${track.number}`
+                    : track.number}
+                </td>
+                <td>{track.title}</td>
+                <td>{track.artist_name || ""}</td>
+                <td>
+                  <Link
+                    to={`/music/albums/${track.album_id}`}
+                    tabIndex={select ? -1 : undefined}
+                  >
+                    {track.album_title}
+                  </Link>
+                </td>
+                <td>{formatTrackDuration(track.duration_ms)}</td>
+                <MusicFileCells track={track} showFilename={showFilenames} />
+                <td className="is-actions">
+                  {fileID && !select ? (
+                    <Button
+                      size="1"
+                      variant="ghost"
+                      color="gray"
+                      aria-label={`Play ${track.title}`}
+                      onClick={() => {
+                        const item = artistPlayerTrack(
+                          track,
+                          track.artist_name ?? "",
+                        );
+                        if (item) player.play(item, playable);
+                      }}
+                    >
+                      <Play size={14} aria-hidden="true" />
+                    </Button>
+                  ) : null}
+                  {!select && onDeleted && track.id && (
+                    <LibraryDeletion
+                      selection="tracks"
+                      ids={[track.id]}
+                      label="Delete track"
+                      name={track.title}
+                      onDone={onDeleted}
+                    />
                   )}
                 </td>
-              )}
-              <td>
-                {track.disc > 1
-                  ? `${track.disc}.${track.number}`
-                  : track.number}
-              </td>
-              <td>{track.title}</td>
-              <td>{track.artist_name || ""}</td>
-              <td>
-                <Link
-                  to={`/music/albums/${track.album_id}`}
-                  tabIndex={select ? -1 : undefined}
-                >
-                  {track.album_title}
-                </Link>
-              </td>
-              <td>{formatTrackDuration(track.duration_ms)}</td>
-              <td className="is-actions">
-                {fileID && !select ? (
-                  <Button
-                    size="1"
-                    variant="ghost"
-                    color="gray"
-                    aria-label={`Play ${track.title}`}
-                    onClick={() => {
-                      const item = artistPlayerTrack(
-                        track,
-                        track.artist_name ?? "",
-                      );
-                      if (item) player.play(item, playable);
-                    }}
-                  >
-                    <Play size={14} aria-hidden="true" />
-                  </Button>
-                ) : null}
-                {!select && onDeleted && track.id && (
-                  <LibraryDeletion
-                    selection="tracks"
-                    ids={[track.id]}
-                    label="Delete track"
-                    name={track.title}
-                    onDone={onDeleted}
-                  />
-                )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </Table>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
+    </>
   );
 }
 
@@ -413,6 +427,7 @@ function ArtistTrackTable({
   onDeleted: () => void;
 }) {
   const player = useMusicPlayer();
+  const [showFilenames, setShowFilenames] = useState(false);
   const playable = tracks.flatMap((track) => {
     const item = artistPlayerTrack(track, artistName);
     return item ? [item] : [];
@@ -422,69 +437,77 @@ function ArtistTrackTable({
     if (item) player.play(item, playable);
   }
   return (
-    <Table label={label}>
-      <thead>
-        <tr>
-          <th scope="col" className="is-shrink">
-            #
-          </th>
-          <th scope="col">Title</th>
-          <th scope="col">Album</th>
-          <th scope="col">Duration</th>
-          <th scope="col" className="is-actions">
-            <span className="sr-only">Play</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {tracks.map((track) => {
-          const fileID = track.file_id;
-          return (
-            <tr
-              key={
-                track.id ??
-                `${track.album_id}-${track.disc}-${track.number}-${track.title}`
-              }
-            >
-              <td>
-                {track.disc > 1
-                  ? `${track.disc}.${track.number}`
-                  : track.number}
-              </td>
-              <td>{track.title}</td>
-              <td>
-                <Link to={`/music/albums/${track.album_id}`}>
-                  {track.album_title}
-                </Link>
-              </td>
-              <td>{formatTrackDuration(track.duration_ms)}</td>
-              <td className="is-actions">
-                {fileID ? (
-                  <Button
-                    size="1"
-                    variant="ghost"
-                    color="gray"
-                    aria-label={`Play ${track.title}`}
-                    onClick={() => play(fileID)}
-                  >
-                    <Play size={14} aria-hidden="true" />
-                  </Button>
-                ) : null}
-                {track.id && (
-                  <LibraryDeletion
-                    selection="tracks"
-                    ids={[track.id]}
-                    label="Delete track"
-                    name={track.title}
-                    onDone={onDeleted}
-                  />
-                )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </Table>
+    <>
+      <MusicFilenameToggle
+        checked={showFilenames}
+        onChange={setShowFilenames}
+      />
+      <Table label={label}>
+        <thead>
+          <tr>
+            <th scope="col" className="is-shrink">
+              #
+            </th>
+            <th scope="col">Title</th>
+            <th scope="col">Album</th>
+            <th scope="col">Duration</th>
+            <MusicFileColumnHeadings showFilename={showFilenames} />
+            <th scope="col" className="is-actions">
+              <span className="sr-only">Play</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {tracks.map((track) => {
+            const fileID = track.file_id;
+            return (
+              <tr
+                key={
+                  track.id ??
+                  `${track.album_id}-${track.disc}-${track.number}-${track.title}`
+                }
+              >
+                <td>
+                  {track.disc > 1
+                    ? `${track.disc}.${track.number}`
+                    : track.number}
+                </td>
+                <td>{track.title}</td>
+                <td>
+                  <Link to={`/music/albums/${track.album_id}`}>
+                    {track.album_title}
+                  </Link>
+                </td>
+                <td>{formatTrackDuration(track.duration_ms)}</td>
+                <MusicFileCells track={track} showFilename={showFilenames} />
+                <td className="is-actions">
+                  {fileID ? (
+                    <Button
+                      size="1"
+                      variant="ghost"
+                      color="gray"
+                      aria-label={`Play ${track.title}`}
+                      onClick={() => play(fileID)}
+                    >
+                      <Play size={14} aria-hidden="true" />
+                    </Button>
+                  ) : null}
+                  {track.id && (
+                    <LibraryDeletion
+                      selection="tracks"
+                      ids={[track.id]}
+                      label="Delete track"
+                      name={track.title}
+                      onDone={onDeleted}
+                    />
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
+    </>
   );
 }
 
@@ -513,6 +536,7 @@ function TopTrackTable({
   onToggle: (providerID: string, checked: boolean) => void;
 }) {
   const player = useMusicPlayer();
+  const [showFilenames, setShowFilenames] = useState(false);
   const playable = tracks
     .map(topTrackPlayer)
     .filter((track): track is PlayerTrack => track !== null);
@@ -521,72 +545,80 @@ function TopTrackTable({
     if (item) player.play(item, playable);
   }
   return (
-    <Table label="Top tracks">
-      <thead>
-        <tr>
-          <th scope="col" className="is-shrink">
-            <span className="sr-only">Select</span>
-          </th>
-          <th scope="col" className="is-shrink">
-            #
-          </th>
-          <th scope="col">Title</th>
-          <th scope="col">Album</th>
-          <th scope="col">Duration</th>
-          <th scope="col" className="is-actions">
-            <span className="sr-only">Actions</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {tracks.map((track, index) => (
-          <tr key={`${track.provider_id}-${index}`}>
-            <td>
-              {!track.in_library && (
-                <input
-                  type="checkbox"
-                  aria-label={`Select ${track.title}`}
-                  checked={selected.includes(track.provider_id)}
-                  onChange={(event) =>
-                    onToggle(track.provider_id, event.target.checked)
-                  }
-                />
-              )}
-            </td>
-            <td>{index + 1}</td>
-            <td>
-              {track.title}{" "}
-              {track.in_library && <Label kind="success">In library</Label>}
-            </td>
-            <td>{track.album || ""}</td>
-            <td>{formatTrackDuration(track.duration_ms)}</td>
-            <td className="is-actions">
-              {track.file_id ? (
-                <Button
-                  size="1"
-                  variant="ghost"
-                  color="gray"
-                  aria-label={`Play ${track.title}`}
-                  onClick={() => play(track)}
-                >
-                  <Play size={14} aria-hidden="true" />
-                </Button>
-              ) : (
-                <Button
-                  size="1"
-                  variant="soft"
-                  aria-label={`Search and download ${track.title}`}
-                  onClick={() => onDownload(track)}
-                >
-                  <Download size={14} aria-hidden="true" />
-                  Download
-                </Button>
-              )}
-            </td>
+    <>
+      <MusicFilenameToggle
+        checked={showFilenames}
+        onChange={setShowFilenames}
+      />
+      <Table label="Top tracks">
+        <thead>
+          <tr>
+            <th scope="col" className="is-shrink">
+              <span className="sr-only">Select</span>
+            </th>
+            <th scope="col" className="is-shrink">
+              #
+            </th>
+            <th scope="col">Title</th>
+            <th scope="col">Album</th>
+            <th scope="col">Duration</th>
+            <MusicFileColumnHeadings showFilename={showFilenames} />
+            <th scope="col" className="is-actions">
+              <span className="sr-only">Actions</span>
+            </th>
           </tr>
-        ))}
-      </tbody>
-    </Table>
+        </thead>
+        <tbody>
+          {tracks.map((track, index) => (
+            <tr key={`${track.provider_id}-${index}`}>
+              <td>
+                {!track.in_library && (
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${track.title}`}
+                    checked={selected.includes(track.provider_id)}
+                    onChange={(event) =>
+                      onToggle(track.provider_id, event.target.checked)
+                    }
+                  />
+                )}
+              </td>
+              <td>{index + 1}</td>
+              <td>
+                {track.title}{" "}
+                {track.in_library && <Label kind="success">In library</Label>}
+              </td>
+              <td>{track.album || ""}</td>
+              <td>{formatTrackDuration(track.duration_ms)}</td>
+              <MusicFileCells track={track} showFilename={showFilenames} />
+              <td className="is-actions">
+                {track.file_id ? (
+                  <Button
+                    size="1"
+                    variant="ghost"
+                    color="gray"
+                    aria-label={`Play ${track.title}`}
+                    onClick={() => play(track)}
+                  >
+                    <Play size={14} aria-hidden="true" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="1"
+                    variant="soft"
+                    aria-label={`Search and download ${track.title}`}
+                    onClick={() => onDownload(track)}
+                  >
+                    <Download size={14} aria-hidden="true" />
+                    Download
+                  </Button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </>
   );
 }
 
@@ -1433,6 +1465,7 @@ export function MusicAlbumPage() {
   const album = details.data?.album;
   const tracks = details.data?.tracks ?? [];
   const multiDisc = new Set(tracks.map((track) => track.disc)).size > 1;
+  const [showFilenames, setShowFilenames] = useState(false);
   const [coverVersion, setCoverVersion] = useState(0);
   const albumCover = album
     ? `${albumCoverURL(album.id) || album.cover_url}${coverVersion ? `?v=${coverVersion}` : ""}`
@@ -1954,62 +1987,73 @@ export function MusicAlbumPage() {
           </FieldSet>
         )}
         {details.data && (
-          <Table label="Music tracks">
-            <thead>
-              <tr>
-                <th scope="col">{multiDisc ? "Disc" : "#"}</th>
-                <th scope="col">Title</th>
-                <th scope="col">Duration</th>
-                <th scope="col" className="is-actions">
-                  <span className="sr-only">Play</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {tracks.map((track) => {
-                const fileID = track.file_id;
-                return (
-                  <tr key={`${track.disc}-${track.number}`}>
-                    <td>
-                      {multiDisc
-                        ? `${track.disc}.${track.number}`
-                        : track.number}
-                    </td>
-                    <td>{track.title}</td>
-                    <td>{formatTrackDuration(track.duration_ms)}</td>
-                    <td className="is-actions">
-                      {fileID ? (
-                        <>
-                          <Button
-                            size="1"
-                            variant="ghost"
-                            color="gray"
-                            aria-label={`Play ${track.title}`}
-                            onClick={() => playTrack(fileID)}
-                          >
-                            <Play size={14} aria-hidden="true" />
-                          </Button>{" "}
-                          <MusicExportMenu
-                            fileID={fileID}
-                            title={track.title}
+          <>
+            <MusicFilenameToggle
+              checked={showFilenames}
+              onChange={setShowFilenames}
+            />
+            <Table label="Music tracks">
+              <thead>
+                <tr>
+                  <th scope="col">{multiDisc ? "Disc" : "#"}</th>
+                  <th scope="col">Title</th>
+                  <th scope="col">Duration</th>
+                  <MusicFileColumnHeadings showFilename={showFilenames} />
+                  <th scope="col" className="is-actions">
+                    <span className="sr-only">Play</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {tracks.map((track) => {
+                  const fileID = track.file_id;
+                  return (
+                    <tr key={`${track.disc}-${track.number}`}>
+                      <td>
+                        {multiDisc
+                          ? `${track.disc}.${track.number}`
+                          : track.number}
+                      </td>
+                      <td>{track.title}</td>
+                      <td>{formatTrackDuration(track.duration_ms)}</td>
+                      <MusicFileCells
+                        track={track}
+                        showFilename={showFilenames}
+                      />
+                      <td className="is-actions">
+                        {fileID ? (
+                          <>
+                            <Button
+                              size="1"
+                              variant="ghost"
+                              color="gray"
+                              aria-label={`Play ${track.title}`}
+                              onClick={() => playTrack(fileID)}
+                            >
+                              <Play size={14} aria-hidden="true" />
+                            </Button>{" "}
+                            <MusicExportMenu
+                              fileID={fileID}
+                              title={track.title}
+                            />
+                          </>
+                        ) : null}
+                        {track.id && (
+                          <LibraryDeletion
+                            selection="tracks"
+                            ids={[track.id]}
+                            label="Delete track"
+                            name={track.title}
+                            onDone={details.reload}
                           />
-                        </>
-                      ) : null}
-                      {track.id && (
-                        <LibraryDeletion
-                          selection="tracks"
-                          ids={[track.id]}
-                          label="Delete track"
-                          name={track.title}
-                          onDone={details.reload}
-                        />
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </>
         )}
         {!!details.data?.files?.length && (
           <FieldSet legend="Registered files">

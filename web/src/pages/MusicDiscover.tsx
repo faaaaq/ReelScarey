@@ -40,6 +40,11 @@ import { useLiveResource } from "../useLiveResource";
 import { useMusicPlayer, type PlayerTrack } from "../musicPlayer";
 import { albumCoverURL } from "../musicArtwork";
 import { formatTrackDuration } from "../ui/format";
+import {
+  MusicFileCells,
+  MusicFileColumnHeadings,
+  MusicFilenameToggle,
+} from "../musicFile";
 import { AcquisitionProgress } from "../musicDownload";
 import "./Music.css";
 
@@ -64,66 +69,75 @@ function ChartTable({
   onDownload: (track: MusicTopTrack) => void;
 }) {
   const player = useMusicPlayer();
+  const [showFilenames, setShowFilenames] = useState(false);
   const playable = tracks
     .map(trackPlayer)
     .filter((track): track is PlayerTrack => track !== null);
   return (
-    <Table label="Music charts">
-      <thead>
-        <tr>
-          <th scope="col" className="is-shrink">
-            #
-          </th>
-          <th scope="col">Title</th>
-          <th scope="col">Artist</th>
-          <th scope="col">Album</th>
-          <th scope="col">Duration</th>
-          <th scope="col" className="is-actions">
-            <span className="sr-only">Actions</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {tracks.map((track, index) => (
-          <tr key={`${track.provider_id}-${index}`}>
-            <td>{index + 1}</td>
-            <td>
-              {track.title}{" "}
-              {track.in_library && <Label kind="success">In library</Label>}
-            </td>
-            <td>{track.artist || "—"}</td>
-            <td>{track.album || "—"}</td>
-            <td>{formatTrackDuration(track.duration_ms)}</td>
-            <td className="is-actions">
-              {track.file_id ? (
-                <Button
-                  size="1"
-                  variant="ghost"
-                  color="gray"
-                  aria-label={`Play ${track.title}`}
-                  onClick={() => {
-                    const item = trackPlayer(track);
-                    if (item) player.play(item, playable);
-                  }}
-                >
-                  <Play size={14} aria-hidden="true" />
-                </Button>
-              ) : (
-                <Button
-                  size="1"
-                  variant="soft"
-                  aria-label={`Search and download ${track.title}`}
-                  onClick={() => onDownload(track)}
-                >
-                  <Download size={14} aria-hidden="true" />
-                  Download
-                </Button>
-              )}
-            </td>
+    <>
+      <MusicFilenameToggle
+        checked={showFilenames}
+        onChange={setShowFilenames}
+      />
+      <Table label="Music charts">
+        <thead>
+          <tr>
+            <th scope="col" className="is-shrink">
+              #
+            </th>
+            <th scope="col">Title</th>
+            <th scope="col">Artist</th>
+            <th scope="col">Album</th>
+            <th scope="col">Duration</th>
+            <MusicFileColumnHeadings showFilename={showFilenames} />
+            <th scope="col" className="is-actions">
+              <span className="sr-only">Actions</span>
+            </th>
           </tr>
-        ))}
-      </tbody>
-    </Table>
+        </thead>
+        <tbody>
+          {tracks.map((track, index) => (
+            <tr key={`${track.provider_id}-${index}`}>
+              <td>{index + 1}</td>
+              <td>
+                {track.title}{" "}
+                {track.in_library && <Label kind="success">In library</Label>}
+              </td>
+              <td>{track.artist || "—"}</td>
+              <td>{track.album || "—"}</td>
+              <td>{formatTrackDuration(track.duration_ms)}</td>
+              <MusicFileCells track={track} showFilename={showFilenames} />
+              <td className="is-actions">
+                {track.file_id ? (
+                  <Button
+                    size="1"
+                    variant="ghost"
+                    color="gray"
+                    aria-label={`Play ${track.title}`}
+                    onClick={() => {
+                      const item = trackPlayer(track);
+                      if (item) player.play(item, playable);
+                    }}
+                  >
+                    <Play size={14} aria-hidden="true" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="1"
+                    variant="soft"
+                    aria-label={`Search and download ${track.title}`}
+                    onClick={() => onDownload(track)}
+                  >
+                    <Download size={14} aria-hidden="true" />
+                    Download
+                  </Button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    </>
   );
 }
 

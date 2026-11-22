@@ -180,7 +180,7 @@ func TestArtistTopTracksUsesProviderOverallTracksAndMarksLibraryMatches(t *testi
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO music_files(artist_id,album_id,track_id,root,relative_path,size_bytes,sha256,format,bitrate,sample_rate,channels,duration_ms,tag_json,imported_at,origin,source_name)
-		VALUES(?,?,?,'Music','Music/Radiohead/OK Computer/01 Airbag.mp3',5,'sha','mp3',0,0,0,284000,'{}',1,'existing','01 Airbag.mp3')`,
+		VALUES(?,?,?,'Music','Music/Radiohead/OK Computer/01 Airbag.mp3',5,'sha','mp3',192000,0,0,284000,'{}',1,'existing','01 Airbag.mp3')`,
 		saved.ID, albums[0].ID, tracks[0].ID); err != nil {
 		t.Fatal(err)
 	}
@@ -210,8 +210,14 @@ func TestArtistTopTracksUsesProviderOverallTracksAndMarksLibraryMatches(t *testi
 	if !page.Items[0].InLibrary || page.Items[0].FileID == nil || page.Items[0].Title != "Airbag" {
 		t.Fatal("library match", page.Items[0])
 	}
+	if page.Items[0].Bitrate != 192000 || page.Items[0].SizeBytes != 5 || page.Items[0].Format != "mp3" || page.Items[0].RelativePath != "Music/Radiohead/OK Computer/01 Airbag.mp3" {
+		t.Fatal("top track file metadata", page.Items[0])
+	}
 	charts, err := service.ChartTracks(ctx, 20)
 	if err != nil || len(charts.Items) != 1 || !charts.Items[0].InLibrary {
 		t.Fatal("charts", charts, err)
+	}
+	if charts.Items[0].Bitrate != 192000 || charts.Items[0].RelativePath == "" {
+		t.Fatal("chart file metadata", charts.Items[0])
 	}
 }

@@ -428,6 +428,10 @@ describe("music", () => {
               title: "Airbag",
               duration_ms: 284000,
               file_id: 9,
+              bitrate: 320000,
+              size_bytes: 7340032,
+              format: "flac",
+              relative_path: "Music\\Radiohead\\OK Computer\\01 Airbag.flac",
             },
           ],
         });
@@ -453,6 +457,22 @@ describe("music", () => {
     expect(screen.getByText("Airbag")).toBeVisible();
     expect(screen.getByText("4:44")).toBeVisible();
     expect(screen.getByRole("button", { name: "Play Airbag" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "Bitrate" })).toBeVisible();
+    expect(screen.getByText("320 kbps")).toBeVisible();
+    expect(screen.getByText("7.0 MiB")).toBeVisible();
+    expect(screen.getByText("FLAC")).toBeVisible();
+    expect(screen.queryByText("01 Airbag.flac")).toBeNull();
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Show filenames" }),
+    );
+    expect(
+      screen.getByRole("columnheader", { name: "Filename" }),
+    ).toBeVisible();
+    expect(screen.getByText("01 Airbag.flac")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Show filenames" }),
+    );
+    expect(screen.queryByText("01 Airbag.flac")).toBeNull();
   });
 
   it("corrects a mistaken album year through the reviewed edit plan", async () => {

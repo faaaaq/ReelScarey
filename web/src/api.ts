@@ -125,6 +125,11 @@ export type MusicTrack = {
   duration_ms: number;
   /** Preferred registered file for playback, when one exists. */
   file_id?: number | null;
+  /** Properties of that same primary file; absent for provider-only tracks. */
+  bitrate?: number;
+  size_bytes?: number;
+  format?: string;
+  relative_path?: string;
 };
 
 export type MusicArtistPage = {
@@ -196,6 +201,10 @@ export type MusicTopTrack = {
   file_id: number | null;
   album_id: number | null;
   track_id: number | null;
+  bitrate?: number;
+  size_bytes?: number;
+  format?: string;
+  relative_path?: string;
 };
 
 export type MusicTopTrackPage = {

@@ -97,6 +97,12 @@ type Track struct {
 	// FileID is the preferred registered file for playback. It stays nil for
 	// provider-only tracks that have no local audio.
 	FileID *int64 `json:"file_id,omitempty"`
+	// The remaining fields describe that same preferred primary file. They are
+	// empty for provider-only tracks and unknown file properties.
+	Bitrate      int    `json:"bitrate,omitempty"`
+	SizeBytes    int64  `json:"size_bytes,omitempty"`
+	Format       string `json:"format,omitempty"`
+	RelativePath string `json:"relative_path,omitempty"`
 }
 
 // ArtistTrack is one catalog track that has at least one registered file. The

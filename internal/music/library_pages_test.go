@@ -39,7 +39,7 @@ func TestUnifiedLibraryAlbumAndTrackLists(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO music_files(artist_id,album_id,track_id,root,relative_path,size_bytes,sha256,format,bitrate,sample_rate,channels,duration_ms,tag_json,imported_at,origin,source_name)
-		VALUES(?,?,?,'Music',?,5,'sha','mp3',0,0,0,284000,'{}',1,'existing','01 Airbag.mp3')`, saved.ID, albums[0].ID, tracks[0].ID, relative); err != nil {
+		VALUES(?,?,?,'Music',?,5,'sha','mp3',320000,0,0,284000,'{}',1,'existing','01 Airbag.mp3')`, saved.ID, albums[0].ID, tracks[0].ID, relative); err != nil {
 		t.Fatal(err)
 	}
 
@@ -54,6 +54,17 @@ func TestUnifiedLibraryAlbumAndTrackLists(t *testing.T) {
 	track := trackPage.Items[0]
 	if track.ArtistName != "Radiohead" || track.AlbumTitle != "OK Computer" || track.FileID == nil {
 		t.Fatal("track context", track)
+	}
+	if track.Bitrate != 320000 || track.SizeBytes != 5 || track.Format != "mp3" || track.RelativePath != relative {
+		t.Fatal("track file metadata", track)
+	}
+	artistTracks, err := store.ArtistTracks(ctx, saved.ID, 1, 100)
+	if err != nil || len(artistTracks.Items) != 1 || artistTracks.Items[0].Bitrate != 320000 || artistTracks.Items[0].RelativePath != relative {
+		t.Fatal("artist track file metadata", artistTracks, err)
+	}
+	albumTracks, err := store.Tracks(ctx, albums[0].ID)
+	if err != nil || len(albumTracks) != 1 || albumTracks[0].SizeBytes != 5 || albumTracks[0].Format != "mp3" {
+		t.Fatal("album track file metadata", albumTracks, err)
 	}
 	if empty, err := store.ListTracks(ctx, "missing", 1, 100); err != nil || empty.Total != 0 {
 		t.Fatal("filtered tracks", empty, err)
