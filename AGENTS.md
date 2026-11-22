@@ -8,8 +8,10 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - Docker is the sole supported deployment target. Do not treat standalone native
   or Windows builds, packages, preview upgrades, or acceptance as product goals.
   Development tools and historical validation may still run outside containers.
-- Complete the foundation before the movie vertical slice. Complete that slice
-  before adding substantial TV, automation, or subtitle functionality.
+- Use MILESTONES.md for current scope. Start release work from the current
+  `codex/foundation` head and check open PRs and publication records. Preserve
+  older local drafts and compare their changes to the primary branch before
+  carrying any work forward.
 - Never present fixtures, empty adapters, inert controls, or roadmap items as
   working integrations. UI screens must distinguish unavailable features.
 - Keep ROADMAP.md and docs/API.md consistent with implemented behavior.
@@ -106,6 +108,8 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   episode IDs; Anime is an explicit category with reviewed absolute aliases.
   Ordinary media workers must acquire ReadMedia once before their claim/IO and
   honor durable pending organization reservations. Avoid nested read locks.
+  Keep catalog additions and release searches available during track cleanup.
+  Cleanup acquisition reservations apply only to the selected titles.
   Publish without replacement, verify journal output ownership, switch subtitle
   and media references atomically, then clean up verified old library links.
   Main-root changes remain offline deployment migrations. Use the reviewed
@@ -203,9 +207,9 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - Frontend: `cd web && npm ci && npm run format:check && npm run check && npm test && npm run build`.
 - Backend, after the frontend build: `go test ./...`, `go vet ./...`,
   and `go build ./cmd/reelscarey`.
-- Linux CI additionally runs `go test -race ./...` and an authenticated Docker
-  smoke test. The original foundation CI failure was an incomplete platform
-  lockfile; regenerate locks without an existing node_modules directory.
+- Push and PR checks run a bounded Go race suite. Nightly and manual acceptance
+  runs the full `go test -race ./...` suite and live client and Docker tests.
+  Regenerate the platform lockfile without an existing node_modules directory.
 - Linux CI installs qBittorrent-nox and FFmpeg from Ubuntu packages and runs the
   opt-in REELSCAREY_LIVE_QBT=1 test with its own localhost client, protocol
   fixtures, private movie/TV torrents and generated web-seeded videos. TV
@@ -231,8 +235,9 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
   acceptance uses REELSCAREY_LIVE_ANILIST=1 without owner credentials or media.
 - Usenet acceptance uses isolated real SABnzbd and generated yEnc/NNTP articles,
   never owner accounts. REELSCAREY_LIVE_SAB=1 requires REELSCAREY_SABNZBD
-  (executable/script); scripts may specify REELSCAREY_SABNZBD_PYTHON. SABnzbd
-  is not bundled into the application.
+  (executable/script); scripts may specify REELSCAREY_SABNZBD_PYTHON. The
+  acceptance fixture has its own runtime. The Docker image also includes an
+  opt-in supervised SABnzbd client.
 - Automation checks must cover pause/lease/profile/monitoring changes during
   metainfo fetch, bounded retries/cursor rotation, duplicate prevention, TV review
   gating and preservation of registered files during upgrade detection.
@@ -244,12 +249,13 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - Run gofmt on Go changes and `npm run format` for the frontend. Keep dependencies locked and explain additions.
 - Record validation failures and environment limits; never mark an unrun check
   as passed. Use local Git commits for stable milestones.
-- Routine releases are tagged and published as soon as those local gates pass;
-  only substantial core changes (schema/migrations, authentication/session and
-  other security boundaries, downloader/importer/organization write paths,
-  public API contracts) must wait for the branch checks to pass before tagging.
-  After a release is published, update the live compose image to the new
-  release tag, never a branch/sha candidate. See docs/RELEASING.md.
+- Routine releases publish after local gates pass. Substantial changes
+  (schema/migrations, authentication and other security boundaries,
+  downloader/importer/organization write paths, and public API contracts)
+  also require passing branch checks before publishing. Use the release
+  trigger and verification procedure in docs/RELEASING.md. Confirm the
+  versioned Docker tag and `latest` share a verified manifest digest before
+  updating live Compose to the versioned tag.
 
 ## Version 0.26 contributor boundaries
 
@@ -268,7 +274,7 @@ rollback; do not describe it as audio alignment, OCR or translation.
 The live test server is scareypit at 192.168.1.47, user faaaaq. Connect only
 with the dedicated acceptance key, never a default key:
 
-    ssh -i ~/.ssh/reelscarey_acceptance -o IdentitiesOnly=yes faaaaq@192.168.1.47
+    ssh -i ~/.ssh/reelscarey_acceptance -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=5 faaaaq@192.168.1.47
 
 `faaaq` (three a's) is never a valid account; the account always has four a's
 after the leading `f`.
@@ -282,6 +288,10 @@ recreate the container, and verify the reported version and health. Every other
 live change still needs explicit user authorization, and acceptance work never
 touches the live stack: inspect it with read-only commands only, and never
 restart or rebuild it outside that release-upgrade path.
+
+Some chat execution environments block LAN sockets even when the same command
+works in the owner's terminal. Record the live upgrade as pending if SSH
+fails. Browser access is not a substitute for SSH authorization.
 
 Acceptance testing runs an isolated container (reelscarey-accept) from its own
 ~/reelscarey-accept directory tree with ports bound to 127.0.0.1 and an SSH

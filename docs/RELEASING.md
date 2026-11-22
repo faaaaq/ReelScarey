@@ -1,163 +1,112 @@
 # Container publishing
 
-Docker remains the only supported deployment target. The primary branch is
-`codex/foundation`. Its Docker Hub workflow uses the existing repository variable
-`DOCKERHUB_USERNAME` and secret `DOCKERHUB_TOKEN`; it does not create accounts or
-change repository visibility. Manual dispatch is restricted to the primary ref.
+Docker is the supported deployment target. The primary branch is
+`codex/foundation`. The publisher uses the repository variable
+`DOCKERHUB_USERNAME` and secret `DOCKERHUB_TOKEN`.
 
-The workflow runs on every push to `codex/foundation`, on `v*` tags and on a
-manual dispatch from the primary ref. It reads the application version from
-web/package.json and embeds it in the binary and OCI labels. Branch pushes
-publish the immutable `sha-<full commit>` candidate tag; `latest` (the
-compose.yaml default) moves only on an explicit release event — a `v*` tag
-or a manual dispatch. BuildKit attaches maximal build provenance and an SBOM.
-Use the digest or commit tag for review and rollback; `latest` moves only on
-successful release publication (a `v*` tag or dispatch). The release-candidate
-smoke suite therefore runs on every primary-branch push, so keep that branch
-releasable; a failed run blocks that publication and leaves the previous
-`latest` in place.
+## Release procedure
 
-The pinned official GitHub attestation action signs the exact published digest
-using OIDC only when the repository is public or the owner has explicitly set
-`ENABLE_PRIVATE_ATTESTATIONS=true` after confirming Enterprise Cloud eligibility.
-[GitHub requires Enterprise Cloud for private/internal repository attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).
-Otherwise the workflow explicitly records that signing remains pending; unsigned
-BuildKit provenance must not be described as a signed release. No successful
-publication or signature is implied by the presence of this workflow.
+1. Check the primary branch, open work, recent Actions runs and Docker tags.
+   A Git tag or a version in source is not proof of a published image. Use a
+   clean checkout of the current primary branch to prepare the next patch.
+2. Increment the version in `web/package.json`, both root version entries
+   in `web/package-lock.json`, `cmd/reelscarey/main.go` and the `Dockerfile`
+   default. Record the changes and actual validation in `docs/RELEASE-<version>.md`.
+3. Run the frontend format, type, test and build checks and the Go test, vet and
+   build checks against the release content. Build the frontend before running
+   Go because the binary embeds `web/dist`.
+4. For routine fixes, publish after local gates pass. A change to migrations,
+   auth or other security boundaries, downloader/importer/organization write
+   paths, or public API contracts must pass the branch checks before publication.
+   Run the nightly/manual acceptance suite for the affected live client, media
+   or Docker behavior when needed. Use `gh workflow run ci.yml --ref codex/foundation`
+   for a manual run on primary.
+5. Use a single publishing trigger for the release. With Git tag access, push
+   the tested primary commit and tag it `v<version>`. If the integration can
+   write the primary branch but cannot create tags, use the exact primary-branch
+   push commit subject `Release <version>`, matching `web/package.json`. For a
+   core change, validate the content first on the branch, then publish that
+   validated tree. Avoid pushing an exact release-subject commit and a Git tag
+   for the same release.
+6. Watch both architecture builds and the manifest job. Record the successful
+   run and digest after the manifest job has pulled both the version tag and
+   `latest` and verified that they resolve to the same multi-architecture
+   digest. Record a failed publication separately from application validation,
+   and check the registry or the last successful tag verification before
+   assuming which version is available.
+7. Once publication is verified, connect to scareypit over SSH with the
+   dedicated acceptance key described in [AGENTS.md](../AGENTS.md). Back up
+   `/home/faaaaq/configs/reelscarey/compose.yml` and the configuration/database,
+   update the Compose image to the versioned Docker tag, pull and recreate the
+   service, then verify its running version and readiness. Record deployment
+   separately. If SSH is unavailable, record that the live upgrade is pending.
 
-Before publishing, run the application checks and disposable Docker acceptance,
-verify backup/restore, and inspect the actual workflow result. The fast
-application checks run on branch pushes and pull requests; the live
-qBittorrent/SABnzbd/NZBGet/FFmpeg and container acceptance suite is manual.
-Run it before a release with `gh workflow run ci.yml`; the publish workflow
-also builds a release candidate and runs its container smoke scripts before
-pushing. Hosted runner billing, quota or permissions failures must be reported
-separately from local checks. Public distribution still requires the owner's
-license choice. Do not silently select a license, enable a paid plan or change
-visibility to clear a gate.
+Public distribution and the project license remain owner decisions. Keep
+visibility, billing and credentials as configured.
 
-The Ubuntu x86-64 live-testing release builds a local candidate and runs backup,
-existing-workflow and storage-recovery acceptance before publishing. After login,
-it pushes the image, pulls the exact registry digest and verifies its source label
-and backup/restore behavior. Existing repository visibility and credentials stay
-unchanged. Use [LIVE_TESTING.md](LIVE_TESTING.md) and compose.yaml to install.
+## Publish triggers and validation
 
-The storage acceptance mounts a named-volume subdirectory through Docker's
-[documented volume-subpath option](https://docs.docker.com/engine/storage/volumes/#mount-a-volume-subdirectory),
-so the calling user never needs access to Docker's private host directories.
+| Trigger on the primary branch or its release commit | Docker tags produced |
+| --- | --- |
+| Ordinary primary-branch push | `sha-<full commit>` |
+| Git tag beginning with `v` | Version from `web/package.json`, `latest`, and the commit tag |
+| Primary-branch push with exact subject `Release <version>` | Version from `web/package.json`, `latest`, and the commit tag |
+| Manual dispatch from primary | `latest` and the commit tag |
 
-The 0.26.2 publisher additionally exercises the single-file Compose template with
-PUID/PGID, private-directory initialization, separate library mounts, timezone,
-backup/restore, full container recreation and HTTPS proxy Host/Origin validation.
-It checks symlink/overlap refusal before initializing private folder permissions.
-The original explicit-user/read-only layout remains in the release checks.
+Use the versioned tag or digest for repeatable Compose installs and rollback.
+The example Compose file defaults to `latest`. The owner deployment uses a
+versioned tag. Manual dispatch promotes the selected primary revision to
+`latest` without adding a versioned tag.
 
-## Build speed, caching and self-hosted runners
+The publisher builds natively on Linux amd64 and arm64. Both builds run the
+frontend gates. The amd64 candidate runs startup, Compose, backup/restore,
+feature, automatic-library and storage-recovery smoke tests before its build is
+pushed by digest. It then pulls that digest and verifies the revision label and
+backup/restore. The arm64 candidate verifies startup, version, readiness,
+persistent config and clean restart, then pushes by digest. The manifest job
+combines the digests, checks for both platforms, and pulls each final tag from
+the registry.
 
-The release candidate and the published image are built by
-`docker/build-push-action` with the GitHub Actions BuildKit cache (`type=gha`,
-`mode=max`, `ignore-error=true`). Cache scopes keep the three builds apart:
+`Dockerfile` accepts `RUN_GO_TESTS` (default `1`), which runs `go test ./...`
+and `go vet ./...` in the backend stage before the binary is built. On primary
+pushes and dispatch, these checks run in the amd64 leg. On Git tag pushes, they
+run in the arm64 leg. `ci.yml` does not run on tag pushes.
 
-| Scope | Written by | Read by |
+BuildKit adds provenance and an SBOM to each architecture image. The manifest
+job signs the merged digest with the GitHub attestation action when the
+repository is public or the owner explicitly enables private attestations with
+`ENABLE_PRIVATE_ATTESTATIONS=true` after confirming Enterprise Cloud
+eligibility. Verify the signing step before claiming a signed release.
+
+## Runner selection
+
+Linux application checks, Windows smoke and browser tests run in parallel.
+After Linux checks pass on a scheduled or manually dispatched run, the full Go
+race suite and the live client, generated-media and container acceptance jobs
+run independently. The `acceptance` result requires both jobs to pass.
+
+| Repository variable | Jobs | Default runner |
 | --- | --- | --- |
-| `reelscarey-publish` | release candidate and published image | both publish builds |
-| `reelscarey-ci` | nightly/manual acceptance image build | acceptance image build |
-| `reelscarey-transmission` | disposable Transmission test image | the same step |
+| `REELSCAREY_RUNNER` | Trusted Linux application checks and the full Go race suite | `reelscarey-ci` |
+| `REELSCAREY_ACCEPTANCE_RUNNER` | Live acceptance on schedules and dispatches | `ubuntu-latest` |
+| `REELSCAREY_PUBLISH_RUNNER` | AMD64 Docker publishing | `ubuntu-latest` |
 
-The cache is an optimization only. `ignore-error=true` means a cache outage
-never fails a build, and a cold cache still produces the same image. GitHub
-evicts cache entries beyond the repository storage quota, so a release can
-always fall back to a cold build. GitHub also scopes Actions caches by ref and
-only falls back to the default branch, so a cache written by one tag is not
-guaranteed to be visible to the next tag; a manual publish dispatch from the
-primary branch `codex/foundation` warms the scope tag builds can fall back to.
-Within one publish job the self-hosted runner reuses its BuildKit worker state
-between the release-candidate and the publishing build, which is what makes the
-second build cheap.
+Use one label per override under Settings → Secrets and variables → Actions →
+Variables. Pull request checks, Windows smoke, browser tests, ARM64 publishing
+and manifest assembly use GitHub-hosted runners. A self-hosted acceptance or
+publish runner needs Linux x64, Docker Engine, Compose and Buildx. Live
+acceptance also uses passwordless sudo to install disposable test tools. Give
+concurrent Docker jobs isolated daemons and network namespaces because smoke
+scripts use fixed container names and localhost ports.
 
-`Dockerfile` accepts `RUN_GO_TESTS` (default `1`). The backend stage runs
-`go test ./... && go vet ./...` only when it is `1`; `go build` always runs.
-Local and manual `docker build` invocations, and the acceptance image build,
-keep the default. `docker-publish.yml` passes `RUN_GO_TESTS=0` to both the
-release-candidate and the publishing build because the application checks
-already ran the full Go suite natively, including the race suite in acceptance.
+BuildKit keeps separate GitHub Actions cache scopes for the amd64 publisher
+(`reelscarey-publish`), the arm64 publisher (`reelscarey-publish-arm64`), the
+acceptance image (`reelscarey-ci`) and the Transmission fixture
+(`reelscarey-transmission`). Cache failures fall back to a cold build. GitHub
+scopes cache access by ref, so caches from one tag may be unavailable to
+another. Within a publish job both builds reuse the same BuildKit worker.
 
-Tag pushes do not trigger `ci.yml` (`push.branches` does not match tags), so
-the publish workflow cannot wait for a checks run, and nothing in the publish
-workflow re-runs the Go suite. **Routine releases do not wait for the branch
-checks to finish.** A targeted fix, provider adjustment, documentation or UI
-copy change is tagged and published as soon as the local validation gates pass
-(`go test ./...`, `go vet ./...`, Go build, frontend format/check/test/build),
-with CI verifying the same commit in parallel. Only a **substantial core
-change** must still wait for the branch checks to pass before its tag is
-published: schema or migration changes, authentication/session and other
-security boundaries, downloader/importer/organization write paths, public API
-contracts, or anything whose failure could strand owner media. When a routine
-release's later checks fail, fix forward with a new patch release or roll back
-the published tag, and never describe an unverified image as verified. The
-in-image Go suite stays skipped (`RUN_GO_TESTS=0`) because the same suite runs
-locally and in the checks workflow; the release-candidate smoke scripts still
-gate every publication. The remaining image gates are the release-candidate
-smoke scripts (startup, Compose, backup/restore, seven-feature,
-automatic-library and storage recovery), the digest pull with its source-label
-check, and the backup smoke against the published digest. If a release ever
-needs a Go test gate inside the publish workflow, drop `RUN_GO_TESTS=0` from
-the release-candidate build rather than publishing an image that was never
-tested.
-
-On the QEMU-emulated runner the following stay unavoidable: the runtime stage's
-apt installs, the frontend stage's `npm ci`, formatting/type/test/build gates
-and production bundle, the pinned yt-dlp virtual environment, and the Go
-compile itself. Unchanged layers are reused by digest, so they only re-run when
-their inputs change. Removing the reused Go test compile and execution from the
-publish builds is expected to be the largest saving; no measured duration is
-claimed here because this change has not run in CI yet.
-
-The frontend is still built and tested inside the image rather than reused from
-the checks job. Importing a `web/dist` artifact would create a second,
-artifact-dependent build path and would remove the in-image
-format/check/test/build gates; the npm download cache already covers the
-cheapest part of that stage, so it was left unchanged.
-
-### Runner selection
-
-The workflows pick runners from repository variables. The default is the
-existing self-hosted label `reelscarey-ci`.
-
-| Variable | Used by | Default |
-| --- | --- | --- |
-| `REELSCAREY_RUNNER` | push/schedule/dispatch jobs in `ci.yml`, and publish/acceptance unless overridden | `reelscarey-ci` |
-| `REELSCAREY_ACCEPTANCE_RUNNER` | live acceptance job (manual dispatch and nightly schedule) | `REELSCAREY_RUNNER` |
-| `REELSCAREY_PUBLISH_RUNNER` | publish job (tag push or manual dispatch) | `REELSCAREY_RUNNER` |
-
-Each value is one runner label, for example `reelscarey-publish` or
-`ubuntu-latest`. Set the variables under Settings → Secrets and variables →
-Actions → Variables. `pull_request` jobs in `ci.yml` always run on
-`ubuntu-latest`, even when a variable is set, because pull requests can come
-from forks and untrusted code must not run on a self-hosted machine. GitHub
-does not expose repository secrets to fork pull requests, and the checks job
-does not need any.
-
-To add a second self-hosted runner:
-
-1. Install the runner on a Linux x64 machine with the default labels
-   `self-hosted`, `linux`, `x64` plus a custom label such as
-   `reelscarey-publish` or `reelscarey-acceptance`.
-2. Install Docker Engine with the Compose plugin and BuildKit/buildx; both
-   workflows build through `docker/build-push-action`. An amd64 image on an
-   ARM machine also needs QEMU/binfmt registration.
-3. For an acceptance runner, additionally provide `qbittorrent-nox`, `ffmpeg`,
-   `par2`, `unrar`, passwordless `sudo` (the cross-filesystem tmpfs test and
-   package installs use it), Node 24 and Go. The live tests start disposable
-   localhost clients and never an owner account.
-4. Set `REELSCAREY_PUBLISH_RUNNER` or `REELSCAREY_ACCEPTANCE_RUNNER` to the
-   custom label so checks, acceptance and publish stop serializing on one
-   machine.
-5. Keep Docker Hub credentials in the repository secrets. A self-hosted runner
-   only receives them for trusted branch pushes, tags and manual dispatch, not
-   for fork pull requests.
-
-Hosted runners also work (`REELSCAREY_RUNNER=ubuntu-latest`) and install the
-live-test packages from Ubuntu's archive, but hosted minutes, quota and billing
-failures are reported separately from local checks.
+Use [LIVE_TESTING.md](LIVE_TESTING.md) for acceptance. The storage recovery
+fixture uses a [Docker volume subpath](https://docs.docker.com/engine/storage/volumes/#mount-a-volume-subdirectory)
+to avoid direct access to Docker's private host directories.
 

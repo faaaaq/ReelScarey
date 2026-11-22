@@ -1114,22 +1114,24 @@ stub test that needs no TIDAL account or network:
 
     python scripts/test_tidal_provider.py
 
-Until that login succeeds, acquisition honestly falls back to YouTube and the
-startup log states why TIDAL is not in use. A login completed in the UI takes
-effect immediately; no restart is needed.
+Until that login succeeds, Automatic uses YouTube and the startup log records
+the TIDAL provider state. A login completed in the UI takes effect immediately.
 
 How the sources are chosen:
 
-- Every acquisition track search queries TIDAL first. TIDAL catalog results
-  are much closer matches to MusicBrainz catalog metadata than video search
-  results, and each candidate is a concrete TIDAL track whose title, artist,
-  album and duration feed the existing candidate-evidence decision.
-- If TIDAL is unavailable, not logged in, or genuinely has no result, the
-  search falls back to YouTube. When both sides fail, the recorded error names
-  both sources.
+- Automatic queries TIDAL first when connected, then tries YouTube when TIDAL
+  cannot supply a match. TIDAL candidates include track title, artist, album
+  and duration as evidence. When both searches fail, the error names each source.
+- Set the default under **Settings → Music → TIDAL source**. Download dialogs
+  can override it per job. **TIDAL only** and **YouTube only** report that
+  provider's errors. Choosing **Automatic** in a dialog restores the fallback
+  chain for that job, even with a provider-only default.
 - A TIDAL candidate is always downloaded from TIDAL. A failed TIDAL download
   never silently reroutes to YouTube, because that would return unrelated
   audio; the track fails with its error and can be retried.
+- If candidate selection fails, the top-track and batch dialogs show the
+  track error, candidate scores and eligibility reasons. Choose an eligible
+  candidate to retry that exact source, or supply a replacement source.
 - Downloads always preserve the original audio file (including HiRes FLAC).
   Any requested conversion still happens only in the reviewed import step, so
   lossless evidence is never destroyed before the profile decision.

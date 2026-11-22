@@ -16,7 +16,10 @@ error, every returned candidate with its eligibility reasons and score, a
 retry. Ambiguous or unmatched evidence is therefore reviewable and retryable
 in the same dialog that started the download.
 
-Validation: new Go regression tests with the real collaboration evidence and
-a new Vitest for the candidate review action; full `go test ./...`,
-`go vet ./...` and Go build; frontend format/typecheck, tests and production
-build.
+The commit added Go collaboration regression coverage and a Vitest for the
+candidate review action. Application checks and both Docker builds stopped
+at Prettier because that Vitest file needed formatting. The Git tag exists,
+but the manifest job was skipped and this patch did not reach Docker Hub.
+The previous release, 0.54.42, retained `latest`. See the
+[failed publish run](https://github.com/faaaaq/ReelScarey/actions/runs/44894228106)
+and the [recovery release](RELEASE-0.54.44.md).

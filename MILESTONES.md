@@ -1,11 +1,23 @@
 # ReelScarey milestones
 
-This is the current work queue, updated 2026-10-31. Docker is the supported
-deployment. Checked boxes mean implemented; live acceptance is tracked separately.
+Docker is the supported deployment. Checked boxes mean implemented. Track live
+acceptance and publication against the specific release and commit.
 See [ROADMAP.md](ROADMAP.md) for the broader roadmap, [remaining work](docs/REMAINING.md)
 for limits, and [validation](docs/VALIDATION.md) for evidence.
 
 ## Current completion scope
+
+See [0.54.44](docs/RELEASE-0.54.44.md) for the current patch and release
+verification. The [release guide](docs/RELEASING.md) covers the current CI,
+Docker publishing and live-upgrade rules.
+
+The November 21 release review found older local development snapshots for
+library registration, UI overhaul, UX refinement and the initial TIDAL work.
+Current registration, per-show YouTube monitoring, UX review fixes and TIDAL
+sourcing are documented on the primary branch. Several draft SQL migrations
+reuse numbers already assigned on primary. Preserve those snapshots as
+reference material and recheck any specific missing behavior on current code.
+The open dependency-update PRs are separate from the release recovery.
 
 The existing implementation milestones are complete except direct/private IMDb
 synchronization, which lacks the supported feed needed by the existing adapter.
@@ -41,8 +53,9 @@ subtitle alignment and manual timing editor remain unchanged.
 - [ ] Direct continuous/private IMDb lists require a supported list feed.
   IMDb's multi-step exports have no stable export URL. Automatic MDBList sync
   and one-time IMDb CSV imports remain available.
-- [x] Reviewed catalog removal with keep-files or retained-trash choices.
-  Dependent catalog history is removed; client sources and backups are retained.
+- [x] Reviewed catalog removal with a permanent-delete or keep-files choice.
+  Existing retained-trash plans can still resume. See
+  [library management](docs/LIBRARY_MANAGEMENT.md) for scope and recovery.
 - [x] Add reviewed path rollback for completed file/title/folder organization
   moves, preserving current preferences for future imports. Modified media must
   first return to its previous version; occupied destinations are never replaced.
@@ -420,7 +433,7 @@ See [announce feeds](docs/ANNOUNCE.md).
 
 ## Post-0.40 milestone record
 
-The versioned sections above end at 0.40. Implemented 0.41-0.51 scope is recorded
+The versioned sections above end at 0.40. Implemented later scope is recorded
 by feature area in [ROADMAP.md](ROADMAP.md#post-040-feature-record-docs-backed)
 with links to the owning documents. It does not claim owner-service acceptance or
 external review; those remain open in the sections above and in

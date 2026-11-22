@@ -2,8 +2,9 @@
 
 The current milestone queue is summarized in [MILESTONES.md](../MILESTONES.md).
 
-This checklist consolidates the open work after version 0.26's additional providers
-and reference-subtitle alignment.
+The sections below retain the open owner-service, review and deployment work
+alongside historical acceptance. Consult the current release note linked from
+MILESTONES.md for patch-specific progress.
 Earlier milestone sections in [ROADMAP.md](../ROADMAP.md) also record historical
 scope limits. Implemented profile/monitoring bulk edits, explicit Anime numbering,
 configured-collection discovery and registered-file rename/reorganization are no
