@@ -28,7 +28,7 @@ jobs:
     runs-on: ${{ (github.event_name == 'pull_request' && 'ubuntu-latest') || vars.REELSCAREY_RUNNER || 'reelscarey-ci' }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -92,7 +92,7 @@ jobs:
     runs-on: ${{ vars.REELSCAREY_RUNNER || 'reelscarey-ci' }}
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -127,7 +127,7 @@ jobs:
     runs-on: ${{ vars.REELSCAREY_ACCEPTANCE_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - uses: actions/setup-node@v4
@@ -296,7 +296,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -334,7 +334,7 @@ jobs:
     timeout-minutes: 30
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
