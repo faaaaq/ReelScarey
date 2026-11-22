@@ -1,4 +1,8 @@
-# Validation record - 2026-11-08
+# Validation record
+
+For the current release, follow the patch note linked from
+[MILESTONES.md](../MILESTONES.md). The entries below record feature validation
+and the environment used at the time.
 
 ## Fast local-tag music matching (2026-11-08)
 

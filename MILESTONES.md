@@ -16,14 +16,14 @@ library registration, UI overhaul, UX refinement and the initial TIDAL work.
 Current registration, per-show YouTube monitoring, UX review fixes and TIDAL
 sourcing are documented on the primary branch. Several draft SQL migrations
 reuse numbers already assigned on primary. Preserve those snapshots as
-reference material and recheck any specific missing behavior on current code.
-The open dependency-update PRs are separate from the release recovery.
+reference material. The scan-time file layout option is still a draft.
+Current scans register files in place and the reviewed organization action is
+separate. The open dependency-update PRs are separate from release recovery.
 
-The existing implementation milestones are complete except direct/private IMDb
-synchronization, which lacks the supported feed needed by the existing adapter.
-Owner-service acceptance, external review, representative hardware testing and
-release/license requirements remain open as listed below. Optional extensions
-are not authorized by a request to finish the existing milestones.
+Direct/private IMDb synchronization still lacks a supported feed. The
+remaining owner-service acceptance, external review, representative hardware
+testing and license decisions are listed below. Use the feature roadmap for
+optional extensions.
 
 The experimental OCR, translation and audio-alignment branch work was removed at
 the owner's request on 2026-10-31; none was deployed. The existing reference-text
@@ -72,6 +72,9 @@ subtitle alignment and manual timing editor remain unchanged.
   verified embedded-title updates for MP4/Matroska with rollback copies.
 - [x] Individual YouTube acquisition for existing and custom items, including
   selected VTT subtitles.
+- [x] TIDAL catalog search and acquisition of a real 16-bit FLAC in a
+  disposable container. See [0.54.42](docs/RELEASE-0.54.42.md).
+- [ ] Verify account coverage across HiRes Lossless and Dolby Atmos.
 - [ ] Test real configured indexers, download clients, shared mounts, library
   registration, subtitles, lists and Discord webhook/bot using owner-selected
   test data. Private-tracker testing remains deferred until the owner chooses it.
