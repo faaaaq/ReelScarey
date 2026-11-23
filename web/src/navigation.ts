@@ -131,6 +131,7 @@ export const navigation: NavItem[] = [
     match: (p) => starts(p, "/music"),
     children: [
       { label: "Library", to: "/music" },
+      { label: "Player", to: "/music/player" },
       { label: "Discover", to: "/music/discover" },
       { label: "Server", to: "/music/server" },
       { label: "Library import", to: "/music/import" },
@@ -265,6 +266,7 @@ const titles: Record<string, string> = {
   "/series": "TV Shows",
   "/anime": "Anime",
   "/music": "Music",
+  "/music/player": "Music player",
   "/music/import": "Music import",
   "/music/organize": "Organize music",
   "/music/wanted": "Music wanted",

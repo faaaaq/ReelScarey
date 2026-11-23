@@ -161,6 +161,11 @@ const Timeline = lazy(() =>
 const Music = lazy(() =>
   import("./pages/MusicLibrary").then((m) => ({ default: m.MusicLibrary })),
 );
+const MusicFullPlayer = lazy(() =>
+  import("./pages/MusicPlayerWorkspace").then((m) => ({
+    default: m.MusicPlayerWorkspace,
+  })),
+);
 const MusicArtist = lazy(() =>
   import("./pages/Music").then((m) => ({ default: m.MusicArtistPage })),
 );
@@ -436,6 +441,7 @@ function AppShell() {
               <Route path="/language-profiles" element={<LanguageProfiles />} />
               <Route path="/series/:id" element={<Series />} />
               <Route path="/music" element={<Music />} />
+              <Route path="/music/player" element={<MusicFullPlayer />} />
               <Route path="/music/artists/:id" element={<MusicArtist />} />
               <Route path="/music/albums/:id" element={<MusicAlbum />} />
               <Route path="/music/import" element={<MusicImport />} />

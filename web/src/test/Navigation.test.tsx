@@ -42,6 +42,7 @@ it.each([
 it.each([
   ["/settings/clients", "Primary connections"],
   ["/settings/backup-import", "Sonarr / Radarr import"],
+  ["/music/player", "Music player"],
   ["/music/discover", "Music discover"],
   ["/music/server", "Music server"],
 ])("names the %s route for the browser tab", (path, title) => {

@@ -399,3 +399,289 @@ describe("music player", () => {
     ).toBeEnabled();
   });
 });
+
+describe("music player queue workspace", () => {
+  const THIRD = {
+    fileID: 9,
+    title: "Exit Music",
+    artist: "Radiohead",
+    album: "OK Computer",
+  };
+  const FOURTH = {
+    fileID: 10,
+    title: "Let Down",
+    artist: "Radiohead",
+    album: "OK Computer",
+  };
+  let player!: ReturnType<typeof useMusicPlayer>;
+
+  function QueueHarness() {
+    player = useMusicPlayer();
+    return null;
+  }
+
+  function renderQueue() {
+    render(
+      <MusicPlayerProvider>
+        <QueueHarness />
+      </MusicPlayerProvider>,
+    );
+  }
+
+  async function start(
+    queue: ReturnType<typeof useMusicPlayer>["queue"] = QUEUE_TRACKS,
+  ) {
+    await act(async () => {
+      player.play(queue[0], queue);
+      await Promise.resolve();
+    });
+  }
+
+  async function ended(audio: HTMLAudioElement) {
+    await act(async () => {
+      audio.dispatchEvent(new Event("ended"));
+      await Promise.resolve();
+    });
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  });
+
+  it("enqueues without autoplay, deduplicates and inserts play-next after current", async () => {
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play");
+    renderQueue();
+    act(() => player.enqueue(THIRD));
+    expect(player.queue.map((track) => track.fileID)).toEqual([9]);
+    expect(player.current).toBeNull();
+    expect(player.index).toBe(-1);
+    expect(playSpy).not.toHaveBeenCalled();
+
+    await start();
+    const callsAfterStart = playSpy.mock.calls.length;
+    act(() => {
+      player.enqueue(THIRD);
+      player.enqueue(FOURTH, true);
+      player.enqueue(THIRD, true);
+    });
+    // The functional queue update also keeps synchronous enqueue calls safe.
+    expect(player.queue.map((track) => track.fileID)).toEqual([7, 10, 8, 9]);
+    act(() => player.enqueue(FOURTH, true));
+    expect(player.queue.map((track) => track.fileID)).toEqual([7, 10, 8, 9]);
+    expect(player.current?.fileID).toBe(7);
+    expect(player.index).toBe(0);
+    expect(playSpy).toHaveBeenCalledTimes(callsAfterStart);
+  });
+
+  it("preserves batch play-next order when the queue has no current track", () => {
+    renderQueue();
+    // Workspace batches enqueue in reverse so repeated insertion yields the
+    // original order, including when there is no current track yet.
+    act(() => {
+      player.enqueue(FOURTH, true);
+      player.enqueue(THIRD, true);
+    });
+    expect(player.queue.map((track) => track.fileID)).toEqual([9, 10]);
+    expect(player.current).toBeNull();
+    expect(player.index).toBe(-1);
+  });
+
+  it("plays only valid queue indexes", async () => {
+    renderQueue();
+    await start([...QUEUE_TRACKS, THIRD]);
+    await act(async () => {
+      player.playAt(2);
+      await Promise.resolve();
+    });
+    expect(player.current?.fileID).toBe(9);
+    expect(player.index).toBe(2);
+    const source = document.querySelector("audio")?.getAttribute("src");
+    act(() => {
+      player.playAt(-1);
+      player.playAt(3);
+      player.playAt(1.5);
+    });
+    expect(player.current?.fileID).toBe(9);
+    expect(player.index).toBe(2);
+    expect(document.querySelector("audio")?.getAttribute("src")).toBe(source);
+  });
+
+  it("keeps the current index correct through moves and removals", async () => {
+    renderQueue();
+    await start([...QUEUE_TRACKS, THIRD, FOURTH]);
+    await act(async () => {
+      player.playAt(1);
+      await Promise.resolve();
+    });
+    act(() => player.moveQueueItem(0, 3));
+    expect(player.queue.map((track) => track.fileID)).toEqual([8, 9, 10, 7]);
+    expect(player.index).toBe(0);
+    expect(player.current?.fileID).toBe(8);
+
+    act(() => player.moveQueueItem(0, 2));
+    expect(player.queue.map((track) => track.fileID)).toEqual([9, 10, 8, 7]);
+    expect(player.index).toBe(2);
+    act(() => {
+      player.moveQueueItem(-1, 1);
+      player.moveQueueItem(0, 9);
+    });
+    expect(player.queue.map((track) => track.fileID)).toEqual([9, 10, 8, 7]);
+
+    act(() => player.removeAt(0));
+    expect(player.queue.map((track) => track.fileID)).toEqual([10, 8, 7]);
+    expect(player.index).toBe(1);
+    expect(player.current?.fileID).toBe(8);
+    await act(async () => {
+      player.removeAt(1);
+      await Promise.resolve();
+    });
+    expect(player.queue.map((track) => track.fileID)).toEqual([10, 7]);
+    expect(player.index).toBe(1);
+    expect(player.current?.fileID).toBe(7);
+    await act(async () => {
+      player.removeAt(1);
+      await Promise.resolve();
+    });
+    expect(player.current?.fileID).toBe(10);
+    expect(player.index).toBe(0);
+  });
+
+  it("clears the queue with the same teardown semantics as stop", async () => {
+    renderQueue();
+    await start();
+    act(() => player.clearQueue());
+    expect(player.queue).toEqual([]);
+    expect(player.current).toBeNull();
+    expect(player.index).toBe(-1);
+    expect(player.playing).toBe(false);
+    expect(document.querySelector("audio")?.getAttribute("src")).toBeNull();
+    expect(
+      window.localStorage.getItem("reelscarey:music-player:v1"),
+    ).toBeNull();
+  });
+
+  it("keeps repeat-off end behavior and wraps with repeat-all", async () => {
+    renderQueue();
+    await start();
+    await act(async () => {
+      player.playAt(1);
+      await Promise.resolve();
+    });
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    await ended(audio);
+    expect(player.repeat).toBe("off");
+    expect(player.current?.fileID).toBe(8);
+    expect(player.index).toBe(1);
+    expect(player.playing).toBe(false);
+    expect(player.position).toBe(0);
+
+    act(() => player.cycleRepeat());
+    expect(player.repeat).toBe("all");
+    await ended(audio);
+    expect(player.current?.fileID).toBe(7);
+    expect(player.index).toBe(0);
+  });
+
+  it("repeats one only for ended and lets manual Next skip", async () => {
+    renderQueue();
+    await start();
+    act(() => {
+      player.cycleRepeat();
+    });
+    act(() => player.cycleRepeat());
+    expect(player.repeat).toBe("one");
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    await ended(audio);
+    expect(player.current?.fileID).toBe(7);
+    expect(player.index).toBe(0);
+    await act(async () => {
+      player.next();
+      await Promise.resolve();
+    });
+    expect(player.current?.fileID).toBe(8);
+    expect(player.index).toBe(1);
+  });
+
+  it("shuffle selects a valid different queue entry", async () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    renderQueue();
+    await start([...QUEUE_TRACKS, THIRD]);
+    act(() => player.toggleShuffle());
+    await act(async () => {
+      player.next();
+      await Promise.resolve();
+    });
+    expect(player.index).toBeGreaterThanOrEqual(0);
+    expect(player.index).toBeLessThan(3);
+    expect(player.index).not.toBe(0);
+    expect(player.index).toBe(1);
+    expect(player.current?.fileID).toBe(8);
+    random.mockRestore();
+  });
+
+  it("persists shuffle and repeat while restoring older payloads with defaults", async () => {
+    renderQueue();
+    await start();
+    act(() => {
+      player.toggleShuffle();
+      player.cycleRepeat();
+    });
+    await waitFor(() => {
+      const saved = JSON.parse(
+        window.localStorage.getItem("reelscarey:music-player:v1") ?? "null",
+      );
+      expect(saved?.shuffle).toBe(true);
+      expect(saved?.repeat).toBe("all");
+    });
+
+    cleanup();
+    renderQueue();
+    expect(player.shuffle).toBe(true);
+    expect(player.repeat).toBe("all");
+
+    cleanup();
+    window.localStorage.setItem(
+      "reelscarey:music-player:v1",
+      JSON.stringify({
+        queue: QUEUE_TRACKS,
+        index: 0,
+        position: 12,
+        duration: 120,
+        volume: 0.4,
+        muted: false,
+      }),
+    );
+    renderQueue();
+    expect(player.current?.fileID).toBe(7);
+    expect(player.shuffle).toBe(false);
+    expect(player.repeat).toBe("off");
+    expect(player.position).toBe(12);
+  });
+
+  it("offers accessible shuffle, repeat and full-player controls in the bar", async () => {
+    render(
+      <MusicPlayerProvider>
+        <MemoryRouter>
+          <Harness />
+          <MusicPlayerBar />
+        </MemoryRouter>
+      </MusicPlayerProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    const shuffle = screen.getByRole("button", { name: "Shuffle" });
+    const repeat = screen.getByRole("button", { name: "Repeat" });
+    expect(shuffle).toHaveAttribute("aria-pressed", "false");
+    expect(repeat).toHaveAttribute("data-repeat", "off");
+    await userEvent.click(shuffle);
+    expect(shuffle).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(repeat);
+    expect(repeat).toHaveAttribute("data-repeat", "all");
+    expect(repeat).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("link", { name: "Open full player" }),
+    ).toHaveAttribute("href", "/music/player");
+  });
+});

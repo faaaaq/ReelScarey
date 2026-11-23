@@ -191,7 +191,7 @@ describe("navigation groups the settings and library tasks", () => {
     await waitFor(() => expect(child).toHaveAttribute("aria-current", "page"));
   });
 
-  it("shows the music discover and server children under Music", async () => {
+  it("shows the music player, discover and server children under Music", async () => {
     render(
       <Theme>
         <MemoryRouter initialEntries={["/music/discover"]}>
@@ -203,6 +203,10 @@ describe("navigation groups the settings and library tasks", () => {
     const discover = await screen.findByRole("link", { name: "Discover" });
     await waitFor(() =>
       expect(discover).toHaveAttribute("aria-current", "page"),
+    );
+    expect(screen.getByRole("link", { name: "Player" })).toHaveAttribute(
+      "href",
+      "/music/player",
     );
     expect(screen.getByRole("link", { name: "Server" })).toBeInTheDocument();
   });

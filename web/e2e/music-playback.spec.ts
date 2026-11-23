@@ -342,4 +342,92 @@ test.describe.serial("Music playback compatibility", () => {
     ).toBeVisible();
     await expect.poll(() => contentType).toContain("audio/ogg");
   });
+
+  test("the full workspace plays and edits a real queue across responsive layouts", async ({
+    page,
+  }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(String(error)));
+    await login(page, server);
+    await page.goto(server.url("/music/player"));
+
+    const table = page.getByRole("table", { name: "Music tracks" });
+    await expect(table).toBeVisible();
+    await expect(
+      page.getByRole("complementary", { name: "Music library browser" }),
+    ).toBeVisible();
+    const queue = page.getByRole("complementary", {
+      name: "Now playing and queue",
+    });
+    await table
+      .getByRole("button", { name: "Add Signal One to queue", exact: true })
+      .click();
+    await expect(queue.getByRole("listitem")).toHaveCount(1);
+    await queue
+      .getByRole("button", { name: "Play Signal One", exact: true })
+      .click();
+    await expectDecoding(page);
+    await table
+      .getByRole("button", { name: "Play Signal Two next", exact: true })
+      .click();
+    await table
+      .getByRole("button", { name: "Add Signal Three to queue", exact: true })
+      .click();
+    await expect(queue.getByRole("listitem")).toHaveCount(3);
+
+    await queue
+      .getByRole("button", { name: "Move Signal Two down", exact: true })
+      .click();
+    const titles = await queue
+      .locator(".music-now-playing-row-title")
+      .allTextContents();
+    expect(titles[0]).toContain("Signal One");
+    expect(titles[1]).toContain("Signal Three");
+    expect(titles[2]).toContain("Signal Two");
+
+    await queue
+      .getByRole("button", { name: "Remove Signal One", exact: true })
+      .click();
+    await expect(queue.locator(".is-current")).toContainText("Signal Three");
+    await expectDecoding(page);
+
+    const transport = page.getByRole("region", { name: "Music player" });
+    const shuffle = transport.getByRole("button", {
+      name: "Shuffle",
+      exact: true,
+    });
+    await shuffle.click();
+    await expect(shuffle).toHaveAttribute("aria-pressed", "true");
+    const repeat = transport.getByRole("button", {
+      name: "Repeat",
+      exact: true,
+    });
+    await repeat.click();
+    await expect(repeat).toHaveAttribute("data-repeat", "all");
+    await repeat.click();
+    await expect(repeat).toHaveAttribute("data-repeat", "one");
+    await repeat.click();
+    await expect(repeat).toHaveAttribute("data-repeat", "off");
+
+    await page.setViewportSize({ width: 390, height: 800 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    const queueToggle = page
+      .getByRole("toolbar", { name: "Music player actions" })
+      .getByRole("button", { name: "Queue", exact: true });
+    await queueToggle.click();
+    await expect(queueToggle).toHaveAttribute("aria-expanded", "false");
+    await expect(
+      page.getByRole("complementary", { name: "Now playing and queue" }),
+    ).toHaveCount(0);
+    await queueToggle.click();
+    await expect(queueToggle).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      page.getByRole("complementary", { name: "Now playing and queue" }),
+    ).toBeVisible();
+    expect(pageErrors).toEqual([]);
+  });
 });

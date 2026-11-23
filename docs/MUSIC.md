@@ -1138,6 +1138,31 @@ How the sources are chosen:
 - Every attempt is recorded in the existing acquisition attempt journal, with
   the tidal.com track URL as the source identity.
 
+### Full music player workspace
+
+**Music -> Player** opens a MediaMonkey-inspired three-pane workspace. The left
+library browser switches between registered tracks, artists and albums, with a
+contextual artist/album index. The center keeps search, pagination, detailed
+track metadata and in-place artist/album previews; dedicated detail links still
+open the existing metadata, acquisition and deletion pages. Search and selected
+artist/album state stay in the URL for reload and browser Back/Forward.
+
+The right **Now Playing** pane shows the current track and the browser-local
+queue. Queue rows can start, move up/down or remove tracks, and Clear queue
+stops playback without deleting any library data. The shared bottom transport
+adds shuffle, repeat off/all/one and a full-player shortcut alongside the
+existing previous/play/next, seek, volume, streaming-quality and error-recovery
+controls. Queue order, current position, volume, shuffle and repeat restore on
+that browser after reload; they are not server-synchronized playlists.
+
+Play and queue buttons operate only on the loaded track list, up to 100 tracks
+for a library or artist page, or the loaded album. The interface reports how
+many loaded tracks have registered audio and disables playback for provider-
+only rows. Play next and Queue add without starting audio by themselves;
+double-clicking a registered row plays it in the visible queue. On medium and
+small screens the queue moves below the browser and can be shown or hidden
+with the Queue toolbar action.
+
 ### Charts and playlist monitor
 
 Deezer's global chart is shown in **Music -> Discover**. Chart tracks already in

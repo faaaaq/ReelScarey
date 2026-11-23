@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   ListMusic,
   ListChecks,
+  Play,
   Plus,
   RefreshCw,
   Search,
@@ -276,6 +277,12 @@ export function MusicLibrary() {
     <>
       <PageToolbar label="Music actions">
         <ToolbarSection>
+          <ToolbarButton
+            icon={Play}
+            label="Full player"
+            title="Open the MediaMonkey-inspired music player"
+            to="/music/player"
+          />
           <ToolbarButton
             icon={Plus}
             label="Add artist"

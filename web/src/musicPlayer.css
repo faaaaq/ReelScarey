@@ -138,6 +138,24 @@
   color: var(--rs-text-strong);
 }
 
+.music-player-button.is-active {
+  background: var(--rs-hover);
+  color: var(--rs-primary);
+}
+
+.music-player-open-full {
+  color: var(--rs-link);
+  font-size: 12px;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.music-player-open-full:hover {
+  color: var(--rs-link-hover);
+  text-decoration: underline;
+}
+
 .music-player-button.is-primary {
   width: 36px;
   height: 36px;

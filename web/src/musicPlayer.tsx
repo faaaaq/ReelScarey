@@ -10,6 +10,9 @@ import {
   Disc3,
   Pause,
   Play,
+  Repeat,
+  Repeat1,
+  Shuffle,
   SkipBack,
   SkipForward,
   Volume2,
@@ -43,6 +46,8 @@ export type PlayerTrack = {
 
 const PLAYER_STORAGE_KEY = "reelscarey:music-player:v1";
 
+export type RepeatMode = "off" | "all" | "one";
+
 type RestoredPlayer = {
   queue: PlayerTrack[];
   index: number;
@@ -50,6 +55,8 @@ type RestoredPlayer = {
   duration: number;
   volume: number;
   muted: boolean;
+  shuffle: boolean;
+  repeat: RepeatMode;
 };
 
 /** Restore only bounded, non-secret browser state; media paths never appear. */
@@ -61,6 +68,8 @@ function restorePlayer(): RestoredPlayer {
     duration: 0,
     volume: 0.8,
     muted: false,
+    shuffle: false,
+    repeat: "off",
   };
   try {
     const raw = window.localStorage.getItem(PLAYER_STORAGE_KEY);
@@ -97,6 +106,9 @@ function restorePlayer(): RestoredPlayer {
       duration: Math.max(0, Math.min(finite(value.duration, 0), 86400)),
       volume: Math.max(0, Math.min(finite(value.volume, 0.8), 1)),
       muted: value.muted === true,
+      shuffle: value.shuffle === true,
+      repeat:
+        value.repeat === "all" || value.repeat === "one" ? value.repeat : "off",
     };
   } catch {
     return empty;
@@ -106,14 +118,24 @@ function restorePlayer(): RestoredPlayer {
 type PlayerValue = {
   current: PlayerTrack | null;
   queue: PlayerTrack[];
+  index: number;
   playing: boolean;
   position: number;
   duration: number;
   volume: number;
   muted: boolean;
+  shuffle: boolean;
+  repeat: RepeatMode;
   error: string;
   errorRecovery: "" | "music-import";
   play: (track: PlayerTrack, queue?: PlayerTrack[]) => void;
+  enqueue: (track: PlayerTrack, playNext?: boolean) => void;
+  playAt: (index: number) => void;
+  removeAt: (index: number) => void;
+  moveQueueItem: (from: number, to: number) => void;
+  clearQueue: () => void;
+  toggleShuffle: () => void;
+  cycleRepeat: () => void;
   retry: () => void;
   toggle: () => void;
   next: () => void;
@@ -188,6 +210,8 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const [duration, setDuration] = useState(restored.duration);
   const [volume, setVolume] = useState(restored.volume);
   const [muted, setMuted] = useState(restored.muted);
+  const [shuffle, setShuffle] = useState(restored.shuffle);
+  const [repeat, setRepeat] = useState<RepeatMode>(restored.repeat);
   const [error, setErrorState] = useState("");
   const [errorRecovery, setErrorRecovery] = useState<"" | "music-import">("");
   function setError(message: string, recovery: "" | "music-import" = "") {
@@ -211,7 +235,16 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
         }
         window.localStorage.setItem(
           PLAYER_STORAGE_KEY,
-          JSON.stringify({ queue, index, position, duration, volume, muted }),
+          JSON.stringify({
+            queue,
+            index,
+            position,
+            duration,
+            volume,
+            muted,
+            shuffle,
+            repeat,
+          }),
         );
       } catch {
         // Storage may be unavailable in private/embedded browsing; playback
@@ -219,7 +252,17 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       }
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [current, queue, index, position, duration, volume, muted]);
+  }, [
+    current,
+    queue,
+    index,
+    position,
+    duration,
+    volume,
+    muted,
+    shuffle,
+    repeat,
+  ]);
 
   useEffect(() => {
     const clear = () => stop();
@@ -315,6 +358,110 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     start(track);
   }
 
+  function enqueue(track: PlayerTrack, playNext = false) {
+    if (!Number.isInteger(track.fileID) || track.fileID <= 0) return;
+    setQueue((currentQueue) => {
+      if (currentQueue.some((item) => item.fileID === track.fileID))
+        return currentQueue;
+      const nextQueue = [...currentQueue];
+      const insertion = playNext
+        ? index >= 0
+          ? Math.min(index + 1, nextQueue.length)
+          : 0
+        : nextQueue.length;
+      nextQueue.splice(insertion, 0, track);
+      return nextQueue;
+    });
+  }
+
+  function playAt(requestedIndex: number) {
+    if (
+      !Number.isInteger(requestedIndex) ||
+      requestedIndex < 0 ||
+      requestedIndex >= queue.length
+    )
+      return;
+    setIndex(requestedIndex);
+    start(queue[requestedIndex]);
+  }
+
+  function selectPaused(track: PlayerTrack) {
+    const audio = audioRef.current;
+    // Invalidate a pending play() before unloading the removed selection.
+    playEpoch.current += 1;
+    audio?.pause();
+    if (audio?.getAttribute("src")) {
+      audio.removeAttribute("src");
+      audio.load();
+    }
+    streamOffset.current = 0;
+    setCurrent(track);
+    setPlaying(false);
+    setPosition(0);
+    setDuration(track.durationMS ? track.durationMS / 1000 : 0);
+    setError("");
+  }
+
+  function removeAt(requestedIndex: number) {
+    if (
+      !Number.isInteger(requestedIndex) ||
+      requestedIndex < 0 ||
+      requestedIndex >= queue.length
+    )
+      return;
+    const nextQueue = queue.filter(
+      (_, itemIndex) => itemIndex !== requestedIndex,
+    );
+    if (requestedIndex !== index) {
+      setQueue(nextQueue);
+      if (index > requestedIndex) setIndex(index - 1);
+      return;
+    }
+    if (!nextQueue.length) {
+      clearQueue();
+      return;
+    }
+    // The entry at the same index is the next survivor; at the end, the last
+    // survivor is the previous entry. Keep playback intent across the swap.
+    const nextIndex = Math.min(requestedIndex, nextQueue.length - 1);
+    setQueue(nextQueue);
+    setIndex(nextIndex);
+    if (playing) start(nextQueue[nextIndex]);
+    else selectPaused(nextQueue[nextIndex]);
+  }
+
+  function moveQueueItem(from: number, to: number) {
+    if (
+      !Number.isInteger(from) ||
+      !Number.isInteger(to) ||
+      from < 0 ||
+      to < 0 ||
+      from >= queue.length ||
+      to >= queue.length ||
+      from === to
+    )
+      return;
+    const nextQueue = [...queue];
+    const [moved] = nextQueue.splice(from, 1);
+    nextQueue.splice(to, 0, moved);
+    let nextIndex = index;
+    if (index === from) nextIndex = to;
+    else if (from < index && to >= index) nextIndex = index - 1;
+    else if (from > index && to <= index) nextIndex = index + 1;
+    setQueue(nextQueue);
+    setIndex(nextIndex);
+  }
+
+  function toggleShuffle() {
+    setShuffle((value) => !value);
+  }
+
+  function cycleRepeat() {
+    setRepeat((value) =>
+      value === "off" ? "all" : value === "all" ? "one" : "off",
+    );
+  }
+
   function retry() {
     if (current) start(current, position);
   }
@@ -334,16 +481,53 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function next() {
-    if (index < 0 || index + 1 >= queue.length) {
-      audioRef.current?.pause();
-      setPlaying(false);
-      setPosition(0);
+  function finishPlayback() {
+    audioRef.current?.pause();
+    setPlaying(false);
+    setPosition(0);
+  }
+
+  function advance(automatic: boolean) {
+    // Repeat-one belongs to the media element's ended event only. A manual
+    // Next always advances, including when only one track is queued.
+    if (automatic && repeat === "one" && current) {
+      start(current);
+      return;
+    }
+    if (index < 0 || !queue.length) {
+      finishPlayback();
+      return;
+    }
+    if (shuffle && queue.length > 1) {
+      // Pick from all indexes except the current one without retry loops.
+      const candidate = Math.max(
+        0,
+        Math.min(
+          queue.length - 2,
+          Math.floor(Math.random() * (queue.length - 1)),
+        ),
+      );
+      const nextIndex = candidate >= index ? candidate + 1 : candidate;
+      setIndex(nextIndex);
+      start(queue[nextIndex]);
       return;
     }
     const nextIndex = index + 1;
-    setIndex(nextIndex);
-    start(queue[nextIndex]);
+    if (nextIndex < queue.length) {
+      setIndex(nextIndex);
+      start(queue[nextIndex]);
+      return;
+    }
+    if (repeat === "all") {
+      setIndex(0);
+      start(queue[0]);
+      return;
+    }
+    finishPlayback();
+  }
+
+  function next() {
+    advance(false);
   }
 
   function previous() {
@@ -372,8 +556,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function stop() {
+  function clearQueue() {
     const audio = audioRef.current;
+    // A late play() resolution from the cleared selection must not resurrect
+    // the playing state after the audio element has been unloaded.
+    playEpoch.current += 1;
     if (audio?.getAttribute("src")) {
       audio.pause();
       audio.removeAttribute("src");
@@ -392,6 +579,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     setPosition(0);
     setDuration(0);
     setError("");
+  }
+
+  // Retain the original public action for existing player consumers.
+  function stop() {
+    clearQueue();
   }
 
   function seek(seconds: number) {
@@ -454,7 +646,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
-    const onEnded = () => next();
+    const onEnded = () => advance(true);
     const onError = () => {
       setPlaying(false);
       // The media element only reports "something failed"; probe the stream
@@ -518,19 +710,29 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
     };
-  }, [queue, index]);
+  }, [current, queue, index, shuffle, repeat]);
 
   const value: PlayerValue = {
     current,
     queue,
+    index,
     playing,
     position,
     duration: duration || (current?.durationMS ? current.durationMS / 1000 : 0),
     volume,
     muted,
+    shuffle,
+    repeat,
     error,
     errorRecovery,
     play,
+    enqueue,
+    playAt,
+    removeAt,
+    moveQueueItem,
+    clearQueue,
+    toggleShuffle,
+    cycleRepeat,
     retry,
     toggle,
     next,
@@ -687,6 +889,16 @@ export function MusicPlayerBar() {
         <div className="music-player-buttons">
           <button
             type="button"
+            className={`music-player-button${player.shuffle ? " is-active" : ""}`}
+            aria-label="Shuffle"
+            aria-pressed={player.shuffle}
+            title="Shuffle"
+            onClick={player.toggleShuffle}
+          >
+            <Shuffle size={17} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
             className="music-player-button"
             aria-label="Previous track"
             onClick={player.previous}
@@ -713,6 +925,21 @@ export function MusicPlayerBar() {
           >
             <SkipForward size={18} aria-hidden="true" />
           </button>
+          <button
+            type="button"
+            className={`music-player-button${player.repeat !== "off" ? " is-active" : ""}`}
+            aria-label="Repeat"
+            aria-pressed={player.repeat !== "off"}
+            data-repeat={player.repeat}
+            title={`Repeat: ${player.repeat}`}
+            onClick={player.cycleRepeat}
+          >
+            {player.repeat === "one" ? (
+              <Repeat1 size={17} aria-hidden="true" />
+            ) : (
+              <Repeat size={17} aria-hidden="true" />
+            )}
+          </button>
         </div>
         <div className="music-player-seek">
           <span>{clock(position)}</span>
@@ -732,6 +959,9 @@ export function MusicPlayerBar() {
         </div>
       </div>
       <div className="music-player-volume">
+        <Link className="music-player-open-full" to="/music/player">
+          Open full player
+        </Link>
         <PlayerQualityControl />
         <button
           type="button"

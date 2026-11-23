@@ -127,6 +127,12 @@ Historical native and package results below remain as records of past work.
   file mapping and a search schedule. The core Lidarr-style music path is
   implemented. See [music catalog](docs/MUSIC.md).
 
+- [x] Add a MediaMonkey-inspired full music player with library/artist/album
+  browsing, detailed track metadata, in-place previews, an editable Now Playing
+  queue, shuffle/repeat and responsive three-pane layout. Playback uses the
+  existing authenticated audio engine and browser-local queue persistence. See
+  [full music player workspace](docs/MUSIC.md#full-music-player-workspace).
+
 - [x] Update embedded movie and TV titles while organizing and renaming media,
   with verified copies and recovery that preserve streams and seeding sources.
   Reviewed MP4/M4V, Matroska, MOV, AVI and WebM updates preserve streams and rollback copies, and
