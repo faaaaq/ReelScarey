@@ -40,3 +40,29 @@ and its container metadata rollback case returned `reload_required`. Those
 results predate this frontend-only release and are recorded separately, not as
 successful acceptance. The release publish workflow has its own architecture,
 startup, backup/restore, feature and storage-recovery gates.
+
+The [release application checks](https://github.com/faaaaq/ReelScarey/actions/runs/45240901194)
+also passed with Linux race-enabled tests, vet/build/smoke, Windows smoke and
+browser coverage.
+
+## Publication and live deployment
+
+Docker Hub published `faaaaq/reelscarey:0.54.46` and `faaaaq/reelscarey:latest`
+on November 23, 2026. Both pulls verified the same AMD64/ARM64 manifest for
+commit `450aa1ef739ebf66eb23f4840980179722a7efea`.
+
+```text
+sha256:468dd82d8dd69549e2149bc2aaa697991cd8c5b00bfd6c6b2c25ff1bd37e73c9
+```
+
+See the [successful publish run](https://github.com/faaaaq/ReelScarey/actions/runs/45240901264).
+Both architecture builds, container smoke tests, final tag pulls and signing
+passed. `gh attestation verify` also verified the signed digest against the
+release commit.
+
+The scareypit Compose service was upgraded from 0.54.45 to 0.54.46 after the
+registry check. The pre-upgrade configuration was preserved at
+`/home/faaaaq/configs/reelscarey/config-backup-20261123130108`, including the
+SQLite database and encryption key; the Compose backup is
+`/home/faaaaq/configs/reelscarey/compose.yml.bak-20261123130108`. The recreated
+container reports `0.54.46`, is running and healthy, and retains schema 113.
