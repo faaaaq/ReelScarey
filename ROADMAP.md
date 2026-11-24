@@ -980,7 +980,7 @@ Library selection is no longer capped at 200; review and apply accept up to 5000
 explicit IDs, so a whole library can be monitored or unmonitored in one reviewed
 action. "Monitor all future episodes" now monitors only regular episodes airing
 today or later and turns off past/undated regular episodes (specials untouched). The Calendar shows movies once per
-theatrical, digital and physical release date with a release-kind filter, polls
+theatrical, original digital and physical release date with a release-kind filter, polls
 while open so downloaded items update, and reports live progress for its bulk
 searches. Automation now treats an enabled built-in client as ready, fixing the
 bulk "Search episodes" run that stopped at waiting_client. The Dashboard is

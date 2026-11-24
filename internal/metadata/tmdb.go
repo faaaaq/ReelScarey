@@ -36,11 +36,13 @@ type Movie struct {
 	ReleaseDate           string `json:"release_date"`
 	TheatricalReleaseDate string `json:"theatrical_release_date"`
 	DigitalReleaseDate    string `json:"digital_release_date"`
-	PhysicalReleaseDate   string `json:"physical_release_date"`
-	Year                  *int   `json:"year"`
-	PosterPath            string `json:"poster_path"`
-	PosterURL             string `json:"poster_url"`
-	RuntimeMinutes        *int   `json:"runtime_minutes"`
+	// DigitalReleaseDatesLoaded distinguishes an empty selection from a partial response.
+	DigitalReleaseDatesLoaded bool   `json:"-"`
+	PhysicalReleaseDate       string `json:"physical_release_date"`
+	Year                      *int   `json:"year"`
+	PosterPath                string `json:"poster_path"`
+	PosterURL                 string `json:"poster_url"`
+	RuntimeMinutes            *int   `json:"runtime_minutes"`
 }
 type Results struct {
 	Page         int     `json:"page"`
@@ -68,6 +70,7 @@ type releaseDateRegion struct {
 type releaseDateEntry struct {
 	Type        int    `json:"type"`
 	ReleaseDate string `json:"release_date"`
+	Note        string `json:"note"`
 }
 
 var posterPattern = regexp.MustCompile(`^/[A-Za-z0-9_-]+\.(jpg|png|webp)$`)
@@ -93,7 +96,7 @@ func normalize(in movieResponse) (Movie, error) {
 			out.ReleaseDate = in.ReleaseDate
 		}
 	}
-	out.TheatricalReleaseDate, out.DigitalReleaseDate, out.PhysicalReleaseDate = normalizedReleaseDates(in.ReleaseDates)
+	out.TheatricalReleaseDate, out.DigitalReleaseDate, out.PhysicalReleaseDate, out.DigitalReleaseDatesLoaded = normalizedReleaseDates(in.ReleaseDates, out.ReleaseDate)
 	if PosterURL(in.PosterPath) != "" {
 		out.PosterPath = in.PosterPath
 		out.PosterURL = PosterURL(in.PosterPath)
@@ -106,14 +109,17 @@ func normalize(in movieResponse) (Movie, error) {
 
 // normalizedReleaseDates chooses one stored date per kind. A wide theatrical
 // release (TMDb type 3) is preferred over a limited one (type 2). The United
-// States entry is preferred because TMDb's catalog default and the existing
-// canonical release_date follow the US release; otherwise the earliest valid
-// date across regions is used. TMDb supplies timestamps for these entries, so
-// the leading civil date is retained. Premiere/TV entries and invalid dates are
-// ignored.
-func normalizedReleaseDates(in releaseDatesResponse) (theatrical, digital, physical string) {
-	var usWide, usLimited, usDigital, usPhysical string
-	var earliestWide, earliestLimited, earliestDigital, earliestPhysical string
+// States entry is preferred; otherwise the earliest eligible date across regions
+// is used. Premiere/TV entries and invalid dates are ignored.
+func normalizedReleaseDates(in releaseDatesResponse, original string) (theatrical, digital, physical string, digitalLoaded bool) {
+	var usWide, usLimited, usPhysical string
+	var earliestWide, earliestLimited, earliestPhysical string
+	type digitalCandidate struct {
+		date, note, country string
+	}
+	var candidates []digitalCandidate
+	regionalTheatrical := make(map[string]string)
+	digitalLoaded = in.Results != nil
 	set := func(value, date string) string {
 		if value == "" || date < value {
 			return date
@@ -121,28 +127,34 @@ func normalizedReleaseDates(in releaseDatesResponse) (theatrical, digital, physi
 		return value
 	}
 	for _, region := range in.Results {
+		if region.ReleaseDates == nil {
+			digitalLoaded = false
+		}
+		country := strings.ToUpper(region.Country)
+		isUS := country == "US"
 		for _, entry := range region.ReleaseDates {
 			date, ok := releaseDateOnly(entry.ReleaseDate)
 			if !ok {
+				if entry.Type == 4 {
+					digitalLoaded = false
+				}
 				continue
 			}
-			isUS := strings.EqualFold(region.Country, "US")
 			switch entry.Type {
 			case 3:
 				earliestWide = set(earliestWide, date)
+				regionalTheatrical[country] = set(regionalTheatrical[country], date)
 				if isUS {
 					usWide = set(usWide, date)
 				}
 			case 2:
 				earliestLimited = set(earliestLimited, date)
+				regionalTheatrical[country] = set(regionalTheatrical[country], date)
 				if isUS {
 					usLimited = set(usLimited, date)
 				}
 			case 4:
-				earliestDigital = set(earliestDigital, date)
-				if isUS {
-					usDigital = set(usDigital, date)
-				}
+				candidates = append(candidates, digitalCandidate{date, entry.Note, country})
 			case 5:
 				earliestPhysical = set(earliestPhysical, date)
 				if isUS {
@@ -150,6 +162,45 @@ func normalizedReleaseDates(in releaseDatesResponse) (theatrical, digital, physi
 				}
 			}
 		}
+	}
+	firstTheatrical := earliestWide
+	if earliestLimited != "" {
+		firstTheatrical = set(firstTheatrical, earliestLimited)
+	}
+	var usDigital, earliestDigital, usStreaming, earliestStreaming string
+	for _, candidate := range candidates {
+		regional := regionalTheatrical[candidate.country]
+		if regional == "" {
+			regional = firstTheatrical
+		}
+		// The primary date can be a festival premiere. Measure the window from
+		// the first theatrical release in the candidate's market when available.
+		anchor, _ := time.Parse(time.DateOnly, max(original, regional))
+		if rereleaseNote.MatchString(candidate.note) ||
+			(!anchor.IsZero() && candidate.date > anchor.AddDate(1, 0, 0).Format(time.DateOnly)) {
+			continue
+		}
+		if streamingNote.MatchString(candidate.note) {
+			if !anchor.IsZero() {
+				earliestStreaming = set(earliestStreaming, candidate.date)
+				if candidate.country == "US" {
+					usStreaming = set(usStreaming, candidate.date)
+				}
+			}
+			continue
+		}
+		earliestDigital = set(earliestDigital, candidate.date)
+		if candidate.country == "US" {
+			usDigital = set(usDigital, candidate.date)
+		}
+	}
+	// A subscription service can be the original digital outlet. If an
+	// earlier digital date is known, the later streaming listing is excluded.
+	if earliestStreaming != "" {
+		earliestDigital = set(earliestDigital, earliestStreaming)
+	}
+	if usStreaming != "" && usStreaming == earliestDigital {
+		usDigital = set(usDigital, usStreaming)
 	}
 	if usWide != "" {
 		earliestWide = usWide
@@ -167,8 +218,15 @@ func normalizedReleaseDates(in releaseDatesResponse) (theatrical, digital, physi
 	if theatrical == "" {
 		theatrical = earliestLimited
 	}
-	return theatrical, earliestDigital, earliestPhysical
+	return theatrical, earliestDigital, earliestPhysical, digitalLoaded
 }
+
+var (
+	rereleaseNote = regexp.MustCompile(`(?i)\bre[ -]?release\b`)
+	// Match subscription services and explicit streaming labels, keeping
+	// transactional notes such as "Digital HD", "VOD" and "Apple TV" eligible.
+	streamingNote = regexp.MustCompile(`(?i)\b(?:streaming|svod|starz|netflix|hulu|peacock|hbo max|crunchyroll)\b|\b(?:disney|paramount|apple tv)\+`)
+)
 
 func releaseDateOnly(value string) (string, bool) {
 	if len(value) < 10 {

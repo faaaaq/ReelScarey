@@ -36,7 +36,7 @@ func QueueMetadataRefreshTx(ctx context.Context, tx *sql.Tx, mediaID int64, full
 
 // ApplyMetadataRefresh atomically applies fetched facts only while the catalog
 // snapshot and scheduling authorization still match. Monitoring, files and
-// canonical IDs are retained. Missing provider entries are never deleted.
+// canonical IDs are retained. Partial provider responses preserve cached facts.
 func (s *Store) ApplyMetadataRefresh(ctx context.Context, expected Item, revision int64, fresh MetadataRefresh, authorize func(*sql.Tx) error) error {
 	if fresh.Movie.TMDbID != expected.TMDbID || (expected.Kind == "series" && (fresh.Series == nil || fresh.Series.TMDbID != expected.TMDbID)) {
 		return ErrRevision
@@ -101,9 +101,14 @@ func (s *Store) ApplyMetadataRefresh(ctx context.Context, expected Item, revisio
 		}
 	}
 	// The media row merges the same way: a partial provider response keeps
-	// previously valid title, year, overview, artwork, dates and runtime.
+	// previously valid facts. A complete movie release list can also replace
+	// the derived digital date with an empty selection.
 	m := fresh.Movie
-	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET title=COALESCE(NULLIF(?,''),title),year=COALESCE(?,year),overview=COALESCE(NULLIF(?,''),overview),poster_path=COALESCE(NULLIF(?,''),poster_path),release_date=COALESCE(NULLIF(?,''),release_date),theatrical_release_date=COALESCE(NULLIF(?,''),theatrical_release_date),digital_release_date=COALESCE(NULLIF(?,''),digital_release_date),physical_release_date=COALESCE(NULLIF(?,''),physical_release_date),runtime_minutes=COALESCE(?,runtime_minutes),original_language=COALESCE(NULLIF(?,''),original_language) WHERE id=?`, m.Title, m.Year, m.Overview, m.PosterPath, m.ReleaseDate, m.TheatricalReleaseDate, m.DigitalReleaseDate, m.PhysicalReleaseDate, m.RuntimeMinutes, m.OriginalLanguage, expected.ID); e != nil {
+	digitalDate := m.DigitalReleaseDate
+	if digitalDate == "" && !(expected.Kind == "movie" && m.DigitalReleaseDatesLoaded) {
+		digitalDate = current.DigitalReleaseDate
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE media_items SET title=COALESCE(NULLIF(?,''),title),year=COALESCE(?,year),overview=COALESCE(NULLIF(?,''),overview),poster_path=COALESCE(NULLIF(?,''),poster_path),release_date=COALESCE(NULLIF(?,''),release_date),theatrical_release_date=COALESCE(NULLIF(?,''),theatrical_release_date),digital_release_date=?,physical_release_date=COALESCE(NULLIF(?,''),physical_release_date),runtime_minutes=COALESCE(?,runtime_minutes),original_language=COALESCE(NULLIF(?,''),original_language) WHERE id=?`, m.Title, m.Year, m.Overview, m.PosterPath, m.ReleaseDate, m.TheatricalReleaseDate, digitalDate, m.PhysicalReleaseDate, m.RuntimeMinutes, m.OriginalLanguage, expected.ID); e != nil {
 		return e
 	}
 	payload, e := json.Marshal(fresh.Information)

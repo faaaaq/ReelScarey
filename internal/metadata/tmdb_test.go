@@ -75,6 +75,85 @@ func TestTMDbReleaseDatesParseTheatricalDigitalAndPhysical(t *testing.T) {
 	}
 }
 
+func TestJurassicWorldOriginalDigitalRelease(t *testing.T) {
+	for _, test := range []struct {
+		name, extra, additionalRegions, want string
+	}{
+		{name: "Starz with no original digital date"},
+		{name: "original Digital HD", extra: `,{"type":4,"release_date":"2015-10-01T00:00:00.000Z","note":"Digital HD"}`, want: "2015-10-01"},
+		{name: "other region original and later US availability",
+			extra:             `,{"type":4,"release_date":"2016-01-01T00:00:00.000Z","note":"Streaming on Netflix"}`,
+			additionalRegions: `,{"iso_3166_1":"SE","release_dates":[{"type":4,"release_date":"2015-10-12T00:00:00.000Z","note":"Digital HD"}]}`,
+			want:              "2015-10-12"},
+		{name: "earlier streaming debut and later US availability",
+			extra:             `,{"type":4,"release_date":"2016-01-01T00:00:00.000Z","note":"Streaming on Netflix"}`,
+			additionalRegions: `,{"iso_3166_1":"SE","release_dates":[{"type":4,"release_date":"2015-10-12T00:00:00.000Z","note":"Netflix"}]}`,
+			want:              "2015-10-12"},
+		{name: "unlabeled catalog addition", extra: `,{"type":4,"release_date":"2025-06-01T00:00:00.000Z"}`},
+		{name: "labeled re-release", extra: `,{"type":4,"release_date":"2016-01-01T00:00:00.000Z","note":"Digital re-release"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			regions := `{"iso_3166_1":"US","release_dates":[
+				{"type":1,"release_date":"2015-06-09T00:00:00.000Z"},
+				{"type":3,"release_date":"2015-06-12T00:00:00.000Z"},
+				{"type":4,"release_date":"2026-11-01T00:00:00.000Z","note":"Starz"},
+				{"type":6,"release_date":"2026-11-01T00:00:00.000Z","note":"Starz Encore"}` + test.extra + `]},
+				{"iso_3166_1":"NL","release_dates":[{"type":5,"release_date":"2015-10-07T00:00:00.000Z","note":"Blu-ray / DVD"}]}` + test.additionalRegions
+			client := newClient("https://api.themoviedb.org/3", &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+				return response(200, `{"id":135397,"title":"Jurassic World","release_date":"2015-06-06",
+					"release_dates":{"results":[`+regions+`]}}`), nil
+			})})
+			movie, err := client.Movie(context.Background(), token, 135397)
+			if err != nil || !movie.DigitalReleaseDatesLoaded || movie.DigitalReleaseDate != test.want ||
+				movie.Year == nil || *movie.Year != 2015 || movie.ReleaseDate != "2015-06-06" ||
+				movie.TheatricalReleaseDate != "2015-06-12" || movie.PhysicalReleaseDate != "2015-10-07" {
+				t.Fatalf("unexpected Jurassic World metadata: %+v, %v", movie, err)
+			}
+		})
+	}
+}
+
+func TestTMDbOriginalDigitalReleaseUsesFirstRegionalTheatricalRun(t *testing.T) {
+	client := newClient("https://api.themoviedb.org/3", &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+		return response(200, `{"id":12,"title":"A Film With a Festival Premiere","release_date":"2024-03-08",
+			"release_dates":{"results":[
+				{"iso_3166_1":"US","release_dates":[
+					{"type":1,"release_date":"2024-03-08"},
+					{"type":3,"release_date":"2025-06-06"},
+					{"type":4,"release_date":"2025-07-11","note":"Crunchyroll"},
+					{"type":4,"release_date":"2026-09-28","note":"Hulu"}]},
+				{"iso_3166_1":"DE","release_dates":[{"type":4,"release_date":"2025-08-01"}]}
+			]}}`), nil
+	})})
+	movie, err := client.Movie(context.Background(), token, 12)
+	if err != nil || movie.DigitalReleaseDate != "2025-07-11" {
+		t.Fatalf("original streaming debut was lost after a festival premiere: %+v, %v", movie, err)
+	}
+}
+
+func TestTMDbDigitalPremiereAndPartialReleaseList(t *testing.T) {
+	for _, test := range []struct {
+		name, releaseDates, want string
+		loaded                   bool
+	}{
+		{"streaming premiere", `,"release_dates":{"results":[{"iso_3166_1":"US","release_dates":[{"type":4,"release_date":"2026-10-01","note":"Netflix"}]}]}`, "2026-10-01", true},
+		{"empty results", `,"release_dates":{"results":[]}`, "", true},
+		{"omitted results", ``, "", false},
+		{"missing regional list", `,"release_dates":{"results":[{"iso_3166_1":"US"}]}`, "", false},
+		{"invalid digital entry", `,"release_dates":{"results":[{"iso_3166_1":"US","release_dates":[{"type":4,"release_date":"bad"}]}]}`, "", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := newClient("https://api.themoviedb.org/3", &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+				return response(200, `{"id":12,"title":"A Streaming Movie","release_date":"2026-10-01"`+test.releaseDates+`}`), nil
+			})})
+			movie, err := client.Movie(context.Background(), token, 12)
+			if err != nil || movie.DigitalReleaseDate != test.want || movie.DigitalReleaseDatesLoaded != test.loaded {
+				t.Fatalf("unexpected metadata: %+v, %v", movie, err)
+			}
+		})
+	}
+}
+
 func TestTMDbFailureSafety(t *testing.T) {
 	for _, test := range []struct {
 		status     int

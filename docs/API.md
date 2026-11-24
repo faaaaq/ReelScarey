@@ -966,8 +966,15 @@ leases, retry and import semantics.
 Movie DTOs include tmdb_id, title, overview, year (nullable), release_date,
 theatrical_release_date, digital_release_date, physical_release_date,
 poster_path, poster_url, and runtime_minutes (nullable). The three detailed
-dates are populated by the TMDb movie refresh from `release_dates`; release_date
-remains the canonical primary date for compatibility. Saved library items add
+dates come from TMDb movie refreshes. The original digital date excludes
+explicit re-releases, subscription availability that follows an earlier
+qualifying digital date, and candidates more than one year after the later of
+the primary date and the first theatrical date in the candidate's market.
+When a market has no theatrical date, the first known theatrical date across
+markets is used. A complete
+release list with no qualifying date clears a cached digital date. Partial
+lists and provider failures preserve the cached date when no replacement is
+available. `release_date` remains the canonical primary date. Saved library items add
 id, kind, status and monitored. Poster URLs are restricted to TMDb's official
 image host; no upstream credential is sent to the browser.
 

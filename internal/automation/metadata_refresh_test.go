@@ -98,6 +98,51 @@ func TestScheduledMetadataRefreshIsPausedBoundedAndPreservesCatalogChoices(t *te
 		t.Fatal(calendar, e)
 	}
 }
+
+func TestJurassicWorldRefreshClearsStaleDigitalRelease(t *testing.T) {
+	ctx := context.Background()
+	db, err := database.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store := library.New(db)
+	fresh := metadata.Movie{
+		TMDbID: 135397, Title: "Jurassic World", Year: newInt(2015),
+		ReleaseDate: "2015-06-06", TheatricalReleaseDate: "2015-06-12",
+		PhysicalReleaseDate: "2015-10-07", DigitalReleaseDatesLoaded: true,
+	}
+	stale := fresh
+	stale.DigitalReleaseDate = "2026-11-01"
+	item, _, err := store.AddMovie(ctx, stale, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filter := library.PlanningFilter{Kind: "movie", Month: "2026-11"}
+	now := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	calendar, err := store.Calendar(ctx, filter, now)
+	if err != nil || len(calendar.Items) != 1 || calendar.Items[0].ReleaseKind != "digital" {
+		t.Fatalf("expected old digital calendar row: %+v, %v", calendar, err)
+	}
+	refresher := NewMetadataRefresher(db, &refreshProvider{movie: fresh})
+	if err := refresher.Enqueue(ctx, item.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if worked, err := refresher.ProcessQueued(ctx); err != nil || !worked {
+		t.Fatalf("queued refresh: %v, %v", worked, err)
+	}
+	got, err := store.Item(ctx, item.ID)
+	if err != nil || got.DigitalReleaseDate != "" || !got.Monitored || got.TMDbID != item.TMDbID ||
+		got.ReleaseDate != item.ReleaseDate || got.TheatricalReleaseDate != item.TheatricalReleaseDate ||
+		got.PhysicalReleaseDate != item.PhysicalReleaseDate {
+		t.Fatalf("unexpected refreshed library item: %+v, %v", got, err)
+	}
+	calendar, err = store.Calendar(ctx, filter, now)
+	if err != nil || len(calendar.Items) != 0 {
+		t.Fatalf("stale digital calendar row remained: %+v, %v", calendar, err)
+	}
+}
+
 func TestAddedTitleQueuesAutomaticRefreshWhileSchedulePaused(t *testing.T) {
 	s, _, db, item := refreshFixture(t)
 	ctx := context.Background()
