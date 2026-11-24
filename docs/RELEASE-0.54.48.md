@@ -44,8 +44,29 @@ An earlier complete browser run had one disposable-server readiness timeout
 before the large-library scenario could run. Its retry passed, and a final
 complete run with retries disabled then passed all nine tests in 17.2 seconds.
 
+The [release application checks](https://github.com/faaaaq/ReelScarey/actions/runs/45358294852)
+also passed with Linux race-enabled tests, vet/build/smoke, Windows smoke and
+browser coverage.
+
 ## Publication and live deployment
 
-Versioned publication and the live scareypit upgrade are pending at this commit.
-This section will record the verified registry digest, attestation, backups and
-resulting application health after publication.
+Docker Hub published `faaaaq/reelscarey:0.54.48` and `faaaaq/reelscarey:latest`
+on November 24, 2026. Both registry inspections verified the same AMD64/ARM64
+manifest for release commit `173f891ef48d640dd8c28979b9e08f3e9556b128`.
+
+```text
+sha256:3ebff0062b0b5879abf4304142f5d13ee6b02dfd60a62dd23b54ac2359b7b787
+```
+
+See the [successful publish run](https://github.com/faaaaq/ReelScarey/actions/runs/45358294678).
+Both architecture builds, startup and recovery checks, final tag pulls and
+signing passed. `gh attestation verify` verified the signed digest against the
+release commit and primary branch.
+
+The scareypit Compose service was upgraded from 0.54.47 to 0.54.48 after the
+registry check. The pre-upgrade configuration was preserved at
+`/home/faaaaq/configs/reelscarey/config-backup-20261124025825`, including the
+active `state/reelscarey.db` and matching `state/secrets.key`; the Compose backup
+is `/home/faaaaq/configs/reelscarey/compose.yml.bak-20261124025825`. The recreated
+container reports `0.54.48`, is running and healthy, and retains schema 114. Its
+image ID, registry digest and OCI revision label match the verified release.
