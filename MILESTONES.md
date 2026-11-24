@@ -7,7 +7,7 @@ for limits, and [validation](docs/VALIDATION.md) for evidence.
 
 ## Current completion scope
 
-See [0.54.47](docs/RELEASE-0.54.47.md) for the current patch and release
+See [0.54.48](docs/RELEASE-0.54.48.md) for the current patch and release
 verification. The [release guide](docs/RELEASING.md) covers the current CI,
 Docker publishing and live-upgrade rules.
 
