@@ -49,6 +49,15 @@ The substantial migration, public API and NFO write-path changes passed the
 at commit `beb9547b83dc6bbbca6ae3246d7d818520318be7`, including the Linux
 race-enabled suite, browser tests and Windows smoke.
 
+The [release-commit application checks](https://github.com/faaaaq/ReelScarey/actions/runs/45325365615)
+passed the Linux race-enabled suite and browser tests. Their Windows smoke job
+was retried twice, but all three attempts failed because Chocolatey returned
+504/503 while fetching FFmpeg; the subsequent smoke assertion correctly reported
+that FFprobe was unavailable. The Windows binary build and route-level package
+tests passed on each attempt, and the identical feature tree passed the complete
+Windows smoke job in the primary checks above. The release-commit run is not
+represented as fully green.
+
 The earlier scheduled acceptance run
 [45254007529](https://github.com/faaaaq/ReelScarey/actions/runs/45254007529), on
 the preceding 0.54.46 source, failed its full-race and generated-subtitle
@@ -57,6 +66,39 @@ as passing acceptance for this release.
 
 ## Publication and live deployment
 
-Versioned publication and the live scareypit upgrade are pending at this commit.
-This section will record the verified registry digest, attestation, backups and
-resulting application health after publication.
+Docker Hub published `faaaaq/reelscarey:0.54.47` and `faaaaq/reelscarey:latest`
+on November 23, 2026. Both registry inspections verified the same AMD64/ARM64
+manifest for release commit `677fd4b291e0dfa70134427fa6d6966f53ef1382`.
+
+```text
+sha256:51140360ae1b4eff9728cee490ecb67f8a078ec41fdfb6c86d9db5fc78fec30c
+```
+
+The first [publish run](https://github.com/faaaaq/ReelScarey/actions/runs/45325365686)
+failed in the AMD64 build on the existing
+`TestAuditEConversionInterruptedMidConvertThenRetry` assertion with
+`context canceled`; it stopped before the manifest and no versioned tag was
+created. The focused test passed 20 consecutive local repetitions. Retrying the
+failed publishing job then passed both architectures, startup and recovery
+checks, final tag pulls and signing. `gh attestation verify` verified the signed
+digest against the release commit and primary branch.
+
+The live Compose service now uses `faaaaq/reelscarey:0.54.47`, reports version
+`0.54.47`, is running and healthy, and has schema 114 with both library-playlist
+tables. The running image ID, registry digest and OCI revision label all match
+the verified release.
+
+The stopped-service configuration backup is
+`/home/faaaaq/configs/reelscarey/config-backup-20261123230100`; its
+`state/reelscarey.db` contains the actual pre-upgrade schema-113 database and
+`state/secrets.key` retains the matching encryption key. The original Compose
+file is `/home/faaaaq/configs/reelscarey/compose.yml.bak-20261123230100`.
+
+The first deployment attempt used the inactive `config/reelscarey.db` for its
+schema assertion instead of the active `config/state/reelscarey.db`. That
+incorrect assertion triggered a Compose-only rollback to 0.54.46 after migration
+114 had already run; the older binary refused the newer database as designed.
+The compatible 0.54.47 image was immediately restored, then health, version,
+image identity, active schema and backup contents were verified. No database
+downgrade or restore was performed. This recovered deployment failure is recorded
+separately from the successful application and publication validation.
