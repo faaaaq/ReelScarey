@@ -430,4 +430,62 @@ test.describe.serial("Music playback compatibility", () => {
     ).toBeVisible();
     expect(pageErrors).toEqual([]);
   });
+
+  test("library playlists persist and shuffle their complete contents", async ({
+    page,
+  }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(String(error)));
+    await login(page, server);
+    await page.goto(server.url("/music/player"));
+
+    const library = page.getByRole("complementary", {
+      name: "Music library browser",
+    });
+    await library
+      .getByRole("button", { name: "New playlist", exact: true })
+      .click();
+    await page.getByRole("textbox", { name: "Playlist name" }).fill("E2E Mix");
+    await page
+      .getByRole("button", { name: "Create playlist", exact: true })
+      .click();
+    await expect(
+      library.getByRole("button", { name: /E2E Mix/ }),
+    ).toBeVisible();
+
+    async function addTrack(title: string) {
+      await page
+        .getByRole("navigation", { name: "Music collections" })
+        .getByRole("button", { name: /All tracks/ })
+        .click();
+      const table = page.getByRole("table", { name: "Music tracks" });
+      await table
+        .getByRole("button", { name: `Add ${title} to playlist`, exact: true })
+        .click();
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: /E2E Mix/ })
+        .click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+    }
+
+    await addTrack("Signal One");
+    await addTrack("Signal Two");
+    await library.getByRole("button", { name: /E2E Mix/ }).click();
+    const playlistTable = page.getByRole("table", { name: "E2E Mix tracks" });
+    await expect(playlistTable).toBeVisible();
+    await expect(playlistTable.getByRole("row")).toHaveCount(3);
+
+    await page.reload();
+    await expect(
+      page.getByRole("table", { name: "E2E Mix tracks" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Shuffle", exact: true }).click();
+    await expectDecoding(page);
+    const queue = page.getByRole("complementary", {
+      name: "Now playing and queue",
+    });
+    await expect(queue.getByRole("listitem")).toHaveCount(2);
+    expect(pageErrors).toEqual([]);
+  });
 });

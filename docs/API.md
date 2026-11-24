@@ -156,6 +156,26 @@ available for the preferred primary playback file. These optional additive
 fields are omitted for provider-only tracks and unknown values; `file_id`
 continues to identify the same primary file.
 
+Administrator-owned library playlists use canonical track IDs and are separate
+from the named-user Subsonic playlists:
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET, POST | `/api/v1/library/music/playlists` | List playlist summaries; create with `{name}` or `{name,track_id}`. |
+| GET, PUT, DELETE | `/api/v1/library/music/playlists/{id}` | Read full ordered details; rename with `{name,revision}`; delete with `{revision}`. |
+| POST, PUT, DELETE | `/api/v1/library/music/playlists/{id}/tracks` | Add `{track_id,revision}`; replace exact order with `{track_ids,revision}`; remove `{track_id,revision}`. |
+
+Creation returns 201. Other successful mutations return the full current
+`{playlist,tracks}` representation, except playlist deletion, which returns
+`{"deleted":true}`. Summary fields are `id,name,track_count,duration_ms,
+revision,created_at,updated_at`. Every tracks mutation requires the current
+parent revision and returns the advanced revision. Reorder must contain each
+existing track exactly once and cannot implicitly add/remove entries. Duplicate
+membership returns 409 `music_playlist_track_exists`; a stale revision returns
+409 `music_revision_conflict`. Unknown playlists/tracks return 404. Playlist
+deletion and entry removal never delete catalog tracks or audio files. Existing
+Subsonic named-user playlist routes and ownership semantics are unchanged.
+
 POST `/api/v1/library/music/albums/{id}/acquire` queues every missing catalog
 track for one album. POST
 `/api/v1/library/music/provider-albums/{id}/acquire` resolves a Deezer album

@@ -55,5 +55,5 @@ export function useResource<T>(
     return () => controller.abort();
   }, [path, attempt]);
 
-  return { data, error, code, loading, reload };
+  return { data, error, code, loading, reload, setData };
 }

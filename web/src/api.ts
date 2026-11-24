@@ -165,6 +165,25 @@ export type MusicArtistTrackPage = {
   limit: number;
 };
 
+export type MusicPlaylistSummary = {
+  id: number;
+  name: string;
+  track_count: number;
+  duration_ms: number;
+  revision: number;
+  created_at: number;
+  updated_at: number;
+};
+
+export type MusicPlaylistList = {
+  items: MusicPlaylistSummary[];
+};
+
+export type MusicPlaylistDetails = {
+  playlist: MusicPlaylistSummary;
+  tracks: MusicArtistTrack[];
+};
+
 export type MusicAlbumPage = {
   items: MusicAlbum[];
   page: number;

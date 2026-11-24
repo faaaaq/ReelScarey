@@ -60,6 +60,8 @@ func TestPopulatedDatabaseUpgradeAddsEvidenceAndPlaybackState(t *testing.T) {
 		DROP TRIGGER music_playback_marks_album_cleanup;
 		DROP TRIGGER music_playback_marks_artist_cleanup;
 		DROP TABLE music_playback_marks;
+		DROP TABLE music_library_playlist_entries;
+		DROP TABLE music_library_playlists;
 		DROP TABLE music_playlist_entries;
 		DROP TABLE music_playlists;
 		DROP TABLE music_play_queue_entries;
@@ -81,8 +83,8 @@ func TestPopulatedDatabaseUpgradeAddsEvidenceAndPlaybackState(t *testing.T) {
 	}
 	defer upgraded.Close()
 	version, err := database.Version(ctx, upgraded)
-	if err != nil || version != 113 {
-		t.Fatalf("schema version = %d, want 113: %v", version, err)
+	if err != nil || version != 114 {
+		t.Fatalf("schema version = %d, want 114: %v", version, err)
 	}
 	var title, origin, evidence string
 	var duration int

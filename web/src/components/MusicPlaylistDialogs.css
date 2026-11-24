@@ -1,0 +1,111 @@
+.mmp-playlist-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  color: var(--rs-text);
+}
+
+.mmp-playlist-dialog__form,
+.mmp-playlist-dialog__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mmp-playlist-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--rs-text-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mmp-playlist-dialog__heading {
+  margin: 0;
+  color: var(--rs-text-strong);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.mmp-playlist-dialog__list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: min(42vh, 320px);
+  padding: 1px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.mmp-playlist-dialog .mmp-playlist-dialog__playlist {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  height: auto;
+  min-height: 42px;
+  padding: 9px 12px;
+  text-align: left;
+}
+
+.mmp-playlist-dialog__playlist-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--rs-text-strong);
+}
+
+.mmp-playlist-dialog__playlist-count {
+  flex: none;
+  color: var(--rs-muted);
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.mmp-playlist-dialog__new {
+  padding-top: 16px;
+  border-top: 1px solid var(--rs-border);
+}
+
+.mmp-playlist-dialog .mmp-playlist-dialog__create {
+  align-self: flex-start;
+}
+
+.mmp-playlist-dialog .rs-empty {
+  padding: 20px 12px;
+}
+
+.mmp-playlist-dialog .rs-empty h2 {
+  font-size: 16px;
+}
+
+.mmp-playlist-dialog__error,
+.mmp-playlist-dialog__warning {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.mmp-playlist-dialog__warning {
+  padding: 10px 12px;
+  color: var(--rs-danger);
+  background: var(--rs-danger-soft);
+  border: 1px solid var(--rs-danger);
+  border-radius: var(--rs-radius);
+  font-size: 13px;
+}
+
+@media (max-width: 420px) {
+  .mmp-playlist-dialog .mmp-playlist-dialog__playlist {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .mmp-playlist-dialog__playlist-count {
+    white-space: normal;
+  }
+}

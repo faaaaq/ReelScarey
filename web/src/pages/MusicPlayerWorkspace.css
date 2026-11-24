@@ -118,6 +118,49 @@
   font-variant-numeric: tabular-nums;
 }
 
+.mmp-playlists-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 8px 4px 12px;
+}
+
+.mmp-playlists-title > button:first-child {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 0;
+  color: var(--rs-muted);
+  background: none;
+  border: 0;
+  text-align: left;
+}
+
+.mmp-playlists-title > button:first-child.is-active,
+.mmp-playlists-title > button:first-child:hover {
+  color: var(--rs-primary);
+}
+
+.mmp-playlists-title small {
+  color: var(--rs-faint);
+  font-size: 10px;
+}
+
+.mmp-playlist-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.mmp-playlist-artwork {
+  color: var(--rs-primary);
+}
+
 .mmp-library-index h3 {
   margin: 0;
   padding: 12px 12px 7px;

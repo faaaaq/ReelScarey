@@ -129,8 +129,10 @@ Historical native and package results below remain as records of past work.
 
 - [x] Add a MediaMonkey-inspired full music player with library/artist/album
   browsing, detailed track metadata, in-place previews, an editable Now Playing
-  queue, shuffle/repeat and responsive three-pane layout. Playback uses the
-  existing authenticated audio engine and browser-local queue persistence. See
+  queue, persistent revision-checked library playlists, complete-scope shuffle,
+  repeat and responsive three-pane layout. Playback uses the existing
+  authenticated audio engine and browser-local queue persistence. Playlists use
+  canonical track IDs independently of Subsonic playlists. See
   [full music player workspace](docs/MUSIC.md#full-music-player-workspace).
 
 - [x] Update embedded movie and TV titles while organizing and renaming media,

@@ -439,12 +439,132 @@ func (s *Store) SaveArtist(ctx context.Context, artist Artist, albums []Album) (
 	return s.Artist(ctx, id)
 }
 
+type savedLibraryPlaylistEntry struct {
+	playlistID int64
+	position   int
+	track      Track
+}
+
+type savedLibraryPlaylistTrackKey struct {
+	playlistID int64
+	trackID    int64
+}
+
+// saveTracksPlaylistEntries captures canonical memberships before the catalog
+// cascade. Provider identities are preferred over catalog ordering metadata.
+func saveTracksPlaylistEntries(ctx context.Context, tx *sql.Tx, albumID int64) ([]savedLibraryPlaylistEntry, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT e.playlist_id,e.position,t.musicbrainz_id,t.recording_id,t.disc,t.number,t.title
+		FROM music_library_playlist_entries e JOIN music_tracks t ON t.id=e.track_id
+		WHERE t.album_id=? ORDER BY e.playlist_id,e.position,e.track_id`, albumID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := []savedLibraryPlaylistEntry{}
+	for rows.Next() {
+		var entry savedLibraryPlaylistEntry
+		if err := rows.Scan(&entry.playlistID, &entry.position, &entry.track.MusicBrainzID, &entry.track.RecordingID,
+			&entry.track.Disc, &entry.track.Number, &entry.track.Title); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+// restoreSaveTracksPlaylistEntries reconnects only stable logical track
+// matches, one new canonical track per playlist entry. Original positions are
+// retained, so a genuinely removed track can leave a gap until the next
+// reviewed playlist mutation compacts the list.
+func restoreSaveTracksPlaylistEntries(ctx context.Context, tx *sql.Tx, albumID int64, entries []savedLibraryPlaylistEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id,musicbrainz_id,recording_id,disc,number,title FROM music_tracks WHERE album_id=? ORDER BY id`, albumID)
+	if err != nil {
+		return err
+	}
+	inserted := []Track{}
+	for rows.Next() {
+		var track Track
+		if err := rows.Scan(&track.ID, &track.MusicBrainzID, &track.RecordingID, &track.Disc, &track.Number, &track.Title); err != nil {
+			rows.Close()
+			return err
+		}
+		inserted = append(inserted, track)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	matched := make([]bool, len(entries))
+	used := make(map[savedLibraryPlaylistTrackKey]bool)
+	// Complete every MusicBrainz-ID match before considering recording IDs,
+	// then use disc/number/title only where neither side has provider identity.
+	for pass := 0; pass < 3; pass++ {
+		for index, entry := range entries {
+			if matched[index] {
+				continue
+			}
+			old := entry.track
+			switch pass {
+			case 0:
+				if old.MusicBrainzID == "" {
+					continue
+				}
+			case 1:
+				if old.RecordingID == "" {
+					continue
+				}
+			case 2:
+				if old.MusicBrainzID != "" || old.RecordingID != "" {
+					continue
+				}
+			}
+			for _, candidate := range inserted {
+				key := savedLibraryPlaylistTrackKey{playlistID: entry.playlistID, trackID: candidate.ID}
+				if used[key] {
+					continue
+				}
+				matches := false
+				switch pass {
+				case 0:
+					matches = candidate.MusicBrainzID == old.MusicBrainzID
+				case 1:
+					matches = candidate.RecordingID == old.RecordingID
+				case 2:
+					matches = candidate.MusicBrainzID == "" && candidate.RecordingID == "" &&
+						candidate.Disc == old.Disc && candidate.Number == old.Number && candidate.Title == old.Title
+				}
+				if !matches {
+					continue
+				}
+				if _, err := tx.ExecContext(ctx, `INSERT INTO music_library_playlist_entries(playlist_id,track_id,position) VALUES(?,?,?)`,
+					entry.playlistID, candidate.ID, entry.position); err != nil {
+					return err
+				}
+				used[key] = true
+				matched[index] = true
+				break
+			}
+		}
+	}
+	return nil
+}
+
 func (s *Store) SaveTracks(ctx context.Context, albumID int64, tracks []Track) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	entries, err := saveTracksPlaylistEntries(ctx, tx, albumID)
+	if err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM music_tracks WHERE album_id=?`, albumID); err != nil {
 		return err
 	}
@@ -454,6 +574,9 @@ func (s *Store) SaveTracks(ctx context.Context, albumID int64, tracks []Track) e
 			albumID, track.MusicBrainzID, track.RecordingID, track.Disc, track.Number, track.Title, track.DurationMS, now, now); err != nil {
 			return err
 		}
+	}
+	if err = restoreSaveTracksPlaylistEntries(ctx, tx, albumID, entries); err != nil {
+		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE music_albums SET tracks_loaded=1 WHERE id=?`, albumID); err != nil {
 		return err

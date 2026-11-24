@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -124,7 +124,37 @@ function responsePage(url: URL) {
   return Number(url.searchParams.get("page") || "1");
 }
 
-function installWorkspaceFetch() {
+type WorkspaceFetchOptions = {
+  globalTracks?: MusicArtistTrack[];
+  artistTracks?: MusicArtistTrack[];
+  albumTracks?: MusicArtistTrack[];
+  failGlobalPageOnce?: number;
+  globalPageTwoGate?: Promise<void>;
+};
+
+function generatedTracks(
+  prefix: string,
+  count: number,
+  firstID = 2000,
+): MusicArtistTrack[] {
+  return Array.from({ length: count }, (_, index) => {
+    const id = firstID + index;
+    const title = `${prefix} ${String(index + 1).padStart(3, "0")}`;
+    return {
+      ...TRACKS[0],
+      id,
+      musicbrainz_id: `track-${id}`,
+      recording_id: `recording-${id}`,
+      number: index + 1,
+      title,
+      file_id: id + 10_000,
+      relative_path: `North Sea/Harbor Lights/${title}.flac`,
+    };
+  });
+}
+
+function installWorkspaceFetch(options: WorkspaceFetchOptions = {}) {
+  let globalFailureConsumed = false;
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const requestedURL = String(input);
     const url = new URL(requestedURL, "http://workspace.test");
@@ -147,27 +177,50 @@ function installWorkspaceFetch() {
         limit: 48,
       });
     }
+    if (path === "/api/v1/library/music/playlists") {
+      return Response.json({ items: [] });
+    }
     if (path === "/api/v1/library/music/tracks") {
+      const items = options.globalTracks ?? TRACKS;
+      const page = responsePage(url);
+      if (page === options.failGlobalPageOnce && !globalFailureConsumed) {
+        globalFailureConsumed = true;
+        return Response.json(
+          { error: { message: "The later track page is unavailable." } },
+          { status: 503 },
+        );
+      }
+      if (page === 2 && options.globalPageTwoGate) {
+        await options.globalPageTwoGate;
+      }
+      const limit = Number(url.searchParams.get("limit") || "100");
       return Response.json({
-        items: TRACKS,
-        page: responsePage(url),
-        total: TRACKS.length,
-        limit: 100,
+        items: items.slice((page - 1) * limit, page * limit),
+        page,
+        total: items.length,
+        limit,
       });
     }
     if (path === "/api/v1/library/music/artists/7") {
       return Response.json({ artist: ARTIST, albums: [ALBUM] });
     }
     if (path === "/api/v1/library/music/artists/7/tracks") {
+      const items = options.artistTracks ?? [TRACKS[0]];
+      const page = responsePage(url);
+      const limit = Number(url.searchParams.get("limit") || "100");
       return Response.json({
-        items: [TRACKS[0]],
-        page: 1,
-        total: 1,
-        limit: 100,
+        items: items.slice((page - 1) * limit, page * limit),
+        page,
+        total: items.length,
+        limit,
       });
     }
     if (path === "/api/v1/library/music/albums/11") {
-      return Response.json({ album: ALBUM, tracks: TRACKS });
+      const tracks = options.albumTracks ?? TRACKS;
+      return Response.json({
+        album: { ...ALBUM, track_count: tracks.length },
+        tracks,
+      });
     }
     if (
       /^\/api\/v1\/library\/music\/(albums\/\d+\/cover|artists\/\d+\/image)$/.test(
@@ -202,8 +255,8 @@ function currentURL() {
   );
 }
 
-function renderWorkspace(entry: string) {
-  const fetchMock = installWorkspaceFetch();
+function renderWorkspace(entry: string, options: WorkspaceFetchOptions = {}) {
+  const fetchMock = installWorkspaceFetch(options);
   render(
     <Theme>
       <MusicPlayerProvider>
@@ -516,6 +569,216 @@ describe("MusicPlayerWorkspace", () => {
       expect(requestedURLs(fetchMock)).toContain(
         `/api/v1/library/music/albums?page=2&limit=48&${encodedQuery}`,
       ),
+    );
+  });
+
+  it("shuffles the complete filtered global list from a later visible page", async () => {
+    const user = userEvent.setup();
+    const tracks = generatedTracks("Global", 105);
+    const fetchMock = renderWorkspace(
+      "/music/player?query=Bj%C3%B6rk+%26+Co&page=2",
+      { globalTracks: tracks },
+    );
+
+    expect(
+      await screen.findByRole("row", { name: /Global 105/ }),
+    ).toBeVisible();
+    expect(screen.getByText("Page 2 of 2")).toBeVisible();
+    fetchMock.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "Shuffle" }));
+
+    await waitFor(() => expect(queueTitles()).toHaveLength(tracks.length));
+    expect([...queueTitles()].sort()).toEqual(
+      tracks.map((track) => track.title).sort(),
+    );
+    const encodedQuery = "query=Bj%C3%B6rk+%26+Co";
+    expect(
+      requestedURLs(fetchMock).filter((url) =>
+        url.startsWith("/api/v1/library/music/tracks?"),
+      ),
+    ).toEqual([
+      `/api/v1/library/music/tracks?page=1&limit=100&${encodedQuery}`,
+      `/api/v1/library/music/tracks?page=2&limit=100&${encodedQuery}`,
+    ]);
+    expect(queueTitles()).toContain("Global 105");
+  });
+
+  it("loads every artist page for Shuffle", async () => {
+    const user = userEvent.setup();
+    const artistTracks = generatedTracks("Artist", 105, 4000);
+    const artistFetch = renderWorkspace("/music/player?view=artists&artist=7", {
+      artistTracks,
+    });
+
+    expect(
+      await screen.findByRole("row", { name: /Artist 001/ }),
+    ).toBeVisible();
+    artistFetch.mockClear();
+    await user.click(screen.getByRole("button", { name: "Shuffle" }));
+
+    await waitFor(() =>
+      expect(queueTitles()).toHaveLength(artistTracks.length),
+    );
+    expect(queueTitles()).toContain("Artist 105");
+    expect(
+      requestedURLs(artistFetch).filter((url) =>
+        url.startsWith("/api/v1/library/music/artists/7/tracks?"),
+      ),
+    ).toEqual([
+      "/api/v1/library/music/artists/7/tracks?page=1&limit=100",
+      "/api/v1/library/music/artists/7/tracks?page=2&limit=100",
+    ]);
+  });
+
+  it("shuffles album detail tracks without global or artist pagination", async () => {
+    const user = userEvent.setup();
+    const albumTracks = generatedTracks("Album", 3, 6000);
+    const fetchMock = renderWorkspace("/music/player?view=albums&album=11", {
+      albumTracks,
+    });
+
+    expect(await screen.findByRole("row", { name: /Album 003/ })).toBeVisible();
+    fetchMock.mockClear();
+    await user.click(screen.getByRole("button", { name: "Shuffle" }));
+
+    await waitFor(() => expect(queueTitles()).toHaveLength(albumTracks.length));
+    expect([...queueTitles()].sort()).toEqual(
+      albumTracks.map((track) => track.title).sort(),
+    );
+    expect(requestedURLs(fetchMock)).toContain(
+      "/api/v1/library/music/albums/11",
+    );
+    expect(
+      requestedURLs(fetchMock).filter(
+        (url) =>
+          url.startsWith("/api/v1/library/music/tracks?") ||
+          url.startsWith("/api/v1/library/music/artists/7/tracks?"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps the existing queue intact when a later Shuffle page fails", async () => {
+    const user = userEvent.setup();
+    const tracks = generatedTracks("Global", 105, 8000);
+    const fetchMock = renderWorkspace("/music/player", {
+      globalTracks: tracks,
+      failGlobalPageOnce: 2,
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Play Global 001" }),
+    );
+    const originalQueue = queueTitles();
+    expect(originalQueue).toHaveLength(100);
+    fetchMock.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "Shuffle" }));
+    expect(
+      await screen.findByText("The later track page is unavailable."),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
+    expect(queueTitles()).toEqual(originalQueue);
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(queueTitles()).toHaveLength(tracks.length));
+    expect([...queueTitles()].sort()).toEqual(
+      tracks.map((track) => track.title).sort(),
+    );
+    expect(
+      requestedURLs(fetchMock).filter((url) =>
+        url.includes("/api/v1/library/music/tracks?page=1&limit=100"),
+      ),
+    ).toHaveLength(2);
+  }, 15000);
+
+  it("does not complete an older Shuffle after a Now Playing track change", async () => {
+    const user = userEvent.setup();
+    let releaseSecondPage!: () => void;
+    const globalPageTwoGate = new Promise<void>((resolve) => {
+      releaseSecondPage = resolve;
+    });
+    const tracks = generatedTracks("Global", 105, 11_000);
+    const fetchMock = renderWorkspace("/music/player", {
+      globalTracks: tracks,
+      globalPageTwoGate,
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Play Global 001" }),
+    );
+    const originalQueue = queueTitles();
+    await user.click(screen.getByRole("button", { name: "Shuffle" }));
+    await waitFor(() =>
+      expect(requestedURLs(fetchMock)).toContain(
+        "/api/v1/library/music/tracks?page=2&limit=100",
+      ),
+    );
+
+    const queue = screen.getByRole("list", { name: "Playback queue" });
+    await user.click(
+      within(queue).getByRole("button", { name: "Play Global 002" }),
+    );
+    await act(async () => {
+      releaseSecondPage();
+      await globalPageTwoGate;
+    });
+
+    expect(queueTitles()).toEqual(originalQueue);
+    expect(
+      document.querySelector(".music-now-playing-current h3")?.textContent,
+    ).toBe("Global 002");
+  }, 15000);
+
+  it("does not let a stale global Shuffle replace a newer album queue", async () => {
+    const user = userEvent.setup();
+    let releaseSecondPage!: () => void;
+    const globalPageTwoGate = new Promise<void>((resolve) => {
+      releaseSecondPage = resolve;
+    });
+    const tracks = generatedTracks("Global", 105, 10_000);
+    const fetchMock = renderWorkspace("/music/player", {
+      globalTracks: tracks,
+      globalPageTwoGate,
+    });
+
+    expect(
+      await screen.findByRole("row", { name: /Global 001/ }),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Shuffle" }));
+    await waitFor(() =>
+      expect(requestedURLs(fetchMock)).toContain(
+        "/api/v1/library/music/tracks?page=2&limit=100",
+      ),
+    );
+
+    const collections = screen.getByRole("navigation", {
+      name: "Music collections",
+    });
+    await user.click(
+      within(collections).getByRole("button", { name: /^Albums/ }),
+    );
+    const albums = await screen.findByRole("region", { name: "Albums" });
+    await user.click(
+      within(albums).getByRole("button", { name: /Harbor Lights/ }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Harbor Lights", level: 2 }),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Shuffle" }));
+    await waitFor(() => expect(queueTitles()).toHaveLength(3));
+    const albumQueue = queueTitles();
+
+    await act(async () => {
+      releaseSecondPage();
+      await globalPageTwoGate;
+    });
+
+    expect(queueTitles()).toEqual(albumQueue);
+    expect([...queueTitles()].sort()).toEqual(
+      TRACKS.slice(0, 3)
+        .map((track) => track.title)
+        .sort(),
     );
   });
 });
