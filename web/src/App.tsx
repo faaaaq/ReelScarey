@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Button, DropdownMenu } from "@radix-ui/themes";
-import { ChevronDown, LogOut, Menu, User, X } from "lucide-react";
+import { ChevronDown, LogOut, Menu, Plus, User, X } from "lucide-react";
 import {
   Link,
   Navigate,
@@ -364,13 +364,17 @@ function AppShell() {
             </button>
             <Link to="/" className="rs-logo" aria-label="ReelScarey dashboard">
               <span className="rs-logo-mark">
-                <ReelMark />
+                <img src="/favicon.svg" alt="" width="32" height="32" />
               </span>
               <span className="rs-logo-text">ReelScarey</span>
             </Link>
           </div>
           <GlobalSearch />
           <div className="rs-header-actions">
+            <Link className="rs-header-add" to="/search" aria-label="Add media">
+              <Plus size={17} aria-hidden="true" />
+              <span>Add media</span>
+            </Link>
             <HistoryTray />
             <ThemeToggle />
             <AccountMenu onError={setAccountError} />
@@ -488,25 +492,5 @@ function AppShell() {
         <MusicPlayerBar />
       </div>
     </MusicPlayerProvider>
-  );
-}
-
-function ReelMark() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-      <circle
-        cx="12"
-        cy="12"
-        r="9.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-      <circle cx="12" cy="7.2" r="2" fill="currentColor" />
-      <circle cx="12" cy="16.8" r="2" fill="currentColor" />
-      <circle cx="7.2" cy="12" r="2" fill="currentColor" />
-      <circle cx="16.8" cy="12" r="2" fill="currentColor" />
-      <circle cx="12" cy="12" r="1" fill="currentColor" />
-    </svg>
   );
 }

@@ -22,7 +22,17 @@ export type System = {
   paths: { config: string; media: string; downloads: string };
   capabilities: Record<string, boolean>;
 };
+export type RecentTitle = {
+  id: number;
+  kind: "movie" | "series" | "album";
+  category: string;
+  title: string;
+  year: number | null;
+  artwork_url: string;
+};
+
 export type Dashboard = {
+  recent?: RecentTitle[];
   library_name: string;
   counts: { movies: number; series: number; anime?: number };
   settings_revision: number;

@@ -70,8 +70,8 @@ describe("music player", () => {
     const audio = document.querySelector("audio");
     // jsdom's canPlayType reports no codec support, so the player negotiates
     // the compatible MP3 fallback instead of the server's Ogg/Opus default.
-    expect(audio?.getAttribute("src")).toBe(
-      "/api/v1/library/music/files/7/stream?format=mp3&maxBitRate=192",
+    expect(audio?.getAttribute("src")).toMatch(
+      /^\/api\/v1\/library\/music\/files\/7\/stream\?compat=mp3&stream_id=[a-f0-9]{32}$/,
     );
     await userEvent.click(screen.getByRole("button", { name: "Close player" }));
     await waitFor(() =>
@@ -102,7 +102,7 @@ describe("music player", () => {
       .spyOn(HTMLMediaElement.prototype, "canPlayType")
       .mockReturnValue("");
     const audio = await renderAndPlay();
-    expect(audio?.getAttribute("src")).toContain("format=mp3&maxBitRate=192");
+    expect(audio?.getAttribute("src")).toContain("compat=mp3");
     noOpus.mockRestore();
     cleanup();
 
@@ -110,8 +110,8 @@ describe("music player", () => {
       .spyOn(HTMLMediaElement.prototype, "canPlayType")
       .mockReturnValue("probably");
     const audio2 = await renderAndPlay();
-    expect(audio2?.getAttribute("src")).toBe(
-      "/api/v1/library/music/files/7/stream",
+    expect(audio2?.getAttribute("src")).toMatch(
+      /^\/api\/v1\/library\/music\/files\/7\/stream\?stream_id=[a-f0-9]{32}$/,
     );
     withOpus.mockRestore();
   });
@@ -133,8 +133,8 @@ describe("music player", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     expect(await screen.findByText("Airbag")).toBeVisible();
-    expect(document.querySelector("audio")?.getAttribute("src")).toBe(
-      "/api/v1/library/music/files/7/stream",
+    expect(document.querySelector("audio")?.getAttribute("src")).toMatch(
+      /^\/api\/v1\/library\/music\/files\/7\/stream\?stream_id=[a-f0-9]{32}$/,
     );
     maybe.mockRestore();
   });
@@ -163,7 +163,7 @@ describe("music player", () => {
       target: { value: "42" },
     });
     expect(audio.getAttribute("src")).toContain("timeOffset=42");
-    expect(audio.getAttribute("src")).toContain("format=mp3");
+    expect(audio.getAttribute("src")).toContain("compat=mp3");
     expect(screen.getByRole("slider", { name: "Seek" })).toHaveValue("42");
   });
 

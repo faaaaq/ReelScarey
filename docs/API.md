@@ -148,7 +148,16 @@ returns only tracks with registered files, in newest-album order; `limit`
 defaults to 15 and is capped at 100. GET
 `/api/v1/library/music/files/{id}/stream` serves one registered audio file
 with its media type and HTTP Range support; the response never exposes the
-stored path. GET `/api/v1/library/music/albums/{id}`
+stored path. The web player supplies a fresh 32-digit hexadecimal
+`stream_id` for each loaded source. GET
+`/api/v1/library/music/files/{id}/stream-info?stream_id=…` returns the
+observed `codec`, `mode`, `range_seekable` and `bitrate_kbps` when known.
+The bitrate is the encoder target for a conversion and the registered bitrate
+for direct audio. The details are available for recent audio requests and
+reading them does not open another stream. Browsers that request
+`compat=mp3` use MP3 with the saved quality's bitrate cap (192 kbps for
+Original). Explicit `format` and `maxBitRate` parameters take precedence.
+GET `/api/v1/library/music/albums/{id}`
 returns the album and its tracks; the first read loads tracks from MusicBrainz.
 GET `/api/v1/library/music/artists/{id}/image` and
 `/api/v1/library/music/albums/{id}/cover` serve downloaded, cached artwork from
@@ -763,7 +772,7 @@ explicitly documented as breaking before the first stable release.
 | GET | `/healthz` | Process liveness; `{"status":"ok"}` |
 | GET | `/readyz` | Database ping, 2-second deadline; 200 ready or 503 |
 | GET | `/api/v1/system` | Version, schema, uptime, configured paths, explicit capabilities |
-| GET | `/api/v1/dashboard` | Library name, real SQL movie/series counts, settings revision/time |
+| GET | `/api/v1/dashboard` | Library name, catalog counts, settings revision/time, and up to five recently added movie, series or album entries with catalog IDs and artwork URLs |
 | GET | `/api/v1/settings` | Current library preferences and revision |
 | PUT | `/api/v1/settings` | Validate and atomically update preferences if revision matches |
 | GET | `/api/v1/library?kind=movie&page=1&query=&status=all&monitored=all&sort=title&profile=all` | Filtered movies, saved metadata, filtered/collection totals and coherent effective-profile context |

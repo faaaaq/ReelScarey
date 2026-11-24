@@ -59,6 +59,7 @@ type Server struct {
 	auth             *auth.Service
 	metadata         *metadata.Service
 	music            MusicService
+	musicStreams     browserMusicStreams
 	transfer         *transfer.Service
 	automation       *automation.Service
 	subtitle         *subtitle.Service
@@ -607,6 +608,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/scans/{id}/skip", method(http.MethodPost, s.musicScanSkip))
 	mux.HandleFunc("/api/v1/library/music/files", method(http.MethodGet, s.musicFiles))
 	mux.HandleFunc("/api/v1/library/music/files/{id}/stream", method(http.MethodGet, s.musicFileStream))
+	mux.HandleFunc("/api/v1/library/music/files/{id}/stream-info", method(http.MethodGet, s.musicFileStreamInfo))
 	mux.HandleFunc("/api/v1/library/music/files/{id}/export", method(http.MethodGet, s.musicFileExport))
 	mux.HandleFunc("/api/v1/library/music/profiles", s.musicProfiles)
 	mux.HandleFunc("/api/v1/library/music/profiles/{id}", s.musicProfile)
@@ -747,7 +749,12 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, "dashboard_settings", err)
 		return
 	}
-	send(w, 200, map[string]any{"library_name": prefs.LibraryName, "counts": counts, "settings_revision": prefs.Revision, "settings_updated_at": prefs.UpdatedAt})
+	recent, err := s.recentCatalog(r.Context())
+	if err != nil {
+		s.internal(w, "dashboard_recent_catalog", err)
+		return
+	}
+	send(w, 200, map[string]any{"library_name": prefs.LibraryName, "recent": recent, "counts": counts, "settings_revision": prefs.Revision, "settings_updated_at": prefs.UpdatedAt})
 }
 
 func (s *Server) listLibrary(w http.ResponseWriter, r *http.Request) {

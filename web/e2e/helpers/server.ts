@@ -249,7 +249,7 @@ function rmExists(p: string): boolean {
   }
 }
 
-/** Logs in through the real sign-in form and waits for the dashboard. */
+/** Logs in through the real sign-in form and waits for the signed-in shell. */
 export async function login(
   page: import("@playwright/test").Page,
   server: ServerFixture,
@@ -258,12 +258,11 @@ export async function login(
   await page.getByLabel("Username").fill(server.session!.username);
   await page.getByLabel("Password").fill(server.session!.password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  // Signed-in shell: the main navigation replaces the auth screen. (The
-  // dashboard heading shows the configured library name, which tests may
-  // have changed, so do not key on it.)
+  // The account menu is visible on desktop and mobile with the sidebar closed.
   await page
-    .getByRole("navigation")
-    .first()
-    .getByRole("link", { name: "Dashboard" })
+    .getByRole("button", {
+      name: `Account: ${server.session!.username}`,
+      exact: true,
+    })
     .waitFor({ timeout: 20000 });
 }

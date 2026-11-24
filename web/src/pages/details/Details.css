@@ -524,3 +524,15 @@
     grid-column: 1 / -1;
   }
 }
+
+.det-header {
+  background-image: var(--rs-material);
+  box-shadow: var(--rs-elevation);
+}
+.det-backdrop {
+  opacity: 0.28;
+  mask-image: linear-gradient(90deg, transparent, black);
+}
+.det-poster {
+  box-shadow: var(--rs-elevation);
+}

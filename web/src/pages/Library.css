@@ -46,6 +46,8 @@
   list-style: none;
 }
 .lib-card {
+  background: var(--rs-material);
+  box-shadow: var(--rs-elevation);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -117,7 +119,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 9px 4px 5px;
+  padding: 10px;
   min-width: 0;
 }
 .lib-card-line {
@@ -476,4 +478,9 @@
 
 [data-selecting] {
   cursor: pointer;
+}
+
+.lib-filters,
+.lib-select-bar {
+  box-shadow: var(--rs-elevation);
 }

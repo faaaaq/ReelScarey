@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
-import { Inbox, LogOut, RefreshCw, UserPlus, Clock } from "lucide-react";
+import { LogOut, RefreshCw, UserPlus, Clock } from "lucide-react";
 import {
   Alert,
   ConfirmDialog,
@@ -145,7 +145,7 @@ export function RequesterHome() {
         <div className="rs-header-logo">
           <span className="rs-logo">
             <span className="rs-logo-mark">
-              <Inbox size={18} aria-hidden="true" />
+              <img src="/favicon.svg" alt="" width="32" height="32" />
             </span>
             <span className="rs-logo-text">ReelScarey</span>
           </span>

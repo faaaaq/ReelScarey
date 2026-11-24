@@ -57,9 +57,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     >
       <Theme
         appearance={mode}
-        accentColor="blue"
+        accentColor="orange"
         grayColor="gray"
-        radius="small"
+        radius="medium"
         panelBackground="solid"
         className="rs-app-theme"
       >

@@ -454,22 +454,29 @@ func (s *Server) globalStreamingQuality(ctx context.Context) string {
 // saved global streaming quality is the default conversion target. Explicit
 // format/rate parameters win; original quality still uses the common planner
 // so playable files remain direct and incompatible containers convert honestly.
-func (s *Server) webPlayerStream(ctx context.Context, id int64, explicitFormat string, explicitRate, timeOffset int) (music.PlaybackStream, error) {
+func (s *Server) webPlayerStream(ctx context.Context, id int64, explicitFormat string, explicitRate, timeOffset int, mp3Compatibility bool) (music.PlaybackStream, error) {
 	// An explicit format or a rate-only cap takes precedence over saved quality.
 	if explicitFormat != "" || explicitRate > 0 {
 		return s.music.OpenPlayback(ctx, id, explicitFormat, explicitRate, timeOffset)
 	}
+	quality := "original"
 	if svc, ok := s.musicPreferenceReader(); ok {
 		prefs, err := svc.GetPreferences(ctx)
-		if err == nil && !strings.EqualFold(strings.TrimSpace(prefs.StreamingQuality), "original") {
-			format, rate := music.StreamingQualityParams(prefs.StreamingQuality)
-			return s.music.OpenPlayback(ctx, id, format, rate, timeOffset)
+		if err == nil {
+			quality = strings.ToLower(strings.TrimSpace(prefs.StreamingQuality))
+		}
+	}
+	format, rate := music.StreamingQualityParams(quality)
+	if mp3Compatibility {
+		format = "mp3"
+		if rate == 0 {
+			rate = 192
 		}
 	}
 	// Original-quality playback still uses the common planner: playable files
 	// remain byte-for-byte direct, incompatible containers and active seeks get
 	// the same honest compatibility conversion as Subsonic clients.
-	return s.music.OpenPlayback(ctx, id, "", 0, timeOffset)
+	return s.music.OpenPlayback(ctx, id, format, rate, timeOffset)
 }
 
 // clampStreamBitRate parses a client-supplied stream bitrate, falling back to

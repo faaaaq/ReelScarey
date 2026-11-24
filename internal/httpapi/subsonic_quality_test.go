@@ -7,6 +7,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -121,6 +122,46 @@ func TestWebPlayerStreamQuality(t *testing.T) {
 	}
 	if original.gotFormats != 1 || original.gotFormat != "" || original.gotRate != 0 {
 		t.Fatalf("original quality must use the direct planner without a conversion target: calls=%d format=%q rate=%d", original.gotFormats, original.gotFormat, original.gotRate)
+	}
+}
+
+func TestWebPlayerStreamInfoDescribesTheDeliveredAudio(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(path, []byte("0123456789"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	musicService := &recordingMusic{
+		fakeMusic: &fakeMusic{audioPath: path},
+		prefs:     music.MusicPreferences{StreamingQuality: "high"},
+	}
+	handler, session := musicFixture(t, musicService)
+	const query = "?stream_id=0123456789abcdef0123456789abcdef"
+	const track = "/api/v1/library/music/files/1"
+	if out := request(handler, "GET", track+"/stream-info"+query, "", session, false); out.Code != 404 {
+		t.Fatalf("unopened stream: %d %s", out.Code, out.Body.String())
+	}
+	if out := request(handler, "GET", track+"/stream"+query+"&compat=mp3", "", session, false); out.Code != 200 {
+		t.Fatalf("open: %d %s", out.Code, out.Body.String())
+	}
+	if musicService.gotFormat != "mp3" || musicService.gotRate != 128 {
+		t.Fatalf("compatibility should use the saved bitrate target: %q %d", musicService.gotFormat, musicService.gotRate)
+	}
+	out := request(handler, "GET", track+"/stream-info"+query, "", session, false)
+	var info browserMusicStreamInfo
+	if out.Code != 200 || json.Unmarshal(out.Body.Bytes(), &info) != nil {
+		t.Fatalf("stream info: %d %s", out.Code, out.Body.String())
+	}
+	if info.Codec != "mp3" || info.Mode != "direct" || !info.RangeSeekable || info.BitrateKbps != 0 {
+		t.Fatalf("the fake provided direct audio rather than an encoder target: %+v", info)
+	}
+	if musicService.gotFormats != 1 {
+		t.Fatalf("reading stream details reopened the audio: %d opens", musicService.gotFormats)
+	}
+	if out.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("transient stream details must not be cached")
+	}
+	if other := request(handler, "GET", "/api/v1/library/music/files/2/stream-info"+query, "", session, false); other.Code != 404 {
+		t.Fatalf("stream info must be scoped to the track ID: %d %s", other.Code, other.Body.String())
 	}
 }
 

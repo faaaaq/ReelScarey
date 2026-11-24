@@ -1,9 +1,4 @@
-/* ReelScarey application styles.
-   Design language follows Sonarr/Radarr: a fixed page header, a left sidebar
-   with nested sections, compact page toolbars, dense
-   tables, fieldset-style settings forms and small rectangular labels.
-   Every color comes from the tokens below so both themes stay equal. Page
-   files may add layout rules, but must not introduce their own palette. */
+/* Shared ReelScarey shell, typography, surfaces and controls. */
 
 @import "tailwindcss";
 
@@ -15,37 +10,47 @@ html[data-theme="dark"] {
     "Ubuntu Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono",
     monospace;
 
-  --rs-brand: #7dd8ee;
-  --rs-page-bg: #151920;
-  --rs-header-bg: #1b2028;
-  --rs-header-text: #e1e2e3;
-  --rs-sidebar-bg: #1b2028;
-  --rs-sidebar-text: #e1e2e3;
-  --rs-sidebar-active-bg: #263341;
-  --rs-sidebar-child-bg: #191e26;
-  --rs-toolbar-bg: #1b2028;
-  --rs-toolbar-text: #e1e2e3;
-  --rs-toolbar-border: #323c49;
-  --rs-surface: #1e252e;
-  --rs-surface-2: #252e39;
-  --rs-surface-3: #2b3643;
+  --rs-brand: #ff973d;
+  --rs-page-bg: #101215;
+  --rs-header-bg: #1a1c20;
+  --rs-header-text: #f2eee9;
+  --rs-sidebar-bg: #1a1c20;
+  --rs-sidebar-text: #f2eee9;
+  --rs-sidebar-active-bg: #383330;
+  --rs-sidebar-child-bg: #222326;
+  --rs-toolbar-bg: #1a1c20;
+  --rs-toolbar-text: #f2eee9;
+  --rs-toolbar-border: #3c3c40;
+  --rs-surface: #222327;
+  --rs-surface-2: #2a2b30;
+  --rs-surface-3: #34353a;
   --rs-hover: rgba(255, 255, 255, 0.05);
-  --rs-selected: rgba(53, 197, 244, 0.14);
-  --rs-border: #323c49;
-  --rs-border-strong: #465363;
-  --rs-text: #d0d7e1;
-  --rs-text-strong: #f3f6fb;
-  --rs-muted: #a6b2c2;
-  --rs-faint: #909eaf;
-  --rs-link: #8ad1ec;
-  --rs-link-hover: #b4e7f7;
-  --rs-input-bg: #191f28;
-  --rs-input-border: #526071;
-  --rs-input-text: #e1e2e3;
+  --rs-selected: rgba(255, 151, 61, 0.16);
+  --rs-border: #3c3c40;
+  --rs-border-strong: #606065;
+  --rs-text: #e6e2de;
+  --rs-text-strong: #faf7f3;
+  --rs-muted: #c1bdba;
+  --rs-faint: #aaa7a5;
+  --rs-link: #ffae6b;
+  --rs-link-hover: #ffca9d;
+  --rs-input-bg: #17181c;
+  --rs-input-border: #636368;
+  --rs-input-text: #f2eee9;
   --rs-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 
-  --rs-primary: #79cde5;
-  --rs-primary-hover: #a0def0;
+  --rs-rim: rgb(255 255 255 / 0.12);
+  --rs-elevation: inset 0 1px var(--rs-rim), 0 2px 3px #0003, 0 8px 22px #0005;
+  --rs-atmosphere:
+    radial-gradient(ellipse at 88% 0%, #a34a192d, transparent 48%),
+    radial-gradient(ellipse at 16% 90%, #344d7721, transparent 45%);
+  --rs-material: linear-gradient(
+    155deg,
+    var(--rs-surface-2),
+    var(--rs-surface) 55%
+  );
+  --rs-primary: #ff983f;
+  --rs-primary-hover: #ffb475;
   --rs-success: #27c24c;
   --rs-danger: #f46060;
   --rs-warning: #ffa500;
@@ -63,41 +68,49 @@ html[data-theme="dark"] {
   --rs-header-height: 60px;
   --rs-sidebar-width: 210px;
   --rs-toolbar-height: 60px;
-  --rs-radius: 6px;
+  --rs-radius: 9px;
   --rs-content-gutter: clamp(20px, 2.2vw, 36px);
-  --rs-accent-ink: #11232b;
+  --rs-accent-ink: #271404;
 }
 
 html[data-theme="light"] {
   color-scheme: light;
-  --rs-primary: #126582;
-  --rs-primary-hover: #0f506a;
+  --rs-rim: rgb(255 255 255 / 0.85);
+  --rs-elevation:
+    inset 0 1px var(--rs-rim), 0 2px 3px #392a1c0d, 0 7px 18px #392a1c12;
+  --rs-atmosphere: radial-gradient(
+    ellipse at 88% 0%,
+    #eda66426,
+    transparent 55%
+  );
+  --rs-primary: #974309;
+  --rs-primary-hover: #763200;
   --rs-accent-ink: #fff;
-  --rs-page-bg: #f3f5f8;
-  --rs-header-bg: #202c3b;
+  --rs-page-bg: #f4f1ed;
+  --rs-header-bg: #212124;
   --rs-header-text: #e1e2e3;
-  --rs-sidebar-bg: #202c3b;
+  --rs-sidebar-bg: #212124;
   --rs-sidebar-text: #e1e2e3;
-  --rs-sidebar-active-bg: #304359;
-  --rs-sidebar-child-bg: #273647;
+  --rs-sidebar-active-bg: #423830;
+  --rs-sidebar-child-bg: #29282b;
   --rs-toolbar-bg: #ffffff;
   --rs-toolbar-text: #3a3f51;
-  --rs-toolbar-border: #e5e7eb;
+  --rs-toolbar-border: #ded8d1;
   --rs-surface: #ffffff;
-  --rs-surface-2: #edf1f6;
-  --rs-surface-3: #e9ebef;
+  --rs-surface-2: #f3f0ed;
+  --rs-surface-3: #eae5e1;
   --rs-hover: rgba(0, 0, 0, 0.04);
-  --rs-selected: rgba(53, 197, 244, 0.14);
-  --rs-border: #e5e5e5;
-  --rs-border-strong: #cfd3da;
-  --rs-text: #344356;
+  --rs-selected: rgba(163, 73, 13, 0.12);
+  --rs-border: #d7d1cb;
+  --rs-border-strong: #b3aaa2;
+  --rs-text: #35312f;
   --rs-text-strong: #1f2328;
-  --rs-muted: #516174;
-  --rs-faint: #62758a;
-  --rs-link: #155b83;
-  --rs-link-hover: #0f506a;
+  --rs-muted: #5e5651;
+  --rs-faint: #6c635c;
+  --rs-link: #93420f;
+  --rs-link-hover: #763200;
   --rs-input-bg: #ffffff;
-  --rs-input-border: #cfd3da;
+  --rs-input-border: #b3aaa2;
   --rs-input-text: #1f2328;
   --rs-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   --rs-success: #1f9e3d;
@@ -146,7 +159,9 @@ body {
    only; applying min-height: 100vh to every surface stretched dropdowns to the
    bottom of the page. */
 .radix-themes.rs-app-theme {
-  background: var(--rs-page-bg);
+  background:
+    var(--rs-atmosphere) fixed,
+    var(--rs-page-bg);
   color: var(--rs-text);
   min-height: 100vh;
 }
@@ -205,7 +220,7 @@ hr {
   outline-offset: 1px;
 }
 ::selection {
-  background: rgba(53, 197, 244, 0.35);
+  background: color-mix(in srgb, var(--rs-primary) 36%, transparent);
 }
 .sr-only {
   position: absolute;
@@ -271,7 +286,7 @@ textarea:not(.rt-TextAreaInput):focus,
 input:not(.rt-TextFieldInput):focus-visible {
   border-color: var(--rs-brand);
   outline: none;
-  box-shadow: 0 0 0 2px rgba(53, 197, 244, 0.25);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rs-primary) 35%, transparent);
 }
 select:disabled,
 textarea:disabled,
@@ -310,15 +325,19 @@ details > summary {
   color: var(--rs-link);
 }
 
-/* Radix component tuning to match the flat, square look. */
+/* Radix controls and portalled surfaces. */
 .radix-themes .rt-Button:where(.rt-variant-solid) {
-  font-weight: 400;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px var(--rs-rim),
+    0 2px 4px #0002;
 }
 .radix-themes .rt-BaseDialogContent,
 .radix-themes .rt-DialogContent {
   background: var(--rs-surface);
   border: 1px solid var(--rs-border);
-  border-radius: 6px;
+  border-radius: 12px;
+  background-image: var(--rs-material);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   color: var(--rs-text);
 }
@@ -345,7 +364,7 @@ details > summary {
 }
 .skip-link:focus {
   top: 10px;
-  color: #0f2a35;
+  color: var(--rs-accent-ink);
 }
 .rs-app {
   min-height: 100vh;
@@ -357,7 +376,7 @@ details > summary {
   height: var(--rs-header-height);
   display: flex;
   align-items: center;
-  background: var(--rs-header-bg);
+  background: linear-gradient(175deg, #2b292b, var(--rs-header-bg) 80%);
   color: var(--rs-header-text);
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.35);
 }
@@ -375,7 +394,8 @@ details > summary {
   gap: 10px;
   color: var(--rs-header-text);
   font-size: 18px;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.035em;
+  font-weight: 700;
 }
 .rs-logo:hover {
   color: #fff;
@@ -386,8 +406,12 @@ details > summary {
   width: 32px;
   height: 32px;
   border-radius: 6px;
-  background: var(--rs-brand);
-  color: #0f2a35;
+  background: linear-gradient(150deg, #ffba70, var(--rs-brand) 66%, #e36d12);
+  color: #261b12;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 1px #ffd5a8,
+    0 3px 8px #0005;
 }
 .rs-header-button.rs-menu-toggle {
   display: none;
@@ -403,7 +427,11 @@ details > summary {
   align-items: center;
   gap: 8px;
   height: 36px;
-  border-bottom: 1px solid rgba(225, 226, 227, 0.35);
+  padding: 0 10px;
+  border: 1px solid #ffffff36;
+  border-radius: var(--rs-radius);
+  background: #0c0d105c;
+  box-shadow: inset 0 1px 3px #0004;
   color: var(--rs-header-text);
 }
 .rs-header-search-field:focus-within {
@@ -533,9 +561,17 @@ details > summary {
   z-index: 20;
   width: var(--rs-sidebar-width);
   overflow-y: auto;
-  background: var(--rs-sidebar-bg);
+  background: linear-gradient(
+    115deg,
+    #292a2d,
+    var(--rs-sidebar-bg) 55%,
+    #17191d
+  );
+  box-shadow:
+    inset -1px 0 #ffffff17,
+    3px 0 14px #0002;
   color: var(--rs-sidebar-text);
-  padding: 10px 0 24px;
+  padding: 10px 8px 24px;
   scrollbar-width: thin;
 }
 .rs-nav {
@@ -543,17 +579,21 @@ details > summary {
   flex-direction: column;
 }
 .rs-nav-item {
+  border-radius: var(--rs-radius);
   border-left: 3px solid transparent;
 }
 .rs-nav-item.is-active {
   border-left-color: var(--rs-brand);
-  background: var(--rs-sidebar-active-bg);
+  background: linear-gradient(160deg, #48403a, var(--rs-sidebar-active-bg) 68%);
+  box-shadow:
+    inset 0 1px #ffffff26,
+    0 3px 9px #0004;
 }
 .rs-nav-link {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 24px 11px 21px;
+  padding: 10px 12px;
   color: var(--rs-sidebar-text);
   font-size: 14px;
 }
@@ -633,12 +673,14 @@ details > summary {
     display: none;
   }
   .rs-sidebar {
+    visibility: hidden;
     transform: translateX(-100%);
     transition: transform 0.2s ease;
     box-shadow: var(--rs-shadow);
     width: min(280px, 85vw);
   }
   .rs-sidebar.is-open {
+    visibility: visible;
     transform: none;
   }
   .rs-sidebar-backdrop.is-open {
@@ -666,7 +708,11 @@ details > summary {
   gap: 8px;
   min-height: var(--rs-toolbar-height);
   padding: 0 10px;
-  background: var(--rs-toolbar-bg);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--rs-toolbar-bg) 94%, white),
+    var(--rs-toolbar-bg)
+  );
   color: var(--rs-toolbar-text);
   border-bottom: 1px solid var(--rs-toolbar-border);
   overflow-x: auto;
@@ -824,7 +870,7 @@ details > summary {
 }
 .rs-legend h2 {
   font-size: 21px;
-  font-weight: 300;
+  font-weight: 600;
 }
 .rs-legend-actions {
   display: flex;
@@ -983,8 +1029,9 @@ details > summary {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 .rs-card-grid {
   display: grid;
@@ -1016,7 +1063,7 @@ details > summary {
 }
 .rs-card-title {
   font-size: 18px;
-  font-weight: 300;
+  font-weight: 600;
   color: var(--rs-text-strong);
   overflow-wrap: anywhere;
 }
@@ -1241,8 +1288,11 @@ html[data-theme="light"] .rs-label.is-disabled {
   display: grid;
   place-items: center;
   font-size: 11.5px;
-  color: var(--rs-text-strong);
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
+  width: fit-content;
+  margin-inline: auto;
+  padding-inline: 5px;
+  color: #fff;
+  background: #19191dd9;
   white-space: nowrap;
 }
 .rs-batch-progress {
@@ -1575,7 +1625,7 @@ html[data-theme="light"] .rs-label.is-disabled {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: var(--rs-page-bg);
+  background: var(--rs-atmosphere), var(--rs-page-bg);
 }
 .rs-auth-card {
   width: min(420px, 100%);
@@ -1590,7 +1640,7 @@ html[data-theme="light"] .rs-label.is-disabled {
   align-items: center;
   gap: 10px;
   padding: 18px 22px;
-  background: var(--rs-header-bg);
+  background: linear-gradient(175deg, #2b292b, var(--rs-header-bg) 80%);
   color: var(--rs-header-text);
   font-size: 18px;
 }
@@ -1760,4 +1810,60 @@ html[data-theme="light"] .rs-label.is-disabled {
 }
 .cleanup-skip-details summary {
   cursor: pointer;
+}
+
+/* Opaque layers keep dense controls legible over the ambient background. */
+.rs-panel,
+.rs-card,
+.rs-auth-card,
+.rs-page-body > .rs-fieldset {
+  background-image: var(--rs-material);
+  box-shadow: var(--rs-elevation);
+}
+.rs-page-body > .rs-fieldset {
+  background-color: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: clamp(14px, 1.6vw, 24px);
+}
+.rs-header-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding-inline: 12px;
+  margin-inline: 4px;
+  border-radius: var(--rs-radius);
+  color: #271404;
+  background: linear-gradient(#ffb66b, #ff9138);
+  box-shadow:
+    inset 0 1px #ffd5a8,
+    0 2px 5px #0004;
+  font-weight: 650;
+}
+.rs-header-add:hover {
+  color: #271404;
+  background: #ffb66b;
+}
+@media (min-width: 769px) {
+  .rs-header-search {
+    margin-left: auto;
+  }
+  .rs-header-actions {
+    margin-left: 10px;
+  }
+  .rs-header-logo {
+    padding-right: 12px;
+  }
+}
+@media (max-width: 640px) {
+  .rs-header-add {
+    width: 34px;
+    padding: 0;
+    margin: 0;
+  }
+  .rs-header-add span {
+    display: none;
+  }
 }

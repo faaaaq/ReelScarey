@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Theme } from "@radix-ui/themes";
 import { MemoryRouter } from "react-router-dom";
@@ -1214,6 +1220,98 @@ describe("player streaming quality", () => {
     expect(reads).toBeGreaterThan(1);
   });
 
+  it.each([
+    { rangeSeekable: false, paused: false },
+    { rangeSeekable: true, paused: true },
+  ])(
+    "preserves the position and playback intent when quality changes (%j)",
+    async ({ rangeSeekable, paused }) => {
+      const saved = {
+        ...preferences,
+        streaming_quality: rangeSeekable ? "original" : "high",
+        revision: 4,
+      };
+      let quality = preferences;
+      let oldID: string | null = null;
+      mockFetch((path, options) => {
+        if (path === "/api/v1/library/music/preferences") {
+          if (options?.method === "PUT") quality = saved;
+          return Response.json(quality);
+        }
+        if (path.includes("/stream-info?")) {
+          const id = new URL(path, "http://local").searchParams.get(
+            "stream_id",
+          );
+          return Response.json(
+            id === oldID
+              ? {
+                  codec: "opus",
+                  bitrate_kbps: 96,
+                  mode: "live-miss",
+                  range_seekable: false,
+                }
+              : {
+                  codec: rangeSeekable ? "flac" : "opus",
+                  bitrate_kbps: rangeSeekable ? undefined : 128,
+                  mode: rangeSeekable ? "direct" : "offset-live",
+                  range_seekable: rangeSeekable,
+                },
+          );
+        }
+        return undefined;
+      });
+      render(
+        <Theme>
+          <MemoryRouter>
+            <MusicPlayerProvider>
+              <Harness />
+              <MusicPlayerBar />
+            </MusicPlayerProvider>
+          </MemoryRouter>
+        </Theme>,
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Start" }));
+      const select = await screen.findByLabelText("Streaming quality");
+      await waitFor(() => expect(select).toBeEnabled());
+      const audio = document.querySelector("audio")!;
+      const firstSource = audio.src;
+      oldID = new URL(firstSource).searchParams.get("stream_id");
+      fireEvent.loadedMetadata(audio);
+      expect(await screen.findByText("Playing · Opus 96 kbps")).toBeVisible();
+      Object.defineProperty(audio, "paused", {
+        configurable: true,
+        value: paused,
+      });
+      if (paused) fireEvent.pause(audio);
+      audio.currentTime = 42.5;
+      fireEvent.timeUpdate(audio);
+      const play = vi.mocked(HTMLMediaElement.prototype.play);
+      play.mockClear();
+
+      await userEvent.selectOptions(select, saved.streaming_quality);
+      await waitFor(() => expect(audio.src).not.toBe(firstSource));
+      expect(screen.getByText("Opening stream…")).toBeVisible();
+      expect(audio.src).not.toContain("timeOffset=");
+      const reopenedSource = audio.src;
+      audio.currentTime = 0;
+      fireEvent.loadedMetadata(audio);
+      if (rangeSeekable) {
+        expect(await screen.findByText("Stream · Original FLAC")).toBeVisible();
+        expect(audio.currentTime).toBe(42.5);
+        expect(audio.src).toBe(reopenedSource);
+        expect(play).not.toHaveBeenCalled();
+      } else {
+        await waitFor(() => expect(audio.src).toContain("timeOffset=42"));
+        expect(audio.src).not.toBe(reopenedSource);
+        expect(play).toHaveBeenCalledOnce();
+        fireEvent.loadedMetadata(audio);
+        expect(
+          await screen.findByText("Playing · Opus 128 kbps"),
+        ).toBeVisible();
+      }
+    },
+  );
+
   it("rebases and reports when the quality changed elsewhere", async () => {
     let reads = 0;
     mockFetch((path, options) => {
@@ -1254,11 +1352,14 @@ describe("player streaming quality", () => {
       "Streaming quality",
     )) as HTMLSelectElement;
     await waitFor(() => expect(quality.disabled).toBe(false));
+    const audio = document.querySelector("audio")!;
+    const source = audio.src;
     await userEvent.selectOptions(quality, "high");
     expect(await screen.findByText(/changed elsewhere/)).toBeVisible();
     // The control rebased onto the saved server value instead of keeping
     // the rejected selection.
     await waitFor(() => expect(quality.value).toBe("balanced"));
+    expect(audio.src).toBe(source);
     expect(reads).toBeGreaterThan(1);
   });
 });

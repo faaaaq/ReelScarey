@@ -23,12 +23,12 @@ import { ServerFixture, login } from "./helpers/server";
  */
 
 const TRACKS = [
-  { id: 1, title: "Signal One", seconds: 4 },
+  { id: 1, title: "Signal One", seconds: 18 },
   { id: 2, title: "Signal Two", seconds: 4 },
   { id: 3, title: "Signal Three", seconds: 4 },
 ];
 
-const STREAM_PATTERN = /\/api\/v1\/library\/music\/files\/\d+\/stream/;
+const STREAM_PATTERN = /\/api\/v1\/library\/music\/files\/\d+\/stream(?:\?|$)/;
 
 type AudioState = {
   src: string | null;
@@ -159,7 +159,9 @@ test.describe.serial("Music playback compatibility", () => {
     await startTrack(page, "Signal One");
     const state = await expectDecoding(page);
     // Default preferences (balanced) transcode through ffmpeg to Ogg/Opus.
-    expect(state.src).toBe("/api/v1/library/music/files/1/stream");
+    expect(state.src).toMatch(
+      /^\/api\/v1\/library\/music\/files\/1\/stream\?stream_id=[a-f0-9]{32}$/,
+    );
     expect(state.errorCode).toBe(0);
     await expect
       .poll(async () => (await audioState(page))?.bufferedEnd ?? 0)
@@ -194,9 +196,10 @@ test.describe.serial("Music playback compatibility", () => {
     await startTrack(page, "Signal One");
     await expect(page.locator("audio")).toHaveAttribute(
       "src",
-      /format=mp3&maxBitRate=192/,
+      /compat=mp3/,
     );
     await expect.poll(() => contentType).toContain("audio/mpeg");
+    await expect(page.getByText("Playing · MP3 96 kbps")).toBeVisible();
   });
 
   test("pause, resume and seek do not produce media errors", async ({
@@ -308,6 +311,40 @@ test.describe.serial("Music playback compatibility", () => {
     ).toHaveCount(0);
   });
 
+  test("changing quality reloads the same track and confirms the delivered stream", async ({
+    page,
+  }) => {
+    await login(page, server);
+    await page.goto(server.url("/music/albums/1"));
+    await startTrack(page, "Signal One");
+    const player = page.getByRole("region", { name: "Music player" });
+    const quality = player.getByLabel("Streaming quality");
+    const seek = player.getByRole("slider", { name: "Seek" });
+    const audio = page.locator("audio");
+    await expect(player.getByText("Playing · Opus 96 kbps")).toBeVisible();
+    await seek.fill("3");
+    await expect
+      .poll(async () => Number(await seek.inputValue()))
+      .toBeGreaterThanOrEqual(3);
+    const firstSource = await audio.getAttribute("src");
+
+    await quality.selectOption("high");
+    await expect(player.getByText("Playing · Opus 128 kbps")).toBeVisible();
+    expect(await audio.getAttribute("src")).not.toBe(firstSource);
+    await expect(player.getByText("Signal One")).toBeVisible();
+    await expect
+      .poll(async () => Number(await seek.inputValue()))
+      .toBeGreaterThan(3);
+
+    await quality.selectOption("original");
+    await expect(player.getByText("Playing · Original MP3")).toBeVisible();
+    await expect(audio).not.toHaveAttribute("src", /timeOffset=/);
+    await expect
+      .poll(async () => (await audioState(page))?.currentTime ?? 0)
+      .toBeGreaterThan(3);
+    await expect(player.getByText("Signal One")).toBeVisible();
+  });
+
   test("the streaming quality choice persists across a reload", async ({
     page,
   }) => {
@@ -410,6 +447,7 @@ test.describe.serial("Music playback compatibility", () => {
     await expect(repeat).toHaveAttribute("data-repeat", "off");
 
     await page.setViewportSize({ width: 390, height: 800 });
+    await expect(transport.getByLabel("Streaming quality")).toBeVisible();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,

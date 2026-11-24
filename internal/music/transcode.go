@@ -325,6 +325,7 @@ type PlaybackStream struct {
 	File            *os.File
 	Body            io.ReadCloser
 	Codec           string
+	BitrateKbps     int
 	Mode            string
 	Reason          string
 	RequestedFormat string
@@ -389,6 +390,7 @@ func (s *Service) OpenPlayback(ctx context.Context, id int64, requestedFormat st
 			ModTime:         native.ModTime,
 			File:            native.File,
 			Codec:           suffix,
+			BitrateKbps:     native.Bitrate,
 			Mode:            "direct",
 			Reason:          reason,
 			RequestedFormat: requestedFormat,
@@ -412,6 +414,7 @@ func (s *Service) OpenPlayback(ctx context.Context, id int64, requestedFormat st
 				ModTime:         info.ModTime(),
 				File:            cached,
 				Codec:           codec,
+				BitrateKbps:     bitRate,
 				Mode:            cacheMode,
 				Reason:          "Full-file conversion served from the persistent transcode cache.",
 				RequestedFormat: requestedFormat,
@@ -452,6 +455,7 @@ func (s *Service) OpenPlayback(ctx context.Context, id int64, requestedFormat st
 		File:            native.File,
 		Body:            stdout.body,
 		Codec:           codec,
+		BitrateKbps:     bitRate,
 		Mode:            mode,
 		Reason:          reason,
 		RequestedFormat: requestedFormat,

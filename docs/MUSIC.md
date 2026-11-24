@@ -689,14 +689,21 @@ planner uses:
 | `premium` | Opus 160 kbps |
 | `original` | no conversion: playable files are served byte-for-byte |
 
-Resolution: an explicit client `format`/`maxBitRate` request wins, then the
-per-user streaming quality of the music-server account (empty = follow
-global), then the global streaming quality preference, then the `balanced`
-default. The authenticated web player uses the same resolution; it
-additionally negotiates capability when the browser reports no Ogg/Opus
-support (`canPlayType`), requesting an MP3 stream from the same endpoint so
-incompatible browsers never receive audio they cannot decode. A rate-only
-`maxBitRate` cap is honored for lossy same-family sources, including the web
+An explicit client `format`/`maxBitRate` request wins. Subsonic otherwise
+follows the music-server account's quality, the global preference, or the
+`balanced` default. The authenticated web player follows the global
+preference. If the browser reports no Ogg/Opus support, the web player asks for
+MP3 with the selected quality's bitrate cap. Original uses a 192 kbps cap in
+that browser compatibility mode.
+
+Changing quality in the web player saves the preference and reopens the same
+track at the current position. File-backed streams use native seeking. Live
+conversions reopen at a whole-second media offset. The label beside the
+selector shows the delivered format and encoder target after the browser
+loads the stream. Direct playback is labeled Original and keeps the source
+format. A paused track stays paused when its quality changes.
+
+A rate-only `maxBitRate` cap is honored for lossy same-family sources, including the web
 player; known sources already within the cap remain direct. `format=raw` is an
 explicit passthrough. Small caps are not silently raised, and Vorbis receives
 an actual bitrate argument. Converted streams strip tags and artwork; only

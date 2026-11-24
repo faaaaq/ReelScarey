@@ -91,6 +91,24 @@ function setup(
       return Response.json({
         library_name: "Test library",
         counts: { movies: 12, series: 3, anime: 1 },
+        recent: [
+          {
+            id: 8,
+            kind: "series",
+            category: "anime",
+            title: "Paper Moons",
+            year: 2026,
+            artwork_url: "",
+          },
+          {
+            id: 8,
+            kind: "album",
+            category: "",
+            title: "Soft Static",
+            year: null,
+            artwork_url: "",
+          },
+        ],
       });
     if (url.endsWith("/system"))
       return Response.json({
@@ -168,6 +186,20 @@ describe("dashboard overview", () => {
       "href",
       "/activity?job=job-1",
     );
+
+    const feature = screen.getByRole("region", { name: "Latest addition" });
+    expect(
+      within(feature).getByRole("heading", { name: "Paper Moons" }),
+    ).toBeVisible();
+    expect(
+      within(feature).getByRole("link", { name: "View details" }),
+    ).toHaveAttribute("href", "/series/8");
+    expect(
+      within(screen.getByRole("region", { name: "Recently added" })).getByRole(
+        "link",
+        { name: /Soft Static/ },
+      ),
+    ).toHaveAttribute("href", "/music/albums/8");
 
     const upcoming = screen.getByRole("table", {
       name: "Upcoming this week",

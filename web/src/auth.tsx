@@ -8,7 +8,7 @@ import {
   type FormEvent,
 } from "react";
 import { Button, TextField } from "@radix-ui/themes";
-import { Film, KeyRound, LogIn, ShieldCheck } from "lucide-react";
+import { KeyRound, LogIn, ShieldCheck } from "lucide-react";
 import {
   api,
   APIError,
@@ -227,7 +227,7 @@ function AuthForm({
       <section className="rs-auth-card">
         <div className="rs-auth-head">
           <span className="rs-logo-mark">
-            <Film size={18} />
+            <img src="/favicon.svg" alt="" width="32" height="32" />
           </span>
           <span>ReelScarey</span>
         </div>

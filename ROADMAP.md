@@ -1032,7 +1032,9 @@ capabilities are implemented and documented in `docs/`:
   [MUSIC.md](docs/MUSIC.md).
 - Music quality profiles, post-download conversion, a durable conversion queue,
   live-first cold streaming with a detached persistent cache, per-user Subsonic
-  streaming quality, stars, ratings, playlists, saved queues and play history,
+  streaming quality, and a web player that applies quality changes to the
+  current track and reports the delivered format. Includes stars, ratings,
+  playlists, saved queues and play history,
   multi-format track variants, existing-library optimization with a dry run and
   converted export downloads. See [MUSIC.md](docs/MUSIC.md).
 - Request accounts, approvals, public/private TMDb and Trakt lists, MDBList

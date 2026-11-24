@@ -1,6 +1,9 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import {
   CalendarDays,
+  Disc3,
+  Film,
+  ArrowUpRight,
   Download,
   FolderInput,
   ListTodo,
@@ -10,6 +13,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
+  type RecentTitle,
   type Dashboard as DashboardData,
   type DownloadPage,
   type MusicAcquisitionJob,
@@ -131,6 +135,96 @@ function musicIssueError(job: MusicAcquisitionJob) {
   return `${incomplete} ${incomplete === 1 ? "track" : "tracks"} did not complete; no further error was reported.`;
 }
 
+const catalogPaths = {
+  movie: "/movies",
+  series: "/series",
+  album: "/music/albums",
+};
+const mediaNames = { movie: "Movie", series: "TV show", album: "Album" };
+
+function catalogLabel(item: RecentTitle) {
+  return [
+    item.category === "anime" ? "Anime" : mediaNames[item.kind],
+    item.year,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function CatalogArt({
+  item,
+  featured = false,
+}: {
+  item: RecentTitle;
+  featured?: boolean;
+}) {
+  const [failedURL, setFailedURL] = useState("");
+  if (item.artwork_url && item.artwork_url !== failedURL)
+    return (
+      <img
+        alt=""
+        src={item.artwork_url}
+        referrerPolicy="no-referrer"
+        loading={featured ? "eager" : "lazy"}
+        onError={() => setFailedURL(item.artwork_url)}
+      />
+    );
+  const Icon = item.kind === "album" ? Disc3 : Film;
+  return (
+    <Icon className="dash-art-placeholder" aria-hidden="true" strokeWidth={1} />
+  );
+}
+
+function CatalogFeature({ item }: { item: RecentTitle }) {
+  return (
+    <section className="dash-feature" aria-label="Latest addition">
+      <div className="dash-feature-art">
+        <CatalogArt item={item} featured />
+      </div>
+      <div className="dash-feature-copy">
+        <span className="dash-feature-label">Latest addition</span>
+        <h2>{item.title}</h2>
+        <p>{catalogLabel(item)}</p>
+        <Link to={`${catalogPaths[item.kind]}/${item.id}`}>
+          View details <ArrowUpRight size={16} aria-hidden="true" />
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function RecentShelf({ items }: { items: RecentTitle[] }) {
+  return (
+    <section className="dash-shelf" aria-label="Recently added">
+      <h2>Recently added</h2>
+      <ul>
+        {items.map((item) => (
+          <li key={`${item.kind}-${item.id}`}>
+            <Link to={`${catalogPaths[item.kind]}/${item.id}`}>
+              <span className="dash-cover-frame">
+                {item.artwork_url && (
+                  <span
+                    aria-hidden="true"
+                    className="dash-cover-light"
+                    style={{
+                      backgroundImage: `url(${JSON.stringify(item.artwork_url)})`,
+                    }}
+                  />
+                )}
+                <span className="dash-cover">
+                  <CatalogArt item={item} />
+                </span>
+              </span>
+              <strong>{item.title}</strong>
+              <small>{catalogLabel(item)}</small>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function Dashboard() {
   const dashboard = useResource<DashboardData>("/dashboard");
   const system = useResource<System>("/system");
@@ -152,6 +246,7 @@ export function Dashboard() {
     musicDownloads.reload();
     events.reload();
   }
+  const [featured, ...recent] = dashboard.data?.recent ?? [];
   const counts = dashboard.data?.counts;
   const libraryLinks = counts
     ? [
@@ -214,66 +309,35 @@ export function Dashboard() {
       : "Database unavailable";
   return (
     <>
-      <PageToolbar label="Dashboard actions">
-        <ToolbarSection>
-          <ToolbarButton icon={Plus} label="Add Movie" to="/search" />
-          <ToolbarButton icon={Tv} label="Add Show" to="/search?kind=series" />
-          <ToolbarButton
-            icon={FolderInput}
-            label="Library Import"
-            to="/import"
-          />
-          <ToolbarSeparator />
-          <ToolbarButton
-            icon={RefreshCw}
-            label="Refresh"
-            spinning={loading}
-            onClick={reload}
-          />
-        </ToolbarSection>
-      </PageToolbar>
-      <PageBody>
-        <PageHeading title={dashboard.data?.library_name ?? "Library"} />
+      <PageBody className="dash-body">
+        <PageHeading title={dashboard.data?.library_name ?? "Library"}>
+          <PageToolbar label="Dashboard actions">
+            <ToolbarSection>
+              <ToolbarButton icon={Plus} label="Add Movie" to="/search" />
+              <ToolbarButton
+                icon={Tv}
+                label="Add Show"
+                to="/search?kind=series"
+              />
+              <ToolbarButton
+                icon={FolderInput}
+                label="Library Import"
+                to="/import"
+              />
+              <ToolbarSeparator />
+              <ToolbarButton
+                icon={RefreshCw}
+                label="Refresh"
+                spinning={loading}
+                onClick={reload}
+              />
+            </ToolbarSection>
+          </PageToolbar>
+        </PageHeading>
         <RequestState loading={loading} error={error} retry={reload} />
         {!loading && !error && dashboard.data && system.data && (
           <>
-            <section className="dash-status" aria-label="Status">
-              <Link className="dash-status-item" to="/activity">
-                <Download size={16} aria-hidden="true" />
-                <span className="dash-status-value">
-                  {downloads.loading
-                    ? "…"
-                    : downloads.error
-                      ? "—"
-                      : activeTotal}
-                </span>
-                <span className="dash-status-label">
-                  active download{activeTotal === 1 ? "" : "s"}
-                </span>
-              </Link>
-              <Link className="dash-status-item" to="/wanted">
-                <ListTodo size={16} aria-hidden="true" />
-                <span className="dash-status-value">
-                  {wanted.error ? "—" : (missing ?? "—")}
-                </span>
-                <span className="dash-status-label">missing videos</span>
-              </Link>
-              <Link className="dash-status-item" to="/calendar">
-                <CalendarDays size={16} aria-hidden="true" />
-                <span className="dash-status-value">
-                  {upcoming.error
-                    ? "—"
-                    : upcoming.loading
-                      ? "…"
-                      : weekItems.length}
-                </span>
-                <span className="dash-status-label">this week</span>
-              </Link>
-              <Link className="dash-status-item" to="/system">
-                <span className="dash-status-value">{health}</span>
-                <span className="dash-status-label">System</span>
-              </Link>
-            </section>
+            {featured && <CatalogFeature item={featured} />}
 
             {attentionJobs.length > 0 && (
               <Alert kind="warning">
@@ -339,7 +403,12 @@ export function Dashboard() {
               </Alert>
             )}
 
-            <div className="dash-columns">
+            <div
+              className={
+                recent.length ? "dash-columns has-shelf" : "dash-columns"
+              }
+            >
+              {recent.length > 0 && <RecentShelf items={recent} />}
               <Panel
                 title="Activity"
                 actions={<Link to="/activity">Queue</Link>}
@@ -374,12 +443,17 @@ export function Dashboard() {
                                   {job.state.replaceAll("_", " ")}
                                 </span>
                               </div>
-                              <ProgressBar
-                                value={job.progress}
-                                kind={progressKind(job.state)}
-                                label={`${job.movie_title || job.title} progress`}
-                                text={`${Math.round(job.progress * 100)}%`}
-                              />
+                              <div className="dash-queue-progress">
+                                <ProgressBar
+                                  value={job.progress}
+                                  kind={progressKind(job.state)}
+                                  label={`${job.movie_title || job.title} progress`}
+                                  size="small"
+                                />
+                                <span aria-hidden="true">
+                                  {Math.round(job.progress * 100)}%
+                                </span>
+                              </div>
                               <span className="dash-queue-meta rs-muted rs-small">
                                 {formatBytes(job.downloaded_bytes)} of{" "}
                                 {formatBytes(job.total_bytes)}
@@ -416,7 +490,45 @@ export function Dashboard() {
                   </div>
                 )}
               </Panel>
-
+            </div>
+            <section className="dash-status" aria-label="Status">
+              <Link className="dash-status-item" to="/activity">
+                <Download size={16} aria-hidden="true" />
+                <span className="dash-status-value">
+                  {downloads.loading
+                    ? "…"
+                    : downloads.error
+                      ? "—"
+                      : activeTotal}
+                </span>
+                <span className="dash-status-label">
+                  active download{activeTotal === 1 ? "" : "s"}
+                </span>
+              </Link>
+              <Link className="dash-status-item" to="/wanted">
+                <ListTodo size={16} aria-hidden="true" />
+                <span className="dash-status-value">
+                  {wanted.error ? "—" : (missing ?? "—")}
+                </span>
+                <span className="dash-status-label">missing videos</span>
+              </Link>
+              <Link className="dash-status-item" to="/calendar">
+                <CalendarDays size={16} aria-hidden="true" />
+                <span className="dash-status-value">
+                  {upcoming.error
+                    ? "—"
+                    : upcoming.loading
+                      ? "…"
+                      : weekItems.length}
+                </span>
+                <span className="dash-status-label">this week</span>
+              </Link>
+              <Link className="dash-status-item" to="/system">
+                <span className="dash-status-value">{health}</span>
+                <span className="dash-status-label">System</span>
+              </Link>
+            </section>
+            <div className="dash-columns">
               <Panel
                 title="Wanted"
                 actions={<Link to="/wanted">View all</Link>}

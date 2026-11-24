@@ -1,6 +1,7 @@
 package music
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -74,5 +75,17 @@ func TestOpenPlaybackRealFFmpegOffsetProducesShortenedAudio(t *testing.T) {
 	// two seconds. PCM/WAV makes this substantially tighter than MP3 padding.
 	if duration < 1.9 || duration > 2.1 {
 		t.Fatalf("offset output duration = %.3fs, want 2s (source 3s, offset 1s)", duration)
+	}
+
+	opus, err := s.OpenPlayback(ctx, fileID, "opus", 128, 1)
+	if err != nil {
+		t.Fatalf("open Opus at the new quality: %v", err)
+	}
+	defer opus.Close()
+	if opus.Codec != "opus" || opus.BitrateKbps != 128 || opus.Mode != "offset-live" || opus.Body == nil {
+		t.Fatalf("Opus stream diagnostics: codec=%q target=%d mode=%q", opus.Codec, opus.BitrateKbps, opus.Mode)
+	}
+	if data, err := io.ReadAll(opus.Body); err != nil || !bytes.HasPrefix(data, []byte("OggS")) {
+		t.Fatalf("offset stream must contain Ogg audio, got %d bytes: %v", len(data), err)
 	}
 }

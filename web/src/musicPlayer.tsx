@@ -41,9 +41,23 @@ export type PlayerTrack = {
   coverURL?: string;
   durationMS?: number;
   albumID?: number;
-  /** Effective codec/bitrate of the playing file, when the caller knows it. */
+  /** Codec/bitrate of the registered file, when the caller knows it. */
   formatLabel?: string;
 };
+
+type MusicStreamInfo = {
+  codec: string;
+  bitrate_kbps?: number;
+  mode: string;
+  range_seekable: boolean;
+};
+
+type MusicStreamStatus =
+  | { phase: "idle" | "loading" | "unavailable" }
+  | { phase: "ready"; info: MusicStreamInfo };
+
+type StreamRequest = { fileID: number; id: string; checking: boolean };
+type QualityResume = { position: number; play: boolean };
 
 const PLAYER_STORAGE_KEY = "reelscarey:music-player:v1";
 const PLAYER_PROGRESS_STORAGE_KEY = "reelscarey:music-player-progress:v1";
@@ -182,6 +196,7 @@ export type PlayerValue = {
   repeat: RepeatMode;
   error: string;
   errorRecovery: "" | "music-import";
+  stream: MusicStreamStatus;
   play: (track: PlayerTrack, queue?: PlayerTrack[]) => void;
   playShuffled: (items: PlayerTrack[]) => void;
   enqueue: (track: PlayerTrack, playNext?: boolean) => void;
@@ -192,6 +207,7 @@ export type PlayerValue = {
   toggleShuffle: () => void;
   cycleRepeat: () => void;
   retry: () => void;
+  reloadStreamQuality: () => void;
   toggle: () => void;
   next: () => void;
   previous: () => void;
@@ -217,6 +233,7 @@ type PlayerActions = Pick<
   | "toggleShuffle"
   | "cycleRepeat"
   | "retry"
+  | "reloadStreamQuality"
   | "toggle"
   | "next"
   | "previous"
@@ -252,13 +269,19 @@ export function musicStreamURL(fileID: number) {
  * Capability negotiation for browsers that cannot decode the server's default
  * streaming container (Ogg Opus). canPlayType("") means the browser reports no
  * support, so the player requests an MP3 stream the server converts on the
- * fly; browsers with Opus support keep the server's quality-driven default.
+ * fly at the selected quality's bitrate target; other browsers use Opus.
  */
 export function browserStreamSuffix(audio: HTMLAudioElement | null) {
   if (!audio || typeof audio.canPlayType !== "function") return "";
   if (audio.canPlayType('audio/ogg; codecs="opus"') === "")
-    return "?format=mp3&maxBitRate=192";
+    return "?compat=mp3";
   return "";
+}
+
+function newStreamID() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 function seekableContains(audio: HTMLAudioElement, seconds: number) {
@@ -312,6 +335,9 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   // Offset responses contain only the remainder of a track. Keep their media
   // timeline separate from the full-track position shown by the player.
   const streamOffset = useRef(0);
+  const sourceRequest = useRef<StreamRequest | null>(null);
+  const qualityResume = useRef<QualityResume | null>(null);
+  const [stream, setStream] = useState<MusicStreamStatus>({ phase: "idle" });
   const [restored] = useState(restorePlayer);
   const [current, setCurrent] = useState<PlayerTrack | null>(() =>
     restored.index >= 0 ? restored.queue[restored.index] : null,
@@ -521,13 +547,34 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       });
   }
 
+  function loadSource(audio: HTMLAudioElement, fileID: number, offset = 0) {
+    const source = new URL(
+      musicStreamURL(fileID) + browserStreamSuffix(audio),
+      window.location.origin,
+    );
+    const id = newStreamID();
+    source.searchParams.set("stream_id", id);
+    if (offset > 0) source.searchParams.set("timeOffset", String(offset));
+    sourceRequest.current = { fileID, id, checking: false };
+    streamOffset.current = offset;
+    setStream({ phase: "loading" });
+    audio.src = source.pathname + source.search;
+    audio.load();
+  }
+
+  function clearStream() {
+    sourceRequest.current = null;
+    qualityResume.current = null;
+    setStream({ phase: "idle" });
+  }
+
   function start(track: PlayerTrack, offset = 0) {
     const audio = audioRef.current;
     if (!audio) return;
     const resumeAt = Math.max(0, offset);
+    qualityResume.current = null;
     currentRef.current = track;
     setCurrent(track);
-    streamOffset.current = resumeAt;
     positionRef.current = resumeAt;
     setPosition(resumeAt);
     const nextDuration =
@@ -539,14 +586,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     durationRef.current = nextDuration;
     setDuration(nextDuration);
     setError("");
-    const source = new URL(
-      musicStreamURL(track.fileID) + browserStreamSuffix(audio),
-      window.location.origin,
-    );
-    if (resumeAt > 0)
-      source.searchParams.set("timeOffset", String(Math.floor(resumeAt)));
-    audio.src = `${source.pathname}${source.search}`;
-    audio.load();
+    loadSource(audio, track.fileID, Math.floor(resumeAt));
     requestPlay(audio);
   }
 
@@ -632,6 +672,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
     // Invalidate a pending play() before unloading the removed selection.
     playEpoch.current += 1;
+    clearStream();
     audio?.pause();
     if (audio?.getAttribute("src")) {
       audio.removeAttribute("src");
@@ -728,9 +769,70 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     if (current) start(current, positionRef.current);
   }
 
+  function reloadStreamQuality() {
+    const audio = audioRef.current;
+    const track = currentRef.current;
+    if (!track || !audio?.getAttribute("src")) return;
+    const resume = qualityResume.current ?? {
+      position:
+        audio.readyState >= HTMLMediaElement.HAVE_METADATA
+          ? streamOffset.current + audio.currentTime
+          : positionRef.current,
+      play: !audio.paused,
+    };
+    playEpoch.current += 1;
+    setError("");
+    positionRef.current = resume.position;
+    setPosition(resume.position);
+    qualityResume.current = resume.position > 0 ? resume : null;
+    loadSource(audio, track.fileID);
+    if (resume.play && !qualityResume.current) requestPlay(audio);
+  }
+
+  function confirmStream(audio: HTMLAudioElement) {
+    const request = sourceRequest.current;
+    if (!request || request.checking) return;
+    request.checking = true;
+
+    const apply = (info: MusicStreamInfo | null) => {
+      if (sourceRequest.current !== request) return;
+      const resume = qualityResume.current;
+      qualityResume.current = null;
+      if (resume) {
+        if (
+          resume.position > 0 &&
+          (info?.range_seekable || seekableContains(audio, resume.position))
+        ) {
+          audio.currentTime = resume.position;
+        } else if (resume.position >= 1) {
+          // A live response has no byte ranges. Reopen at the media offset
+          // and confirm the replacement stream once its metadata arrives.
+          loadSource(audio, request.fileID, Math.floor(resume.position));
+          if (resume.play) requestPlay(audio);
+          return;
+        }
+        if (resume.play) requestPlay(audio);
+      }
+      setStream(info ? { phase: "ready", info } : { phase: "unavailable" });
+    };
+
+    void api<MusicStreamInfo>(
+      `/library/music/files/${request.fileID}/stream-info?stream_id=${request.id}`,
+      { signal: AbortSignal.timeout(5000) },
+    ).then(
+      (info) => apply(typeof info?.codec === "string" ? info : null),
+      () => apply(null),
+    );
+  }
+
   function toggle() {
     const audio = audioRef.current;
     if (!audio || !current) return;
+    if (qualityResume.current) {
+      qualityResume.current.play = !qualityResume.current.play;
+      setPlaying(qualityResume.current.play);
+      return;
+    }
     if (audio.paused) {
       setError("");
       if (!audio.getAttribute("src")) {
@@ -812,6 +914,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     // A late play() resolution from the cleared selection must not resurrect
     // the playing state after the audio element has been unloaded.
     playEpoch.current += 1;
+    clearStream();
     if (audio?.getAttribute("src")) {
       audio.pause();
       audio.removeAttribute("src");
@@ -848,6 +951,12 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       durationRef.current ||
       (current.durationMS ? current.durationMS / 1000 : 0);
     const value = Math.max(0, Math.min(seconds, total || seconds));
+    if (qualityResume.current) {
+      qualityResume.current.position = value;
+      positionRef.current = value;
+      setPosition(value);
+      return;
+    }
     const relative = value - streamOffset.current;
     if (relative >= 0 && seekableContains(audio, relative)) {
       // File-backed direct/cache responses expose normal browser ranges. The
@@ -860,16 +969,8 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
 
     // A live FFmpeg pipe cannot satisfy an unbuffered byte-range seek. Reload
     // from a media-time offset instead of pretending currentTime succeeded.
-    // Preserve capability/format parameters already chosen for this element.
-    const source = new URL(
-      audio.src || musicStreamURL(current.fileID),
-      window.location.origin,
-    );
-    source.searchParams.set("timeOffset", String(Math.floor(value)));
     const resume = !audio.paused;
-    streamOffset.current = value;
-    audio.src = `${source.pathname}${source.search}`;
-    audio.load();
+    loadSource(audio, current.fileID, Math.floor(value));
     positionRef.current = value;
     setPosition(value);
     setError("");
@@ -903,6 +1004,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
     if (!audio) return;
     const updatePosition = () => {
+      if (qualityResume.current) return;
       const nextPosition = streamOffset.current + (audio.currentTime || 0);
       positionRef.current = nextPosition;
       setPosition(nextPosition);
@@ -914,10 +1016,21 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
         setDuration(nextDuration);
       }
     };
+    const onMetadata = () => {
+      if (audio.currentSrc && audio.currentSrc !== audio.src) return;
+      updateDuration();
+      confirmStream(audio);
+    };
     const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
+    const onPause = () => {
+      if (!qualityResume.current) setPlaying(false);
+    };
     const onEnded = () => advance(true);
     const onError = () => {
+      if (audio.currentSrc && audio.currentSrc !== audio.src) return;
+      sourceRequest.current = null;
+      qualityResume.current = null;
+      setStream({ phase: "unavailable" });
       setPlaying(false);
       // The media element only reports "something failed"; probe the stream
       // endpoint once so auth expiry, permissions and missing files get
@@ -939,6 +1052,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
               // Some proxies replace the structured API error with plain text.
             }
           }
+          if (audio.src !== source) return;
           if (response.status === 401) {
             window.dispatchEvent(new Event("reelscarey:unauthorized"));
             setError("Sign in again to keep listening.");
@@ -960,13 +1074,14 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
           }
         },
         () => {
+          if (audio.src !== source) return;
           setError("Playback stopped because ReelScarey could not be reached.");
         },
       );
     };
     audio.addEventListener("timeupdate", updatePosition);
     audio.addEventListener("durationchange", updateDuration);
-    audio.addEventListener("loadedmetadata", updateDuration);
+    audio.addEventListener("loadedmetadata", onMetadata);
     audio.addEventListener("play", onPlay);
     audio.addEventListener("pause", onPause);
     audio.addEventListener("ended", onEnded);
@@ -974,7 +1089,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     return () => {
       audio.removeEventListener("timeupdate", updatePosition);
       audio.removeEventListener("durationchange", updateDuration);
-      audio.removeEventListener("loadedmetadata", updateDuration);
+      audio.removeEventListener("loadedmetadata", onMetadata);
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("ended", onEnded);
@@ -996,6 +1111,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     toggleShuffle,
     cycleRepeat,
     retry,
+    reloadStreamQuality,
     toggle,
     next,
     previous,
@@ -1019,6 +1135,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       toggleShuffle: () => actionsRef.current!.toggleShuffle(),
       cycleRepeat: () => actionsRef.current!.cycleRepeat(),
       retry: () => actionsRef.current!.retry(),
+      reloadStreamQuality: () => actionsRef.current!.reloadStreamQuality(),
       toggle: () => actionsRef.current!.toggle(),
       next: () => actionsRef.current!.next(),
       previous: () => actionsRef.current!.previous(),
@@ -1040,6 +1157,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       repeat,
       error,
       errorRecovery,
+      stream,
       ...actions,
     }),
     [
@@ -1051,6 +1169,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       repeat,
       error,
       errorRecovery,
+      stream,
       actions,
     ],
   );
@@ -1081,14 +1200,24 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * Streaming quality selector. The backend reads `streaming_quality` from the
- * music preferences when transcoding a stream, so the selector writes the
- * preference; it does not change the audio element URL itself.
- */
+function streamQualityStatus(stream: MusicStreamStatus, playing: boolean) {
+  if (stream.phase === "loading") return "Opening stream…";
+  if (stream.phase === "unavailable") return "Stream details unavailable";
+  if (stream.phase !== "ready") return "";
+  const { codec, bitrate_kbps: bitrate, mode } = stream.info;
+  const format = codec === "opus" ? "Opus" : codec.toUpperCase() || "audio";
+  const quality =
+    mode === "direct"
+      ? `Original ${format}`
+      : format + (bitrate ? ` ${bitrate} kbps` : "");
+  return `${playing ? "Playing" : "Stream"} · ${quality}`;
+}
+
 function PlayerQualityControl() {
-  const track = useMusicQueue().current;
-  const prefs = useResource<MusicPreferences>("/library/music/preferences");
+  const { playing, stream, reloadStreamQuality } = useMusicQueue();
+  const prefs = useResource<MusicPreferences>("/library/music/preferences", {
+    retain: true,
+  });
   const [value, setValue] = useState<MusicStreamingQuality>("balanced");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -1109,12 +1238,16 @@ function PlayerQualityControl() {
     setSaving(true);
     setSaveError("");
     try {
-      await api("/library/music/preferences", {
+      const saved = await api<MusicPreferences>("/library/music/preferences", {
         method: "PUT",
         body: JSON.stringify({ ...prefs.data, streaming_quality: next }),
       });
+      prefs.setData(saved);
+      if (saved.streaming_quality !== prefs.data.streaming_quality)
+        reloadStreamQuality();
       prefs.reload();
     } catch (e) {
+      setValue(prefs.data.streaming_quality);
       if (
         e instanceof APIError &&
         (e.status === 409 || e.code === "revision_conflict")
@@ -1136,7 +1269,7 @@ function PlayerQualityControl() {
       <select
         aria-label="Streaming quality"
         value={value}
-        disabled={saving || !prefs.data}
+        disabled={saving || prefs.loading || !prefs.data}
         onChange={(event) =>
           void change(event.target.value as MusicStreamingQuality)
         }
@@ -1148,9 +1281,9 @@ function PlayerQualityControl() {
           </option>
         ))}
       </select>
-      {track?.formatLabel && (
-        <span className="music-player-meta">{track.formatLabel}</span>
-      )}
+      <span className="music-player-meta music-player-stream" role="status">
+        {streamQualityStatus(stream, playing)}
+      </span>
       {saveError && (
         <span className="music-player-error" role="status">
           {saveError}
@@ -1288,40 +1421,44 @@ export function MusicPlayerBar() {
           <span>{clock(total)}</span>
         </div>
       </div>
-      <div className="music-player-volume">
-        <Link className="music-player-open-full" to="/music/player">
-          Open full player
-        </Link>
+      <div className="music-player-end">
         <PlayerQualityControl />
-        <button
-          type="button"
-          className="music-player-button"
-          aria-label={player.muted ? "Unmute" : "Mute"}
-          onClick={player.toggleMute}
-        >
-          {player.muted || player.volume === 0 ? (
-            <VolumeX size={18} aria-hidden="true" />
-          ) : (
-            <Volume2 size={18} aria-hidden="true" />
-          )}
-        </button>
-        <input
-          type="range"
-          aria-label="Volume"
-          min={0}
-          max={1}
-          step={0.01}
-          value={player.muted ? 0 : player.volume}
-          onChange={(event) => player.changeVolume(Number(event.target.value))}
-        />
-        <button
-          type="button"
-          className="music-player-button"
-          aria-label="Close player"
-          onClick={player.stop}
-        >
-          <X size={18} aria-hidden="true" />
-        </button>
+        <div className="music-player-volume">
+          <Link className="music-player-open-full" to="/music/player">
+            Open full player
+          </Link>
+          <button
+            type="button"
+            className="music-player-button"
+            aria-label={player.muted ? "Unmute" : "Mute"}
+            onClick={player.toggleMute}
+          >
+            {player.muted || player.volume === 0 ? (
+              <VolumeX size={18} aria-hidden="true" />
+            ) : (
+              <Volume2 size={18} aria-hidden="true" />
+            )}
+          </button>
+          <input
+            type="range"
+            aria-label="Volume"
+            min={0}
+            max={1}
+            step={0.01}
+            value={player.muted ? 0 : player.volume}
+            onChange={(event) =>
+              player.changeVolume(Number(event.target.value))
+            }
+          />
+          <button
+            type="button"
+            className="music-player-button"
+            aria-label="Close player"
+            onClick={player.stop}
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
       </div>
     </section>
   );

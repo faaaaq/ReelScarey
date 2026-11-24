@@ -747,12 +747,20 @@ func (s *Server) musicFileStream(w http.ResponseWriter, r *http.Request) {
 	playback, err := s.webPlayerStream(r.Context(), id,
 		music.NormalizeStreamFormat(r.URL.Query().Get("format")),
 		clampStreamBitRate(r.URL.Query().Get("maxBitRate")),
-		subsonicQueryInt(r, "timeOffset"))
+		subsonicQueryInt(r, "timeOffset"), r.URL.Query().Get("compat") == "mp3")
 	if err != nil {
 		s.musicError(w, err)
 		return
 	}
 	defer playback.Close()
+	if key, ok := browserMusicStreamKey(r, id); ok {
+		s.musicStreams.put(key, browserMusicStreamInfo{
+			Codec:         playback.Codec,
+			BitrateKbps:   playback.BitrateKbps,
+			Mode:          playback.Mode,
+			RangeSeekable: playback.Body == nil,
+		})
+	}
 	playbackDiagnosticHeaders(w, playback, started)
 	w.Header().Set("Content-Type", playback.ContentType)
 	w.Header().Set("Content-Disposition", "inline")
