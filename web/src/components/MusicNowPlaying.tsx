@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@radix-ui/themes";
 import { ArrowDown, ArrowUp, Disc3, Play, Trash2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { albumCoverURL } from "../musicArtwork";
-import { useMusicPlayer, type PlayerTrack } from "../musicPlayer";
+import { useMusicQueue, type PlayerTrack } from "../musicPlayer";
 import { formatTrackDuration } from "../ui/format";
 import "./MusicNowPlaying.css";
 
@@ -40,26 +40,19 @@ function TrackCover({
   );
 }
 
-function upNextDuration(tracks: PlayerTrack[]) {
-  if (!tracks.length) return "";
-  const known = tracks.filter(
-    (track) =>
-      typeof track.durationMS === "number" &&
-      Number.isFinite(track.durationMS) &&
-      track.durationMS > 0,
-  );
-  if (!known.length) return "duration unknown";
-  const totalMS = known.reduce(
-    (total, track) => total + (track.durationMS ?? 0),
-    0,
-  );
+const MAX_VISIBLE_QUEUE_ROWS = 100;
+const MAX_VISIBLE_HISTORY_ROWS = 25;
+
+function formatUpNextDuration(count: number, known: number, totalMS: number) {
+  if (count <= 0) return "";
+  if (!known) return "duration unknown";
   const duration = formatTrackDuration(totalMS);
-  return known.length === tracks.length ? duration : `at least ${duration}`;
+  return known === count ? duration : `at least ${duration}`;
 }
 
 /** A compact, browser-local playback queue for the music workspace's right pane. */
 export function MusicNowPlaying({ onClose }: { onClose?: () => void }) {
-  const player = useMusicPlayer();
+  const player = useMusicQueue();
   const current = player.current;
   const [announcement, setAnnouncement] = useState("");
   const lastAnnounced = useRef<number | null>(null);
@@ -79,9 +72,51 @@ export function MusicNowPlaying({ onClose }: { onClose?: () => void }) {
     );
   }, [current]);
 
-  const upNext =
-    player.index >= 0 ? player.queue.slice(player.index + 1) : player.queue;
-  const upNextTime = upNextDuration(upNext);
+  // Suffix totals are rebuilt only for structural queue edits. Advancing the
+  // current index is then O(1), even for a very large live queue.
+  const durationTotals = useMemo(() => {
+    const milliseconds = new Array<number>(player.queue.length + 1).fill(0);
+    const known = new Array<number>(player.queue.length + 1).fill(0);
+    for (let itemIndex = player.queue.length - 1; itemIndex >= 0; itemIndex--) {
+      const durationMS = player.queue[itemIndex].durationMS;
+      const valid =
+        typeof durationMS === "number" &&
+        Number.isFinite(durationMS) &&
+        durationMS > 0;
+      milliseconds[itemIndex] =
+        milliseconds[itemIndex + 1] + (valid ? durationMS : 0);
+      known[itemIndex] = known[itemIndex + 1] + (valid ? 1 : 0);
+    }
+    return { milliseconds, known };
+  }, [player.queue]);
+  const upNextStart =
+    player.index >= 0 ? Math.min(player.index + 1, player.queue.length) : 0;
+  const upNextCount = player.queue.length - upNextStart;
+  const upNextTime = formatUpNextDuration(
+    upNextCount,
+    durationTotals.known[upNextStart],
+    durationTotals.milliseconds[upNextStart],
+  );
+  const queueWindow = useMemo(() => {
+    const start =
+      player.queue.length > MAX_VISIBLE_QUEUE_ROWS && player.index >= 0
+        ? Math.min(
+            Math.max(0, player.index - MAX_VISIBLE_HISTORY_ROWS),
+            player.queue.length - 1,
+          )
+        : 0;
+    const end = Math.min(player.queue.length, start + MAX_VISIBLE_QUEUE_ROWS);
+    return {
+      start,
+      end,
+      tracks:
+        start === 0 && end === player.queue.length
+          ? player.queue
+          : player.queue.slice(start, end),
+    };
+  }, [player.queue, player.index]);
+  const queueTruncated =
+    queueWindow.start > 0 || queueWindow.end < player.queue.length;
 
   return (
     <aside className="music-now-playing" aria-label="Now playing and queue">
@@ -175,9 +210,17 @@ export function MusicNowPlaying({ onClose }: { onClose?: () => void }) {
         </div>
       )}
 
+      {queueTruncated && (
+        <p className="music-now-playing-window-status" role="status">
+          Showing positions {queueWindow.start + 1}–{queueWindow.end} of{" "}
+          {player.queue.length}
+        </p>
+      )}
+
       {player.queue.length > 0 && (
         <ol className="music-now-playing-queue" aria-label="Playback queue">
-          {player.queue.map((track, itemIndex) => {
+          {queueWindow.tracks.map((track, visibleIndex) => {
+            const itemIndex = queueWindow.start + visibleIndex;
             const isCurrent = itemIndex === player.index;
             const duration = formatTrackDuration(track.durationMS);
             return (
@@ -279,7 +322,7 @@ export function MusicNowPlaying({ onClose }: { onClose?: () => void }) {
 
       <footer className="music-now-playing-footer">
         <p className="music-now-playing-summary">
-          {upNext.length} {upNext.length === 1 ? "track" : "tracks"} up next
+          {upNextCount} {upNextCount === 1 ? "track" : "tracks"} up next
           {upNextTime ? ` · ${upNextTime}` : ""}
         </p>
         <Button

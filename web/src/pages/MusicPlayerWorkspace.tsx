@@ -60,7 +60,7 @@ import {
   MusicFileColumnHeadings,
   MusicFilenameToggle,
 } from "../musicFile";
-import { useMusicPlayer, type PlayerTrack } from "../musicPlayer";
+import { useMusicQueue, type PlayerTrack } from "../musicPlayer";
 import { Pagination } from "../movieComponents";
 import {
   Alert,
@@ -209,7 +209,7 @@ function PlaybackActions({
   shufflePending: boolean;
   onInvalidate: () => void;
 }) {
-  const player = useMusicPlayer();
+  const player = useMusicQueue();
   const items = useMemo(() => playableTracks(tracks), [tracks]);
 
   function play() {
@@ -300,7 +300,7 @@ function WorkspaceTrackTable({
   playlist?: PlaylistTrackActions;
   emptyMessage?: string;
 }) {
-  const player = useMusicPlayer();
+  const player = useMusicQueue();
   const [showFilenames, setShowFilenames] = useState(false);
   const playable = useMemo(() => playableTracks(tracks), [tracks]);
 
@@ -759,7 +759,7 @@ export function MusicPlayerWorkspace() {
       : undefined;
   const playlistIDRef = useRef(playlistID);
   playlistIDRef.current = playlistID;
-  const player = useMusicPlayer();
+  const player = useMusicQueue();
   const playerRef = useRef(player);
   playerRef.current = player;
   const playerActionSnapshot = useRef({
@@ -931,9 +931,10 @@ export function MusicPlayerWorkspace() {
       }
       const currentPlayer = playerRef.current;
       setShufflePending(false);
-      if (!currentPlayer.shuffle) currentPlayer.toggleShuffle();
-      const first = items[Math.floor(Math.random() * items.length)];
-      currentPlayer.play(first, items);
+      // Install one concrete shuffled order. Transport and the bounded Now
+      // Playing preview both follow this same queue instead of choosing
+      // unrelated random indexes as playback advances.
+      currentPlayer.playShuffled(items);
       setQueueOpen(true);
     } catch (error) {
       if (request === shuffleGeneration.current)

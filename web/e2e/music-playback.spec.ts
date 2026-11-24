@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
@@ -486,6 +486,96 @@ test.describe.serial("Music playback compatibility", () => {
       name: "Now playing and queue",
     });
     await expect(queue.getByRole("listitem")).toHaveCount(2);
+    const displayedNext = await queue
+      .locator(".music-now-playing-row-title")
+      .nth(1)
+      .textContent();
+    expect(displayedNext).toBeTruthy();
+    await page
+      .getByRole("region", { name: "Music player" })
+      .getByRole("button", { name: "Next track", exact: true })
+      .click();
+    await expect(queue.locator(".is-current")).toContainText(displayedNext!);
+    await expectDecoding(page);
+    await expect(queue.getByRole("listitem")).toHaveCount(2);
+    expect(pageErrors).toEqual([]);
+  });
+
+  test("large-library Shuffle keeps a bounded responsive queue preview", async ({
+    page,
+  }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(String(error)));
+    const bulkDirectory = path.join(server.mediaDir, "E2E Artist", "Bulk");
+    mkdirSync(bulkDirectory, { recursive: true });
+    const source = path.join(server.mediaDir, "E2E Artist", "Track 1.mp3");
+    await server.withDatabase((db) => {
+      const insertTrack = db.prepare(
+        `INSERT INTO music_tracks(id,album_id,disc,number,title,duration_ms,created_at,updated_at)
+         VALUES(?,1,1,?,?,4000,unixepoch(),unixepoch())`,
+      );
+      const insertFile = db.prepare(
+        `INSERT INTO music_files(id,artist_id,album_id,track_id,relative_path,size_bytes,sha256,format,duration_ms,imported_at)
+         VALUES(?,1,1,?,?,64000,'','mp3',4000,unixepoch())`,
+      );
+      db.exec("BEGIN");
+      try {
+        for (let offset = 0; offset < 1200; offset += 1) {
+          const id = 1000 + offset;
+          const relative = `E2E Artist/Bulk/Track ${id}.mp3`;
+          copyFileSync(
+            source,
+            path.join(server.mediaDir, "E2E Artist", "Bulk", `Track ${id}.mp3`),
+          );
+          insertTrack.run(
+            id,
+            id,
+            `Bulk ${String(offset + 1).padStart(4, "0")}`,
+          );
+          insertFile.run(id, id, relative);
+        }
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    });
+
+    await login(page, server);
+    await page.goto(server.url("/music/player"));
+    await page.getByRole("button", { name: "Shuffle", exact: true }).click();
+
+    const queue = page.getByRole("complementary", {
+      name: "Now playing and queue",
+    });
+    await expect(queue.locator(".music-now-playing-count")).toHaveText(
+      "1203 tracks",
+      { timeout: 30_000 },
+    );
+    await expect(queue.getByRole("listitem")).toHaveCount(100);
+    await expect(
+      queue.getByText("Showing positions 1–100 of 1203", { exact: true }),
+    ).toBeVisible();
+    await expectDecoding(page);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const raw = window.localStorage.getItem("reelscarey:music-player:v1");
+          return raw ? JSON.parse(raw).queue.length : 0;
+        }),
+      )
+      .toBe(500);
+
+    const displayedNext = await queue
+      .locator(".music-now-playing-row-title")
+      .nth(1)
+      .textContent();
+    await page
+      .getByRole("region", { name: "Music player" })
+      .getByRole("button", { name: "Next track", exact: true })
+      .click();
+    await expect(queue.locator(".is-current")).toContainText(displayedNext!);
+    await expect(queue.getByRole("listitem")).toHaveCount(100);
     expect(pageErrors).toEqual([]);
   });
 });

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,8 +33,17 @@ const TRACKS = [
   },
 ];
 
+const LARGE_TRACKS = Array.from({ length: 240 }, (_, index) => ({
+  fileID: 1_000 + index,
+  title: `Track ${String(index + 1).padStart(3, "0")}`,
+  artist: "Queue Artist",
+  album: "Queue Album",
+}));
+
+let player: ReturnType<typeof useMusicPlayer>;
+
 function FixtureControls() {
-  const player = useMusicPlayer();
+  player = useMusicPlayer();
   return (
     <>
       <button type="button" onClick={() => player.enqueue(TRACKS[0])}>
@@ -42,6 +51,15 @@ function FixtureControls() {
       </button>
       <button type="button" onClick={() => player.play(TRACKS[0], TRACKS)}>
         Start fixture queue
+      </button>
+      <button
+        type="button"
+        onClick={() => player.play(LARGE_TRACKS[0], LARGE_TRACKS)}
+      >
+        Start large queue
+      </button>
+      <button type="button" onClick={() => player.playShuffled(LARGE_TRACKS)}>
+        Start shuffled large queue
       </button>
     </>
   );
@@ -174,5 +192,129 @@ describe("MusicNowPlaying", () => {
     expect(await screen.findByText("Your queue is empty")).toBeVisible();
     expect(queueRows()).toHaveLength(0);
     expect(screen.getByRole("button", { name: "Clear queue" })).toBeDisabled();
+  });
+
+  it("bounds a large queue and slides the current track through the end", async () => {
+    renderPane();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Start large queue" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Track 001" }),
+    ).toBeVisible();
+    expect(player.queue).toHaveLength(240);
+    expect(screen.getByText("240 tracks")).toBeVisible();
+    expect(queueRows()).toHaveLength(100);
+    expect(screen.getByText("Showing positions 1–100 of 240")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(queueRows()[0]).toHaveTextContent("Track 001");
+    expect(queueRows()[99]).toHaveTextContent("Track 100");
+    expect(
+      screen.queryByRole("button", { name: "Play Track 101" }),
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      player.playAt(149);
+      await Promise.resolve();
+    });
+    expect(
+      await screen.findByRole("heading", { name: "Track 150" }),
+    ).toBeVisible();
+    expect(queueRows()).toHaveLength(100);
+    expect(screen.getByText("Showing positions 125–224 of 240")).toBeVisible();
+    expect(queueRows()[25]).toHaveAttribute("aria-current", "true");
+    expect(queueRows()[25]).toHaveTextContent("Track 150");
+    expect(within(queueRows()[25]).getByText("150")).toHaveAttribute(
+      "aria-label",
+      "Queue position 150",
+    );
+
+    await act(async () => {
+      player.playAt(239);
+      await Promise.resolve();
+    });
+    expect(
+      await screen.findByRole("heading", { name: "Track 240" }),
+    ).toBeVisible();
+    expect(queueRows()).toHaveLength(26);
+    expect(screen.getByText("Showing positions 215–240 of 240")).toBeVisible();
+    expect(queueRows()[25]).toHaveAttribute("aria-current", "true");
+    expect(queueRows()[25]).toHaveTextContent("Track 240");
+    expect(
+      within(queueRows()[25]).getByRole("button", {
+        name: "Move Track 240 down",
+      }),
+    ).toBeDisabled();
+    expect(screen.getByText("0 tracks up next")).toBeVisible();
+    expect(document.querySelectorAll("audio")).toHaveLength(1);
+  });
+
+  it("shows the exact bounded upcoming order after playShuffled", async () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    renderPane();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Start shuffled large queue" }),
+    );
+
+    const expected = [...LARGE_TRACKS.slice(1), LARGE_TRACKS[0]];
+    expect(player.queue.map((track) => track.fileID)).toEqual(
+      expected.map((track) => track.fileID),
+    );
+    expect(player.current?.fileID).toBe(expected[0].fileID);
+    expect(
+      await screen.findByRole("heading", { name: expected[0].title }),
+    ).toBeVisible();
+    expect(queueRows()).toHaveLength(100);
+    expect(playNames()).toEqual(
+      expected.slice(0, 100).map((track) => `Play ${track.title}`),
+    );
+    expect(
+      screen.getByText("239 tracks up next · duration unknown"),
+    ).toBeVisible();
+    expect(screen.getByText("Showing positions 1–100 of 240")).toBeVisible();
+    expect(document.querySelectorAll("audio")).toHaveLength(1);
+    random.mockRestore();
+  });
+
+  it("uses absolute queue indexes for Play, Move, and Remove", async () => {
+    renderPane();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Start large queue" }),
+    );
+    await act(async () => {
+      player.playAt(149);
+      await Promise.resolve();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Play Track 200" }),
+    );
+    expect(player.index).toBe(199);
+    expect(player.current?.fileID).toBe(LARGE_TRACKS[199].fileID);
+    expect(
+      await screen.findByRole("heading", { name: "Track 200" }),
+    ).toBeVisible();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Move Track 210 up" }),
+    );
+    expect(player.queue[208].fileID).toBe(LARGE_TRACKS[209].fileID);
+    expect(player.queue[209].fileID).toBe(LARGE_TRACKS[208].fileID);
+    expect(player.current?.fileID).toBe(LARGE_TRACKS[199].fileID);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Remove Track 220" }),
+    );
+    expect(player.queue).toHaveLength(239);
+    expect(
+      player.queue.some((track) => track.fileID === LARGE_TRACKS[219].fileID),
+    ).toBe(false);
+    expect(player.index).toBe(199);
+    expect(player.current?.fileID).toBe(LARGE_TRACKS[199].fileID);
+    expect(screen.getByText("239 tracks")).toBeVisible();
+    expect(document.querySelectorAll("audio")).toHaveLength(1);
   });
 });

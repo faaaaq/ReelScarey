@@ -13,6 +13,7 @@ import {
   MusicPlayerBar,
   MusicPlayerProvider,
   useMusicPlayer,
+  useMusicQueue,
 } from "../musicPlayer";
 
 const QUEUE_TRACKS = [
@@ -225,8 +226,12 @@ describe("music player", () => {
       const saved = JSON.parse(
         window.localStorage.getItem("reelscarey:music-player:v1") ?? "null",
       );
-      expect(saved?.position).toBe(42);
-      expect(saved?.volume).toBe(0.35);
+      const progress = JSON.parse(
+        window.localStorage.getItem("reelscarey:music-player-progress:v1") ??
+          "null",
+      );
+      expect(progress?.position).toBe(42);
+      expect(progress?.volume).toBe(0.35);
       expect(saved?.queue).toHaveLength(2);
     });
 
@@ -561,6 +566,9 @@ describe("music player queue workspace", () => {
     expect(
       window.localStorage.getItem("reelscarey:music-player:v1"),
     ).toBeNull();
+    expect(
+      window.localStorage.getItem("reelscarey:music-player-progress:v1"),
+    ).toBeNull();
   });
 
   it("keeps repeat-off end behavior and wraps with repeat-all", async () => {
@@ -605,21 +613,292 @@ describe("music player queue workspace", () => {
     expect(player.index).toBe(1);
   });
 
-  it("shuffle selects a valid different queue entry", async () => {
+  it("shuffle preserves current/history and Next, ended and Previous follow the displayed order", async () => {
     const random = vi.spyOn(Math, "random").mockReturnValue(0);
     renderQueue();
-    await start([...QUEUE_TRACKS, THIRD]);
+    await start([...QUEUE_TRACKS, THIRD, FOURTH]);
+    await act(async () => {
+      player.playAt(1);
+      await Promise.resolve();
+    });
     act(() => player.toggleShuffle());
+    expect(player.queue.map((track) => track.fileID)).toEqual([7, 8, 10, 9]);
+    expect(player.index).toBe(1);
+    expect(player.current?.fileID).toBe(8);
+
     await act(async () => {
       player.next();
       await Promise.resolve();
     });
-    expect(player.index).toBeGreaterThanOrEqual(0);
-    expect(player.index).toBeLessThan(3);
-    expect(player.index).not.toBe(0);
-    expect(player.index).toBe(1);
-    expect(player.current?.fileID).toBe(8);
+    expect(player.index).toBe(2);
+    expect(player.current?.fileID).toBe(10);
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    await ended(audio);
+    expect(player.index).toBe(3);
+    expect(player.current?.fileID).toBe(9);
+    audio.currentTime = 0;
+    await act(async () => {
+      player.previous();
+      await Promise.resolve();
+    });
+    expect(player.index).toBe(2);
+    expect(player.current?.fileID).toBe(10);
     random.mockRestore();
+  });
+
+  it("disabling shuffle leaves the installed visible order unchanged", async () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    renderQueue();
+    await start([...QUEUE_TRACKS, THIRD, FOURTH]);
+    act(() => player.toggleShuffle());
+    const displayed = player.queue.map((track) => track.fileID);
+    expect(displayed).toEqual([7, 9, 10, 8]);
+    act(() => player.toggleShuffle());
+    expect(player.shuffle).toBe(false);
+    expect(player.queue.map((track) => track.fileID)).toEqual(displayed);
+    await act(async () => {
+      player.next();
+      await Promise.resolve();
+    });
+    expect(player.current?.fileID).toBe(9);
+    random.mockRestore();
+  });
+
+  it("playShuffled installs a unique shuffled permutation and ordinary play stays coherent", async () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    const tracks = [...QUEUE_TRACKS, THIRD, FOURTH];
+    renderQueue();
+    await act(async () => {
+      player.playShuffled([
+        ...tracks,
+        QUEUE_TRACKS[0],
+        { ...THIRD, fileID: 0 },
+        THIRD,
+      ]);
+      await Promise.resolve();
+    });
+    expect(player.queue.map((track) => track.fileID)).toEqual([8, 9, 10, 7]);
+    expect(new Set(player.queue.map((track) => track.fileID)).size).toBe(4);
+    expect([...player.queue.map((track) => track.fileID)].sort()).toEqual(
+      tracks.map((track) => track.fileID).sort(),
+    );
+    expect(player.index).toBe(0);
+    expect(player.current?.fileID).toBe(8);
+    expect(player.shuffle).toBe(true);
+
+    await act(async () => {
+      player.play(THIRD, tracks);
+      await Promise.resolve();
+    });
+    // While shuffle is active, ordinary play puts the selection first and
+    // shuffles the remaining unique tracks into a coherent visible queue.
+    expect(player.index).toBe(0);
+    expect(player.current?.fileID).toBe(9);
+    expect(player.queue[0].fileID).toBe(9);
+    expect(new Set(player.queue.map((track) => track.fileID)).size).toBe(4);
+    expect([...player.queue.map((track) => track.fileID)].sort()).toEqual(
+      tracks.map((track) => track.fileID).sort(),
+    );
+    random.mockRestore();
+  });
+
+  it("shuffle with no selection shuffles the entire queue", () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    renderQueue();
+    act(() => {
+      player.enqueue(QUEUE_TRACKS[0]);
+      player.enqueue(QUEUE_TRACKS[1]);
+      player.enqueue(THIRD);
+    });
+    act(() => player.toggleShuffle());
+    expect(player.queue.map((track) => track.fileID)).toEqual([8, 9, 7]);
+    expect(player.index).toBe(-1);
+    expect(player.current).toBeNull();
+    random.mockRestore();
+  });
+
+  it("keeps a large live queue but persists and reopens a current-first bounded window", async () => {
+    const tracks = Array.from({ length: 620 }, (_, index) => ({
+      fileID: index + 1,
+      title: `Track ${index + 1}`,
+      artist: "Artist",
+      album: "Album",
+    }));
+    renderQueue();
+    await act(async () => {
+      player.play(tracks[550], tracks);
+      await Promise.resolve();
+    });
+    expect(player.queue).toHaveLength(620);
+    expect(player.index).toBe(550);
+    expect(player.current?.fileID).toBe(551);
+    await waitFor(() => {
+      const saved = JSON.parse(
+        window.localStorage.getItem("reelscarey:music-player:v1") ?? "null",
+      );
+      expect(saved?.queue).toHaveLength(70);
+      expect(saved?.index).toBe(0);
+      expect(saved?.queue[0].fileID).toBe(551);
+      expect(saved?.queue.at(-1).fileID).toBe(620);
+    });
+    expect(player.queue).toHaveLength(620);
+
+    cleanup();
+    renderQueue();
+    expect(player.queue).toHaveLength(70);
+    expect(player.index).toBe(0);
+    expect(player.current?.fileID).toBe(551);
+  });
+
+  it("flushes an immediate track change and matching progress on pagehide", async () => {
+    renderQueue();
+    await start();
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    act(() => {
+      // Hide before React commits the selection or either delayed writer runs.
+      player.playAt(1);
+      audio.currentTime = 27;
+      audio.dispatchEvent(new Event("timeupdate"));
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    const saved = JSON.parse(
+      window.localStorage.getItem("reelscarey:music-player:v1") ?? "null",
+    );
+    const progress = JSON.parse(
+      window.localStorage.getItem("reelscarey:music-player-progress:v1") ??
+        "null",
+    );
+    expect(saved?.index).toBe(1);
+    expect(saved?.queue[saved.index].fileID).toBe(8);
+    expect(saved?.position).toBe(27);
+    expect(progress).toMatchObject({ fileID: 8, position: 27 });
+
+    cleanup();
+    renderQueue();
+    expect(player.current?.fileID).toBe(8);
+    expect(player.index).toBe(1);
+    expect(player.position).toBe(27);
+  });
+
+  it("ignores mismatched track progress while restoring global preferences", () => {
+    window.localStorage.setItem(
+      "reelscarey:music-player:v1",
+      JSON.stringify({
+        queue: QUEUE_TRACKS,
+        index: 0,
+        position: 11,
+        duration: 111,
+        volume: 0.65,
+        muted: false,
+      }),
+    );
+    window.localStorage.setItem(
+      "reelscarey:music-player-progress:v1",
+      JSON.stringify({
+        fileID: 8,
+        position: 91,
+        duration: 910,
+        volume: 0.2,
+        muted: true,
+      }),
+    );
+    renderQueue();
+    expect(player.current?.fileID).toBe(7);
+    expect(player.position).toBe(11);
+    expect(player.duration).toBe(111);
+    expect(player.volume).toBe(0.2);
+    expect(player.muted).toBe(true);
+  });
+
+  it("preserves a legacy oversized current before clamping and merges progress preferences", () => {
+    const tracks = Array.from({ length: 650 }, (_, index) => ({
+      fileID: index + 1,
+      title: `Track ${index + 1}`,
+      artist: "Artist",
+      album: "Album",
+    }));
+    window.localStorage.setItem(
+      "reelscarey:music-player:v1",
+      JSON.stringify({ queue: tracks, index: 575, position: 4 }),
+    );
+    window.localStorage.setItem(
+      "reelscarey:music-player-progress:v1",
+      JSON.stringify({
+        fileID: 576,
+        position: 19,
+        duration: 120,
+        volume: 0.2,
+        muted: true,
+      }),
+    );
+    renderQueue();
+    expect(player.queue).toHaveLength(75);
+    expect(player.index).toBe(0);
+    expect(player.current?.fileID).toBe(576);
+    expect(player.position).toBe(19);
+    expect(player.duration).toBe(120);
+    expect(player.volume).toBe(0.2);
+    expect(player.muted).toBe(true);
+  });
+
+  it("does not rerender queue-only consumers for progress and bounds large storage", async () => {
+    let queuePlayer!: ReturnType<typeof useMusicQueue>;
+    let queueRenders = 0;
+    function QueueOnly() {
+      queuePlayer = useMusicQueue();
+      queueRenders += 1;
+      return null;
+    }
+    function Progress() {
+      const fullPlayer = useMusicPlayer();
+      return <output data-testid="progress">{fullPlayer.position}</output>;
+    }
+    render(
+      <MusicPlayerProvider>
+        <QueueOnly />
+        <Progress />
+      </MusicPlayerProvider>,
+    );
+    const tracks = Array.from({ length: 1200 }, (_, index) => ({
+      fileID: index + 1,
+      title: `Track ${index + 1}`,
+      artist: "Artist",
+      album: "Album",
+    }));
+    await act(async () => {
+      queuePlayer.play(tracks[0], tracks);
+      await Promise.resolve();
+    });
+    const rendersAfterPlay = queueRenders;
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    audio.currentTime = 17;
+    fireEvent(audio, new Event("timeupdate"));
+    expect(screen.getByTestId("progress")).toHaveTextContent("17");
+    expect(queueRenders).toBe(rendersAfterPlay);
+    act(() => queuePlayer.changeVolume(0.25));
+    expect(queueRenders).toBe(rendersAfterPlay);
+    fireEvent(window, new Event("pagehide"));
+    const progress = JSON.parse(
+      window.localStorage.getItem("reelscarey:music-player-progress:v1") ??
+        "null",
+    );
+    expect(progress).toEqual({
+      fileID: 1,
+      position: 17,
+      duration: 0,
+      volume: 0.25,
+      muted: false,
+    });
+    expect(progress.queue).toBeUndefined();
+    await waitFor(() => {
+      const saved = JSON.parse(
+        window.localStorage.getItem("reelscarey:music-player:v1") ?? "null",
+      );
+      expect(saved?.queue).toHaveLength(500);
+      expect(saved?.index).toBe(0);
+      expect(saved?.queue.at(-1).fileID).toBe(500);
+    });
+    expect(queuePlayer.queue).toHaveLength(1200);
   });
 
   it("persists shuffle and repeat while restoring older payloads with defaults", async () => {
@@ -643,6 +922,7 @@ describe("music player queue workspace", () => {
     expect(player.repeat).toBe("all");
 
     cleanup();
+    window.localStorage.removeItem("reelscarey:music-player-progress:v1");
     window.localStorage.setItem(
       "reelscarey:music-player:v1",
       JSON.stringify({

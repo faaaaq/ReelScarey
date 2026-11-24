@@ -4,7 +4,11 @@ import { Theme } from "@radix-ui/themes";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MusicAlbum, MusicArtist, MusicArtistTrack } from "../api";
-import { MusicPlayerProvider } from "../musicPlayer";
+import {
+  MusicPlayerProvider,
+  useMusicQueue,
+  type MusicQueueValue,
+} from "../musicPlayer";
 import { MusicPlayerWorkspace } from "../pages/MusicPlayerWorkspace";
 
 const ARTIST: MusicArtist = {
@@ -238,6 +242,13 @@ function installWorkspaceFetch(options: WorkspaceFetchOptions = {}) {
   return fetchMock;
 }
 
+let workspacePlayer: MusicQueueValue;
+
+function WorkspacePlayerProbe() {
+  workspacePlayer = useMusicQueue();
+  return null;
+}
+
 function LocationProbe() {
   const location = useLocation();
   return (
@@ -260,6 +271,7 @@ function renderWorkspace(entry: string, options: WorkspaceFetchOptions = {}) {
   render(
     <Theme>
       <MusicPlayerProvider>
+        <WorkspacePlayerProbe />
         <MemoryRouter initialEntries={[entry]}>
           <Routes>
             <Route path="/music/player" element={<MusicPlayerWorkspace />} />
@@ -274,6 +286,10 @@ function renderWorkspace(entry: string, options: WorkspaceFetchOptions = {}) {
 
 function requestedURLs(fetchMock: ReturnType<typeof installWorkspaceFetch>) {
   return fetchMock.mock.calls.map(([input]) => String(input));
+}
+
+function fullQueueTitles() {
+  return workspacePlayer.queue.map((track) => track.title);
 }
 
 function queueTitles() {
@@ -588,10 +604,11 @@ describe("MusicPlayerWorkspace", () => {
 
     await user.click(screen.getByRole("button", { name: "Shuffle" }));
 
-    await waitFor(() => expect(queueTitles()).toHaveLength(tracks.length));
-    expect([...queueTitles()].sort()).toEqual(
+    await waitFor(() => expect(fullQueueTitles()).toHaveLength(tracks.length));
+    expect([...fullQueueTitles()].sort()).toEqual(
       tracks.map((track) => track.title).sort(),
     );
+    expect(queueTitles()).toHaveLength(100);
     const encodedQuery = "query=Bj%C3%B6rk+%26+Co";
     expect(
       requestedURLs(fetchMock).filter((url) =>
@@ -601,7 +618,17 @@ describe("MusicPlayerWorkspace", () => {
       `/api/v1/library/music/tracks?page=1&limit=100&${encodedQuery}`,
       `/api/v1/library/music/tracks?page=2&limit=100&${encodedQuery}`,
     ]);
-    expect(queueTitles()).toContain("Global 105");
+    expect(fullQueueTitles()).toContain("Global 105");
+
+    const displayedNext = queueTitles()[1];
+    await act(async () => {
+      workspacePlayer.next();
+      await Promise.resolve();
+    });
+    expect(
+      document.querySelector(".music-now-playing-current h3")?.textContent,
+    ).toBe(displayedNext);
+    expect(screen.getByText(/103 tracks up next/)).toBeVisible();
   });
 
   it("loads every artist page for Shuffle", async () => {
@@ -618,9 +645,10 @@ describe("MusicPlayerWorkspace", () => {
     await user.click(screen.getByRole("button", { name: "Shuffle" }));
 
     await waitFor(() =>
-      expect(queueTitles()).toHaveLength(artistTracks.length),
+      expect(fullQueueTitles()).toHaveLength(artistTracks.length),
     );
-    expect(queueTitles()).toContain("Artist 105");
+    expect(fullQueueTitles()).toContain("Artist 105");
+    expect(queueTitles()).toHaveLength(100);
     expect(
       requestedURLs(artistFetch).filter((url) =>
         url.startsWith("/api/v1/library/music/artists/7/tracks?"),
@@ -630,6 +658,33 @@ describe("MusicPlayerWorkspace", () => {
       "/api/v1/library/music/artists/7/tracks?page=2&limit=100",
     ]);
   });
+
+  it("keeps a large Shuffle complete while bounding rendering and storage", async () => {
+    const user = userEvent.setup();
+    const tracks = generatedTracks("Large", 2500, 20_000);
+    renderWorkspace("/music/player", { globalTracks: tracks });
+
+    expect(await screen.findByRole("row", { name: /Large 001/ })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Shuffle" }));
+
+    await waitFor(() => expect(fullQueueTitles()).toHaveLength(tracks.length));
+    expect(new Set(fullQueueTitles()).size).toBe(tracks.length);
+    expect(fullQueueTitles()).toContain("Large 2500");
+    expect(workspacePlayer.shuffle).toBe(true);
+    expect(queueTitles()).toHaveLength(100);
+    expect(screen.getByText("Showing positions 1–100 of 2500")).toBeVisible();
+
+    await waitFor(() => {
+      const saved = JSON.parse(
+        window.localStorage.getItem("reelscarey:music-player:v1") ?? "null",
+      );
+      expect(saved?.queue).toHaveLength(500);
+      expect(saved?.index).toBe(0);
+      expect(saved.queue[0].fileID).toBe(workspacePlayer.queue[0].fileID);
+      expect(saved.queue[499].fileID).toBe(workspacePlayer.queue[499].fileID);
+    });
+    expect(workspacePlayer.queue).toHaveLength(2500);
+  }, 15000);
 
   it("shuffles album detail tracks without global or artist pagination", async () => {
     const user = userEvent.setup();
@@ -681,8 +736,8 @@ describe("MusicPlayerWorkspace", () => {
     expect(queueTitles()).toEqual(originalQueue);
 
     await user.click(screen.getByRole("button", { name: "Retry" }));
-    await waitFor(() => expect(queueTitles()).toHaveLength(tracks.length));
-    expect([...queueTitles()].sort()).toEqual(
+    await waitFor(() => expect(fullQueueTitles()).toHaveLength(tracks.length));
+    expect([...fullQueueTitles()].sort()).toEqual(
       tracks.map((track) => track.title).sort(),
     );
     expect(

@@ -1159,13 +1159,22 @@ from named-user Subsonic playlists, whose ownership and file-based behavior are
 unchanged.
 
 The right **Now Playing** pane shows the current track and the browser-local
-queue. Queue rows can start, move up/down or remove tracks, and Clear queue
-stops playback without deleting any library data. The shared bottom transport
-adds shuffle, repeat off/all/one and a full-player shortcut alongside the
-existing previous/play/next, seek, volume, streaming-quality and error-recovery
-controls. Queue order, current position, volume, shuffle and repeat restore on
-that browser after reload; this transient playback queue is not a synchronized
-library playlist. Restored queue entries retain the existing 500-entry bound.
+queue in its actual playback order. Queue rows can start, move up/down or remove
+tracks, and Clear queue stops playback without deleting any library data. Next,
+ended and Previous follow the displayed order. Enabling Shuffle preserves the
+current track and prior history while shuffling the upcoming suffix; disabling
+it leaves the installed order unchanged. The shared bottom transport adds
+shuffle, repeat off/all/one and a full-player shortcut alongside the existing
+previous/play/next, seek, volume, streaming-quality and error-recovery controls.
+
+Large live queues remain complete in memory, but Now Playing renders a sliding
+preview of at most 100 positions with up to 25 history rows. The header, up-next
+count and duration still cover the full queue. Queue order, current position,
+volume, shuffle and repeat restore on that browser after reload; this transient
+playback queue is not a synchronized library playlist. Restored queues retain
+the 500-entry bound, saving the current track and next 499 entries when the live
+queue is larger. Progress and preferences use a small separate browser record
+rather than rewriting that queue snapshot on every media-time update.
 
 Ordinary Play and queue buttons operate only on the loaded track list, up to
 100 tracks for a library or artist page, or the loaded album/playlist. The
@@ -1176,12 +1185,13 @@ by themselves; double-clicking a registered row plays it in the visible queue.
 **Shuffle is deliberately different:** it sequentially loads every matching
 track before replacing the queue. All tracks includes every result in the
 current search, artist Shuffle includes every artist page, album Shuffle uses
-the complete album, and playlist Shuffle uses the complete saved playlist. A
-random track starts only after the complete scope loads; a failed page leaves
-the existing queue untouched and offers Retry. Starting another action or
-changing scope invalidates an older load. Only registered audio enters the
-queue, and full-session queues are still subject to the bounded restoration
-behavior above. On medium and small screens the queue moves below the browser
+the complete album, and playlist Shuffle uses the complete saved playlist. Once
+the scope loads, linear-time deduplication and Fisher-Yates shuffling install
+one concrete random order and start its first track; the bounded preview shows
+that same upcoming order. A failed page leaves the existing queue untouched and
+offers Retry. Starting another action or changing scope invalidates an older
+load. Only registered audio enters the queue, and full-session queues are still
+subject to the bounded restoration behavior above. On medium and small screens the queue moves below the browser
 and can be shown or hidden with the Queue toolbar action.
 
 ### Charts and playlist monitor

@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -45,6 +46,9 @@ export type PlayerTrack = {
 };
 
 const PLAYER_STORAGE_KEY = "reelscarey:music-player:v1";
+const PLAYER_PROGRESS_STORAGE_KEY = "reelscarey:music-player-progress:v1";
+const PERSISTED_QUEUE_LIMIT = 500;
+const PROGRESS_WRITE_INTERVAL = 250;
 
 export type RepeatMode = "off" | "all" | "one";
 
@@ -59,9 +63,15 @@ type RestoredPlayer = {
   repeat: RepeatMode;
 };
 
+function finite(candidate: unknown, fallback: number) {
+  return typeof candidate === "number" && Number.isFinite(candidate)
+    ? candidate
+    : fallback;
+}
+
 /** Restore only bounded, non-secret browser state; media paths never appear. */
 function restorePlayer(): RestoredPlayer {
-  const empty: RestoredPlayer = {
+  let restored: RestoredPlayer = {
     queue: [],
     index: -1,
     position: 0,
@@ -73,49 +83,93 @@ function restorePlayer(): RestoredPlayer {
   };
   try {
     const raw = window.localStorage.getItem(PLAYER_STORAGE_KEY);
-    if (!raw) return empty;
-    const value = JSON.parse(raw) as Partial<RestoredPlayer>;
-    if (!Array.isArray(value.queue)) return empty;
-    const queue = value.queue
-      .filter((track): track is PlayerTrack =>
-        Boolean(
-          track &&
-          typeof track === "object" &&
-          Number.isInteger(track.fileID) &&
-          track.fileID > 0 &&
-          typeof track.title === "string" &&
-          typeof track.artist === "string" &&
-          typeof track.album === "string",
-        ),
-      )
-      .slice(0, 500);
-    const index =
-      Number.isInteger(value.index) &&
-      (value.index as number) >= 0 &&
-      (value.index as number) < queue.length
-        ? (value.index as number)
-        : -1;
-    const finite = (candidate: unknown, fallback: number) =>
-      typeof candidate === "number" && Number.isFinite(candidate)
-        ? candidate
-        : fallback;
+    if (raw) {
+      const value = JSON.parse(raw) as Partial<RestoredPlayer>;
+      if (Array.isArray(value.queue)) {
+        // Older releases could leave more than 500 entries in storage. Find a
+        // valid current item before bounding the restored window so a current
+        // track beyond the old cutoff is not silently discarded.
+        const completeQueue = value.queue.filter(
+          (track): track is PlayerTrack =>
+            Boolean(
+              track &&
+              typeof track === "object" &&
+              Number.isInteger(track.fileID) &&
+              track.fileID > 0 &&
+              typeof track.title === "string" &&
+              typeof track.artist === "string" &&
+              typeof track.album === "string",
+            ),
+        );
+        const restoredIndex =
+          Number.isInteger(value.index) &&
+          (value.index as number) >= 0 &&
+          (value.index as number) < completeQueue.length
+            ? (value.index as number)
+            : -1;
+        const windowed =
+          completeQueue.length > PERSISTED_QUEUE_LIMIT && restoredIndex >= 0;
+        const queue = windowed
+          ? completeQueue.slice(
+              restoredIndex,
+              restoredIndex + PERSISTED_QUEUE_LIMIT,
+            )
+          : completeQueue.slice(0, PERSISTED_QUEUE_LIMIT);
+        restored = {
+          queue,
+          index: windowed ? 0 : restoredIndex,
+          position: Math.max(0, Math.min(finite(value.position, 0), 86400)),
+          duration: Math.max(0, Math.min(finite(value.duration, 0), 86400)),
+          volume: Math.max(0, Math.min(finite(value.volume, 0.8), 1)),
+          muted: value.muted === true,
+          shuffle: value.shuffle === true,
+          repeat:
+            value.repeat === "all" || value.repeat === "one"
+              ? value.repeat
+              : "off",
+        };
+      }
+    }
+  } catch {
+    // A malformed structural record must not prevent progress/preferences
+    // from being restored independently below.
+  }
+
+  try {
+    const raw = window.localStorage.getItem(PLAYER_PROGRESS_STORAGE_KEY);
+    if (!raw) return restored;
+    const value = JSON.parse(raw) as Partial<
+      Pick<RestoredPlayer, "position" | "duration" | "volume" | "muted">
+    > & { fileID?: number };
+    const currentFileID =
+      restored.index >= 0 ? restored.queue[restored.index]?.fileID : undefined;
+    const matchingTrack =
+      currentFileID !== undefined && value.fileID === currentFileID;
     return {
-      queue,
-      index,
-      position: Math.max(0, Math.min(finite(value.position, 0), 86400)),
-      duration: Math.max(0, Math.min(finite(value.duration, 0), 86400)),
-      volume: Math.max(0, Math.min(finite(value.volume, 0.8), 1)),
-      muted: value.muted === true,
-      shuffle: value.shuffle === true,
-      repeat:
-        value.repeat === "all" || value.repeat === "one" ? value.repeat : "off",
+      ...restored,
+      // Progress belongs to one file. A stale/interleaved record may still
+      // restore global preferences, but never another track's timeline.
+      position: matchingTrack
+        ? Math.max(
+            0,
+            Math.min(finite(value.position, restored.position), 86400),
+          )
+        : restored.position,
+      duration: matchingTrack
+        ? Math.max(
+            0,
+            Math.min(finite(value.duration, restored.duration), 86400),
+          )
+        : restored.duration,
+      volume: Math.max(0, Math.min(finite(value.volume, restored.volume), 1)),
+      muted: typeof value.muted === "boolean" ? value.muted : restored.muted,
     };
   } catch {
-    return empty;
+    return restored;
   }
 }
 
-type PlayerValue = {
+export type PlayerValue = {
   current: PlayerTrack | null;
   queue: PlayerTrack[];
   index: number;
@@ -129,6 +183,7 @@ type PlayerValue = {
   error: string;
   errorRecovery: "" | "music-import";
   play: (track: PlayerTrack, queue?: PlayerTrack[]) => void;
+  playShuffled: (items: PlayerTrack[]) => void;
   enqueue: (track: PlayerTrack, playNext?: boolean) => void;
   playAt: (index: number) => void;
   removeAt: (index: number) => void;
@@ -146,12 +201,46 @@ type PlayerValue = {
   toggleMute: () => void;
 };
 
+export type MusicQueueValue = Omit<
+  PlayerValue,
+  "position" | "duration" | "volume" | "muted"
+>;
+type PlayerActions = Pick<
+  PlayerValue,
+  | "play"
+  | "playShuffled"
+  | "enqueue"
+  | "playAt"
+  | "removeAt"
+  | "moveQueueItem"
+  | "clearQueue"
+  | "toggleShuffle"
+  | "cycleRepeat"
+  | "retry"
+  | "toggle"
+  | "next"
+  | "previous"
+  | "stop"
+  | "seek"
+  | "changeVolume"
+  | "toggleMute"
+>;
+
 const PlayerContext = createContext<PlayerValue | null>(null);
+const QueueContext = createContext<MusicQueueValue | null>(null);
 
 export function useMusicPlayer() {
   const value = useContext(PlayerContext);
   if (!value)
     throw new Error("useMusicPlayer must be used inside MusicPlayerProvider");
+  return value;
+}
+
+/** Queue state and stable actions without high-frequency media progress. */
+export function useMusicQueue() {
+  const value = useContext(QueueContext);
+  if (!value)
+    throw new Error("useMusicQueue must be used inside MusicPlayerProvider");
   return value;
 }
 
@@ -189,6 +278,30 @@ function clock(seconds: number) {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
 
+function validTrack(track: PlayerTrack) {
+  return Number.isInteger(track.fileID) && track.fileID > 0;
+}
+
+function uniqueTracks(items: PlayerTrack[]) {
+  const seen = new Set<number>();
+  const result: PlayerTrack[] = [];
+  for (const item of items) {
+    if (!validTrack(item) || seen.has(item.fileID)) continue;
+    seen.add(item.fileID);
+    result.push(item);
+  }
+  return result;
+}
+
+function shuffledTracks(items: PlayerTrack[]) {
+  const result = [...items];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const other = Math.floor(Math.random() * (index + 1));
+    [result[index], result[other]] = [result[other], result[index]];
+  }
+  return result;
+}
+
 export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   // Monotonic counter for play() requests. A superseded load (rapid track
@@ -203,17 +316,68 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<PlayerTrack | null>(() =>
     restored.index >= 0 ? restored.queue[restored.index] : null,
   );
-  const [queue, setQueue] = useState<PlayerTrack[]>(restored.queue);
-  const [index, setIndex] = useState(restored.index);
+  const [queue, setQueueState] = useState<PlayerTrack[]>(restored.queue);
+  const [index, setIndexState] = useState(restored.index);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(restored.position);
   const [duration, setDuration] = useState(restored.duration);
   const [volume, setVolume] = useState(restored.volume);
   const [muted, setMuted] = useState(restored.muted);
-  const [shuffle, setShuffle] = useState(restored.shuffle);
-  const [repeat, setRepeat] = useState<RepeatMode>(restored.repeat);
+  const [shuffle, setShuffleState] = useState(restored.shuffle);
+  const [repeat, setRepeatState] = useState<RepeatMode>(restored.repeat);
   const [error, setErrorState] = useState("");
   const [errorRecovery, setErrorRecovery] = useState<"" | "music-import">("");
+  const currentRef = useRef(current);
+  const queueRef = useRef(queue);
+  const indexRef = useRef(index);
+  const shuffleRef = useRef(shuffle);
+  const repeatRef = useRef(repeat);
+  const positionRef = useRef(position);
+  const durationRef = useRef(duration);
+  const volumeRef = useRef(volume);
+  const mutedRef = useRef(muted);
+  currentRef.current = current;
+  queueRef.current = queue;
+  indexRef.current = index;
+  shuffleRef.current = shuffle;
+  repeatRef.current = repeat;
+  positionRef.current = position;
+  durationRef.current = duration;
+  volumeRef.current = volume;
+  mutedRef.current = muted;
+  const structureWriterRef = useRef<() => void>(() => {});
+  const progressWriterRef = useRef<() => void>(() => {});
+  const progressTimer = useRef<number | null>(null);
+  const lastProgressWrite = useRef(0);
+
+  // Keep the pagehide snapshot coherent even when selection changes and the
+  // page is hidden before React commits another render.
+  function setQueue(
+    next: PlayerTrack[] | ((current: PlayerTrack[]) => PlayerTrack[]),
+  ) {
+    const resolved = typeof next === "function" ? next(queueRef.current) : next;
+    queueRef.current = resolved;
+    setQueueState(resolved);
+  }
+
+  function setIndex(next: number | ((current: number) => number)) {
+    const resolved = typeof next === "function" ? next(indexRef.current) : next;
+    indexRef.current = resolved;
+    setIndexState(resolved);
+  }
+
+  function setShuffle(next: boolean) {
+    shuffleRef.current = next;
+    setShuffleState(next);
+  }
+
+  function setRepeat(next: RepeatMode | ((current: RepeatMode) => RepeatMode)) {
+    const resolved =
+      typeof next === "function" ? next(repeatRef.current) : next;
+    repeatRef.current = resolved;
+    setRepeatState(resolved);
+  }
+
   function setError(message: string, recovery: "" | "music-import" = "") {
     setErrorState(message);
     setErrorRecovery(recovery);
@@ -224,45 +388,104 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     return () => document.body.classList.remove("has-music-player");
   }, [current]);
 
-  // Reload restoration is deliberately browser-local, not cross-device server
-  // synchronization. Named Subsonic accounts use their durable server queues.
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      try {
-        if (!current) {
-          window.localStorage.removeItem(PLAYER_STORAGE_KEY);
-          return;
-        }
-        window.localStorage.setItem(
-          PLAYER_STORAGE_KEY,
-          JSON.stringify({
-            queue,
-            index,
-            position,
-            duration,
-            volume,
-            muted,
-            shuffle,
-            repeat,
-          }),
-        );
-      } catch {
-        // Storage may be unavailable in private/embedded browsing; playback
-        // remains functional and simply does not promise restoration.
+  progressWriterRef.current = () => {
+    try {
+      const current = currentRef.current;
+      if (!current) {
+        window.localStorage.removeItem(PLAYER_PROGRESS_STORAGE_KEY);
+        return;
       }
-    }, 250);
+      window.localStorage.setItem(
+        PLAYER_PROGRESS_STORAGE_KEY,
+        JSON.stringify({
+          fileID: current.fileID,
+          position: positionRef.current,
+          duration: durationRef.current,
+          volume: volumeRef.current,
+          muted: mutedRef.current,
+        }),
+      );
+    } catch {
+      // Playback remains usable when browser storage is unavailable.
+    }
+  };
+
+  // Structural snapshots never serialize the live queue directly. Large
+  // queues retain current + the next 499 entries and restore at index zero.
+  structureWriterRef.current = () => {
+    try {
+      const current = currentRef.current;
+      const queue = queueRef.current;
+      const index = indexRef.current;
+      if (!current) {
+        window.localStorage.removeItem(PLAYER_STORAGE_KEY);
+        return;
+      }
+      const windowed =
+        queue.length > PERSISTED_QUEUE_LIMIT &&
+        index >= 0 &&
+        index < queue.length;
+      const savedQueue = windowed
+        ? queue.slice(index, index + PERSISTED_QUEUE_LIMIT)
+        : queue.slice(0, PERSISTED_QUEUE_LIMIT);
+      window.localStorage.setItem(
+        PLAYER_STORAGE_KEY,
+        JSON.stringify({
+          queue: savedQueue,
+          index: windowed ? 0 : index,
+          // Compatibility for older builds; current values also live in the
+          // independent progress/preferences record.
+          position: positionRef.current,
+          duration: durationRef.current,
+          volume: volumeRef.current,
+          muted: mutedRef.current,
+          shuffle: shuffleRef.current,
+          repeat: repeatRef.current,
+        }),
+      );
+    } catch {
+      // Storage may be unavailable in private/embedded browsing; playback
+      // remains functional and simply does not promise restoration.
+    }
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => structureWriterRef.current(), 250);
     return () => window.clearTimeout(timer);
-  }, [
-    current,
-    queue,
-    index,
-    position,
-    duration,
-    volume,
-    muted,
-    shuffle,
-    repeat,
-  ]);
+  }, [current, queue, index, shuffle, repeat]);
+
+  // Media time updates are frequent, so progress and preferences have a small
+  // trailing throttle instead of rewriting the structural queue snapshot.
+  useEffect(() => {
+    if (progressTimer.current !== null) return;
+    const elapsed = Date.now() - lastProgressWrite.current;
+    progressTimer.current = window.setTimeout(
+      () => {
+        progressTimer.current = null;
+        lastProgressWrite.current = Date.now();
+        progressWriterRef.current();
+      },
+      Math.max(0, PROGRESS_WRITE_INTERVAL - elapsed),
+    );
+  }, [position, duration, volume, muted]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (progressTimer.current !== null) {
+        window.clearTimeout(progressTimer.current);
+        progressTimer.current = null;
+      }
+      lastProgressWrite.current = Date.now();
+      structureWriterRef.current();
+      progressWriterRef.current();
+    };
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      if (progressTimer.current !== null)
+        window.clearTimeout(progressTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     const clear = () => stop();
@@ -302,16 +525,19 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
     if (!audio) return;
     const resumeAt = Math.max(0, offset);
+    currentRef.current = track;
     setCurrent(track);
     streamOffset.current = resumeAt;
+    positionRef.current = resumeAt;
     setPosition(resumeAt);
-    setDuration((current) =>
-      resumeAt > 0 && current > resumeAt
-        ? current
+    const nextDuration =
+      resumeAt > 0 && durationRef.current > resumeAt
+        ? durationRef.current
         : track.durationMS
           ? track.durationMS / 1000
-          : 0,
-    );
+          : 0;
+    durationRef.current = nextDuration;
+    setDuration(nextDuration);
     setError("");
     const source = new URL(
       musicStreamURL(track.fileID) + browserStreamSuffix(audio),
@@ -325,37 +551,54 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   }
 
   function play(track: PlayerTrack, requestedQueue?: PlayerTrack[]) {
-    if (!track.fileID) return;
-    const list = (requestedQueue ?? [])
-      .filter((item) => item.fileID > 0)
-      .filter(
-        (item, itemIndex, all) =>
-          all.findIndex((other) => other.fileID === item.fileID) === itemIndex,
-      );
+    if (!validTrack(track)) return;
+    const list = uniqueTracks(requestedQueue ?? []);
     let nextQueue = list.length ? list : [track];
     let nextIndex = nextQueue.findIndex((item) => item.fileID === track.fileID);
     if (nextIndex < 0) {
       nextQueue = [track, ...nextQueue];
       nextIndex = 0;
     }
+    const selected = nextQueue[nextIndex];
+    if (shuffle) {
+      // Ordinary play remains coherent in shuffle mode: the chosen track is
+      // first and only the unplayed remainder is shuffled.
+      nextQueue = [
+        selected,
+        ...shuffledTracks(
+          nextQueue.filter((_, itemIndex) => itemIndex !== nextIndex),
+        ),
+      ];
+      nextIndex = 0;
+    }
     setQueue(nextQueue);
     setIndex(nextIndex);
-    if (current?.fileID === track.fileID && audioRef.current) {
+    if (current?.fileID === selected.fileID && audioRef.current) {
       if (!audioRef.current.getAttribute("src")) {
-        start(track);
+        start(selected);
         return;
       }
       if (streamOffset.current > 0) {
-        start(track);
+        start(selected);
         return;
       }
+      positionRef.current = 0;
       setPosition(0);
       audioRef.current.currentTime = 0;
       setError("");
       requestPlay(audioRef.current);
       return;
     }
-    start(track);
+    start(selected);
+  }
+
+  function playShuffled(items: PlayerTrack[]) {
+    const nextQueue = shuffledTracks(uniqueTracks(items));
+    if (!nextQueue.length) return;
+    setQueue(nextQueue);
+    setIndex(0);
+    setShuffle(true);
+    start(nextQueue[0]);
   }
 
   function enqueue(track: PlayerTrack, playNext = false) {
@@ -395,10 +638,14 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       audio.load();
     }
     streamOffset.current = 0;
+    currentRef.current = track;
     setCurrent(track);
     setPlaying(false);
+    positionRef.current = 0;
     setPosition(0);
-    setDuration(track.durationMS ? track.durationMS / 1000 : 0);
+    const nextDuration = track.durationMS ? track.durationMS / 1000 : 0;
+    durationRef.current = nextDuration;
+    setDuration(nextDuration);
     setError("");
   }
 
@@ -453,7 +700,22 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   }
 
   function toggleShuffle() {
-    setShuffle((value) => !value);
+    if (shuffle) {
+      // Shuffle installs a visible order; disabling it never reorders tracks.
+      setShuffle(false);
+      return;
+    }
+    setShuffle(true);
+    if (!queue.length) return;
+    if (!current || index < 0) {
+      setQueue(shuffledTracks(queue));
+      return;
+    }
+    // Played history, the current selection and its index stay in place.
+    setQueue([
+      ...queue.slice(0, index + 1),
+      ...shuffledTracks(queue.slice(index + 1)),
+    ]);
   }
 
   function cycleRepeat() {
@@ -463,7 +725,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   }
 
   function retry() {
-    if (current) start(current, position);
+    if (current) start(current, positionRef.current);
   }
 
   function toggle() {
@@ -472,7 +734,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     if (audio.paused) {
       setError("");
       if (!audio.getAttribute("src")) {
-        start(current, position);
+        start(current, positionRef.current);
         return;
       }
       requestPlay(audio);
@@ -484,6 +746,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   function finishPlayback() {
     audioRef.current?.pause();
     setPlaying(false);
+    positionRef.current = 0;
     setPosition(0);
   }
 
@@ -496,20 +759,6 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     }
     if (index < 0 || !queue.length) {
       finishPlayback();
-      return;
-    }
-    if (shuffle && queue.length > 1) {
-      // Pick from all indexes except the current one without retry loops.
-      const candidate = Math.max(
-        0,
-        Math.min(
-          queue.length - 2,
-          Math.floor(Math.random() * (queue.length - 1)),
-        ),
-      );
-      const nextIndex = candidate >= index ? candidate + 1 : candidate;
-      setIndex(nextIndex);
-      start(queue[nextIndex]);
       return;
     }
     const nextIndex = index + 1;
@@ -538,6 +787,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       else {
         streamOffset.current = 0;
         audio.currentTime = 0;
+        positionRef.current = 0;
         setPosition(0);
       }
       return;
@@ -552,6 +802,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     else {
       streamOffset.current = 0;
       audio.currentTime = 0;
+      positionRef.current = 0;
       setPosition(0);
     }
   }
@@ -568,10 +819,14 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     }
     try {
       window.localStorage.removeItem(PLAYER_STORAGE_KEY);
+      window.localStorage.removeItem(PLAYER_PROGRESS_STORAGE_KEY);
     } catch {
       // Playback teardown must not fail when browser storage is unavailable.
     }
     streamOffset.current = 0;
+    currentRef.current = null;
+    positionRef.current = 0;
+    durationRef.current = 0;
     setCurrent(null);
     setQueue([]);
     setIndex(-1);
@@ -590,13 +845,15 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
     if (!audio || !current) return;
     const total =
-      duration || (current.durationMS ? current.durationMS / 1000 : 0);
+      durationRef.current ||
+      (current.durationMS ? current.durationMS / 1000 : 0);
     const value = Math.max(0, Math.min(seconds, total || seconds));
     const relative = value - streamOffset.current;
     if (relative >= 0 && seekableContains(audio, relative)) {
       // File-backed direct/cache responses expose normal browser ranges. The
       // element time is relative to any offset response already loaded.
       audio.currentTime = relative;
+      positionRef.current = value;
       setPosition(value);
       return;
     }
@@ -613,18 +870,26 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     streamOffset.current = value;
     audio.src = `${source.pathname}${source.search}`;
     audio.load();
+    positionRef.current = value;
     setPosition(value);
     setError("");
     if (resume) requestPlay(audio);
   }
 
   function changeVolume(value: number) {
-    setVolume(Math.max(0, Math.min(1, value)));
-    if (value > 0) setMuted(false);
+    const nextVolume = Math.max(0, Math.min(1, value));
+    volumeRef.current = nextVolume;
+    setVolume(nextVolume);
+    if (value > 0) {
+      mutedRef.current = false;
+      setMuted(false);
+    }
   }
 
   function toggleMute() {
-    setMuted((value) => !value);
+    const nextMuted = !mutedRef.current;
+    mutedRef.current = nextMuted;
+    setMuted(nextMuted);
   }
 
   useEffect(() => {
@@ -637,11 +902,16 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const updatePosition = () =>
-      setPosition(streamOffset.current + (audio.currentTime || 0));
+    const updatePosition = () => {
+      const nextPosition = streamOffset.current + (audio.currentTime || 0);
+      positionRef.current = nextPosition;
+      setPosition(nextPosition);
+    };
     const updateDuration = () => {
       if (Number.isFinite(audio.duration) && audio.duration > 0) {
-        setDuration(streamOffset.current + audio.duration);
+        const nextDuration = streamOffset.current + audio.duration;
+        durationRef.current = nextDuration;
+        setDuration(nextDuration);
       }
     };
     const onPlay = () => setPlaying(true);
@@ -712,20 +982,12 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [current, queue, index, shuffle, repeat]);
 
-  const value: PlayerValue = {
-    current,
-    queue,
-    index,
-    playing,
-    position,
-    duration: duration || (current?.durationMS ? current.durationMS / 1000 : 0),
-    volume,
-    muted,
-    shuffle,
-    repeat,
-    error,
-    errorRecovery,
+  // Expose stable action identities to queue-only consumers while routing each
+  // call through the latest render's closure.
+  const actionsRef = useRef<PlayerActions | null>(null);
+  actionsRef.current = {
     play,
+    playShuffled,
     enqueue,
     playAt,
     removeAt,
@@ -742,11 +1004,79 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     changeVolume,
     toggleMute,
   };
+  const actions = useMemo<PlayerActions>(
+    () => ({
+      play: (track, requestedQueue) =>
+        actionsRef.current!.play(track, requestedQueue),
+      playShuffled: (items) => actionsRef.current!.playShuffled(items),
+      enqueue: (track, playNext) =>
+        actionsRef.current!.enqueue(track, playNext),
+      playAt: (requestedIndex) => actionsRef.current!.playAt(requestedIndex),
+      removeAt: (requestedIndex) =>
+        actionsRef.current!.removeAt(requestedIndex),
+      moveQueueItem: (from, to) => actionsRef.current!.moveQueueItem(from, to),
+      clearQueue: () => actionsRef.current!.clearQueue(),
+      toggleShuffle: () => actionsRef.current!.toggleShuffle(),
+      cycleRepeat: () => actionsRef.current!.cycleRepeat(),
+      retry: () => actionsRef.current!.retry(),
+      toggle: () => actionsRef.current!.toggle(),
+      next: () => actionsRef.current!.next(),
+      previous: () => actionsRef.current!.previous(),
+      stop: () => actionsRef.current!.stop(),
+      seek: (seconds) => actionsRef.current!.seek(seconds),
+      changeVolume: (nextVolume) =>
+        actionsRef.current!.changeVolume(nextVolume),
+      toggleMute: () => actionsRef.current!.toggleMute(),
+    }),
+    [],
+  );
+  const queueValue = useMemo<MusicQueueValue>(
+    () => ({
+      current,
+      queue,
+      index,
+      playing,
+      shuffle,
+      repeat,
+      error,
+      errorRecovery,
+      ...actions,
+    }),
+    [
+      current,
+      queue,
+      index,
+      playing,
+      shuffle,
+      repeat,
+      error,
+      errorRecovery,
+      actions,
+    ],
+  );
+  const effectiveDuration =
+    duration || (current?.durationMS ? current.durationMS / 1000 : 0);
+  const value = useMemo<PlayerValue>(
+    () => ({
+      ...queueValue,
+      position,
+      duration: effectiveDuration,
+      volume,
+      muted,
+    }),
+    [queueValue, position, effectiveDuration, volume, muted],
+  );
 
   return (
     <PlayerContext.Provider value={value}>
-      {children}
-      <audio ref={audioRef} preload="metadata" className="music-player-audio" />
+      <QueueContext.Provider value={queueValue}>
+        {children}
+        <audio
+          ref={audioRef}
+          preload="metadata"
+          className="music-player-audio"
+        />
+      </QueueContext.Provider>
     </PlayerContext.Provider>
   );
 }
@@ -757,7 +1087,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
  * preference; it does not change the audio element URL itself.
  */
 function PlayerQualityControl() {
-  const track = useMusicPlayer().current;
+  const track = useMusicQueue().current;
   const prefs = useResource<MusicPreferences>("/library/music/preferences");
   const [value, setValue] = useState<MusicStreamingQuality>("balanced");
   const [saving, setSaving] = useState(false);
