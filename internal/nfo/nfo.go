@@ -101,6 +101,9 @@ func RenderEpisode(episode Episode) ([]byte, error) {
 	b.WriteString(xmlDeclaration)
 	b.WriteString("<episodedetails>\n")
 	writeElement(&b, "title", normalized.title)
+	// Emby and Jellyfin can use a provider-supplied sort title to override
+	// normal episode ordering. Always persist an explicitly blank value.
+	b.WriteString(blankSortTitle + "\n")
 	writeYear(&b, normalized.year)
 	fmt.Fprintf(&b, "<season>%d</season>\n", normalized.season)
 	fmt.Fprintf(&b, "<episode>%d</episode>\n", normalized.episode)

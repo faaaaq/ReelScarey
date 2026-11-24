@@ -400,7 +400,8 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if err != nil {
 		return false, err
 	}
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Music: musicService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, YouTubeSubtitles: httpYouTubeSubtitles, TIDAL: tidalProvider, Secrets: secretStore, Notify: notifyService, TOTP: totpStore, Emby: embyService, EmbyMonitor: embyMonitor, Jellyfin: jellyfinService, Plex: plexService, VPN: vpnService, Announce: announceService, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	nfoWorker := &nfoexport.Worker{DB: db, MediaRoot: cfg.MediaDir}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.New(db, cfg, logger, assets, version, httpapi.Dependencies{Auth: authService, Metadata: metadataService, Music: musicService, Transfer: transferService, Automation: automationService, Subtitle: subtitleService, YouTubeInspector: httpYouTubeInspector, YouTubeSubtitles: httpYouTubeSubtitles, TIDAL: tidalProvider, Secrets: secretStore, Notify: notifyService, TOTP: totpStore, Emby: embyService, EmbyMonitor: embyMonitor, Jellyfin: jellyfinService, Plex: plexService, VPN: vpnService, Announce: announceService, Bot: botService, Backups: backupService, MetadataRefresh: metadataRefresh, NFOExport: nfoWorker}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return false, fmt.Errorf("listen: %w", err)
@@ -554,7 +555,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	nfoDone := make(chan struct{})
 	go guardWorker(logger, "nfo", nfoDone, func() {
 		if waitRecovery(workerCtx, cfg.ConfigDir) {
-			(&nfoexport.Worker{DB: db, MediaRoot: cfg.MediaDir}).Run(workerCtx, logger)
+			nfoWorker.Run(workerCtx, logger)
 		}
 	})
 	defer workers.join(nfoDone, "nfo")

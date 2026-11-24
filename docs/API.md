@@ -34,6 +34,19 @@ The optional `settings.artwork_export` preference writes a missing `poster.jpg`
 beside registered movies from TMDb artwork. Existing images are never replaced;
 TV episode artwork is not written.
 
+Generated episode NFOs always contain an empty `<sorttitle></sorttitle>`. The
+background NFO worker also blanks non-empty values beside newly registered
+TV/Anime episodes, independently of `settings.nfo_export`. For existing items,
+administrator POST `/api/v1/library/episodes/sort-titles/clear` accepts
+`{after_id: 0}` and processes at most 128 registered episode media files in
+stable media-file ID order. It returns `{scanned,changed,already_blank,missing,
+failed,issues,next_after_id,done}`; repeat with `after_id` set to
+`next_after_id` until `done` is true. `issues` contains library-relative paths
+and safe errors for individual files that could not be changed. Missing NFOs
+are not created, already-blank documents are not rewritten, movie NFOs are
+excluded, and unrelated XML bytes are preserved. The route requires the normal
+administrator authentication, CSRF and same-origin checks.
+
 Indexers with `kind: "cardigann"` accept a bounded `definition` YAML string and
 the tracker homepage URL. The adapter supports a conservative Cardigann subset:
 HTML/CSS search rows, common field filters, cookie/user-agent sessions and

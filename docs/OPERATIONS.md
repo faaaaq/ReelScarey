@@ -37,6 +37,24 @@ The **Library import method** preference is separate from the publication
 check: copy-only imports are valid, but the media filesystem must still support
 the private no-overwrite hardlink used to publish each file.
 
+### Episode NFO sort titles
+
+The NFO worker keeps TV and Anime episode `<sorttitle>` values blank to avoid
+provider-specific values overriding normal episode ordering in Emby and
+Jellyfin. Newly generated episode NFOs include an explicit empty element. The
+worker also checks newly registered downloaded and manually imported episode
+files and blanks non-empty values in their existing sibling NFOs. This cleanup
+runs even when optional NFO generation is disabled. Movie NFOs, video bytes and
+all unrelated episode metadata are unchanged; missing sidecars are not created.
+
+**General settings → Episode ordering → Clear episode sort titles** provides a
+confirmed batch for existing registered TV/Anime files. It uses bounded,
+resumable pages and reports changed, already-blank, missing and failed files.
+Malformed, unsafe or unavailable NFOs are reported without stopping other
+files. Re-run the batch after correcting them. If Emby or Jellyfin has already
+cached an item's metadata, use that server's normal metadata refresh so it
+re-reads the changed NFO.
+
 ## Administration backup interface
 
 Open **Backups** for live snapshots, scheduling, retention, ZIP download/upload

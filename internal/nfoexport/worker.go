@@ -1,10 +1,12 @@
 // Package nfoexport writes opt-in Jellyfin-compatible NFO sidecars beside
-// registered movie and episode media files.
+// registered movie and episode media files and keeps episode sort titles blank.
 //
-// The worker only reads library metadata. It never changes media bytes,
-// probe_json, analysis columns or library rows, and it refuses to replace an
-// existing sidecar. All paths are anchored to MediaRoot so a registered path
-// cannot escape the library or follow a symbolic link.
+// The worker only reads library metadata. It never changes video bytes,
+// probe_json, analysis columns or library rows. Generation refuses to replace
+// an existing sidecar. The independent episode cleanup changes only non-empty
+// sorttitle elements, including when generation is disabled. All paths are
+// anchored to MediaRoot so a registered path cannot escape the library or
+// follow a symbolic link.
 package nfoexport
 
 import (
@@ -63,6 +65,10 @@ type Worker struct {
 	mu        sync.Mutex
 	attempted map[string]struct{}
 	lastID    int64
+
+	cleanupMu     sync.Mutex
+	cleanupLastID int64
+	batchLimit    int
 }
 
 type candidate struct {
@@ -162,8 +168,9 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-// Run processes eligible files until ctx is cancelled. It drains ready work
-// immediately and then waits Interval between passes. Only warnings are logged.
+// Run cleans episode sort titles and exports eligible NFOs until ctx is
+// cancelled. It drains ready work immediately and then waits Interval between
+// passes. Only warnings are logged.
 func (w *Worker) Run(ctx context.Context, logger *slog.Logger) {
 	if logger == nil {
 		logger = slog.Default()
@@ -173,9 +180,14 @@ func (w *Worker) Run(ctx context.Context, logger *slog.Logger) {
 		interval = DefaultInterval
 	}
 	for {
-		worked, err := w.ProcessOne(ctx)
+		worked, err := w.CleanupOne(ctx)
+		operation := "NFO sort-title cleanup"
+		if !worked && err == nil {
+			worked, err = w.ProcessOne(ctx)
+			operation = "NFO export"
+		}
 		if err != nil && ctx.Err() == nil {
-			logger.Warn("NFO export deferred", "error", err)
+			logger.Warn(operation+" deferred", "error", err)
 		}
 		if ctx.Err() != nil {
 			return

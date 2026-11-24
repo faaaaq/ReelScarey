@@ -33,7 +33,10 @@ function mount(path = "/") {
     </Theme>,
   );
 }
-function setupFetch(save?: (body: unknown) => Response) {
+function setupFetch(
+  save?: (body: unknown) => Response,
+  clearSortTitles?: (body: { after_id?: number }) => Response,
+) {
   const mock = vi.fn(async (url: string, options?: RequestInit) => {
     if (url.endsWith("/auth/session"))
       return Response.json({
@@ -47,6 +50,25 @@ function setupFetch(save?: (body: unknown) => Response) {
       });
     if (url.endsWith("/providers/tmdb"))
       return Response.json({ configured: false, updated_at: "" });
+    if (
+      url.endsWith("/library/episodes/sort-titles/clear") &&
+      options?.method === "POST"
+    ) {
+      const body = JSON.parse(String(options.body));
+      return (
+        clearSortTitles?.(body) ??
+        Response.json({
+          scanned: 0,
+          changed: 0,
+          already_blank: 0,
+          missing: 0,
+          failed: 0,
+          issues: [],
+          next_after_id: 0,
+          done: true,
+        })
+      );
+    }
     if (options?.method === "PUT")
       return (
         save?.(JSON.parse(String(options.body))) ??
@@ -207,6 +229,49 @@ describe("foundation UI", () => {
     expect(JSON.parse(String(saveCall?.[1]?.body))).toMatchObject({
       import_mode: "copy",
     });
+  });
+
+  it("clears existing episode sort titles through every batch", async () => {
+    const positions: number[] = [];
+    const fetch = setupFetch(undefined, (body) => {
+      const position = body.after_id ?? 0;
+      positions.push(position);
+      const first = positions.length === 1;
+      return Response.json({
+        scanned: first ? 2 : 1,
+        changed: 1,
+        already_blank: first ? 1 : 0,
+        missing: 0,
+        failed: 0,
+        issues: [],
+        next_after_id: first ? 41 : 42,
+        done: !first,
+      });
+    });
+    mount("/settings/general");
+    const trigger = await screen.findByRole("button", {
+      name: "Clear episode sort titles",
+    });
+    await userEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Other NFO metadata");
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Clear all episode sort titles",
+      }),
+    );
+    expect(
+      await screen.findByText(/Cleanup complete: 2 sort titles cleared/),
+    ).toBeVisible();
+    expect(screen.getByText(/across 3 registered episode files/)).toBeVisible();
+    expect(positions).toEqual([0, 41]);
+    expect(
+      fetch.mock.calls.filter(
+        ([url, options]) =>
+          String(url).endsWith("/library/episodes/sort-titles/clear") &&
+          options?.method === "POST",
+      ),
+    ).toHaveLength(2);
   });
 
   it("discards edits and reloads saved settings on a revision conflict", async () => {

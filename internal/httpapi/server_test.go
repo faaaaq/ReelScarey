@@ -86,6 +86,7 @@ func TestRequesterCannotAccessAdministratorAPIs(t *testing.T) {
 		{"GET", "/api/v1/library/movies/1/versions", ""}, {"PUT", "/api/v1/library/movies/1/versions", `{}`},
 		{"GET", "/api/v1/settings", ""}, {"GET", "/api/v1/library", ""}, {"GET", "/api/v1/indexers", ""},
 		{"POST", "/api/v1/automation/run", "{}"}, {"PUT", "/api/v1/settings", validSettings},
+		{"POST", "/api/v1/library/episodes/sort-titles/clear", `{}`},
 		{"GET", "/api/v1/requester/../settings", ""},
 	} {
 		req := httptest.NewRequest(route.method, route.path, strings.NewReader(route.body))

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
-import { RotateCcw, Save } from "lucide-react";
+import { Eraser, RotateCcw, Save } from "lucide-react";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
 import {
   APIError,
@@ -20,6 +20,7 @@ import { useResource } from "../useResource";
 import { UnsavedRouteGuard } from "../UnsavedRouteGuard";
 import {
   Alert,
+  ConfirmDialog,
   DescriptionItem,
   DescriptionList,
   FieldSet,
@@ -37,6 +38,21 @@ import { SecuritySettings } from "./SecuritySettings";
 import "./Admin.css";
 
 type Area = { title: string; to: string; description: string };
+
+type SortTitleCleanupPage = {
+  scanned: number;
+  changed: number;
+  already_blank: number;
+  missing: number;
+  failed: number;
+  issues: { path: string; message: string }[];
+  next_after_id: number;
+  done: boolean;
+};
+type SortTitleCleanupSummary = Pick<
+  SortTitleCleanupPage,
+  "scanned" | "changed" | "already_blank" | "missing" | "failed" | "issues"
+> & { done: boolean };
 
 /** Warns before leaving with unsaved form changes. */
 export function useUnsavedGuard(dirty: boolean) {
@@ -266,6 +282,9 @@ function GeneralSettings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [cleaningSortTitles, setCleaningSortTitles] = useState(false);
+  const [sortTitleCleanup, setSortTitleCleanup] =
+    useState<SortTitleCleanupSummary>();
 
   useEffect(() => {
     if (settings.data) {
@@ -318,6 +337,54 @@ function GeneralSettings() {
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function clearSortTitles() {
+    if (cleaningSortTitles) return;
+    setCleaningSortTitles(true);
+    let afterID = 0;
+    let total: SortTitleCleanupSummary = {
+      scanned: 0,
+      changed: 0,
+      already_blank: 0,
+      missing: 0,
+      failed: 0,
+      issues: [],
+      done: false,
+    };
+    setSortTitleCleanup(total);
+    try {
+      do {
+        const page = await api<SortTitleCleanupPage>(
+          "/library/episodes/sort-titles/clear",
+          {
+            method: "POST",
+            body: JSON.stringify({ after_id: afterID }),
+          },
+        );
+        total = {
+          scanned: total.scanned + page.scanned,
+          changed: total.changed + page.changed,
+          already_blank: total.already_blank + page.already_blank,
+          missing: total.missing + page.missing,
+          failed: total.failed + page.failed,
+          issues: [...total.issues, ...page.issues].slice(0, 20),
+          done: page.done,
+        };
+        setSortTitleCleanup(total);
+        if (
+          !page.done &&
+          (page.scanned === 0 || page.next_after_id <= afterID)
+        ) {
+          throw new Error(
+            "The cleanup did not advance. Restart the batch or check the server logs.",
+          );
+        }
+        afterID = page.next_after_id;
+      } while (!total.done);
+    } finally {
+      setCleaningSortTitles(false);
     }
   }
 
@@ -449,7 +516,7 @@ function GeneralSettings() {
                 </FormGroup>
                 <FormGroup
                   label="Info sidecars"
-                  help="Write optional Jellyfin-compatible .nfo sidecars beside registered media. Existing files are never replaced. After a reorganization, an older sidecar may remain beside the previous path."
+                  help="Write optional Jellyfin-compatible .nfo sidecars beside registered media. Existing sidecars are not regenerated. TV and Anime episode sort titles are always kept blank; other existing metadata is preserved. After a reorganization, an older sidecar may remain beside the previous path."
                 >
                   <label className="rs-check">
                     <input
@@ -460,6 +527,73 @@ function GeneralSettings() {
                     />
                     <span>Write .nfo sidecars for registered media</span>
                   </label>
+                </FormGroup>
+                <FormGroup
+                  label="Episode ordering"
+                  help="Newly downloaded and manually imported TV/Anime episodes have non-empty NFO sort titles wiped automatically, even when NFO generation is off. Missing sidecars are not created. Use the batch to clean existing registered episodes."
+                >
+                  <div className="rs-stack">
+                    <div>
+                      <ConfirmDialog
+                        trigger={
+                          <Button
+                            type="button"
+                            variant="soft"
+                            disabled={cleaningSortTitles}
+                          >
+                            <Eraser size={16} aria-hidden="true" />
+                            {cleaningSortTitles
+                              ? "Clearing episode sort titles…"
+                              : "Clear episode sort titles"}
+                          </Button>
+                        }
+                        title="Clear all episode sort titles?"
+                        description="For every registered TV and Anime episode, replace non-empty NFO sort titles with blank values in resumable batches. Other NFO metadata and all video files stay unchanged. Missing sidecars are not created."
+                        confirmLabel="Clear all episode sort titles"
+                        onConfirm={clearSortTitles}
+                      />
+                    </div>
+                    {sortTitleCleanup && !sortTitleCleanup.done && (
+                      <p role="status" className="rs-muted">
+                        Processed {sortTitleCleanup.scanned} registered episode
+                        files; cleared {sortTitleCleanup.changed} sort titles.
+                      </p>
+                    )}
+                    {sortTitleCleanup?.done && (
+                      <Alert
+                        kind={
+                          sortTitleCleanup.failed > 0 ? "warning" : "success"
+                        }
+                      >
+                        <p>
+                          Cleanup complete: {sortTitleCleanup.changed} sort
+                          titles cleared across {sortTitleCleanup.scanned}{" "}
+                          registered episode files.{" "}
+                          {sortTitleCleanup.already_blank} NFOs were already
+                          blank or had no sort title; {sortTitleCleanup.missing}{" "}
+                          files had no NFO.
+                        </p>
+                        {sortTitleCleanup.failed > 0 && (
+                          <>
+                            <p>
+                              {sortTitleCleanup.failed} sidecars could not be
+                              changed. Fix the reported files and run the batch
+                              again.
+                            </p>
+                            <ul>
+                              {sortTitleCleanup.issues
+                                .slice(0, 5)
+                                .map((issue) => (
+                                  <li key={issue.path}>
+                                    <code>{issue.path}</code>: {issue.message}
+                                  </li>
+                                ))}
+                            </ul>
+                          </>
+                        )}
+                      </Alert>
+                    )}
+                  </div>
                 </FormGroup>
                 <FormGroup
                   label="Poster sidecars"

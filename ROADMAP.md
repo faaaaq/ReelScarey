@@ -74,6 +74,12 @@ Historical native and package results below remain as records of past work.
   suggestions, a read-only diagnostics page, read-only storage insights and an
   opt-in movie poster sidecar. See [API](docs/API.md).
 
+- [x] Consistent TV/Anime episode ordering in Emby and Jellyfin: generated and
+  newly registered episode NFOs keep sort titles blank, including manual
+  imports and installations with NFO generation disabled. A confirmed,
+  resumable settings batch cleans existing registered episode NFOs without
+  changing videos or unrelated metadata. See [operations](docs/OPERATIONS.md).
+
 - [x] Language profiles: named ordered subtitle tracks, up to three optional
   audio languages, Movies/TV/Anime library defaults and explicit per-title
   overrides. Profiles overlay the global subtitle preferences; audio choices are

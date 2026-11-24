@@ -32,6 +32,7 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/metadata"
 	"github.com/faaaaq/ReelScarey/internal/metrics"
 	"github.com/faaaaq/ReelScarey/internal/music"
+	"github.com/faaaaq/ReelScarey/internal/nfoexport"
 	"github.com/faaaaq/ReelScarey/internal/notify"
 	"github.com/faaaaq/ReelScarey/internal/operations"
 	"github.com/faaaaq/ReelScarey/internal/organization"
@@ -63,6 +64,7 @@ type Server struct {
 	subtitle         *subtitle.Service
 	operations       *operations.Service
 	organization     *organization.Service
+	nfoExport        *nfoexport.Worker
 	requests         *requests.Store
 	discord          *requests.Discord
 	requestLists     *requests.Lists
@@ -116,6 +118,7 @@ type Dependencies struct {
 	Franchises       metadata.FranchiseProvider
 	Backups          *backups.Service
 	MetadataRefresh  *automation.MetadataRefresher
+	NFOExport        *nfoexport.Worker
 	TOTP             *auth.TOTPStore
 }
 
@@ -272,6 +275,10 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	}
 	s.operations = operations.New(db, cfg)
 	s.organization = organization.New(db, cfg)
+	s.nfoExport = deps.NFOExport
+	if s.nfoExport == nil {
+		s.nfoExport = &nfoexport.Worker{DB: db, MediaRoot: cfg.MediaDir}
+	}
 	s.requests = requests.New(db)
 	if deps.Secrets != nil {
 		s.notify = deps.Notify
@@ -346,6 +353,7 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library", method(http.MethodGet, s.listLibrary))
 	mux.HandleFunc("/api/v1/library/lookup/{tmdb}", method(http.MethodGet, s.libraryLookup))
 	mux.HandleFunc("/api/v1/library/refresh", method(http.MethodPost, s.refreshLibrary))
+	mux.HandleFunc("/api/v1/library/episodes/sort-titles/clear", method(http.MethodPost, s.clearEpisodeSortTitles))
 	mux.HandleFunc("/api/v1/library/monitoring/preview", method(http.MethodPost, s.reviewMonitoring))
 	mux.HandleFunc("/api/v1/library/monitoring", method(http.MethodPut, s.applyMonitoring))
 	mux.HandleFunc("/api/v1/library/profile-defaults", s.libraryProfileDefaults)
