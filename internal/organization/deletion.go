@@ -408,7 +408,7 @@ func deleteSelectionRows(ctx context.Context, tx *sql.Tx, r *Removal) error {
 	case "artists", "albums", "tracks", "music_files":
 		_, err = tx.ExecContext(ctx, `UPDATE music_albums SET status='missing' WHERE id IN (`+albumIDs+`) AND status='available' AND NOT EXISTS(SELECT 1 FROM music_files WHERE album_id=music_albums.id);
 			UPDATE music_artists SET status='missing' WHERE id IN (`+artistIDs+`) AND status='available' AND NOT EXISTS(SELECT 1 FROM music_files WHERE artist_id=music_artists.id);
-			UPDATE music_files SET variant_role='primary' WHERE id IN (
+			UPDATE music_files SET variant_role='primary',variant_profile='' WHERE id IN (
 				SELECT MIN(f.id) FROM music_files f WHERE f.track_id IN (`+trackIDs+`)
 				AND NOT EXISTS(SELECT 1 FROM music_files p WHERE p.track_id=f.track_id AND p.variant_role='primary')
 				GROUP BY f.track_id)`)
@@ -461,11 +461,26 @@ func removableSidecars(ctx context.Context, root *os.Root, q query, fileID int64
 	if err != nil {
 		return nil, err
 	}
+	// The listing decides which video a subtitle is named for. A subtitle is
+	// claimed only when its own stem is not the stem of another video here:
+	// "Movie.1985.srt" belongs to "Movie.1985.mkv", not to "Movie.mkv", even
+	// though the longer name starts with the shorter one.
+	own := strings.ToLower(path.Base(stem))
+	videos := map[string]bool{}
+	for _, name := range names {
+		if isVideoExtension(name) {
+			videos[strings.ToLower(strings.TrimSuffix(name, path.Ext(name)))] = true
+		}
+	}
 	for _, name := range names {
 		full := path.Join(path.Dir(video), name)
-		if strings.HasPrefix(strings.ToLower(full), strings.ToLower(stem)+".") && isSubtitleExtension(full) {
-			candidates[full] = true
+		if !strings.HasPrefix(strings.ToLower(full), strings.ToLower(stem)+".") || !isSubtitleExtension(full) {
+			continue
 		}
+		if named := strings.ToLower(strings.TrimSuffix(name, path.Ext(name))); named != own && videos[named] {
+			continue
+		}
+		candidates[full] = true
 	}
 	keys := make([]string, 0, len(candidates))
 	for name := range candidates {
@@ -509,6 +524,15 @@ func removableSidecars(ctx context.Context, root *os.Root, q query, fileID int64
 func isSubtitleExtension(name string) bool {
 	switch strings.ToLower(path.Ext(name)) {
 	case ".srt", ".vtt", ".ass", ".ssa", ".sub", ".idx", ".sup", ".smi", ".ttml":
+		return true
+	}
+	return false
+}
+
+// isVideoExtension reports the video extensions a sidecar can be named after.
+func isVideoExtension(name string) bool {
+	switch strings.ToLower(path.Ext(name)) {
+	case ".mkv", ".mp4", ".m4v", ".mov", ".avi", ".webm", ".ts", ".m2ts":
 		return true
 	}
 	return false
