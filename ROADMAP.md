@@ -1031,6 +1031,7 @@ capabilities are implemented and documented in `docs/`:
   over the default source, and an optional Subsonic-compatible endpoint. See
   [MUSIC.md](docs/MUSIC.md).
 - Music quality profiles, post-download conversion, a durable conversion queue,
+  confirmed source upgrades that keep the original file as an archive variant,
   live-first cold streaming with a detached persistent cache, per-user Subsonic
   streaming quality, and a web player that applies quality changes to the
   current track and reports the delivered format. Includes stars, ratings,
