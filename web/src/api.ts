@@ -799,6 +799,39 @@ export type MusicUpgradeList = {
   items: MusicUpgradeSuggestion[];
 };
 
+export type MusicSourceUpgradeScope = "library" | "artist" | "album" | "track";
+export type MusicSourceUpgradeTarget = "high" | "lossless" | "hires";
+export type MusicSourceUpgradeState =
+  "queued" | "running" | "completed" | "failed" | "cancelled";
+
+/** A durable background search for better source copies of saved music. */
+export type MusicSourceUpgradeJob = {
+  id: number;
+  scope: MusicSourceUpgradeScope;
+  scope_id: number;
+  scope_name: string;
+  target_quality: MusicSourceUpgradeTarget;
+  max_bitrate_kbps: number;
+  rate_per_hour: number;
+  state: MusicSourceUpgradeState;
+  total_count: number;
+  processed_count: number;
+  upgraded_count: number;
+  skipped_count: number;
+  failed_count: number;
+  current_track: string;
+  error: string;
+  created_at: number;
+  updated_at: number;
+};
+
+export type MusicSourceUpgradeJobPage = {
+  items: MusicSourceUpgradeJob[];
+  page: number;
+  total: number;
+  limit: number;
+};
+
 export type MusicDownloadFile = {
   index: number;
   name: string;

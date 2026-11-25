@@ -68,6 +68,10 @@ func TestPopulatedDatabaseUpgradeAddsEvidenceAndPlaybackState(t *testing.T) {
 		DROP TABLE music_play_queue;
 		DROP TABLE music_play_events;
 		DROP TABLE music_now_playing;
+		DROP TABLE music_upgrade_active;
+		DROP TABLE music_upgrade_items;
+		DROP TABLE music_upgrade_jobs;
+		DROP TABLE music_upgrade_rate;
 		PRAGMA foreign_keys=ON`)
 	if err != nil {
 		raw.Close()
@@ -83,8 +87,8 @@ func TestPopulatedDatabaseUpgradeAddsEvidenceAndPlaybackState(t *testing.T) {
 	}
 	defer upgraded.Close()
 	version, err := database.Version(ctx, upgraded)
-	if err != nil || version != 114 {
-		t.Fatalf("schema version = %d, want 114: %v", version, err)
+	if err != nil || version != 115 {
+		t.Fatalf("schema version = %d, want 115: %v", version, err)
 	}
 	var title, origin, evidence string
 	var duration int

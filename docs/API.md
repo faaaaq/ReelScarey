@@ -426,7 +426,20 @@ monitored albums with no registered files. GET/PUT `/schedule` manages the
 wanted-album schedule and POST `/schedule/run` performs one bounded run.
 GET/PUT/DELETE `/albums/{id}/preferences` reads, saves or resets a per-album
 preference override. GET `/upgrades` lists albums whose registered files fall
-below their effective preference; it is a suggestion only.
+below their effective preference; it is a suggestion only. POST
+`/upgrade-jobs` accepts `{scope,scope_id,target_quality,max_bitrate_kbps}` and
+queues a durable source upgrade for the whole library (`scope: "library"`,
+`scope_id: 0`), an artist, an album or a track; `target_quality` is `high`,
+`lossless` or `hires` and a zero `max_bitrate_kbps` means no cap. The worker
+searches the audio source for each canonical primary file and publishes only a
+copy whose measured quality is strictly better: the copy becomes the track's
+primary file and the original stays in place as an archive variant. An
+overlapping scope, a track with several primary files, an empty scope or a
+changed original is refused with `409` and replaces nothing. GET
+`/upgrade-jobs?page=` lists jobs and POST `/upgrade-jobs/{id}/cancel` and
+`/retry` manage one. Attempts are spaced by one application-wide clock of at
+most 200 per hour; the rate is not a request field. See
+[music scope and limits](MUSIC.md).
 
 These routes are administrator-only. Edits stage the source, verify the result,
 publish without overwriting an existing destination, retain a backup before a

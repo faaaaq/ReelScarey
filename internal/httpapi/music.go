@@ -49,7 +49,8 @@ func (s *Server) musicError(w http.ResponseWriter, err error) {
 			status = http.StatusBadRequest
 		case "music_import_missing_source":
 			status = http.StatusConflict
-		case "music_profile_name_taken", "music_correction_conflict", "music_local_track", "music_ambiguous_artist", "music_ambiguous_album":
+		case "music_profile_name_taken", "music_correction_conflict", "music_local_track", "music_ambiguous_artist", "music_ambiguous_album",
+			"music_upgrade_state", "music_upgrade_empty", "music_upgrade_overlap", "music_upgrade_ambiguous", "music_upgrade_changed":
 			status = http.StatusConflict
 		}
 		if provider.RetryAfter > 0 {

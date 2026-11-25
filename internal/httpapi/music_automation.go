@@ -28,6 +28,24 @@ type musicScheduleRunner interface {
 	RunSchedule(context.Context) error
 }
 
+// musicUpgradeService is the narrow durable source-upgrade capability. It is
+// asserted separately from MusicService so existing music test doubles and
+// installations without the worker keep their existing routes unchanged.
+type musicUpgradeService interface {
+	EnqueueUpgradeJob(context.Context, music.UpgradeJobInput) (music.UpgradeJob, error)
+	ListUpgradeJobs(context.Context, int) (music.UpgradeJobPage, error)
+	CancelUpgradeJob(context.Context, int64) (music.UpgradeJob, error)
+	RetryUpgradeJob(context.Context, int64) (music.UpgradeJob, error)
+}
+
+func (s *Server) musicUpgradeQueue() (musicUpgradeService, bool) {
+	if s.music == nil {
+		return nil, false
+	}
+	service, ok := s.music.(musicUpgradeService)
+	return service, ok
+}
+
 func (s *Server) musicAutomation() (musicAutomationService, bool) {
 	if s.music == nil {
 		return nil, false
@@ -191,6 +209,78 @@ func (s *Server) musicUpgrades(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	send(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// musicUpgradeJobs serves the durable source-upgrade queue. It is separate
+// from musicUpgrades, which remains the read-only album suggestion projection.
+func (s *Server) musicUpgradeJobs(w http.ResponseWriter, r *http.Request) {
+	service, ok := s.musicUpgradeQueue()
+	if !ok {
+		fail(w, http.StatusServiceUnavailable, "music_unavailable", "The music source-upgrade queue is unavailable.")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		page, valid := pageNumber(r, 100000)
+		if !valid {
+			fail(w, http.StatusBadRequest, "invalid_music", "Choose a valid source-upgrade page.")
+			return
+		}
+		jobs, err := service.ListUpgradeJobs(r.Context(), page)
+		if err != nil {
+			s.musicAutomationError(w, err)
+			return
+		}
+		send(w, http.StatusOK, jobs)
+	case http.MethodPost:
+		var body music.UpgradeJobInput
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		job, err := service.EnqueueUpgradeJob(r.Context(), body)
+		if err != nil {
+			s.musicAutomationError(w, err)
+			return
+		}
+		send(w, http.StatusAccepted, job)
+	default:
+		w.Header().Set("Allow", "GET, POST")
+		fail(w, http.StatusMethodNotAllowed, "method_not_allowed", "Use GET or POST.")
+	}
+}
+
+// musicUpgradeJobAction serves POST .../upgrade-jobs/{id}/{cancel|retry}.
+func (s *Server) musicUpgradeJobAction(w http.ResponseWriter, r *http.Request) {
+	service, ok := s.musicUpgradeQueue()
+	if !ok {
+		fail(w, http.StatusServiceUnavailable, "music_unavailable", "The music source-upgrade queue is unavailable.")
+		return
+	}
+	id, ok := musicID(w, r)
+	if !ok {
+		return
+	}
+	action := r.PathValue("action")
+	if action != "cancel" && action != "retry" {
+		fail(w, http.StatusNotFound, "not_found", "This source-upgrade action does not exist.")
+		return
+	}
+	var body struct{}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	var job music.UpgradeJob
+	var err error
+	if action == "cancel" {
+		job, err = service.CancelUpgradeJob(r.Context(), id)
+	} else {
+		job, err = service.RetryUpgradeJob(r.Context(), id)
+	}
+	if err != nil {
+		s.musicAutomationError(w, err)
+		return
+	}
+	send(w, http.StatusOK, job)
 }
 
 func (s *Server) musicScheduleRun(w http.ResponseWriter, r *http.Request) {

@@ -57,7 +57,9 @@ A Music tab catalogs MusicBrainz artists, albums and tracks, scans existing
 files, registers reviewed matches in place, applies reviewed organization and
 tag rewrites with rollback, searches audio releases and imports a completed
 album folder, queues releases through the selected client, reconciles them with
-a leased worker, and runs wanted-album searches on a schedule. It also plays
+a leased worker, and runs wanted-album searches on a schedule. It can also queue
+confirmed source upgrades that keep the original file as an archive variant. It
+also plays
 registered music in an authenticated web player, shows overall Deezer top
 tracks and charts, downloads reviewed tracks from public Spotify/Deezer/YouTube
 links, monitors saved playlists, and has an optional Subsonic-compatible

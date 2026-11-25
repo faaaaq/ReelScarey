@@ -167,6 +167,9 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if err := musicService.RecoverConversions(ctx); err != nil {
 		return false, err
 	}
+	if err := musicService.RecoverUpgradeJobs(ctx); err != nil {
+		return false, err
+	}
 	// The stream cache is a disposable optimization: prune entries whose
 	// source row is gone and crash-orphaned staging files so the cache
 	// folder cannot grow without bound across restarts. A failure is not
@@ -460,6 +463,13 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		}
 	})
 	defer workers.join(musicConversionsDone, "musicConversions")
+	musicUpgradesDone := make(chan struct{})
+	go guardWorker(logger, "musicUpgrades", musicUpgradesDone, func() {
+		if waitRecovery(workerCtx, cfg.ConfigDir) {
+			musicService.RunUpgradeJobs(workerCtx, logger)
+		}
+	})
+	defer workers.join(musicUpgradesDone, "musicUpgrades")
 	subscriptionsDone := make(chan struct{})
 	go guardWorker(logger, "subscriptions", subscriptionsDone, func() {
 		if youtubeInspector != nil && waitRecovery(workerCtx, cfg.ConfigDir) {

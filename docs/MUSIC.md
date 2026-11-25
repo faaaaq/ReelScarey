@@ -633,6 +633,45 @@ and publishes the result as a variant of the same track.
   `max_conversions` preference (1-4, default 2), and each conversion is bounded
   to 15 minutes (60 minutes hard cap).
 
+### Source upgrades
+
+GET `/upgrades` only suggests. A source upgrade is the durable queue that acts
+on those suggestions: one job searches the configured audio source for a better
+copy of each canonical primary file in a chosen scope and publishes the copies
+that are proven better. Jobs are durable rows (`music_upgrade_jobs` and
+`music_upgrade_items`) processed by one worker and are started from the Wanted
+page.
+
+- A scope is the whole library, one artist, one album or one track, with a
+  target of `high`, `lossless` or `hires` and an optional maximum bitrate.
+  `high` requires a measured 256 kbps or more, `lossless` a lossless format and
+  `hires` a lossless format above 48 kHz.
+- The original is never modified or deleted. The verified copy is published
+  beside it as `NN Title [upgrade-<item>].<ext>` and becomes the track's
+  primary file in the same transaction that demotes the original row to the
+  `archive` role.
+- A copy is used only when its format is recognized, its measured class is
+  strictly higher than the original's, its duration matches within 2% (from 1
+  to 10 seconds) and it respects the bitrate cap. Anything else is recorded as
+  `skipped`; nothing is written for that track.
+- Nothing is replaced when the original's bytes or registration changed while
+  the upgrade ran, or when the replacement path is already registered. A scope
+  containing a track with several primary files is refused when it is queued.
+- States: `queued` -> `running` -> `completed`, `failed` or `cancelled`. The
+  worker takes a five-minute lease it renews while an item runs. A restart or
+  an expired lease requeues the interrupted item and keeps completed evidence.
+- A provider failure, or a disk or database error, is retried with a durable
+  backoff (attempts x 5 minutes) up to three attempts per item. A failure that
+  proves something about the original file or the catalog, such as a changed
+  original, is final on the first attempt.
+- One application-wide clock spaces item attempts at least 18 seconds apart (at
+  most 200 per hour) across every job. The rate is fixed in the application and
+  is not a request field.
+- An original belongs to at most one `queued` or `running` job; an overlapping
+  scope is refused with `music_upgrade_overlap`. Cancel stops a queued or
+  running job and releases its originals. Retry requeues only the unfinished
+  and failed items of a `failed` or `cancelled` job with a fresh attempt budget.
+
 ### Library optimization
 
 - The dry run (`optimize/preview`) probes the selected files and reports, per
@@ -770,7 +809,10 @@ modified.
 - The worker imports a completed folder automatically only when every track has
   one matching disc/track file. Missing or ambiguous tags leave the job
   `blocked`; its files can be mapped explicitly from the Wanted page.
-- No resolution/format upgrade suggestions and no per-album profile overrides.
+- `/upgrades` is a suggestion only; it never queues. A registered file becomes
+  a track's primary only through the source-upgrade queue, which an
+  administrator starts and which keeps the original as an archive variant.
+  Per-album preference overrides are read by both.
 - Search mode stores candidates for review; it does not queue.
 - No playlists, lyrics, ratings, scrobbling or MusicBrainz editing.
 - Catalog discovery requires exact normalized artist and album-title evidence,
@@ -852,7 +894,10 @@ modified.
 | GET/PUT | `/api/v1/library/music/schedule` | Wanted-album schedule |
 | POST | `/api/v1/library/music/schedule/run` | `{}`; one bounded run |
 | GET/PUT/DELETE | `/api/v1/library/music/albums/{id}/preferences` | Per-album override or reset to global |
-| GET | `/api/v1/library/music/upgrades` | Albums below their effective preference |
+| GET | `/api/v1/library/music/upgrades` | Albums below their effective preference; a suggestion only |
+| GET/POST | `/api/v1/library/music/upgrade-jobs` | GET lists source-upgrade jobs; POST `{scope,scope_id,target_quality,max_bitrate_kbps}` queues one; 202 |
+| POST | `/api/v1/library/music/upgrade-jobs/{id}/cancel` | `{}` |
+| POST | `/api/v1/library/music/upgrade-jobs/{id}/retry` | `{}` |
 
 The discovery response reports `selected`, `matched`, `artists_added`,
 `albums_added`, `unresolved`, `remaining`, `deferred` and `warnings`. The
@@ -898,8 +943,9 @@ movie/TV rows, foreign keys and consumers are untouched.
 
 The core Lidarr-style path — catalog, want, search, download, reconcile, map
 blocked files, import, organize and tag — is implemented, including upgrade
-suggestions and per-album preference overrides. Optional future work: automatic
-upgrade replacement and richer multi-profile assignment.
+suggestions, per-album preference overrides and the confirmed source-upgrade
+queue. Optional future work: unattended (scheduled) upgrade replacement and
+richer multi-profile assignment.
 
 ## Validation
 
