@@ -18,8 +18,9 @@ in the same dialog that started the download.
 
 The commit added Go collaboration regression coverage and a Vitest for the
 candidate review action. Application checks and both Docker builds stopped
-at Prettier because that Vitest file needed formatting. The Git tag exists,
-but the manifest job was skipped and this patch did not reach Docker Hub.
+at Prettier because that Vitest file needed formatting. The Git tag exists
+(removed on 2026-11-25, when every tag before 0.54.51 was deleted), but the
+manifest job was skipped and this patch did not reach Docker Hub.
 The previous release, 0.54.42, retained `latest`. See the
 [failed publish run](https://github.com/faaaaq/ReelScarey/actions/runs/44894228106)
 and the [recovery release](RELEASE-0.54.44.md).
