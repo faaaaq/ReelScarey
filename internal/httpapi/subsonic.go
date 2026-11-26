@@ -1279,11 +1279,13 @@ func (s *Server) subsonicUser(w http.ResponseWriter, r *http.Request) {
 		username = account.Username
 	}
 	// Report the roles that actually govern this account. Scrobble requests
-	// are rejected explicitly (see the scrobble case: writes are not
-	// implemented), and the legacy shared token resolves to the sentinel
-	// account whose explicit full roles — including AdminRole — are reported
-	// honestly (NEW-E4), so existing clients never lose access and a client
-	// that gates admin UI on AdminRole sees the real state.
+	// are rejected for the legacy shared token and for an account whose
+	// scrobbling permission is off (see the scrobble case); a named account
+	// with the permission on records its plays under its own ID. The legacy
+	// shared token resolves to the sentinel account whose explicit full
+	// roles — including AdminRole — are reported honestly (NEW-E4), so
+	// existing clients never lose access and a client that gates admin UI on
+	// AdminRole sees the real state.
 	out.User = &subsonicUser{
 		Username:          username,
 		Email:             account.Email,

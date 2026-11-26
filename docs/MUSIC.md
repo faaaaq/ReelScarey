@@ -814,7 +814,9 @@ modified.
   administrator starts and which keeps the original as an archive variant.
   Per-album preference overrides are read by both.
 - Search mode stores candidates for review; it does not queue.
-- No playlists, lyrics, ratings, scrobbling or MusicBrainz editing.
+- Playlists, ratings, stars, play queues and scrobbles belong to named
+  music-server accounts; the legacy shared token cannot write them. Lyrics are
+  not served, and there is no MusicBrainz editing.
 - Catalog discovery requires exact normalized artist and album-title evidence,
   a trusted tagged MBID, or a release-group ID. It is not a fuzzy matcher, does
   not use title similarity as identity and does not add a complete artist
