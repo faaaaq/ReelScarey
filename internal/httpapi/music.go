@@ -889,8 +889,8 @@ func (b musicServerUserBody) input() music.MusicServerUserInput {
 	}
 }
 
-// musicServerUsers lists or creates music server accounts. A generated password
-// is returned exactly once, when the owner did not choose one.
+// musicServerUsers lists named accounts. Identity creation belongs to central
+// Accounts; this legacy collection remains read-only.
 func (s *Server) musicServerUsers(w http.ResponseWriter, r *http.Request) {
 	if s.music == nil {
 		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
@@ -909,19 +909,15 @@ func (s *Server) musicServerUsers(w http.ResponseWriter, r *http.Request) {
 		if !decodeJSON(w, r, &body) {
 			return
 		}
-		user, password, err := s.music.CreateMusicServerUser(r.Context(), body.input())
-		if err != nil {
-			s.musicError(w, err)
-			return
-		}
-		send(w, 201, map[string]any{"user": user, "password": password})
+		fail(w, http.StatusConflict, "use_central_accounts", "Create the account and grant Subsonic access from Accounts; protocol roles remain editable here.")
 	default:
 		w.Header().Set("Allow", "GET, POST")
 		fail(w, 405, "method_not_allowed", "Use GET or POST.")
 	}
 }
 
-// musicServerUser reads, edits or removes one music server account.
+// musicServerUser reads one account or edits its protocol roles. Identity
+// deletion and credential changes belong to central Accounts.
 func (s *Server) musicServerUser(w http.ResponseWriter, r *http.Request) {
 	if s.music == nil {
 		fail(w, 503, "music_unavailable", "The music catalog is unavailable.")
@@ -948,6 +944,10 @@ func (s *Server) musicServerUser(w http.ResponseWriter, r *http.Request) {
 		if !decodeJSON(w, r, &body) {
 			return
 		}
+		if body.Password != "" {
+			fail(w, http.StatusConflict, "use_central_accounts", "Reset the shared password from Accounts; protocol roles remain editable here.")
+			return
+		}
 		user, err := s.music.UpdateMusicServerUser(r.Context(), id, body.input())
 		if err != nil {
 			s.musicError(w, err)
@@ -955,11 +955,7 @@ func (s *Server) musicServerUser(w http.ResponseWriter, r *http.Request) {
 		}
 		send(w, 200, user)
 	case http.MethodDelete:
-		if err := s.music.DeleteMusicServerUser(r.Context(), id); err != nil {
-			s.musicError(w, err)
-			return
-		}
-		send(w, 200, map[string]any{"deleted": true})
+		fail(w, http.StatusConflict, "use_central_accounts", "Remove the account or revoke Subsonic access from Accounts; protocol roles remain editable here.")
 	default:
 		w.Header().Set("Allow", "GET, PUT, DELETE")
 		fail(w, 405, "method_not_allowed", "Use GET, PUT or DELETE.")
@@ -977,16 +973,10 @@ func (s *Server) musicServerUserPassword(w http.ResponseWriter, r *http.Request)
 		fail(w, 405, "method_not_allowed", "Use POST.")
 		return
 	}
-	id, ok := musicID(w, r)
-	if !ok {
+	if _, ok := musicID(w, r); !ok {
 		return
 	}
-	user, password, err := s.music.ResetMusicServerUserPassword(r.Context(), id)
-	if err != nil {
-		s.musicError(w, err)
-		return
-	}
-	send(w, 200, map[string]any{"user": user, "password": password})
+	fail(w, http.StatusConflict, "use_central_accounts", "Reset the shared password from Accounts so browser and Subsonic credentials stay synchronized.")
 }
 
 // musicMusicServerUser resolves one account by ID using the list projection.

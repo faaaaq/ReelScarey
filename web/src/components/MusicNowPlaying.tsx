@@ -179,7 +179,7 @@ export function MusicNowPlaying({ onClose }: { onClose?: () => void }) {
               {current.album && (
                 <>
                   <span aria-hidden="true"> · </span>
-                  {current.albumID ? (
+                  {current.albumID && player.canManageSettings !== false ? (
                     <Link to={`/music/albums/${current.albumID}`}>
                       {current.album}
                     </Link>

@@ -13,6 +13,13 @@ Historical native and package results below remain as records of past work.
 
 ## Requested features
 
+- [x] Central user accounts: one username/password with independent Requests,
+  browser Music player and Subsonic grants; administrator-managed status and
+  password reset, default-deny API authorization, standalone player-only UI,
+  and additive migration preserving request/playback profile IDs without
+  auto-merging same-named legacy identities. See
+  [authentication](docs/AUTHENTICATION.md#central-accounts-and-system-access).
+
 - [x] Header-only track disabling defaults to bounded verification, with explicit
   full-checksum mode and separately recorded observations. Organization separates
   file actions, jobs/history and naming; batch progress names the current file

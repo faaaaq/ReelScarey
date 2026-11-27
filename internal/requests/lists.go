@@ -117,7 +117,7 @@ func (s *Lists) Add(ctx context.Context, account int64, provider, owner, id, key
 	}
 	defer tx.Rollback()
 	var n int
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM request_accounts WHERE id=? AND disabled=0`, account).Scan(&n); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM request_accounts r JOIN accounts a ON a.request_account_id=r.id WHERE r.id=? AND r.disabled=0 AND a.disabled=0 AND a.requests_access=1`, account).Scan(&n); err != nil {
 		return ImportList{}, err
 	}
 	if n != 1 {
@@ -454,7 +454,7 @@ func (s *Lists) Tick(ctx context.Context) (bool, error) {
 	var id, account, revision int64
 	var provider, owner, listID string
 	var sealed []byte
-	err = tx.QueryRowContext(ctx, `SELECT l.id,l.account_id,l.revision,l.provider,l.owner,l.list_id,l.ciphertext FROM request_lists l JOIN request_accounts a ON a.id=l.account_id AND a.disabled=0 WHERE l.enabled=1 AND l.next_check<=unixepoch() AND l.lease_until<=unixepoch() ORDER BY l.next_check,l.id LIMIT 1`).Scan(&id, &account, &revision, &provider, &owner, &listID, &sealed)
+	err = tx.QueryRowContext(ctx, `SELECT l.id,l.account_id,l.revision,l.provider,l.owner,l.list_id,l.ciphertext FROM request_lists l JOIN request_accounts r ON r.id=l.account_id AND r.disabled=0 JOIN accounts a ON a.request_account_id=r.id AND a.disabled=0 AND a.requests_access=1 WHERE l.enabled=1 AND l.next_check<=unixepoch() AND l.lease_until<=unixepoch() ORDER BY l.next_check,l.id LIMIT 1`).Scan(&id, &account, &revision, &provider, &owner, &listID, &sealed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, tx.Commit()
 	}
@@ -500,7 +500,7 @@ func (s *Lists) Tick(ctx context.Context) (bool, error) {
 	}
 	defer tx.Rollback()
 	var allowed int
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM request_lists l JOIN request_accounts a ON a.id=l.account_id AND a.disabled=0 WHERE l.id=? AND l.account_id=? AND l.revision=? AND l.lease_until=? AND l.enabled=1`, id, account, revision, lease).Scan(&allowed); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM request_lists l JOIN request_accounts r ON r.id=l.account_id AND r.disabled=0 JOIN accounts a ON a.request_account_id=r.id AND a.disabled=0 AND a.requests_access=1 WHERE l.id=? AND l.account_id=? AND l.revision=? AND l.lease_until=? AND l.enabled=1`, id, account, revision, lease).Scan(&allowed); err != nil {
 		return true, err
 	}
 	if allowed != 1 {

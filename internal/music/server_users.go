@@ -270,7 +270,12 @@ func (s *Service) CreateMusicServerUser(ctx context.Context, input MusicServerUs
 		return MusicServerUser{}, "", err
 	}
 	now := time.Now().Unix()
-	result, err := s.store.db.ExecContext(ctx, `INSERT INTO music_server_users
+	tx, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return MusicServerUser{}, "", err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `INSERT INTO music_server_users
 		(username,email,password_sealed,password_generated,scrobbling_enabled,admin_role,settings_role,
 		 download_role,upload_role,playlist_role,cover_art_role,share_role,stream_quality,download_profile,created_at,updated_at,last_used_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
@@ -295,6 +300,19 @@ func (s *Service) CreateMusicServerUser(ctx context.Context, input MusicServerUs
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
+		return MusicServerUser{}, "", err
+	}
+	// Keep the legacy management adapter attached to the central account
+	// model. Browser access stays off until an administrator sets a central
+	// password through the Accounts API. Both rows commit together: a central
+	// name conflict must never leave an independently usable protocol profile.
+	if _, err = tx.ExecContext(ctx, `INSERT INTO accounts(username,password_hash,password_sealed,disabled,requests_access,music_player_access,subsonic_access,request_account_id,music_server_user_id,created_at,updated_at) VALUES(?,'',?,0,0,0,1,NULL,?,?,?)`, username, sealed, id, now, now); err != nil {
+		if isCentralAccountUsernameUniqueConflict(err) {
+			return MusicServerUser{}, "", ErrMusicServerUserExists
+		}
+		return MusicServerUser{}, "", err
+	}
+	if err = tx.Commit(); err != nil {
 		return MusicServerUser{}, "", err
 	}
 	user, err := s.musicServerUser(ctx, id)
@@ -323,6 +341,18 @@ func isMusicUsernameUniqueConflict(err error) bool {
 	return strings.Contains(err.Error(), column)
 }
 
+func isCentralAccountUsernameUniqueConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	const column = "UNIQUE constraint failed: accounts.username"
+	var serr *sqlite.Error
+	if errors.As(err, &serr) && strings.Contains(serr.Error(), column) {
+		return true
+	}
+	return strings.Contains(err.Error(), column)
+}
+
 // UpdateMusicServerUser edits an existing account. Omitted role fields keep
 // their stored value, and a supplied password replaces the stored one (and
 // flips password_generated off, because a person chose it).
@@ -333,10 +363,6 @@ func (s *Service) UpdateMusicServerUser(ctx context.Context, id int64, input Mus
 	if s.secrets == nil {
 		return MusicServerUser{}, &Error{Code: "music_server_unavailable", Message: "Encrypted credential storage is unavailable, so a music server user cannot be saved."}
 	}
-	current, err := s.musicServerUser(ctx, id)
-	if err != nil {
-		return MusicServerUser{}, err
-	}
 	username, err := validateMusicServerUsername(input.Username)
 	if err != nil {
 		return MusicServerUser{}, err
@@ -345,18 +371,28 @@ func (s *Service) UpdateMusicServerUser(ctx context.Context, id int64, input Mus
 	if err != nil {
 		return MusicServerUser{}, err
 	}
-	taken, err := s.musicServerUsernameTaken(ctx, username, id)
+	tx, err := s.store.db.BeginTx(ctx, nil)
 	if err != nil {
 		return MusicServerUser{}, err
 	}
-	if taken {
+	defer tx.Rollback()
+	current, err := scanMusicServerUser(tx.QueryRowContext(ctx, `SELECT `+musicServerUserColumns+` FROM music_server_users WHERE id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return MusicServerUser{}, ErrMusicServerUserAbsent
+	}
+	if err != nil {
+		return MusicServerUser{}, err
+	}
+	var takenID int64
+	err = tx.QueryRowContext(ctx, `SELECT id FROM music_server_users WHERE username=? AND id<>?`, username, id).Scan(&takenID)
+	if err == nil {
 		return MusicServerUser{}, ErrMusicServerUserExists
 	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return MusicServerUser{}, err
+	}
 	var sealed []byte
-	if err := s.store.db.QueryRowContext(ctx, `SELECT password_sealed FROM music_server_users WHERE id=?`, id).Scan(&sealed); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return MusicServerUser{}, ErrMusicServerUserAbsent
-		}
+	if err = tx.QueryRowContext(ctx, `SELECT password_sealed FROM music_server_users WHERE id=?`, id).Scan(&sealed); err != nil {
 		return MusicServerUser{}, err
 	}
 	generated := current.PasswordGenerated
@@ -378,7 +414,7 @@ func (s *Service) UpdateMusicServerUser(ctx context.Context, id int64, input Mus
 	if err != nil {
 		return MusicServerUser{}, err
 	}
-	_, err = s.store.db.ExecContext(ctx, `UPDATE music_server_users SET
+	_, err = tx.ExecContext(ctx, `UPDATE music_server_users SET
 		username=?,email=?,password_sealed=?,password_generated=?,scrobbling_enabled=?,admin_role=?,settings_role=?,
 		download_role=?,upload_role=?,playlist_role=?,cover_art_role=?,share_role=?,stream_quality=?,download_profile=?,updated_at=unixepoch()
 		WHERE id=?`,
@@ -394,6 +430,18 @@ func (s *Service) UpdateMusicServerUser(ctx context.Context, id int64, input Mus
 		streamQuality, downloadProfile,
 		id)
 	if err != nil {
+		if isMusicUsernameUniqueConflict(err) {
+			return MusicServerUser{}, ErrMusicServerUserExists
+		}
+		return MusicServerUser{}, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE accounts SET username=?,password_sealed=CASE WHEN ? THEN password_sealed ELSE ? END,updated_at=unixepoch() WHERE music_server_user_id=?`, username, input.Password == "", sealed, id); err != nil {
+		if isCentralAccountUsernameUniqueConflict(err) {
+			return MusicServerUser{}, ErrMusicServerUserExists
+		}
+		return MusicServerUser{}, err
+	}
+	if err = tx.Commit(); err != nil {
 		return MusicServerUser{}, err
 	}
 	return s.musicServerUser(ctx, id)
@@ -416,7 +464,12 @@ func (s *Service) ResetMusicServerUserPassword(ctx context.Context, id int64) (M
 	if err != nil {
 		return MusicServerUser{}, "", err
 	}
-	result, err := s.store.db.ExecContext(ctx, `UPDATE music_server_users SET password_sealed=?,password_generated=1,updated_at=unixepoch() WHERE id=?`, sealed, id)
+	tx, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return MusicServerUser{}, "", err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `UPDATE music_server_users SET password_sealed=?,password_generated=1,updated_at=unixepoch() WHERE id=?`, sealed, id)
 	if err != nil {
 		return MusicServerUser{}, "", err
 	}
@@ -426,6 +479,12 @@ func (s *Service) ResetMusicServerUserPassword(ctx context.Context, id int64) (M
 	}
 	if changed != 1 {
 		return MusicServerUser{}, "", ErrMusicServerUserAbsent
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE accounts SET password_sealed=?,updated_at=unixepoch() WHERE music_server_user_id=?`, sealed, id); err != nil {
+		return MusicServerUser{}, "", err
+	}
+	if err = tx.Commit(); err != nil {
+		return MusicServerUser{}, "", err
 	}
 	user, err := s.musicServerUser(ctx, id)
 	if err != nil {
@@ -440,7 +499,22 @@ func (s *Service) DeleteMusicServerUser(ctx context.Context, id int64) error {
 	if id < 1 {
 		return ErrInvalidInput
 	}
-	result, err := s.store.db.ExecContext(ctx, `DELETE FROM music_server_users WHERE id=?`, id)
+	tx, err := s.store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// A protocol-only legacy identity can be removed completely. Identities
+	// with browser/request access retain their central row, but deletion is an
+	// explicit Subsonic revocation: no later unrelated central update may
+	// recreate the removed profile.
+	if _, err = tx.ExecContext(ctx, `DELETE FROM accounts WHERE music_server_user_id=? AND password_hash='' AND requests_access=0 AND music_player_access=0`, id); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE accounts SET subsonic_access=0,updated_at=unixepoch() WHERE music_server_user_id=?`, id); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM music_server_users WHERE id=?`, id)
 	if err != nil {
 		return err
 	}
@@ -451,7 +525,7 @@ func (s *Service) DeleteMusicServerUser(ctx context.Context, id int64) error {
 	if changed != 1 {
 		return ErrMusicServerUserAbsent
 	}
-	return nil
+	return tx.Commit()
 }
 
 // AuthenticateMusicServer resolves a Subsonic request to a named account. ok
@@ -479,6 +553,29 @@ func (s *Service) AuthenticateMusicServer(ctx context.Context, username, passwor
 		var sealed []byte
 		if err := s.store.db.QueryRowContext(ctx, `SELECT password_sealed FROM music_server_users WHERE id=?`, user.ID).Scan(&sealed); err != nil {
 			return MusicServerUser{}, false, err
+		}
+		// Central status and grants are loaded on every request. Migrated
+		// Subsonic-only accounts have no central sealed copy yet and continue
+		// with their existing profile ciphertext; a central password reset
+		// updates both copies atomically thereafter.
+		var centralID int64
+		var disabled, granted int
+		var centralSealed []byte
+		err := s.store.db.QueryRowContext(ctx, `SELECT id,disabled,subsonic_access,password_sealed FROM accounts WHERE music_server_user_id=?`, user.ID).Scan(&centralID, &disabled, &granted, &centralSealed)
+		if errors.Is(err, sql.ErrNoRows) {
+			// Schema 116 makes central status and grants authoritative. Never
+			// authenticate an orphaned profile left by an old partial migration
+			// or an out-of-band domain write.
+			return MusicServerUser{}, false, nil
+		}
+		if err != nil {
+			return MusicServerUser{}, false, err
+		}
+		if disabled != 0 || granted == 0 {
+			return MusicServerUser{}, false, nil
+		}
+		if len(centralSealed) > 0 {
+			sealed = centralSealed
 		}
 		expected, err := s.secrets.Open(musicServerUserPasswordPurpose, sealed)
 		if err != nil {

@@ -85,7 +85,7 @@ func (s *Service) ServeInteraction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var account int64
-	err = s.db.QueryRowContext(r.Context(), `SELECT id FROM request_accounts WHERE discord_user_id=? AND disabled=0`, actor).Scan(&account)
+	err = s.db.QueryRowContext(r.Context(), `SELECT r.id FROM request_accounts r JOIN accounts a ON a.request_account_id=r.id WHERE r.discord_user_id=? AND r.disabled=0 AND a.disabled=0 AND a.requests_access=1`, actor).Scan(&account)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "unavailable", 503)
 		return

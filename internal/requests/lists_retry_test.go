@@ -29,6 +29,7 @@ func TestListSyncHonorsRetryAfterOn429(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeRequestAccounts(t, db)
 	s := NewLists(db, secrets)
 	list, err := s.Add(ctx, 1, "trakt", "owner", "mylist", strings.Repeat("y", 32))
 	if err != nil {
@@ -75,6 +76,7 @@ func TestDiscordRateLimited429PersistsStateAfterCancellation(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeRequestAccounts(t, db)
 	url := "https://discord.com/api/webhooks/123456789012345678/" + strings.Repeat("a", 60)
 	if err = d.Save(ctx, 1, url); err != nil {
 		t.Fatal(err)
@@ -133,6 +135,7 @@ func TestDiscordSentStatePersistsAfterCancellation(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeRequestAccounts(t, db)
 	url := "https://discord.com/api/webhooks/123456789012345678/" + strings.Repeat("a", 60)
 	if err = d.Save(ctx, 1, url); err != nil {
 		t.Fatal(err)

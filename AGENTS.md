@@ -22,12 +22,20 @@ ARCHITECTURE.md and ROADMAP.md before expanding a module.
 - cmd/reelscarey is the composition root; internal/httpapi owns HTTP transport.
 - internal/config owns process environment, internal/settings owns persisted
   preferences, internal/database owns SQLite and versioned SQL migrations.
-- internal/auth owns the single administrator, password hashes and sessions;
-  internal/securestore owns encrypted credentials and local key files.
-- Request accounts have separate hashed sessions. The HTTP boundary must deny
-  them all administrator APIs by default and expose only explicitly scoped
-  requester routes. Request/list/notification reads and writes must bind to the
-  resolved account, never an account ID supplied by a requester. Persist and
+- internal/auth owns the singleton administrator and centralized user accounts,
+  password hashes, browser sessions and per-system grants; internal/securestore
+  owns encrypted credentials and local key files. Central accounts link one
+  request profile and/or Subsonic profile without renumbering their existing
+  ownership records. One password is used for browser and Subsonic sign-in;
+  password changes update the Argon2id hash and encrypted Subsonic credential
+  atomically. Never auto-merge same-named legacy identities.
+- The HTTP boundary must deny limited accounts all administrator APIs by
+  default and expose only explicitly scoped requester routes and the finite
+  music-player method/path allowlist. Requests, Music player and Subsonic
+  grants are independent; Subsonic roles never grant ReelScarey administrator
+  authority. Request/list/notification/Discord reads, writes and background
+  work must require an enabled central Requests grant and bind to the resolved
+  request profile, never an account ID supplied by a requester. Persist and
   validate encrypted Discord webhooks and Trakt client IDs with the existing key.
   List fetches use fixed provider hosts and fence changes made during a fetch.
   Ambiguous Discord delivery is never silently retried. See docs/REQUESTS.md.

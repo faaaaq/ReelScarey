@@ -151,6 +151,11 @@ const groups: { name: string; items: Area[] }[] = [
     name: "General",
     items: [
       {
+        title: "Accounts",
+        to: "/accounts",
+        description: "Central identities and per-system access.",
+      },
+      {
         title: "Connect",
         to: "/settings/connect",
         description: "TMDb, requests, Discord and Emby.",

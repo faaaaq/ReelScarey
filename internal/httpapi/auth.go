@@ -83,7 +83,7 @@ func (s *Server) security(next http.Handler) http.Handler {
 			s.internal(w, "session_lookup", err)
 			return
 		}
-		if session.Role != "admin" && session.Role != "requester" {
+		if session.Role != "admin" && session.Role != "requester" && session.Role != "user" {
 			fail(w, 403, "invalid_role", "This session is not authorized.")
 			return
 		}
@@ -91,12 +91,69 @@ func (s *Server) security(next http.Handler) http.Handler {
 			fail(w, 403, "csrf_required", "Reload the application before trying again.")
 			return
 		}
-		if session.Role == "requester" && r.URL.Path != "/api/v1/auth/logout" && !(path.Clean(r.URL.Path) == r.URL.Path && strings.HasPrefix(r.URL.Path, "/api/v1/requester/")) {
-			fail(w, 403, "administrator_required", "This action is available only to the administrator.")
-			return
+		if session.Role != "admin" {
+			allowed := r.URL.Path == "/api/v1/auth/logout" || r.URL.Path == "/api/v1/account/password"
+			clean := path.Clean(r.URL.Path) == r.URL.Path
+			if clean && strings.HasPrefix(r.URL.Path, "/api/v1/requester/") && session.HasAccess(auth.AccessRequests) && session.RequestAccountID() > 0 {
+				allowed = true
+			}
+			if clean && musicPlayerPath(r.URL.Path, r.Method) && session.HasAccess(auth.AccessMusicPlayer) {
+				allowed = true
+			}
+			if !allowed {
+				// Preserve the established denial contract for legacy requester
+				// clients; centralized accounts use the same default-deny boundary.
+				fail(w, 403, "administrator_required", "This action is available only to the administrator.")
+				return
+			}
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, session)))
 	})
+}
+
+// musicPlayerPath is a finite method+route allowlist, not a music-prefix
+// exception. Management, import, scan, credential and global-preference write
+// routes remain administrator-only even when they share the same URL prefix.
+func musicPlayerPath(requestPath, method string) bool {
+	const prefix = "/api/v1/library/music/"
+	if !strings.HasPrefix(requestPath, prefix) {
+		return false
+	}
+	rel := strings.TrimPrefix(requestPath, prefix)
+	parts := strings.Split(rel, "/")
+	if rel == "playlists" {
+		return method == http.MethodGet || method == http.MethodPost
+	}
+	if len(parts) == 2 && parts[0] == "playlists" {
+		return method == http.MethodGet || method == http.MethodPut || method == http.MethodDelete
+	}
+	if len(parts) == 3 && parts[0] == "playlists" && parts[2] == "tracks" {
+		return method == http.MethodPost || method == http.MethodPut || method == http.MethodDelete
+	}
+	if method != http.MethodGet {
+		return false
+	}
+	if rel == "artists" || rel == "albums" || rel == "tracks" || rel == "preferences" {
+		return true
+	}
+	if len(parts) == 2 && (parts[0] == "artists" || parts[0] == "albums") {
+		return true
+	}
+	if len(parts) == 3 {
+		if parts[0] == "artists" {
+			switch parts[2] {
+			case "tracks", "top-tracks", "discography", "image":
+				return true
+			}
+		}
+		if parts[0] == "albums" && parts[2] == "cover" {
+			return true
+		}
+		if parts[0] == "files" && (parts[2] == "stream" || parts[2] == "stream-info") {
+			return true
+		}
+	}
+	return false
 }
 
 // compatPath reports the Sonarr/Radarr/Prowlarr compatibility prefixes. These

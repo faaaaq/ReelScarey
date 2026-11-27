@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
-import { LogOut, RefreshCw, UserPlus, Clock } from "lucide-react";
+import { LogOut, RefreshCw, Clock } from "lucide-react";
 import {
   Alert,
   ConfirmDialog,
@@ -13,6 +13,7 @@ import {
   ToolbarButton,
   ToolbarSection,
 } from "../ui";
+import { Link } from "react-router-dom";
 import { Pagination } from "../movieComponents";
 import "./Admin.css";
 import { APIError, api, messageFor } from "../api";
@@ -31,12 +32,6 @@ type Request = {
   available: boolean;
   notification?: string;
   bot_notice?: string;
-};
-type Account = {
-  id: number;
-  username: string;
-  disabled: boolean;
-  discord_user_id?: string;
 };
 type Result = {
   tmdb_id: number;
@@ -57,20 +52,21 @@ function friendlyRequestState(state: string) {
   return requestStateLabels[state] ?? state;
 }
 
-export function RequesterHome() {
+export function RequesterHome({ embedded = false }: { embedded?: boolean }) {
   const { session, signOut } = useAuth();
   useEffect(() => {
+    if (embedded) return;
     document.title = "My requests · ReelScarey";
-  }, []);
+  }, [embedded]);
   const requests = useLiveResource<{ items: Request[] }>(
     "/requester/requests",
     15000,
   );
   const mainRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    // Keyboard users start inside the content, matching the main shell.
-    mainRef.current?.focus();
-  }, []);
+    // The shared limited shell owns focus when this content is embedded.
+    if (!embedded) mainRef.current?.focus();
+  }, [embedded]);
   const [kind, setKind] = useState<"movie" | "series">("movie"),
     [query, setQuery] = useState(""),
     [page, setPage] = useState(1),
@@ -139,6 +135,140 @@ export function RequesterHome() {
       setPending(false);
     }
   }
+  const content = (
+    <PageBody>
+      <PageHeading
+        title="My requests"
+        description={`Signed in as ${session.username}`}
+      />
+      <FieldSet legend="Find a title">
+        <form onSubmit={(e) => void search(e)} className="adm-request-search">
+          <select
+            aria-label="Type"
+            value={kind}
+            disabled={pending}
+            onChange={(e) => {
+              setKind(e.target.value as "movie" | "series");
+              setResults([]);
+            }}
+          >
+            <option value="movie">Movie</option>
+            <option value="series">TV show</option>
+          </select>
+          <TextField.Root
+            aria-label="Title"
+            placeholder="Search for a movie or show"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            maxLength={200}
+          />
+          <Button type="submit" disabled={pending}>
+            Search
+          </Button>
+        </form>
+        {error && <Alert kind="danger">{error}</Alert>}
+        {results.length > 0 && (
+          <Table label="Search results">
+            <tbody>
+              {results.map((item) => (
+                <tr key={item.tmdb_id}>
+                  <td>
+                    {item.title}
+                    {item.year ? ` (${item.year})` : ""}{" "}
+                    {item.in_library && (
+                      <Label kind="success">In library</Label>
+                    )}
+                  </td>
+                  <td className="is-actions">
+                    <Button
+                      size="1"
+                      disabled={pending || item.in_library}
+                      onClick={() => void submit(item.tmdb_id)}
+                    >
+                      {item.in_library ? "Already in library" : "Request"}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+        <Pagination
+          page={page}
+          pages={totalPages}
+          onPage={(p) => void fetchResults(p)}
+        />
+      </FieldSet>
+      <FieldSet legend="My submitted requests">
+        <RequestState
+          loading={requests.loading}
+          error={requests.error}
+          code={requests.code}
+          retry={requests.reload}
+        />
+        {requests.data &&
+          (requests.data.items.length ? (
+            <Table label="My submitted requests">
+              <thead>
+                <tr>
+                  <th scope="col">Title</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">State</th>
+                  <th scope="col">Notification</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requests.data.items.map((item) => (
+                  <tr key={item.id}>
+                    <td>
+                      #{item.id} · {item.title}
+                    </td>
+                    <td>{item.kind === "movie" ? "Movie" : "TV show"}</td>
+                    <td>
+                      <Label kind={item.available ? "success" : "info"}>
+                        {friendlyRequestState(item.state)}
+                      </Label>
+                      {item.available ? " · Media available" : ""}
+                    </td>
+                    <td>
+                      {item.notification
+                        ? `Notification ${item.notification}`
+                        : "—"}
+                      {item.notification === "uncertain" && (
+                        <>
+                          {" "}
+                          <Button
+                            size="1"
+                            variant="soft"
+                            disabled={pending}
+                            onClick={() => void retryNotification(item.id)}
+                          >
+                            Retry notification (may duplicate)
+                          </Button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          ) : (
+            <EmptyState icon={Clock} title="No requests yet">
+              <p>
+                Titles you request are reviewed by an administrator before they
+                are added. Use the search above to find a movie or show and
+                request it.
+              </p>
+            </EmptyState>
+          ))}
+      </FieldSet>
+      <RequestLists onImported={requests.reload} />
+      <DiscordSettings />
+      <ChangeAccountPassword />
+    </PageBody>
+  );
+  if (embedded) return content;
+
   return (
     <div className="rs-app">
       <header className="rs-header">
@@ -171,145 +301,13 @@ export function RequesterHome() {
         className="adm-requester-main"
         tabIndex={-1}
       >
-        <PageBody>
-          <PageHeading
-            title="My requests"
-            description={`Signed in as ${session.username}`}
-          />
-          <FieldSet legend="Find a title">
-            <form
-              onSubmit={(e) => void search(e)}
-              className="adm-request-search"
-            >
-              <select
-                aria-label="Type"
-                value={kind}
-                disabled={pending}
-                onChange={(e) => {
-                  setKind(e.target.value as "movie" | "series");
-                  setResults([]);
-                }}
-              >
-                <option value="movie">Movie</option>
-                <option value="series">TV show</option>
-              </select>
-              <TextField.Root
-                aria-label="Title"
-                placeholder="Search for a movie or show"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                maxLength={200}
-              />
-              <Button type="submit" disabled={pending}>
-                Search
-              </Button>
-            </form>
-            {error && <Alert kind="danger">{error}</Alert>}
-            {results.length > 0 && (
-              <Table label="Search results">
-                <tbody>
-                  {results.map((item) => (
-                    <tr key={item.tmdb_id}>
-                      <td>
-                        {item.title}
-                        {item.year ? ` (${item.year})` : ""}{" "}
-                        {item.in_library && (
-                          <Label kind="success">In library</Label>
-                        )}
-                      </td>
-                      <td className="is-actions">
-                        <Button
-                          size="1"
-                          disabled={pending || item.in_library}
-                          onClick={() => void submit(item.tmdb_id)}
-                        >
-                          {item.in_library ? "Already in library" : "Request"}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            )}
-            <Pagination
-              page={page}
-              pages={totalPages}
-              onPage={(p) => void fetchResults(p)}
-            />
-          </FieldSet>
-          <FieldSet legend="My submitted requests">
-            <RequestState
-              loading={requests.loading}
-              error={requests.error}
-              code={requests.code}
-              retry={requests.reload}
-            />
-            {requests.data &&
-              (requests.data.items.length ? (
-                <Table label="My submitted requests">
-                  <thead>
-                    <tr>
-                      <th scope="col">Title</th>
-                      <th scope="col">Type</th>
-                      <th scope="col">State</th>
-                      <th scope="col">Notification</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {requests.data.items.map((item) => (
-                      <tr key={item.id}>
-                        <td>
-                          #{item.id} · {item.title}
-                        </td>
-                        <td>{item.kind === "movie" ? "Movie" : "TV show"}</td>
-                        <td>
-                          <Label kind={item.available ? "success" : "info"}>
-                            {friendlyRequestState(item.state)}
-                          </Label>
-                          {item.available ? " · Media available" : ""}
-                        </td>
-                        <td>
-                          {item.notification
-                            ? `Notification ${item.notification}`
-                            : "—"}
-                          {item.notification === "uncertain" && (
-                            <>
-                              {" "}
-                              <Button
-                                size="1"
-                                variant="soft"
-                                disabled={pending}
-                                onClick={() => void retryNotification(item.id)}
-                              >
-                                Retry notification (may duplicate)
-                              </Button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
-              ) : (
-                <EmptyState icon={Clock} title="No requests yet">
-                  <p>
-                    Titles you request are reviewed by an administrator before
-                    they are added. Use the search above to find a movie or show
-                    and request it.
-                  </p>
-                </EmptyState>
-              ))}
-          </FieldSet>
-          <RequestLists onImported={requests.reload} />
-          <DiscordSettings />
-          <ChangePassword />
-        </PageBody>
+        {content}
       </main>
     </div>
   );
 }
 
-function ChangePassword() {
+export function ChangeAccountPassword() {
   const [current, setCurrent] = useState(""),
     [next, setNext] = useState(""),
     [pending, setPending] = useState(false),
@@ -320,7 +318,7 @@ function ChangePassword() {
     setPending(true);
     setError("");
     try {
-      await api("/requester/password", {
+      await api("/account/password", {
         method: "PUT",
         body: JSON.stringify({ current_password: current, new_password: next }),
       });
@@ -338,7 +336,10 @@ function ChangePassword() {
       <div className="rs-legend">
         <h2>Change password</h2>
       </div>
-      <p>Changing your password signs out all of your request sessions.</p>
+      <p>
+        Changing your password signs out all of your browser sessions and also
+        updates Subsonic sign-in when that access is granted.
+      </p>
       <form className="backup-fields" onSubmit={(e) => void save(e)}>
         <label>
           Current password{" "}
@@ -763,46 +764,9 @@ function DiscordSettings() {
 }
 
 export function AdminRequests() {
-  const accounts = useResource<{ items: Account[] }>("/request-accounts"),
-    requests = useResource<{ items: Request[] }>("/requests");
-  const [username, setUsername] = useState(""),
-    [password, setPassword] = useState(""),
-    [pending, setPending] = useState(false),
+  const requests = useResource<{ items: Request[] }>("/requests");
+  const [pending, setPending] = useState(false),
     [error, setError] = useState("");
-  async function create(e: FormEvent) {
-    e.preventDefault();
-    if (pending) return;
-    setPending(true);
-    setError("");
-    try {
-      await api("/request-accounts", {
-        method: "POST",
-        body: JSON.stringify({ username, password }),
-      });
-      setUsername("");
-      setPassword("");
-      accounts.reload();
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setPending(false);
-    }
-  }
-  async function toggle(account: Account) {
-    setPending(true);
-    setError("");
-    try {
-      await api(`/request-accounts/${account.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ disabled: !account.disabled }),
-      });
-      accounts.reload();
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setPending(false);
-    }
-  }
   async function act(id: number, action: "approve" | "decline") {
     setPending(true);
     setError("");
@@ -843,11 +807,8 @@ export function AdminRequests() {
           <ToolbarButton
             icon={RefreshCw}
             label="Refresh"
-            spinning={requests.loading || accounts.loading}
-            onClick={() => {
-              requests.reload();
-              accounts.reload();
-            }}
+            spinning={requests.loading}
+            onClick={requests.reload}
           />
         </ToolbarSection>
       </PageToolbar>
@@ -971,133 +932,17 @@ export function AdminRequests() {
               </EmptyState>
             ))}
         </FieldSet>
-        <FieldSet legend="Request accounts">
-          <form className="adm-request-search" onSubmit={(e) => void create(e)}>
-            <TextField.Root
-              aria-label="Username"
-              placeholder="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="off"
-              required
-            />
-            <TextField.Root
-              aria-label="Initial password"
-              placeholder="Initial password (12+ characters)"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
-              minLength={12}
-              required
-            />
-            <Button type="submit" disabled={pending}>
-              Create account
-            </Button>
-          </form>
-          <RequestState
-            loading={accounts.loading}
-            error={accounts.error}
-            code={accounts.code}
-            retry={accounts.reload}
-          />
-          {accounts.data &&
-            (accounts.data.items.length ? (
-              <Table label="Request accounts">
-                <thead>
-                  <tr>
-                    <th scope="col">Username</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Discord</th>
-                    <th scope="col" className="is-actions">
-                      <span className="sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {accounts.data.items.map((a) => (
-                    <tr key={a.id}>
-                      <td>{a.username}</td>
-                      <td>
-                        <Label kind={a.disabled ? "disabled" : "success"}>
-                          {a.disabled ? "Disabled" : "Enabled"}
-                        </Label>
-                      </td>
-                      <td>
-                        <DiscordLink account={a} saved={accounts.reload} />
-                      </td>
-                      <td className="is-actions">
-                        <Button
-                          size="1"
-                          variant="soft"
-                          disabled={pending}
-                          onClick={() => void toggle(a)}
-                        >
-                          {a.disabled ? "Enable" : "Disable"}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            ) : (
-              <EmptyState icon={UserPlus} title="No request accounts yet">
-                <p>
-                  Create a request account so someone can sign in, browse the
-                  catalog, and submit titles. Link a Discord user ID to enable
-                  notifications.
-                </p>
-              </EmptyState>
-            ))}
+        <FieldSet
+          legend="Account access"
+          description="Manage account identities, passwords, Discord links, and Requests or Music player access centrally."
+        >
+          <Button asChild variant="soft">
+            <Link to="/accounts">Manage accounts</Link>
+          </Button>
         </FieldSet>
         <BotSettings />
       </PageBody>
     </>
-  );
-}
-
-function DiscordLink({
-  account,
-  saved,
-}: {
-  account: Account;
-  saved: () => void;
-}) {
-  const [value, setValue] = useState(account.discord_user_id ?? ""),
-    [pending, setPending] = useState(false),
-    [error, setError] = useState("");
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    if (pending) return;
-    setPending(true);
-    setError("");
-    try {
-      await api(`/request-accounts/${account.id}/discord`, {
-        method: "PUT",
-        body: JSON.stringify({ discord_user_id: value.trim() }),
-      });
-      saved();
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setPending(false);
-    }
-  }
-  return (
-    <form className="backup-fields" onSubmit={(e) => void save(e)}>
-      <label>
-        Discord user ID for {account.username}{" "}
-        <TextField.Root
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="Optional"
-        />
-      </label>
-      <Button size="1" variant="soft" disabled={pending} type="submit">
-        Save Discord link
-      </Button>
-      {error && <span role="alert">{error}</span>}
-    </form>
   );
 }
 
@@ -1109,6 +954,7 @@ type BotConfig = {
   admin_user_id: string;
   admin_channel_id: string;
 };
+
 function BotSettings() {
   const config = useResource<BotConfig>("/discord-bot"),
     [applicationID, setApplicationID] = useState(""),

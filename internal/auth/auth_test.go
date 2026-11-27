@@ -176,6 +176,22 @@ func TestRequestAccountsHaveIsolatedRevocableSessions(t *testing.T) {
 	if _, err = s.Login(ctx, "viewer", "new-viewer-password"); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("disabled requester could log in", err)
 	}
+	requests := false
+	if _, err = s.UpdateAccount(ctx, session.UserAccountID, AccountUpdate{Requests: &requests}); err != nil {
+		t.Fatal(err)
+	}
+	// Legacy enable explicitly restores Requests as well as the central
+	// account, preventing a Discord-only split authorization state.
+	if err = s.SetRequestAccountDisabled(ctx, a.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	enabled, err := s.AccountByID(ctx, session.UserAccountID)
+	if err != nil || !enabled.Requests || enabled.Disabled {
+		t.Fatal("legacy enable did not restore central Requests", enabled, err)
+	}
+	if session, err = s.Login(ctx, "viewer", "new-viewer-password"); err != nil || !session.HasAccess(AccessRequests) {
+		t.Fatal("re-enabled requester could not use Requests", session, err)
+	}
 	if current, err := s.Resolve(ctx, admin.Token); err != nil || current.Role != "admin" {
 		t.Fatal("requester disable affected admin", err)
 	}

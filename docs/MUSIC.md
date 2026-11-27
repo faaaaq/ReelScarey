@@ -1054,13 +1054,19 @@ script was not re-run for this change.
 The Music library plays registered files through an authenticated streaming
 endpoint with HTTP Range support for direct and cached responses. The persistent
 player bar provides queue, seek, volume, previous/next and close controls.
+Administrators can use the full player, and **Settings -> Accounts** can grant
+**Music player** independently of music management, Requests and Subsonic. A
+player-only account lands on the standalone player and cannot open management
+APIs or pages. See [central accounts](AUTHENTICATION.md#central-accounts-and-system-access).
+
 Queue/index/position/volume restore after a browser reload using bounded local
-browser storage, cleared on logout/session expiry; this is not cross-device
-server synchronization. Unbuffered seeks on live conversions use the
-`timeOffset` fallback. Playback addresses catalog file IDs; stored media paths
-are never sent to the browser.
-Album and artist views also expose play actions. This uses the existing
-ReelScarey web port and session.
+browser storage, cleared on logout/session expiry; limited accounts use storage
+keys scoped to their central account so one user's queue is not shown to
+another. This is not cross-device server synchronization. Unbuffered seeks on
+live conversions use the `timeOffset` fallback. Playback addresses catalog file
+IDs; stored media paths are never sent to the browser. Global streaming-quality
+settings are read-only for limited accounts. Album and artist views also expose
+play actions. This uses the existing ReelScarey web port and session.
 
 ### Optional Subsonic-compatible endpoint
 
@@ -1069,16 +1075,26 @@ disabled by default and has no listener or port of its own: clients use the
 same ReelScarey host and port. If a reverse proxy or firewall is in use, expose
 the existing ReelScarey address; do not open an additional music port.
 
-The administrator generates a music-server token on **Music -> Server**. The
-Subsonic username can be any label (for example `reelscarey`); the password is
-the generated token, never the administrator account password. The token is
-20 characters from Crockford's Base32 alphabet (digits and uppercase letters
-with I, L, O and U omitted), so it is short enough to type on a phone. The
-plaintext-password form accepts it in any case and ignores spaces and dashes;
-clients that send `md5(password+salt)` need the token exactly as shown. The
-token is stored through `securestore` and is covered by the existing
-`secrets.key` backup. Enabling the endpoint does not enable the administrator browser session
-for third-party clients.
+The administrator creates centralized accounts on **Settings -> Accounts** and
+grants **Subsonic** independently of browser Music player and Requests access.
+The client uses that account's one shared username and password; there is no
+separate Subsonic signup or password to manage. Protocol roles and quality
+overrides remain on **Music -> Server**, while identity, access and password
+reset stay on Accounts. A Subsonic `admin_role` applies only inside the
+Subsonic protocol and never grants ReelScarey administrator access. Disabling
+the account or revoking Subsonic takes effect on the next request.
+
+The older shared music-server token remains a separate legacy compatibility
+credential on **Music -> Server**. Its Subsonic username can be any label and
+its password is the generated token, never the administrator account password.
+The token is 20 characters from Crockford's Base32 alphabet (digits and
+uppercase letters with I, L, O and U omitted), so it is short enough to type on
+a phone. The plaintext-password form accepts it in any case and ignores spaces
+and dashes; clients that send `md5(password+salt)` need the token exactly as
+shown. Named-account and shared-token secrets use `securestore` and are covered
+by the existing `secrets.key` backup. Enabling the endpoint does not enable an
+administrator browser session for third-party clients. Prefer centralized
+accounts and remove the shared token when no legacy client needs it.
 
 Supported subset: ping, license, music folders, indexes, artists, artist (with
 its albums), album, album list, music directory, song, search, random songs,

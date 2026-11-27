@@ -51,7 +51,7 @@ func (s *Store) Create(ctx context.Context, account int64, kind string, id int64
 	}
 	defer tx.Rollback()
 	var active int
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM request_accounts WHERE id=? AND disabled=0`, account).Scan(&active); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM request_accounts r JOIN accounts a ON a.request_account_id=r.id WHERE r.id=? AND r.disabled=0 AND a.disabled=0 AND a.requests_access=1`, account).Scan(&active); err != nil {
 		return Request{}, err
 	}
 	if active != 1 {

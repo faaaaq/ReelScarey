@@ -68,6 +68,7 @@ func TestSignedBotRequestApprovalAndReleaseButtons(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1),(2,'other','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeBotRequestAccounts(t, db)
 	pub, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -215,6 +216,7 @@ func TestBotInteractionSignatureAndDisabledAccount(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeBotRequestAccounts(t, db)
 	viewer := "555555555555555555"
 	if err = s.Link(ctx, 1, viewer); err != nil {
 		t.Fatal(err)

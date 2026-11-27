@@ -110,25 +110,45 @@ title's configured destination folder without moving or replacing files. GET
 returns matching local IDs and statuses when present. These endpoints require
 administrator authentication, with CSRF and same-origin checks for mutations.
 
-## Request accounts and notifications
+## Central accounts, Requests and notifications
 
-Administrator GET/POST `/api/v1/request-accounts` lists or creates accounts;
-PUT `/api/v1/request-accounts/{id}` enables/disables one. GET `/api/v1/requests`
-lists requests; POST `/api/v1/requests/{id}/approve` or `/decline` reviews a
-request. Approval adds the exact TMDb title to the catalog and is retryable.
+Administrator GET `/api/v1/accounts` lists centralized non-administrator
+accounts. POST creates one with `{username,password,requests,music_player,subsonic}`.
+PUT `/api/v1/accounts/{id}` accepts any of `disabled`, `requests`,
+`music_player`, `subsonic` and optionally `username`; omitted fields keep their
+saved values. POST `/api/v1/accounts/{id}/password` accepts `{password}` and
+atomically updates browser and Subsonic credentials while revoking browser
+sessions. PUT `/api/v1/accounts/{id}/discord` accepts `{discord_user_id}` for an
+account with a linked request profile. Account responses expose system profile
+IDs and `password_set`, never a password hash or encrypted credential.
 
-Only requester sessions can use `/api/v1/requester/requests`, the search paths
-`/api/v1/requester/search/movies` and `/series`, or `/api/v1/requester/lists`.
-Lists use POST to create, DELETE `/{id}` to remove and POST `/{id}/refresh` to
-schedule a check. Providers are `tmdb`, `trakt`, `imdb_mdblist`, `tmdb_private`,
-`trakt_private`, `trakt_watchlist` and `trakt_watchlist_private`; a Trakt
-watchlist uses the literal `watchlist` list ID and the profile owner as `owner`.
-POST `/api/v1/requester/imdb-csv` accepts a bounded CSV snapshot. `/api/v1/requester/discord` provides write-only webhook PUT, status
-GET and DELETE; POST `/api/v1/requester/requests/{id}/notification/retry`
-explicitly retries an uncertain delivery. PUT `/api/v1/requester/password`
-changes the requester's password and revokes their sessions. Requesters are denied all other
-administrator APIs. Authenticated mutations require CSRF and same origin. See
-[request accounts and limits](REQUESTS.md).
+Authenticated central users receive `access` in `/api/v1/auth/session`, plus a
+stable central `user_account_id`. Request-backed sessions retain their legacy
+`account_id` request profile for compatibility. PUT `/api/v1/account/password`
+lets any central user change their own password with
+`{current_password,new_password}`. The request-scoped legacy PUT
+`/api/v1/requester/password` remains available to accounts with Requests.
+
+Only sessions with the Requests grant can use `/api/v1/requester/requests`, the
+search paths `/api/v1/requester/search/movies` and `/series`, or
+`/api/v1/requester/lists`. Lists use POST to create, DELETE `/{id}` to remove
+and POST `/{id}/refresh` to schedule a check. Providers are `tmdb`, `trakt`,
+`imdb_mdblist`, `tmdb_private`, `trakt_private`, `trakt_watchlist` and
+`trakt_watchlist_private`; a Trakt watchlist uses the literal `watchlist` list
+ID and the profile owner as `owner`. POST `/api/v1/requester/imdb-csv` accepts
+a bounded CSV snapshot. `/api/v1/requester/discord` provides write-only webhook
+PUT, status GET and DELETE; POST
+`/api/v1/requester/requests/{id}/notification/retry` explicitly retries an
+uncertain delivery. All operations bind the request profile resolved from the
+session. Authenticated mutations require CSRF and same origin.
+
+The legacy administrator GET/POST `/api/v1/request-accounts` and PUT
+`/api/v1/request-accounts/{id}` now operate on the same central identities and
+request profiles. GET `/api/v1/requests` lists requests; POST
+`/api/v1/requests/{id}/approve` or `/decline` reviews one. Approval adds the
+exact TMDb title to the catalog and is retryable. See
+[central accounts](AUTHENTICATION.md#central-accounts-and-system-access) and
+[request limits](REQUESTS.md).
 
 Administrator GET/PUT `/api/v1/discord-bot` reads or saves the companion-bot
 configuration; POST `/api/v1/discord-bot/register` registers its commands, and
@@ -138,6 +158,19 @@ it is intentionally not cookie-authenticated and verifies Discord's Ed25519
 signature instead. See [request accounts and limits](REQUESTS.md).
 
 ## Music catalog
+
+Sessions with the independent `music_player` grant may use only the explicit
+player allowlist: GET artists/albums/tracks and their read-only detail/artwork
+routes, GET `/library/music/files/{id}/stream` and `/stream-info`, GET global
+streaming preferences, and the library playlist read/mutation routes used by
+the player. Playlist writes require CSRF like every authenticated mutation.
+All other `/library/music/**` and `/metadata/music/**` APIs—including artist or
+album creation, scans, imports, metadata refreshes, edits, exports, server
+administration, acquisition, schedules and preference writes—remain
+administrator-only. Authorization is a finite method-and-path allowlist, not a
+prefix-wide exception. Limited accounts never inherit administrator authority
+from a Subsonic role.
+
 
 Administrator GET `/api/v1/metadata/music/artists?query=&page=` searches
 MusicBrainz. GET/POST `/api/v1/library/music/artists` lists saved artists or
@@ -794,7 +827,7 @@ explicitly documented as breaking before the first stable release.
 | PUT | `/api/v1/library/monitoring` | Apply desired parent monitoring to exact expected items atomically; stale selection returns 409; 1–5000 items, up to 1 MiB |
 | POST | `/api/v1/library/profiles/preview` | Review explicit kind/ids and chosen profile/default, with current assignments and full target rules |
 | PUT | `/api/v1/library/profiles` | Atomic assignment from expected item/profile/schedule revisions; stale review returns 409 |
-| GET | `/api/v1/auth/session` | Public setup/auth status; authenticated response includes username, csrf_token, expires_at |
+| GET | `/api/v1/auth/session` | Public setup/auth status; authenticated response includes username, csrf_token, expires_at, role, central user_account_id and system access grants |
 | POST | `/api/v1/auth/setup` | Public, rate-limited first admin creation; username, password, setup_token, optional import_mode (`hardlink` default or `copy`); returns 201 + cookie |
 | POST | `/api/v1/auth/login` | Public, rate-limited username/password login; returns 200 + cookie |
 | POST | `/api/v1/auth/logout` | Revoke current session and clear cookie; requires CSRF |

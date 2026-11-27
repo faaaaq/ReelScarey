@@ -473,6 +473,7 @@ func pauseRestored(ctx context.Context, dir string) error {
 	for _, q := range []struct{ table, sql string }{
 		{"sessions", `DELETE FROM sessions`},
 		{"request_sessions", `DELETE FROM request_sessions`},
+		{"account_sessions", `DELETE FROM account_sessions`},
 		{"backup_schedule", `UPDATE backup_schedule SET enabled=0,running=0,next_run=0,last_error='',revision=revision+1`},
 		{"metadata_refresh_schedule", `UPDATE metadata_refresh_schedule SET enabled=0,requested=0,lease_owner='',lease_until=0,next_run=0,revision=revision+1,state='paused',message='Restored backup: review metadata settings before resuming.'`},
 		{"metadata_refresh_queue", `DELETE FROM metadata_refresh_queue`},

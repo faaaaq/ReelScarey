@@ -30,6 +30,7 @@ func TestPublicListImportIsBoundedOwnedAndFenced(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'first','hash',1),(2,'second','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeRequestAccounts(t, db)
 	lists := NewLists(db, secrets)
 	m, err := lists.Add(ctx, 1, "tmdb", "", "123", "")
 	if err != nil {
@@ -106,6 +107,7 @@ func TestTraktWatchlistImportsMoviesAndShowsWithoutOAuth(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeRequestAccounts(t, db)
 	lists := NewLists(db, secrets)
 	key := strings.Repeat("w", 30)
 	list, err := lists.Add(ctx, 1, "trakt_watchlist", "viewer", "ignored", key)
@@ -168,6 +170,7 @@ func TestTraktPrivateWatchlistSendsUserToken(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeRequestAccounts(t, db)
 	lists := NewLists(db, secrets)
 	key := strings.Repeat("c", 30)
 	token := strings.Repeat("t", 30)
@@ -202,6 +205,7 @@ func TestIMDbMDBListSyncRequiresOwnedIMDbSource(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeRequestAccounts(t, db)
 	s := NewLists(db, secrets)
 	key := strings.Repeat("z", 32)
 	list, err := s.Add(ctx, 1, "imdb_mdblist", "", "123", key)

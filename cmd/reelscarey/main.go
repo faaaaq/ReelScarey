@@ -45,7 +45,7 @@ import (
 	"github.com/faaaaq/ReelScarey/web"
 )
 
-var version = "0.54.51"
+var version = "0.54.52"
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -139,6 +139,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 		return false, err
 	}
 	authService.SetTOTP(totpStore)
+	authService.SetSecrets(secretStore)
 	cancel()
 	metadataService := metadata.New(secretStore, metadata.NewTMDb())
 	metadataService.SetDefaultToken(cfg.TMDbToken)

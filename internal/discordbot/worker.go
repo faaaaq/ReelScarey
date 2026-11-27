@@ -201,7 +201,7 @@ func (s *Service) ProcessOne(ctx context.Context) (bool, error) {
 	}
 	if actor != c.AdminUserID {
 		var n int
-		err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM request_accounts WHERE id=? AND discord_user_id=? AND disabled=0`, accountID, actor).Scan(&n)
+		err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM request_accounts r JOIN accounts a ON a.request_account_id=r.id WHERE r.id=? AND r.discord_user_id=? AND r.disabled=0 AND a.disabled=0 AND a.requests_access=1`, accountID, actor).Scan(&n)
 		if err != nil || n != 1 {
 			_ = s.finishJob(ctx, id, "uncertain")
 			return true, errors.New("Discord account link is no longer valid.")

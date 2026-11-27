@@ -39,6 +39,13 @@ describe("request accounts", () => {
         </MemoryRouter>
       </Theme>,
     );
+    expect(
+      screen.getByRole("link", { name: "Manage accounts" }),
+    ).toHaveAttribute("href", "/accounts");
+    expect(
+      screen.queryByRole("button", { name: "Create account" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Initial password")).not.toBeInTheDocument();
     await screen.findByRole("heading", { name: "Discord companion bot" });
     await userEvent.type(
       screen.getByLabelText("Application ID"),
@@ -83,6 +90,7 @@ describe("request accounts", () => {
             username: "viewer",
             role: "requester",
             account_id: 1,
+            access: ["requests"],
             csrf_token: "csrf",
             expires_at: 9999999999,
           },
@@ -176,6 +184,7 @@ describe("request accounts", () => {
             username: "viewer",
             role: "requester",
             account_id: 1,
+            access: ["requests"],
             csrf_token: "csrf",
             expires_at: 9999999999,
           },

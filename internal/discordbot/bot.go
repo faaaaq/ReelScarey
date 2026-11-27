@@ -177,6 +177,17 @@ func (s *Service) Link(ctx context.Context, account int64, userID string) error 
 	return nil
 }
 
+// WithAccountLock fences a central account/status update against queued
+// Discord button actions for the linked request profile.
+func (s *Service) WithAccountLock(account int64, update func() error) error {
+	if account < 1 {
+		return sql.ErrNoRows
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return update()
+}
+
 // DisableAccount serializes revocation with bot actions so a queued button
 // cannot start a download after an administrator has disabled the account.
 func (s *Service) DisableAccount(ctx context.Context, account int64, disabled bool) error {
@@ -201,8 +212,14 @@ func (s *Service) DisableAccount(ctx context.Context, account int64, disabled bo
 	if n != 1 {
 		return sql.ErrNoRows
 	}
+	if _, err = tx.ExecContext(ctx, `UPDATE accounts SET disabled=?,requests_access=CASE WHEN ?=0 THEN 1 ELSE requests_access END,updated_at=unixepoch() WHERE request_account_id=?`, disabled, disabled, account); err != nil {
+		return err
+	}
 	if disabled {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM request_sessions WHERE account_id=?`, account); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM account_sessions WHERE account_id IN (SELECT id FROM accounts WHERE request_account_id=?)`, account); err != nil {
 			return err
 		}
 	}

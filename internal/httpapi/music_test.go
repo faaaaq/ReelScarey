@@ -990,7 +990,7 @@ func TestMusicServerStatusFlagsLegacyToken(t *testing.T) {
 }
 
 func TestMusicServerUserRoutes(t *testing.T) {
-	handler, session := musicFixture(t, &fakeMusic{})
+	handler, session := musicFixture(t, &fakeMusic{serverUsers: []music.MusicServerUser{{ID: 1, Username: "dana", Email: "dana@example.com"}}})
 
 	// Accounts are only visible to an authenticated session.
 	if out := request(handler, "GET", "/api/v1/library/music/server/users", "", nil, false); out.Code != 401 {
@@ -1006,25 +1006,31 @@ func TestMusicServerUserRoutes(t *testing.T) {
 		t.Fatal("user create without CSRF", out.Code)
 	}
 	out = request(handler, "POST", "/api/v1/library/music/server/users", `{"username":"dana","email":"dana@example.com","download_role":true}`, session, true)
-	if out.Code != 201 || !strings.Contains(out.Body.String(), `"password":"generated-password"`) {
-		t.Fatal("user create", out.Code, out.Body.String())
+	if out.Code != 409 || !strings.Contains(out.Body.String(), `"use_central_accounts"`) {
+		t.Fatal("legacy user create must use central accounts", out.Code, out.Body.String())
 	}
 
-	// A single account can be read back, edited and have its password reset.
+	// A single account can be read back and have protocol roles edited.
+	// Password resets belong to centralized Accounts so credentials cannot diverge.
 	out = request(handler, "GET", "/api/v1/library/music/server/users/1", "", session, false)
 	if out.Code != 200 || !strings.Contains(out.Body.String(), `"username":"dana"`) {
 		t.Fatal("user get", out.Code, out.Body.String())
 	}
-	out = request(handler, "PUT", "/api/v1/library/music/server/users/1", `{"username":"dana2"}`, session, true)
+	out = request(handler, "PUT", "/api/v1/library/music/server/users/1", `{"username":"dana2","download_role":false}`, session, true)
 	if out.Code != 200 || !strings.Contains(out.Body.String(), `"username":"dana2"`) {
-		t.Fatal("user update", out.Code, out.Body.String())
+		t.Fatal("protocol role update", out.Code, out.Body.String())
+	}
+	out = request(handler, "PUT", "/api/v1/library/music/server/users/1", `{"username":"dana2","password":"replacement-password"}`, session, true)
+	if out.Code != 409 || !strings.Contains(out.Body.String(), `"use_central_accounts"`) {
+		t.Fatal("legacy PUT password change must use central accounts", out.Code, out.Body.String())
 	}
 	out = request(handler, "POST", "/api/v1/library/music/server/users/1/password", `{}`, session, true)
-	if out.Code != 200 || !strings.Contains(out.Body.String(), `"password":"reset-password"`) {
-		t.Fatal("user password reset", out.Code, out.Body.String())
+	if out.Code != 409 || !strings.Contains(out.Body.String(), `"use_central_accounts"`) {
+		t.Fatal("legacy password reset must use central accounts", out.Code, out.Body.String())
 	}
-	if out := request(handler, "DELETE", "/api/v1/library/music/server/users/1", "", session, true); out.Code != 200 {
-		t.Fatal("user delete", out.Code, out.Body.String())
+	out = request(handler, "DELETE", "/api/v1/library/music/server/users/1", "", session, true)
+	if out.Code != 409 || !strings.Contains(out.Body.String(), `"use_central_accounts"`) {
+		t.Fatal("legacy user delete must use central accounts", out.Code, out.Body.String())
 	}
 
 	// Unknown ids fail closed and unsupported methods are rejected.

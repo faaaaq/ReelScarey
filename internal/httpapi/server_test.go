@@ -42,6 +42,7 @@ func rawFixtureWithDefaultToken(t *testing.T, provider metadata.MovieProvider, d
 	if err != nil {
 		t.Fatal(err)
 	}
+	authService.SetSecrets(store)
 	code, err := securestore.SecretFile(filepath.Join(dir, "setup-token"), 32, false)
 	if err != nil {
 		t.Fatal(err)

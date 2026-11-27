@@ -12,6 +12,18 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/requests"
 )
 
+func requesterSession(w http.ResponseWriter, r *http.Request) (auth.Session, bool) {
+	session := r.Context().Value(sessionKey{}).(auth.Session)
+	accountID := session.RequestAccountID()
+	if accountID < 1 {
+		fail(w, 403, "request_account_required", "This account does not have Requests access.")
+		return auth.Session{}, false
+	}
+	// Domain calls continue to receive only the resolved request profile ID.
+	session.AccountID = accountID
+	return session, true
+}
+
 func (s *Server) requestAccounts(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -61,7 +73,9 @@ func (s *Server) requestAccountState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.bot != nil {
-		err = s.bot.DisableAccount(r.Context(), id, *in.Disabled)
+		err = s.bot.WithAccountLock(id, func() error {
+			return s.auth.SetRequestAccountDisabled(r.Context(), id, *in.Disabled)
+		})
 	} else {
 		err = s.auth.SetRequestAccountDisabled(r.Context(), id, *in.Disabled)
 	}
@@ -75,9 +89,8 @@ func (s *Server) requestAccountState(w http.ResponseWriter, r *http.Request) {
 	send(w, 200, map[string]bool{"disabled": *in.Disabled})
 }
 func (s *Server) requesterRequests(w http.ResponseWriter, r *http.Request) {
-	session := r.Context().Value(sessionKey{}).(auth.Session)
-	if session.Role != "requester" || session.AccountID < 1 {
-		fail(w, 403, "request_account_required", "Sign in with a request account.")
+	session, ok := requesterSession(w, r)
+	if !ok {
 		return
 	}
 	switch r.Method {
@@ -149,9 +162,8 @@ func (s *Server) adminRequests(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) requesterDiscord(w http.ResponseWriter, r *http.Request) {
-	session := r.Context().Value(sessionKey{}).(auth.Session)
-	if session.Role != "requester" || session.AccountID < 1 {
-		fail(w, 403, "request_account_required", "Sign in with a request account.")
+	session, ok := requesterSession(w, r)
+	if !ok {
 		return
 	}
 	if s.discord == nil {
@@ -193,9 +205,8 @@ func (s *Server) requesterDiscord(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *Server) requesterPassword(w http.ResponseWriter, r *http.Request) {
-	session := r.Context().Value(sessionKey{}).(auth.Session)
-	if session.Role != "requester" || session.AccountID < 1 {
-		fail(w, 403, "request_account_required", "Sign in with a request account.")
+	session, ok := requesterSession(w, r)
+	if !ok {
 		return
 	}
 	var in struct {
@@ -216,9 +227,8 @@ func (s *Server) requesterPassword(w http.ResponseWriter, r *http.Request) {
 	send(w, 200, map[string]bool{"changed": true})
 }
 func (s *Server) requesterRetryNotification(w http.ResponseWriter, r *http.Request) {
-	session := r.Context().Value(sessionKey{}).(auth.Session)
-	if session.Role != "requester" || session.AccountID < 1 {
-		fail(w, 403, "request_account_required", "Sign in with a request account.")
+	session, ok := requesterSession(w, r)
+	if !ok {
 		return
 	}
 	if s.discord == nil {
@@ -245,9 +255,8 @@ func (s *Server) requesterRetryNotification(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) requesterLists(w http.ResponseWriter, r *http.Request) {
-	session := r.Context().Value(sessionKey{}).(auth.Session)
-	if session.Role != "requester" || session.AccountID < 1 {
-		fail(w, 403, "request_account_required", "Sign in with a request account.")
+	session, ok := requesterSession(w, r)
+	if !ok {
 		return
 	}
 	if s.requestLists == nil {
@@ -288,9 +297,8 @@ func (s *Server) requesterLists(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *Server) requesterListAction(w http.ResponseWriter, r *http.Request, refresh bool) {
-	session := r.Context().Value(sessionKey{}).(auth.Session)
-	if session.Role != "requester" || session.AccountID < 1 {
-		fail(w, 403, "request_account_required", "Sign in with a request account.")
+	session, ok := requesterSession(w, r)
+	if !ok {
 		return
 	}
 	if s.requestLists == nil {
@@ -327,9 +335,8 @@ func (s *Server) requesterRefreshList(w http.ResponseWriter, r *http.Request) {
 	s.requesterListAction(w, r, true)
 }
 func (s *Server) requesterIMDbCSV(w http.ResponseWriter, r *http.Request) {
-	session := r.Context().Value(sessionKey{}).(auth.Session)
-	if session.Role != "requester" || session.AccountID < 1 {
-		fail(w, 403, "request_account_required", "Sign in with a request account.")
+	session, ok := requesterSession(w, r)
+	if !ok {
 		return
 	}
 	var in struct {

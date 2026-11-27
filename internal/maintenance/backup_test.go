@@ -49,6 +49,14 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	if e = secrets.SetNamed(ctx, "opensubtitles", []byte(`{"api_key":"fixture-private-key"}`)); e != nil {
 		t.Fatal(e)
 	}
+	a.SetSecrets(secrets)
+	if _, e = a.CreateAccount(ctx, "player", "player-test-password", false, true, false); e != nil {
+		t.Fatal(e)
+	}
+	playerSession, e := a.Login(ctx, "player", "player-test-password")
+	if e != nil || playerSession.Token == "" {
+		t.Fatal("create central player session", e)
+	}
 	clientID := strings.Repeat("a", 32)
 	if _, e = db.Exec(`INSERT INTO download_clients(id,name,kind,enabled,created_at,updated_at) VALUES(?,'Owned NZBGet','nzbget',1,1,1); UPDATE download_client_preferences SET usenet=?`, clientID, clientID); e != nil {
 		t.Fatal(e)
@@ -76,8 +84,8 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 	if e != nil {
 		t.Fatal(e)
 	}
-	// The schema version tracks the latest migration (115).
-	if m.Schema != 115 || len(m.Files) != 2 {
+	// The schema version tracks the latest migration (116).
+	if m.Schema != 116 || len(m.Files) != 2 {
 		t.Fatal(m)
 	}
 	if _, e = Verify(ctx, backup); e != nil {
@@ -106,6 +114,10 @@ func TestBackupRestorePreservesAccountEncryptedProvidersAndPreferences(t *testin
 		t.Fatal(e)
 	}
 	defer restored.Close()
+	var activeSessions int
+	if e = restored.QueryRow(`SELECT (SELECT COUNT(*) FROM sessions)+(SELECT COUNT(*) FROM request_sessions)+(SELECT COUNT(*) FROM account_sessions)`).Scan(&activeSessions); e != nil || activeSessions != 0 {
+		t.Fatal("restore retained browser sessions", activeSessions, e)
+	}
 	var matchingState, matchingOwner string
 	var matchingLease int64
 	if e = restored.QueryRow(`SELECT state,lease_owner,lease_until FROM library_match_jobs WHERE scan_id='automatic-fixture'`).Scan(&matchingState, &matchingOwner, &matchingLease); e != nil || matchingState != "paused" || matchingOwner != "" || matchingLease != 0 {

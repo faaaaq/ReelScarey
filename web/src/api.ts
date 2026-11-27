@@ -1006,9 +1006,31 @@ export type Session = {
   username: string;
   csrf_token: string;
   expires_at: number;
-  role?: "admin" | "requester";
-  account_id?: number;
+  role: "admin" | "requester" | "user";
+  account_id: number;
+  user_account_id?: number;
+  access: string[];
 };
+
+/**
+ * Returns whether a session may use one named capability.
+ *
+ * Administrator sessions retain every capability. The role/access checks also
+ * tolerate an older response while a session is being upgraded: a missing role
+ * is the former administrator shape, and a legacy requester can always use
+ * Requests. This is only a UI concern; the server remains the access boundary.
+ */
+export function hasAccess(session: Session, access: string) {
+  if (!session.role || session.role === "admin") return true;
+  if (
+    session.role === "requester" &&
+    access === "requests" &&
+    !Array.isArray(session.access)
+  )
+    return true;
+  return session.access?.includes(access) ?? false;
+}
+
 export type AuthStatus = {
   setup_required: boolean;
   authenticated: boolean;

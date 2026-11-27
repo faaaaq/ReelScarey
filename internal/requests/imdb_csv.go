@@ -76,7 +76,7 @@ func (s *Store) ImportResolved(ctx context.Context, account int64, items []Reque
 	}
 	defer tx.Rollback()
 	var active, count int
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM request_accounts WHERE id=? AND disabled=0`, account).Scan(&active); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM request_accounts r JOIN accounts a ON a.request_account_id=r.id WHERE r.id=? AND r.disabled=0 AND a.disabled=0 AND a.requests_access=1`, account).Scan(&active); err != nil {
 		return 0, err
 	}
 	if active != 1 {

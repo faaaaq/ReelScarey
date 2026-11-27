@@ -1,8 +1,47 @@
 # Administrator and credential operations
 
-ReelScarey currently has one administrator. Setup, login, logout, session expiry
-and local password recovery are implemented. Email reset, multi-user roles and
-external identity providers are outside this milestone.
+ReelScarey has one owner administrator plus centralized user accounts. Setup,
+login, logout, session expiry and local password recovery are implemented.
+Email reset and external identity providers are outside this milestone.
+
+## Central accounts and system access
+
+**Settings -> Accounts** manages every non-administrator identity. Each account
+has one username and password and independent **Requests**, **Music player**
+and **Subsonic** grants. These grants are additive: Music player does not imply
+music-library management, Subsonic does not imply browser access, and neither
+implies Requests. An account with no browser grants can sign in only to see an
+honest no-access page and sign out. The singleton administrator retains all
+administrator APIs; there is no assignable ReelScarey administrator checkbox.
+
+The HTTP boundary resolves grants from the database on every request. Revoking
+a grant therefore takes effect immediately, while disabling the whole account
+also revokes browser sessions and rejects the next Subsonic request. Request,
+list, notification and Discord operations always use the linked request profile
+from the resolved session, never an account ID supplied by a requester.
+
+Music-player sessions can use only the explicitly allowlisted catalog, artist,
+album, artwork, playlist, stream-metadata and audio-stream routes. Music scans,
+imports, metadata refreshes, file edits, exports, server administration,
+automation and global preference writes remain administrator-only. Subsonic
+roles remain protocol-specific; its `admin_role` never grants ReelScarey
+administrator authority.
+
+New and reset passwords use Argon2id for browser sessions and the existing
+AES-GCM secure store for Subsonic's token protocol. The same plaintext password
+is never stored or returned. Password changes revoke that account's browser
+sessions and update both credential forms atomically. Administrator password
+reset requires the instance's `secrets.key`; missing or wrong keys fail closed.
+
+Migration 116 is additive. Existing request and Subsonic profile IDs, request
+history, Discord links and playback state are preserved. Same-named legacy
+identities are **not** merged automatically, because their passwords and state
+may belong to different people. Existing request users keep browser access;
+existing Subsonic users keep Subsonic access. A migrated Subsonic-only identity
+has no browser password and is marked **Password required** until an
+administrator sets its central password. The legacy shared Subsonic token is a
+separate compatibility credential, not a ReelScarey account or administrator
+session. Scoped Sonarr/Radarr/Prowlarr API keys are likewise separate.
 
 ## First run or upgrade from the foundation
 

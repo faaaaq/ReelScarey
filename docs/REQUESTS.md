@@ -1,14 +1,19 @@
 # Request accounts, lists and Discord notifications
 
-An administrator creates request accounts on **Requests**. Request users sign
-in with their own username and initial password and see a separate request-only
-interface. They cannot access administrator APIs. The administrator can disable
-an account, which immediately revokes its sessions. Share initial passwords
-privately. Request users can change their own password; doing so signs out all
-of their request sessions. The administrator can approve or decline requests; approval adds the
-canonical title to the catalog, with monitoring enabled. Declining updates the
-requester's in-app status and does not claim that an external notification was
-delivered. If TMDb is not configured, requesters are told to contact the
+An administrator creates centralized accounts on **Settings -> Accounts** and
+grants **Requests** independently of Music player and Subsonic access. Request
+users sign in with the account's shared username and password and see only the
+systems granted to them. They cannot access administrator APIs. The
+administrator can revoke Requests without disabling other granted systems, or
+disable the whole account to revoke browser sessions and Subsonic access
+immediately. Share initial passwords privately. Users can change their own
+password; doing so signs out all of their browser sessions and updates the same
+credential for Subsonic. See [central accounts](AUTHENTICATION.md#central-accounts-and-system-access).
+
+The administrator can approve or decline requests on **Requests**; approval adds
+the canonical title to the catalog, with monitoring enabled. Declining updates
+the requester's in-app status and does not claim that an external notification
+was delivered. If TMDb is not configured, requesters are told to contact the
 administrator rather than being sent to administrator-only Settings. Downloads
 still depend on the configured automation and download services.
 

@@ -53,6 +53,7 @@ func setupRateLimitService(t *testing.T, ctx context.Context) *rateLimitSetup {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeBotRequestAccounts(t, db)
 	if err = s.Link(ctx, 1, "555555555555555555"); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +119,7 @@ func TestBotReply429RetriesWithinInteractionWindow(t *testing.T) {
 }
 
 // A persistent 429 must still be reported as a rate limit failure and leave
-// the job uncertain — never a silent success or a generic error (NEW-C1).
+// the job uncertain â€” never a silent success or a generic error (NEW-C1).
 func TestBotReplyPersistent429StaysUncertainWithRateLimitFailure(t *testing.T) {
 	ctx := context.Background()
 	setup := setupRateLimitService(t, ctx)

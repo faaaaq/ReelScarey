@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { Badge, Button, TextField } from "@radix-ui/themes";
 import {
   ArrowLeft,
@@ -8,7 +8,6 @@ import {
   Server,
   ShieldCheck,
   Trash2,
-  UserPlus,
   Users,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -18,8 +17,6 @@ import {
   ConfirmDialog,
   EmptyState,
   FieldSet,
-  FormActions,
-  FormGroup,
   Label,
   Modal,
   ModalClose,
@@ -174,23 +171,8 @@ export function MusicServer() {
   // Legacy shared token (one password any username may use).
   const [token, setToken] = useState("");
 
-  // Shown-once password from a create or a reset.
-  const [issued, setIssued] = useState<{
-    user: MusicServerUser;
-    password: string;
-  }>();
-
-  // Create form.
-  const [newUsername, setNewUsername] = useState("");
-  const [newEmail, setNewEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [newRoles, setNewRoles] = useState<Roles>(defaultRoles);
-
-  // Edit dialog.
+  // Protocol-role edit dialog. Identity and credentials live in Accounts.
   const [editing, setEditing] = useState<MusicServerUser>();
-  const [editUsername, setEditUsername] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editPassword, setEditPassword] = useState("");
   const [editRoles, setEditRoles] = useState<Roles>(defaultRoles);
 
   useEffect(() => {
@@ -238,50 +220,8 @@ export function MusicServer() {
     }
   }
 
-  async function createAccount(event: FormEvent) {
-    event.preventDefault();
-    if (pending) return;
-    setPending(true);
-    setError("");
-    setMessage("");
-    setIssued(undefined);
-    setCopied(false);
-    try {
-      const result = await api<{ user: MusicServerUser; password: string }>(
-        "/library/music/server/users",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            username: newUsername.trim(),
-            email: newEmail.trim(),
-            password: newPassword,
-            ...newRoles,
-          }),
-        },
-      );
-      setNewUsername("");
-      setNewEmail("");
-      setNewPassword("");
-      setNewRoles(defaultRoles);
-      if (result.password) {
-        setIssued(result);
-      } else {
-        setMessage(`Created the account \u201c${result.user.username}\u201d.`);
-      }
-      accounts.reload();
-      server.reload();
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setPending(false);
-    }
-  }
-
   function startEdit(user: MusicServerUser) {
     setEditing(user);
-    setEditUsername(user.username);
-    setEditEmail(user.email);
-    setEditPassword("");
     setEditRoles(rolesFromUser(user));
     setError("");
     setMessage("");
@@ -294,11 +234,10 @@ export function MusicServer() {
     setMessage("");
     try {
       const body: MusicServerUserInput = {
-        username: editUsername.trim(),
-        email: editEmail.trim(),
+        username: editing.username,
+        email: editing.email,
         ...editRoles,
       };
-      if (editPassword) body.password = editPassword;
       const updated = await api<MusicServerUser>(
         `/library/music/server/users/${editing.id}`,
         { method: "PUT", body: JSON.stringify(body) },
@@ -310,40 +249,6 @@ export function MusicServer() {
       setError(messageFor(e));
     } finally {
       setPending(false);
-    }
-  }
-
-  async function resetPassword(user: MusicServerUser) {
-    if (pending) return;
-    setPending(true);
-    setError("");
-    setMessage("");
-    setIssued(undefined);
-    setCopied(false);
-    try {
-      const result = await api<{ user: MusicServerUser; password: string }>(
-        `/library/music/server/users/${user.id}/password`,
-        { method: "POST" },
-      );
-      setIssued(result);
-      accounts.reload();
-    } catch (e) {
-      setError(messageFor(e));
-    } finally {
-      setPending(false);
-    }
-  }
-
-  async function removeAccount(user: MusicServerUser) {
-    setError("");
-    setMessage("");
-    try {
-      await api(`/library/music/server/users/${user.id}`, { method: "DELETE" });
-      setMessage(`Removed the account \u201c${user.username}\u201d.`);
-      accounts.reload();
-      server.reload();
-    } catch (e) {
-      setError(messageFor(e));
     }
   }
 
@@ -451,44 +356,23 @@ export function MusicServer() {
             {message && <Alert kind="success">{message}</Alert>}
             {error && <Alert kind="danger">{error}</Alert>}
 
-            {issued && (
-              <Alert kind="warning" title="Copy this password now">
-                <div className="mus-server-token">
-                  <TextField.Root
-                    aria-label="Account password"
-                    value={issued.password}
-                    readOnly
-                    onFocus={(event) => event.currentTarget.select()}
-                  />
-                  <Button
-                    type="button"
-                    variant="soft"
-                    onClick={() => void copy(issued.password)}
-                  >
-                    {copied ? "Copied" : "Copy password"}
-                  </Button>
-                </div>
-                <p className="rs-muted">
-                  Sign in to the Subsonic client as{" "}
-                  <code>{issued.user.username}</code> with this password. It is
-                  shown once and cannot be retrieved later; reset it if it is
-                  lost.
-                </p>
-              </Alert>
-            )}
-
             <FieldSet
               legend="Accounts"
-              description="Each account signs in with its own username and password. Permissions apply to that account only."
+              description="Protocol permissions for centrally managed accounts. Manage identities, passwords, and system access in Accounts."
               actions={
-                <Button
-                  variant="soft"
-                  size="1"
-                  disabled={pending || accounts.loading}
-                  onClick={() => void accounts.reload()}
-                >
-                  <RefreshCw size={14} aria-hidden="true" /> Refresh
-                </Button>
+                <>
+                  <Button asChild variant="soft" size="1">
+                    <Link to="/accounts">Manage accounts</Link>
+                  </Button>
+                  <Button
+                    variant="soft"
+                    size="1"
+                    disabled={pending || accounts.loading}
+                    onClick={() => void accounts.reload()}
+                  >
+                    <RefreshCw size={14} aria-hidden="true" /> Refresh
+                  </Button>
+                </>
               }
             >
               <RequestState
@@ -499,8 +383,8 @@ export function MusicServer() {
               />
               {accounts.data && users.length === 0 && (
                 <EmptyState icon={Users} title="No accounts yet">
-                  Add an account below so a Subsonic client can sign in with a
-                  username and password.
+                  Grant Subsonic access from Accounts so a music client can sign
+                  in with its centrally managed identity.
                 </EmptyState>
               )}
               {accounts.data && users.length > 0 && (
@@ -554,33 +438,8 @@ export function MusicServer() {
                               onClick={() => startEdit(user)}
                             >
                               <Pencil size={14} aria-hidden="true" /> Edit
+                              permissions
                             </Button>
-                            <Button
-                              type="button"
-                              variant="soft"
-                              size="1"
-                              disabled={pending}
-                              onClick={() => void resetPassword(user)}
-                            >
-                              <KeyRound size={14} aria-hidden="true" /> Reset
-                              password
-                            </Button>
-                            <ConfirmDialog
-                              title={`Remove ${user.username}?`}
-                              description="Clients signed in as this account stop working immediately. This cannot be undone."
-                              confirmLabel="Remove account"
-                              trigger={
-                                <Button
-                                  type="button"
-                                  color="red"
-                                  variant="soft"
-                                  size="1"
-                                >
-                                  <Trash2 size={14} aria-hidden="true" /> Remove
-                                </Button>
-                              }
-                              onConfirm={() => removeAccount(user)}
-                            />
                           </div>
                         </td>
                       </tr>
@@ -588,66 +447,6 @@ export function MusicServer() {
                   </tbody>
                 </Table>
               )}
-            </FieldSet>
-
-            <FieldSet
-              legend="Add an account"
-              description="Give each person their own credentials. Leave the password blank to generate a strong one."
-            >
-              <form onSubmit={(event) => void createAccount(event)}>
-                <FormGroup
-                  label="Username"
-                  htmlFor="mus-user-name"
-                  help="1-64 characters, not case sensitive."
-                >
-                  <TextField.Root
-                    id="mus-user-name"
-                    value={newUsername}
-                    maxLength={64}
-                    placeholder="alex"
-                    autoComplete="off"
-                    onChange={(event) => setNewUsername(event.target.value)}
-                  />
-                </FormGroup>
-                <FormGroup label="Email (optional)" htmlFor="mus-user-email">
-                  <TextField.Root
-                    id="mus-user-email"
-                    type="email"
-                    value={newEmail}
-                    maxLength={254}
-                    placeholder="alex@example.com"
-                    autoComplete="off"
-                    onChange={(event) => setNewEmail(event.target.value)}
-                  />
-                </FormGroup>
-                <FormGroup
-                  label="Password (optional)"
-                  htmlFor="mus-user-password"
-                  help="Leave blank to generate a strong 20-character password."
-                >
-                  <TextField.Root
-                    id="mus-user-password"
-                    type="password"
-                    value={newPassword}
-                    maxLength={256}
-                    autoComplete="new-password"
-                    onChange={(event) => setNewPassword(event.target.value)}
-                  />
-                </FormGroup>
-                <RoleChecks
-                  roles={newRoles}
-                  onChange={setNewRoles}
-                  disabled={pending}
-                />
-                <FormActions>
-                  <Button
-                    type="submit"
-                    disabled={pending || !newUsername.trim()}
-                  >
-                    <UserPlus size={16} aria-hidden="true" /> Add account
-                  </Button>
-                </FormActions>
-              </form>
             </FieldSet>
 
             <FieldSet
@@ -754,8 +553,12 @@ export function MusicServer() {
         onOpenChange={(open) => {
           if (!open && !pending) setEditing(undefined);
         }}
-        title="Edit account"
-        description={editing ? `Update ${editing.username}.` : undefined}
+        title="Edit music server permissions"
+        description={
+          editing
+            ? `Update Subsonic protocol permissions for ${editing.username}.`
+            : undefined
+        }
         size="medium"
         footer={
           <>
@@ -764,55 +567,27 @@ export function MusicServer() {
                 Cancel
               </Button>
             </ModalClose>
-            <Button
-              disabled={pending || !editUsername.trim()}
-              onClick={() => void saveEdit()}
-            >
-              Save changes
+            <Button disabled={pending} onClick={() => void saveEdit()}>
+              Save permissions
             </Button>
           </>
         }
       >
-        <form onSubmit={() => void saveEdit()}>
-          <FormGroup label="Username" htmlFor="mus-edit-name">
-            <TextField.Root
-              id="mus-edit-name"
-              value={editUsername}
-              maxLength={64}
-              autoComplete="off"
-              onChange={(event) => setEditUsername(event.target.value)}
+        {editing && (
+          <>
+            <p>
+              Account identity, password, and access are managed in{" "}
+              <Link to="/accounts">Accounts</Link>. This dialog changes only
+              music-client protocol permissions for{" "}
+              <strong>{editing.username}</strong>.
+            </p>
+            <RoleChecks
+              roles={editRoles}
+              onChange={setEditRoles}
+              disabled={pending}
             />
-          </FormGroup>
-          <FormGroup label="Email (optional)" htmlFor="mus-edit-email">
-            <TextField.Root
-              id="mus-edit-email"
-              type="email"
-              value={editEmail}
-              maxLength={254}
-              autoComplete="off"
-              onChange={(event) => setEditEmail(event.target.value)}
-            />
-          </FormGroup>
-          <FormGroup
-            label="New password (optional)"
-            htmlFor="mus-edit-password"
-            help="Leave blank to keep the current password."
-          >
-            <TextField.Root
-              id="mus-edit-password"
-              type="password"
-              value={editPassword}
-              maxLength={256}
-              autoComplete="new-password"
-              onChange={(event) => setEditPassword(event.target.value)}
-            />
-          </FormGroup>
-          <RoleChecks
-            roles={editRoles}
-            onChange={setEditRoles}
-            disabled={pending}
-          />
-        </form>
+          </>
+        )}
       </Modal>
     </>
   );

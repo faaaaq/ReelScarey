@@ -45,6 +45,7 @@ it.each([
   ["/music/player", "Music player"],
   ["/music/discover", "Music discover"],
   ["/music/server", "Music server"],
+  ["/accounts", "Accounts"],
 ])("names the %s route for the browser tab", (path, title) => {
   expect(pageTitle(path)).toBe(title);
 });

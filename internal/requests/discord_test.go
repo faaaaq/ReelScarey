@@ -33,6 +33,7 @@ func TestDiscordFulfillmentAndUncertainDelivery(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1),(2,'other','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeRequestAccounts(t, db)
 	url := "https://discord.com/api/webhooks/123456789012345678/" + strings.Repeat("a", 60)
 	for _, bad := range []string{"http://discord.com/api/webhooks/123456789012345678/" + strings.Repeat("a", 60), "https://discord.com.evil.test/api/webhooks/123456789012345678/" + strings.Repeat("a", 60), url + "?x=1"} {
 		if err = d.Save(ctx, 1, bad); err == nil {
@@ -133,6 +134,7 @@ func TestDiscordWaitsForAllMonitoredEpisodes(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeRequestAccounts(t, db)
 	if err = d.Save(ctx, 1, "https://discord.com/api/webhooks/123456789012345678/"+strings.Repeat("a", 60)); err != nil {
 		t.Fatal(err)
 	}

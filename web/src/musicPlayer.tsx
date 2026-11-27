@@ -61,6 +61,13 @@ type QualityResume = { position: number; play: boolean };
 
 const PLAYER_STORAGE_KEY = "reelscarey:music-player:v1";
 const PLAYER_PROGRESS_STORAGE_KEY = "reelscarey:music-player-progress:v1";
+function playerStorageKeys(identity?: number) {
+  const suffix = identity === undefined ? "" : `:central-account:${identity}`;
+  return {
+    queue: PLAYER_STORAGE_KEY + suffix,
+    progress: PLAYER_PROGRESS_STORAGE_KEY + suffix,
+  };
+}
 const PERSISTED_QUEUE_LIMIT = 500;
 const PROGRESS_WRITE_INTERVAL = 250;
 
@@ -84,7 +91,10 @@ function finite(candidate: unknown, fallback: number) {
 }
 
 /** Restore only bounded, non-secret browser state; media paths never appear. */
-function restorePlayer(): RestoredPlayer {
+function restorePlayer(storageKeys: {
+  queue: string;
+  progress: string;
+}): RestoredPlayer {
   let restored: RestoredPlayer = {
     queue: [],
     index: -1,
@@ -96,7 +106,7 @@ function restorePlayer(): RestoredPlayer {
     repeat: "off",
   };
   try {
-    const raw = window.localStorage.getItem(PLAYER_STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKeys.queue);
     if (raw) {
       const value = JSON.parse(raw) as Partial<RestoredPlayer>;
       if (Array.isArray(value.queue)) {
@@ -150,7 +160,7 @@ function restorePlayer(): RestoredPlayer {
   }
 
   try {
-    const raw = window.localStorage.getItem(PLAYER_PROGRESS_STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKeys.progress);
     if (!raw) return restored;
     const value = JSON.parse(raw) as Partial<
       Pick<RestoredPlayer, "position" | "duration" | "volume" | "muted">
@@ -196,6 +206,7 @@ export type PlayerValue = {
   repeat: RepeatMode;
   error: string;
   errorRecovery: "" | "music-import";
+  canManageSettings?: boolean;
   stream: MusicStreamStatus;
   play: (track: PlayerTrack, queue?: PlayerTrack[]) => void;
   playShuffled: (items: PlayerTrack[]) => void;
@@ -325,7 +336,15 @@ function shuffledTracks(items: PlayerTrack[]) {
   return result;
 }
 
-export function MusicPlayerProvider({ children }: { children: ReactNode }) {
+export function MusicPlayerProvider({
+  children,
+  identity,
+  canManageSettings = true,
+}: {
+  children: ReactNode;
+  identity?: number;
+  canManageSettings?: boolean;
+}) {
   const audioRef = useRef<HTMLAudioElement>(null);
   // Monotonic counter for play() requests. A superseded load (rapid track
   // skipping) rejects its play() promise after the new track's play() has
@@ -338,7 +357,8 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   const sourceRequest = useRef<StreamRequest | null>(null);
   const qualityResume = useRef<QualityResume | null>(null);
   const [stream, setStream] = useState<MusicStreamStatus>({ phase: "idle" });
-  const [restored] = useState(restorePlayer);
+  const [storageKeys] = useState(() => playerStorageKeys(identity));
+  const [restored] = useState(() => restorePlayer(storageKeys));
   const [current, setCurrent] = useState<PlayerTrack | null>(() =>
     restored.index >= 0 ? restored.queue[restored.index] : null,
   );
@@ -418,11 +438,11 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     try {
       const current = currentRef.current;
       if (!current) {
-        window.localStorage.removeItem(PLAYER_PROGRESS_STORAGE_KEY);
+        window.localStorage.removeItem(storageKeys.progress);
         return;
       }
       window.localStorage.setItem(
-        PLAYER_PROGRESS_STORAGE_KEY,
+        storageKeys.progress,
         JSON.stringify({
           fileID: current.fileID,
           position: positionRef.current,
@@ -444,7 +464,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       const queue = queueRef.current;
       const index = indexRef.current;
       if (!current) {
-        window.localStorage.removeItem(PLAYER_STORAGE_KEY);
+        window.localStorage.removeItem(storageKeys.queue);
         return;
       }
       const windowed =
@@ -455,7 +475,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
         ? queue.slice(index, index + PERSISTED_QUEUE_LIMIT)
         : queue.slice(0, PERSISTED_QUEUE_LIMIT);
       window.localStorage.setItem(
-        PLAYER_STORAGE_KEY,
+        storageKeys.queue,
         JSON.stringify({
           queue: savedQueue,
           index: windowed ? 0 : index,
@@ -921,8 +941,8 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       audio.load();
     }
     try {
-      window.localStorage.removeItem(PLAYER_STORAGE_KEY);
-      window.localStorage.removeItem(PLAYER_PROGRESS_STORAGE_KEY);
+      window.localStorage.removeItem(storageKeys.queue);
+      window.localStorage.removeItem(storageKeys.progress);
     } catch {
       // Playback teardown must not fail when browser storage is unavailable.
     }
@@ -1157,6 +1177,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       repeat,
       error,
       errorRecovery,
+      canManageSettings,
       stream,
       ...actions,
     }),
@@ -1169,6 +1190,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       repeat,
       error,
       errorRecovery,
+      canManageSettings,
       stream,
       actions,
     ],
@@ -1214,7 +1236,12 @@ function streamQualityStatus(stream: MusicStreamStatus, playing: boolean) {
 }
 
 function PlayerQualityControl() {
-  const { playing, stream, reloadStreamQuality } = useMusicQueue();
+  const {
+    playing,
+    stream,
+    reloadStreamQuality,
+    canManageSettings = true,
+  } = useMusicQueue();
   const prefs = useResource<MusicPreferences>("/library/music/preferences", {
     retain: true,
   });
@@ -1227,6 +1254,7 @@ function PlayerQualityControl() {
   }, [prefs.data]);
 
   async function change(next: MusicStreamingQuality) {
+    if (!canManageSettings) return;
     if (!prefs.data || saving) {
       // Never show a selection that was not attempted: while a save is in
       // flight the select is disabled, and without loaded preferences there
@@ -1269,7 +1297,12 @@ function PlayerQualityControl() {
       <select
         aria-label="Streaming quality"
         value={value}
-        disabled={saving || prefs.loading || !prefs.data}
+        disabled={!canManageSettings || saving || prefs.loading || !prefs.data}
+        title={
+          canManageSettings
+            ? undefined
+            : "Streaming quality is managed by an administrator"
+        }
         onChange={(event) =>
           void change(event.target.value as MusicStreamingQuality)
         }
@@ -1318,7 +1351,7 @@ export function MusicPlayerBar() {
           </span>
         )}
         <div className="music-player-copy">
-          {track.albumID ? (
+          {track.albumID && player.canManageSettings !== false ? (
             <Link
               className="music-player-title"
               to={`/music/albums/${track.albumID}`}
@@ -1341,9 +1374,10 @@ export function MusicPlayerBar() {
               <button type="button" onClick={player.retry}>
                 Retry playback
               </button>
-              {player.errorRecovery === "music-import" && (
-                <Link to="/music/import">Open Music Import</Link>
-              )}
+              {player.errorRecovery === "music-import" &&
+                player.canManageSettings !== false && (
+                  <Link to="/music/import">Open Music Import</Link>
+                )}
             </span>
           )}
         </div>

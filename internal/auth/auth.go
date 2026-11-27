@@ -45,12 +45,15 @@ const setupTokenMaxAge = 7 * 24 * time.Hour
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{3,40}$`)
 
 type Session struct {
-	Username  string `json:"username"`
-	Token     string `json:"-"`
-	CSRFToken string `json:"csrf_token"`
-	ExpiresAt int64  `json:"expires_at"`
-	Role      string `json:"role"`
-	AccountID int64  `json:"account_id,omitempty"`
+	Username      string   `json:"username"`
+	Token         string   `json:"-"`
+	CSRFToken     string   `json:"csrf_token"`
+	ExpiresAt     int64    `json:"expires_at"`
+	Role          string   `json:"role"`
+	AccountID     int64    `json:"account_id,omitempty"`
+	UserAccountID int64    `json:"user_account_id,omitempty"`
+	RequestID     int64    `json:"-"`
+	Access        []string `json:"access"`
 }
 type attempt struct {
 	count int
@@ -64,6 +67,7 @@ type Service struct {
 	hashing   chan struct{}
 	global    attempt
 	totp      *TOTPStore
+	secrets   *securestore.Store
 }
 
 func New(ctx context.Context, db *sql.DB, dir string) (*Service, error) {
@@ -251,7 +255,7 @@ func (s *Service) login(ctx context.Context, username, password, code string) (S
 		return Session{}, err
 	}
 	if subtle.ConstantTimeCompare([]byte(storedUser), []byte(username)) != 1 {
-		return s.loginRequester(ctx, username, password)
+		return s.loginAccount(ctx, username, password)
 	}
 	if !verifyPassword(encoded, password) {
 		return Session{}, ErrUnauthorized
@@ -319,25 +323,70 @@ func (s *Service) Resolve(ctx context.Context, token string) (Session, error) {
 		return Session{}, ErrUnauthorized
 	}
 	var session Session
-	err := s.db.QueryRowContext(ctx, "SELECT a.username, s.expires_at FROM sessions s CROSS JOIN admin_account a WHERE s.token_hash = ? AND s.expires_at > ?", digest(token), time.Now().Unix()).Scan(&session.Username, &session.ExpiresAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		err = s.db.QueryRowContext(ctx, `SELECT a.id,a.username,s.expires_at FROM request_sessions s JOIN request_accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires_at>? AND a.disabled=0`, digest(token), time.Now().Unix()).Scan(&session.AccountID, &session.Username, &session.ExpiresAt)
-		if errors.Is(err, sql.ErrNoRows) {
-			return Session{}, ErrUnauthorized
-		}
-		if err != nil {
-			return Session{}, err
-		}
-		session.Role = "requester"
-	} else if err == nil {
+	now := time.Now().Unix()
+	err := s.db.QueryRowContext(ctx, "SELECT a.username, s.expires_at FROM sessions s CROSS JOIN admin_account a WHERE s.token_hash = ? AND s.expires_at > ?", digest(token), now).Scan(&session.Username, &session.ExpiresAt)
+	if err == nil {
 		session.Role = "admin"
+		session.Token = token
+		session.CSRFToken = CSRF(token)
+		return session, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Session{}, err
+	}
+
+	// Request-backed sessions retain their legacy request account ID for API
+	// compatibility, but all status and grants come from the central account
+	// on every request. Revoking a grant therefore needs no session cache
+	// invalidation, while a global disable fails closed immediately.
+	row := s.db.QueryRowContext(ctx, `SELECT `+accountColumns+`,s.expires_at FROM request_sessions s JOIN accounts a ON a.request_account_id=s.account_id LEFT JOIN request_accounts r ON r.id=a.request_account_id WHERE s.token_hash=? AND s.expires_at>? AND a.disabled=0`, digest(token), now)
+	var expires int64
+	session, err = scanAccountSession(accountSessionExpiryRow{row: row, expires: &expires}, token, 0, false)
+	if err == nil {
+		session.ExpiresAt = expires
+		return session, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Session{}, err
+	}
+
+	row = s.db.QueryRowContext(ctx, `SELECT `+accountColumns+`,s.expires_at FROM account_sessions s JOIN accounts a ON a.id=s.account_id LEFT JOIN request_accounts r ON r.id=a.request_account_id WHERE s.token_hash=? AND s.expires_at>? AND a.disabled=0`, digest(token), now)
+	session, err = scanAccountSession(accountSessionExpiryRow{row: row, expires: &expires}, token, 0, true)
+	if err == nil {
+		session.ExpiresAt = expires
+		return session, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Session{}, err
+	}
+
+	// A defensive fallback for an old database restored without the additive
+	// account migration. Current migrations always link request rows.
+	err = s.db.QueryRowContext(ctx, `SELECT a.id,a.username,s.expires_at FROM request_sessions s JOIN request_accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires_at>? AND a.disabled=0`, digest(token), now).Scan(&session.AccountID, &session.Username, &session.ExpiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Session{}, ErrUnauthorized
 	}
 	if err != nil {
 		return Session{}, err
 	}
+	session.Role = "requester"
+	session.RequestID = session.AccountID
+	session.UserAccountID = session.AccountID
+	session.Access = []string{AccessRequests}
 	session.Token = token
 	session.CSRFToken = CSRF(token)
 	return session, nil
+}
+
+// accountSessionExpiryRow adds the session expiry to the common account scan
+// without exposing it in the Account management representation.
+type accountSessionExpiryRow struct {
+	row     accountRow
+	expires *int64
+}
+
+func (r accountSessionExpiryRow) Scan(dest ...any) error {
+	return r.row.Scan(append(dest, r.expires)...)
 }
 
 func (s *Service) Logout(ctx context.Context, token string) error {
@@ -350,6 +399,9 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, "DELETE FROM request_sessions WHERE token_hash = ?", digest(token)); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM account_sessions WHERE token_hash = ?", digest(token)); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -385,6 +437,9 @@ func (s *Service) ResetPassword(ctx context.Context, password string) error {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM request_sessions"); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM account_sessions"); err != nil {
 		return err
 	}
 	return tx.Commit()

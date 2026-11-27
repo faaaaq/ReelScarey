@@ -12,6 +12,8 @@ const adminSession: Session = {
   csrf_token: "test-csrf",
   expires_at: 9999999999,
   role: "admin",
+  account_id: 1,
+  access: ["requests", "music_player", "subsonic"],
 };
 
 // A page with in-progress work: local input state plus a save action that

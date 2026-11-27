@@ -1,6 +1,22 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Button, DropdownMenu } from "@radix-ui/themes";
-import { ChevronDown, LogOut, Menu, Plus, User, X } from "lucide-react";
+import {
+  ChevronDown,
+  Disc3,
+  Inbox,
+  LogOut,
+  Menu,
+  Plus,
+  User,
+  X,
+} from "lucide-react";
 import {
   Link,
   Navigate,
@@ -15,6 +31,7 @@ import { HistoryTray } from "./components/HistoryTray";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { MusicPlayerBar, MusicPlayerProvider } from "./musicPlayer";
 import { AuthGate, useAuth } from "./auth";
+import { hasAccess, type Session } from "./api";
 import { childActive, navigation, pageTitle, type Place } from "./navigation";
 import { YouTubeReviewBadge } from "./pages/youtube/ReviewBadge";
 import { MediaWorkBanner } from "./components/MediaWorkBanner";
@@ -152,6 +169,14 @@ const AdminRequests = lazy(() =>
 const RequesterHome = lazy(() =>
   import("./pages/Requests").then((m) => ({ default: m.RequesterHome })),
 );
+const ChangeAccountPassword = lazy(() =>
+  import("./pages/Requests").then((m) => ({
+    default: m.ChangeAccountPassword,
+  })),
+);
+const Accounts = lazy(() =>
+  import("./pages/Accounts").then((m) => ({ default: m.Accounts })),
+);
 const WatchActivity = lazy(() =>
   import("./pages/WatchActivity").then((m) => ({ default: m.WatchActivity })),
 );
@@ -205,7 +230,209 @@ export default function App() {
 
 function RoleApp() {
   const { session } = useAuth();
-  return session.role === "requester" ? <RequesterHome /> : <AppShell />;
+  // Responses from before centralized accounts had no role and represented
+  // the single administrator. Every explicitly limited role uses the small
+  // access-controlled shell below.
+  return !session.role || session.role === "admin" ? (
+    <AppShell />
+  ) : (
+    <LimitedShell />
+  );
+}
+
+function firstLimitedRoute(session: Session) {
+  if (hasAccess(session, "requests")) return "/requests";
+  if (hasAccess(session, "music_player")) return "/music/player";
+  return "/";
+}
+
+function LimitedShell() {
+  const { session } = useAuth();
+  const music = hasAccess(session, "music_player");
+  const shell = (
+    <LimitedShellFrame
+      requests={hasAccess(session, "requests")}
+      music={music}
+      home={firstLimitedRoute(session)}
+    />
+  );
+  // Requests-only and no-access accounts do not need any player state. In
+  // particular, none of the administrator shell's polling components are
+  // mounted for any limited account.
+  const identity = session.user_account_id ?? session.account_id;
+  return music ? (
+    <MusicPlayerProvider
+      key={identity}
+      identity={identity}
+      canManageSettings={false}
+    >
+      {shell}
+    </MusicPlayerProvider>
+  ) : (
+    shell
+  );
+}
+
+function LimitedShellFrame({
+  requests,
+  music,
+  home,
+}: {
+  requests: boolean;
+  music: boolean;
+  home: string;
+}) {
+  const { signOut } = useAuth();
+  const [accountError, setAccountError] = useState("");
+  const [routeAnnouncement, setRouteAnnouncement] = useState("");
+  const location = useLocation();
+  const previousPath = useRef("");
+
+  useEffect(() => {
+    const title =
+      home === "/" && location.pathname === "/"
+        ? "No web access"
+        : location.pathname === "/requests"
+          ? "My requests"
+          : pageTitle(location.pathname);
+    document.title = `${title} — ReelScarey`;
+    if (previousPath.current !== location.pathname) {
+      document.getElementById("main-content")?.focus({ preventScroll: true });
+      previousPath.current = location.pathname;
+      setRouteAnnouncement(title);
+    }
+  }, [home, location.pathname]);
+
+  const noAccess = (
+    <PageBody>
+      <EmptyState
+        title="No web pages available"
+        actions={
+          <Button
+            variant="soft"
+            onClick={() => {
+              setAccountError("");
+              void signOut().catch(() =>
+                setAccountError("Could not sign out. Try again."),
+              );
+            }}
+          >
+            <LogOut size={15} aria-hidden="true" /> Sign out
+          </Button>
+        }
+      >
+        <p>
+          This account has no Requests or Music player access. Contact an
+          administrator to change its access, or sign out.
+        </p>
+      </EmptyState>
+    </PageBody>
+  );
+  const defaultPage = home === "/" ? noAccess : <Navigate to={home} replace />;
+  const limitedRoute = (allowed: boolean, page: ReactNode) =>
+    allowed ? page : <Navigate to={home} replace />;
+
+  return (
+    <div className="rs-app">
+      <a href="#main-content" className="skip-link">
+        Skip to content
+      </a>
+      <p className="sr-only" aria-live="polite">
+        {routeAnnouncement}
+      </p>
+      <header className="rs-header">
+        <div className="rs-header-logo" style={{ width: "auto" }}>
+          <Link to={home} className="rs-logo" aria-label="ReelScarey home">
+            <span className="rs-logo-mark">
+              <img src="/favicon.svg" alt="" width="32" height="32" />
+            </span>
+            <span className="rs-logo-text">ReelScarey</span>
+          </Link>
+        </div>
+        <nav
+          aria-label="Main navigation"
+          style={{
+            display: "flex",
+            flex: 1,
+            alignItems: "center",
+            gap: 4,
+            padding: "0 10px",
+          }}
+        >
+          {requests && (
+            <NavLink
+              to="/requests"
+              className={({ isActive }) =>
+                `rs-nav-link ${isActive ? "active" : ""}`
+              }
+              style={({ isActive }) => ({
+                color: isActive ? "var(--rs-brand)" : undefined,
+                fontWeight: isActive ? 650 : undefined,
+              })}
+            >
+              <Inbox aria-hidden="true" />
+              <span>Requests</span>
+            </NavLink>
+          )}
+          {music && (
+            <NavLink
+              to="/music/player"
+              className={({ isActive }) =>
+                `rs-nav-link ${isActive ? "active" : ""}`
+              }
+              style={({ isActive }) => ({
+                color: isActive ? "var(--rs-brand)" : undefined,
+                fontWeight: isActive ? 650 : undefined,
+              })}
+            >
+              <Disc3 aria-hidden="true" />
+              <span>Music player</span>
+            </NavLink>
+          )}
+        </nav>
+        <div className="rs-header-actions">
+          <ThemeToggle />
+          <AccountMenu onError={setAccountError} />
+        </div>
+      </header>
+      <main
+        id="main-content"
+        className="rs-main"
+        style={{ marginLeft: 0 }}
+        tabIndex={-1}
+      >
+        {accountError && (
+          <PageBody>
+            <Alert kind="danger">{accountError}</Alert>
+          </PageBody>
+        )}
+        <Suspense fallback={<LoadingIndicator />}>
+          <Routes>
+            <Route path="/login" element={<Navigate to={home} replace />} />
+            <Route
+              path="/account/password"
+              element={
+                <PageBody>
+                  <ChangeAccountPassword />
+                </PageBody>
+              }
+            />
+            <Route path="/" element={defaultPage} />
+            <Route
+              path="/requests"
+              element={limitedRoute(requests, <RequesterHome embedded />)}
+            />
+            <Route
+              path="/music/player"
+              element={limitedRoute(music, <MusicFullPlayer />)}
+            />
+            <Route path="*" element={<Navigate to={home} replace />} />
+          </Routes>
+        </Suspense>
+      </main>
+      {music && <MusicPlayerBar />}
+    </div>
+  );
 }
 
 function AccountMenu({ onError }: { onError: (message: string) => void }) {
@@ -237,6 +464,11 @@ function AccountMenu({ onError }: { onError: (message: string) => void }) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end">
         <DropdownMenu.Label>Signed in as {session.username}</DropdownMenu.Label>
+        {session.role && session.role !== "admin" && (
+          <DropdownMenu.Item asChild>
+            <Link to="/account/password">Change password</Link>
+          </DropdownMenu.Item>
+        )}
         <DropdownMenu.Separator />
         <DropdownMenu.Item disabled={signingOut} onSelect={() => void logout()}>
           <LogOut size={15} aria-hidden="true" />
@@ -421,6 +653,7 @@ function AppShell() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/:section" element={<Settings />} />
               <Route path="/requests" element={<AdminRequests />} />
+              <Route path="/accounts" element={<Accounts />} />
               <Route path="/organization" element={<Organization />} />
               <Route path="/indexers" element={<Indexers />} />
               <Route path="/announces" element={<Announces />} />

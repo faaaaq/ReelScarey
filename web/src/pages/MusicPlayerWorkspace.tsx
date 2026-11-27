@@ -883,19 +883,21 @@ export function MusicPlayerWorkspace() {
   }
   if (artistDetails.data) {
     heading = artistDetails.data.artist.name;
-    headingLink = (
-      <Link to={`/music/artists/${artistID}`}>
-        Open full artist page <ExternalLink size={13} aria-hidden="true" />
-      </Link>
-    );
+    headingLink =
+      player.canManageSettings === false ? null : (
+        <Link to={`/music/artists/${artistID}`}>
+          Open full artist page <ExternalLink size={13} aria-hidden="true" />
+        </Link>
+      );
   }
   if (albumDetails.data) {
     heading = albumDetails.data.album.title;
-    headingLink = (
-      <Link to={`/music/albums/${albumID}`}>
-        Open full album page <ExternalLink size={13} aria-hidden="true" />
-      </Link>
-    );
+    headingLink =
+      player.canManageSettings === false ? null : (
+        <Link to={`/music/albums/${albumID}`}>
+          Open full album page <ExternalLink size={13} aria-hidden="true" />
+        </Link>
+      );
   }
 
   async function shuffleAll() {
@@ -1035,14 +1037,16 @@ export function MusicPlayerWorkspace() {
   return (
     <>
       <PageToolbar label="Music player actions">
-        <ToolbarSection>
-          <ToolbarButton icon={ArrowLeft} label="Library" to="/music" />
-          <ToolbarButton
-            icon={FolderInput}
-            label="Library Import"
-            to="/music/import"
-          />
-        </ToolbarSection>
+        {player.canManageSettings !== false && (
+          <ToolbarSection>
+            <ToolbarButton icon={ArrowLeft} label="Library" to="/music" />
+            <ToolbarButton
+              icon={FolderInput}
+              label="Library Import"
+              to="/music/import"
+            />
+          </ToolbarSection>
+        )}
         <ToolbarSection align="right">
           <ToolbarButton
             icon={PanelRight}
@@ -1268,10 +1272,12 @@ export function MusicPlayerWorkspace() {
                     title={artistDetails.data.artist.name}
                     subtitle={`${artistDetails.data.albums.length} albums · ${artistTracks.data?.total ?? 0} registered tracks`}
                   >
-                    <Link to={`/music/artists/${artistID}`}>
-                      Artist details{" "}
-                      <ExternalLink size={13} aria-hidden="true" />
-                    </Link>
+                    {player.canManageSettings !== false && (
+                      <Link to={`/music/artists/${artistID}`}>
+                        Artist details{" "}
+                        <ExternalLink size={13} aria-hidden="true" />
+                      </Link>
+                    )}
                   </DetailHeading>
                   <section
                     className="mmp-artist-albums"
@@ -1319,9 +1325,12 @@ export function MusicPlayerWorkspace() {
                   title={albumDetails.data.album.title}
                   subtitle={`${albumDetails.data.album.artist_name || "Unknown artist"} · ${albumDetails.data.album.year || "Year unknown"} · ${albumTracks.length} tracks`}
                 >
-                  <Link to={`/music/albums/${albumID}`}>
-                    Album details <ExternalLink size={13} aria-hidden="true" />
-                  </Link>
+                  {player.canManageSettings !== false && (
+                    <Link to={`/music/albums/${albumID}`}>
+                      Album details{" "}
+                      <ExternalLink size={13} aria-hidden="true" />
+                    </Link>
+                  )}
                 </DetailHeading>
               )}
 

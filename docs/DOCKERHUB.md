@@ -114,7 +114,7 @@ additional music port.
 
 ### Requests and integrations
 
-- Separate request accounts with hashed sessions and a request-only interface.
+- Central user accounts with one shared password and independent Requests, browser Music player and Subsonic access.
 - TMDb search and an approval workflow; approval adds the title with monitoring.
 - Import lists: TMDb, Trakt, IMDb via MDBList, private lists with user tokens,
   IMDb CSV and Trakt watchlists.

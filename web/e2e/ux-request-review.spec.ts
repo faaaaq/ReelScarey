@@ -15,7 +15,12 @@ const REQUESTER = {
 const SEEDED_TITLE = "Offline Request Review Fixture";
 const SEEDED_TMDB_ID = 969901;
 
-type Account = { id: number; username: string; disabled: boolean };
+type Account = {
+  id: number;
+  username: string;
+  disabled: boolean;
+  request_account_id: number;
+};
 type RequestItem = {
   id: number;
   account_id: number;
@@ -113,26 +118,23 @@ test.describe("requester request and administrator review loop", () => {
     try {
       await page.setViewportSize({ width: 1440, height: 1000 });
       await login(page, server);
-      await page
-        .getByRole("navigation")
-        .first()
-        .getByRole("link", { name: "Requests", exact: true })
-        .click();
+      await page.goto(server.url("/accounts"));
       await expect(
-        page.getByRole("heading", { name: "Requests", exact: true }),
+        page.getByRole("heading", { name: "Accounts", exact: true }),
       ).toBeVisible();
 
       const accountResponsePromise = page.waitForResponse(
         (response) =>
-          response.url().endsWith("/api/v1/request-accounts") &&
+          response.url().endsWith("/api/v1/accounts") &&
           response.request().method() === "POST",
       );
       await page
         .getByLabel("Username", { exact: true })
         .fill(REQUESTER.username);
       await page
-        .getByLabel("Initial password", { exact: true })
+        .getByLabel("Password", { exact: true })
         .fill(REQUESTER.password);
+      await page.getByRole("checkbox", { name: /^Requests/ }).check();
       await page
         .getByRole("button", { name: "Create account", exact: true })
         .click();
@@ -141,15 +143,16 @@ test.describe("requester request and administrator review loop", () => {
       const account = (await accountResponse.json()) as Account;
       expect(account.username).toBe(REQUESTER.username);
       expect(account.disabled).toBe(false);
+      expect(account.request_account_id).toBeGreaterThan(0);
       await expect(
         page
-          .getByRole("table", { name: "Request accounts" })
+          .getByRole("table", { name: "Accounts" })
           .getByRole("row")
           .filter({ hasText: REQUESTER.username }),
-      ).toContainText("Enabled");
+      ).toContainText("Active");
       await capture(page, "request-01-admin-account-created");
       record(
-        `Created request account id=${account.id} through the administrator UI (HTTP ${accountResponse.status()}).`,
+        `Created central account id=${account.id} with Requests profile id=${account.request_account_id} through the administrator Accounts UI (HTTP ${accountResponse.status()}).`,
       );
 
       await signOut(page);
@@ -226,13 +229,20 @@ test.describe("requester request and administrator review loop", () => {
           db.prepare(
             `INSERT INTO media_requests(account_id,kind,tmdb_id,title,state,created_at,updated_at)
              VALUES(?,?,?,?,'pending',?,?)`,
-          ).run(account.id, "movie", SEEDED_TMDB_ID, SEEDED_TITLE, now, now);
+          ).run(
+            account.request_account_id,
+            "movie",
+            SEEDED_TMDB_ID,
+            SEEDED_TITLE,
+            now,
+            now,
+          );
           requestID = Number(
             db
               .prepare(
                 "SELECT id FROM media_requests WHERE account_id=? AND kind='movie' AND tmdb_id=?",
               )
-              .get(account.id, SEEDED_TMDB_ID)?.id,
+              .get(account.request_account_id, SEEDED_TMDB_ID)?.id,
           );
         });
         expect(requestID).toBeGreaterThan(0);
@@ -335,7 +345,7 @@ test.describe("requester request and administrator review loop", () => {
       );
       evidence(
         "request-result",
-        `PASS\nrequest_id=${requestID}\ntitle=${requestTitle}\naccount_id=${account.id}\nprovider_mode=${providerMode}\nadmin_action=decline\nrequester_after_signin=Declined\nrequester_after_reload=Declined\n`,
+        `PASS\nrequest_id=${requestID}\ntitle=${requestTitle}\naccount_id=${account.request_account_id}\ncentral_account_id=${account.id}\nprovider_mode=${providerMode}\nadmin_action=decline\nrequester_after_signin=Declined\nrequester_after_reload=Declined\n`,
       );
     } catch (error) {
       record(`FAIL: ${error instanceof Error ? error.stack : String(error)}`);

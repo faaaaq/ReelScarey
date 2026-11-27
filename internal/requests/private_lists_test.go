@@ -25,6 +25,7 @@ func TestPrivateListsEncryptTokensAndFenceOwnership(t *testing.T) {
 	if _, e = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'owner','hash',1),(2,'other','hash',1)`); e != nil {
 		t.Fatal(e)
 	}
+	centralizeRequestAccounts(t, db)
 	s := NewLists(db, secrets)
 	token := strings.Repeat("private", 8)
 	client := strings.Repeat("c", 30)

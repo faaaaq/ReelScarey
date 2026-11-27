@@ -46,6 +46,9 @@ function setupFetch(
           username: "testadmin",
           csrf_token: "test-csrf",
           expires_at: 9999999999,
+          role: "admin",
+          account_id: 1,
+          access: ["requests", "music_player", "subsonic"],
         },
       });
     if (url.endsWith("/providers/tmdb"))

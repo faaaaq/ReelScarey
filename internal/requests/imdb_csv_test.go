@@ -26,6 +26,7 @@ func TestIMDbCSVAndAtomicResolvedImport(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO request_accounts(id,username,password_hash,created_at) VALUES(1,'viewer','hash',1)`); err != nil {
 		t.Fatal(err)
 	}
+	centralizeRequestAccounts(t, db)
 	s := New(db)
 	items := []Request{{Kind: "movie", TMDbID: 603, Title: "The Matrix"}, {Kind: "series", TMDbID: 1396, Title: "Breaking Bad"}}
 	if n, err := s.ImportResolved(ctx, 1, items); err != nil || n != 2 {
