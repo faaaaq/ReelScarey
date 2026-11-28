@@ -677,6 +677,17 @@ func (s *Service) matchFile(ctx context.Context, file ScanFile) (int64, int64, i
 		if err != nil {
 			return 0, 0, 0, err
 		}
+		if albumID > 0 {
+			if taggedMBID := trustedArtistMusicBrainzID(file); taggedMBID != "" {
+				var savedMBID string
+				if err := s.store.db.QueryRowContext(ctx, `SELECT musicbrainz_id FROM music_artists WHERE id=?`, artistID).Scan(&savedMBID); err != nil {
+					return 0, 0, 0, err
+				}
+				if conflictingGenuineArtistMBID(savedMBID, taggedMBID) {
+					return 0, 0, 0, conflictingArtistIdentityError(firstNonEmpty(file.AlbumArtist, file.Artist))
+				}
+			}
+		}
 	}
 	if albumID < 1 {
 		return 0, 0, 0, &Error{Code: "music_unmatched", Message: "No catalog album matches this file's tags. Add the artist first, tag the file with MusicBrainz IDs or run discovery."}
@@ -737,6 +748,19 @@ func artistNameVariants(name string) []string {
 		}
 	} else {
 		out = append(out, "The "+name)
+	}
+	if group, ok := reviewedArtistAlias(name); ok {
+		seen := map[string]bool{}
+		for _, existing := range out {
+			seen[strings.ToLower(strings.TrimSpace(existing))] = true
+		}
+		for _, alias := range group.names {
+			key := strings.ToLower(strings.TrimSpace(alias))
+			if !seen[key] {
+				seen[key] = true
+				out = append(out, alias)
+			}
+		}
 	}
 	return out
 }

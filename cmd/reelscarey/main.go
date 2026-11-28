@@ -162,6 +162,19 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (bool, e
 	if err := musicService.LoadMusicBrainzBase(musicBrainzCtx); err != nil {
 		return false, err
 	}
+	// Consolidate explicitly reviewed artist aliases before any music workers
+	// resume. Conflicting albums and active work remain untouched and visible in
+	// the startup log rather than being merged speculatively.
+	artistAliasReport, artistAliasErr := musicService.ConsolidateArtistAliases(ctx)
+	if artistAliasErr != nil {
+		logger.Warn("music artist alias consolidation failed", "error", artistAliasErr)
+	}
+	for _, merged := range artistAliasReport.Merged {
+		logger.Info("consolidated music artist aliases", "artist", merged.Name, "survivor_id", merged.SurvivorID, "merged_ids", merged.MergedIDs)
+	}
+	for _, skipped := range artistAliasReport.Skipped {
+		logger.Warn("music artist aliases require review", "artist", skipped.Name, "artist_ids", skipped.ArtistIDs, "reason", skipped.Reason)
+	}
 	if err := musicService.RecoverScans(ctx); err != nil {
 		return false, err
 	}

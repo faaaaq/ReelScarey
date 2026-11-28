@@ -151,6 +151,63 @@ func TestResolveDeezerArtistCorroboratesCompilationCatalogsByTrackEvidence(t *te
 	}
 }
 
+func TestResolveDeezerArtistRejectsAlbumTitleCollisionAndUsesReviewedAlias(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		includeHedAlias  bool
+		expectedArtistID int64
+	}{
+		{name: "same titled Boyz II Men album is not identity evidence", includeHedAlias: false, expectedArtistID: 0},
+		{name: "reviewed expanded name is a candidate", includeHedAlias: true, expectedArtistID: 3045},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/search/artist":
+					if tc.includeHedAlias {
+						_, _ = w.Write([]byte(`{"data":[{"id":427591,"name":"(hed)p.e.","nb_fan":1146},{"id":3045,"name":"(hed) Planet Earth","nb_fan":16568}]}`))
+					} else {
+						_, _ = w.Write([]byte(`{"data":[{"id":427591,"name":"(hed)p.e.","nb_fan":1146}]}`))
+					}
+				case "/artist/427591/albums", "/artist/3045/albums":
+					_, _ = w.Write([]byte(`{"data":[]}`))
+				case "/search/album":
+					if tc.includeHedAlias {
+						_, _ = w.Write([]byte(`{"data":[{"title":"Evolution","artist":{"id":799,"name":"Boyz II Men"}},{"title":"Evolution","artist":{"id":3045,"name":"(hed) Planet Earth"}}]}`))
+					} else {
+						_, _ = w.Write([]byte(`{"data":[{"title":"Evolution","artist":{"id":799,"name":"Boyz II Men"}}]}`))
+					}
+				case "/artist/799/albums":
+					// The old cross-name fallback accepted this as proof that Boyz
+					// II Men owned the (hed) p.e. catalog.
+					_, _ = w.Write([]byte(`{"data":[{"title":"Evolution"}]}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer provider.Close()
+			ctx := context.Background()
+			db, err := database.Open(ctx, t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			if _, err := db.Exec(`INSERT INTO music_artists(id,musicbrainz_id,name,created_at,updated_at) VALUES(3,'local-artist:hed','(hed) p.e.',1,1);
+				INSERT INTO music_albums(id,artist_id,musicbrainz_id,title,created_at,updated_at) VALUES(10,3,'local-album:evolution','Evolution',1,1)`); err != nil {
+				t.Fatal(err)
+			}
+			service := &Service{store: NewStore(db), topBaseURL: provider.URL}
+			id, verified, err := service.resolveDeezerArtist(ctx, provider.URL, "(hed) p.e.")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if id != tc.expectedArtistID || verified != (tc.expectedArtistID != 0) {
+				t.Fatalf("resolved id=%d verified=%v; want id=%d", id, verified, tc.expectedArtistID)
+			}
+		})
+	}
+}
+
 func TestArtistTopTracksUsesProviderOverallTracksAndMarksLibraryMatches(t *testing.T) {
 	ctx := context.Background()
 	db, err := database.Open(ctx, t.TempDir())

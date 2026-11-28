@@ -40,6 +40,26 @@ func TestNormalizeArtistNameIgnoresLeadingTheAndVariousArtistsAliases(t *testing
 	}
 }
 
+func TestNormalizeArtistNameUsesOnlyReviewedAliasExpansions(t *testing.T) {
+	hedNames := []string{"(hed) p.e.", "(hed)p.e.", "(hed) pe", "(hed) Planet Earth"}
+	for _, left := range hedNames {
+		for _, right := range hedNames {
+			if !artistNamesEqual(left, right) {
+				t.Errorf("reviewed aliases %q and %q did not match", left, right)
+			}
+		}
+	}
+	if !artistNamesEqual("ABK", "Anybody Killa") {
+		t.Fatal("reviewed ABK alias was not folded")
+	}
+	if artistNamesEqual("P.E.", "Planet Earth") {
+		t.Fatal("an unreviewed acronym was expanded")
+	}
+	if artistNamesEqual("(hed) Planet Earth", "Boyz II Men") {
+		t.Fatal("unrelated artists matched")
+	}
+}
+
 func TestPrimaryArtistNameStripsFeaturedCredit(t *testing.T) {
 	for _, input := range []string{"Calvin Harris feat. Rihanna", "Calvin Harris ft. Rihanna", "Calvin Harris featuring Rihanna"} {
 		primary, ok := primaryArtistName(input)

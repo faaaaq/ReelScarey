@@ -111,10 +111,10 @@ func (s *Service) resolveDeezerArtist(ctx context.Context, base, name string) (i
 	if err := deezerGet(ctx, base+"/search/artist?limit=25&q="+url.QueryEscape(name), &body); err != nil {
 		return 0, false, err
 	}
-	key := compactMatchName(name)
+	key := localArtistKey(name)
 	candidates := []deezerCandidate{}
 	for _, item := range body.Data {
-		if item.ID <= 0 || compactMatchName(item.Name) != key {
+		if item.ID <= 0 || localArtistKey(item.Name) != key {
 			continue
 		}
 		candidates = append(candidates, deezerCandidate{id: item.ID, name: item.Name, fans: item.NbFan})
@@ -151,9 +151,9 @@ func (s *Service) resolveDeezerArtist(ctx context.Context, base, name string) (i
 	// album lists. Deezer's artist album list omits compilation releases
 	// entirely, so an artist whose saved albums are compilations ("The Very
 	// Best of …") can never be corroborated by that list. Attribute the
-	// catalog's album titles through album search instead: whoever owns an
-	// exact-titled album on Deezer is the artist, regardless of the display
-	// name.
+	// catalog's album titles through album search instead. A same-artist
+	// candidate whose search result carries an exact catalog title is
+	// corroborated even when Deezer omits that compilation from its album list.
 	attributions := s.catalogAlbumAttributions(ctx, base, titles)
 	if len(attributions) > 0 {
 		for i, candidate := range candidates {
@@ -164,14 +164,9 @@ func (s *Service) resolveDeezerArtist(ctx context.Context, base, name string) (i
 				return candidate.id, true, nil
 			}
 		}
-		// The display name may differ from the catalog name (a stage-name
-		// alias, such as "ABK" versus "Anybody Killa"), so the best
-		// attributed artist must still carry an exact catalog title in its
-		// own album list before it may own the page; a tribute release named
-		// like a catalog album cannot win by a search hit alone.
-		if id := s.verifiedAlbumOwner(ctx, base, attributions, titles); id != 0 {
-			return id, true, nil
-		}
+		// Do not infer a differently named artist from an album title alone.
+		// Titles such as "Evolution" belong to many unrelated artists. Only
+		// the reviewed same-artist candidates above may use this evidence.
 	}
 	// Compilations are also often missing from album search results, but the
 	// tracks themselves still name the artist. A saved catalog track title
@@ -224,29 +219,6 @@ func (s *Service) catalogAlbumAttributions(ctx context.Context, base string, tit
 		}
 	}
 	return attributions
-}
-
-// verifiedAlbumOwner returns the attributed artist whose own album list also
-// carries an exact catalog title, preferring the artist attributed the most
-// catalog albums. This keeps a tribute release named like a catalog album
-// from owning the page when the catalog name is only an alias.
-func (s *Service) verifiedAlbumOwner(ctx context.Context, base string, attributions map[int64]int, titles []string) int64 {
-	ids := make([]int64, 0, len(attributions))
-	for id := range attributions {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool {
-		if attributions[ids[i]] != attributions[ids[j]] {
-			return attributions[ids[i]] > attributions[ids[j]]
-		}
-		return ids[i] < ids[j]
-	})
-	for _, id := range ids {
-		if s.deezerAlbumsContain(ctx, base, id, titles) {
-			return id
-		}
-	}
-	return 0
 }
 
 // catalogTrackTitles returns saved track titles of the catalog artist with
@@ -475,14 +447,14 @@ func (s *Service) ArtistTopTracks(ctx context.Context, artistID int64, limit int
 }
 
 func (s *Service) searchTopTracks(ctx context.Context, base, artistName string, limit int) ([]TopTrack, string, error) {
-	key := compactMatchName(artistName)
+	key := localArtistKey(artistName)
 	items := []TopTrack{}
 	var deezerBody struct {
 		Data []deezerTrack `json:"data"`
 	}
 	if err := deezerGet(ctx, base+"/search/track?limit="+strconv.Itoa(limit*3)+"&q="+url.QueryEscape(artistName), &deezerBody); err == nil {
 		for _, item := range deezerBody.Data {
-			if compactMatchName(item.Artist.Name) != key {
+			if localArtistKey(item.Artist.Name) != key {
 				continue
 			}
 			title := strings.TrimSpace(item.Title)
@@ -537,7 +509,7 @@ func (s *Service) searchTopTracks(ctx context.Context, base, artistName string, 
 	endpoint := "https://itunes.apple.com/search?term=" + url.QueryEscape(artistName) + "&entity=song&limit=" + strconv.Itoa(limit*2)
 	if err := linkGetJSON(ctx, endpoint, &itunesBody); err == nil {
 		for _, item := range itunesBody.Results {
-			if compactMatchName(item.ArtistName) != key {
+			if localArtistKey(item.ArtistName) != key {
 				continue
 			}
 			title := strings.TrimSpace(item.TrackName)

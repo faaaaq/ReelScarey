@@ -114,13 +114,51 @@ func isVariousArtistsKey(name string) bool {
 	return false
 }
 
-// normalizeArtistName folds the capitalization, punctuation and common aliases
-// of an artist name. It is only used for comparison; the MusicBrainz name is
-// always what gets stored.
+// artistAliasGroup is an explicitly reviewed set of names for one artist.
+// Alias expansion is deliberately not inferred from initials or fuzzy text:
+// those heuristics can merge unrelated artists. DisplayName is a log label;
+// consolidation preserves the surviving row's existing display and sort names.
+type artistAliasGroup struct {
+	key         string
+	displayName string
+	names       []string
+}
+
+var reviewedArtistAliasGroups = []artistAliasGroup{
+	{
+		key:         "anybody killa",
+		displayName: "Anybody Killa",
+		names:       []string{"ABK", "Anybody Killa"},
+	},
+	{
+		key:         "hed planet earth",
+		displayName: "(hed) Planet Earth",
+		names:       []string{"(hed) p.e.", "(hed)p.e.", "(hed) pe", "(hed) Planet Earth"},
+	},
+}
+
+func reviewedArtistAlias(value string) (artistAliasGroup, bool) {
+	name := normalizeMatchName(value)
+	for _, group := range reviewedArtistAliasGroups {
+		for _, candidate := range group.names {
+			if name == normalizeMatchName(candidate) {
+				return group, true
+			}
+		}
+	}
+	return artistAliasGroup{}, false
+}
+
+// normalizeArtistName folds the capitalization, punctuation and reviewed aliases
+// of an artist name. It is only used for comparison; the stored display name is
+// changed only by explicit owner edits or reviewed alias consolidation.
 func normalizeArtistName(value string) string {
 	name := normalizeMatchName(value)
 	if isVariousArtistsKey(name) {
 		return "various artists"
+	}
+	if group, ok := reviewedArtistAlias(value); ok {
+		return group.key
 	}
 	return name
 }

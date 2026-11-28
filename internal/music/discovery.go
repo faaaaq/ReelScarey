@@ -804,7 +804,7 @@ func (s *Service) findLocalArtistByName(ctx context.Context, name string) (Artis
 			continue
 		}
 		if matched != 0 && matched != id {
-			return Artist{}, false, nil
+			return Artist{}, false, ambiguousLocalArtistError(name)
 		}
 		matched = id
 	}

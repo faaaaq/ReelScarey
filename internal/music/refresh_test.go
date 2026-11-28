@@ -43,7 +43,9 @@ func abkFixture(t *testing.T, aliasAlbums, strangerAlbums string) (*Service, *St
 		case "/artist/157/albums":
 			_, _ = w.Write([]byte(aliasAlbums))
 		case "/search/album":
-			_, _ = w.Write([]byte(`{"data":[{"title":"Dirty History","artist":{"id":157,"name":"Anybody Killa"}}]}`))
+			// Keep album-search evidence consistent with the alias discography:
+			// the unverifiable-image case must return no album evidence either.
+			_, _ = w.Write([]byte(aliasAlbums))
 		case "/artist/157":
 			_, _ = w.Write([]byte(`{"picture_xl":"https://e-cdns-images.dzcdn.net/images/artist/ok/1000x1000.jpg"}`))
 		default:

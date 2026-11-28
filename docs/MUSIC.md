@@ -1369,6 +1369,32 @@ candidate — an explicit remaster tag still ranks higher when one exists. The
 discovery page shows active jobs and any job that needs attention, so normal
 processing needs no user intervention.
 
+### Reviewed artist aliases and provider identity
+
+Artist matching includes a small, explicitly reviewed alias table. Currently
+`(hed) p.e.`, `(hed)p.e.`, `(hed) pe`, and `(hed) Planet Earth` share one local
+identity, as do `ABK` and `Anybody Killa`. Acronym expansion is never inferred
+from arbitrary names. New scans reuse the matching saved artist, while an
+already ambiguous pair fails closed instead of creating another provider-backed
+row.
+
+At startup, before music workers resume, ReelScarey consolidates existing
+duplicate rows within those reviewed groups. The lowest artist ID normally
+survives so existing links remain valid; one explicitly owner-renamed row takes
+precedence, and its display and sort names are preserved. Non-overlapping
+albums, registered files, completed scan references, playback marks and upgrade
+references are retained in one SQLite transaction. No media file is moved or
+retagged. Groups with overlapping album
+titles or identities, different genuine MusicBrainz artist IDs, competing owner
+renames, active scans, running tag edits, or active source upgrades are skipped
+with a startup-log reason for manual review.
+
+Deezer top tracks and discographies use that same reviewed alias comparison.
+A differently named provider artist is never selected merely because it has an
+album with the same title: titles such as `Evolution` belong to many unrelated
+artists. If no reviewed same-artist candidate is corroborated by the saved
+catalog, the page shows no provider tracks rather than another artist's music.
+
 ## Scan stability on network and FUSE folders
 
 Audio observations now compare file identity, size, nanosecond mtime and the

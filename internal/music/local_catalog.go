@@ -393,13 +393,26 @@ func (c *localCatalog) resolveArtist(ctx context.Context, ev tagIdentity, create
 	if len(ids) == 1 {
 		// Reuse a saved artist with the same normalized name before creating a
 		// second row for the same name, even when one file also carries an MBID.
+		// A reviewed name alias is not permission to replace or absorb a
+		// different genuine MusicBrainz identity.
+		if ev.artistMBID != "" {
+			var storedMBID string
+			if err := c.db.QueryRowContext(ctx, `SELECT musicbrainz_id FROM music_artists WHERE id=?`, ids[0]).Scan(&storedMBID); err != nil {
+				return 0, false, err
+			}
+			if conflictingGenuineArtistMBID(storedMBID, ev.artistMBID) {
+				return 0, false, conflictingArtistIdentityError(ev.artistName)
+			}
+		}
 		c.enrichLocalArtistMBID(ctx, ids[0], ev.artistMBID)
 		return ids[0], true, nil
 	}
-	if len(ids) > 1 && ev.artistMBID == "" {
+	if len(ids) > 1 {
 		if !create {
 			return 0, false, nil
 		}
+		// A tagged MBID must not create a third row when the saved catalog
+		// already contains an unresolved duplicate alias pair.
 		return 0, false, ambiguousLocalArtistError(ev.artistName)
 	}
 	if !create || ev.artistName == "" {
@@ -807,6 +820,14 @@ func nextFreeTrackNumber(tracks []Track, disc int) int {
 
 func ambiguousLocalArtistError(name string) error {
 	return &Error{Code: "music_ambiguous_artist", Message: fmt.Sprintf("More than one saved artist matches the tagged name %q. Correct the tags or merge the catalog entries first.", name)}
+}
+
+func conflictingGenuineArtistMBID(saved, tagged string) bool {
+	return tagged != "" && saved != "" && !IsLocalMusicID(saved) && !strings.EqualFold(saved, tagged)
+}
+
+func conflictingArtistIdentityError(name string) error {
+	return &Error{Code: "music_conflicting_artist_identity", Message: fmt.Sprintf("The tags for %q identify a different MusicBrainz artist than the saved alias. Correct the tags or review the catalog identities first.", name)}
 }
 
 // genuineMBID drops local identities before they can reach a MusicBrainz tag
