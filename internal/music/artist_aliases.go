@@ -131,11 +131,11 @@ func (s *Store) mergeArtistAliasGroup(ctx context.Context, artists []artistAlias
 
 	var active int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_scan_files f JOIN music_scans s ON s.id=f.scan_id
-		WHERE s.state IN ('scanning','review') AND f.artist_id IN (`+placeholders+`)`, args...).Scan(&active); err != nil {
+		WHERE s.state='scanning' AND f.artist_id IN (`+placeholders+`)`, args...).Scan(&active); err != nil {
 		return ArtistAliasMerge{}, "", err
 	}
 	if active > 0 {
-		return ArtistAliasMerge{}, "an active or awaiting-review scan references these artists", nil
+		return ArtistAliasMerge{}, "a running scan references these artists", nil
 	}
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_edit_jobs j JOIN music_edit_files e ON e.job_id=j.id
 		JOIN music_files f ON f.id=e.music_file_id WHERE j.state='running' AND f.artist_id IN (`+placeholders+`)`, args...).Scan(&active); err != nil {

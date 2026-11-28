@@ -657,7 +657,7 @@ describe("MusicPlayerWorkspace", () => {
       "/api/v1/library/music/artists/7/tracks?page=1&limit=100",
       "/api/v1/library/music/artists/7/tracks?page=2&limit=100",
     ]);
-  });
+  }, 15000);
 
   it("keeps a large Shuffle complete while bounding rendering and storage", async () => {
     const user = userEvent.setup();

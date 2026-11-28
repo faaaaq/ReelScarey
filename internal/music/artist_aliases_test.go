@@ -126,7 +126,7 @@ func TestConsolidateArtistAliasesPreservesCatalogReferences(t *testing.T) {
 		VALUES(113,10,1,1,'The Higher Crown',10,10),(117,14,1,1,'Insomnia',11,11);
 		INSERT INTO music_files(id,artist_id,album_id,track_id,root,relative_path,size_bytes,imported_at)
 		VALUES(1,3,10,113,'Music','hed/evolution.flac',100,10),(2,4,14,117,'Music','hed/insomnia.flac',100,11);
-		INSERT INTO music_scans(id,root,state,created_at,updated_at) VALUES(1,'Music','completed',10,10);
+		INSERT INTO music_scans(id,root,state,created_at,updated_at) VALUES(1,'Music','review',10,10);
 		INSERT INTO music_scan_files(id,scan_id,relative_path,size_bytes,modified_at,artist_id,album_id,track_id,state,created_at,updated_at)
 		VALUES(1,1,'hed/evolution.flac',100,10,3,10,113,'registered',10,10),
 			(2,1,'hed/insomnia.flac',100,11,4,14,117,'registered',11,11);
@@ -241,8 +241,8 @@ func TestConsolidateArtistAliasesSkipsUnsafeGroups(t *testing.T) {
 				VALUES(1,3,'local-album:one','Evolution',1,1),(2,4,'local-album:two','Evolution',1,1);`,
 		},
 		{
-			name: "awaiting review scan",
-			setup: `INSERT INTO music_scans(id,root,state,created_at,updated_at) VALUES(1,'Music','review',1,1);
+			name: "running scan",
+			setup: `INSERT INTO music_scans(id,root,state,created_at,updated_at) VALUES(1,'Music','scanning',1,1);
 				INSERT INTO music_scan_files(scan_id,relative_path,size_bytes,modified_at,artist_id,state,created_at,updated_at)
 				VALUES(1,'song.flac',1,1,4,'matched',1,1);`,
 		},
