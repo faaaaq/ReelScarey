@@ -31,4 +31,20 @@ also passed against the release tree with the built frontend embedded.
 
 ## Publication and live deployment
 
-Pending mandatory release-branch checks, Docker publication and live upgrade.
+Required release-branch checks passed in GitHub Actions run `46119327931`.
+The first attempt reached the job timeout during post-action cleanup after all
+checks had passed; the rerun completed green. Docker publication run
+`46125802509` passed AMD64 and ARM64 candidate builds, runtime acceptance,
+manifest assembly, final-tag pulls and provenance signing.
+
+The verified multi-architecture manifest digest for both `0.54.53` and `latest`
+is `sha256:7c33f3cc80b5bce09f90695fe1e5f4755c766d186409757dc6d6a139259c3c0c`,
+built from release commit `f958f0b21f81e4b720e0bb73f96728c6341fddd6`.
+
+The live Compose service was upgraded to the versioned tag and reports
+`0.54.53`, schema `117` and Docker `healthy`. Its stopped-container configuration
+backup is `/home/faaaaq/configs/reelscarey/config-backup-20261128024309`, with
+Compose backup `/home/faaaaq/configs/reelscarey/compose.yml.bak-20261128024309`;
+the backup passed SQLite integrity verification. Startup consolidated artist 4
+into artist 3. The two `(hed)` albums and all 13 registered files remain attached
+to artist 3, and `PRAGMA foreign_key_check` returned no violations.
