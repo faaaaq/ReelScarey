@@ -3,6 +3,7 @@ package database_test
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -35,8 +36,15 @@ func TestPopulatedDatabaseUpgradeAddsEvidenceAndPlaybackState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer raw.Close()
+	oldMetadataTriggers, err := os.ReadFile(filepath.Join("migrations", "106_existing_metadata_titles.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = raw.Exec(`PRAGMA foreign_keys=OFF;
 		DELETE FROM schema_migrations WHERE version>=109;
+		DROP TRIGGER music_album_metadata_refreshed;
+		DROP TRIGGER music_artist_metadata_refreshed;
 		ALTER TABLE music_artists DROP COLUMN editor_fields;
 		ALTER TABLE music_artists DROP COLUMN custom_artwork;
 		ALTER TABLE music_artists DROP COLUMN custom_artwork_type;
@@ -85,7 +93,9 @@ func TestPopulatedDatabaseUpgradeAddsEvidenceAndPlaybackState(t *testing.T) {
 		DROP TABLE accounts;
 		PRAGMA foreign_keys=ON`)
 	if err != nil {
-		raw.Close()
+		t.Fatal(err)
+	}
+	if _, err = raw.Exec(string(oldMetadataTriggers)); err != nil {
 		t.Fatal(err)
 	}
 	if err = raw.Close(); err != nil {

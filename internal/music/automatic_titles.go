@@ -8,10 +8,11 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/organization"
 )
 
-// The automatic job writes canonical tags as a group. A manual edit reserves
-// those decisions for the editor, including the choice to leave files alone.
+// The automatic job writes canonical tags as a group. Preserve manual choices
+// about those tags, including the option to save only to the catalog.
 const automaticMusicTagsAllowed = `ar.name_overridden=0 AND a.title_overridden=0 AND a.year_overridden=0
-	AND json_type(a.editor_fields,'$.album_artist') IS NULL AND COALESCE(t.editor_fields,'{}')='{}'`
+	AND json_type(a.editor_fields,'$.album_artist') IS NULL
+	AND json_remove(COALESCE(t.editor_fields,'{}'),'$.genre','$.comment')='{}'`
 
 func (s *Service) processTitleUpdate(ctx context.Context) (bool, error) {
 	var id, revision int64
