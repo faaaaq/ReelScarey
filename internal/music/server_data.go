@@ -24,7 +24,8 @@ type ServerSong struct {
 	CoverURL    string `json:"cover_url"`
 }
 
-const serverSongColumns = `f.id,t.title,ar.name,a.title,ar.id,a.id,t.number,t.disc,a.year,t.duration_ms,f.format,f.size_bytes,a.cover_url,f.relative_path`
+const serverSongColumns = `f.id,` + trackDisplayTitle + `,` + trackDisplayArtist + `,` + trackDisplayAlbum +
+	`,ar.id,a.id,` + trackDisplayNumber + `,` + trackDisplayDisc + `,` + trackDisplayYear + `,t.duration_ms,f.format,f.size_bytes,` + albumDisplayCover + `,f.relative_path`
 
 func scanServerSong(row interface{ Scan(...any) error }) (ServerSong, error) {
 	var song ServerSong
@@ -74,7 +75,7 @@ func (s *Store) ServerSong(ctx context.Context, fileID int64) (ServerSong, error
 func (s *Store) ServerSongs(ctx context.Context, query string, limit int) ([]ServerSong, error) {
 	query = strings.TrimSpace(query)
 	rows, err := s.db.QueryContext(ctx, `SELECT `+serverSongColumns+serverSongFrom+`
-		WHERE t.title LIKE ? ESCAPE '\' OR a.title LIKE ? ESCAPE '\' OR ar.name LIKE ? ESCAPE '\'
+		WHERE `+trackDisplayFilter+`
 		ORDER BY ar.name COLLATE NOCASE, a.year IS NULL, a.year, a.title COLLATE NOCASE, t.disc, t.number
 		LIMIT ?`, likePattern(query), likePattern(query), likePattern(query), limit)
 	if err != nil {
@@ -111,7 +112,7 @@ func (s *Store) ServerRandomSongs(ctx context.Context, limit int) ([]ServerSong,
 
 func (s *Store) ServerAlbumSongs(ctx context.Context, albumID int64) ([]ServerSong, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+serverSongColumns+serverSongFrom+`
-		WHERE a.id=? ORDER BY t.disc, t.number, t.id`, albumID)
+		WHERE a.id=? ORDER BY `+trackDisplayOrder, albumID)
 	if err != nil {
 		return nil, err
 	}

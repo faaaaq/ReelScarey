@@ -1,4 +1,9 @@
 import { LibraryDeletion } from "../components/LibraryDeletion";
+import {
+  MusicLibraryEditor,
+  musicTrackEditLimit,
+  type MusicEditorTarget,
+} from "../components/MusicLibraryEditor";
 import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import {
@@ -77,6 +82,7 @@ export function MusicLibrary() {
   const [input, setInput] = useState(query);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
+  const [editor, setEditor] = useState<MusicEditorTarget>();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [results, setResults] = useState<MusicArtist[]>([]);
@@ -479,6 +485,17 @@ export function MusicLibrary() {
                 Select all shown
               </label>
               <strong>{selected.length} selected</strong>
+              {view === "tracks" && selected.length > 0 && (
+                <Button
+                  size="1"
+                  disabled={selected.length > musicTrackEditLimit}
+                  onClick={() =>
+                    setEditor({ kind: "tracks", ids: selected, label: "" })
+                  }
+                >
+                  Edit selected
+                </Button>
+              )}
               {selected.length > 0 && (
                 <LibraryDeletion
                   selection={view}
@@ -514,6 +531,7 @@ export function MusicLibrary() {
                       <AlbumTile
                         key={album.id}
                         album={album}
+                        onEdit={setEditor}
                         showArtist
                         selection={
                           selecting && album.id
@@ -575,6 +593,7 @@ export function MusicLibrary() {
                     </li>
                     {rows.map((artist, index) => (
                       <ArtistTile
+                        onEdit={setEditor}
                         key={artist.id}
                         artist={artist}
                         anchor={index === 0 ? letter : undefined}
@@ -624,6 +643,7 @@ export function MusicLibrary() {
               tracks={trackItems}
               select={selecting ? selection : undefined}
               onDeleted={reload}
+              onEdit={setEditor}
             />
           ) : query ? (
             <EmptyState
@@ -668,6 +688,16 @@ export function MusicLibrary() {
           </footer>
         )}
       </PageBody>
+      {editor && (
+        <MusicLibraryEditor
+          target={editor}
+          onClose={() => setEditor(undefined)}
+          onSaved={() => {
+            setSelected([]);
+            reload();
+          }}
+        />
+      )}
       <Modal
         open={open}
         onOpenChange={setOpen}

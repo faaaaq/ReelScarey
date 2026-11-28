@@ -136,6 +136,9 @@ export type MusicTrack = {
   /** Preferred registered file for playback, when one exists. */
   file_id?: number | null;
   /** Properties of that same primary file; absent for provider-only tracks. */
+  artist_credit?: string;
+  album_credit?: string;
+  year_credit?: number;
   bitrate?: number;
   size_bytes?: number;
   format?: string;

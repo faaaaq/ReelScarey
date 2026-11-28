@@ -195,7 +195,8 @@ returns the album and its tracks; the first read loads tracks from MusicBrainz.
 GET `/api/v1/library/music/artists/{id}/image` and
 `/api/v1/library/music/albums/{id}/cover` serve downloaded, cached artwork from
 fixed providers; missing artwork returns 404 so the UI can fall back. The cache
-is refreshed after 30 days and never exposes provider URLs to the browser.
+is refreshed after 30 days. An administrator-selected image takes precedence
+over cached provider artwork.
 
 GET `/api/v1/library/music/artists/{id}/top-tracks?limit=20` returns overall
 Deezer top tracks with local library matches, falling back to Deezer track
@@ -210,6 +211,29 @@ Album, artist, unified-track, top-track and chart track objects include
 available for the preferred primary playback file. These optional additive
 fields are omitted for provider-only tracks and unknown values; `file_id`
 continues to identify the same primary file.
+
+### Music library editor
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/api/v1/library/music/editor?kind=&ids=` | Read current fields, registered filename choices and a snapshot revision. |
+| PUT | `/api/v1/library/music/editor` | Save a partial update against that revision. |
+| GET | `/api/v1/library/music/editor/artwork?kind=&query=` | Search Deezer for artist thumbnails or album covers. |
+
+These routes require the administrator session. The update accepts
+`{kind,ids,revision,fields,artwork?,write_tags?,filename?,file_id?}`.
+Use one artist, album or file ID, or up to 200 explicit track IDs. Field values
+are strings. An omitted key keeps its saved value. An empty string clears
+optional text or year. Artwork accepts a provider image URL, base64-encoded
+JPEG or PNG data up to 5 MB, or `{reset:true}`.
+
+A stale snapshot returns 409. For a single track, `file_id` can pick a specific
+audio copy to rename. A batch filename pattern applies to one file per track,
+preferring the primary copy. Changes preserve the folder and extension and
+reject occupied destinations. When tags or filenames need writing, the result
+includes an `edit_job_id` for the existing edit status and rollback routes.
+Catalog fields and the file job are recorded together. A failed file write
+appears in the job while the catalog keeps the saved values.
 
 Administrator-owned library playlists use canonical track IDs and are separate
 from the named-user Subsonic playlists:

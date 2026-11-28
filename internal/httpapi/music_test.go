@@ -72,6 +72,18 @@ type fakeMusic struct {
 	acquiredSource     string
 }
 
+func (f *fakeMusic) LibraryEditor(context.Context, string, []int64) (music.LibraryEditorSnapshot, error) {
+	return music.LibraryEditorSnapshot{}, f.err
+}
+
+func (f *fakeMusic) UpdateLibraryEditor(context.Context, music.LibraryEditorUpdate) (music.LibraryEditorResult, error) {
+	return music.LibraryEditorResult{}, f.err
+}
+
+func (f *fakeMusic) SearchLibraryArtwork(context.Context, string, string) ([]music.LibraryArtworkCandidate, error) {
+	return []music.LibraryArtworkCandidate{}, f.err
+}
+
 func (f *fakeMusic) SearchArtists(context.Context, string, int) (music.SearchResults, error) {
 	return f.search, f.err
 }

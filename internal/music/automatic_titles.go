@@ -58,7 +58,7 @@ func (s *Service) processTitleUpdate(ctx context.Context) (bool, error) {
 	}
 	var current, path, tagJSON string
 	var active int
-	err = tx.QueryRowContext(ctx, `SELECT t.title,f.relative_path,f.tag_json,
+	err = tx.QueryRowContext(ctx, `SELECT `+trackDisplayTitle+`,f.relative_path,f.tag_json,
 		(SELECT COUNT(*) FROM music_edit_files e JOIN music_edit_jobs j ON j.id=e.job_id WHERE e.music_file_id=f.id AND j.state='running')
 		FROM music_files f JOIN music_tracks t ON t.id=f.track_id WHERE f.id=?`, id).Scan(&current, &path, &tagJSON, &active)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && (current != file.Tags.Title || path != file.SourcePath || tagJSON != file.PreviousTagJSON || active > 0) {

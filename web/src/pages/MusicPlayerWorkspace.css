@@ -471,6 +471,36 @@
   border-color: var(--rs-border-strong);
 }
 
+.mmp-editable-card {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+
+.mmp-editable-card > .mus-edit-button {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+}
+
+.mmp-editable-card:has(> .mus-edit-button) > button:first-child {
+  padding-right: 34px;
+  grid-template-columns: 54px minmax(0, 1fr);
+}
+
+.mmp-artist-album {
+  flex: 0 0 150px;
+}
+
+.mmp-artist-album.mmp-editable-card > button.mmp-artist-album-open {
+  grid-template-columns: 30px minmax(0, 1fr);
+}
+
+.mmp-row-actions[hidden] {
+  display: none;
+}
+
 .mmp-catalog-card-copy {
   display: flex;
   flex-direction: column;
@@ -525,7 +555,7 @@
   border-bottom: 1px solid var(--rs-border);
 }
 
-.mmp-artist-albums button {
+.mmp-artist-album-open {
   display: grid;
   flex: 0 0 150px;
   grid-template-columns: 30px minmax(0, 1fr);
@@ -539,14 +569,14 @@
   text-align: left;
 }
 
-.mmp-artist-albums button span,
-.mmp-artist-albums button small {
+.mmp-artist-album-open span,
+.mmp-artist-album-open small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.mmp-artist-albums button small {
+.mmp-artist-album-open small {
   grid-column: 2;
   color: var(--rs-faint);
   font-size: 10px;

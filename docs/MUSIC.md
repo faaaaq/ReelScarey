@@ -506,6 +506,28 @@ one durable background worker; the browser's HTTP request never owns the work.
   in-memory queue — is the source of truth. A request is rejected while a scan is
   running or another match/finalize request already owns the scan.
 
+## Editing the music library
+
+Use the pencil on a saved artist, album or track to edit it in place. Artist
+thumbnails and album covers can come from Deezer search or a JPEG or PNG upload.
+Use **Restore provider artwork** to switch back to automatic artwork.
+
+Use **Select** in Music → Tracks or **Select tracks** on an album, artist track
+list or the full player. Choose the tracks and click **Edit selected**. Check
+only the fields to apply to the selection. The editor identifies mixed values
+and supports clearing optional fields. Track credits apply at track level.
+Use the album or artist pencil to rename the corresponding library entry.
+
+A filename edit keeps the current folder and extension. When a track has
+several registered copies, choose which one to rename. Batch patterns such as
+`{track} - {title}` apply to the preferred file for each selected track.
+Supported placeholders are `{title}`, `{artist}`, `{album}`, `{track}`,
+`{disc}` and `{filename}` (the original name without its extension).
+
+The editor can also write the changed tags to registered audio files. The
+dialog shows file progress and errors, and completed file edits are recorded in
+Music → Organize. Rolling back there restores the file versions from that job.
+
 ## Organization and tagging
 
 - All edits are previewed first. The preview returns a `plan_hash`; applying a

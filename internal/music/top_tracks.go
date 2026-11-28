@@ -588,9 +588,15 @@ func (s *Service) loadTopTrackFileMetadata(ctx context.Context, track *TopTrack)
 	if track.FileID == nil {
 		return nil
 	}
-	return s.store.db.QueryRowContext(ctx, `SELECT COALESCE(bitrate,0),COALESCE(size_bytes,0),COALESCE(format,''),COALESCE(relative_path,'')
-		FROM music_files WHERE id=? AND variant_role='primary'`, *track.FileID).
-		Scan(&track.Bitrate, &track.SizeBytes, &track.Format, &track.RelativePath)
+	return s.store.db.QueryRowContext(ctx, `SELECT f.bitrate,f.size_bytes,f.format,f.relative_path,
+		COALESCE(json_extract(t.editor_fields,'$.title'),?),
+		COALESCE(json_extract(t.editor_fields,'$.artist'),CASE WHEN ar.name_overridden=1 THEN ar.name ELSE ? END),
+		COALESCE(json_extract(t.editor_fields,'$.album'),CASE WHEN a.title_overridden=1 THEN a.title ELSE ? END),
+		CASE WHEN a.custom_artwork_key<>'' THEN `+albumDisplayCover+` ELSE ? END
+		FROM music_files f JOIN music_tracks t ON t.id=f.track_id
+		JOIN music_albums a ON a.id=t.album_id JOIN music_artists ar ON ar.id=a.artist_id
+		WHERE f.id=? AND f.variant_role='primary'`, track.Title, track.Artist, track.Album, track.CoverURL, *track.FileID).
+		Scan(&track.Bitrate, &track.SizeBytes, &track.Format, &track.RelativePath, &track.Title, &track.Artist, &track.Album, &track.CoverURL)
 }
 
 func (s *Service) libraryMatch(ctx context.Context, title, artist, album string) (sql.NullInt64, sql.NullInt64, sql.NullInt64, error) {

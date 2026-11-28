@@ -16,7 +16,8 @@ type Store struct{ db *sql.DB }
 
 func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 
-const artistColumns = `id, musicbrainz_id, name, name_overridden, sort_name, disambiguation, country, artist_type, overview, image_url, monitored, status`
+const artistColumns = `id, musicbrainz_id, name, name_overridden, sort_name, disambiguation, country, artist_type, overview,
+	CASE WHEN custom_artwork_key<>'' THEN '/api/v1/library/music/artists/'||id||'/image?v='||custom_artwork_key ELSE image_url END, monitored, status`
 
 func scanArtist(row interface{ Scan(...any) error }) (Artist, error) {
 	var artist Artist
@@ -98,7 +99,21 @@ func (s *Store) ListAllArtists(ctx context.Context, query string) (ArtistPage, e
 	return out, rows.Err()
 }
 
-const albumColumns = `a.id, a.artist_id, a.musicbrainz_id, a.title, a.title_overridden, a.year_overridden, a.primary_type, a.secondary_types, a.year, a.release_date, a.cover_url, a.monitored, a.status, ar.name`
+const albumDisplayArtist = `COALESCE(json_extract(a.editor_fields,'$.album_artist'),ar.name)`
+const albumDisplayCover = `CASE WHEN a.custom_artwork_key<>'' THEN '/api/v1/library/music/albums/'||a.id||'/cover?v='||a.custom_artwork_key ELSE a.cover_url END`
+const albumColumns = `a.id, a.artist_id, a.musicbrainz_id, a.title, a.title_overridden, a.year_overridden, a.primary_type, a.secondary_types, a.year, a.release_date,` +
+	albumDisplayCover + `,a.monitored,a.status,` + albumDisplayArtist
+
+const trackDisplayTitle = `COALESCE(json_extract(t.editor_fields,'$.title'),t.title)`
+const trackDisplayDisc = `COALESCE(CAST(json_extract(t.editor_fields,'$.disc') AS INTEGER),t.disc)`
+const trackDisplayNumber = `COALESCE(CAST(json_extract(t.editor_fields,'$.number') AS INTEGER),t.number)`
+const trackDisplayArtist = `COALESCE(json_extract(t.editor_fields,'$.artist'),ar.name)`
+const trackDisplayAlbum = `COALESCE(json_extract(t.editor_fields,'$.album'),a.title)`
+const trackDisplayYear = `CASE WHEN json_type(t.editor_fields,'$.year') IS NULL THEN a.year ELSE CAST(NULLIF(json_extract(t.editor_fields,'$.year'),'') AS INTEGER) END`
+const trackDisplayIdentity = `t.id,t.album_id,t.musicbrainz_id,t.recording_id,` + trackDisplayDisc + `,` + trackDisplayNumber + `,` + trackDisplayTitle + `,t.duration_ms`
+const trackDisplayOrder = trackDisplayDisc + `,` + trackDisplayNumber + `,t.id`
+const trackDisplayContext = trackDisplayArtist + `,` + trackDisplayAlbum + `,` + trackDisplayYear + `,` + albumDisplayCover
+const trackDisplayFilter = trackDisplayTitle + ` LIKE ? ESCAPE '\' OR ` + trackDisplayAlbum + ` LIKE ? ESCAPE '\' OR ` + trackDisplayArtist + ` LIKE ? ESCAPE '\'`
 
 // scanAlbum reads the shared album column list. extra destinations are appended
 // to the scan targets so callers that select additional aggregate columns (for
@@ -186,11 +201,13 @@ func (s *Store) Tracks(ctx context.Context, albumID int64) ([]Track, error) {
 }
 
 func catalogTracks(ctx context.Context, db catalogConnection, albumID int64) ([]Track, error) {
-	rows, err := db.QueryContext(ctx, `SELECT t.id, t.album_id, t.musicbrainz_id, t.recording_id, t.disc, t.number, t.title, t.duration_ms,
-		f.id,COALESCE(f.bitrate,0),COALESCE(f.size_bytes,0),COALESCE(f.format,''),COALESCE(f.relative_path,'')
+	rows, err := db.QueryContext(ctx, `SELECT `+trackDisplayIdentity+`,
+		f.id,COALESCE(f.bitrate,0),COALESCE(f.size_bytes,0),COALESCE(f.format,''),COALESCE(f.relative_path,''),
+		COALESCE(json_extract(t.editor_fields,'$.artist'),''),COALESCE(json_extract(t.editor_fields,'$.album'),''),
+		CAST(json_extract(t.editor_fields,'$.year') AS INTEGER)
 		FROM music_tracks t
 		LEFT JOIN music_files f ON f.id=(SELECT MIN(f0.id) FROM music_files f0 WHERE f0.track_id=t.id AND f0.variant_role='primary')
-		WHERE t.album_id=? ORDER BY t.disc, t.number, t.id`, albumID)
+		WHERE t.album_id=? ORDER BY `+trackDisplayOrder, albumID)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +217,7 @@ func catalogTracks(ctx context.Context, db catalogConnection, albumID int64) ([]
 		var track Track
 		var fileID sql.NullInt64
 		if err := rows.Scan(&track.ID, &track.AlbumID, &track.MusicBrainzID, &track.RecordingID, &track.Disc, &track.Number, &track.Title, &track.DurationMS,
-			&fileID, &track.Bitrate, &track.SizeBytes, &track.Format, &track.RelativePath); err != nil {
+			&fileID, &track.Bitrate, &track.SizeBytes, &track.Format, &track.RelativePath, &track.ArtistCredit, &track.AlbumCredit, &track.YearCredit); err != nil {
 			return nil, err
 		}
 		if fileID.Valid {
@@ -228,9 +245,9 @@ func (s *Store) ArtistTracks(ctx context.Context, artistID int64, page, limit in
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*)`+registered, artistID).Scan(&out.Total); err != nil {
 		return ArtistTrackPage{}, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT t.id,t.album_id,t.musicbrainz_id,t.recording_id,t.disc,t.number,t.title,t.duration_ms,
-		f.id,COALESCE(f.bitrate,0),COALESCE(f.size_bytes,0),COALESCE(f.format,''),COALESCE(f.relative_path,''),ar.name,a.title,a.year,a.cover_url`+
-		registered+` ORDER BY a.year IS NULL, a.year DESC, a.title COLLATE NOCASE, t.disc, t.number, t.id LIMIT ? OFFSET ?`,
+	rows, err := s.db.QueryContext(ctx, `SELECT `+trackDisplayIdentity+`,
+		f.id,COALESCE(f.bitrate,0),COALESCE(f.size_bytes,0),COALESCE(f.format,''),COALESCE(f.relative_path,''),`+trackDisplayContext+
+		registered+` ORDER BY a.year IS NULL, a.year DESC, a.title COLLATE NOCASE,`+trackDisplayOrder+` LIMIT ? OFFSET ?`,
 		artistID, limit, (page-1)*limit)
 	if err != nil {
 		return ArtistTrackPage{}, err
@@ -263,7 +280,7 @@ func (s *Store) ListAlbums(ctx context.Context, query string, page, limit int) (
 	where := ""
 	args := []any{}
 	if query != "" {
-		where = ` WHERE a.title LIKE ? ESCAPE '\' OR ar.name LIKE ? ESCAPE '\'`
+		where = ` WHERE a.title LIKE ? ESCAPE '\' OR ` + albumDisplayArtist + ` LIKE ? ESCAPE '\'`
 		args = append(args, likePattern(query), likePattern(query))
 	}
 	out := AlbumPage{Items: []Album{}, Page: page, Limit: limit}
@@ -297,7 +314,7 @@ func (s *Store) ListTracks(ctx context.Context, query string, page, limit int) (
 	where := ` WHERE EXISTS(SELECT 1 FROM music_files f0 WHERE f0.track_id=t.id)`
 	args := []any{}
 	if query != "" {
-		where += ` AND (t.title LIKE ? ESCAPE '\' OR a.title LIKE ? ESCAPE '\' OR ar.name LIKE ? ESCAPE '\')`
+		where += ` AND (` + trackDisplayFilter + `)`
 		args = append(args, likePattern(query), likePattern(query), likePattern(query))
 	}
 	from := ` FROM music_tracks t JOIN music_albums a ON a.id=t.album_id JOIN music_artists ar ON ar.id=a.artist_id`
@@ -305,10 +322,10 @@ func (s *Store) ListTracks(ctx context.Context, query string, page, limit int) (
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*)`+from+where, args...).Scan(&out.Total); err != nil {
 		return ArtistTrackPage{}, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT t.id,t.album_id,t.musicbrainz_id,t.recording_id,t.disc,t.number,t.title,t.duration_ms,
-		f.id,COALESCE(f.bitrate,0),COALESCE(f.size_bytes,0),COALESCE(f.format,''),COALESCE(f.relative_path,''),ar.name,a.title,a.year,a.cover_url`+from+`
+	rows, err := s.db.QueryContext(ctx, `SELECT `+trackDisplayIdentity+`,
+		f.id,COALESCE(f.bitrate,0),COALESCE(f.size_bytes,0),COALESCE(f.format,''),COALESCE(f.relative_path,''),`+trackDisplayContext+from+`
 		LEFT JOIN music_files f ON f.id=(SELECT MIN(f0.id) FROM music_files f0 WHERE f0.track_id=t.id AND f0.variant_role='primary')`+where+`
-		ORDER BY ar.name COLLATE NOCASE, a.year IS NULL, a.year, a.title COLLATE NOCASE, t.disc, t.number, t.id LIMIT ? OFFSET ?`,
+		ORDER BY ar.name COLLATE NOCASE, a.year IS NULL, a.year, a.title COLLATE NOCASE,`+trackDisplayOrder+` LIMIT ? OFFSET ?`,
 		append(args, limit, (page-1)*limit)...)
 	if err != nil {
 		return ArtistTrackPage{}, err
@@ -339,7 +356,7 @@ func (s *Store) ListFiles(ctx context.Context, page int) (MusicFilePage, error) 
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM music_files`).Scan(&out.Total); err != nil {
 		return MusicFilePage{}, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT f.id,f.artist_id,f.album_id,f.track_id,ar.name,a.title,COALESCE(t.title,''),COALESCE(t.disc,1),COALESCE(t.number,0),f.relative_path,f.format,f.duration_ms,f.size_bytes,f.variant_role,f.variant_profile
+	rows, err := s.db.QueryContext(ctx, `SELECT f.id,f.artist_id,f.album_id,f.track_id,ar.name,a.title,COALESCE(`+trackDisplayTitle+`,''),COALESCE(`+trackDisplayDisc+`,1),COALESCE(`+trackDisplayNumber+`,0),f.relative_path,f.format,f.duration_ms,f.size_bytes,f.variant_role,f.variant_profile
 		FROM music_files f
 		JOIN music_artists ar ON ar.id=f.artist_id
 		JOIN music_albums a ON a.id=f.album_id
@@ -374,7 +391,7 @@ func (s *Store) albumFiles(ctx context.Context, albumID int64) ([]MusicFile, err
 }
 
 func (s *Store) registeredMusicFiles(ctx context.Context, column string, id int64) ([]MusicFile, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT f.id,f.artist_id,f.album_id,f.track_id,ar.name,a.title,COALESCE(t.title,''),COALESCE(t.disc,1),COALESCE(t.number,0),f.relative_path,f.format,f.duration_ms,f.size_bytes,f.variant_role,f.variant_profile
+	rows, err := s.db.QueryContext(ctx, `SELECT f.id,f.artist_id,f.album_id,f.track_id,ar.name,a.title,COALESCE(`+trackDisplayTitle+`,''),COALESCE(`+trackDisplayDisc+`,1),COALESCE(`+trackDisplayNumber+`,0),f.relative_path,f.format,f.duration_ms,f.size_bytes,f.variant_role,f.variant_profile
 		FROM music_files f
 		JOIN music_artists ar ON ar.id=f.artist_id
 		JOIN music_albums a ON a.id=f.album_id
@@ -405,7 +422,13 @@ func (s *Store) SaveArtist(ctx context.Context, artist Artist, albums []Album) (
 	now := time.Now().Unix()
 	if _, err = tx.ExecContext(ctx, `INSERT INTO music_artists(musicbrainz_id,name,sort_name,disambiguation,country,artist_type,overview,image_url,monitored,status,created_at,updated_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(musicbrainz_id) DO UPDATE SET name=CASE WHEN music_artists.name_overridden=0 THEN excluded.name ELSE music_artists.name END,sort_name=excluded.sort_name,disambiguation=excluded.disambiguation,country=excluded.country,artist_type=excluded.artist_type,overview=excluded.overview,image_url=excluded.image_url,updated_at=excluded.updated_at`,
+		ON CONFLICT(musicbrainz_id) DO UPDATE SET name=CASE WHEN music_artists.name_overridden=0 THEN excluded.name ELSE music_artists.name END,
+		sort_name=COALESCE(json_extract(music_artists.editor_fields,'$.sort_name'),excluded.sort_name),
+		disambiguation=COALESCE(json_extract(music_artists.editor_fields,'$.disambiguation'),excluded.disambiguation),
+		country=COALESCE(json_extract(music_artists.editor_fields,'$.country'),excluded.country),
+		artist_type=COALESCE(json_extract(music_artists.editor_fields,'$.type'),excluded.artist_type),
+		overview=COALESCE(json_extract(music_artists.editor_fields,'$.overview'),excluded.overview),
+		image_url=excluded.image_url,updated_at=excluded.updated_at`,
 		artist.MusicBrainzID, artist.Name, artist.SortName, artist.Disambiguation, artist.Country, artist.Type, artist.Overview, artist.ImageURL, boolInt(artist.Monitored), artist.Status, now, now); err != nil {
 		return Artist{}, err
 	}
@@ -428,7 +451,12 @@ func (s *Store) SaveArtist(ctx context.Context, artist Artist, albums []Album) (
 		secondary := strings.Join(album.SecondaryTypes, ", ")
 		if _, err = tx.ExecContext(ctx, `INSERT INTO music_albums(artist_id,musicbrainz_id,title,primary_type,secondary_types,year,release_date,cover_url,monitored,status,created_at,updated_at)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-			ON CONFLICT(artist_id,musicbrainz_id) DO UPDATE SET title=CASE WHEN music_albums.title_overridden=0 THEN excluded.title ELSE music_albums.title END,primary_type=excluded.primary_type,secondary_types=excluded.secondary_types,year=CASE WHEN music_albums.year_overridden=0 THEN excluded.year ELSE music_albums.year END,release_date=excluded.release_date,cover_url=excluded.cover_url,updated_at=excluded.updated_at`,
+			ON CONFLICT(artist_id,musicbrainz_id) DO UPDATE SET title=CASE WHEN music_albums.title_overridden=0 THEN excluded.title ELSE music_albums.title END,
+			primary_type=COALESCE(json_extract(music_albums.editor_fields,'$.type'),excluded.primary_type),
+			secondary_types=COALESCE(json_extract(music_albums.editor_fields,'$.secondary_types'),excluded.secondary_types),
+			year=CASE WHEN music_albums.year_overridden=0 THEN excluded.year ELSE music_albums.year END,
+			release_date=COALESCE(json_extract(music_albums.editor_fields,'$.release_date'),excluded.release_date),
+			cover_url=excluded.cover_url,updated_at=excluded.updated_at`,
 			id, album.MusicBrainzID, album.Title, album.PrimaryType, secondary, album.Year, album.ReleaseDate, album.CoverURL, boolInt(album.Monitored), album.Status, now, now); err != nil {
 			return Artist{}, err
 		}
@@ -556,11 +584,23 @@ func restoreSaveTracksPlaylistEntries(ctx context.Context, tx *sql.Tx, albumID i
 }
 
 func (s *Store) SaveTracks(ctx context.Context, albumID int64, tracks []Track) error {
+	return s.saveTracks(ctx, albumID, tracks, false)
+}
+
+func (s *Store) saveTracks(ctx context.Context, albumID int64, tracks []Track, initialOnly bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if initialOnly {
+		var populated bool
+		err := tx.QueryRowContext(ctx, `SELECT tracks_loaded OR EXISTS(SELECT 1 FROM music_tracks WHERE album_id=?)
+			FROM music_albums WHERE id=?`, albumID, albumID).Scan(&populated)
+		if err != nil || populated {
+			return err
+		}
+	}
 	entries, err := saveTracksPlaylistEntries(ctx, tx, albumID)
 	if err != nil {
 		return err

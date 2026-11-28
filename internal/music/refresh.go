@@ -224,7 +224,10 @@ func (s *Service) updateArtistDetails(ctx context.Context, id int64, artist Arti
 		disambiguation == artist.Disambiguation && overview == artist.Overview {
 		return false
 	}
-	if _, err := s.store.db.ExecContext(ctx, `UPDATE music_artists SET name=CASE WHEN name_overridden=0 THEN ? ELSE name END,sort_name=?,disambiguation=?,overview=?,updated_at=unixepoch() WHERE id=?`,
+	if _, err := s.store.db.ExecContext(ctx, `UPDATE music_artists SET name=CASE WHEN name_overridden=0 THEN ? ELSE name END,
+		sort_name=COALESCE(json_extract(editor_fields,'$.sort_name'),?),
+		disambiguation=COALESCE(json_extract(editor_fields,'$.disambiguation'),?),
+		overview=COALESCE(json_extract(editor_fields,'$.overview'),?),updated_at=unixepoch() WHERE id=?`,
 		artist.Name, artist.SortName, artist.Disambiguation, artist.Overview, id); err != nil {
 		return false
 	}
@@ -283,7 +286,8 @@ func (s *Service) RefreshAlbumMetadata(ctx context.Context, id int64) (AlbumRefr
 					sameYear = true
 				}
 				if currentTitle != nextTitle || !sameYear {
-					if _, err := s.store.db.ExecContext(ctx, `UPDATE music_albums SET title=?,year=?,updated_at=unixepoch() WHERE id=?`, nextTitle, nextYear, id); err == nil {
+					if _, err := s.store.db.ExecContext(ctx, `UPDATE music_albums SET title=CASE WHEN title_overridden=0 THEN ? ELSE title END,
+						year=CASE WHEN year_overridden=0 THEN ? ELSE year END,updated_at=unixepoch() WHERE id=?`, nextTitle, nextYear, id); err == nil {
 						result.AlbumUpdate = true
 						result.Title = nextTitle
 					}

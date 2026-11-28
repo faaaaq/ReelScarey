@@ -165,6 +165,9 @@ type MusicService interface {
 	OpenPlayback(context.Context, int64, string, int, int) (music.PlaybackStream, error)
 	ArtistImage(context.Context, int64) (music.Artwork, error)
 	AlbumImage(context.Context, int64) (music.Artwork, error)
+	LibraryEditor(context.Context, string, []int64) (music.LibraryEditorSnapshot, error)
+	UpdateLibraryEditor(context.Context, music.LibraryEditorUpdate) (music.LibraryEditorResult, error)
+	SearchLibraryArtwork(context.Context, string, string) ([]music.LibraryArtworkCandidate, error)
 	RefreshArtistMetadata(context.Context, int64) (music.ArtistRefreshResult, error)
 	RefreshAlbumMetadata(context.Context, int64) (music.AlbumRefreshResult, error)
 	RestoreArtistMetadataField(context.Context, int64, string) (music.ArtistRefreshResult, error)
@@ -623,6 +626,8 @@ func New(db *sql.DB, cfg config.Config, logger *slog.Logger, assets fs.FS, versi
 	mux.HandleFunc("/api/v1/library/music/optimize/apply", method(http.MethodPost, s.musicOptimizeApply))
 	mux.HandleFunc("/api/v1/library/music/cache", s.musicCache)
 	mux.HandleFunc("/api/v1/library/music/edits", method(http.MethodGet, s.musicEdits))
+	mux.HandleFunc("/api/v1/library/music/editor", s.musicLibraryEditor)
+	mux.HandleFunc("/api/v1/library/music/editor/artwork", method(http.MethodGet, s.musicLibraryEditorArtwork))
 	mux.HandleFunc("/api/v1/library/music/edits/preview", method(http.MethodPost, s.musicEditPreview))
 	mux.HandleFunc("/api/v1/library/music/edits/apply", method(http.MethodPost, s.musicEditApply))
 	mux.HandleFunc("/api/v1/library/music/edits/{id}", method(http.MethodGet, s.musicEdit))
@@ -995,7 +1000,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://image.tmdb.org https://artworks.thetvdb.com https://coverartarchive.org https://archive.org; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://image.tmdb.org https://artworks.thetvdb.com https://coverartarchive.org https://archive.org https://cdn-images.dzcdn.net https://e-cdns-images.dzcdn.net; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'")
 		if r.TLS != nil || strings.HasPrefix(s.config.PublicURL, "https://") {
 			w.Header().Set("Strict-Transport-Security", "max-age=86400")
 		}

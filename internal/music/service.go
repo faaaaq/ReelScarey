@@ -308,10 +308,10 @@ func (s *Service) loadTracks(ctx context.Context, album Album) ([]Track, error) 
 	if err != nil {
 		return nil, err
 	}
-	if err := s.store.SaveTracks(ctx, album.ID, tracks); err != nil {
+	if err := s.store.saveTracks(ctx, album.ID, tracks, true); err != nil {
 		return nil, err
 	}
-	return tracks, nil
+	return s.store.Tracks(ctx, album.ID)
 }
 
 func (s *Service) providerAlbumTracks(ctx context.Context, mbid string) ([]Track, error) {

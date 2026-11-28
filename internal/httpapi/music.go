@@ -17,11 +17,16 @@ import (
 )
 
 func (s *Server) musicError(w http.ResponseWriter, err error) {
+	var media *organization.Error
+	if errors.As(err, &media) {
+		s.organizationError(w, err)
+		return
+	}
 	var provider *music.Error
 	if errors.As(err, &provider) {
 		status := http.StatusBadGateway
 		switch provider.Code {
-		case "music_invalid_request":
+		case "music_invalid_request", "invalid_music":
 			status = http.StatusBadRequest
 		case "music_invalid_url", "music_invalid_musicbrainz_url":
 			status = http.StatusBadRequest

@@ -422,7 +422,7 @@ describe("MusicPlayerWorkspace", () => {
       name: "Artists",
     });
     await user.click(
-      within(artistsCenter).getByRole("button", { name: /North Sea/ }),
+      within(artistsCenter).getByRole("button", { name: /^North Sea/ }),
     );
 
     expect(
@@ -460,13 +460,13 @@ describe("MusicPlayerWorkspace", () => {
 
     const artistCards = screen.getByRole("region", { name: "Artists" });
     await user.click(
-      within(artistCards).getByRole("button", { name: /North Sea/ }),
+      within(artistCards).getByRole("button", { name: /^North Sea/ }),
     );
     const artistAlbums = await screen.findByRole("region", {
       name: "Albums by this artist",
     });
     await user.click(
-      within(artistAlbums).getByRole("button", { name: /Harbor Lights/ }),
+      within(artistAlbums).getByRole("button", { name: /^Harbor Lights/ }),
     );
 
     expect(
@@ -502,7 +502,7 @@ describe("MusicPlayerWorkspace", () => {
     expect(currentURL().search).toBe("?view=albums");
     const albumsCenter = screen.getByRole("region", { name: "Albums" });
     expect(
-      within(albumsCenter).getByRole("button", { name: /Harbor Lights/ }),
+      within(albumsCenter).getByRole("button", { name: /^Harbor Lights/ }),
     ).toBeVisible();
   });
 
@@ -815,7 +815,7 @@ describe("MusicPlayerWorkspace", () => {
     );
     const albums = await screen.findByRole("region", { name: "Albums" });
     await user.click(
-      within(albums).getByRole("button", { name: /Harbor Lights/ }),
+      within(albums).getByRole("button", { name: /^Harbor Lights/ }),
     );
     expect(
       await screen.findByRole("heading", { name: "Harbor Lights", level: 2 }),

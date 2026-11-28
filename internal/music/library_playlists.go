@@ -101,8 +101,8 @@ func (s *Service) LibraryPlaylist(ctx context.Context, id int64) (LibraryPlaylis
 		return LibraryPlaylistDetails{}, err
 	}
 	out := LibraryPlaylistDetails{Playlist: summary, Tracks: []ArtistTrack{}}
-	rows, err := tx.QueryContext(ctx, `SELECT t.id,t.album_id,t.musicbrainz_id,t.recording_id,t.disc,t.number,t.title,t.duration_ms,
-		f.id,COALESCE(f.bitrate,0),COALESCE(f.size_bytes,0),COALESCE(f.format,''),COALESCE(f.relative_path,''),ar.name,a.title,a.year,a.cover_url
+	rows, err := tx.QueryContext(ctx, `SELECT `+trackDisplayIdentity+`,
+		f.id,COALESCE(f.bitrate,0),COALESCE(f.size_bytes,0),COALESCE(f.format,''),COALESCE(f.relative_path,''),`+trackDisplayContext+`
 		FROM music_library_playlist_entries e
 		JOIN music_tracks t ON t.id=e.track_id
 		JOIN music_albums a ON a.id=t.album_id

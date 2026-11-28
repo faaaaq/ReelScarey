@@ -112,7 +112,10 @@ function playerTrack(track: MusicArtistTrack): PlayerTrack | null {
     title: track.title,
     artist: track.artist_name || "Unknown artist",
     album: track.album_title,
-    coverURL: albumCoverURL(track.album_id) || track.cover_url || undefined,
+    coverURL:
+      albumCoverURL(track.album_id, track.cover_url) ||
+      track.cover_url ||
+      undefined,
     durationMS: track.duration_ms,
     albumID: track.album_id,
     formatLabel: formatLabel || undefined,
@@ -129,9 +132,9 @@ function albumPlayerTracks(details: MusicAlbumDetails): MusicArtistTrack[] {
   return details.tracks.map((track) => ({
     ...track,
     album_id: details.album.id,
-    artist_name: details.album.artist_name,
-    album_title: details.album.title,
-    album_year: details.album.year,
+    artist_name: track.artist_credit || details.album.artist_name,
+    album_title: track.album_credit || details.album.title,
+    album_year: track.year_credit ?? details.album.year,
     cover_url: details.album.cover_url,
   }));
 }
@@ -166,13 +169,16 @@ async function fetchAllTrackPages(base: string, query = "") {
 function Artwork({
   artistID,
   albumID,
+  saved,
   className = "",
 }: {
   artistID?: number;
   albumID?: number;
+  saved?: string;
   className?: string;
 }) {
-  const source = albumCoverURL(albumID) || artistImageURL(artistID);
+  const source =
+    albumCoverURL(albumID, saved) || artistImageURL(artistID, saved);
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [source]);
   return (
@@ -290,6 +296,7 @@ function WorkspaceTrackTable({
   onInvalidate,
   playlist,
   emptyMessage,
+  onEdit,
 }: {
   tracks: MusicArtistTrack[];
   label: string;
@@ -299,10 +306,13 @@ function WorkspaceTrackTable({
   onInvalidate: () => void;
   playlist?: PlaylistTrackActions;
   emptyMessage?: string;
+  onEdit?: (target: MusicEditorTarget) => void;
 }) {
   const player = useMusicQueue();
   const [showFilenames, setShowFilenames] = useState(false);
   const playable = useMemo(() => playableTracks(tracks), [tracks]);
+  const editable = tracks.flatMap((track) => (track.id ? [track.id] : []));
+  const editSelection = useTrackEditSelection(editable.join(","));
 
   function play(item: PlayerTrack) {
     onInvalidate();
@@ -321,6 +331,13 @@ function WorkspaceTrackTable({
 
   return (
     <div className="mmp-track-list">
+      {onEdit && (
+        <TrackEditSelectionBar
+          visibleIDs={editable}
+          {...editSelection}
+          onEdit={onEdit}
+        />
+      )}
       <MusicFilenameToggle
         checked={showFilenames}
         onChange={setShowFilenames}
@@ -328,6 +345,11 @@ function WorkspaceTrackTable({
       <Table label={label}>
         <thead>
           <tr>
+            {editSelection.selecting && (
+              <th scope="col">
+                <span className="sr-only">Select</span>
+              </th>
+            )}
             <th scope="col" className="is-shrink">
               #
             </th>
@@ -346,15 +368,41 @@ function WorkspaceTrackTable({
           {tracks.map((track, trackIndex) => {
             const item = playerTrack(track);
             const current = item && player.current?.fileID === item.fileID;
+            const selection =
+              editSelection.selecting && track.id
+                ? editSelection.selection(track.id)
+                : undefined;
             return (
               <tr
                 key={
                   track.id ?? `${track.album_id}-${track.disc}-${track.number}`
                 }
-                className={current ? "is-current" : undefined}
+                className={
+                  selection?.checked
+                    ? "is-selected"
+                    : current
+                      ? "is-current"
+                      : undefined
+                }
+                data-selecting={!!selection || undefined}
                 data-playing={current || undefined}
-                onDoubleClick={() => item && play(item)}
+                onClickCapture={selection && selectionClick(selection.toggle)}
+                onDoubleClick={() =>
+                  !editSelection.selecting && item && play(item)
+                }
               >
+                {editSelection.selecting && (
+                  <td>
+                    {selection && (
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${track.title}`}
+                        checked={selection.checked}
+                        onChange={selection.toggle}
+                      />
+                    )}
+                  </td>
+                )}
                 <td>
                   {track.disc > 1
                     ? `${track.disc}.${track.number}`
@@ -372,6 +420,7 @@ function WorkspaceTrackTable({
                     <button
                       type="button"
                       className="mmp-text-button"
+                      tabIndex={editSelection.selecting ? -1 : undefined}
                       onClick={() => onOpenAlbum(track.album_id!)}
                     >
                       {track.album_title}
@@ -384,7 +433,22 @@ function WorkspaceTrackTable({
                 <td>{formatTrackDuration(track.duration_ms)}</td>
                 <MusicFileCells track={track} showFilename={showFilenames} />
                 <td className="is-actions">
-                  <div className="mmp-row-actions">
+                  <div
+                    className="mmp-row-actions"
+                    hidden={editSelection.selecting}
+                  >
+                    {onEdit && !!track.id && (
+                      <MusicEditButton
+                        label={`Edit track ${track.title}`}
+                        onClick={() =>
+                          onEdit({
+                            kind: "tracks",
+                            ids: [track.id!],
+                            label: track.title,
+                          })
+                        }
+                      />
+                    )}
                     <Button
                       size="1"
                       variant="ghost"
@@ -490,9 +554,11 @@ function WorkspaceTrackTable({
 function ArtistCards({
   artists,
   onOpen,
+  onEdit,
 }: {
   artists: MusicArtist[];
   onOpen: (id: number) => void;
+  onEdit?: (target: MusicEditorTarget) => void;
 }) {
   if (!artists.length)
     return (
@@ -501,23 +567,39 @@ function ArtistCards({
   return (
     <div className="mmp-card-grid">
       {artists.map((artist) => (
-        <button
-          type="button"
-          className="mmp-catalog-card"
+        <div
+          className="mmp-editable-card"
           key={artist.id ?? artist.musicbrainz_id}
-          disabled={!artist.id}
-          onClick={() => artist.id && onOpen(artist.id)}
         >
-          <Artwork artistID={artist.id} />
-          <span className="mmp-catalog-card-copy">
-            <strong>{artist.name}</strong>
-            <span>
-              {artist.album_count}{" "}
-              {artist.album_count === 1 ? "album" : "albums"}
+          <button
+            type="button"
+            className="mmp-catalog-card"
+            disabled={!artist.id}
+            onClick={() => artist.id && onOpen(artist.id)}
+          >
+            <Artwork artistID={artist.id} saved={artist.image_url} />
+            <span className="mmp-catalog-card-copy">
+              <strong>{artist.name}</strong>
+              <span>
+                {artist.album_count}{" "}
+                {artist.album_count === 1 ? "album" : "albums"}
+              </span>
             </span>
-          </span>
-          <ChevronRight size={16} aria-hidden="true" />
-        </button>
+            {!onEdit && <ChevronRight size={16} aria-hidden="true" />}
+          </button>
+          {!!artist.id && onEdit && (
+            <MusicEditButton
+              label={`Edit artist ${artist.name}`}
+              onClick={() =>
+                onEdit({
+                  kind: "artists",
+                  ids: [artist.id!],
+                  label: artist.name,
+                })
+              }
+            />
+          )}
+        </div>
       ))}
     </div>
   );
@@ -526,32 +608,46 @@ function ArtistCards({
 function AlbumCards({
   albums,
   onOpen,
+  onEdit,
 }: {
   albums: MusicAlbum[];
   onOpen: (id: number) => void;
+  onEdit?: (target: MusicEditorTarget) => void;
 }) {
   if (!albums.length)
     return <EmptyState title="No albums found">Try another search.</EmptyState>;
   return (
     <div className="mmp-card-grid">
       {albums.map((album) => (
-        <button
-          type="button"
-          className="mmp-catalog-card"
+        <div
+          className="mmp-editable-card"
           key={album.id ?? album.musicbrainz_id}
-          disabled={!album.id}
-          onClick={() => album.id && onOpen(album.id)}
         >
-          <Artwork albumID={album.id} />
-          <span className="mmp-catalog-card-copy">
-            <strong>{album.title}</strong>
-            <span>{album.artist_name || "Unknown artist"}</span>
-            <span>
-              {album.year || "Year unknown"} · {album.track_count || 0} tracks
+          <button
+            type="button"
+            className="mmp-catalog-card"
+            disabled={!album.id}
+            onClick={() => album.id && onOpen(album.id)}
+          >
+            <Artwork albumID={album.id} saved={album.cover_url} />
+            <span className="mmp-catalog-card-copy">
+              <strong>{album.title}</strong>
+              <span>{album.artist_name || "Unknown artist"}</span>
+              <span>
+                {album.year || "Year unknown"} · {album.track_count || 0} tracks
+              </span>
             </span>
-          </span>
-          <ChevronRight size={16} aria-hidden="true" />
-        </button>
+            {!onEdit && <ChevronRight size={16} aria-hidden="true" />}
+          </button>
+          {!!album.id && onEdit && (
+            <MusicEditButton
+              label={`Edit album ${album.title}`}
+              onClick={() =>
+                onEdit({ kind: "albums", ids: [album.id!], label: album.title })
+              }
+            />
+          )}
+        </div>
       ))}
     </div>
   );
@@ -631,6 +727,7 @@ function DetailHeading({
 }
 
 export function MusicPlayerWorkspace() {
+  const [editor, setEditor] = useState<MusicEditorTarget>();
   const [params, setParams] = useSearchParams();
   const view: View =
     params.get("view") === "artists"
@@ -1267,16 +1364,33 @@ export function MusicPlayerWorkspace() {
                 <>
                   <DetailHeading
                     artwork={
-                      <Artwork artistID={artistID} className="is-large" />
+                      <Artwork
+                        artistID={artistID}
+                        saved={artistDetails.data.artist.image_url}
+                        className="is-large"
+                      />
                     }
                     title={artistDetails.data.artist.name}
                     subtitle={`${artistDetails.data.albums.length} albums · ${artistTracks.data?.total ?? 0} registered tracks`}
                   >
                     {player.canManageSettings !== false && (
-                      <Link to={`/music/artists/${artistID}`}>
-                        Artist details{" "}
-                        <ExternalLink size={13} aria-hidden="true" />
-                      </Link>
+                      <>
+                        <MusicEditButton
+                          showLabel
+                          label={`Edit artist ${artistDetails.data.artist.name}`}
+                          onClick={() =>
+                            setEditor({
+                              kind: "artists",
+                              ids: [artistID],
+                              label: artistDetails.data!.artist.name,
+                            })
+                          }
+                        />
+                        <Link to={`/music/artists/${artistID}`}>
+                          Artist details{" "}
+                          <ExternalLink size={13} aria-hidden="true" />
+                        </Link>
+                      </>
                     )}
                   </DetailHeading>
                   <section
@@ -1284,15 +1398,36 @@ export function MusicPlayerWorkspace() {
                     aria-label="Albums by this artist"
                   >
                     {artistDetails.data.albums.map((album) => (
-                      <button
-                        type="button"
+                      <div
+                        className="mmp-editable-card mmp-artist-album"
                         key={album.id}
-                        onClick={() => album.id && openAlbum(album.id)}
                       >
-                        <Artwork albumID={album.id} className="is-small" />
-                        <span>{album.title}</span>
-                        <small>{album.year || "Year unknown"}</small>
-                      </button>
+                        <button
+                          type="button"
+                          className="mmp-artist-album-open"
+                          onClick={() => album.id && openAlbum(album.id)}
+                        >
+                          <Artwork
+                            albumID={album.id}
+                            saved={album.cover_url}
+                            className="is-small"
+                          />
+                          <span>{album.title}</span>
+                          <small>{album.year || "Year unknown"}</small>
+                        </button>
+                        {player.canManageSettings !== false && !!album.id && (
+                          <MusicEditButton
+                            label={`Edit album ${album.title}`}
+                            onClick={() =>
+                              setEditor({
+                                kind: "albums",
+                                ids: [album.id!],
+                                label: album.title,
+                              })
+                            }
+                          />
+                        )}
+                      </div>
                     ))}
                   </section>
                 </>
@@ -1321,15 +1456,36 @@ export function MusicPlayerWorkspace() {
               !activeResource?.error &&
               albumDetails.data && (
                 <DetailHeading
-                  artwork={<Artwork albumID={albumID} className="is-large" />}
+                  artwork={
+                    <Artwork
+                      albumID={albumID}
+                      saved={albumDetails.data.album.cover_url}
+                      className="is-large"
+                    />
+                  }
                   title={albumDetails.data.album.title}
                   subtitle={`${albumDetails.data.album.artist_name || "Unknown artist"} · ${albumDetails.data.album.year || "Year unknown"} · ${albumTracks.length} tracks`}
                 >
                   {player.canManageSettings !== false && (
-                    <Link to={`/music/albums/${albumID}`}>
-                      Album details{" "}
-                      <ExternalLink size={13} aria-hidden="true" />
-                    </Link>
+                    <>
+                      {!!albumID && (
+                        <MusicEditButton
+                          showLabel
+                          label={`Edit album ${albumDetails.data.album.title}`}
+                          onClick={() =>
+                            setEditor({
+                              kind: "albums",
+                              ids: [albumID],
+                              label: albumDetails.data!.album.title,
+                            })
+                          }
+                        />
+                      )}
+                      <Link to={`/music/albums/${albumID}`}>
+                        Album details{" "}
+                        <ExternalLink size={13} aria-hidden="true" />
+                      </Link>
+                    </>
                   )}
                 </DetailHeading>
               )}
@@ -1346,6 +1502,9 @@ export function MusicPlayerWorkspace() {
                   <ArtistCards
                     artists={artists.data?.items ?? []}
                     onOpen={openArtist}
+                    onEdit={
+                      player.canManageSettings !== false ? setEditor : undefined
+                    }
                   />
                 )}
               </>
@@ -1362,6 +1521,9 @@ export function MusicPlayerWorkspace() {
                   <AlbumCards
                     albums={albums.data?.items ?? []}
                     onOpen={openAlbum}
+                    onEdit={
+                      player.canManageSettings !== false ? setEditor : undefined
+                    }
                   />
                 )}
               </>
@@ -1397,6 +1559,9 @@ export function MusicPlayerWorkspace() {
                   onQueueOpen={() => setQueueOpen(true)}
                   onAddToPlaylist={setPickerTrack}
                   onInvalidate={invalidateShuffle}
+                  onEdit={
+                    player.canManageSettings !== false ? setEditor : undefined
+                  }
                   playlist={
                     playlistID
                       ? {
@@ -1433,6 +1598,16 @@ export function MusicPlayerWorkspace() {
           )}
         </div>
       </PageBody>
+      {editor && player.canManageSettings !== false && (
+        <MusicLibraryEditor
+          target={editor}
+          onClose={() => setEditor(undefined)}
+          onSaved={() => {
+            activeResource?.reload();
+            if (artistID) artistDetails.reload();
+          }}
+        />
+      )}
       <PlaylistCreateDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
@@ -1456,3 +1631,11 @@ export function MusicPlayerWorkspace() {
     </>
   );
 }
+import { selectionClick } from "../components/LibraryDeletion";
+import {
+  MusicEditButton,
+  MusicLibraryEditor,
+  TrackEditSelectionBar,
+  useTrackEditSelection,
+  type MusicEditorTarget,
+} from "../components/MusicLibraryEditor";

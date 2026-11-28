@@ -74,6 +74,9 @@ func TestCentralAccountAPIAndPermissionMatrix(t *testing.T) {
 		{"GET", "/api/v1/library/music/scans", "", 403},
 		{"POST", "/api/v1/library/music/artists", `{"musicbrainz_id":"x"}`, 403},
 		{"PUT", "/api/v1/library/music/preferences", `{}`, 403},
+		{"GET", "/api/v1/library/music/editor?kind=tracks&ids=1", "", 403},
+		{"PUT", "/api/v1/library/music/editor", `{}`, 403},
+		{"GET", "/api/v1/library/music/editor/artwork?kind=artists&query=artist", "", 403},
 		{"GET", "/api/v1/library/music/files/1/export", "", 403},
 	} {
 		if out = centralRequest(h, route.method, route.path, route.body, combined); (route.want == 0 && out.Code == 403) || (route.want != 0 && out.Code != route.want) {

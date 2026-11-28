@@ -1,4 +1,11 @@
 import { LibraryDeletion, selectionClick } from "../components/LibraryDeletion";
+import {
+  MusicEditButton,
+  MusicLibraryEditor,
+  TrackEditSelectionBar,
+  useTrackEditSelection,
+  type MusicEditorTarget,
+} from "../components/MusicLibraryEditor";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, TextField } from "@radix-ui/themes";
 import {
@@ -56,7 +63,11 @@ import {
 import { useResource } from "../useResource";
 import { useLiveResource } from "../useLiveResource";
 import { useMusicPlayer, type PlayerTrack } from "../musicPlayer";
-import { albumCoverURL, artistImageURL } from "../musicArtwork";
+import {
+  albumCoverURL,
+  artistImageURL,
+  withArtworkVersion,
+} from "../musicArtwork";
 import {
   AcquisitionProgress,
   AlbumDownloadModal,
@@ -119,16 +130,19 @@ export function ArtistTile({
   artist,
   selection,
   anchor,
+  onEdit,
 }: {
   artist: MusicArtist;
   selection?: TileSelection;
   anchor?: string;
+  onEdit?: (target: MusicEditorTarget) => void;
 }) {
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState("");
   const initial = artist.name.trim().charAt(0).toUpperCase() || "?";
   const label =
     artist.status === "available" ? "In library" : "No registered files";
-  const imageURL = artistImageURL(artist.id) || artist.image_url;
+  const imageURL =
+    artistImageURL(artist.id, artist.image_url) || artist.image_url;
   return (
     <li
       className={selection?.checked ? "lib-card is-selected" : "lib-card"}
@@ -147,14 +161,14 @@ export function ArtistTile({
         aria-label={`Open ${artist.name}`}
       >
         <RecordSleeve initial={initial} anchor={anchor} />
-        {imageURL && !failed && (
+        {imageURL && failed !== imageURL && (
           <img
             className="mus-tile-img"
             src={imageURL}
             alt=""
             loading="lazy"
             referrerPolicy="no-referrer"
-            onError={() => setFailed(true)}
+            onError={() => setFailed(imageURL)}
           />
         )}
       </Link>
@@ -172,6 +186,18 @@ export function ArtistTile({
               {artist.name}
             </Link>
           </h2>
+          {!selection && onEdit && !!artist.id && (
+            <MusicEditButton
+              label={`Edit artist ${artist.name}`}
+              onClick={() =>
+                onEdit({
+                  kind: "artists",
+                  ids: [artist.id!],
+                  label: artist.name,
+                })
+              }
+            />
+          )}
         </div>
         <div className="lib-card-meta">
           <span>
@@ -196,20 +222,22 @@ export function AlbumTile({
   onDownload,
   showArtist = false,
   selection,
+  onEdit,
 }: {
   album: MusicAlbum;
   onDownload?: (album: MusicAlbum) => void;
   showArtist?: boolean;
   selection?: TileSelection;
+  onEdit?: (target: MusicEditorTarget) => void;
 }) {
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState("");
   const label =
     album.status === "available" ? "In library" : "No registered files";
   const type =
     [album.primary_type, ...(album.secondary_types ?? [])]
       .filter(Boolean)
       .join(" · ") || "Release";
-  const coverURL = albumCoverURL(album.id) || album.cover_url;
+  const coverURL = albumCoverURL(album.id, album.cover_url) || album.cover_url;
   return (
     <li
       className={selection?.checked ? "lib-card is-selected" : "lib-card"}
@@ -230,14 +258,14 @@ export function AlbumTile({
         <RecordSleeve
           initial={album.title.trim().charAt(0).toUpperCase() || "?"}
         />
-        {coverURL && !failed && (
+        {coverURL && failed !== coverURL && (
           <img
             className="mus-tile-img"
             src={coverURL}
             alt=""
             loading="lazy"
             referrerPolicy="no-referrer"
-            onError={() => setFailed(true)}
+            onError={() => setFailed(coverURL)}
           />
         )}
       </Link>
@@ -255,6 +283,14 @@ export function AlbumTile({
               {album.title}
             </Link>
           </h2>
+          {!selection && onEdit && !!album.id && (
+            <MusicEditButton
+              label={`Edit album ${album.title}`}
+              onClick={() =>
+                onEdit({ kind: "albums", ids: [album.id!], label: album.title })
+              }
+            />
+          )}
         </div>
         <div className="lib-card-meta">
           {showArtist && album.artist_name && <span>{album.artist_name}</span>}
@@ -287,10 +323,14 @@ export function LibraryTrackTable({
   tracks,
   select,
   onDeleted,
+  onEdit,
+  label = "Music tracks",
 }: {
   tracks: MusicArtistTrack[];
   select?: (id: number) => TileSelection;
   onDeleted?: () => void;
+  onEdit?: (target: MusicEditorTarget) => void;
+  label?: string;
 }) {
   const player = useMusicPlayer();
   const [showFilenames, setShowFilenames] = useState(false);
@@ -303,7 +343,7 @@ export function LibraryTrackTable({
         checked={showFilenames}
         onChange={setShowFilenames}
       />
-      <Table label="Music tracks">
+      <Table label={label}>
         <thead>
           <tr>
             {select && (
@@ -363,6 +403,18 @@ export function LibraryTrackTable({
                 <td>{formatTrackDuration(track.duration_ms)}</td>
                 <MusicFileCells track={track} showFilename={showFilenames} />
                 <td className="is-actions">
+                  {!select && onEdit && !!track.id && (
+                    <MusicEditButton
+                      label={`Edit track ${track.title}`}
+                      onClick={() =>
+                        onEdit({
+                          kind: "tracks",
+                          ids: [track.id!],
+                          label: track.title,
+                        })
+                      }
+                    />
+                  )}
                   {fileID && !select ? (
                     <Button
                       size="1"
@@ -409,106 +461,13 @@ function artistPlayerTrack(
     title: track.title,
     artist: artistName,
     album: track.album_title,
-    coverURL: albumCoverURL(track.album_id) || track.cover_url || undefined,
+    coverURL:
+      albumCoverURL(track.album_id, track.cover_url) ||
+      track.cover_url ||
+      undefined,
     durationMS: track.duration_ms,
     albumID: track.album_id,
   };
-}
-
-function ArtistTrackTable({
-  tracks,
-  label,
-  artistName,
-  onDeleted,
-}: {
-  tracks: MusicArtistTrack[];
-  label: string;
-  artistName: string;
-  onDeleted: () => void;
-}) {
-  const player = useMusicPlayer();
-  const [showFilenames, setShowFilenames] = useState(false);
-  const playable = tracks.flatMap((track) => {
-    const item = artistPlayerTrack(track, artistName);
-    return item ? [item] : [];
-  });
-  function play(fileID: number) {
-    const item = playable.find((candidate) => candidate.fileID === fileID);
-    if (item) player.play(item, playable);
-  }
-  return (
-    <>
-      <MusicFilenameToggle
-        checked={showFilenames}
-        onChange={setShowFilenames}
-      />
-      <Table label={label}>
-        <thead>
-          <tr>
-            <th scope="col" className="is-shrink">
-              #
-            </th>
-            <th scope="col">Title</th>
-            <th scope="col">Album</th>
-            <th scope="col">Duration</th>
-            <MusicFileColumnHeadings showFilename={showFilenames} />
-            <th scope="col" className="is-actions">
-              <span className="sr-only">Play</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {tracks.map((track) => {
-            const fileID = track.file_id;
-            return (
-              <tr
-                key={
-                  track.id ??
-                  `${track.album_id}-${track.disc}-${track.number}-${track.title}`
-                }
-              >
-                <td>
-                  {track.disc > 1
-                    ? `${track.disc}.${track.number}`
-                    : track.number}
-                </td>
-                <td>{track.title}</td>
-                <td>
-                  <Link to={`/music/albums/${track.album_id}`}>
-                    {track.album_title}
-                  </Link>
-                </td>
-                <td>{formatTrackDuration(track.duration_ms)}</td>
-                <MusicFileCells track={track} showFilename={showFilenames} />
-                <td className="is-actions">
-                  {fileID ? (
-                    <Button
-                      size="1"
-                      variant="ghost"
-                      color="gray"
-                      aria-label={`Play ${track.title}`}
-                      onClick={() => play(fileID)}
-                    >
-                      <Play size={14} aria-hidden="true" />
-                    </Button>
-                  ) : null}
-                  {track.id && (
-                    <LibraryDeletion
-                      selection="tracks"
-                      ids={[track.id]}
-                      label="Delete track"
-                      name={track.title}
-                      onDone={onDeleted}
-                    />
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </Table>
-    </>
-  );
 }
 
 function topTrackPlayer(track: MusicTopTrack): PlayerTrack | null {
@@ -529,14 +488,24 @@ function TopTrackTable({
   onDownload,
   selected,
   onToggle,
+  onEdit,
 }: {
   tracks: MusicTopTrack[];
   onDownload: (track: MusicTopTrack) => void;
   selected: string[];
   onToggle: (providerID: string, checked: boolean) => void;
+  onEdit: (target: MusicEditorTarget) => void;
 }) {
   const player = useMusicPlayer();
   const [showFilenames, setShowFilenames] = useState(false);
+  const editable = [
+    ...new Set(
+      tracks.flatMap((track) =>
+        track.in_library && track.track_id ? [track.track_id] : [],
+      ),
+    ),
+  ];
+  const editSelection = useTrackEditSelection(editable.join(","));
   const playable = tracks
     .map(topTrackPlayer)
     .filter((track): track is PlayerTrack => track !== null);
@@ -549,6 +518,11 @@ function TopTrackTable({
       <MusicFilenameToggle
         checked={showFilenames}
         onChange={setShowFilenames}
+      />
+      <TrackEditSelectionBar
+        visibleIDs={editable}
+        {...editSelection}
+        onEdit={onEdit}
       />
       <Table label="Top tracks">
         <thead>
@@ -572,15 +546,25 @@ function TopTrackTable({
           {tracks.map((track, index) => (
             <tr key={`${track.provider_id}-${index}`}>
               <td>
-                {!track.in_library && (
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${track.title}`}
-                    checked={selected.includes(track.provider_id)}
-                    onChange={(event) =>
-                      onToggle(track.provider_id, event.target.checked)
-                    }
+                {editSelection.selecting &&
+                track.in_library &&
+                !!track.track_id ? (
+                  <SelectionBox
+                    name={track.title}
+                    selection={editSelection.selection(track.track_id)}
                   />
+                ) : (
+                  !editSelection.selecting &&
+                  !track.in_library && (
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${track.title}`}
+                      checked={selected.includes(track.provider_id)}
+                      onChange={(event) =>
+                        onToggle(track.provider_id, event.target.checked)
+                      }
+                    />
+                  )
                 )}
               </td>
               <td>{index + 1}</td>
@@ -592,6 +576,20 @@ function TopTrackTable({
               <td>{formatTrackDuration(track.duration_ms)}</td>
               <MusicFileCells track={track} showFilename={showFilenames} />
               <td className="is-actions">
+                {!editSelection.selecting &&
+                  track.in_library &&
+                  !!track.track_id && (
+                    <MusicEditButton
+                      label={`Edit track ${track.title}`}
+                      onClick={() =>
+                        onEdit({
+                          kind: "tracks",
+                          ids: [track.track_id!],
+                          label: track.title,
+                        })
+                      }
+                    />
+                  )}
                 {track.file_id ? (
                   <Button
                     size="1"
@@ -701,6 +699,7 @@ function ArtistAlbums({
   error,
   toggle,
   onDownload,
+  onEdit,
 }: {
   albums: MusicAlbum[];
   remote: MusicDiscographyAlbum[];
@@ -709,6 +708,7 @@ function ArtistAlbums({
   error: string;
   toggle: () => void;
   onDownload: (target: AlbumDownloadTarget) => void;
+  onEdit: (target: MusicEditorTarget) => void;
 }) {
   const saved = albums.filter(
     (album) => showAll || album.status === "available",
@@ -759,6 +759,7 @@ function ArtistAlbums({
               key={album.id}
               album={album}
               onDownload={localDownload}
+              onEdit={onEdit}
             />
           ))}
         {provider
@@ -782,6 +783,18 @@ function ArtistAlbums({
                     <Link to={`/music/albums/${single.id}`}>
                       {single.title}
                     </Link>
+                    {!!single.id && (
+                      <MusicEditButton
+                        label={`Edit album ${single.title}`}
+                        onClick={() =>
+                          onEdit({
+                            kind: "albums",
+                            ids: [single.id!],
+                            label: single.title,
+                          })
+                        }
+                      />
+                    )}
                   </li>
                 ))}
                 {providerSingles.map((single) => (
@@ -806,6 +819,7 @@ function ArtistAlbums({
 
 function MusicArtistDetail({ id }: { id?: string }) {
   const navigate = useNavigate();
+  const [editor, setEditor] = useState<MusicEditorTarget>();
   const [showAllAlbums, setShowAllAlbums] = useState(false);
   const details = useResource<MusicArtistDetails>(
     id ? `/library/music/artists/${id}` : null,
@@ -823,6 +837,9 @@ function MusicArtistDetail({ id }: { id?: string }) {
     useState<AlbumDownloadTarget | null>(null);
   const [allOpen, setAllOpen] = useState(false);
   const [allPage, setAllPage] = useState(1);
+  const allSelection = useTrackEditSelection(
+    allOpen ? `${id}-${allPage}` : undefined,
+  );
   const allTracks = useResource<MusicArtistTrackPage>(
     allOpen && id
       ? `/library/music/artists/${id}/tracks?page=${allPage}&limit=50`
@@ -1072,6 +1089,19 @@ function MusicArtistDetail({ id }: { id?: string }) {
             spinning={refreshPending}
             onClick={refreshArtist}
           />
+          {!!artist?.id && (
+            <MusicEditButton
+              showLabel
+              label={`Edit artist ${artist.name}`}
+              onClick={() =>
+                setEditor({
+                  kind: "artists",
+                  ids: [artist.id!],
+                  label: artist.name,
+                })
+              }
+            />
+          )}
           {artist?.name_overridden && (
             <ToolbarButton
               icon={RefreshCw}
@@ -1111,7 +1141,14 @@ function MusicArtistDetail({ id }: { id?: string }) {
           {artist?.id ? (
             <img
               className="mus-heading-cover"
-              src={`${artistImageURL(artist.id)}${imageVersion ? `?v=${imageVersion}` : ""}`}
+              key={withArtworkVersion(
+                artistImageURL(artist.id, artist.image_url),
+                imageVersion,
+              )}
+              src={withArtworkVersion(
+                artistImageURL(artist.id, artist.image_url),
+                imageVersion,
+              )}
               alt=""
               loading="lazy"
               referrerPolicy="no-referrer"
@@ -1175,6 +1212,7 @@ function MusicArtistDetail({ id }: { id?: string }) {
             error={showAllAlbums ? discography.error : ""}
             toggle={() => setShowAllAlbums((value) => !value)}
             onDownload={setAlbumDownload}
+            onEdit={setEditor}
           />
         )}
 
@@ -1251,6 +1289,7 @@ function MusicArtistDetail({ id }: { id?: string }) {
                   onDownload={openDownload}
                   selected={selectedTopTracks}
                   onToggle={toggleTopTrack}
+                  onEdit={setEditor}
                 />
               ) : (
                 !topTracks.data.message && (
@@ -1311,17 +1350,30 @@ function MusicArtistDetail({ id }: { id?: string }) {
         {allTracks.error && <Alert kind="danger">{allTracks.error}</Alert>}
         {allTracks.data &&
           (allTracks.data.items.length ? (
-            <ArtistTrackTable
-              tracks={allTracks.data.items}
-              label="All tracks"
-              onDeleted={() => {
-                allTracks.reload();
-                libraryTracks.reload();
-                details.reload();
-                topTracks.reload();
-              }}
-              artistName={artist?.name ?? ""}
-            />
+            <>
+              <TrackEditSelectionBar
+                visibleIDs={allTracks.data.items.flatMap((track) =>
+                  track.id ? [track.id] : [],
+                )}
+                {...allSelection}
+                onEdit={setEditor}
+              />
+              <LibraryTrackTable
+                tracks={allTracks.data.items}
+                label="All tracks"
+                select={
+                  allSelection.selecting ? allSelection.selection : undefined
+                }
+                onEdit={setEditor}
+                onDeleted={() => {
+                  allSelection.setSelected([]);
+                  allTracks.reload();
+                  libraryTracks.reload();
+                  details.reload();
+                  topTracks.reload();
+                }}
+              />
+            </>
           ) : (
             <p className="rs-muted">No tracks with registered files.</p>
           ))}
@@ -1452,6 +1504,18 @@ function MusicArtistDetail({ id }: { id?: string }) {
           libraryTracks.reload();
         }}
       />
+      {editor && (
+        <MusicLibraryEditor
+          target={editor}
+          onClose={() => setEditor(undefined)}
+          onSaved={() => {
+            allSelection.setSelected([]);
+            allTracks.reload();
+            details.reload();
+            topTracks.reload();
+          }}
+        />
+      )}
     </>
   );
 }
@@ -1459,16 +1523,21 @@ function MusicArtistDetail({ id }: { id?: string }) {
 export function MusicAlbumPage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const [editor, setEditor] = useState<MusicEditorTarget>();
+  const trackSelection = useTrackEditSelection(id);
   const details = useResource<MusicAlbumDetails>(
     id ? `/library/music/albums/${id}` : null,
   );
   const album = details.data?.album;
   const tracks = details.data?.tracks ?? [];
-  const multiDisc = new Set(tracks.map((track) => track.disc)).size > 1;
+  const multiDisc = tracks.some((track) => track.disc > 1);
   const [showFilenames, setShowFilenames] = useState(false);
   const [coverVersion, setCoverVersion] = useState(0);
   const albumCover = album
-    ? `${albumCoverURL(album.id) || album.cover_url}${coverVersion ? `?v=${coverVersion}` : ""}`
+    ? withArtworkVersion(
+        albumCoverURL(album.id, album.cover_url) || album.cover_url,
+        coverVersion,
+      )
     : "";
   const player = useMusicPlayer();
   const playableTracks: PlayerTrack[] =
@@ -1480,10 +1549,12 @@ export function MusicAlbumPage() {
                 {
                   fileID: track.file_id,
                   title: track.title,
-                  artist: album.artist_name ?? "",
-                  album: album.title,
+                  artist: track.artist_credit || album.artist_name || "",
+                  album: track.album_credit || album.title,
                   coverURL:
-                    albumCoverURL(album.id) || album.cover_url || undefined,
+                    albumCoverURL(album.id, album.cover_url) ||
+                    album.cover_url ||
+                    undefined,
                   durationMS: track.duration_ms,
                   albumID: album.id,
                 },
@@ -1903,6 +1974,19 @@ export function MusicAlbumPage() {
         >
           {album && (
             <>
+              {!!album.id && (
+                <MusicEditButton
+                  showLabel
+                  label={`Edit album ${album.title}`}
+                  onClick={() =>
+                    setEditor({
+                      kind: "albums",
+                      ids: [album.id!],
+                      label: album.title,
+                    })
+                  }
+                />
+              )}
               <Label
                 kind={
                   album.status === "available"
@@ -1929,6 +2013,7 @@ export function MusicAlbumPage() {
               {albumCover && (
                 <img
                   className="mus-heading-cover"
+                  key={albumCover}
                   src={albumCover}
                   alt=""
                   loading="lazy"
@@ -1988,6 +2073,13 @@ export function MusicAlbumPage() {
         )}
         {details.data && (
           <>
+            <TrackEditSelectionBar
+              visibleIDs={tracks.flatMap((track) =>
+                track.id ? [track.id] : [],
+              )}
+              {...trackSelection}
+              onEdit={setEditor}
+            />
             <MusicFilenameToggle
               checked={showFilenames}
               onChange={setShowFilenames}
@@ -1995,6 +2087,11 @@ export function MusicAlbumPage() {
             <Table label="Music tracks">
               <thead>
                 <tr>
+                  {trackSelection.selecting && (
+                    <th scope="col">
+                      <span className="sr-only">Select</span>
+                    </th>
+                  )}
                   <th scope="col">{multiDisc ? "Disc" : "#"}</th>
                   <th scope="col">Title</th>
                   <th scope="col">Duration</th>
@@ -2007,8 +2104,29 @@ export function MusicAlbumPage() {
               <tbody>
                 {tracks.map((track) => {
                   const fileID = track.file_id;
+                  const selection =
+                    trackSelection.selecting && track.id
+                      ? trackSelection.selection(track.id)
+                      : undefined;
                   return (
-                    <tr key={`${track.disc}-${track.number}`}>
+                    <tr
+                      key={track.id ?? `${track.disc}-${track.number}`}
+                      data-selecting={!!selection || undefined}
+                      className={selection?.checked ? "is-selected" : undefined}
+                      onClickCapture={
+                        selection && selectionClick(selection.toggle)
+                      }
+                    >
+                      {trackSelection.selecting && (
+                        <td>
+                          {selection && (
+                            <SelectionBox
+                              selection={selection}
+                              name={track.title}
+                            />
+                          )}
+                        </td>
+                      )}
                       <td>
                         {multiDisc
                           ? `${track.disc}.${track.number}`
@@ -2021,7 +2139,19 @@ export function MusicAlbumPage() {
                         showFilename={showFilenames}
                       />
                       <td className="is-actions">
-                        {fileID ? (
+                        {!trackSelection.selecting && !!track.id && (
+                          <MusicEditButton
+                            label={`Edit track ${track.title}`}
+                            onClick={() =>
+                              setEditor({
+                                kind: "tracks",
+                                ids: [track.id!],
+                                label: track.title,
+                              })
+                            }
+                          />
+                        )}
+                        {!trackSelection.selecting && fileID ? (
                           <>
                             <Button
                               size="1"
@@ -2038,7 +2168,7 @@ export function MusicAlbumPage() {
                             />
                           </>
                         ) : null}
-                        {track.id && (
+                        {!trackSelection.selecting && track.id && (
                           <LibraryDeletion
                             selection="tracks"
                             ids={[track.id]}
@@ -2075,6 +2205,27 @@ export function MusicAlbumPage() {
                     </td>
                     <td>{file.track_title || "—"}</td>
                     <td>
+                      <MusicEditButton
+                        label={`Edit file ${file.relative_path.split("/").at(-1)}`}
+                        onClick={() =>
+                          setEditor(
+                            file.track_id
+                              ? {
+                                  kind: "tracks",
+                                  ids: [file.track_id],
+                                  label: file.track_title,
+                                  fileID: file.id,
+                                }
+                              : {
+                                  kind: "files",
+                                  ids: [file.id],
+                                  label:
+                                    file.relative_path.split("/").at(-1) ?? "",
+                                  fileID: file.id,
+                                },
+                          )
+                        }
+                      />
                       <LibraryDeletion
                         selection="music_files"
                         ids={[file.id]}
@@ -2238,6 +2389,16 @@ export function MusicAlbumPage() {
           </FieldSet>
         )}
       </PageBody>
+      {editor && (
+        <MusicLibraryEditor
+          target={editor}
+          onClose={() => setEditor(undefined)}
+          onSaved={() => {
+            trackSelection.setSelected([]);
+            details.reload();
+          }}
+        />
+      )}
       <Modal
         open={fixOpen}
         onOpenChange={setFixOpen}

@@ -1,7 +1,9 @@
 package music
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"net/http"
@@ -17,7 +19,7 @@ import (
 const artworkTTL = 30 * 24 * time.Hour
 
 type Artwork struct {
-	File        *os.File
+	File        io.ReadSeekCloser
 	Name        string
 	ContentType string
 	ModTime     time.Time
@@ -26,6 +28,9 @@ type Artwork struct {
 var artworkFetch = fetchArtworkBytes
 
 func (s *Service) ArtistImage(ctx context.Context, id int64) (Artwork, error) {
+	if art, found, err := s.customArtwork(ctx, "artists", id); found || err != nil {
+		return art, err
+	}
 	if id < 1 || s.artworkDir == "" {
 		return Artwork{}, &Error{Code: "music_artwork_missing", Message: "No cached artist image is available."}
 	}
@@ -60,6 +65,9 @@ func (s *Service) ArtistImage(ctx context.Context, id int64) (Artwork, error) {
 }
 
 func (s *Service) AlbumImage(ctx context.Context, id int64) (Artwork, error) {
+	if art, found, err := s.customArtwork(ctx, "albums", id); found || err != nil {
+		return art, err
+	}
 	if id < 1 || s.artworkDir == "" {
 		return Artwork{}, &Error{Code: "music_artwork_missing", Message: "No cached album cover is available."}
 	}
@@ -344,7 +352,11 @@ func (s *Service) downloadArtwork(ctx context.Context, kind string, id int64, so
 
 func allowedArtworkURL(raw string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Port() != "" {
+	return err == nil && allowedArtworkAddress(parsed)
+}
+
+func allowedArtworkAddress(parsed *url.URL) bool {
+	if parsed.Scheme != "https" || parsed.User != nil || parsed.Port() != "" {
 		return false
 	}
 	return allowedArtworkHost(strings.ToLower(parsed.Hostname()))
@@ -366,11 +378,36 @@ var artworkHTTP = &http.Client{
 		if len(via) >= 5 {
 			return errors.New("too many artwork redirects")
 		}
-		if !allowedArtworkHost(strings.ToLower(req.URL.Hostname())) {
+		if !allowedArtworkAddress(req.URL) {
 			return errors.New("artwork redirect host is not allowed")
 		}
 		return nil
 	},
+}
+
+type artworkReader struct{ *bytes.Reader }
+
+func (artworkReader) Close() error { return nil }
+
+func (s *Service) customArtwork(ctx context.Context, kind string, id int64) (Artwork, bool, error) {
+	query := `SELECT custom_artwork,custom_artwork_type,custom_artwork_key FROM music_artists WHERE id=? AND custom_artwork IS NOT NULL`
+	if kind == "albums" {
+		query = `SELECT custom_artwork,custom_artwork_type,custom_artwork_key FROM music_albums WHERE id=? AND custom_artwork IS NOT NULL`
+	}
+	var data []byte
+	var mime, key string
+	err := s.store.db.QueryRowContext(ctx, query, id).Scan(&data, &mime, &key)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Artwork{}, false, nil
+	}
+	if err != nil {
+		return Artwork{}, false, err
+	}
+	ext := ".jpg"
+	if mime == "image/png" {
+		ext = ".png"
+	}
+	return Artwork{File: artworkReader{bytes.NewReader(data)}, Name: key + ext, ContentType: mime}, true, nil
 }
 
 func fetchArtworkBytes(ctx context.Context, source string) ([]byte, string, error) {

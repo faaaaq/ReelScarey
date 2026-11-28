@@ -148,6 +148,10 @@ Historical native and package results below remain as records of past work.
   canonical track IDs independently of Subsonic playlists. See
   [full music player workspace](docs/MUSIC.md#full-music-player-workspace).
 
+- [x] Add in-place artist, album and track editing with artwork search and
+  upload, per-track and batch metadata changes, filename edits and optional
+  audio tag writes. See [editing the music library](docs/MUSIC.md#editing-the-music-library).
+
 - [x] Update embedded movie and TV titles while organizing and renaming media,
   with verified copies and recovery that preserve streams and seeding sources.
   Reviewed MP4/M4V, Matroska, MOV, AVI and WebM updates preserve streams and rollback copies, and

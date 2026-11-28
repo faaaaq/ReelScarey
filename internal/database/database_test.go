@@ -42,7 +42,7 @@ func TestMigrationsPersistAndConfigureSQLite(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if name != "Persistent cinema" || journal != "wal" || foreignKeys != 1 || timeout != 5000 || count != 116 {
+	if name != "Persistent cinema" || journal != "wal" || foreignKeys != 1 || timeout != 5000 || count != 117 {
 		t.Fatalf("persistence/pragmas failed: %s %s %d %d %d", name, journal, foreignKeys, timeout, count)
 	}
 	var enabled, profiles int
@@ -130,14 +130,14 @@ func TestMigrationRollbackAndDrift(t *testing.T) {
 		t.Fatalf("DDL not rolled back: %v, %d", err, count)
 	}
 	version, err := Version(ctx, db)
-	if err != nil || version != 116 {
+	if err != nil || version != 117 {
 		t.Fatalf("broken migration recorded: %d %v", version, err)
 	}
 	files["migrations/001_foundation.sql"] = &fstest.MapFile{Data: []byte("SELECT 1;")}
 	if err := migrate(ctx, db, files); err == nil {
 		t.Fatal("migration drift accepted")
 	}
-	if _, err := db.Exec("INSERT INTO schema_migrations(version, name, checksum) VALUES(117, 'future', 'hash')"); err != nil {
+	if _, err := db.Exec("INSERT INTO schema_migrations(version, name, checksum) VALUES(118, 'future', 'hash')"); err != nil {
 		t.Fatal(err)
 	}
 	if err := Migrate(ctx, db); err == nil {

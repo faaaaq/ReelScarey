@@ -22,6 +22,145 @@ function mockFetch(
 }
 
 describe("music", () => {
+  it("edits an artist in place and saves the chosen artwork", async () => {
+    const user = userEvent.setup();
+    let name = "Radiohead";
+    let saved: Record<string, unknown> | undefined;
+    mockFetch((path, options) => {
+      if (path.endsWith("/music/artists")) {
+        return Response.json({
+          items: [
+            { id: 1, name, type: "Group", status: "available", album_count: 1 },
+          ],
+          page: 1,
+          total: 1,
+          limit: 48,
+        });
+      }
+      if (path.endsWith("/editor/artwork")) {
+        return Response.json({
+          items: [
+            {
+              title: "Radiohead alternate",
+              url: "https://cdn-images.dzcdn.net/artist/alternate.jpg",
+            },
+          ],
+        });
+      }
+      if (path.endsWith("/music/editor")) {
+        if (options?.method === "PUT") {
+          saved = JSON.parse(String(options.body));
+          name = "Radiohead (UK)";
+          return Response.json({});
+        }
+        return Response.json({
+          items: [{ id: 1, fields: { name } }],
+          revision: "artist-rev",
+        });
+      }
+      return undefined;
+    });
+    render(
+      <Theme>
+        <MusicPlayerProvider>
+          <MemoryRouter initialEntries={["/music"]}>
+            <MusicLibrary />
+          </MemoryRouter>
+        </MusicPlayerProvider>
+      </Theme>,
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Edit artist Radiohead" }),
+    );
+    const dialog = within(
+      await screen.findByRole("dialog", { name: "Edit artist" }),
+    );
+    const input = await dialog.findByRole("textbox", { name: "Name" });
+    await user.clear(input);
+    await user.type(input, "Radiohead (UK)");
+    await user.click(dialog.getByRole("button", { name: "Search artwork" }));
+    await user.click(
+      await dialog.findByRole("button", { name: "Radiohead alternate" }),
+    );
+    await user.click(dialog.getByRole("button", { name: "Save changes" }));
+    expect(
+      await screen.findByRole("link", { name: "Open Radiohead (UK)" }),
+    ).toBeVisible();
+    expect(saved).toMatchObject({
+      kind: "artists",
+      ids: [1],
+      revision: "artist-rev",
+      fields: { name: "Radiohead (UK)" },
+      artwork: { url: "https://cdn-images.dzcdn.net/artist/alternate.jpg" },
+    });
+  });
+
+  it("batch edits only checked fields and explicitly selected track IDs", async () => {
+    const user = userEvent.setup();
+    let saved: Record<string, unknown> | undefined;
+    const tracks = ["First", "Second", "Third"].map((title, index) => ({
+      id: index + 1,
+      title,
+      artist_name: "Artist",
+      album_title: "Album",
+      album_id: 90,
+      disc: 1,
+      number: index + 1,
+      duration_ms: 1000,
+    }));
+    mockFetch((path, options) => {
+      if (path.endsWith("/music/tracks")) {
+        return Response.json({ items: tracks, page: 1, limit: 100, total: 3 });
+      }
+      if (path.endsWith("/music/editor")) {
+        if (options?.method === "PUT") {
+          saved = JSON.parse(String(options.body));
+          return Response.json({});
+        }
+        return Response.json({
+          items: tracks.slice(0, 2).map(({ id, title }) => ({
+            id,
+            fields: { title, genre: id === 1 ? "Rock" : "Pop" },
+          })),
+          revision: "track-rev",
+        });
+      }
+      return undefined;
+    });
+    render(
+      <Theme>
+        <MusicPlayerProvider>
+          <MemoryRouter initialEntries={["/music?view=tracks"]}>
+            <MusicLibrary />
+          </MemoryRouter>
+        </MusicPlayerProvider>
+      </Theme>,
+    );
+    await screen.findByRole("button", { name: "Edit track First" });
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select First" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select Second" }));
+    await user.click(screen.getByRole("button", { name: "Edit selected" }));
+    const dialog = within(
+      await screen.findByRole("dialog", { name: "Edit 2 tracks" }),
+    );
+    const genre = await dialog.findByRole("textbox", { name: "Genre" });
+    expect(genre).toBeDisabled();
+    expect(genre).toHaveAttribute("placeholder", "Mixed values");
+    await user.click(dialog.getByRole("checkbox", { name: "Change genre" }));
+    await user.type(genre, "Jazz");
+    await user.click(dialog.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(saved).toMatchObject({
+        kind: "tracks",
+        ids: [1, 2],
+        revision: "track-rev",
+        fields: { genre: "Jazz" },
+      }),
+    );
+    expect(saved?.fields).toEqual({ genre: "Jazz" });
+  });
+
   it("renders the unified music library views", async () => {
     mockFetch((path) => {
       if (path === "/api/v1/library/music/albums") {

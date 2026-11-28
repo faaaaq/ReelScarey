@@ -1,0 +1,157 @@
+.mus-edit-button {
+  flex: none;
+  min-inline-size: 28px;
+  min-block-size: 27px;
+  margin: 0;
+}
+
+.mus-track-edit-bar,
+.mus-editor-check,
+.mus-editor-artwork-search {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.mus-track-edit-bar {
+  margin-block: 4px 12px;
+}
+
+.mus-editor-form {
+  display: grid;
+  gap: 16px;
+}
+
+.mus-editor-form p {
+  margin: 0;
+}
+
+.mus-editor-fields,
+.mus-editor-section {
+  min-inline-size: 0;
+  margin: 0;
+}
+
+.mus-editor-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  border: 0;
+  padding: 0;
+}
+
+.mus-editor-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  column-gap: 8px;
+}
+
+.mus-editor-field > div:only-child,
+.mus-editor-field-wide {
+  grid-column: 1 / -1;
+}
+
+.mus-editor-field > input {
+  align-self: center;
+  margin: 17px 0 0;
+}
+
+.mus-editor-field label,
+.mus-editor-stacked {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.mus-editor-section {
+  border: 1px solid var(--gray-a6);
+  border-radius: var(--radius-2);
+  padding: 10px 12px 12px;
+}
+
+.mus-editor-section legend {
+  padding-inline: 5px;
+  font-weight: 600;
+}
+
+.mus-editor-artwork {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.mus-editor-art-preview {
+  width: 76px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--radius-2);
+  background: var(--gray-a4);
+  text-align: center;
+  font-size: 0.75rem;
+}
+
+.mus-editor-art-preview img,
+.mus-editor-artwork-results img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
+.mus-editor-artwork-options {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  min-inline-size: 0;
+}
+
+.mus-editor-artwork-search {
+  width: 100%;
+}
+
+.mus-editor-artwork-search > :first-child {
+  flex: 1 1 160px;
+}
+
+.mus-editor-upload input {
+  display: block;
+  max-inline-size: 100%;
+}
+
+.mus-editor-artwork-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.mus-editor-artwork-results button {
+  overflow: hidden;
+  align-self: stretch;
+  display: grid;
+  align-content: start;
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid var(--gray-a6);
+  border-radius: var(--radius-2);
+  background: var(--gray-a2);
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.mus-editor-artwork-results button[aria-pressed="true"] {
+  border-color: var(--accent-9);
+  background: var(--accent-a4);
+}
+
+@media (max-width: 480px) {
+  .mus-editor-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

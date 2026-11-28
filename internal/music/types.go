@@ -103,6 +103,9 @@ type Track struct {
 	SizeBytes    int64  `json:"size_bytes,omitempty"`
 	Format       string `json:"format,omitempty"`
 	RelativePath string `json:"relative_path,omitempty"`
+	ArtistCredit string `json:"artist_credit,omitempty"`
+	AlbumCredit  string `json:"album_credit,omitempty"`
+	YearCredit   *int   `json:"year_credit,omitempty"`
 }
 
 // ArtistTrack is one catalog track that has at least one registered file. The

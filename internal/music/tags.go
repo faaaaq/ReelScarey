@@ -29,6 +29,8 @@ type AudioTags struct {
 	AlbumArtist               string `json:"album_artist"`
 	Album                     string `json:"album"`
 	Title                     string `json:"title"`
+	Genre                     string `json:"genre,omitempty"`
+	Comment                   string `json:"comment,omitempty"`
 	Track                     *int   `json:"track"`
 	TrackTotal                *int   `json:"track_total"`
 	Disc                      *int   `json:"disc"`
@@ -125,6 +127,8 @@ func parseAudioProbe(body []byte) (AudioTags, error) {
 		AlbumArtist:               firstNonEmpty(tags["album_artist"], tags["albumartist"], tags["artist"]),
 		Album:                     tags["album"],
 		Title:                     tags["title"],
+		Genre:                     tags["genre"],
+		Comment:                   firstNonEmpty(tags["comment"], tags["description"]),
 		Track:                     leadingInt(tags["track"], tags["tracknumber"]),
 		TrackTotal:                trailingInt(tags["track"], tags["tracknumber"]),
 		Disc:                      leadingInt(tags["disc"], tags["discnumber"]),

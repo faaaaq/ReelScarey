@@ -51,7 +51,7 @@ func TestMusicLibraryPlaylistsUpgradePreservesCatalogAndSubsonicState(t *testing
 	if err := Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	if version, err := Version(ctx, db); err != nil || version != 116 {
+	if version, err := Version(ctx, db); err != nil || version != 117 {
 		t.Fatalf("schema version = %d, %v", version, err)
 	}
 	var title, name, comment string

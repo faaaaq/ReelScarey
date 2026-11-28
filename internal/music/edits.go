@@ -23,20 +23,21 @@ import (
 var ErrPlanChanged = errors.New("The catalog changed after this review. Preview the files again.")
 
 type EditTags struct {
-	Artist                    string `json:"artist"`
-	AlbumArtist               string `json:"album_artist"`
-	Album                     string `json:"album"`
-	Title                     string `json:"title"`
-	Track                     int    `json:"track"`
-	TrackTotal                int    `json:"track_total"`
-	Disc                      int    `json:"disc"`
-	DiscTotal                 int    `json:"disc_total"`
-	Year                      int    `json:"year"`
-	MusicBrainzArtistID       string `json:"musicbrainz_artist_id"`
-	MusicBrainzAlbumID        string `json:"musicbrainz_album_id"`
-	MusicBrainzReleaseGroupID string `json:"musicbrainz_release_group_id"`
-	MusicBrainzTrackID        string `json:"musicbrainz_track_id"`
-	MusicBrainzRecordingID    string `json:"musicbrainz_recording_id"`
+	LibraryEdit               *libraryTagEdit `json:"library_edit,omitempty"`
+	Artist                    string          `json:"artist"`
+	AlbumArtist               string          `json:"album_artist"`
+	Album                     string          `json:"album"`
+	Title                     string          `json:"title"`
+	Track                     int             `json:"track"`
+	TrackTotal                int             `json:"track_total"`
+	Disc                      int             `json:"disc"`
+	DiscTotal                 int             `json:"disc_total"`
+	Year                      int             `json:"year"`
+	MusicBrainzArtistID       string          `json:"musicbrainz_artist_id"`
+	MusicBrainzAlbumID        string          `json:"musicbrainz_album_id"`
+	MusicBrainzReleaseGroupID string          `json:"musicbrainz_release_group_id"`
+	MusicBrainzTrackID        string          `json:"musicbrainz_track_id"`
+	MusicBrainzRecordingID    string          `json:"musicbrainz_recording_id"`
 }
 
 type EditFile struct {
@@ -180,8 +181,9 @@ func (s *Service) loadEditFilesWith(ctx context.Context, fileIDs []int64, overri
 		args[i] = id
 	}
 	rows, err := s.store.db.QueryContext(ctx, `SELECT f.id, f.root, f.relative_path, f.tag_json,
-		ar.name, ar.musicbrainz_id, a.title, a.year, a.musicbrainz_id,
-		t.title, t.disc, t.number, t.musicbrainz_id, t.recording_id,
+		`+trackDisplayArtist+`, ar.musicbrainz_id, `+trackDisplayAlbum+`, `+trackDisplayYear+`, a.musicbrainz_id,
+		`+trackDisplayTitle+`, `+trackDisplayDisc+`, `+trackDisplayNumber+`, t.musicbrainz_id, t.recording_id,
+		COALESCE(json_extract(t.editor_fields,'$.album_artist'),`+albumDisplayArtist+`),
 		(SELECT COUNT(*) FROM music_tracks x WHERE x.album_id=f.album_id),
 		(SELECT COALESCE(MAX(x.disc),1) FROM music_tracks x WHERE x.album_id=f.album_id)
 		FROM music_files f
@@ -197,10 +199,10 @@ func (s *Service) loadEditFilesWith(ctx context.Context, fileIDs []int64, overri
 	files := []EditFile{}
 	for rows.Next() {
 		var id int64
-		var root, relative, tagJSON, artistName, artistMBID, albumTitle, albumMBID string
+		var root, relative, tagJSON, artistName, artistMBID, albumTitle, albumMBID, albumArtist string
 		var trackTitle, trackMBID, recordingID sql.NullString
 		var year, disc, number, trackTotal, discTotal sql.NullInt64
-		if err := rows.Scan(&id, &root, &relative, &tagJSON, &artistName, &artistMBID, &albumTitle, &year, &albumMBID, &trackTitle, &disc, &number, &trackMBID, &recordingID, &trackTotal, &discTotal); err != nil {
+		if err := rows.Scan(&id, &root, &relative, &tagJSON, &artistName, &artistMBID, &albumTitle, &year, &albumMBID, &trackTitle, &disc, &number, &trackMBID, &recordingID, &albumArtist, &trackTotal, &discTotal); err != nil {
 			return nil, err
 		}
 		if !trackTitle.Valid || !number.Valid || number.Int64 < 1 {
@@ -226,7 +228,7 @@ func (s *Service) loadEditFilesWith(ctx context.Context, fileIDs []int64, overri
 		destination := path.Join(root, safeName(artistName), safeName(albumTitle), prefix+" "+safeName(trackTitle.String)+ext)
 		tags := EditTags{
 			Artist:      artistName,
-			AlbumArtist: artistName,
+			AlbumArtist: albumArtist,
 			Album:       albumTitle,
 			Title:       trackTitle.String,
 			Track:       int(number.Int64),
@@ -437,6 +439,11 @@ func (s *Service) runEditJob(ctx context.Context, jobID int64) {
 	defer func() {
 		_, _ = s.store.db.ExecContext(context.Background(), `UPDATE music_edit_jobs SET lease_owner='',lease_until=0 WHERE id=? AND lease_owner=?`, jobID, owner)
 	}()
+	var overrideMask string
+	if err := s.store.db.QueryRowContext(ctx, `SELECT override_fields FROM music_edit_jobs WHERE id=?`, jobID).Scan(&overrideMask); err != nil {
+		s.finishEditJob(ctx, jobID, "failed", err.Error())
+		return
+	}
 	type item struct {
 		id, musicFileID int64
 		source, dest    string
@@ -465,6 +472,7 @@ func (s *Service) runEditJob(ctx context.Context, jobID int64) {
 		n, _ := result.RowsAffected()
 		return n == 1
 	}
+	failedFiles := 0
 	for _, it := range items {
 		if ctx.Err() != nil {
 			// A cancelled job is fenced through its still-owned lease so the
@@ -480,14 +488,22 @@ func (s *Service) runEditJob(ctx context.Context, jobID int64) {
 		release()
 		if err != nil {
 			_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_edit_files SET state='failed',error=?,updated_at=unixepoch() WHERE id=?`, err.Error(), it.id)
-			s.finishEditJob(context.Background(), jobID, "failed", err.Error())
-			return
+			if overrideMask != libraryEditJobMask {
+				s.finishEditJob(context.Background(), jobID, "failed", err.Error())
+				return
+			}
+			failedFiles++
+		} else {
+			_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_edit_files SET state='completed',updated_at=unixepoch() WHERE id=?`, it.id)
 		}
-		_, _ = s.store.db.ExecContext(context.WithoutCancel(ctx), `UPDATE music_edit_files SET state='completed',updated_at=unixepoch() WHERE id=?`, it.id)
 		if !renewLease() {
 			s.finishEditJob(context.Background(), jobID, "failed", "The edit lease was lost. Review the files, then apply the plan again.")
 			return
 		}
+	}
+	if failedFiles != 0 {
+		s.finishEditJob(ctx, jobID, "failed", fmt.Sprintf("%d of %d file changes failed. See individual files for details.", failedFiles, len(items)))
+		return
 	}
 	// A completed edit whose original copy could not be removed leaves a
 	// duplicate on disk. Keep the job completed so rollback stays available, but
@@ -533,6 +549,9 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 	if err != nil {
 		return &Error{Code: "music_source_missing", Message: "The source file is no longer present. Nothing was changed."}
 	}
+	if tags.LibraryEdit != nil && tags.LibraryEdit.ExpectedSHA != "" && !equalFold(originalSHA, tags.LibraryEdit.ExpectedSHA) {
+		return &Error{Code: "music_source_changed", Message: "The audio file changed since it was registered. Verify the current file before applying this edit."}
+	}
 	var originalRoot string
 	if err := s.store.db.QueryRowContext(ctx, `SELECT root FROM music_files WHERE id=? AND relative_path=?`, musicFileID, sourceRel).Scan(&originalRoot); err != nil {
 		return err
@@ -544,7 +563,7 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 	}
 	if automatic {
 		var digest, title string
-		if err := s.store.db.QueryRowContext(ctx, `SELECT f.sha256,t.title FROM music_files f JOIN music_tracks t ON t.id=f.track_id WHERE f.id=? AND f.relative_path=?`, musicFileID, sourceRel).Scan(&digest, &title); err != nil {
+		if err := s.store.db.QueryRowContext(ctx, `SELECT f.sha256,`+trackDisplayTitle+` FROM music_files f JOIN music_tracks t ON t.id=f.track_id WHERE f.id=? AND f.relative_path=?`, musicFileID, sourceRel).Scan(&digest, &title); err != nil {
 			return err
 		}
 		if digest != "" && digest != originalSHA || title != tags.Title {
@@ -554,7 +573,7 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 	// A conflicting destination is resolved after staging (see placeMusicStage):
 	// identical content is deduplicated, differing content is set aside under a
 	// versioned sibling name instead of failing the whole edit.
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	if err := media.MkdirAll(path.Dir(destRel), 0o755); err != nil {
 		return err
 	}
 	ext := filepath.Ext(source)
@@ -570,7 +589,7 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 	var verified AudioTags
 	if retag {
 		backupRelative = sourceRel + ".reelscarey-backup"
-		if automatic {
+		if automatic || tags.LibraryEdit != nil {
 			backupRelative += fmt.Sprintf("-%d", editID)
 		}
 		backup = filepath.Join(s.mediaDir, filepath.FromSlash(backupRelative))
@@ -587,7 +606,13 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		if err := stageFile.Close(); err != nil {
 			return err
 		}
-		if err := writeTags(ctx, source, stage, tags, ext); err != nil {
+		write := writeTags
+		verify := verifyEditTags
+		if tags.LibraryEdit != nil {
+			write = writeLibraryTags
+			verify = verifyLibraryTags
+		}
+		if err := write(ctx, source, stage, tags, ext); err != nil {
 			os.Remove(stage)
 			os.Remove(backup)
 			return err
@@ -598,7 +623,7 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 			os.Remove(stage)
 			return err
 		}
-		if err := verifyEditTags(actual, tags); err != nil {
+		if err := verify(actual, tags); err != nil {
 			os.Remove(backup)
 			os.Remove(stage)
 			return err
@@ -644,6 +669,17 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 			return err
 		}
 		os.Remove(stage)
+	} else if tags.LibraryEdit != nil {
+		// Publish at a vacant name. A user renaming a file has not approved
+		// renaming or deduplicating another item that appeared at that path.
+		if err := media.Link(stageRel, destRel); err != nil {
+			_ = media.Remove(stageRel)
+			if backupRelative != "" {
+				_ = media.Remove(backupRelative)
+			}
+			return &Error{Code: "music_filename_occupied", Message: "The destination could not be created without overwriting. The original was retained."}
+		}
+		_ = media.Remove(stageRel)
 	} else {
 		deduped, aside, err = placeMusicStage(ctx, media, destRel, stageRel, editedSHA)
 		if aside != "" {
@@ -710,17 +746,17 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 		// Keep the album/artist rows in step with the corrected file tags. The
 		// tag_json is the source of truth; without this the library, Subsonic
 		// clients and the web UI keep showing the stale (e.g. year 6666) values.
-		if !automatic && tags.Year > 0 {
+		if !automatic && hasOverrideField(overrideMask, "year") && tags.Year > 0 {
 			if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET year=?,year_overridden=CASE WHEN ? THEN 1 ELSE year_overridden END,updated_at=unixepoch() WHERE id=(SELECT album_id FROM music_files WHERE id=?)`, tags.Year, hasOverrideField(overrideMask, "year"), musicFileID); err != nil {
 				return err
 			}
 		}
-		if !automatic && strings.TrimSpace(tags.Album) != "" {
+		if !automatic && hasOverrideField(overrideMask, "album") && strings.TrimSpace(tags.Album) != "" {
 			if _, err := tx.ExecContext(ctx, `UPDATE music_albums SET title=?,title_overridden=CASE WHEN ? THEN 1 ELSE title_overridden END,updated_at=unixepoch() WHERE id=(SELECT album_id FROM music_files WHERE id=?)`, tags.Album, hasOverrideField(overrideMask, "album"), musicFileID); err != nil {
 				return err
 			}
 		}
-		if !automatic && strings.TrimSpace(tags.Artist) != "" {
+		if !automatic && hasOverrideField(overrideMask, "artist") && strings.TrimSpace(tags.Artist) != "" {
 			if _, err := tx.ExecContext(ctx, `UPDATE music_artists SET name=?,name_overridden=CASE WHEN ? THEN 1 ELSE name_overridden END,updated_at=unixepoch() WHERE id=(SELECT artist_id FROM music_files WHERE id=?)`, tags.Artist, hasOverrideField(overrideMask, "artist"), musicFileID); err != nil {
 				return err
 			}
