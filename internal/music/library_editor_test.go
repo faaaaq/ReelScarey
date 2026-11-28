@@ -98,6 +98,51 @@ func TestLibraryEditorArtworkAndCatalogFieldsSurviveProviderSave(t *testing.T) {
 	}
 }
 
+func TestLibraryEditorCatalogOnlySaveDoesNotRetag(t *testing.T) {
+	for _, target := range []struct {
+		kind  string
+		id    int64
+		field string
+	}{
+		{"artists", 1, "name"},
+		{"albums", 2, "title"},
+		{"tracks", 3, "title"},
+	} {
+		t.Run(target.kind, func(t *testing.T) {
+			ctx := context.Background()
+			service, db, _ := editFixture(t)
+			insertMusicFile(t, db, 1, 3, "Music/original.flac", matchingTags())
+			if _, err := db.Exec(`UPDATE music_title_updates SET next_attempt=9999999999`); err != nil {
+				t.Fatal(err)
+			}
+			ids := []int64{target.id}
+			snapshot, err := service.LibraryEditor(ctx, target.kind, ids)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := service.UpdateLibraryEditor(ctx, LibraryEditorUpdate{Kind: target.kind, IDs: ids,
+				Revision: snapshot.Revision, Fields: map[string]string{target.field: "Edited"}})
+			if err != nil || result.EditJobID != 0 {
+				t.Fatalf("catalog save: %+v %v", result, err)
+			}
+			var revision, nextAttempt int64
+			if err := db.QueryRow(`SELECT revision,next_attempt FROM music_title_updates WHERE music_file_id=1`).Scan(&revision, &nextAttempt); err != nil || revision != 1 || nextAttempt != 9999999999 {
+				t.Fatalf("unchecked save changed the automatic queue: %d %d %v", revision, nextAttempt, err)
+			}
+			if _, err := db.Exec(`UPDATE music_title_updates SET next_attempt=0`); err != nil {
+				t.Fatal(err)
+			}
+			if worked, err := service.processTitleUpdate(ctx); !worked || err != nil {
+				t.Fatalf("discard pending automatic update: %t %v", worked, err)
+			}
+			var remaining int
+			if err := db.QueryRow(`SELECT (SELECT COUNT(*) FROM music_title_updates)+(SELECT COUNT(*) FROM music_edit_jobs)`).Scan(&remaining); err != nil || remaining != 0 {
+				t.Fatalf("unchecked save left a file write scheduled: %d %v", remaining, err)
+			}
+		})
+	}
+}
+
 func TestLibraryEditorRenamesAndRetagsGeneratedAudio(t *testing.T) {
 	for _, tool := range []string{"ffmpeg", "ffprobe"} {
 		if _, err := exec.LookPath(tool); err != nil {

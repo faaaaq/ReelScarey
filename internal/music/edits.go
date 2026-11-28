@@ -563,8 +563,15 @@ func (s *Service) applyEdit(ctx context.Context, jobID, editID, musicFileID int6
 	}
 	if automatic {
 		var digest, title string
-		if err := s.store.db.QueryRowContext(ctx, `SELECT f.sha256,`+trackDisplayTitle+` FROM music_files f JOIN music_tracks t ON t.id=f.track_id WHERE f.id=? AND f.relative_path=?`, musicFileID, sourceRel).Scan(&digest, &title); err != nil {
+		var allowed bool
+		if err := s.store.db.QueryRowContext(ctx, `SELECT f.sha256,`+trackDisplayTitle+`,`+automaticMusicTagsAllowed+`
+			FROM music_files f JOIN music_tracks t ON t.id=f.track_id
+			JOIN music_albums a ON a.id=f.album_id JOIN music_artists ar ON ar.id=f.artist_id
+			WHERE f.id=? AND f.relative_path=?`, musicFileID, sourceRel).Scan(&digest, &title, &allowed); err != nil {
 			return err
+		}
+		if !allowed {
+			return &Error{Code: "music_source_changed", Message: "A manual metadata edit superseded this automatic tag update. The original was retained."}
 		}
 		if digest != "" && digest != originalSHA || title != tags.Title {
 			return ErrPlanChanged

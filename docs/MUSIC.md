@@ -524,8 +524,9 @@ several registered copies, choose which one to rename. Batch patterns such as
 Supported placeholders are `{title}`, `{artist}`, `{album}`, `{track}`,
 `{disc}` and `{filename}` (the original name without its extension).
 
-The editor can also write the changed tags to registered audio files. The
-dialog shows file progress and errors, and completed file edits are recorded in
+Select **Also write changed tags** to update the tags in registered audio files.
+Catalog-only edits leave the file tags alone. The dialog shows file progress
+and errors, and completed file edits are recorded in
 Music → Organize. Rolling back there restores the file versions from that job.
 
 ## Organization and tagging

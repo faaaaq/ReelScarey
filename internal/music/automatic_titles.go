@@ -8,18 +8,31 @@ import (
 	"github.com/faaaaq/ReelScarey/internal/organization"
 )
 
+// The automatic job writes canonical tags as a group. A manual edit reserves
+// those decisions for the editor, including the choice to leave files alone.
+const automaticMusicTagsAllowed = `ar.name_overridden=0 AND a.title_overridden=0 AND a.year_overridden=0
+	AND json_type(a.editor_fields,'$.album_artist') IS NULL AND COALESCE(t.editor_fields,'{}')='{}'`
+
 func (s *Service) processTitleUpdate(ctx context.Context) (bool, error) {
 	var id, revision int64
-	err := s.store.db.QueryRowContext(ctx, `SELECT u.music_file_id,u.revision FROM music_title_updates u
+	var allowed bool
+	err := s.store.db.QueryRowContext(ctx, `SELECT u.music_file_id,u.revision,`+automaticMusicTagsAllowed+`
+		FROM music_title_updates u JOIN music_files f ON f.id=u.music_file_id
+		JOIN music_albums a ON a.id=f.album_id JOIN music_artists ar ON ar.id=f.artist_id
+		LEFT JOIN music_tracks t ON t.id=f.track_id
 		WHERE u.next_attempt<=unixepoch()
 		  AND NOT EXISTS(SELECT 1 FROM music_edit_files f JOIN music_edit_jobs j ON j.id=f.job_id WHERE f.music_file_id=u.music_file_id AND j.state='running')
 		  AND NOT EXISTS(SELECT 1 FROM music_conversion_jobs c WHERE c.file_id=u.music_file_id AND c.kind<>'download' AND c.state IN ('queued','processing'))
-		ORDER BY u.next_attempt,u.music_file_id LIMIT 1`).Scan(&id, &revision)
+		ORDER BY u.next_attempt,u.music_file_id LIMIT 1`).Scan(&id, &revision, &allowed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
+	}
+	if !allowed {
+		_, err = s.store.db.ExecContext(ctx, `DELETE FROM music_title_updates WHERE music_file_id=? AND revision=?`, id, revision)
+		return true, err
 	}
 	plan, err := s.PreviewEdits(ctx, []int64{id})
 	var typed *Error
@@ -58,10 +71,12 @@ func (s *Service) processTitleUpdate(ctx context.Context) (bool, error) {
 	}
 	var current, path, tagJSON string
 	var active int
-	err = tx.QueryRowContext(ctx, `SELECT `+trackDisplayTitle+`,f.relative_path,f.tag_json,
+	err = tx.QueryRowContext(ctx, `SELECT `+trackDisplayTitle+`,f.relative_path,f.tag_json,`+automaticMusicTagsAllowed+`,
 		(SELECT COUNT(*) FROM music_edit_files e JOIN music_edit_jobs j ON j.id=e.job_id WHERE e.music_file_id=f.id AND j.state='running')
-		FROM music_files f JOIN music_tracks t ON t.id=f.track_id WHERE f.id=?`, id).Scan(&current, &path, &tagJSON, &active)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && (current != file.Tags.Title || path != file.SourcePath || tagJSON != file.PreviousTagJSON || active > 0) {
+		FROM music_files f JOIN music_tracks t ON t.id=f.track_id
+		JOIN music_albums a ON a.id=f.album_id JOIN music_artists ar ON ar.id=f.artist_id
+		WHERE f.id=?`, id).Scan(&current, &path, &tagJSON, &allowed, &active)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && (!allowed || current != file.Tags.Title || path != file.SourcePath || tagJSON != file.PreviousTagJSON || active > 0) {
 		return false, nil
 	}
 	if err != nil {
